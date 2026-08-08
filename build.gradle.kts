@@ -18,6 +18,7 @@ subprojects {
 
     val libs = rootProject.extensions.getByType<VersionCatalogsExtension>().named("libs")
     dependencies {
+        "api"(libs.findLibrary("jspecify").get())
         "testImplementation"(platform(libs.findLibrary("junit-bom").get()))
         "testImplementation"(libs.findLibrary("junit-jupiter").get())
         "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").get())

@@ -8,13 +8,6 @@ description = "Paper plugin entry point: bootstrap, listeners, Brigadier command
 dependencies {
     compileOnly(libs.paper.api)
     implementation(project(":core"))
-    implementation(project(":profile"))
-    implementation(project(":item"))
-    implementation(project(":loot"))
-    implementation(project(":combat"))
-    implementation(project(":extraction"))
-    implementation(project(":economy"))
-    implementation(project(":game"))
 }
 
 tasks.processResources {
@@ -28,8 +21,8 @@ tasks.processResources {
 tasks.shadowJar {
     archiveBaseName.set("RaidCore")
     archiveClassifier.set("")
-    relocate("com.zaxxer.hikari", "dev.raidcore.libs.hikari")
-    relocate("org.postgresql", "dev.raidcore.libs.postgresql")
+    relocate("com.zaxxer.hikari", "com.birditch.raidcore.libs.hikari")
+    relocate("org.postgresql", "com.birditch.raidcore.libs.postgresql")
     mergeServiceFiles()
     dependencies {
         // Paper ships slf4j; never bundle our own copy.

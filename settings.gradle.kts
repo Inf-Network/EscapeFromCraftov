@@ -22,14 +22,6 @@ rootProject.name = "RaidCore"
 
 include(
     "api",
-    "common",
     "core",
-    "profile",
-    "item",
-    "loot",
-    "combat",
-    "extraction",
-    "economy",
-    "game",
     "paper",
 )

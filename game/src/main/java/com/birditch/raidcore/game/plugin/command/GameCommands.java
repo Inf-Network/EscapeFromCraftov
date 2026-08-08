@@ -1,11 +1,11 @@
-package com.birditch.raidcore.paper.command;
+package com.birditch.raidcore.game.plugin.command;
 
 import com.birditch.raidcore.api.game.RaidGame;
 import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.common.result.Result;
-import com.birditch.raidcore.paper.Messages;
+import com.birditch.raidcore.game.plugin.Messages;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;

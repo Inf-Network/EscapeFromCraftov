@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper;
+package com.birditch.raidcore.game.plugin;
 
 import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;

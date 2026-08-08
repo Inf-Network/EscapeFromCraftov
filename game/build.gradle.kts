@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.run.paper)
 }
 
-description = "Paper plugin entry point: bootstrap, listeners, Brigadier commands, scheduler adapter."
+description = "Escape from Craftov game-server plugin: multi-instance raids, per-instance worlds, chat/tab isolation, Redis instance directory."
 
 dependencies {
     compileOnly(libs.paper.api)
@@ -19,10 +19,13 @@ tasks.processResources {
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("RaidCore")
+    archiveBaseName.set("RaidCoreGame")
     archiveClassifier.set("")
     relocate("com.zaxxer.hikari", "com.birditch.raidcore.libs.hikari")
     relocate("org.postgresql", "com.birditch.raidcore.libs.postgresql")
+    relocate("redis.clients", "com.birditch.raidcore.libs.jedis")
+    relocate("org.apache.commons.pool2", "com.birditch.raidcore.libs.commonspool2")
+    relocate("com.google.gson", "com.birditch.raidcore.libs.gson")
     mergeServiceFiles()
     dependencies {
         // Paper ships slf4j; never bundle our own copy.
@@ -36,7 +39,7 @@ tasks.assemble {
 
 tasks.register("buildPlugin") {
     group = "raidcore"
-    description = "Builds the deployable RaidCore plugin jar."
+    description = "Builds the deployable RaidCoreGame plugin jar."
     dependsOn(tasks.shadowJar)
 }
 

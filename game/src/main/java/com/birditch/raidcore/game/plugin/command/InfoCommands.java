@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper.command;
+package com.birditch.raidcore.game.plugin.command;
 
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.item.ItemRegistry;
@@ -6,7 +6,7 @@ import com.birditch.raidcore.api.loot.LootTableRegistry;
 import com.birditch.raidcore.api.session.SessionService;
 import com.birditch.raidcore.core.module.RaidModule;
 import com.birditch.raidcore.core.service.ServiceRegistry;
-import com.birditch.raidcore.paper.Messages;
+import com.birditch.raidcore.game.plugin.Messages;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;

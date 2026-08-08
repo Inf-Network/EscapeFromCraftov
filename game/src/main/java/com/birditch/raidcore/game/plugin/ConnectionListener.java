@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper;
+package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.combat.CombatService;
 import com.birditch.raidcore.api.extraction.ExtractionService;

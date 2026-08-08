@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper;
+package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.scheduler.RaidScheduler;
 import com.birditch.raidcore.api.scheduler.ScheduledTask;

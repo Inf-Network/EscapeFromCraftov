@@ -1,6 +1,6 @@
 name: RaidCore
 version: '${version}'
-main: com.birditch.raidcore.paper.RaidPlugin
+main: com.birditch.raidcore.game.plugin.RaidPlugin
 api-version: '1.21'
 description: "Extraction-shooter (PvPvE raid) core framework for Paper."
 authors: [birditch]

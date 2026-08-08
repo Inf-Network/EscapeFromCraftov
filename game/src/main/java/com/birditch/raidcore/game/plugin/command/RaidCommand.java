@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper.command;
+package com.birditch.raidcore.game.plugin.command;
 
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.papermc.paper.command.brigadier.CommandSourceStack;

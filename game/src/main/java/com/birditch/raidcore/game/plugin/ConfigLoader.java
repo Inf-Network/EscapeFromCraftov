@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper;
+package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.core.config.RaidCoreConfig;

@@ -1,4 +1,4 @@
-package com.birditch.raidcore.paper;
+package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.item.ItemRegistry;
@@ -22,8 +22,8 @@ import com.birditch.raidcore.extraction.ExtractionModule;
 import com.birditch.raidcore.game.GameModule;
 import com.birditch.raidcore.item.ItemModule;
 import com.birditch.raidcore.loot.LootModule;
-import com.birditch.raidcore.paper.command.CommandContext;
-import com.birditch.raidcore.paper.command.RaidCommand;
+import com.birditch.raidcore.game.plugin.command.CommandContext;
+import com.birditch.raidcore.game.plugin.command.RaidCommand;
 import com.birditch.raidcore.profile.ProfileModule;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.util.List;

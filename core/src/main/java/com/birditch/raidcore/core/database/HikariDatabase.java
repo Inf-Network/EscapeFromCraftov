@@ -15,6 +15,10 @@ public final class HikariDatabase implements Database {
   public HikariDatabase(DatabaseConfig config) {
     Preconditions.checkNotNull(config, "config");
     HikariConfig hikari = new HikariConfig();
+    // Explicit driver class instead of DriverManager SPI: plugin classloaders do not
+    // see service-loader drivers, and the Shadow relocation rewrites this literal to
+    // the relocated driver class inside the plugin jar.
+    hikari.setDriverClassName("org.postgresql.Driver");
     hikari.setJdbcUrl(
         "jdbc:postgresql://" + config.host() + ":" + config.port() + "/" + config.database());
     hikari.setUsername(config.username());

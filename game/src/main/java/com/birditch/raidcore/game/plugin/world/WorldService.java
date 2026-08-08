@@ -161,11 +161,19 @@ public final class WorldService {
     if (!templateCopied) {
       deps.logger()
           .warning(
-              "Map template missing for '"
+              "地图模板 '"
                   + mapId.value()
-                  + "'; creating flat fallback world "
-                  + worldName);
+                  + "' 不存在,已退化为平坦世界 "
+                  + worldName
+                  + "(仅供调试;请把地图放到模板目录后重建实例)");
       creator.type(WorldType.FLAT);
+      // Explicit preset: FLAT with empty generator settings makes vanilla log
+      // "No key layers" and fall back anyway — spell the layers out instead.
+      creator.generatorSettings(
+          "{\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},"
+              + "{\"block\":\"minecraft:dirt\",\"height\":2},"
+              + "{\"block\":\"minecraft:grass_block\",\"height\":1}],"
+              + "\"biome\":\"minecraft:plains\"}");
     }
     World world = creator.createWorld();
     if (world == null) {

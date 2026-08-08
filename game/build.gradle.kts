@@ -45,4 +45,7 @@ tasks.register("buildPlugin") {
 
 tasks.runServer {
     minecraftVersion("1.21.11")
+    // run-paper 3.0.2's downloadPlugins.elements property lacks the annotation
+    // Gradle 9.7 validation demands; state tracking is worthless for a dev server anyway.
+    doNotTrackState("run-paper 3.0.2 properties are not annotated for Gradle 9.7 validation")
 }

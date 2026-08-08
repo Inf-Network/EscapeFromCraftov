@@ -20,18 +20,19 @@ import org.bukkit.command.CommandSender;
 /// `/raid help` and `/raid info`.
 final class InfoCommands {
 
-  private record HelpEntry(String command, String description) {}
+  /// Command usage paired with its Chinese description key in messages.yml.
+  private record HelpEntry(String command, String descriptionKey) {}
 
   private static final List<HelpEntry> HELP_ENTRIES = List.of(
-      new HelpEntry("raid help", "Show this help"),
-      new HelpEntry("raid info", "Show plugin status"),
-      new HelpEntry("raid profile", "Show your profile"),
-      new HelpEntry("raid game create [map]", "Create a raid game"),
-      new HelpEntry("raid game list", "List active games"),
-      new HelpEntry("raid game start <id>", "Start a game"),
-      new HelpEntry("raid game stop <id>", "Stop a game"),
-      new HelpEntry("raid debug", "Show runtime counters"),
-      new HelpEntry("raid debug loot <table>", "Roll a loot table"));
+      new HelpEntry("raid help", "command.help.desc.help"),
+      new HelpEntry("raid info", "command.help.desc.info"),
+      new HelpEntry("raid profile", "command.help.desc.profile"),
+      new HelpEntry("raid game create [map]", "command.help.desc.game-create"),
+      new HelpEntry("raid game list", "command.help.desc.game-list"),
+      new HelpEntry("raid game start <id>", "command.help.desc.game-start"),
+      new HelpEntry("raid game stop <id>", "command.help.desc.game-stop"),
+      new HelpEntry("raid debug", "command.help.desc.debug"),
+      new HelpEntry("raid debug loot <table>", "command.help.desc.debug-loot"));
 
   private InfoCommands() {}
 
@@ -54,7 +55,7 @@ final class InfoCommands {
       sender.sendMessage(messages.raw(
           "command.help.entry",
           Placeholder.unparsed("command", entry.command()),
-          Placeholder.unparsed("description", entry.description())));
+          Placeholder.component("description", messages.raw(entry.descriptionKey()))));
     }
     return Command.SINGLE_SUCCESS;
   }

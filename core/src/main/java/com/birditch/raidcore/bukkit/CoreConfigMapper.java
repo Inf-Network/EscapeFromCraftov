@@ -53,7 +53,8 @@ public final class CoreConfigMapper {
     return Map.copyOf(messages);
   }
 
-  static String stringOr(FileConfiguration yaml, String path, String fallback) {
+  /// Shared by every config mapper (core, game, lobby) — the single string-or-default helper.
+  public static String stringOr(FileConfiguration yaml, String path, String fallback) {
     String value = yaml.getString(path);
     return value != null ? value : fallback;
   }

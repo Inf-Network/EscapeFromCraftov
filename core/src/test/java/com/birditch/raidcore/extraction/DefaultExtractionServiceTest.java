@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.raidcore.api.event.extraction.PlayerExtractedEvent;
+import com.birditch.raidcore.api.event.game.RaidEndedEvent;
 import com.birditch.raidcore.api.extraction.ExtractionCondition;
 import com.birditch.raidcore.api.extraction.ExtractionContext;
+import com.birditch.raidcore.api.extraction.ExtractionFailures;
 import com.birditch.raidcore.api.extraction.ExtractionPoint;
 import com.birditch.raidcore.api.extraction.ExtractionPointId;
 import com.birditch.raidcore.api.extraction.ExtractionSession;
@@ -17,6 +19,7 @@ import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameState;
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.api.game.RaidPlayer;
+import com.birditch.raidcore.api.game.RaidResult;
 import com.birditch.raidcore.api.testing.ManualScheduler;
 import com.birditch.raidcore.api.testing.MutableTimeSource;
 import com.birditch.raidcore.common.result.Result;
@@ -26,6 +29,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,32 +101,33 @@ class DefaultExtractionServiceTest {
         @Test
         void failsWhenGameNotFound() {
             assertFailure(service.begin(PLAYER_ID, RaidGameId.of("missing"), POINT_ID),
-                    "Game not found");
+                    ExtractionFailures.GAME_NOT_FOUND);
         }
 
         @ParameterizedTest
         @EnumSource(value = RaidGameState.class, names = "RUNNING", mode = EnumSource.Mode.EXCLUDE)
         void failsWhenGameIsNotRunning(RaidGameState state) {
             game.setState(state);
-            assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID), "Game is not running");
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID),
+                    ExtractionFailures.GAME_NOT_RUNNING);
         }
 
         @Test
         void failsWhenPlayerIsNotInTheGame() {
             assertFailure(service.begin(OTHER_PLAYER_ID, GAME_ID, POINT_ID),
-                    "Player is not in this game");
+                    ExtractionFailures.PLAYER_NOT_IN_GAME);
         }
 
         @Test
         void failsWhenExtractionPointIsUnknown() {
             assertFailure(service.begin(PLAYER_ID, GAME_ID, ExtractionPointId.of("south_gate")),
-                    "Extraction point not found");
+                    ExtractionFailures.POINT_NOT_FOUND);
         }
 
         @Test
         void failsWhenExtractionPointIsLocked() {
             assertFailure(service.begin(PLAYER_ID, GAME_ID, LOCKED_POINT_ID),
-                    "Extraction point is locked");
+                    ExtractionFailures.POINT_LOCKED);
         }
 
         @Test
@@ -130,7 +135,7 @@ class DefaultExtractionServiceTest {
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
 
             assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID),
-                    "Extraction already in progress");
+                    ExtractionFailures.ALREADY_EXTRACTING);
             assertEquals(1, service.activeCount());
         }
 
@@ -141,7 +146,7 @@ class DefaultExtractionServiceTest {
                     List.of(condition("carry a key card", false)), ExtractionState.AVAILABLE));
 
             assertFailure(service.begin(PLAYER_ID, GAME_ID, gated),
-                    "Extraction blocked: carry a key card");
+                    ExtractionFailures.blocked("carry a key card"));
             assertEquals(0, service.activeCount());
         }
 
@@ -238,6 +243,74 @@ class DefaultExtractionServiceTest {
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
             assertEquals(1, service.activeCount());
         }
+
+        @Test
+        @DisplayName("fails the session without publishing when the game vanished before the timer fired")
+        void failsWhenGameDisappearedBeforeTimerFired() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            games.destroyAll();
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
+            assertEquals(0, service.activeCount());
+            assertTrue(published.isEmpty());
+        }
+
+        @Test
+        @DisplayName("fails the session without publishing when the game is no longer RUNNING")
+        void failsWhenGameStoppedRunningBeforeTimerFired() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            game.setState(RaidGameState.ENDING);
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
+            assertEquals(0, service.activeCount());
+            assertTrue(published.isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("raid end handling")
+    class RaidEndHandling {
+
+        @Test
+        @DisplayName("fails, cancels and removes every active session of the ended game")
+        void cancelsAllSessionsOfEndedGame() {
+            eventBus.register(service);
+            game.addPlayer(new RaidPlayer(OTHER_PLAYER_ID, "Bob"));
+            ExtractionSession first = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            ExtractionSession second = service.begin(OTHER_PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+
+            eventBus.publish(endedEvent(GAME_ID));
+
+            assertEquals(ExtractionState.FAILED, first.state());
+            assertEquals(ExtractionState.FAILED, second.state());
+            assertEquals(0, service.activeCount());
+
+            scheduler.advanceBy(POINT_DURATION);
+            assertTrue(published.isEmpty());
+        }
+
+        @Test
+        void leavesSessionsOfOtherGamesUntouched() {
+            eventBus.register(service);
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+
+            eventBus.publish(endedEvent(RaidGameId.of("raid-2")));
+
+            assertEquals(ExtractionState.EXTRACTING, session.state());
+            assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
+            assertEquals(1, service.activeCount());
+        }
     }
 
     @Nested
@@ -301,6 +374,11 @@ class DefaultExtractionServiceTest {
                 return satisfied;
             }
         };
+    }
+
+    private static RaidEndedEvent endedEvent(RaidGameId gameId) {
+        return new RaidEndedEvent(gameId,
+                new RaidResult(gameId, Instant.EPOCH, Set.of(), Set.of()));
     }
 
     private static void assertFailure(Result<ExtractionSession> result, String expectedMessage) {

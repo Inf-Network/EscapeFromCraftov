@@ -1,6 +1,7 @@
 package com.birditch.raidcore.lobby;
 
 import com.birditch.raidcore.api.game.RaidMapId;
+import com.birditch.raidcore.bukkit.CoreConfigMapper;
 import com.birditch.raidcore.common.check.Preconditions;
 import org.bukkit.configuration.file.FileConfiguration;
 
@@ -18,11 +19,6 @@ public final class LobbyConfigMapper {
         yaml.getInt("queue.reservation-ttl-seconds", 30),
         yaml.getInt("queue.assignment-ttl-seconds", 30),
         yaml.getBoolean("lobby.protect", true),
-        RaidMapId.of(stringOr(yaml, "lobby.default-map", "debug_zone")));
-  }
-
-  private static String stringOr(FileConfiguration yaml, String path, String fallback) {
-    String value = yaml.getString(path);
-    return value != null ? value : fallback;
+        RaidMapId.of(CoreConfigMapper.stringOr(yaml, "lobby.default-map", "debug_zone")));
   }
 }

@@ -44,6 +44,17 @@ command:
   help:
     header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>命令列表</gray>"
     entry: "<yellow>/<command></yellow> <dark_gray>-</dark_gray> <gray><description></gray>"
+    # 每条命令的说明文字(由 entry 的 <description> 引用)。
+    desc:
+      help: "显示本帮助"
+      info: "查看插件运行状态"
+      profile: "查看你的个人档案"
+      game-create: "创建一个对局实例"
+      game-list: "列出当前实例"
+      game-start: "开始指定实例"
+      game-stop: "结束指定实例"
+      debug: "查看运行时计数"
+      debug-loot: "掷取一次掉落表"
   info:
     header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>运行状态</gray>"
     # <version> 插件版本;<minecraft> MC 版本;<java> Java 版本
@@ -92,3 +103,27 @@ game:
   instance-full: "<red>该对局实例已满员。</red>"
   returned-to-lobby: "<gray>你已返回大厅。</gray>"
   assignment-invalid: "<red>无法加入对局:<reason></red>"
+
+# ---------------------------------------------------------------------------
+# 状态显示名:命令输出里的档案/对局状态(内部枚举 → 玩家可见中文)。
+# ---------------------------------------------------------------------------
+state:
+  profile:
+    loading: "<yellow>加载中</yellow>"
+    ready: "<green>就绪</green>"
+    failed: "<red>加载失败</red>"
+  game:
+    created: "已创建"
+    waiting: "<green>等待中</green>"
+    preparing: "准备中"
+    starting: "<yellow>即将开始</yellow>"
+    running: "<gold>进行中</gold>"
+    ending: "结算中"
+    finished: "已结束"
+    destroyed: "已销毁"
+
+# ---------------------------------------------------------------------------
+# 地图显示名:键为 “map.<地图ID>”,未配置的地图回退为显示原始 ID。
+# ---------------------------------------------------------------------------
+map:
+  debug_zone: "<yellow>调试区域</yellow>"

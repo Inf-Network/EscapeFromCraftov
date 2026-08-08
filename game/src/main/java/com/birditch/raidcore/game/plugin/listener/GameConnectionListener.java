@@ -94,10 +94,19 @@ public final class GameConnectionListener implements Listener {
   }
 
   /// Runs on the main thread; the session may already be gone when the player
-  /// quit while the profile was still loading.
+  /// quit while the profile was still loading. In that case the quit handler's
+  /// unload ran before the profile was cached, so unload again here to persist
+  /// and evict the freshly cached profile.
   private void completeProfileLoad(UUID playerId, @Nullable Throwable error) {
     Optional<PlayerSession> session = sessions.find(playerId);
     if (session.isEmpty()) {
+      profiles
+          .unload(playerId)
+          .whenComplete((_, unloadError) -> {
+            if (unloadError != null) {
+              logger.log(Level.SEVERE, "Profile unload failed for player " + playerId, unloadError);
+            }
+          });
       return;
     }
     Player player = Bukkit.getPlayer(playerId);

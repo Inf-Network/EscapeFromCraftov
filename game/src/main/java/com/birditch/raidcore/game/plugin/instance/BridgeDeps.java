@@ -3,6 +3,7 @@ package com.birditch.raidcore.game.plugin.instance;
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.scheduler.RaidScheduler;
 import com.birditch.raidcore.bukkit.BungeeConnector;
+import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.game.plugin.GameServerConfig;
 import com.birditch.raidcore.game.plugin.isolation.VisibilityService;
@@ -18,6 +19,7 @@ public record BridgeDeps(
     VisibilityService visibility,
     BungeeConnector bungee,
     GameServerConfig config,
+    Messages messages,
     RaidScheduler scheduler,
     Logger logger) {
 
@@ -28,6 +30,7 @@ public record BridgeDeps(
     Preconditions.checkNotNull(visibility, "visibility");
     Preconditions.checkNotNull(bungee, "bungee");
     Preconditions.checkNotNull(config, "config");
+    Preconditions.checkNotNull(messages, "messages");
     Preconditions.checkNotNull(scheduler, "scheduler");
     Preconditions.checkNotNull(logger, "logger");
   }

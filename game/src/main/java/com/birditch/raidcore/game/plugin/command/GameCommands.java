@@ -13,6 +13,7 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import java.util.Collection;
+import java.util.Locale;
 import java.util.Optional;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.command.CommandSender;
@@ -94,7 +95,7 @@ final class GameCommands {
       sender.sendMessage(messages.raw(
           "command.game.list-entry",
           Placeholder.unparsed("id", game.id().value()),
-          Placeholder.unparsed("state", game.state().name()),
+          Placeholder.component("state", messages.raw("state.game." + game.state().name().toLowerCase(Locale.ROOT))),
           Placeholder.unparsed("players", Integer.toString(game.playerCount()))));
     }
     return Command.SINGLE_SUCCESS;

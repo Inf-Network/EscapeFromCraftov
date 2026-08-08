@@ -79,7 +79,10 @@ public final class DefaultProfileService implements ProfileService {
               if (error != null) {
                 logger.log(Level.SEVERE, "Failed to save profile " + playerId + " on unload", error);
               }
-              cache.remove(playerId);
+              /// Two-arg remove: evict only the instance this unload saved, so a
+              /// profile re-loaded while the save was in flight survives this
+              /// stale callback.
+              cache.remove(playerId, profile);
             });
   }
 

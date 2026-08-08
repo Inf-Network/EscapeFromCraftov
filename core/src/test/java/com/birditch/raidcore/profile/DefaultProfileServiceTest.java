@@ -2,6 +2,7 @@ package com.birditch.raidcore.profile;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -142,6 +143,24 @@ class DefaultProfileServiceTest {
     }
 
     @Test
+    @DisplayName("stale unload callback does not evict a freshly re-loaded profile")
+    void staleUnloadKeepsFreshlyReloadedProfile() {
+      ControllableProfileRepository controllable = new ControllableProfileRepository();
+      DefaultProfileService racing =
+          new DefaultProfileService(controllable, timeSource, quietLogger());
+      PlayerProfile first = racing.load(playerId, "Steve").join();
+      CompletableFuture<Void> unload = racing.unload(playerId);
+      PlayerProfile second = racing.load(playerId, "Steve").join();
+      assertNotSame(first, second);
+
+      controllable.completeSave();
+      unload.join();
+
+      assertSame(second, racing.find(playerId).orElseThrow());
+      assertEquals(1, racing.cachedCount());
+    }
+
+    @Test
     @DisplayName("saveAll persists every cached profile and keeps the cache")
     void saveAllPersistsEverything() {
       UUID second = UUID.randomUUID();
@@ -151,6 +170,33 @@ class DefaultProfileServiceTest {
       assertEquals(Money.of(10), repository.load(playerId).join().orElseThrow().balance());
       assertEquals(Money.of(20), repository.load(second).join().orElseThrow().balance());
       assertEquals(2, service.cachedCount());
+    }
+  }
+
+  /// Repository double whose save future is completed manually, letting tests
+  /// interleave cache operations with an in-flight save. Loads always miss, so
+  /// every [DefaultProfileService#load] caches a fresh instance.
+  private static final class ControllableProfileRepository implements ProfileRepository {
+
+    private final CompletableFuture<Void> saveFuture = new CompletableFuture<>();
+
+    @Override
+    public CompletableFuture<Optional<PlayerProfile>> load(UUID playerId) {
+      return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<Void> save(PlayerProfile profile) {
+      return saveFuture;
+    }
+
+    @Override
+    public CompletableFuture<Void> delete(UUID playerId) {
+      return CompletableFuture.completedFuture(null);
+    }
+
+    void completeSave() {
+      saveFuture.complete(null);
     }
   }
 

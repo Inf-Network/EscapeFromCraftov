@@ -1,12 +1,12 @@
-package com.birditch.raidcore.lobby;
+package com.birditch.raidcore.bukkit;
 
 import com.birditch.raidcore.api.game.RaidMapId;
-import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.check.Preconditions;
 import net.kyori.adventure.text.Component;
 
 /// Player-facing display name of a map: the `map.<id>` messages entry, falling
 /// back to the raw id so unknown maps stay debuggable instead of invisible.
+/// Shared by the game and lobby plugins.
 public final class MapNames {
 
   private MapNames() {}

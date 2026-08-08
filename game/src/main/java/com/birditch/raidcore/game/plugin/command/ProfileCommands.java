@@ -10,6 +10,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
+import java.util.Locale;
 import java.util.UUID;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.command.CommandSender;
@@ -40,7 +41,8 @@ final class ProfileCommands {
     sender.sendMessage(messages.raw(
         "command.profile.header", Placeholder.unparsed("player", player.getName())));
     sender.sendMessage(messages.raw(
-        "command.profile.state", Placeholder.unparsed("state", state.name())));
+        "command.profile.state", Placeholder.component("state",
+            messages.raw("state.profile." + state.name().toLowerCase(Locale.ROOT)))));
     services.require(ProfileService.class).find(playerId).ifPresent(profile -> {
       sender.sendMessage(messages.raw(
           "command.profile.balance",

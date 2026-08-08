@@ -1,5 +1,6 @@
 package com.birditch.raidcore.lobby.command;
 
+import com.birditch.raidcore.api.RaidPermissions;
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.check.Preconditions;
@@ -21,7 +22,7 @@ import org.jspecify.annotations.Nullable;
 /// its `/menu` alias.
 public final class LobbyCommand {
 
-  private static final String PLAY_PERMISSION = "raid.lobby.play";
+  private static final String PLAY_PERMISSION = RaidPermissions.LOBBY_PLAY;
 
   private LobbyCommand() {}
 

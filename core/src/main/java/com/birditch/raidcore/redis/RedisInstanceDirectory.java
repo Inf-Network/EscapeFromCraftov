@@ -8,8 +8,11 @@ import com.birditch.raidcore.common.check.Preconditions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import redis.clients.jedis.Jedis;
@@ -19,15 +22,18 @@ import redis.clients.jedis.resps.ScanResult;
 
 /// Publishes and reads game-server snapshots under [NetworkKeys#SERVER_KEY_PATTERN].
 /// Each snapshot is a TTL heartbeat: a crashed server simply expires out of the
-/// directory. Malformed snapshots are skipped with a warning, never propagated.
+/// directory. Malformed snapshots are skipped with a warning — rate-limited to
+/// one per key per [#WARN_INTERVAL_MILLIS] — and never propagated.
 public final class RedisInstanceDirectory implements InstanceDirectory {
 
   private static final int SCAN_BATCH_SIZE = 100;
+  private static final long WARN_INTERVAL_MILLIS = 30_000L;
 
   private final RedisConnector redis;
   private final JsonCodec codec;
   private final ExecutorService ioExecutor;
   private final Logger logger;
+  private final Map<String, AtomicLong> warnedAtByKey = new ConcurrentHashMap<>();
 
   public RedisInstanceDirectory(
       RedisConnector redis, JsonCodec codec, ExecutorService ioExecutor, Logger logger) {
@@ -66,11 +72,23 @@ public final class RedisInstanceDirectory implements InstanceDirectory {
         try {
           servers.add(codec.fromJson(json, GameServerSnapshot.class));
         } catch (RaidException e) {
-          logger.log(Level.WARNING, "Skipping malformed server snapshot at " + key, e);
+          if (shouldWarn(key)) {
+            logger.log(Level.WARNING, "Skipping malformed server snapshot at " + key, e);
+          }
         }
       }
     }
     return List.copyOf(servers);
+  }
+
+  /// Lock-free per-key throttle: allows at most one warning per key per
+  /// [#WARN_INTERVAL_MILLIS]. Runs on IO threads, hence [AtomicLong] instead of
+  /// the main-thread-only `Cooldown`.
+  private boolean shouldWarn(String key) {
+    AtomicLong warnedAt = warnedAtByKey.computeIfAbsent(key, _ -> new AtomicLong());
+    long now = System.currentTimeMillis();
+    long previous = warnedAt.get();
+    return now - previous >= WARN_INTERVAL_MILLIS && warnedAt.compareAndSet(previous, now);
   }
 
   private static List<String> scanServerKeys(Jedis jedis) {

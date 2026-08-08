@@ -8,6 +8,7 @@ import com.birditch.raidcore.common.check.Preconditions;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /// Publishes this server's [GameServerSnapshot] heartbeat to the instance
@@ -17,15 +18,20 @@ import org.jspecify.annotations.Nullable;
 /// Redis write itself runs async inside the directory implementation. Each
 /// snapshot carries a TTL of three intervals, so a crashed or partitioned
 /// server expires out of the directory after missing two heartbeats. A failed
-/// publish logs a single WARNING (no SEVERE spam while Redis is down) and
-/// never breaks the timer.
+/// publish logs a WARNING throttled to one per 30 seconds (no SEVERE spam
+/// while Redis is down) and never breaks the timer; the failure callback runs
+/// on IO threads, so the throttle state is an [AtomicLong] rather than the
+/// main-thread-confined common Cooldown.
 public final class SnapshotPublisher {
 
   private static final Duration FAST_EXPIRE_TTL = Duration.ofMillis(1);
+  private static final long FAILURE_LOG_WINDOW_MILLIS = 30_000L;
+  private static final long NEVER_LOGGED = Long.MIN_VALUE;
 
   private final PublisherDeps deps;
   private final Duration interval;
   private final Duration heartbeatTtl;
+  private final AtomicLong lastFailureLogMillis = new AtomicLong(NEVER_LOGGED);
   private @Nullable ScheduledTask task;
 
   public SnapshotPublisher(PublisherDeps deps) {
@@ -80,10 +86,20 @@ public final class SnapshotPublisher {
         deps.coreConfig().game().maxPlayers(), deps.index().isReady(game.id()));
   }
 
+  /// Runs on IO threads (the directory's async callback); a lock-free CAS on
+  /// the last-log timestamp keeps a flapping Redis from flooding the log.
   private void logPublishFailure(Throwable error) {
+    long now = deps.timeSource().currentMillis();
+    long last = lastFailureLogMillis.get();
+    if (last != NEVER_LOGGED && now - last < FAILURE_LOG_WINDOW_MILLIS) {
+      return;
+    }
+    if (!lastFailureLogMillis.compareAndSet(last, now)) {
+      return;
+    }
     Throwable cause = error instanceof CompletionException && error.getCause() != null
         ? error.getCause()
         : error;
-    deps.logger().warning("Failed to publish server snapshot to instance directory: " + cause);
+    deps.logger().warning("向实例目录发布服务器快照失败(30 秒内不再重复提示,恢复后自动继续): " + cause);
   }
 }

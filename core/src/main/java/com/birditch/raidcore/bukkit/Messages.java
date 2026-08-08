@@ -11,7 +11,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
 /// MiniMessage-backed message catalog loaded from `messages.yml`.
 ///
-/// A missing key renders as a red `Missing message: <key>` component so broken
+/// A missing key renders as a red `缺失消息:<key>` component so broken
 /// configs are visible in-game instead of failing silently.
 public final class Messages {
 
@@ -37,7 +37,7 @@ public final class Messages {
     Preconditions.checkNotNull(key, "key");
     String format = messages.get(key);
     if (format == null) {
-      return Component.text("Missing message: " + key, NamedTextColor.RED);
+      return missing(key);
     }
     return miniMessage.deserialize(format, resolvers);
   }
@@ -55,10 +55,15 @@ public final class Messages {
     Preconditions.checkNotNull(key, "key");
     String format = messages.get(key);
     if (format == null) {
-      return List.of(Component.text("Missing message: " + key, NamedTextColor.RED));
+      return List.of(missing(key));
     }
     return Arrays.stream(format.split("\\|"))
         .map(segment -> miniMessage.deserialize(segment, resolvers))
         .toList();
+  }
+
+  /// Red fallback for an undefined key so broken configs stay visible in-game.
+  private static Component missing(String key) {
+    return Component.text("缺失消息:" + key, NamedTextColor.RED);
   }
 }

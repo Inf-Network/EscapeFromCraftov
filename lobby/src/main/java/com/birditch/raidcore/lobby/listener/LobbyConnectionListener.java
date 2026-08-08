@@ -80,13 +80,17 @@ public final class LobbyConnectionListener implements Listener {
 
   /// Runs on the main thread once settings and cosmetics finished loading; a
   /// load failure is logged and the defaults still apply so the player is
-  /// never left half-initialized.
+  /// never left half-initialized. When the player already left, the freshly
+  /// cached entries are unloaded so a stale async load never leaks.
   private void applyLoadedState(Player player, @Nullable Throwable error) {
     if (error != null) {
       deps.logger().log(Level.SEVERE,
           "Failed to load lobby data for " + player.getName(), error);
     }
     if (!player.isOnline()) {
+      UUID playerId = player.getUniqueId();
+      deps.settings().unload(playerId);
+      deps.cosmetics().unload(playerId);
       return;
     }
     CosmeticApplier.apply(player,

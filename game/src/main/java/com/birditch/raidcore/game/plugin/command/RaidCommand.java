@@ -1,5 +1,6 @@
 package com.birditch.raidcore.game.plugin.command;
 
+import com.birditch.raidcore.api.RaidPermissions;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
@@ -7,8 +8,8 @@ import io.papermc.paper.command.brigadier.Commands;
 /// Builds the `/raid` Brigadier tree; bare `/raid` shows the help listing.
 public final class RaidCommand {
 
-  public static final String PERMISSION_ADMIN = "raid.admin";
-  public static final String PERMISSION_INFO = "raid.command.info";
+  public static final String PERMISSION_ADMIN = RaidPermissions.ADMIN;
+  public static final String PERMISSION_INFO = RaidPermissions.COMMAND_INFO;
 
   private RaidCommand() {}
 

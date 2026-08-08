@@ -15,6 +15,8 @@ import java.time.Instant;
 /// compact and language-agnostic.
 public final class JsonCodec {
 
+  private static final int MAX_PAYLOAD_SNIPPET = 200;
+
   private final Gson gson;
 
   public JsonCodec() {
@@ -30,8 +32,9 @@ public final class JsonCodec {
 
   /// Parses `json` into `type`. Any decoding failure — malformed JSON, a `null`
   /// literal, or record invariants rejecting the payload — surfaces as a
-  /// [RaidException] carrying the offending payload, so callers can treat
-  /// "cannot decode" uniformly (for example: skip and log a malformed snapshot).
+  /// [RaidException] carrying the offending payload (truncated to
+  /// [#MAX_PAYLOAD_SNIPPET] chars), so callers can treat "cannot decode"
+  /// uniformly (for example: skip and log a malformed snapshot).
   public <T> T fromJson(String json, Class<T> type) {
     Preconditions.checkNotNull(json, "json");
     Preconditions.checkNotNull(type, "type");
@@ -48,7 +51,16 @@ public final class JsonCodec {
   }
 
   private static String parseError(String json, Class<?> type) {
-    return "Failed to parse JSON as " + type.getSimpleName() + ": " + json;
+    return "Failed to parse JSON as " + type.getSimpleName() + ": " + snippet(json);
+  }
+
+  /// Truncates oversized payloads so a giant malformed blob never floods logs
+  /// or exception messages.
+  private static String snippet(String json) {
+    if (json.length() <= MAX_PAYLOAD_SNIPPET) {
+      return json;
+    }
+    return json.substring(0, MAX_PAYLOAD_SNIPPET) + "...(" + json.length() + " chars total)";
   }
 
   private static final class InstantEpochMillisAdapter extends TypeAdapter<Instant> {

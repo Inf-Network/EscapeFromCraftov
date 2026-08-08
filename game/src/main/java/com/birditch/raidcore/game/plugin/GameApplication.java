@@ -2,18 +2,16 @@ package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.event.EventSubscription;
 import com.birditch.raidcore.api.game.RaidGameService;
-import com.birditch.raidcore.api.item.ItemRegistry;
-import com.birditch.raidcore.api.loot.LootTableRegistry;
 import com.birditch.raidcore.api.network.InstanceDirectory;
 import com.birditch.raidcore.api.network.NetworkKeys;
 import com.birditch.raidcore.api.profile.ProfileService;
 import com.birditch.raidcore.api.scheduler.RaidScheduler;
-import com.birditch.raidcore.api.session.SessionService;
 import com.birditch.raidcore.bukkit.BungeeConnector;
 import com.birditch.raidcore.bukkit.CoreConfigMapper;
 import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.bukkit.PaperRaidScheduler;
 import com.birditch.raidcore.bukkit.RedisConfigMapper;
+import com.birditch.raidcore.bukkit.ShutdownSteps;
 import com.birditch.raidcore.bukkit.YamlResources;
 import com.birditch.raidcore.combat.CombatModule;
 import com.birditch.raidcore.common.check.Preconditions;
@@ -58,15 +56,11 @@ import com.birditch.raidcore.redis.RedisInstanceDirectory;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.event.HandlerList;
 import org.bukkit.permissions.Permission;
@@ -122,7 +116,8 @@ public final class GameApplication {
   /// Called once from [RaidGamePlugin#onEnable]; any thrown exception aborts
   /// startup and the plugin disables itself.
   public void start() {
-    banner();
+    StartupSummary summary = new StartupSummary(plugin, logger);
+    summary.banner();
     Configs configs = loadConfigs();
     RaidContext context = createContext(configs.core(), configs.database());
     ModuleManager modules = createModules();
@@ -133,29 +128,34 @@ public final class GameApplication {
     registerListeners(context, configs, wiring);
     registerCommands(
         new CommandContext(plugin, context.services(), modules, configs.messages(), configs.core()));
-    logSummary(context, modules, configs, probeRedis(wiring.directory()));
+    summary.log(context.services(), modules, configs.server(), new StartupSummary.SummaryConfigs(
+        configs.core(), configs.redis(), summary.probeRedis(wiring.directory())));
   }
 
   /// Guarded teardown; each step failure is logged and the remaining steps run.
   public void stop() {
-    runGuarded("destroy games", () -> withServices(
+    ShutdownSteps steps = new ShutdownSteps(logger);
+    steps.run("destroy games", () -> withServices(
         registry -> registry.find(RaidGameService.class).ifPresent(RaidGameService::destroyAll)));
-    runGuarded("save profiles", this::saveAllProfiles);
-    stopNetwork();
-    runGuarded("stop modules", () -> {
+    steps.run("save profiles", this::saveAllProfiles);
+    stopNetwork(steps);
+    steps.run("stop modules", () -> {
       if (moduleManager != null) {
         moduleManager.stopAll();
       }
     });
-    runGuarded("unregister listeners", () -> HandlerList.unregisterAll(plugin));
-    runGuarded("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
-    runGuarded("shut down IO executor", this::shutdownIoExecutor);
-    runGuarded("close database", () -> {
+    steps.run("unregister listeners", () -> HandlerList.unregisterAll(plugin));
+    steps.run("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
+    ExecutorService executor = ioExecutor;
+    if (executor != null) {
+      steps.shutdownExecutor("shut down IO executor", executor);
+    }
+    steps.run("close database", () -> {
       if (database != null) {
         database.close();
       }
     });
-    runGuarded("clear services", () -> withServices(ServiceRegistry::clear));
+    steps.run("clear services", () -> withServices(ServiceRegistry::clear));
     logger.info("RaidCoreGame 已卸载。");
   }
 
@@ -240,7 +240,8 @@ public final class GameApplication {
     InstanceWorldIndex index = new InstanceWorldIndex();
     VisibilityService visibility = new VisibilityService(plugin, index);
     bridgeSubscription = context.eventBus().register(new InstanceWorldBridge(
-        new BridgeDeps(games, worlds, index, visibility, bungee, server, scheduler, logger)));
+        new BridgeDeps(games, worlds, index, visibility, bungee, server, configs.messages(),
+            scheduler, logger)));
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(
         new ProvisionerDeps(games, configs.core().game(), server, scheduler, logger));
     provisioner = instanceProvisioner;
@@ -285,82 +286,35 @@ public final class GameApplication {
             RaidCommand.build(commandContext), "RaidCore root command", List.of("raidcore")));
   }
 
-  /// One-time blocking probe (2s cap) so the startup summary can report Redis
-  /// health. A failure is logged SEVERE once and never aborts startup.
-  private boolean probeRedis(InstanceDirectory directory) {
-    try {
-      directory.activeServers().get(2, TimeUnit.SECONDS);
-      return true;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      logger.log(Level.SEVERE, "启动时的 Redis 探测被中断。", e);
-      return false;
-    } catch (ExecutionException | TimeoutException e) {
-      logger.log(Level.SEVERE,
-          "启动时无法连接 Redis;实例目录的读写会限流重试,Redis 恢复后自动继续。", e);
-      return false;
-    }
-  }
-
-  private void banner() {
-    logger.info("========================================");
-    logger.info("  Escape from Craftov · 逃离块科夫 — 游戏服务端");
-    logger.info("========================================");
-  }
-
-  private void logSummary(
-      RaidContext context, ModuleManager modules, Configs configs, boolean redisOk) {
-    ServiceRegistry registry = context.services();
-    String moduleIds =
-        modules.modules().stream().map(RaidModule::id).collect(Collectors.joining(", "));
-    logger.info(() -> "RaidCoreGame v" + plugin.getPluginMeta().getVersion()
-        + ",Minecraft " + Bukkit.getMinecraftVersion()
-        + "(Java " + Runtime.version().feature() + ")");
-    logger.info(() -> "模块:" + moduleIds);
-    logger.info(() -> "物品 " + registry.require(ItemRegistry.class).size()
-        + " 个,掉落表 " + registry.require(LootTableRegistry.class).size()
-        + " 张,对局 " + registry.require(RaidGameService.class).activeCount()
-        + " 场,会话 " + registry.require(SessionService.class).count() + " 个");
-    GameServerConfig server = configs.server();
-    logger.info(() -> "服务器:" + server.serverId().value()
-        + "(代理名 " + server.proxyName() + ")");
-    logger.info(() -> "实例:" + registry.require(RaidGameService.class).all().size()
-        + "/" + configs.core().game().maxInstances()
-        + "(常备 " + server.minReadyInstances() + " 个)");
-    logger.info(() -> "Redis:" + configs.redis().host() + ":" + configs.redis().port()
-        + (redisOk ? " 连接正常" : " 连接失败"));
-    logger.info("RaidCoreGame 启动完成。");
-  }
-
   /// Network teardown runs before module stop so the directory heartbeat
   /// fast-expires and no provision hint arrives mid-shutdown.
-  private void stopNetwork() {
-    runGuarded("unsubscribe instance bridge", () -> {
+  private void stopNetwork(ShutdownSteps steps) {
+    steps.run("unsubscribe instance bridge", () -> {
       if (bridgeSubscription != null) {
         bridgeSubscription.unsubscribe();
       }
     });
-    runGuarded("stop instance provisioner", () -> {
+    steps.run("stop instance provisioner", () -> {
       if (provisioner != null) {
         provisioner.stop();
       }
     });
-    runGuarded("stop snapshot publisher", () -> {
+    steps.run("stop snapshot publisher", () -> {
       if (publisher != null) {
         publisher.stop();
       }
     });
-    runGuarded("close message broker", () -> {
+    steps.run("close message broker", () -> {
       if (messageBroker != null) {
         messageBroker.close();
       }
     });
-    runGuarded("close redis", () -> {
+    steps.run("close redis", () -> {
       if (redisConnector != null) {
         redisConnector.close();
       }
     });
-    runGuarded("unregister proxy channel", () -> {
+    steps.run("unregister proxy channel", () -> {
       if (bungeeConnector != null) {
         bungeeConnector.unregister();
       }
@@ -378,37 +332,10 @@ public final class GameApplication {
     }
   }
 
-  private void shutdownIoExecutor() throws InterruptedException {
-    ExecutorService executor = ioExecutor;
-    if (executor == null) {
-      return;
-    }
-    executor.shutdown();
-    if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-      executor.shutdownNow();
-    }
-  }
-
   private void withServices(Consumer<ServiceRegistry> action) {
     ServiceRegistry registry = services;
     if (registry != null) {
       action.accept(registry);
     }
-  }
-
-  private void runGuarded(String step, ShutdownStep action) {
-    try {
-      action.run();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      logger.log(Level.SEVERE, "Shutdown step interrupted: " + step, e);
-    } catch (Exception e) {
-      logger.log(Level.SEVERE, "Shutdown step failed: " + step, e);
-    }
-  }
-
-  @FunctionalInterface
-  private interface ShutdownStep {
-    void run() throws Exception;
   }
 }

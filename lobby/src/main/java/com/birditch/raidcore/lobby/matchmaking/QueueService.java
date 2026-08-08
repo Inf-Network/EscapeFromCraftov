@@ -16,15 +16,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.SequencedMap;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
 /// FIFO matchmaking queue driven by a main-thread timer.
@@ -33,8 +33,10 @@ import org.jspecify.annotations.Nullable;
 /// main thread and assigns the oldest tickets to the fullest joinable
 /// instances (see [InstancePicker]). A successful assignment is persisted as a
 /// pending key before the player is proxied; a failed persist keeps the ticket
-/// for the next tick. Slot reservations with a TTL bridge the gap between two
-/// directory snapshots so one instance is never oversold.
+/// for the next tick. While that write is in flight the ticket is marked and
+/// skipped, so a slow write is never double-assigned. Slot reservations with a
+/// TTL bridge the gap between two directory snapshots so one instance is never
+/// oversold.
 ///
 /// Main-thread confined; Redis failures degrade to rate-limited warnings and
 /// matchmaking resumes as soon as Redis returns.
@@ -47,6 +49,7 @@ public final class QueueService implements MatchmakingService {
   private final QueueDeps deps;
   private final SequencedMap<UUID, MatchTicket> tickets = new LinkedHashMap<>();
   private final Map<String, List<Long>> reservations = new HashMap<>();
+  private final Set<UUID> inFlight = new HashSet<>();
   private final Cooldown<String> provisionHints;
   private final Cooldown<UUID> waitingMessages;
   private final Cooldown<String> redisWarnings;
@@ -126,18 +129,18 @@ public final class QueueService implements MatchmakingService {
     pruneReservations();
     boolean starving = false;
     for (MatchTicket ticket : List.copyOf(tickets.values())) {
-      if (!tickets.containsKey(ticket.playerId())) {
+      UUID playerId = ticket.playerId();
+      if (!tickets.containsKey(playerId) || inFlight.contains(playerId)) {
         continue;
       }
-      Player player = deps.plugin().getServer().getPlayer(ticket.playerId());
-      if (player == null) {
-        tickets.remove(ticket.playerId());
+      if (!deps.players().isOnline(playerId)) {
+        tickets.remove(playerId);
         continue;
       }
       Optional<InstancePicker.Candidate> pick = InstancePicker.pick(servers, reservationCounts());
       if (pick.isEmpty()) {
         starving = true;
-        notifyWaiting(player);
+        notifyWaiting(playerId);
         continue;
       }
       assign(ticket, pick.get());
@@ -159,17 +162,20 @@ public final class QueueService implements MatchmakingService {
     long expiresAt = deps.timeSource().currentMillis()
         + Duration.ofSeconds(deps.config().reservationTtlSeconds()).toMillis();
     reservations.computeIfAbsent(reservationKey, _ -> new ArrayList<>()).add(expiresAt);
+    inFlight.add(ticket.playerId());
     deps.assignments()
         .storePending(assignment, Duration.ofSeconds(deps.config().assignmentTtlSeconds()))
         .whenComplete((_, storeError) -> deps.scheduler().runSync(
             () -> afterStore(assignment, reservationKey, expiresAt, storeError)));
   }
 
-  /// Runs on the main thread after the pending key write. Failure releases the
-  /// reservation and keeps the ticket so the next tick retries; success removes
-  /// the ticket and proxies the player.
+  /// Runs on the main thread after the pending key write and clears the
+  /// in-flight marker. Failure releases the reservation and keeps the ticket
+  /// so the next tick retries; success removes the ticket and proxies the
+  /// player.
   private void afterStore(MatchAssignment assignment, String reservationKey, long expiresAt,
       @Nullable Throwable storeError) {
+    inFlight.remove(assignment.playerId());
     if (storeError != null) {
       releaseReservation(reservationKey, expiresAt);
       if (redisWarnings.tryUse("store")) {
@@ -179,20 +185,15 @@ public final class QueueService implements MatchmakingService {
       return;
     }
     tickets.remove(assignment.playerId());
-    Player player = deps.plugin().getServer().getPlayer(assignment.playerId());
-    if (player == null) {
-      return;
-    }
-    player.sendMessage(deps.messages().raw("queue.match-found",
-        Placeholder.unparsed("server", assignment.proxyName())));
-    deps.bungee().send(player, assignment.proxyName());
+    deps.players().sendMessage(assignment.playerId(), "queue.match-found",
+        Map.of("server", assignment.proxyName()));
+    deps.players().connectToServer(assignment.playerId(), assignment.proxyName());
   }
 
-  private void notifyWaiting(Player player) {
-    UUID playerId = player.getUniqueId();
+  private void notifyWaiting(UUID playerId) {
     if (deps.settings().get(playerId, SettingKey.QUEUE_STATUS_MESSAGES)
         && waitingMessages.tryUse(playerId)) {
-      player.sendMessage(deps.messages().raw("queue.waiting"));
+      deps.players().sendMessage(playerId, "queue.waiting", Map.of());
     }
   }
 

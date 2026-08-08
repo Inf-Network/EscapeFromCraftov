@@ -1,5 +1,6 @@
 package com.birditch.raidcore.game;
 
+import com.birditch.raidcore.api.game.GameFailures;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,14 +29,12 @@ import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.event.SimpleEventBus;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -62,20 +61,7 @@ class RaidGameManagerTest {
             sessions, eventBus, scheduler, new SeededRandomProvider(42L), timeSource,
             new RaidCoreConfig.GameSettings(4, 2, (int) GAME_DURATION.toSeconds(), MAX_INSTANCES),
             new RaidCoreConfig.ExtractionSettings(10), LOGGER));
-    private final List<RaidCreatedEvent> createdEvents = new ArrayList<>();
-    private final List<PlayerJoinedRaidEvent> joinedEvents = new ArrayList<>();
-    private final List<PlayerLeftRaidEvent> leftEvents = new ArrayList<>();
-    private final List<RaidStartedEvent> startedEvents = new ArrayList<>();
-    private final List<RaidEndedEvent> endedEvents = new ArrayList<>();
-
-    @BeforeEach
-    void subscribeEventRecorders() {
-        eventBus.subscribe(RaidCreatedEvent.class, createdEvents::add);
-        eventBus.subscribe(PlayerJoinedRaidEvent.class, joinedEvents::add);
-        eventBus.subscribe(PlayerLeftRaidEvent.class, leftEvents::add);
-        eventBus.subscribe(RaidStartedEvent.class, startedEvents::add);
-        eventBus.subscribe(RaidEndedEvent.class, endedEvents::add);
-    }
+    private final RecordedGameEvents events = new RecordedGameEvents(eventBus);
 
     @Nested
     @DisplayName("create")
@@ -98,7 +84,7 @@ class RaidGameManagerTest {
             assertEquals(ExtractionState.AVAILABLE, point.state());
             assertEquals(1, manager.activeCount());
             assertEquals(Optional.of(game), manager.find(game.id()));
-            assertEquals(List.of(new RaidCreatedEvent(game.id(), MAP_ID)), createdEvents);
+            assertEquals(List.of(new RaidCreatedEvent(game.id(), MAP_ID)), events.created);
         }
 
         @Test
@@ -118,9 +104,9 @@ class RaidGameManagerTest {
             createGame();
             createGame();
 
-            assertFailure(manager.create(MAP_ID), "Instance limit reached (3)");
+            assertFailure(manager.create(MAP_ID), GameFailures.instanceLimitReached(3));
             assertEquals(MAX_INSTANCES, manager.activeCount());
-            assertEquals(MAX_INSTANCES, createdEvents.size());
+            assertEquals(MAX_INSTANCES, events.created.size());
 
             assertTrue(manager.stop(first.id()).isSuccess());
             assertTrue(manager.create(MAP_ID).isSuccess());
@@ -145,14 +131,14 @@ class RaidGameManagerTest {
             assertEquals(OptionalInt.of(1), alice.teamId());
             assertEquals(Optional.of(game.id()),
                     sessions.find(ALICE).orElseThrow().currentGame());
-            assertEquals(List.of(new PlayerJoinedRaidEvent(game.id(), ALICE)), joinedEvents);
+            assertEquals(List.of(new PlayerJoinedRaidEvent(game.id(), ALICE)), events.joined);
         }
 
         @Test
         void failsWithoutSession() {
             RaidGame game = createGame();
 
-            assertFailure(manager.join(game.id(), ALICE), "Player has no session");
+            assertFailure(manager.join(game.id(), ALICE), GameFailures.NO_SESSION);
         }
 
         @Test
@@ -161,14 +147,14 @@ class RaidGameManagerTest {
             RaidGame second = createGame();
             joinWithSession(first.id(), ALICE, "Alice");
 
-            assertFailure(manager.join(second.id(), ALICE), "Player is already in a game");
+            assertFailure(manager.join(second.id(), ALICE), GameFailures.ALREADY_IN_GAME);
         }
 
         @Test
         void failsWhenGameNotFound() {
             sessions.create(ALICE, "Alice");
 
-            assertFailure(manager.join(RaidGameId.of("missing"), ALICE), "Game not found");
+            assertFailure(manager.join(RaidGameId.of("missing"), ALICE), GameFailures.GAME_NOT_FOUND);
         }
 
         @Test
@@ -177,7 +163,7 @@ class RaidGameManagerTest {
             assertTrue(manager.start(game.id()).isSuccess());
             sessions.create(ALICE, "Alice");
 
-            assertFailure(manager.join(game.id(), ALICE), "Game is not accepting players");
+            assertFailure(manager.join(game.id(), ALICE), GameFailures.NOT_ACCEPTING);
         }
 
         @Test
@@ -190,7 +176,7 @@ class RaidGameManagerTest {
             joinWithSession(game.id(), DAVE, "Dave");
             sessions.create(EVE, "Eve");
 
-            assertFailure(manager.join(game.id(), EVE), "Game is full");
+            assertFailure(manager.join(game.id(), EVE), GameFailures.GAME_FULL);
             assertEquals(4, game.playerCount());
             assertEquals(OptionalInt.of(1), playerIn(game, BOB).teamId());
             assertEquals(OptionalInt.of(2), playerIn(game, CARA).teamId());
@@ -212,14 +198,14 @@ class RaidGameManagerTest {
             assertTrue(result.isSuccess());
             assertEquals(0, game.playerCount());
             assertEquals(Optional.empty(), sessions.find(ALICE).orElseThrow().currentGame());
-            assertEquals(List.of(new PlayerLeftRaidEvent(game.id(), ALICE)), leftEvents);
+            assertEquals(List.of(new PlayerLeftRaidEvent(game.id(), ALICE)), events.left);
         }
 
         @Test
         void failsWhenNotInAGame() {
-            assertFailure(manager.leave(ALICE), "Player is not in a game");
+            assertFailure(manager.leave(ALICE), GameFailures.NOT_IN_GAME);
             sessions.create(ALICE, "Alice");
-            assertFailure(manager.leave(ALICE), "Player is not in a game");
+            assertFailure(manager.leave(ALICE), GameFailures.NOT_IN_GAME);
         }
     }
 
@@ -238,12 +224,12 @@ class RaidGameManagerTest {
             assertTrue(result.isSuccess());
             assertEquals(RaidGameState.RUNNING, game.state());
             assertEquals(Optional.of(Instant.ofEpochMilli(7_000L)), game.startedAt());
-            assertEquals(List.of(new RaidStartedEvent(game.id())), startedEvents);
+            assertEquals(List.of(new RaidStartedEvent(game.id())), events.started);
         }
 
         @Test
         void failsWhenGameNotFound() {
-            assertFailure(manager.start(RaidGameId.of("missing")), "Game not found");
+            assertFailure(manager.start(RaidGameId.of("missing")), GameFailures.GAME_NOT_FOUND);
         }
 
         @Test
@@ -251,7 +237,7 @@ class RaidGameManagerTest {
             RaidGame game = createGame();
             assertTrue(manager.start(game.id()).isSuccess());
 
-            assertFailure(manager.start(game.id()), "Game cannot start from state RUNNING");
+            assertFailure(manager.start(game.id()), GameFailures.cannotStartFrom(RaidGameState.RUNNING));
         }
 
         @Test
@@ -263,14 +249,14 @@ class RaidGameManagerTest {
 
             scheduler.advanceBy(GAME_DURATION.minusMillis(1));
             assertEquals(RaidGameState.RUNNING, game.state());
-            assertTrue(endedEvents.isEmpty());
+            assertTrue(events.ended.isEmpty());
 
             scheduler.advanceBy(Duration.ofMillis(1));
 
             assertEquals(0, manager.activeCount());
             assertEquals(Optional.empty(), manager.find(game.id()));
             assertEquals(Optional.empty(), sessions.find(ALICE).orElseThrow().currentGame());
-            assertEquals(1, endedEvents.size());
+            assertEquals(1, events.ended.size());
         }
     }
 
@@ -299,7 +285,7 @@ class RaidGameManagerTest {
             assertEquals(Instant.ofEpochMilli(9_000L), raidResult.endedAt());
             assertEquals(Set.of(), raidResult.extractedPlayers());
             assertEquals(Set.of(ALICE, BOB), raidResult.remainingPlayers());
-            assertEquals(List.of(new RaidEndedEvent(game.id(), raidResult)), endedEvents);
+            assertEquals(List.of(new RaidEndedEvent(game.id(), raidResult)), events.ended);
         }
 
         @Test
@@ -310,12 +296,12 @@ class RaidGameManagerTest {
 
             scheduler.advanceBy(GAME_DURATION);
 
-            assertEquals(1, endedEvents.size());
+            assertEquals(1, events.ended.size());
         }
 
         @Test
         void failsWhenGameNotFound() {
-            assertFailure(manager.stop(RaidGameId.of("missing")), "Game not found");
+            assertFailure(manager.stop(RaidGameId.of("missing")), GameFailures.GAME_NOT_FOUND);
         }
     }
 
@@ -371,10 +357,10 @@ class RaidGameManagerTest {
 
         assertEquals(0, manager.activeCount());
         assertEquals(Optional.empty(), sessions.find(ALICE).orElseThrow().currentGame());
-        assertTrue(endedEvents.isEmpty());
+        assertTrue(events.ended.isEmpty());
 
         scheduler.advanceBy(GAME_DURATION);
-        assertTrue(endedEvents.isEmpty());
+        assertTrue(events.ended.isEmpty());
     }
 
     @Test

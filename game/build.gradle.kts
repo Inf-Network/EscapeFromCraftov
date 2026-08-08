@@ -8,6 +8,8 @@ description = "Escape from Craftov game-server plugin: multi-instance raids, per
 dependencies {
     compileOnly(libs.paper.api)
     implementation(project(":core"))
+
+    testImplementation(testFixtures(project(":api")))
 }
 
 tasks.processResources {
@@ -26,10 +28,14 @@ tasks.shadowJar {
     relocate("redis.clients", "com.birditch.raidcore.libs.jedis")
     relocate("org.apache.commons.pool2", "com.birditch.raidcore.libs.commonspool2")
     relocate("com.google.gson", "com.birditch.raidcore.libs.gson")
+    relocate("org.json", "com.birditch.raidcore.libs.json")
     mergeServiceFiles()
     dependencies {
-        // Paper ships slf4j; never bundle our own copy.
+        // Paper ships slf4j; compile-only annotation libs are dead weight at runtime.
         exclude(dependency("org.slf4j:.*:.*"))
+        exclude(dependency("org.checkerframework:checker-qual:.*"))
+        exclude(dependency("com.google.errorprone:error_prone_annotations:.*"))
+        exclude(dependency("org.jspecify:jspecify:.*"))
     }
 }
 

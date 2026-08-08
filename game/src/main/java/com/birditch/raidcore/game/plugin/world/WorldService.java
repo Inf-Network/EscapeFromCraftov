@@ -13,7 +13,9 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.stream.Stream;
@@ -31,7 +33,8 @@ import org.bukkit.entity.Player;
 /// Threading: template copies and directory deletion run on the IO executor;
 /// every Bukkit call (world create, unload, teleport) runs on the main thread
 /// via [com.birditch.raidcore.api.scheduler.RaidScheduler#runSync], and the
-/// returned futures complete on the main thread.
+/// returned futures complete on the main thread. Both public methods and the
+/// in-flight creation map are MAIN-THREAD confined.
 public final class WorldService {
 
   private static final String WORLD_PREFIX = "raid_";
@@ -39,6 +42,10 @@ public final class WorldService {
   private static final String SESSION_LOCK_FILE = "session.lock";
 
   private final WorldServiceDeps deps;
+  /// In-flight creations by game id; entries are removed when the creation
+  /// future settles so [#destroyInstanceWorld] can chain after any pending
+  /// template copy instead of deleting a directory still being written to.
+  private final Map<RaidGameId, CompletableFuture<World>> pendingCreations = new HashMap<>();
 
   public WorldService(WorldServiceDeps deps) {
     this.deps = Preconditions.checkNotNull(deps, "deps");
@@ -57,6 +64,8 @@ public final class WorldService {
     Path worldDir = worldDirectory(worldName);
     Path templateDir = deps.templateRoot().resolve(mapId.value());
     CompletableFuture<World> future = new CompletableFuture<>();
+    pendingCreations.put(gameId, future);
+    future.whenComplete((_, _) -> pendingCreations.remove(gameId, future));
     CompletableFuture.supplyAsync(() -> copyTemplate(templateDir, worldDir), deps.ioExecutor())
         .whenComplete(
             (copied, error) ->
@@ -80,9 +89,20 @@ public final class WorldService {
   /// default world spawn first) and deletes its directory on the IO executor.
   /// Failures are logged SEVERE and never thrown; the future always completes
   /// normally. When the world cannot be unloaded its files are left in place —
-  /// deleting a loaded world's region files would corrupt it.
+  /// deleting a loaded world's region files would corrupt it. When a creation
+  /// for the same game is still in flight, destruction waits for it to settle
+  /// (ignoring a failed creation) so the directory is never deleted while the
+  /// async template copy may still write into it.
   public CompletableFuture<Void> destroyInstanceWorld(RaidGameId gameId) {
     Preconditions.checkNotNull(gameId, "gameId");
+    CompletableFuture<World> pending = pendingCreations.get(gameId);
+    if (pending == null) {
+      return unloadAndDelete(gameId);
+    }
+    return pending.handle((_, _) -> gameId).thenCompose(this::unloadAndDelete);
+  }
+
+  private CompletableFuture<Void> unloadAndDelete(RaidGameId gameId) {
     String worldName = WORLD_PREFIX + gameId.value();
     Path worldDir = worldDirectory(worldName);
     CompletableFuture<Void> future = new CompletableFuture<>();

@@ -1,11 +1,13 @@
 package com.birditch.raidcore.lobby;
 
+import com.birditch.raidcore.api.RaidPermissions;
 import com.birditch.raidcore.api.network.MessageBroker;
 import com.birditch.raidcore.bukkit.BungeeConnector;
 import com.birditch.raidcore.bukkit.CoreConfigMapper;
 import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.bukkit.PaperRaidScheduler;
 import com.birditch.raidcore.bukkit.RedisConfigMapper;
+import com.birditch.raidcore.bukkit.ShutdownSteps;
 import com.birditch.raidcore.bukkit.YamlResources;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.common.time.SystemTimeSource;
@@ -56,7 +58,7 @@ import org.jspecify.annotations.Nullable;
 /// once the connection returns. Both [#start] and [#stop] are main-thread only.
 public final class LobbyApplication {
 
-  private static final String PLAY_PERMISSION = "raid.lobby.play";
+  private static final String PLAY_PERMISSION = RaidPermissions.LOBBY_PLAY;
   private static final Duration REDIS_PROBE_TIMEOUT = Duration.ofSeconds(3);
 
   private final RaidLobbyPlugin plugin;
@@ -97,7 +99,8 @@ public final class LobbyApplication {
     BungeeConnector bungee = new BungeeConnector(plugin);
     bungeeConnector = bungee;
     QueueService queue = new QueueService(new QueueDeps(directory, assignments, messageBroker,
-        bungee, scheduler, timeSource, settings, config, messages, plugin, logger));
+        new BukkitPlayerGateway(plugin, bungee, messages), scheduler, timeSource, settings,
+        config, logger));
     queueService = queue;
     queue.start();
     ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, settings,
@@ -112,29 +115,33 @@ public final class LobbyApplication {
 
   /// Guarded teardown; each step failure is logged and the remaining steps run.
   public void stop() {
-    runGuarded("stop queue", () -> {
+    ShutdownSteps steps = new ShutdownSteps(logger);
+    steps.run("stop queue", () -> {
       if (queueService != null) {
         queueService.stop();
       }
     });
-    runGuarded("unregister proxy channel", () -> {
+    steps.run("unregister proxy channel", () -> {
       if (bungeeConnector != null) {
         bungeeConnector.unregister();
       }
     });
-    runGuarded("close message broker", () -> {
+    steps.run("close message broker", () -> {
       if (broker != null) {
         broker.close();
       }
     });
-    runGuarded("close redis", () -> {
+    steps.run("close redis", () -> {
       if (redisConnector != null) {
         redisConnector.close();
       }
     });
-    runGuarded("shut down IO executor", this::shutdownIoExecutor);
-    runGuarded("unregister listeners", () -> HandlerList.unregisterAll(plugin));
-    runGuarded("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
+    ExecutorService executor = ioExecutor;
+    if (executor != null) {
+      steps.shutdownExecutor("shut down IO executor", executor);
+    }
+    steps.run("unregister listeners", () -> HandlerList.unregisterAll(plugin));
+    steps.run("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
     logger.info("RaidCoreLobby 已卸载。");
   }
 
@@ -216,32 +223,5 @@ public final class LobbyApplication {
         + redisConfig.port() + ")。大厅保持运行,但匹配已暂停;Redis 恢复后自动继续。", cause);
   }
 
-  private void shutdownIoExecutor() throws InterruptedException {
-    ExecutorService executor = ioExecutor;
-    if (executor == null) {
-      return;
-    }
-    executor.shutdown();
-    if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-      executor.shutdownNow();
-    }
-  }
-
-  private void runGuarded(String step, ShutdownStep action) {
-    try {
-      action.run();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      logger.log(Level.SEVERE, "Shutdown step interrupted: " + step, e);
-    } catch (Exception e) {
-      logger.log(Level.SEVERE, "Shutdown step failed: " + step, e);
-    }
-  }
-
   private record BootConfig(LobbyConfig lobby, RedisConfig redis, Messages messages) {}
-
-  @FunctionalInterface
-  private interface ShutdownStep {
-    void run() throws Exception;
-  }
 }

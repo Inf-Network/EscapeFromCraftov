@@ -8,6 +8,7 @@ import com.birditch.raidcore.api.event.game.RaidCreatedEvent;
 import com.birditch.raidcore.api.event.game.RaidEndedEvent;
 import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.common.check.Preconditions;
+import com.birditch.raidcore.game.plugin.LobbyReturn;
 import java.util.UUID;
 import java.util.logging.Level;
 import org.bukkit.Bukkit;
@@ -128,11 +129,7 @@ public final class InstanceWorldBridge {
     if (player == null) {
       return;
     }
-    if (deps.config().proxyEnabled()) {
-      deps.bungee().send(player, deps.config().lobbyServerName());
-    } else {
-      player.teleport(Bukkit.getWorlds().getFirst().getSpawnLocation());
-    }
+    LobbyReturn.send(deps.bungee(), deps.config(), deps.messages(), player);
     deps.visibility().refresh(player);
   }
 }

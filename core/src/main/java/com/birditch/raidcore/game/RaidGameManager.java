@@ -11,6 +11,7 @@ import com.birditch.raidcore.api.extraction.ExtractionPoint;
 import com.birditch.raidcore.api.extraction.ExtractionPointId;
 import com.birditch.raidcore.api.extraction.ExtractionState;
 import com.birditch.raidcore.api.extraction.ExtractionType;
+import com.birditch.raidcore.api.game.GameFailures;
 import com.birditch.raidcore.api.game.RaidGame;
 import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameService;
@@ -57,7 +58,7 @@ public final class RaidGameManager implements RaidGameService {
         Preconditions.checkNotNull(mapId, "mapId");
         int maxInstances = deps.settings().maxInstances();
         if (games.size() >= maxInstances) {
-            return Result.fail("Instance limit reached (" + maxInstances + ")");
+            return Result.fail(GameFailures.instanceLimitReached(maxInstances));
         }
         RaidGameId gameId = uniqueGameId();
         Instant now = deps.timeSource().now();
@@ -87,21 +88,21 @@ public final class RaidGameManager implements RaidGameService {
         Preconditions.checkNotNull(playerId, "playerId");
         Optional<PlayerSession> found = deps.sessions().find(playerId);
         if (found.isEmpty()) {
-            return Result.fail("Player has no session");
+            return Result.fail(GameFailures.NO_SESSION);
         }
         PlayerSession session = found.get();
         if (session.currentGame().isPresent()) {
-            return Result.fail("Player is already in a game");
+            return Result.fail(GameFailures.ALREADY_IN_GAME);
         }
         RaidGameInstance game = games.get(gameId);
         if (game == null) {
-            return Result.fail("Game not found");
+            return Result.fail(GameFailures.GAME_NOT_FOUND);
         }
         if (game.state() != RaidGameState.WAITING) {
-            return Result.fail("Game is not accepting players");
+            return Result.fail(GameFailures.NOT_ACCEPTING);
         }
         if (game.playerCount() >= deps.settings().maxPlayers()) {
-            return Result.fail("Game is full");
+            return Result.fail(GameFailures.GAME_FULL);
         }
         RaidPlayer player = new RaidPlayer(playerId, session.playerName());
         RaidTeam team = game.teamWithSpaceOrCreate(deps.settings().teamSize());
@@ -121,7 +122,7 @@ public final class RaidGameManager implements RaidGameService {
         Optional<RaidGameInstance> current = found.flatMap(PlayerSession::currentGame)
                 .map(games::get);
         if (found.isEmpty() || current.isEmpty()) {
-            return Result.fail("Player is not in a game");
+            return Result.fail(GameFailures.NOT_IN_GAME);
         }
         RaidGameInstance game = current.get();
         game.removePlayer(playerId);
@@ -136,10 +137,10 @@ public final class RaidGameManager implements RaidGameService {
         Preconditions.checkNotNull(id, "id");
         RaidGameInstance game = games.get(id);
         if (game == null) {
-            return Result.fail("Game not found");
+            return Result.fail(GameFailures.GAME_NOT_FOUND);
         }
         if (game.state() != RaidGameState.WAITING) {
-            return Result.fail("Game cannot start from state " + game.state());
+            return Result.fail(GameFailures.cannotStartFrom(game.state()));
         }
         Instant now = deps.timeSource().now();
         game.transitionTo(RaidGameState.STARTING, now);
@@ -156,7 +157,7 @@ public final class RaidGameManager implements RaidGameService {
         Preconditions.checkNotNull(id, "id");
         RaidGameInstance game = games.get(id);
         if (game == null) {
-            return Result.fail("Game not found");
+            return Result.fail(GameFailures.GAME_NOT_FOUND);
         }
         Instant now = deps.timeSource().now();
         game.transitionTo(RaidGameState.ENDING, now);

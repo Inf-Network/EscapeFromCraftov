@@ -61,7 +61,13 @@ public final class JedisMessageBroker implements MessageBroker {
 
   @Override
   public void close() {
-    List.copyOf(subscriptions).forEach(ChannelSubscription::unsubscribe);
+    for (ChannelSubscription subscription : List.copyOf(subscriptions)) {
+      try {
+        subscription.unsubscribe();
+      } catch (RuntimeException e) {
+        logger.log(Level.WARNING, "关闭 Redis 订阅时出错, 频道: " + subscription.channel, e);
+      }
+    }
   }
 
   private final class ChannelSubscription implements MessageSubscription {
@@ -129,8 +135,14 @@ public final class JedisMessageBroker implements MessageBroker {
       if (!active.compareAndSet(true, false)) {
         return;
       }
-      if (pubSub.isSubscribed()) {
-        pubSub.unsubscribe();
+      /// Guarded so a broken connection can never skip the thread interrupt and
+      /// set removal below.
+      try {
+        if (pubSub.isSubscribed()) {
+          pubSub.unsubscribe();
+        }
+      } catch (RuntimeException e) {
+        logger.log(Level.WARNING, "取消订阅 Redis 频道失败: " + channel, e);
       }
       Thread thread = subscriberThread;
       if (thread != null) {

@@ -1,0 +1,12 @@
+# Redis is the shared fabric between the lobby and the game servers:
+# instance directory, matchmaking assignments, player settings and cosmetics.
+redis:
+  host: localhost
+  port: 6379
+  # Leave blank for no authentication.
+  password: ""
+  database: 0
+  pool:
+    max-total: 8
+    max-idle: 8
+    min-idle: 1

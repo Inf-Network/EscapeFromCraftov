@@ -44,7 +44,7 @@ final class FakeGameService implements RaidGameService {
     }
 
     @Override
-    public RaidGame create(RaidMapId mapId) {
+    public Result<RaidGame> create(RaidMapId mapId) {
         throw new UnsupportedOperationException("create is not supported by FakeGameService");
     }
 

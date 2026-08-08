@@ -27,6 +27,9 @@ public record RaidCoreConfig(boolean debug, GameSettings game, ExtractionSetting
     if (game.durationSeconds() <= 0) {
       problems.add("game.duration-seconds must be greater than 0");
     }
+    if (game.maxInstances() <= 0) {
+      problems.add("game.max-instances must be greater than 0");
+    }
     if (extraction.defaultDurationSeconds() <= 0) {
       problems.add("extraction.default-duration-seconds must be greater than 0");
     }
@@ -35,7 +38,8 @@ public record RaidCoreConfig(boolean debug, GameSettings game, ExtractionSetting
     }
   }
 
-  public record GameSettings(int maxPlayers, int teamSize, int durationSeconds) {}
+  public record GameSettings(
+      int maxPlayers, int teamSize, int durationSeconds, int maxInstances) {}
 
   public record ExtractionSettings(int defaultDurationSeconds) {}
 }

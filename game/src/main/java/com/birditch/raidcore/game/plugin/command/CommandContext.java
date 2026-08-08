@@ -1,15 +1,15 @@
 package com.birditch.raidcore.game.plugin.command;
 
+import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.module.ModuleManager;
 import com.birditch.raidcore.core.service.ServiceRegistry;
-import com.birditch.raidcore.game.plugin.Messages;
-import com.birditch.raidcore.game.plugin.RaidPlugin;
+import com.birditch.raidcore.game.plugin.RaidGamePlugin;
 
 /// Everything the `/raid` command tree needs at execution time.
 public record CommandContext(
-    RaidPlugin plugin,
+    RaidGamePlugin plugin,
     ServiceRegistry services,
     ModuleManager modules,
     Messages messages,

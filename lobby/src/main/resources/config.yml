@@ -1,0 +1,16 @@
+# RaidCoreLobby configuration.
+
+queue:
+  # How often the matchmaking queue is processed, in seconds.
+  tick-seconds: 1
+  # How long a reserved instance slot is held for a matched player, in seconds.
+  reservation-ttl-seconds: 30
+  # How long a pending assignment stays readable in Redis, in seconds.
+  assignment-ttl-seconds: 30
+
+lobby:
+  # Protects the lobby world: no block changes, player damage, hunger or item
+  # drops, and the managed inventory (Game Menu compass) stays locked.
+  protect: true
+  # Map queued by default when no map is specified.
+  default-map: debug_zone

@@ -4,9 +4,9 @@ import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.item.ItemRegistry;
 import com.birditch.raidcore.api.loot.LootTableRegistry;
 import com.birditch.raidcore.api.session.SessionService;
+import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.core.module.RaidModule;
 import com.birditch.raidcore.core.service.ServiceRegistry;
-import com.birditch.raidcore.game.plugin.Messages;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -49,7 +49,7 @@ final class InfoCommands {
 
   static int showHelp(CommandContext context, CommandSender sender) {
     Messages messages = context.messages();
-    sender.sendMessage(messages.msg("command.help.header"));
+    sender.sendMessage(messages.raw("command.help.header"));
     for (HelpEntry entry : HELP_ENTRIES) {
       sender.sendMessage(messages.raw(
           "command.help.entry",
@@ -65,7 +65,7 @@ final class InfoCommands {
     String moduleIds = context.modules().modules().stream()
         .map(RaidModule::id)
         .collect(Collectors.joining(", "));
-    sender.sendMessage(messages.msg("command.info.header"));
+    sender.sendMessage(messages.raw("command.info.header"));
     sender.sendMessage(messages.raw(
         "command.info.version",
         Placeholder.unparsed("version", context.plugin().getPluginMeta().getVersion()),

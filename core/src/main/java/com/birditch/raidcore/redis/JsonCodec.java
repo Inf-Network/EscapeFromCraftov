@@ -1,0 +1,66 @@
+package com.birditch.raidcore.redis;
+
+import com.birditch.raidcore.api.RaidException;
+import com.birditch.raidcore.common.check.Preconditions;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.TypeAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonWriter;
+import java.io.IOException;
+import java.time.Instant;
+
+/// JSON serialization for Redis payloads. Records serialize natively via Gson;
+/// [Instant] values are encoded as epoch-millisecond numbers so payloads stay
+/// compact and language-agnostic.
+public final class JsonCodec {
+
+  private final Gson gson;
+
+  public JsonCodec() {
+    this.gson = new GsonBuilder()
+        .registerTypeAdapter(Instant.class, new InstantEpochMillisAdapter().nullSafe())
+        .create();
+  }
+
+  public String toJson(Object value) {
+    Preconditions.checkNotNull(value, "value");
+    return gson.toJson(value);
+  }
+
+  /// Parses `json` into `type`. Any decoding failure — malformed JSON, a `null`
+  /// literal, or record invariants rejecting the payload — surfaces as a
+  /// [RaidException] carrying the offending payload, so callers can treat
+  /// "cannot decode" uniformly (for example: skip and log a malformed snapshot).
+  public <T> T fromJson(String json, Class<T> type) {
+    Preconditions.checkNotNull(json, "json");
+    Preconditions.checkNotNull(type, "type");
+    T parsed;
+    try {
+      parsed = gson.fromJson(json, type);
+    } catch (RuntimeException e) {
+      throw new RaidException(parseError(json, type), e);
+    }
+    if (parsed == null) {
+      throw new RaidException(parseError(json, type));
+    }
+    return parsed;
+  }
+
+  private static String parseError(String json, Class<?> type) {
+    return "Failed to parse JSON as " + type.getSimpleName() + ": " + json;
+  }
+
+  private static final class InstantEpochMillisAdapter extends TypeAdapter<Instant> {
+
+    @Override
+    public void write(JsonWriter out, Instant value) throws IOException {
+      out.value(value.toEpochMilli());
+    }
+
+    @Override
+    public Instant read(JsonReader in) throws IOException {
+      return Instant.ofEpochMilli(in.nextLong());
+    }
+  }
+}

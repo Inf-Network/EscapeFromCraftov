@@ -51,6 +51,7 @@ class RaidGameManagerTest {
     private static final RaidMapId MAP_ID = RaidMapId.of("debug_zone");
     private static final ExtractionPointId NORTH_GATE = ExtractionPointId.of("north_gate");
     private static final Duration GAME_DURATION = Duration.ofSeconds(60);
+    private static final int MAX_INSTANCES = 3;
     private static final Logger LOGGER = Logger.getLogger(RaidGameManagerTest.class.getName());
 
     private final ManualScheduler scheduler = new ManualScheduler();
@@ -59,7 +60,7 @@ class RaidGameManagerTest {
     private final FakeSessionService sessions = new FakeSessionService();
     private final RaidGameManager manager = new RaidGameManager(new GameManagerDeps(
             sessions, eventBus, scheduler, new SeededRandomProvider(42L), timeSource,
-            new RaidCoreConfig.GameSettings(4, 2, (int) GAME_DURATION.toSeconds()),
+            new RaidCoreConfig.GameSettings(4, 2, (int) GAME_DURATION.toSeconds(), MAX_INSTANCES),
             new RaidCoreConfig.ExtractionSettings(10), LOGGER));
     private final List<RaidCreatedEvent> createdEvents = new ArrayList<>();
     private final List<PlayerJoinedRaidEvent> joinedEvents = new ArrayList<>();
@@ -85,7 +86,7 @@ class RaidGameManagerTest {
         void createsWaitingGame() {
             timeSource.set(5_000L);
 
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
 
             assertEquals(RaidGameState.WAITING, game.state());
             assertEquals(MAP_ID, game.mapId());
@@ -102,12 +103,27 @@ class RaidGameManagerTest {
 
         @Test
         void generatesUniqueSixCharacterHexIds() {
-            RaidGame first = manager.create(MAP_ID);
-            RaidGame second = manager.create(MAP_ID);
+            RaidGame first = createGame();
+            RaidGame second = createGame();
 
             assertTrue(first.id().value().matches("[0-9a-f]{6}"));
             assertTrue(second.id().value().matches("[0-9a-f]{6}"));
             assertEquals(2, manager.activeCount());
+        }
+
+        @Test
+        @DisplayName("fails at the instance cap and accepts again once a game is destroyed")
+        void failsAtInstanceCap() {
+            RaidGame first = createGame();
+            createGame();
+            createGame();
+
+            assertFailure(manager.create(MAP_ID), "Instance limit reached (3)");
+            assertEquals(MAX_INSTANCES, manager.activeCount());
+            assertEquals(MAX_INSTANCES, createdEvents.size());
+
+            assertTrue(manager.stop(first.id()).isSuccess());
+            assertTrue(manager.create(MAP_ID).isSuccess());
         }
     }
 
@@ -118,7 +134,7 @@ class RaidGameManagerTest {
         @Test
         @DisplayName("adds the player with a team and binds the session")
         void addsPlayerWithTeamAndSession() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             sessions.create(ALICE, "Alice");
 
             Result<RaidGame> result = manager.join(game.id(), ALICE);
@@ -134,15 +150,15 @@ class RaidGameManagerTest {
 
         @Test
         void failsWithoutSession() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
 
             assertFailure(manager.join(game.id(), ALICE), "Player has no session");
         }
 
         @Test
         void failsWhenAlreadyInAGame() {
-            RaidGame first = manager.create(MAP_ID);
-            RaidGame second = manager.create(MAP_ID);
+            RaidGame first = createGame();
+            RaidGame second = createGame();
             joinWithSession(first.id(), ALICE, "Alice");
 
             assertFailure(manager.join(second.id(), ALICE), "Player is already in a game");
@@ -157,7 +173,7 @@ class RaidGameManagerTest {
 
         @Test
         void failsWhenGameIsNotAcceptingPlayers() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             assertTrue(manager.start(game.id()).isSuccess());
             sessions.create(ALICE, "Alice");
 
@@ -167,7 +183,7 @@ class RaidGameManagerTest {
         @Test
         @DisplayName("fills teams of team-size before creating new ones, rejects a 5th player")
         void failsWhenGameIsFull() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
             joinWithSession(game.id(), BOB, "Bob");
             joinWithSession(game.id(), CARA, "Cara");
@@ -188,7 +204,7 @@ class RaidGameManagerTest {
 
         @Test
         void removesPlayerAndClearsSession() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
 
             Result<RaidGame> result = manager.leave(ALICE);
@@ -214,7 +230,7 @@ class RaidGameManagerTest {
         @Test
         @DisplayName("moves the game to RUNNING and records the start time")
         void movesGameToRunning() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             timeSource.set(7_000L);
 
             Result<RaidGame> result = manager.start(game.id());
@@ -232,7 +248,7 @@ class RaidGameManagerTest {
 
         @Test
         void failsWhenNotWaiting() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             assertTrue(manager.start(game.id()).isSuccess());
 
             assertFailure(manager.start(game.id()), "Game cannot start from state RUNNING");
@@ -241,7 +257,7 @@ class RaidGameManagerTest {
         @Test
         @DisplayName("auto-stops the game once the configured duration elapses")
         void autoStopsAfterConfiguredDuration() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
             assertTrue(manager.start(game.id()).isSuccess());
 
@@ -265,7 +281,7 @@ class RaidGameManagerTest {
         @Test
         @DisplayName("finishes, publishes the result and destroys the game")
         void finishesAndDestroysGame() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
             joinWithSession(game.id(), BOB, "Bob");
             assertTrue(manager.start(game.id()).isSuccess());
@@ -288,7 +304,7 @@ class RaidGameManagerTest {
 
         @Test
         void cancelsTheScheduledEndTask() {
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             assertTrue(manager.start(game.id()).isSuccess());
             assertTrue(manager.stop(game.id()).isSuccess());
 
@@ -311,7 +327,7 @@ class RaidGameManagerTest {
         @DisplayName("removes the extracted player but keeps the extraction record")
         void removesExtractedPlayer() {
             eventBus.register(manager);
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
             joinWithSession(game.id(), BOB, "Bob");
             assertTrue(manager.start(game.id()).isSuccess());
@@ -334,7 +350,7 @@ class RaidGameManagerTest {
         @Test
         void unsubscribingStopsHandling() {
             EventSubscription subscription = eventBus.register(manager);
-            RaidGame game = manager.create(MAP_ID);
+            RaidGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
             subscription.unsubscribe();
 
@@ -346,8 +362,8 @@ class RaidGameManagerTest {
 
     @Test
     void destroyAllDestroysEveryGameWithoutEvents() {
-        RaidGame first = manager.create(MAP_ID);
-        manager.create(MAP_ID);
+        RaidGame first = createGame();
+        createGame();
         joinWithSession(first.id(), ALICE, "Alice");
         assertTrue(manager.start(first.id()).isSuccess());
 
@@ -363,7 +379,7 @@ class RaidGameManagerTest {
 
     @Test
     void mutatorsThrowOffTheMainThread() {
-        RaidGame game = manager.create(MAP_ID);
+        RaidGame game = createGame();
         scheduler.setMainThread(false);
 
         assertThrows(IllegalStateException.class, () -> manager.create(MAP_ID));
@@ -372,6 +388,10 @@ class RaidGameManagerTest {
         assertThrows(IllegalStateException.class, () -> manager.start(game.id()));
         assertThrows(IllegalStateException.class, () -> manager.stop(game.id()));
         assertThrows(IllegalStateException.class, () -> manager.destroyAll());
+    }
+
+    private RaidGame createGame() {
+        return manager.create(MAP_ID).orElseThrow(IllegalStateException::new);
     }
 
     private void joinWithSession(RaidGameId gameId, UUID playerId, String name) {

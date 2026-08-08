@@ -1,9 +1,21 @@
 debug: false
 
+server:
+  id: game-01
+  proxy-name: raid-01
+
 game:
   max-players: 12
   team-size: 3
   duration-seconds: 1800
+  max-instances: 4
+  min-ready-instances: 1
+  map-template-dir: maps
 
 extraction:
   default-duration-seconds: 10
+
+network:
+  proxy-enabled: true
+  lobby-server-name: lobby
+  snapshot-interval-seconds: 2

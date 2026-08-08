@@ -52,9 +52,13 @@ public final class RaidGameManager implements RaidGameService {
     }
 
     @Override
-    public RaidGame create(RaidMapId mapId) {
+    public Result<RaidGame> create(RaidMapId mapId) {
         requireMainThread();
         Preconditions.checkNotNull(mapId, "mapId");
+        int maxInstances = deps.settings().maxInstances();
+        if (games.size() >= maxInstances) {
+            return Result.fail("Instance limit reached (" + maxInstances + ")");
+        }
         RaidGameId gameId = uniqueGameId();
         Instant now = deps.timeSource().now();
         RaidGameInstance game =
@@ -62,7 +66,7 @@ public final class RaidGameManager implements RaidGameService {
         game.transitionTo(RaidGameState.WAITING, now);
         games.put(gameId, game);
         deps.eventBus().publish(new RaidCreatedEvent(gameId, mapId));
-        return game;
+        return Result.ok(game);
     }
 
     @Override

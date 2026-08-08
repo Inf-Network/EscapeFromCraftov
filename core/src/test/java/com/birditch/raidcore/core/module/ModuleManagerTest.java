@@ -175,7 +175,7 @@ class ModuleManagerTest {
 
   private RaidContext newContext() {
     RaidCoreConfig config = new RaidCoreConfig(false,
-        new RaidCoreConfig.GameSettings(12, 3, 1800),
+        new RaidCoreConfig.GameSettings(12, 3, 1800, 4),
         new RaidCoreConfig.ExtractionSettings(10));
     DatabaseConfig databaseConfig = new DatabaseConfig(DatabaseType.MEMORY,
         "localhost", 5432, "raidcore", "raidcore", "secret",

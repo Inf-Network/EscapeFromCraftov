@@ -1,6 +1,7 @@
-/// Paper platform layer: plugin bootstrap, scheduler adapter, YAML loading,
-/// MiniMessage catalog, and connection listeners. The only module allowed to
-/// touch Bukkit/Paper/Adventure.
+/// Game-server plugin bootstrap for Escape from Craftov: application wiring,
+/// server/network config, and the Brigadier command tree. Shared Paper glue
+/// (scheduler, messages, config mappers) lives in
+/// [com.birditch.raidcore.bukkit].
 @NullMarked
 package com.birditch.raidcore.game.plugin;
 

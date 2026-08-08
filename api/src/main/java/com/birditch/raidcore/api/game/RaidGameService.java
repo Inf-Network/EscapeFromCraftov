@@ -8,7 +8,9 @@ import java.util.UUID;
 /// Creates and drives raid games. Main-thread only.
 public interface RaidGameService {
 
-    RaidGame create(RaidMapId mapId);
+    /// Fails with `"Instance limit reached (<max>)"` when the configured
+    /// instance cap is already in use.
+    Result<RaidGame> create(RaidMapId mapId);
 
     Optional<RaidGame> find(RaidGameId id);
 

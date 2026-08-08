@@ -1,40 +1,35 @@
-package com.birditch.raidcore.game.plugin;
+package com.birditch.raidcore.bukkit;
 
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.database.DatabaseConfig;
 import com.birditch.raidcore.core.database.DatabaseType;
-import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.Plugin;
+import org.bukkit.configuration.file.FileConfiguration;
 
-/// Loads plugin YAML resources, copying the bundled defaults into the data
-/// folder on first run. Values are read leniently with the bundled defaults as
-/// fallback; range validation happens via the config records' `validate()`.
-public final class ConfigLoader {
+/// Maps loaded YAML onto the core config records. Values are read leniently
+/// with the bundled defaults as fallback; range validation happens via the
+/// records' `validate()`.
+public final class CoreConfigMapper {
 
-  private final Plugin plugin;
+  private CoreConfigMapper() {}
 
-  public ConfigLoader(Plugin plugin) {
-    this.plugin = Preconditions.checkNotNull(plugin, "plugin");
-  }
-
-  public RaidCoreConfig loadConfig() {
-    YamlConfiguration yaml = load("config.yml");
+  public static RaidCoreConfig readCoreConfig(FileConfiguration yaml) {
+    Preconditions.checkNotNull(yaml, "yaml");
     return new RaidCoreConfig(
         yaml.getBoolean("debug", false),
         new RaidCoreConfig.GameSettings(
             yaml.getInt("game.max-players", 12),
             yaml.getInt("game.team-size", 3),
-            yaml.getInt("game.duration-seconds", 1800)),
+            yaml.getInt("game.duration-seconds", 1800),
+            yaml.getInt("game.max-instances", 4)),
         new RaidCoreConfig.ExtractionSettings(
             yaml.getInt("extraction.default-duration-seconds", 10)));
   }
 
-  public DatabaseConfig loadDatabaseConfig() {
-    YamlConfiguration yaml = load("database.yml");
+  public static DatabaseConfig readDatabaseConfig(FileConfiguration yaml) {
+    Preconditions.checkNotNull(yaml, "yaml");
     return new DatabaseConfig(
         DatabaseType.parse(stringOr(yaml, "database.type", "memory")),
         stringOr(yaml, "database.host", "localhost"),
@@ -49,8 +44,8 @@ public final class ConfigLoader {
   }
 
   /// Flattens every string leaf of `messages.yml` into dotted keys.
-  public Map<String, String> loadMessages() {
-    YamlConfiguration yaml = load("messages.yml");
+  public static Map<String, String> readMessages(FileConfiguration yaml) {
+    Preconditions.checkNotNull(yaml, "yaml");
     Map<String, String> messages = new LinkedHashMap<>();
     for (String key : yaml.getKeys(true)) {
       if (yaml.isString(key)) {
@@ -60,15 +55,7 @@ public final class ConfigLoader {
     return Map.copyOf(messages);
   }
 
-  private YamlConfiguration load(String fileName) {
-    File file = new File(plugin.getDataFolder(), fileName);
-    if (!file.exists()) {
-      plugin.saveResource(fileName, false);
-    }
-    return YamlConfiguration.loadConfiguration(file);
-  }
-
-  private static String stringOr(YamlConfiguration yaml, String path, String fallback) {
+  static String stringOr(FileConfiguration yaml, String path, String fallback) {
     String value = yaml.getString(path);
     return value != null ? value : fallback;
   }

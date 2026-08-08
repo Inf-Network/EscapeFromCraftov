@@ -1,0 +1,30 @@
+package com.birditch.raidcore.api.network;
+
+import com.birditch.raidcore.api.game.RaidGameState;
+import com.birditch.raidcore.common.check.Preconditions;
+import java.util.List;
+
+/// Heartbeat snapshot a game server publishes to the instance directory;
+/// `instances` is stored as an immutable copy.
+public record GameServerSnapshot(ServerId serverId, String proxyName, long updatedAtMillis,
+                                 int maxInstances, List<InstanceSnapshot> instances) {
+
+    public GameServerSnapshot {
+        Preconditions.checkNotNull(serverId, "serverId");
+        Preconditions.checkNotNull(proxyName, "proxyName");
+        Preconditions.checkNotNull(instances, "instances");
+        Preconditions.checkArgument(updatedAtMillis >= 0,
+                "updatedAtMillis must not be negative but was: " + updatedAtMillis);
+        Preconditions.checkArgument(maxInstances >= 1,
+                "maxInstances must be at least 1 but was: " + maxInstances);
+        instances = List.copyOf(instances);
+    }
+
+    /// Whether any advertised instance is still joinable: `WAITING`, world
+    /// ready and below its player cap.
+    public boolean hasCapacity() {
+        return instances.stream().anyMatch(instance -> instance.state() == RaidGameState.WAITING
+                && instance.worldReady()
+                && instance.playerCount() < instance.maxPlayers());
+    }
+}

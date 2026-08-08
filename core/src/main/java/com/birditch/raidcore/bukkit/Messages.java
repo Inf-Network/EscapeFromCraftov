@@ -1,6 +1,8 @@
-package com.birditch.raidcore.game.plugin;
+package com.birditch.raidcore.bukkit;
 
 import com.birditch.raidcore.common.check.Preconditions;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -23,6 +25,7 @@ public final class Messages {
   }
 
   /// Prefixed message: the `prefix` entry followed by the body under `key`.
+  /// Reserved for admin/debug command output; gameplay flow uses [#raw].
   public Component msg(String key, TagResolver... resolvers) {
     Component body = raw(key, resolvers);
     String prefix = messages.get(PREFIX_KEY);
@@ -37,5 +40,25 @@ public final class Messages {
       return Component.text("Missing message: " + key, NamedTextColor.RED);
     }
     return miniMessage.deserialize(format, resolvers);
+  }
+
+  /// Whether the catalog defines `key`; lets callers fall back gracefully for
+  /// optional entries (for example per-map display names).
+  public boolean contains(String key) {
+    Preconditions.checkNotNull(key, "key");
+    return messages.containsKey(key);
+  }
+
+  /// Multi-line message: the value under `key` split on `|`, one component per
+  /// segment (used for menu lore). Missing keys yield a single red line.
+  public List<Component> lines(String key, TagResolver... resolvers) {
+    Preconditions.checkNotNull(key, "key");
+    String format = messages.get(key);
+    if (format == null) {
+      return List.of(Component.text("Missing message: " + key, NamedTextColor.RED));
+    }
+    return Arrays.stream(format.split("\\|"))
+        .map(segment -> miniMessage.deserialize(segment, resolvers))
+        .toList();
   }
 }

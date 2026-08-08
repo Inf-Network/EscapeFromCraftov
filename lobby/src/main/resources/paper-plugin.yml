@@ -1,0 +1,6 @@
+name: RaidCoreLobby
+version: '${version}'
+main: com.birditch.raidcore.lobby.RaidLobbyPlugin
+api-version: '1.21'
+description: "Escape from Craftov (逃离块科夫) lobby: matchmaking queue, player settings and cosmetics."
+authors: [birditch]

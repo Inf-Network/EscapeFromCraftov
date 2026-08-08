@@ -1,6 +1,6 @@
-name: RaidCore
+name: RaidCoreGame
 version: '${version}'
-main: com.birditch.raidcore.game.plugin.RaidPlugin
+main: com.birditch.raidcore.game.plugin.RaidGamePlugin
 api-version: '1.21'
-description: "Extraction-shooter (PvPvE raid) core framework for Paper."
+description: "Escape from Craftov · 逃离块科夫 — game server for the extraction-shooter (PvPvE raid) network: multi-instance raids in isolated worlds."
 authors: [birditch]

@@ -4,8 +4,8 @@ import com.birditch.raidcore.api.profile.ProfileService;
 import com.birditch.raidcore.api.session.PlayerSession;
 import com.birditch.raidcore.api.session.ProfileLoadState;
 import com.birditch.raidcore.api.session.SessionService;
+import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.core.service.ServiceRegistry;
-import com.birditch.raidcore.game.plugin.Messages;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -29,7 +29,7 @@ final class ProfileCommands {
   private static int show(CommandContext context, CommandSender sender) {
     Messages messages = context.messages();
     if (!(sender instanceof Player player)) {
-      sender.sendMessage(messages.msg("command.player-only"));
+      sender.sendMessage(messages.raw("command.player-only"));
       return Command.SINGLE_SUCCESS;
     }
     ServiceRegistry services = context.services();
@@ -37,7 +37,7 @@ final class ProfileCommands {
     ProfileLoadState state = services.require(SessionService.class).find(playerId)
         .map(PlayerSession::profileState)
         .orElse(ProfileLoadState.FAILED);
-    sender.sendMessage(messages.msg(
+    sender.sendMessage(messages.raw(
         "command.profile.header", Placeholder.unparsed("player", player.getName())));
     sender.sendMessage(messages.raw(
         "command.profile.state", Placeholder.unparsed("state", state.name())));

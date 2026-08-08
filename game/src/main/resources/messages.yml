@@ -1,39 +1,52 @@
-# RaidCore messages (MiniMessage format). Placeholders like <id> are filled in
-# by the plugin; keep them intact when editing.
-prefix: "<dark_gray>[<gold>Raid</gold>]</dark_gray> "
+# Escape from Craftov · 逃离块科夫 — game-server messages (MiniMessage).
+# Gray-dominant body, gold/yellow emphasis, green success, red errors.
+# Placeholders like <id> are filled in by the plugin; keep them intact.
+
+# Admin/debug command output only — gameplay messages carry no prefix.
+prefix: "<gold>Raid</gold> <dark_gray>»</dark_gray> "
+
+tab:
+  header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold><newline><gray>逃离块科夫</gray>"
+  footer: "<gray>play.example.com</gray>"
 
 command:
   no-permission: "<red>You do not have permission to do that.</red>"
   player-only: "<red>This command can only be used by players.</red>"
   help:
-    header: "<gold>RaidCore commands:</gold>"
+    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>Commands</gray>"
     entry: "<yellow>/<command></yellow> <dark_gray>-</dark_gray> <gray><description></gray>"
   info:
-    header: "<gold>RaidCore status</gold>"
-    version: "<gray>Version <white><version></white> on Minecraft <white><minecraft></white> (Java <white><java></white>)</gray>"
-    modules: "<gray>Modules: <white><modules></white></gray>"
-    stats: "<gray>Items <white><items></white>, loot tables <white><tables></white>, games <white><games></white>, sessions <white><sessions></white></gray>"
+    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>Status</gray>"
+    version: "<gray>Version <yellow><version></yellow> on Minecraft <yellow><minecraft></yellow> <dark_gray>(</dark_gray><gray>Java <java></gray><dark_gray>)</dark_gray></gray>"
+    modules: "<gray>Modules: <yellow><modules></yellow></gray>"
+    stats: "<gray>Items <yellow><items></yellow>, loot tables <yellow><tables></yellow>, games <yellow><games></yellow>, sessions <yellow><sessions></yellow></gray>"
   game:
-    created: "<green>Created game <white><id></white> on map <white><map></white>.</green>"
-    not-found: "<red>Game <white><id></white> was not found.</red>"
-    list-header: "<gold>Active games (<count>):</gold>"
+    created: "<green>Created instance <yellow><id></yellow> on map <yellow><map></yellow>.</green>"
+    not-found: "<red>Instance <id> was not found.</red>"
+    list-header: "<gray>Active instances: <gold><count></gold></gray>"
     list-entry: "<yellow><id></yellow> <dark_gray>-</dark_gray> <gray><state>, <players> player(s)</gray>"
-    list-empty: "<gray>No active games.</gray>"
-    started: "<green>Game <white><id></white> started.</green>"
-    stopped: "<green>Game <white><id></white> stopped.</green>"
+    list-empty: "<gray>No active instances.</gray>"
+    started: "<green>Instance <yellow><id></yellow> started.</green>"
+    stopped: "<green>Instance <yellow><id></yellow> stopped.</green>"
     error: "<red><error></red>"
   debug:
-    status: "<gray>Debug <white><debug></white>: <white><modules></white> modules, <white><services></white> services, <white><games></white> games, <white><sessions></white> sessions</gray>"
+    status: "<gray>Debug <yellow><debug></yellow>: <yellow><modules></yellow> modules, <yellow><services></yellow> services, <yellow><games></yellow> games, <yellow><sessions></yellow> sessions</gray>"
     loot:
-      header: "<gold>Loot roll for <white><table></white>:</gold>"
-      entry: "<gray>- <white><item></white> x<white><quantity></white></gray>"
-      unknown-table: "<red>Unknown loot table: <white><table></white></red>"
+      header: "<gray>Loot roll for <yellow><table></yellow>:</gray>"
+      entry: "<dark_gray>· </dark_gray><gray><item></gray> <dark_gray>x</dark_gray><yellow><quantity></yellow>"
+      unknown-table: "<red>Unknown loot table: <table></red>"
   profile:
-    header: "<gold>Profile of <white><player></white></gold>"
-    balance: "<gray>Balance: <white><balance></white></gray>"
-    level: "<gray>Level: <white><level></white></gray>"
-    state: "<gray>Profile state: <white><state></white></gray>"
+    header: "<gold><bold><player></bold></gold> <dark_gray>·</dark_gray> <gray>Profile</gray>"
+    balance: "<gray>Balance: <gold><balance></gold></gray>"
+    level: "<gray>Level: <yellow><level></yellow></gray>"
+    state: "<gray>Profile: <yellow><state></yellow></gray>"
 
 join:
-  profile-loaded: "<green>Your profile has been loaded.</green>"
-  profile-failed: "<red>Your profile failed to load. Contact an admin.</red>"
+  profile-loaded: "<gray>Welcome to</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
+  profile-failed: "<red>Your profile failed to load. Please rejoin or contact staff.</red>"
+
+game:
+  sent-to-instance: "<green>Match found! Sending you to <yellow><map></yellow>...</green> <dark_gray>(<id>)</dark_gray>"
+  instance-full: "<red>That raid instance is already full.</red>"
+  returned-to-lobby: "<gray>You have been returned to the lobby.</gray>"
+  assignment-invalid: "<red>Could not join your raid: <reason></red>"

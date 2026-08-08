@@ -4,8 +4,8 @@ import com.birditch.raidcore.api.game.RaidGame;
 import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.game.RaidMapId;
+import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.result.Result;
-import com.birditch.raidcore.game.plugin.Messages;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -64,15 +64,19 @@ final class GameCommands {
     try {
       mapId = RaidMapId.of(map);
     } catch (IllegalArgumentException e) {
-      sender.sendMessage(messages.msg(
+      sender.sendMessage(messages.raw(
           "command.game.error", Placeholder.unparsed("error", reason(e))));
       return Command.SINGLE_SUCCESS;
     }
-    RaidGame game = context.services().require(RaidGameService.class).create(mapId);
-    sender.sendMessage(messages.msg(
-        "command.game.created",
-        Placeholder.unparsed("id", game.id().value()),
-        Placeholder.unparsed("map", game.mapId().value())));
+    Result<RaidGame> result = context.services().require(RaidGameService.class).create(mapId);
+    switch (result) {
+      case Result.Success<RaidGame>(RaidGame game) -> sender.sendMessage(messages.msg(
+          "command.game.created",
+          Placeholder.unparsed("id", game.id().value()),
+          Placeholder.unparsed("map", game.mapId().value())));
+      case Result.Failure<RaidGame>(String message) -> sender.sendMessage(messages.raw(
+          "command.game.error", Placeholder.unparsed("error", message)));
+    }
     return Command.SINGLE_SUCCESS;
   }
 
@@ -100,7 +104,7 @@ final class GameCommands {
     RaidGameService games = context.services().require(RaidGameService.class);
     Optional<RaidGameId> gameId = knownGameId(games, rawId);
     if (gameId.isEmpty()) {
-      sender.sendMessage(context.messages().msg(
+      sender.sendMessage(context.messages().raw(
           "command.game.not-found", Placeholder.unparsed("id", rawId)));
       return Command.SINGLE_SUCCESS;
     }
@@ -112,7 +116,7 @@ final class GameCommands {
     RaidGameService games = context.services().require(RaidGameService.class);
     Optional<RaidGameId> gameId = knownGameId(games, rawId);
     if (gameId.isEmpty()) {
-      sender.sendMessage(context.messages().msg(
+      sender.sendMessage(context.messages().raw(
           "command.game.not-found", Placeholder.unparsed("id", rawId)));
       return Command.SINGLE_SUCCESS;
     }
@@ -134,7 +138,7 @@ final class GameCommands {
     switch (result) {
       case Result.Success<RaidGame>(RaidGame game) -> sender.sendMessage(context.messages().msg(
           successKey, Placeholder.unparsed("id", game.id().value())));
-      case Result.Failure<RaidGame>(String message) -> sender.sendMessage(context.messages().msg(
+      case Result.Failure<RaidGame>(String message) -> sender.sendMessage(context.messages().raw(
           "command.game.error", Placeholder.unparsed("error", message)));
     }
   }

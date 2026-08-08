@@ -4,28 +4,28 @@ import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
-/// Paper entry point; all real work lives in [RaidApplication]. The field is
-/// assigned before [RaidApplication#start] so a partial startup still gets its
+/// Paper entry point; all real work lives in [GameApplication]. The field is
+/// assigned before [GameApplication#start] so a partial startup still gets its
 /// guarded teardown in [#onDisable].
-public final class RaidPlugin extends JavaPlugin {
+public final class RaidGamePlugin extends JavaPlugin {
 
-  private @Nullable RaidApplication application;
+  private @Nullable GameApplication application;
 
   @Override
   public void onEnable() {
-    RaidApplication app = new RaidApplication(this);
+    GameApplication app = new GameApplication(this);
     application = app;
     try {
       app.start();
     } catch (Exception e) {
-      getLogger().log(Level.SEVERE, "RaidCore failed to start; disabling plugin.", e);
+      getLogger().log(Level.SEVERE, "RaidCoreGame failed to start; disabling plugin.", e);
       getServer().getPluginManager().disablePlugin(this);
     }
   }
 
   @Override
   public void onDisable() {
-    RaidApplication app = application;
+    GameApplication app = application;
     if (app != null) {
       app.stop();
       application = null;

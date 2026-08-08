@@ -1,12 +1,41 @@
-# Redis is the shared fabric between the lobby and the game servers:
-# instance directory, matchmaking assignments, player settings and cosmetics.
+# ============================================================================
+#  RaidCoreLobby Redis 配置(redis.yml)
+#  Escape from Craftov · 逃离块科夫 —— 大厅跨服通信设置
+# ============================================================================
+#
+#  ◆ 本文件的作用
+#    大厅完全构建在 Redis 之上,用它:
+#      1. 读取各游戏服务端发布的实例目录快照(raidcore:servers:*)进行匹配;
+#      2. 写入匹配分配(raidcore:pending:<玩家UUID>,带 TTL);
+#      3. 发布扩容提示(频道 raidcore:provision);
+#      4. 存取玩家设置(raidcore:settings:<UUID>)与装扮(raidcore:cosmetics:<UUID>)。
+#
+#  ◆ 必须与游戏服务端的 redis.yml 指向同一个 Redis,否则匹配不到任何对局。
+#
+#  ◆ Redis 挂了会怎样?
+#    大厅不会崩溃:匹配暂停并输出限流告警,Redis 恢复后自动继续。
+#
+#  ◆ 修改后需重启服务器生效。
+# ============================================================================
+
 redis:
+  # Redis 服务器地址。类型:字符串。
   host: localhost
+
+  # Redis 端口。类型:整数,默认 6379。
   port: 6379
-  # Leave blank for no authentication.
+
+  # Redis 密码。留空字符串表示无密码。类型:字符串。
   password: ""
+
+  # Redis 数据库索引(SELECT n)。类型:整数,≥ 0。必须与游戏服务端一致。
   database: 0
+
+  # Jedis 连接池设置。一般保持默认即可。
   pool:
+    # 池中最大连接数。类型:整数,必须 > 0。
     max-total: 8
+    # 最大空闲连接数。类型:整数,必须 > 0。
     max-idle: 8
+    # 最小空闲连接数。类型:整数,必须 > 0。
     min-idle: 1

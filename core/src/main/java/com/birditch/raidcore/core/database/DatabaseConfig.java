@@ -5,10 +5,9 @@ import com.birditch.raidcore.core.config.ConfigurationException;
 import java.util.ArrayList;
 import java.util.List;
 
-/// Connection settings for the configured [DatabaseType]. Construction never
-/// validates value ranges; call [#validate] after loading.
+/// PostgreSQL connection settings — the only supported database backend.
+/// Construction never validates value ranges; call [#validate] after loading.
 public record DatabaseConfig(
-    DatabaseType type,
     String host,
     int port,
     String database,
@@ -17,7 +16,6 @@ public record DatabaseConfig(
     PoolSettings pool) {
 
   public DatabaseConfig {
-    Preconditions.checkNotNull(type, "type");
     Preconditions.checkNotNull(host, "host");
     Preconditions.checkNotNull(database, "database");
     Preconditions.checkNotNull(username, "username");
@@ -25,14 +23,10 @@ public record DatabaseConfig(
     Preconditions.checkNotNull(pool, "pool");
   }
 
-  /// Checks connection settings and aggregates every problem. `MEMORY` needs no
-  /// external services, so validation only applies to `POSTGRESQL`.
+  /// Checks connection settings and aggregates every problem.
   ///
   /// @throws ConfigurationException listing every invalid setting
   public void validate() {
-    if (type != DatabaseType.POSTGRESQL) {
-      return;
-    }
     List<String> problems = new ArrayList<>();
     if (host.isBlank()) {
       problems.add("database.host must not be blank");

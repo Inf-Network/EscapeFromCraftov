@@ -238,7 +238,7 @@ public final class RaidGameManager implements RaidGameService {
     }
 
     private ExtractionPoint defaultExtractionPoint() {
-        return new ExtractionPoint(DEFAULT_POINT_ID, "North Gate", ExtractionType.NORMAL,
+        return new ExtractionPoint(DEFAULT_POINT_ID, "北门", ExtractionType.NORMAL,
                 Duration.ofSeconds(deps.extraction().defaultDurationSeconds()), List.of(),
                 ExtractionState.AVAILABLE);
     }

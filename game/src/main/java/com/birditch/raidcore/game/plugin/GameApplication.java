@@ -22,7 +22,6 @@ import com.birditch.raidcore.core.RaidContext;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.database.Database;
 import com.birditch.raidcore.core.database.DatabaseConfig;
-import com.birditch.raidcore.core.database.DatabaseType;
 import com.birditch.raidcore.core.database.HikariDatabase;
 import com.birditch.raidcore.core.event.SimpleEventBus;
 import com.birditch.raidcore.core.module.ModuleManager;
@@ -157,7 +156,7 @@ public final class GameApplication {
       }
     });
     runGuarded("clear services", () -> withServices(ServiceRegistry::clear));
-    logger.info("RaidCoreGame disabled.");
+    logger.info("RaidCoreGame 已卸载。");
   }
 
   private Configs loadConfigs() {
@@ -182,14 +181,27 @@ public final class GameApplication {
     SimpleEventBus eventBus = new SimpleEventBus(logger);
     ServiceRegistry registry = new ServiceRegistry();
     ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    Database db =
-        databaseConfig.type() == DatabaseType.POSTGRESQL ? new HikariDatabase(databaseConfig) : null;
+    Database db = createDatabase(databaseConfig);
     services = registry;
     ioExecutor = executor;
     database = db;
     return new RaidContext(
-        config, databaseConfig, registry, eventBus, scheduler, executor,
-        Optional.ofNullable(db), logger);
+        config, databaseConfig, registry, eventBus, scheduler, executor, db, logger);
+  }
+
+  /// The game server hard-requires PostgreSQL: a pool that cannot be built
+  /// aborts startup with an operator-facing explanation instead of limping on.
+  private Database createDatabase(DatabaseConfig databaseConfig) {
+    try {
+      return new HikariDatabase(databaseConfig);
+    } catch (RuntimeException e) {
+      logger.severe(() -> "无法连接 PostgreSQL 数据库("
+          + databaseConfig.host() + ":" + databaseConfig.port()
+          + "/" + databaseConfig.database() + ")。"
+          + "请检查 database.yml 的连接配置、PostgreSQL 服务是否可达、账号密码与库权限是否正确。"
+          + "游戏服务端强依赖数据库,本次启动已中止。");
+      throw e;
+    }
   }
 
   private ModuleManager createModules() {
@@ -281,18 +293,18 @@ public final class GameApplication {
       return true;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      logger.log(Level.SEVERE, "Redis probe interrupted at boot.", e);
+      logger.log(Level.SEVERE, "启动时的 Redis 探测被中断。", e);
       return false;
     } catch (ExecutionException | TimeoutException e) {
       logger.log(Level.SEVERE,
-          "Redis unavailable at boot; directory publishes/reads will retry gracefully.", e);
+          "启动时无法连接 Redis;实例目录的读写会限流重试,Redis 恢复后自动继续。", e);
       return false;
     }
   }
 
   private void banner() {
     logger.info("========================================");
-    logger.info("  Escape from Craftov - game server");
+    logger.info("  Escape from Craftov · 逃离块科夫 — 游戏服务端");
     logger.info("========================================");
   }
 
@@ -302,22 +314,22 @@ public final class GameApplication {
     String moduleIds =
         modules.modules().stream().map(RaidModule::id).collect(Collectors.joining(", "));
     logger.info(() -> "RaidCoreGame v" + plugin.getPluginMeta().getVersion()
-        + " on Minecraft " + Bukkit.getMinecraftVersion()
-        + " (Java " + Runtime.version().feature() + ")");
-    logger.info(() -> "Modules: " + moduleIds);
-    logger.info(() -> "Items: " + registry.require(ItemRegistry.class).size()
-        + ", loot tables: " + registry.require(LootTableRegistry.class).size()
-        + ", games: " + registry.require(RaidGameService.class).activeCount()
-        + ", sessions: " + registry.require(SessionService.class).count());
+        + ",Minecraft " + Bukkit.getMinecraftVersion()
+        + "(Java " + Runtime.version().feature() + ")");
+    logger.info(() -> "模块:" + moduleIds);
+    logger.info(() -> "物品 " + registry.require(ItemRegistry.class).size()
+        + " 个,掉落表 " + registry.require(LootTableRegistry.class).size()
+        + " 张,对局 " + registry.require(RaidGameService.class).activeCount()
+        + " 场,会话 " + registry.require(SessionService.class).count() + " 个");
     GameServerConfig server = configs.server();
-    logger.info(() -> "Server: " + server.serverId().value()
-        + " (proxy " + server.proxyName() + ")");
-    logger.info(() -> "Instances: " + registry.require(RaidGameService.class).all().size()
+    logger.info(() -> "服务器:" + server.serverId().value()
+        + "(代理名 " + server.proxyName() + ")");
+    logger.info(() -> "实例:" + registry.require(RaidGameService.class).all().size()
         + "/" + configs.core().game().maxInstances()
-        + " (min-ready " + server.minReadyInstances() + ")");
-    logger.info(() -> "Redis: " + configs.redis().host() + ":" + configs.redis().port()
-        + (redisOk ? " OK" : " FAILED"));
-    logger.info("RaidCoreGame READY.");
+        + "(常备 " + server.minReadyInstances() + " 个)");
+    logger.info(() -> "Redis:" + configs.redis().host() + ":" + configs.redis().port()
+        + (redisOk ? " 连接正常" : " 连接失败"));
+    logger.info("RaidCoreGame 启动完成。");
   }
 
   /// Network teardown runs before module stop so the directory heartbeat

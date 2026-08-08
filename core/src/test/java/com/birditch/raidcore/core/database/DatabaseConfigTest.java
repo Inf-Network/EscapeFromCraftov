@@ -3,16 +3,13 @@ package com.birditch.raidcore.core.database;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.raidcore.core.config.ConfigurationException;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -22,24 +19,16 @@ class DatabaseConfigTest {
       new DatabaseConfig.PoolSettings(10, 2, 10_000L);
 
   private static DatabaseConfig postgres(String host, int port, String database, String username) {
-    return new DatabaseConfig(DatabaseType.POSTGRESQL, host, port, database, username, "secret",
-        VALID_POOL);
+    return new DatabaseConfig(host, port, database, username, "secret", VALID_POOL);
   }
 
   private static DatabaseConfig withPool(int maximumPoolSize, int minimumIdle) {
-    return new DatabaseConfig(DatabaseType.POSTGRESQL, "localhost", 5432, "raidcore", "raidcore",
+    return new DatabaseConfig("localhost", 5432, "raidcore", "raidcore",
         "secret", new DatabaseConfig.PoolSettings(maximumPoolSize, minimumIdle, 10_000L));
   }
 
   @Test
-  void memoryTypeSkipsConnectionValidationEntirely() {
-    DatabaseConfig config = new DatabaseConfig(DatabaseType.MEMORY, " ", 0, " ", " ", "",
-        new DatabaseConfig.PoolSettings(0, 0, 0L));
-    assertDoesNotThrow(config::validate);
-  }
-
-  @Test
-  void validPostgresConfigurationPasses() {
+  void validConfigurationPasses() {
     assertDoesNotThrow(() -> postgres("localhost", 5432, "raidcore", "raidcore").validate());
   }
 
@@ -51,7 +40,7 @@ class DatabaseConfigTest {
 
   @Test
   void blankPasswordIsAllowed() {
-    DatabaseConfig config = new DatabaseConfig(DatabaseType.POSTGRESQL, "localhost", 5432,
+    DatabaseConfig config = new DatabaseConfig("localhost", 5432,
         "raidcore", "raidcore", "", VALID_POOL);
     assertDoesNotThrow(config::validate);
   }
@@ -82,7 +71,7 @@ class DatabaseConfigTest {
 
   @Test
   void aggregatesAllProblemsIntoASingleException() {
-    DatabaseConfig config = new DatabaseConfig(DatabaseType.POSTGRESQL, " ", 0, " ", " ", "",
+    DatabaseConfig config = new DatabaseConfig(" ", 0, " ", " ", "",
         new DatabaseConfig.PoolSettings(0, 0, 0L));
     ConfigurationException e = assertThrows(ConfigurationException.class, config::validate);
     assertEquals("""
@@ -97,41 +86,11 @@ class DatabaseConfigTest {
 
   @Test
   void constructionRejectsNullComponents() {
-    assertThrows(NullPointerException.class, () -> new DatabaseConfig(null, "localhost", 5432,
+    assertThrows(NullPointerException.class, () -> new DatabaseConfig(null, 5432,
         "raidcore", "raidcore", "secret", VALID_POOL));
-    assertThrows(NullPointerException.class, () -> new DatabaseConfig(DatabaseType.MEMORY, null,
-        5432, "raidcore", "raidcore", "secret", VALID_POOL));
-    assertThrows(NullPointerException.class, () -> new DatabaseConfig(DatabaseType.MEMORY,
-        "localhost", 5432, "raidcore", "raidcore", "secret", null));
-  }
-
-  @Nested
-  @DisplayName("DatabaseType.parse")
-  class Parse {
-
-    @ParameterizedTest
-    @CsvSource({
-        "memory, MEMORY",
-        "MEMORY, MEMORY",
-        "Memory, MEMORY",
-        "postgresql, POSTGRESQL",
-        "PostgreSQL, POSTGRESQL",
-        "POSTGRESQL, POSTGRESQL"
-    })
-    void parsesKnownTypesCaseInsensitively(String raw, DatabaseType expected) {
-      assertEquals(expected, DatabaseType.parse(raw));
-    }
-
-    @Test
-    void unknownTypeThrowsConfigurationExceptionNamingTheValue() {
-      ConfigurationException e =
-          assertThrows(ConfigurationException.class, () -> DatabaseType.parse("oracle"));
-      assertTrue(e.getMessage().contains("oracle"), "message should echo the raw value");
-    }
-
-    @Test
-    void nullValueIsRejected() {
-      assertThrows(NullPointerException.class, () -> DatabaseType.parse(null));
-    }
+    assertThrows(NullPointerException.class, () -> new DatabaseConfig("localhost", 5432,
+        null, "raidcore", "secret", VALID_POOL));
+    assertThrows(NullPointerException.class, () -> new DatabaseConfig("localhost", 5432,
+        "raidcore", "raidcore", "secret", null));
   }
 }

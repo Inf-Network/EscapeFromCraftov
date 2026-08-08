@@ -9,13 +9,12 @@ import com.birditch.raidcore.api.testing.ManualScheduler;
 import com.birditch.raidcore.common.lifecycle.LifecycleState;
 import com.birditch.raidcore.core.RaidContext;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
+import com.birditch.raidcore.core.database.Database;
 import com.birditch.raidcore.core.database.DatabaseConfig;
-import com.birditch.raidcore.core.database.DatabaseType;
 import com.birditch.raidcore.core.event.SimpleEventBus;
 import com.birditch.raidcore.core.service.ServiceRegistry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Handler;
@@ -177,12 +176,26 @@ class ModuleManagerTest {
     RaidCoreConfig config = new RaidCoreConfig(false,
         new RaidCoreConfig.GameSettings(12, 3, 1800, 4),
         new RaidCoreConfig.ExtractionSettings(10));
-    DatabaseConfig databaseConfig = new DatabaseConfig(DatabaseType.MEMORY,
+    DatabaseConfig databaseConfig = new DatabaseConfig(
         "localhost", 5432, "raidcore", "raidcore", "secret",
         new DatabaseConfig.PoolSettings(10, 2, 10_000L));
     return new RaidContext(config, databaseConfig, new ServiceRegistry(),
         new SimpleEventBus(quietLogger(new CapturingHandler())), new ManualScheduler(),
-        ioExecutor, Optional.empty(), quietLogger(new CapturingHandler()));
+        ioExecutor, new UnreachableDatabase(), quietLogger(new CapturingHandler()));
+  }
+
+  /// Modules under test never touch the database; failing loudly on contact
+  /// keeps that assumption honest.
+  private static final class UnreachableDatabase implements Database {
+
+    @Override
+    public java.sql.Connection connection() throws java.sql.SQLException {
+      throw new java.sql.SQLException("test context has no real database");
+    }
+
+    @Override
+    public void close() {
+    }
   }
 
   private static Logger quietLogger(Handler handler) {

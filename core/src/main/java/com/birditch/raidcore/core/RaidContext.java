@@ -7,7 +7,6 @@ import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.database.Database;
 import com.birditch.raidcore.core.database.DatabaseConfig;
 import com.birditch.raidcore.core.service.ServiceRegistry;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
 
@@ -15,8 +14,8 @@ import java.util.logging.Logger;
 ///
 /// `ioExecutor` is the only executor allowed to run repository IO (virtual threads);
 /// callbacks touching domain state must hop back via [RaidScheduler#runSync].
-/// `database` is present only when the configured database type requires an external
-/// database (PostgreSQL), empty for the in-memory backend.
+/// `database` is the shared PostgreSQL connection pool — the game server hard-requires
+/// it and refuses to start without a reachable database.
 public record RaidContext(
     RaidCoreConfig config,
     DatabaseConfig databaseConfig,
@@ -24,7 +23,7 @@ public record RaidContext(
     EventBus eventBus,
     RaidScheduler scheduler,
     ExecutorService ioExecutor,
-    Optional<Database> database,
+    Database database,
     Logger logger) {
 
   public RaidContext {

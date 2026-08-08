@@ -1,6 +1,5 @@
 package com.birditch.raidcore.profile;
 
-import com.birditch.raidcore.api.profile.ProfileException;
 import com.birditch.raidcore.api.profile.ProfileRepository;
 import com.birditch.raidcore.api.profile.ProfileService;
 import com.birditch.raidcore.api.session.SessionService;
@@ -12,14 +11,12 @@ import com.birditch.raidcore.core.module.RaidModule;
 import com.birditch.raidcore.core.service.ServiceRegistry;
 import org.jspecify.annotations.Nullable;
 
-/// Wires profile persistence and session tracking.
-///
-/// The repository backend follows the configured database type: `MEMORY` uses
-/// [InMemoryProfileRepository], `POSTGRESQL` uses [PostgresProfileRepository]
-/// on the shared database and IO executor.
+/// Wires profile persistence and session tracking. PostgreSQL is the only
+/// supported backend: [PostgresProfileRepository] on the shared database and
+/// IO executor.
 public final class ProfileModule implements RaidModule {
 
-  private @Nullable PostgresProfileRepository postgresRepository;
+  private @Nullable PostgresProfileRepository repository;
 
   @Override
   public String id() {
@@ -29,12 +26,14 @@ public final class ProfileModule implements RaidModule {
   @Override
   public void initialize(RaidContext context) {
     Preconditions.checkNotNull(context, "context");
-    ProfileRepository repository = createRepository(context);
+    PostgresProfileRepository postgres =
+        new PostgresProfileRepository(context.database(), context.ioExecutor());
+    repository = postgres;
     TimeSource timeSource = new SystemTimeSource();
     ServiceRegistry services = context.services();
-    services.register(ProfileRepository.class, repository);
+    services.register(ProfileRepository.class, postgres);
     services.register(
-        ProfileService.class, new DefaultProfileService(repository, timeSource, context.logger()));
+        ProfileService.class, new DefaultProfileService(postgres, timeSource, context.logger()));
     services.register(SessionService.class, new DefaultSessionService(timeSource));
   }
 
@@ -42,32 +41,14 @@ public final class ProfileModule implements RaidModule {
   /// acceptable at boot, before any player traffic.
   @Override
   public void start() {
-    if (postgresRepository != null) {
-      postgresRepository.initSchema();
+    PostgresProfileRepository postgres = repository;
+    if (postgres != null) {
+      postgres.initSchema();
     }
   }
 
   /// No resources to release: the database and IO executor are owned by the bootstrap.
   @Override
   public void stop() {
-  }
-
-  private ProfileRepository createRepository(RaidContext context) {
-    return switch (context.databaseConfig().type()) {
-      case MEMORY -> new InMemoryProfileRepository();
-      case POSTGRESQL -> {
-        PostgresProfileRepository repository =
-            new PostgresProfileRepository(
-                context
-                    .database()
-                    .orElseThrow(
-                        () ->
-                            new ProfileException(
-                                "Database connection required for POSTGRESQL profile repository")),
-                context.ioExecutor());
-        postgresRepository = repository;
-        yield repository;
-      }
-    };
   }
 }

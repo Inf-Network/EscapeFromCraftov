@@ -1,16 +1,38 @@
-# RaidCoreLobby configuration.
+# ============================================================================
+#  RaidCoreLobby 主配置(config.yml)
+#  Escape from Craftov · 逃离块科夫 —— 大厅插件核心设置
+# ============================================================================
+#
+#  ◆ 本文件的作用
+#    大厅的匹配节奏、保护开关与默认地图都在这里配置。
+#    修改后需重启服务器生效。
+# ============================================================================
 
+# ---------------------------------------------------------------------------
+# 匹配队列。
+# ---------------------------------------------------------------------------
 queue:
-  # How often the matchmaking queue is processed, in seconds.
+  # 匹配轮询间隔(秒):每隔这么久扫描一次实例目录并分配队首玩家。
+  # 类型:整数,必须 > 0。调小匹配更快,Redis 读取更频繁。
   tick-seconds: 1
-  # How long a reserved instance slot is held for a matched player, in seconds.
+
+  # 席位预留时长(秒):派单后为玩家在目标实例预占的名额有效期,
+  # 防止两次目录快照之间同一实例被超卖。类型:整数,必须 > 0。
+  # 建议 ≥ 跨服传送 + 快照刷新所需时间。
   reservation-ttl-seconds: 30
-  # How long a pending assignment stays readable in Redis, in seconds.
+
+  # 匹配分配键(raidcore:pending:<玩家UUID>)的 Redis TTL(秒)。
+  # 玩家必须在此时间内到达游戏服务端,过期视为放弃。类型:整数,必须 > 0。
   assignment-ttl-seconds: 30
 
+# ---------------------------------------------------------------------------
+# 大厅行为。
+# ---------------------------------------------------------------------------
 lobby:
-  # Protects the lobby world: no block changes, player damage, hunger or item
-  # drops, and the managed inventory (Game Menu compass) stays locked.
+  # 大厅保护。类型:布尔。true 时禁止破坏/放置方块、玩家受伤、饥饿消耗、
+  # 丢弃物品与移动背包物品(管理员 raid.admin + 创造模式除外)。
   protect: true
-  # Map queued by default when no map is specified.
+
+  # /play 不带参数与主菜单"开始游戏"使用的默认地图 ID。类型:字符串,
+  # 格式 [a-z0-9_]+。显示名在 messages.yml 的 map 节配置。
   default-map: debug_zone

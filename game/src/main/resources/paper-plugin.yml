@@ -2,5 +2,5 @@ name: RaidCoreGame
 version: '${version}'
 main: com.birditch.raidcore.game.plugin.RaidGamePlugin
 api-version: '1.21'
-description: "Escape from Craftov · 逃离块科夫 — game server for the extraction-shooter (PvPvE raid) network: multi-instance raids in isolated worlds."
+description: "Escape from Craftov · 逃离块科夫 — 游戏服务端:单服多对局实例、独立世界、聊天/Tab 隔离的搜打撤核心。"
 authors: [birditch]

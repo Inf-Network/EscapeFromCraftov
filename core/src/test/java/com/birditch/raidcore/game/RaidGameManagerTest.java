@@ -93,7 +93,7 @@ class RaidGameManagerTest {
             assertEquals(Instant.ofEpochMilli(5_000L), game.createdAt());
             ExtractionPoint point = game.extractionPoints().getFirst();
             assertEquals(NORTH_GATE, point.id());
-            assertEquals("North Gate", point.displayName());
+            assertEquals("北门", point.displayName());
             assertEquals(Duration.ofSeconds(10), point.duration());
             assertEquals(ExtractionState.AVAILABLE, point.state());
             assertEquals(1, manager.activeCount());

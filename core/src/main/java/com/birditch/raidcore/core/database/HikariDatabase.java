@@ -14,9 +14,6 @@ public final class HikariDatabase implements Database {
 
   public HikariDatabase(DatabaseConfig config) {
     Preconditions.checkNotNull(config, "config");
-    Preconditions.checkArgument(
-        config.type() == DatabaseType.POSTGRESQL,
-        "HikariDatabase requires a POSTGRESQL configuration");
     HikariConfig hikari = new HikariConfig();
     hikari.setJdbcUrl(
         "jdbc:postgresql://" + config.host() + ":" + config.port() + "/" + config.database());

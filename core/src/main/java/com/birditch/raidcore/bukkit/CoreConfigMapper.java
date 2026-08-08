@@ -3,7 +3,6 @@ package com.birditch.raidcore.bukkit;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.core.database.DatabaseConfig;
-import com.birditch.raidcore.core.database.DatabaseType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -31,7 +30,6 @@ public final class CoreConfigMapper {
   public static DatabaseConfig readDatabaseConfig(FileConfiguration yaml) {
     Preconditions.checkNotNull(yaml, "yaml");
     return new DatabaseConfig(
-        DatabaseType.parse(stringOr(yaml, "database.type", "memory")),
         stringOr(yaml, "database.host", "localhost"),
         yaml.getInt("database.port", 5432),
         stringOr(yaml, "database.database", "raidcore"),

@@ -135,7 +135,7 @@ public final class LobbyApplication {
     runGuarded("shut down IO executor", this::shutdownIoExecutor);
     runGuarded("unregister listeners", () -> HandlerList.unregisterAll(plugin));
     runGuarded("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
-    logger.info("RaidCoreLobby disabled.");
+    logger.info("RaidCoreLobby 已卸载。");
   }
 
   private BootConfig loadConfigs() {
@@ -178,7 +178,7 @@ public final class LobbyApplication {
 
   private void banner() {
     logger.info("========================================");
-    logger.info("  RaidCoreLobby - Escape from Craftov");
+    logger.info("  Escape from Craftov · 逃离块科夫 — 大厅");
     logger.info("========================================");
   }
 
@@ -186,13 +186,13 @@ public final class LobbyApplication {
       RedisInstanceDirectory directory) {
     boolean redisUp = probeRedis(directory, redisConfig);
     logger.info(() -> "RaidCoreLobby v" + plugin.getPluginMeta().getVersion()
-        + " on Minecraft " + Bukkit.getMinecraftVersion()
-        + " (Java " + Runtime.version().feature() + ")");
-    logger.info(() -> "Redis: " + redisConfig.host() + ":" + redisConfig.port()
-        + (redisUp ? " OK" : " FAILED"));
-    logger.info(() -> "Queue tick: " + config.queueTickSeconds()
-        + "s / Cosmetics: " + LobbyCosmetics.catalog().size());
-    logger.info("RaidCoreLobby READY.");
+        + ",Minecraft " + Bukkit.getMinecraftVersion()
+        + "(Java " + Runtime.version().feature() + ")");
+    logger.info(() -> "Redis:" + redisConfig.host() + ":" + redisConfig.port()
+        + (redisUp ? " 连接正常" : " 连接失败"));
+    logger.info(() -> "匹配轮询:" + config.queueTickSeconds()
+        + " 秒 / 装扮:" + LobbyCosmetics.catalog().size() + " 款");
+    logger.info("RaidCoreLobby 启动完成。");
   }
 
   /// One-time blocking probe at boot (acceptable, mirrors the game server's
@@ -212,9 +212,8 @@ public final class LobbyApplication {
   }
 
   private void logRedisDown(RedisConfig redisConfig, Exception cause) {
-    logger.log(Level.SEVERE, "Redis unreachable at " + redisConfig.host() + ":"
-        + redisConfig.port() + " — the lobby stays enabled; matchmaking recovers once "
-        + "Redis returns.", cause);
+    logger.log(Level.SEVERE, "无法连接 Redis(" + redisConfig.host() + ":"
+        + redisConfig.port() + ")。大厅保持运行,但匹配已暂停;Redis 恢复后自动继续。", cause);
   }
 
   private void shutdownIoExecutor() throws InterruptedException {

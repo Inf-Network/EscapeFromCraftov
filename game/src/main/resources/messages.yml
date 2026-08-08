@@ -1,52 +1,94 @@
-# Escape from Craftov · 逃离块科夫 — game-server messages (MiniMessage).
-# Gray-dominant body, gold/yellow emphasis, green success, red errors.
-# Placeholders like <id> are filled in by the plugin; keep them intact.
+# ============================================================================
+#  RaidCoreGame 消息配置(messages.yml)
+#  Escape from Craftov · 逃离块科夫 —— 游戏服务端的全部玩家可见文本
+# ============================================================================
+#
+#  ◆ 本文件的作用
+#    游戏服务端发给玩家的每一条消息都定义在这里,修改保存后重启生效。
+#
+#  ◆ MiniMessage 语法速览(所有值均为 MiniMessage 格式,禁止 § 颜色码)
+#    <gray>正文</gray>、<gold><bold>标题</bold></gold>、<green>成功</green>、
+#    <red>错误</red>、<yellow>高亮</yellow>、<newline> 换行。
+#    <占位符> 由插件运行时填充,见各消息旁注释;删除占位符不会报错,
+#    但对应信息将不再显示。
+#
+#  ◆ 风格约定(Hypixel 式)
+#    正文灰色、重点金黄、成功绿色、错误红色;游戏流程消息不带前缀,
+#    prefix 仅用于管理/调试命令输出。
+# ============================================================================
 
-# Admin/debug command output only — gameplay messages carry no prefix.
+# 管理/调试命令输出的前缀(游戏流程消息不使用)。
 prefix: "<gold>Raid</gold> <dark_gray>»</dark_gray> "
 
+# ---------------------------------------------------------------------------
+# Tab 列表页眉/页脚:品牌横幅(页眉两行:拉丁大标题 + 中文副标题)。
+# ---------------------------------------------------------------------------
 tab:
   header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold><newline><gray>逃离块科夫</gray>"
   footer: "<gray>play.example.com</gray>"
 
+# ---------------------------------------------------------------------------
+# 命令输出。
+#   help.entry     <command> = 命令用法;<description> = 命令说明
+#   info.*         /raid info 状态总览;占位符见各行注释
+#   game.*         /raid game 系列;<id> = 实例编号;<map> = 地图;
+#                  <state> = 状态;<players> = 人数;<count> = 实例总数;
+#                  <error> = 失败原因
+#   debug.loot.*   /raid debug loot 掉落测试;<table> = 掉落表;
+#                  <item> = 物品名;<quantity> = 数量
+#   profile.*      /raid profile 个人档案;<player>/<balance>/<level>/<state>
+# ---------------------------------------------------------------------------
 command:
-  no-permission: "<red>You do not have permission to do that.</red>"
-  player-only: "<red>This command can only be used by players.</red>"
+  no-permission: "<red>你没有权限这么做。</red>"
+  player-only: "<red>该命令只能由玩家使用。</red>"
   help:
-    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>Commands</gray>"
+    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>命令列表</gray>"
     entry: "<yellow>/<command></yellow> <dark_gray>-</dark_gray> <gray><description></gray>"
   info:
-    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>Status</gray>"
-    version: "<gray>Version <yellow><version></yellow> on Minecraft <yellow><minecraft></yellow> <dark_gray>(</dark_gray><gray>Java <java></gray><dark_gray>)</dark_gray></gray>"
-    modules: "<gray>Modules: <yellow><modules></yellow></gray>"
-    stats: "<gray>Items <yellow><items></yellow>, loot tables <yellow><tables></yellow>, games <yellow><games></yellow>, sessions <yellow><sessions></yellow></gray>"
+    header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>运行状态</gray>"
+    # <version> 插件版本;<minecraft> MC 版本;<java> Java 版本
+    version: "<gray>版本 <yellow><version></yellow>,Minecraft <yellow><minecraft></yellow> <dark_gray>(</dark_gray><gray>Java <java></gray><dark_gray>)</dark_gray></gray>"
+    # <modules> 已加载模块列表
+    modules: "<gray>模块:<yellow><modules></yellow></gray>"
+    # <items> 物品数;<tables> 掉落表数;<games> 对局数;<sessions> 会话数
+    stats: "<gray>物品 <yellow><items></yellow>,掉落表 <yellow><tables></yellow>,对局 <yellow><games></yellow>,会话 <yellow><sessions></yellow></gray>"
   game:
-    created: "<green>Created instance <yellow><id></yellow> on map <yellow><map></yellow>.</green>"
-    not-found: "<red>Instance <id> was not found.</red>"
-    list-header: "<gray>Active instances: <gold><count></gold></gray>"
-    list-entry: "<yellow><id></yellow> <dark_gray>-</dark_gray> <gray><state>, <players> player(s)</gray>"
-    list-empty: "<gray>No active instances.</gray>"
-    started: "<green>Instance <yellow><id></yellow> started.</green>"
-    stopped: "<green>Instance <yellow><id></yellow> stopped.</green>"
+    created: "<green>已创建实例 <yellow><id></yellow>,地图 <yellow><map></yellow>。</green>"
+    not-found: "<red>找不到实例 <id>。</red>"
+    list-header: "<gray>当前实例:<gold><count></gold> 个</gray>"
+    list-entry: "<yellow><id></yellow> <dark_gray>-</dark_gray> <gray><state>,<players> 名玩家</gray>"
+    list-empty: "<gray>当前没有运行中的实例。</gray>"
+    started: "<green>实例 <yellow><id></yellow> 已开始。</green>"
+    stopped: "<green>实例 <yellow><id></yellow> 已结束。</green>"
     error: "<red><error></red>"
   debug:
-    status: "<gray>Debug <yellow><debug></yellow>: <yellow><modules></yellow> modules, <yellow><services></yellow> services, <yellow><games></yellow> games, <yellow><sessions></yellow> sessions</gray>"
+    status: "<gray>调试 <yellow><debug></yellow>:<yellow><modules></yellow> 个模块,<yellow><services></yellow> 个服务,<yellow><games></yellow> 场对局,<yellow><sessions></yellow> 个会话</gray>"
     loot:
-      header: "<gray>Loot roll for <yellow><table></yellow>:</gray>"
+      header: "<gray>掉落表 <yellow><table></yellow> 的一次掷取:</gray>"
       entry: "<dark_gray>· </dark_gray><gray><item></gray> <dark_gray>x</dark_gray><yellow><quantity></yellow>"
-      unknown-table: "<red>Unknown loot table: <table></red>"
+      unknown-table: "<red>未知的掉落表:<table></red>"
   profile:
-    header: "<gold><bold><player></bold></gold> <dark_gray>·</dark_gray> <gray>Profile</gray>"
-    balance: "<gray>Balance: <gold><balance></gold></gray>"
-    level: "<gray>Level: <yellow><level></yellow></gray>"
-    state: "<gray>Profile: <yellow><state></yellow></gray>"
+    header: "<gold><bold><player></bold></gold> <dark_gray>·</dark_gray> <gray>个人档案</gray>"
+    balance: "<gray>余额:<gold><balance></gold></gray>"
+    level: "<gray>等级:<yellow><level></yellow></gray>"
+    state: "<gray>档案状态:<yellow><state></yellow></gray>"
 
+# ---------------------------------------------------------------------------
+# 进服流程。
+#   profile-loaded  档案加载完成后的欢迎语
+#   profile-failed  档案加载失败(玩家需要重进或联系管理员)
+# ---------------------------------------------------------------------------
 join:
-  profile-loaded: "<gray>Welcome to</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
-  profile-failed: "<red>Your profile failed to load. Please rejoin or contact staff.</red>"
+  profile-loaded: "<gray>欢迎来到</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
+  profile-failed: "<red>你的档案加载失败,请重新进入服务器或联系管理员。</red>"
 
+# ---------------------------------------------------------------------------
+# 对局流程。
+#   sent-to-instance  按匹配分配进入实例;<map> = 地图;<id> = 实例编号
+#   assignment-invalid  分配失效(实例已满/已开始等);<reason> = 原因
+# ---------------------------------------------------------------------------
 game:
-  sent-to-instance: "<green>Match found! Sending you to <yellow><map></yellow>...</green> <dark_gray>(<id>)</dark_gray>"
-  instance-full: "<red>That raid instance is already full.</red>"
-  returned-to-lobby: "<gray>You have been returned to the lobby.</gray>"
-  assignment-invalid: "<red>Could not join your raid: <reason></red>"
+  sent-to-instance: "<green>匹配成功!正在进入 <yellow><map></yellow>……</green> <dark_gray>(<id>)</dark_gray>"
+  instance-full: "<red>该对局实例已满员。</red>"
+  returned-to-lobby: "<gray>你已返回大厅。</gray>"
+  assignment-invalid: "<red>无法加入对局:<reason></red>"

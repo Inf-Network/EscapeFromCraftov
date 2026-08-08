@@ -1,0 +1,39 @@
+# RaidCore messages (MiniMessage format). Placeholders like <id> are filled in
+# by the plugin; keep them intact when editing.
+prefix: "<dark_gray>[<gold>Raid</gold>]</dark_gray> "
+
+command:
+  no-permission: "<red>You do not have permission to do that.</red>"
+  player-only: "<red>This command can only be used by players.</red>"
+  help:
+    header: "<gold>RaidCore commands:</gold>"
+    entry: "<yellow>/<command></yellow> <dark_gray>-</dark_gray> <gray><description></gray>"
+  info:
+    header: "<gold>RaidCore status</gold>"
+    version: "<gray>Version <white><version></white> on Minecraft <white><minecraft></white> (Java <white><java></white>)</gray>"
+    modules: "<gray>Modules: <white><modules></white></gray>"
+    stats: "<gray>Items <white><items></white>, loot tables <white><tables></white>, games <white><games></white>, sessions <white><sessions></white></gray>"
+  game:
+    created: "<green>Created game <white><id></white> on map <white><map></white>.</green>"
+    not-found: "<red>Game <white><id></white> was not found.</red>"
+    list-header: "<gold>Active games (<count>):</gold>"
+    list-entry: "<yellow><id></yellow> <dark_gray>-</dark_gray> <gray><state>, <players> player(s)</gray>"
+    list-empty: "<gray>No active games.</gray>"
+    started: "<green>Game <white><id></white> started.</green>"
+    stopped: "<green>Game <white><id></white> stopped.</green>"
+    error: "<red><error></red>"
+  debug:
+    status: "<gray>Debug <white><debug></white>: <white><modules></white> modules, <white><services></white> services, <white><games></white> games, <white><sessions></white> sessions</gray>"
+    loot:
+      header: "<gold>Loot roll for <white><table></white>:</gold>"
+      entry: "<gray>- <white><item></white> x<white><quantity></white></gray>"
+      unknown-table: "<red>Unknown loot table: <white><table></white></red>"
+  profile:
+    header: "<gold>Profile of <white><player></white></gold>"
+    balance: "<gray>Balance: <white><balance></white></gray>"
+    level: "<gray>Level: <white><level></white></gray>"
+    state: "<gray>Profile state: <white><state></white></gray>"
+
+join:
+  profile-loaded: "<green>Your profile has been loaded.</green>"
+  profile-failed: "<red>Your profile failed to load. Contact an admin.</red>"

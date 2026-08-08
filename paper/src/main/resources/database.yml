@@ -1,0 +1,13 @@
+# type: memory | postgresql  ("memory" needs no external services — development default)
+database:
+  type: memory
+  host: localhost
+  port: 5432
+  database: raidcore
+  username: raidcore
+  password: change-me
+
+  pool:
+    maximum-pool-size: 10
+    minimum-idle: 2
+    connection-timeout: 10000

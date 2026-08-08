@@ -1,0 +1,309 @@
+package com.birditch.raidcore.extraction;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.birditch.raidcore.api.event.extraction.PlayerExtractedEvent;
+import com.birditch.raidcore.api.extraction.ExtractionCondition;
+import com.birditch.raidcore.api.extraction.ExtractionContext;
+import com.birditch.raidcore.api.extraction.ExtractionPoint;
+import com.birditch.raidcore.api.extraction.ExtractionPointId;
+import com.birditch.raidcore.api.extraction.ExtractionSession;
+import com.birditch.raidcore.api.extraction.ExtractionState;
+import com.birditch.raidcore.api.extraction.ExtractionType;
+import com.birditch.raidcore.api.game.RaidGameId;
+import com.birditch.raidcore.api.game.RaidGameState;
+import com.birditch.raidcore.api.game.RaidMapId;
+import com.birditch.raidcore.api.game.RaidPlayer;
+import com.birditch.raidcore.api.testing.ManualScheduler;
+import com.birditch.raidcore.api.testing.MutableTimeSource;
+import com.birditch.raidcore.common.result.Result;
+import com.birditch.raidcore.core.event.SimpleEventBus;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.logging.Logger;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+
+@DisplayName("DefaultExtractionService")
+class DefaultExtractionServiceTest {
+
+    private static final UUID PLAYER_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID OTHER_PLAYER_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final RaidGameId GAME_ID = RaidGameId.of("raid-1");
+    private static final ExtractionPointId POINT_ID = ExtractionPointId.of("north_gate");
+    private static final ExtractionPointId LOCKED_POINT_ID = ExtractionPointId.of("locked_gate");
+    private static final Duration POINT_DURATION = Duration.ofSeconds(10);
+
+    private ManualScheduler scheduler;
+    private MutableTimeSource timeSource;
+    private SimpleEventBus eventBus;
+    private FakeGameService games;
+    private FakeRaidGame game;
+    private DefaultExtractionService service;
+    private List<PlayerExtractedEvent> published;
+
+    @BeforeEach
+    void setUp() {
+        scheduler = new ManualScheduler();
+        timeSource = new MutableTimeSource(0L);
+        eventBus = new SimpleEventBus(
+                Logger.getLogger(DefaultExtractionServiceTest.class.getName()));
+        games = new FakeGameService();
+        game = new FakeRaidGame(GAME_ID, RaidMapId.of("debug_zone"), Instant.EPOCH);
+        game.addPlayer(new RaidPlayer(PLAYER_ID, "Alice"));
+        game.addExtractionPoint(point(POINT_ID, List.of(), ExtractionState.AVAILABLE));
+        game.addExtractionPoint(point(LOCKED_POINT_ID, List.of(), ExtractionState.LOCKED));
+        games.add(game);
+        service = new DefaultExtractionService(games, scheduler, eventBus, timeSource);
+        published = new ArrayList<>();
+        eventBus.subscribe(PlayerExtractedEvent.class, published::add);
+    }
+
+    @Nested
+    @DisplayName("begin")
+    class Begin {
+
+        @Test
+        @DisplayName("starts an EXTRACTING session bound to player, game, point and clock")
+        void startsExtractingSession() {
+            timeSource.set(5_000L);
+
+            Result<ExtractionSession> result = service.begin(PLAYER_ID, GAME_ID, POINT_ID);
+
+            assertTrue(result.isSuccess());
+            ExtractionSession session = result.orElseThrow(IllegalStateException::new);
+            assertEquals(ExtractionState.EXTRACTING, session.state());
+            assertEquals(PLAYER_ID, session.playerId());
+            assertEquals(GAME_ID, session.gameId());
+            assertEquals(POINT_ID, session.pointId());
+            assertEquals(Instant.ofEpochMilli(5_000L), session.startedAt());
+            assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
+            assertEquals(1, service.activeCount());
+        }
+
+        @Test
+        void failsWhenGameNotFound() {
+            assertFailure(service.begin(PLAYER_ID, RaidGameId.of("missing"), POINT_ID),
+                    "Game not found");
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = RaidGameState.class, names = "RUNNING", mode = EnumSource.Mode.EXCLUDE)
+        void failsWhenGameIsNotRunning(RaidGameState state) {
+            game.setState(state);
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID), "Game is not running");
+        }
+
+        @Test
+        void failsWhenPlayerIsNotInTheGame() {
+            assertFailure(service.begin(OTHER_PLAYER_ID, GAME_ID, POINT_ID),
+                    "Player is not in this game");
+        }
+
+        @Test
+        void failsWhenExtractionPointIsUnknown() {
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, ExtractionPointId.of("south_gate")),
+                    "Extraction point not found");
+        }
+
+        @Test
+        void failsWhenExtractionPointIsLocked() {
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, LOCKED_POINT_ID),
+                    "Extraction point is locked");
+        }
+
+        @Test
+        void failsWhenAlreadyExtracting() {
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID),
+                    "Extraction already in progress");
+            assertEquals(1, service.activeCount());
+        }
+
+        @Test
+        void failsWithDescriptionWhenConditionBlocks() {
+            ExtractionPointId gated = ExtractionPointId.of("gated");
+            game.addExtractionPoint(point(gated,
+                    List.of(condition("carry a key card", false)), ExtractionState.AVAILABLE));
+
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, gated),
+                    "Extraction blocked: carry a key card");
+            assertEquals(0, service.activeCount());
+        }
+
+        @Test
+        void succeedsWhenAllConditionsAreSatisfied() {
+            ExtractionPointId gated = ExtractionPointId.of("gated");
+            game.addExtractionPoint(point(gated,
+                    List.of(condition("carry a key card", true)), ExtractionState.AVAILABLE));
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, gated).isSuccess());
+        }
+
+        @Test
+        void passesPlayerAndGameToConditions() {
+            List<ExtractionContext> seen = new ArrayList<>();
+            ExtractionCondition recording = new ExtractionCondition() {
+                @Override
+                public String describe() {
+                    return "recording";
+                }
+
+                @Override
+                public boolean isSatisfied(ExtractionContext context) {
+                    seen.add(context);
+                    return true;
+                }
+            };
+            ExtractionPointId gated = ExtractionPointId.of("gated");
+            game.addExtractionPoint(point(gated, List.of(recording), ExtractionState.AVAILABLE));
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, gated).isSuccess());
+            assertEquals(List.of(new ExtractionContext(PLAYER_ID, GAME_ID)), seen);
+        }
+
+        @Test
+        void throwsOffTheMainThread() {
+            scheduler.setMainThread(false);
+            assertThrows(IllegalStateException.class,
+                    () -> service.begin(PLAYER_ID, GAME_ID, POINT_ID));
+        }
+    }
+
+    @Nested
+    @DisplayName("completion")
+    class Completion {
+
+        @Test
+        void completesSessionAfterPointDuration() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.COMPLETED, session.state());
+            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
+            assertEquals(0, service.activeCount());
+            assertEquals(List.of(new PlayerExtractedEvent(GAME_ID, PLAYER_ID, POINT_ID)),
+                    published);
+        }
+
+        @Test
+        void doesNotCompleteBeforeTheDurationElapses() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+
+            scheduler.advanceBy(POINT_DURATION.minusMillis(1));
+
+            assertEquals(ExtractionState.EXTRACTING, session.state());
+            assertEquals(1, service.activeCount());
+            assertTrue(published.isEmpty());
+
+            scheduler.advanceBy(Duration.ofMillis(1));
+
+            assertEquals(ExtractionState.COMPLETED, session.state());
+        }
+
+        @Test
+        void removesSessionBeforePublishingTheEvent() {
+            List<Integer> activeCountsAtPublish = new ArrayList<>();
+            eventBus.subscribe(PlayerExtractedEvent.class,
+                    _ -> activeCountsAtPublish.add(service.activeCount()));
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(List.of(0), activeCountsAtPublish);
+        }
+
+        @Test
+        void allowsANewExtractionAfterCompleting() {
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+            assertEquals(1, service.activeCount());
+        }
+    }
+
+    @Nested
+    @DisplayName("cancel")
+    class Cancel {
+
+        @Test
+        void cancelFailsTheSessionAndPreventsCompletion() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+
+            assertTrue(service.cancel(PLAYER_ID));
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
+            assertEquals(0, service.activeCount());
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertTrue(published.isEmpty());
+        }
+
+        @Test
+        void cancelReturnsFalseWithoutAnActiveExtraction() {
+            assertFalse(service.cancel(PLAYER_ID));
+        }
+
+        @Test
+        void cancelledPlayerCanBeginAgain() {
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+            assertTrue(service.cancel(PLAYER_ID));
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
+            assertEquals(1, service.activeCount());
+        }
+
+        @Test
+        void throwsOffTheMainThread() {
+            scheduler.setMainThread(false);
+            assertThrows(IllegalStateException.class, () -> service.cancel(PLAYER_ID));
+        }
+    }
+
+    private static ExtractionPoint point(ExtractionPointId id,
+                                         List<ExtractionCondition> conditions,
+                                         ExtractionState initialState) {
+        return new ExtractionPoint(id, "Gate " + id.value(), ExtractionType.NORMAL,
+                POINT_DURATION, conditions, initialState);
+    }
+
+    private static ExtractionCondition condition(String description, boolean satisfied) {
+        return new ExtractionCondition() {
+            @Override
+            public String describe() {
+                return description;
+            }
+
+            @Override
+            public boolean isSatisfied(ExtractionContext context) {
+                return satisfied;
+            }
+        };
+    }
+
+    private static void assertFailure(Result<ExtractionSession> result, String expectedMessage) {
+        assertEquals(Optional.of(expectedMessage), result.error());
+    }
+}

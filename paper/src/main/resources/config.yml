@@ -1,0 +1,9 @@
+debug: false
+
+game:
+  max-players: 12
+  team-size: 3
+  duration-seconds: 1800
+
+extraction:
+  default-duration-seconds: 10

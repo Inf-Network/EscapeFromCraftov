@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,6 +57,13 @@ public final class InstanceWorldIndex {
   public Optional<RaidGameId> gameByWorld(String worldName) {
     Preconditions.checkNotNull(worldName, "worldName");
     return Optional.ofNullable(gamesByWorld.get(worldName));
+  }
+
+  /// Snapshot of every room with a registered world. Used during orderly
+  /// shutdown because the domain manager is intentionally independent from
+  /// Bukkit world deletion.
+  public List<RaidGameId> gameIds() {
+    return List.copyOf(worldsByGame.keySet());
   }
 
   /// Removes every trace of `gameId`; unknown ids are ignored so removal is

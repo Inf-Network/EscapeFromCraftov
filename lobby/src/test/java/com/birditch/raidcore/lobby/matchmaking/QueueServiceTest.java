@@ -14,12 +14,15 @@ import com.birditch.raidcore.api.network.MatchAssignment;
 import com.birditch.raidcore.api.network.MessageBroker;
 import com.birditch.raidcore.api.network.MessageSubscription;
 import com.birditch.raidcore.api.network.NetworkKeys;
+import com.birditch.raidcore.api.network.ProvisionRequest;
 import com.birditch.raidcore.api.network.ServerId;
 import com.birditch.raidcore.api.settings.PlayerSettingsService;
 import com.birditch.raidcore.api.settings.SettingKey;
 import com.birditch.raidcore.api.testing.ManualScheduler;
 import com.birditch.raidcore.api.testing.MutableTimeSource;
 import com.birditch.raidcore.lobby.LobbyConfig;
+import com.birditch.raidcore.lobby.LobbyDataGate;
+import com.birditch.raidcore.redis.JsonCodec;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,9 +55,12 @@ class QueueServiceTest {
   private final FakeMessageBroker broker = new FakeMessageBroker();
   private final FakePlayerGateway players = new FakePlayerGateway();
   private final FakeSettingsService settings = new FakeSettingsService();
+  private final LobbyDataGate dataGate = new LobbyDataGate();
+  private final JsonCodec codec = new JsonCodec();
   private final QueueService service = new QueueService(new QueueDeps(
       directory, assignments, broker, players, scheduler, timeSource, settings,
-      new LobbyConfig(1, 30, 60, false, MAP), silentLogger()));
+      dataGate, new LobbyConfig(1, 30, 60, false, true, 20, 5, MAP, Set.of(MAP)), codec,
+      silentLogger()));
 
   @BeforeEach
   void startService() {
@@ -74,8 +80,14 @@ class QueueServiceTest {
   }
 
   private UUID onlinePlayer() {
-    UUID playerId = UUID.randomUUID();
+    UUID playerId = readyPlayer();
     players.online.add(playerId);
+    return playerId;
+  }
+
+  private UUID readyPlayer() {
+    UUID playerId = UUID.randomUUID();
+    dataGate.markReady(playerId);
     return playerId;
   }
 
@@ -129,7 +141,7 @@ class QueueServiceTest {
     @Test
     @DisplayName("an offline player is dropped from the queue without an assignment")
     void offlinePlayerDropped() {
-      UUID playerId = UUID.randomUUID();
+      UUID playerId = readyPlayer();
       directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
       assertTrue(service.queue(playerId, MAP).isSuccess());
 
@@ -139,6 +151,15 @@ class QueueServiceTest {
       assertTrue(assignments.stored.isEmpty());
       assertTrue(players.sent.isEmpty());
       assertTrue(players.connections.isEmpty());
+    }
+
+    @Test
+    @DisplayName("a player cannot queue before PostgreSQL data is ready")
+    void rejectsPlayerDataNotReady() {
+      UUID playerId = UUID.randomUUID();
+
+      assertTrue(service.queue(playerId, MAP).error().isPresent());
+      assertEquals(0, service.queueSize());
     }
   }
 
@@ -243,7 +264,10 @@ class QueueServiceTest {
       ticks(10);
       assertEquals(1, broker.published.size());
       assertEquals(NetworkKeys.PROVISION_CHANNEL, broker.published.getFirst().channel());
-      assertEquals(SERVER.value(), broker.published.getFirst().payload());
+      ProvisionRequest request =
+          codec.fromJson(broker.published.getFirst().payload(), ProvisionRequest.class);
+      assertEquals(SERVER, request.serverId());
+      assertEquals(MAP, request.mapId());
 
       tick();
       assertEquals(2, broker.published.size());

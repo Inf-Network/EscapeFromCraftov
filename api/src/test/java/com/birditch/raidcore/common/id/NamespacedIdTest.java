@@ -13,9 +13,9 @@ class NamespacedIdTest {
 
     @Test
     void ofUsesTheDefaultRaidcoreNamespace() {
-        NamespacedId id = NamespacedId.of("medkit");
+        NamespacedId id = NamespacedId.of("healing_potion");
         assertEquals("raidcore", id.namespace());
-        assertEquals("medkit", id.key());
+        assertEquals("healing_potion", id.key());
     }
 
     @Test
@@ -60,7 +60,7 @@ class NamespacedIdTest {
 
         @Test
         void treatsBareKeyAsDefaultNamespace() {
-            assertEquals(NamespacedId.of("medkit"), NamespacedId.parse("medkit"));
+            assertEquals(NamespacedId.of("healing_potion"), NamespacedId.parse("healing_potion"));
         }
 
         @Test

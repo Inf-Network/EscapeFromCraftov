@@ -50,7 +50,7 @@ class DefaultLootServiceTest {
   class Roll {
 
     @ParameterizedTest(name = "{0} yields one stack per pool roll")
-    @ValueSource(strings = {"debug_common", "debug_military"})
+    @ValueSource(strings = {"debug_common", "debug_armory"})
     void yieldsOneStackPerPoolRoll(String tableName) {
       List<ItemInstance> result = service.roll(LootTableId.of(tableName), LootRollContext.empty());
 
@@ -58,7 +58,7 @@ class DefaultLootServiceTest {
     }
 
     @ParameterizedTest(name = "{0} stacks match pool entries and stay within quantity bounds")
-    @ValueSource(strings = {"debug_common", "debug_military"})
+    @ValueSource(strings = {"debug_common", "debug_armory"})
     void quantitiesStayWithinEntryBounds(String tableName) {
       LootTableId tableId = LootTableId.of(tableName);
       LootPool pool = tables.require(tableId).pools().getFirst();
@@ -102,7 +102,7 @@ class DefaultLootServiceTest {
     void publishesLootGeneratedEvent() {
       List<LootGeneratedEvent> published = new ArrayList<>();
       eventBus.subscribe(LootGeneratedEvent.class, published::add);
-      LootTableId tableId = LootTableId.of("debug_military");
+      LootTableId tableId = LootTableId.of("debug_armory");
 
       List<ItemInstance> result =
           service.roll(tableId, LootRollContext.forPlayer(UUID.randomUUID()));

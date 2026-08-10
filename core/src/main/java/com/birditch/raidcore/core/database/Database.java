@@ -1,13 +1,14 @@
 package com.birditch.raidcore.core.database;
 
-import java.sql.Connection;
-import java.sql.SQLException;
+import java.util.function.Function;
+import org.hibernate.Session;
 
-/// Source of pooled JDBC connections. Callers must close the returned connection
-/// (returning it to the pool); only repository IO on the injected executor may use it.
-public interface Database {
+/// Shared Hibernate ORM transaction boundary. Every callback receives a
+/// short-lived Session with an active transaction and must not retain it.
+public interface Database extends AutoCloseable {
 
-  Connection connection() throws SQLException;
+  <T> T transaction(Function<Session, T> work);
 
+  @Override
   void close();
 }

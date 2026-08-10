@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.raidcore.api.economy.Currency;
+import com.birditch.raidcore.api.economy.EconomyDirection;
 import com.birditch.raidcore.api.economy.EconomyService;
 import com.birditch.raidcore.api.economy.Money;
 import com.birditch.raidcore.api.economy.Transaction;
@@ -19,7 +20,10 @@ import com.birditch.raidcore.profile.InMemoryProfileRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -40,13 +44,20 @@ class DefaultEconomyServiceTest {
     private final ManualScheduler scheduler = new ManualScheduler();
     private final DefaultProfileService profiles = new DefaultProfileService(
             new InMemoryProfileRepository(), timeSource, Logger.getLogger("DefaultEconomyServiceTest"));
+    private final InMemoryEconomyRepository repository = new InMemoryEconomyRepository();
     private final DefaultEconomyService economy =
-            new DefaultEconomyService(profiles, scheduler, timeSource);
+            new DefaultEconomyService(profiles, scheduler, timeSource, repository);
 
     private UUID loadedPlayer() {
         UUID playerId = UUID.randomUUID();
         profiles.load(playerId, "Steve").join();
+        repository.balances.put(playerId, profiles.require(playerId).balance());
         return playerId;
+    }
+
+    private void setBalance(UUID playerId, Money balance) {
+        profiles.require(playerId).setBalance(balance);
+        repository.balances.put(playerId, balance);
     }
 
     @Nested
@@ -57,7 +68,7 @@ class DefaultEconomyServiceTest {
         @DisplayName("returns the cached balance for a loaded profile")
         void returnsCachedBalance() {
             UUID playerId = loadedPlayer();
-            profiles.require(playerId).setBalance(Money.of(750));
+            setBalance(playerId, Money.of(750));
 
             assertEquals(Optional.of(Money.of(750)), economy.balance(playerId));
         }
@@ -79,12 +90,14 @@ class DefaultEconomyServiceTest {
             UUID playerId = loadedPlayer();
 
             Result<Transaction> result =
-                    economy.deposit(playerId, Money.of(2_500), TransactionType.RAID_REWARD, "Raid reward");
+                    economy.deposit(playerId, Money.of(2_500), TransactionType.RAID_REWARD,
+                            "Raid reward").join();
 
             assertTrue(result.isSuccess());
             Transaction transaction = result.value().orElseThrow();
             assertEquals(playerId, transaction.playerId());
             assertEquals(TransactionType.RAID_REWARD, transaction.type());
+            assertEquals(EconomyDirection.CREDIT, transaction.direction());
             assertEquals(Currency.COINS, transaction.currency());
             assertEquals(Money.of(2_500), transaction.amount());
             assertEquals(Money.of(2_500), transaction.balanceAfter());
@@ -98,9 +111,9 @@ class DefaultEconomyServiceTest {
             UUID playerId = loadedPlayer();
 
             Transaction first = economy.deposit(playerId, Money.of(1_000), TransactionType.ADMIN, "first")
-                    .value().orElseThrow();
+                    .join().value().orElseThrow();
             Transaction second = economy.deposit(playerId, Money.of(500), TransactionType.ADMIN, "second")
-                    .value().orElseThrow();
+                    .join().value().orElseThrow();
 
             assertEquals(Money.of(1_500), second.balanceAfter());
             assertEquals(Money.of(1_500), profiles.require(playerId).balance());
@@ -114,7 +127,7 @@ class DefaultEconomyServiceTest {
             timeSource.advance(Duration.ofMinutes(5));
 
             Transaction transaction = economy.deposit(playerId, Money.of(1), TransactionType.ADMIN, "timed")
-                    .value().orElseThrow();
+                    .join().value().orElseThrow();
 
             assertEquals(Instant.ofEpochMilli(1_000L + Duration.ofMinutes(5).toMillis()),
                     transaction.timestamp());
@@ -124,7 +137,8 @@ class DefaultEconomyServiceTest {
         @DisplayName("fails when the profile is not loaded")
         void failsWhenNotLoaded() {
             Result<Transaction> result =
-                    economy.deposit(UUID.randomUUID(), Money.of(100), TransactionType.ADMIN, "orphan");
+                    economy.deposit(UUID.randomUUID(), Money.of(100), TransactionType.ADMIN,
+                            "orphan").join();
 
             assertFalse(result.isSuccess());
             assertEquals(Optional.of("Profile not loaded"), result.error());
@@ -139,16 +153,18 @@ class DefaultEconomyServiceTest {
         @DisplayName("subtracts from the balance and records the transaction")
         void subtractsFromBalance() {
             UUID playerId = loadedPlayer();
-            profiles.require(playerId).setBalance(Money.of(5_000));
+            setBalance(playerId, Money.of(5_000));
 
             Result<Transaction> result =
-                    economy.withdraw(playerId, Money.of(2_000), TransactionType.SHOP_BUY, "Shop purchase");
+                    economy.withdraw(playerId, Money.of(2_000), TransactionType.SHOP_BUY,
+                            "Shop purchase").join();
 
             assertTrue(result.isSuccess());
             Transaction transaction = result.value().orElseThrow();
             assertEquals(Money.of(2_000), transaction.amount());
             assertEquals(Money.of(3_000), transaction.balanceAfter());
             assertEquals(TransactionType.SHOP_BUY, transaction.type());
+            assertEquals(EconomyDirection.DEBIT, transaction.direction());
             assertEquals(Money.of(3_000), profiles.require(playerId).balance());
         }
 
@@ -156,10 +172,11 @@ class DefaultEconomyServiceTest {
         @DisplayName("allows withdrawing the exact balance down to zero")
         void allowsExactBalance() {
             UUID playerId = loadedPlayer();
-            profiles.require(playerId).setBalance(Money.of(300));
+            setBalance(playerId, Money.of(300));
 
             Result<Transaction> result =
-                    economy.withdraw(playerId, Money.of(300), TransactionType.MARKET_BUY, "all in");
+                    economy.withdraw(playerId, Money.of(300), TransactionType.MARKET_BUY,
+                            "all in").join();
 
             assertTrue(result.isSuccess());
             assertTrue(profiles.require(playerId).balance().isZero());
@@ -169,10 +186,11 @@ class DefaultEconomyServiceTest {
         @DisplayName("fails on insufficient funds and leaves the balance untouched")
         void failsOnInsufficientFunds() {
             UUID playerId = loadedPlayer();
-            profiles.require(playerId).setBalance(Money.of(100));
+            setBalance(playerId, Money.of(100));
 
             Result<Transaction> result =
-                    economy.withdraw(playerId, Money.of(101), TransactionType.SHOP_BUY, "too much");
+                    economy.withdraw(playerId, Money.of(101), TransactionType.SHOP_BUY,
+                            "too much").join();
 
             assertFalse(result.isSuccess());
             assertEquals(Optional.of("Insufficient funds"), result.error());
@@ -183,7 +201,8 @@ class DefaultEconomyServiceTest {
         @DisplayName("fails when the profile is not loaded")
         void failsWhenNotLoaded() {
             Result<Transaction> result =
-                    economy.withdraw(UUID.randomUUID(), Money.of(1), TransactionType.ADMIN, "orphan");
+                    economy.withdraw(UUID.randomUUID(), Money.of(1), TransactionType.ADMIN,
+                            "orphan").join();
 
             assertFalse(result.isSuccess());
             assertEquals(Optional.of("Profile not loaded"), result.error());
@@ -217,5 +236,48 @@ class DefaultEconomyServiceTest {
                         service.deposit(playerId, Money.of(1), TransactionType.ADMIN, "deposit")),
                 Arguments.of("withdraw", (Consumer<EconomyService>) service ->
                         service.withdraw(playerId, Money.of(1), TransactionType.ADMIN, "withdraw")));
+    }
+
+    @Test
+    @DisplayName("reusing an id returns the original transaction without applying twice")
+    void idempotentTransactionId() {
+        UUID playerId = loadedPlayer();
+        UUID transactionId = UUID.randomUUID();
+
+        Transaction first = economy.deposit(transactionId, playerId, Money.of(500),
+                TransactionType.ADMIN, "grant").join().value().orElseThrow();
+        Transaction repeated = economy.deposit(transactionId, playerId, Money.of(500),
+                TransactionType.ADMIN, "grant").join().value().orElseThrow();
+
+        assertEquals(first, repeated);
+        assertEquals(Money.of(500), economy.balance(playerId).orElseThrow());
+        assertEquals(1, repository.transactions.size());
+    }
+
+    private static final class InMemoryEconomyRepository implements EconomyRepository {
+        private final Map<UUID, Money> balances = new LinkedHashMap<>();
+        private final Map<UUID, Transaction> transactions = new LinkedHashMap<>();
+
+        @Override
+        public CompletableFuture<Result<Transaction>> apply(UUID transactionId, UUID playerId,
+                EconomyDirection direction, Money amount, TransactionType type,
+                String description, Instant timestamp) {
+            Transaction existing = transactions.get(transactionId);
+            if (existing != null) return CompletableFuture.completedFuture(Result.ok(existing));
+            Money current = balances.get(playerId);
+            if (current == null) {
+                return CompletableFuture.completedFuture(Result.fail("Profile not found"));
+            }
+            if (direction == EconomyDirection.DEBIT && !current.atLeast(amount)) {
+                return CompletableFuture.completedFuture(Result.fail("Insufficient funds"));
+            }
+            Money balanceAfter = direction == EconomyDirection.CREDIT
+                    ? current.plus(amount) : current.minus(amount);
+            Transaction transaction = new Transaction(transactionId, playerId, type, direction,
+                    Currency.COINS, amount, balanceAfter, timestamp, description);
+            balances.put(playerId, balanceAfter);
+            transactions.put(transactionId, transaction);
+            return CompletableFuture.completedFuture(Result.ok(transaction));
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.birditch.raidcore.lobby;
 
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.api.matchmaking.MatchmakingService;
+import com.birditch.raidcore.api.matchmaking.MatchmakingFailures;
 import com.birditch.raidcore.bukkit.MapNames;
 import com.birditch.raidcore.bukkit.Messages;
 import com.birditch.raidcore.common.check.Preconditions;
@@ -20,12 +21,15 @@ public final class PlayAction {
     Preconditions.checkNotNull(messages, "messages");
     Preconditions.checkNotNull(player, "player");
     Preconditions.checkNotNull(mapId, "mapId");
-    boolean queued = matchmaking.queue(player.getUniqueId(), mapId).isSuccess();
-    if (queued) {
+    var result = matchmaking.queue(player.getUniqueId(), mapId);
+    if (result.isSuccess()) {
       player.sendMessage(messages.raw("queue.joined",
           Placeholder.component("map", MapNames.display(messages, mapId))));
-    } else {
-      player.sendMessage(messages.raw("queue.already-queued"));
+      return;
     }
+    String messageKey = result.error().filter(MatchmakingFailures.PLAYER_DATA_NOT_READY::equals)
+        .map(_ -> "queue.data-loading")
+        .orElse("queue.already-queued");
+    player.sendMessage(messages.raw(messageKey));
   }
 }

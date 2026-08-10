@@ -14,7 +14,16 @@ import java.util.logging.Logger;
 public record GameManagerDeps(SessionService sessions, EventBus eventBus, RaidScheduler scheduler,
                               RandomProvider random, TimeSource timeSource,
                               RaidCoreConfig.GameSettings settings,
-                              RaidCoreConfig.ExtractionSettings extraction, Logger logger) {
+                              RaidCoreConfig.ExtractionSettings extraction,
+                              RaidMapProvider maps, Logger logger) {
+
+    public GameManagerDeps(SessionService sessions, EventBus eventBus, RaidScheduler scheduler,
+                           RandomProvider random, TimeSource timeSource,
+                           RaidCoreConfig.GameSettings settings,
+                           RaidCoreConfig.ExtractionSettings extraction, Logger logger) {
+        this(sessions, eventBus, scheduler, random, timeSource, settings, extraction,
+                RaidMapProvider.EMPTY, logger);
+    }
 
     public GameManagerDeps {
         Preconditions.checkNotNull(sessions, "sessions");
@@ -24,6 +33,7 @@ public record GameManagerDeps(SessionService sessions, EventBus eventBus, RaidSc
         Preconditions.checkNotNull(timeSource, "timeSource");
         Preconditions.checkNotNull(settings, "settings");
         Preconditions.checkNotNull(extraction, "extraction");
+        Preconditions.checkNotNull(maps, "maps");
         Preconditions.checkNotNull(logger, "logger");
     }
 }

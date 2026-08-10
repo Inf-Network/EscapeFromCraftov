@@ -12,7 +12,6 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jspecify.annotations.Nullable;
-import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPubSub;
 
 /// Redis pub/sub broker. Each subscription runs a dedicated virtual thread that
@@ -39,8 +38,8 @@ public final class JedisMessageBroker implements MessageBroker {
     Preconditions.checkNotNull(payload, "payload");
     CompletableFuture<Void> future = new CompletableFuture<>();
     Thread.startVirtualThread(() -> {
-      try (Jedis jedis = redis.resource()) {
-        jedis.publish(channel, payload);
+      try {
+        redis.client().publish(channel, payload);
         future.complete(null);
       } catch (RuntimeException e) {
         future.completeExceptionally(e);
@@ -108,8 +107,8 @@ public final class JedisMessageBroker implements MessageBroker {
     /// One blocking `SUBSCRIBE` pass; returns normally only after an unsubscribe.
     /// A lost connection is logged and retried after [#RETRY_DELAY_MILLIS].
     private void listenOnce() {
-      try (Jedis jedis = redis.resource()) {
-        jedis.subscribe(pubSub, channel);
+      try {
+        redis.client().subscribe(pubSub, channel);
         active.set(false);
       } catch (RuntimeException e) {
         if (!active.get()) {

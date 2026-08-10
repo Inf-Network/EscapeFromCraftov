@@ -1,6 +1,7 @@
 package com.birditch.raidcore.lobby.matchmaking;
 
 import com.birditch.raidcore.api.game.RaidGameId;
+import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.api.game.RaidGameState;
 import com.birditch.raidcore.api.network.GameServerSnapshot;
 import com.birditch.raidcore.api.network.InstanceSnapshot;
@@ -22,14 +23,19 @@ public final class InstancePicker {
   private InstancePicker() {}
 
   public static Optional<Candidate> pick(
-      List<GameServerSnapshot> servers, Map<String, Integer> reservedByInstance) {
+      List<GameServerSnapshot> servers,
+      RaidMapId requestedMap,
+      Map<String, Integer> reservedByInstance) {
     Preconditions.checkNotNull(servers, "servers");
+    Preconditions.checkNotNull(requestedMap, "requestedMap");
     Preconditions.checkNotNull(reservedByInstance, "reservedByInstance");
     Candidate best = null;
     int bestLoad = -1;
     for (GameServerSnapshot server : servers) {
       for (InstanceSnapshot instance : server.instances()) {
-        if (instance.state() != RaidGameState.WAITING || !instance.worldReady()) {
+        if (!instance.mapId().equals(requestedMap)
+            || instance.state() != RaidGameState.WAITING
+            || !instance.worldReady()) {
           continue;
         }
         int load = instance.playerCount() + reservedByInstance.getOrDefault(

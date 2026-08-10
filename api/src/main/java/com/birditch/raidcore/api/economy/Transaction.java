@@ -9,6 +9,7 @@ public record Transaction(
         UUID transactionId,
         UUID playerId,
         TransactionType type,
+        EconomyDirection direction,
         Currency currency,
         Money amount,
         Money balanceAfter,
@@ -19,6 +20,7 @@ public record Transaction(
         Preconditions.checkNotNull(transactionId, "transactionId");
         Preconditions.checkNotNull(playerId, "playerId");
         Preconditions.checkNotNull(type, "type");
+        Preconditions.checkNotNull(direction, "direction");
         Preconditions.checkNotNull(currency, "currency");
         Preconditions.checkNotNull(amount, "amount");
         Preconditions.checkNotNull(balanceAfter, "balanceAfter");

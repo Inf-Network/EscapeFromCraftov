@@ -1,5 +1,6 @@
 package com.birditch.raidcore.game.plugin;
 
+import com.birditch.raidcore.bukkit.ServerRoleGuard;
 import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
@@ -13,6 +14,14 @@ public final class RaidGamePlugin extends JavaPlugin {
 
   @Override
   public void onEnable() {
+    try {
+      ServerRoleGuard.requireAbsent(this, "RaidCoreLobby");
+    } catch (IllegalStateException e) {
+      getLogger().log(Level.SEVERE,
+          "检测到 RaidCoreLobby：Game 与 Lobby 必须部署在不同的 Paper 服务端，本插件拒绝启动。", e);
+      getServer().getPluginManager().disablePlugin(this);
+      return;
+    }
     GameApplication app = new GameApplication(this);
     application = app;
     try {

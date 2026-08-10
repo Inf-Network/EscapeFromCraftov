@@ -142,6 +142,14 @@ class RaidGameManagerTest {
         }
 
         @Test
+        void failsUntilProfileIsReady() {
+            RaidGame game = createGame();
+            sessions.createLoading(ALICE, "Alice");
+
+            assertFailure(manager.join(game.id(), ALICE), GameFailures.PROFILE_NOT_READY);
+        }
+
+        @Test
         void failsWhenAlreadyInAGame() {
             RaidGame first = createGame();
             RaidGame second = createGame();

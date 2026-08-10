@@ -28,7 +28,8 @@ public final class ExtractionModule implements RaidModule {
         Preconditions.checkNotNull(context, "context");
         RaidGameService games = context.services().require(RaidGameService.class);
         DefaultExtractionService service = new DefaultExtractionService(
-                games, context.scheduler(), context.eventBus(), new SystemTimeSource());
+                games, context.scheduler(), context.eventBus(), new SystemTimeSource(),
+                context.logger());
         context.services().register(ExtractionService.class, service);
         subscription = context.eventBus().register(service);
     }

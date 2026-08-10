@@ -9,7 +9,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import redis.clients.jedis.Jedis;
 import redis.clients.jedis.params.SetParams;
 
 /// Stores pending match assignments keyed by player. Consumption uses `GETDEL`,
@@ -32,22 +31,16 @@ public final class RedisAssignmentStore implements AssignmentStore {
     Preconditions.checkNotNull(assignment, "assignment");
     Preconditions.checkNotNull(ttl, "ttl");
     Preconditions.checkArgument(ttl.toMillis() > 0, "ttl must be positive");
-    return CompletableFuture.runAsync(() -> {
-      try (Jedis jedis = redis.resource()) {
-        jedis.set(NetworkKeys.pendingKey(assignment.playerId()), codec.toJson(assignment),
-            SetParams.setParams().px(ttl.toMillis()));
-      }
-    }, ioExecutor);
+    return CompletableFuture.runAsync(() -> redis.client().set(
+        NetworkKeys.pendingKey(assignment.playerId()), codec.toJson(assignment),
+        SetParams.setParams().px(ttl.toMillis())), ioExecutor);
   }
 
   @Override
   public CompletableFuture<Optional<MatchAssignment>> consumePending(UUID playerId) {
     Preconditions.checkNotNull(playerId, "playerId");
     return CompletableFuture.supplyAsync(() -> {
-      String json;
-      try (Jedis jedis = redis.resource()) {
-        json = jedis.getDel(NetworkKeys.pendingKey(playerId));
-      }
+      String json = redis.client().getDel(NetworkKeys.pendingKey(playerId));
       return json == null
           ? Optional.empty()
           : Optional.of(codec.fromJson(json, MatchAssignment.class));

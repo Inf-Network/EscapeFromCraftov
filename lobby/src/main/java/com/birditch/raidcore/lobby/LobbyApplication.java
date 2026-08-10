@@ -2,6 +2,7 @@ package com.birditch.raidcore.lobby;
 
 import com.birditch.raidcore.api.RaidPermissions;
 import com.birditch.raidcore.api.network.MessageBroker;
+import com.birditch.raidcore.api.profile.ProfileService;
 import com.birditch.raidcore.bukkit.BungeeConnector;
 import com.birditch.raidcore.bukkit.CoreConfigMapper;
 import com.birditch.raidcore.bukkit.Messages;
@@ -11,6 +12,10 @@ import com.birditch.raidcore.bukkit.ShutdownSteps;
 import com.birditch.raidcore.bukkit.YamlResources;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.common.time.SystemTimeSource;
+import com.birditch.raidcore.core.database.Database;
+import com.birditch.raidcore.core.database.DatabaseConfig;
+import com.birditch.raidcore.core.database.HibernateDatabase;
+import com.birditch.raidcore.cosmetics.HibernateCosmeticsService;
 import com.birditch.raidcore.lobby.command.LobbyCommand;
 import com.birditch.raidcore.lobby.command.LobbyCommandContext;
 import com.birditch.raidcore.lobby.listener.ConnectionDeps;
@@ -18,31 +23,38 @@ import com.birditch.raidcore.lobby.listener.LobbyConnectionListener;
 import com.birditch.raidcore.lobby.listener.LobbyProtectionListener;
 import com.birditch.raidcore.lobby.matchmaking.QueueDeps;
 import com.birditch.raidcore.lobby.matchmaking.QueueService;
-import com.birditch.raidcore.lobby.menu.LobbyMenus;
+import com.birditch.raidcore.lobby.menu.LobbyMenuController;
 import com.birditch.raidcore.lobby.menu.MenuDeps;
-import com.birditch.raidcore.lobby.menu.MenuListener;
+import com.birditch.raidcore.lobby.hud.LobbySidebarService;
 import com.birditch.raidcore.redis.JedisMessageBroker;
 import com.birditch.raidcore.redis.JsonCodec;
 import com.birditch.raidcore.redis.RedisAssignmentStore;
 import com.birditch.raidcore.redis.RedisConfig;
 import com.birditch.raidcore.redis.RedisConnector;
-import com.birditch.raidcore.redis.RedisCosmeticsService;
 import com.birditch.raidcore.redis.RedisInstanceDirectory;
-import com.birditch.raidcore.redis.RedisPlayerSettingsService;
+import com.birditch.raidcore.profile.DefaultProfileService;
+import com.birditch.raidcore.profile.HibernateProfileRepository;
+import com.birditch.raidcore.inventory.HibernatePlayerInventoryService;
+import com.birditch.raidcore.item.DefaultItems;
+import com.birditch.raidcore.item.SimpleItemRegistry;
+import com.birditch.raidcore.api.item.ItemRegistry;
+import com.birditch.raidcore.api.inventory.PlayerInventoryService;
+import com.birditch.raidcore.bukkit.RaidItemStacks;
+import com.birditch.raidcore.bukkit.TrMenuBridge;
+import com.birditch.raidcore.settings.HibernatePlayerSettingsService;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.permissions.Permission;
 import org.bukkit.permissions.PermissionDefault;
@@ -50,8 +62,8 @@ import org.bukkit.plugin.PluginManager;
 import org.jspecify.annotations.Nullable;
 
 /// Boots and tears down the lobby runtime: configs, Redis infrastructure,
-/// proxy connector, matchmaking queue, listeners and commands. No domain
-/// modules and no SQL — the lobby is a thin shell over the Redis fabric.
+/// proxy connector, PostgreSQL player data, matchmaking queue, listeners and
+/// commands. Redis carries only transient cross-server coordination.
 ///
 /// A dead Redis at boot never aborts startup: the probe logs SEVERE, the
 /// plugin stays enabled and every Redis-backed service recovers on its own
@@ -65,10 +77,14 @@ public final class LobbyApplication {
   private final Logger logger;
 
   private @Nullable ExecutorService ioExecutor;
+  private @Nullable Database database;
+  private @Nullable ProfileService profileService;
   private @Nullable RedisConnector redisConnector;
   private @Nullable MessageBroker broker;
   private @Nullable QueueService queueService;
   private @Nullable BungeeConnector bungeeConnector;
+  private @Nullable LobbyMenuController menus;
+  private @Nullable LobbySidebarService sidebar;
 
   public LobbyApplication(RaidLobbyPlugin plugin) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
@@ -82,10 +98,40 @@ public final class LobbyApplication {
     BootConfig configs = loadConfigs();
     LobbyConfig config = configs.lobby();
     Messages messages = configs.messages();
+    TrMenuBridge trMenu = new TrMenuBridge(plugin);
+    trMenu.requireAvailable();
+    boolean installed = trMenu.installDefault(
+        "trmenu/raidcore_lobby_main.yml", "raidcore_lobby_main.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/raidcore_lobby_settings.yml", "raidcore_lobby_settings.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/raidcore_lobby_cosmetics.yml", "raidcore_lobby_cosmetics.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/raidcore_lobby_warehouse.yml", "raidcore_lobby_warehouse.yml");
+    if (installed) trMenu.reloadMenus();
+    trMenu.requireMenusLoaded("raidcore_lobby_main", "raidcore_lobby_settings",
+        "raidcore_lobby_cosmetics", "raidcore_lobby_warehouse");
+    logger.info("Menu provider: " + trMenu.status()
+        + " (all RaidCore inventory menus are rendered by TrMenu)");
     PaperRaidScheduler scheduler = new PaperRaidScheduler(plugin);
     SystemTimeSource timeSource = new SystemTimeSource();
     ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     ioExecutor = executor;
+    Database db = createDatabase(configs.database());
+    database = db;
+    HibernateProfileRepository profileRepository = new HibernateProfileRepository(db, executor);
+    ProfileService profiles =
+        new DefaultProfileService(profileRepository, timeSource, logger);
+    profileService = profiles;
+    HibernatePlayerSettingsService settings =
+        new HibernatePlayerSettingsService(db, executor);
+    HibernateCosmeticsService cosmetics =
+        new HibernateCosmeticsService(db, executor, LobbyCosmetics.catalog());
+    SimpleItemRegistry itemRegistry = new SimpleItemRegistry();
+    DefaultItems.registerAll(itemRegistry);
+    RaidItemStacks itemStacks = new RaidItemStacks(itemRegistry);
+    PlayerInventoryService inventories = new HibernatePlayerInventoryService(db, executor);
+    LobbyDataGate dataGate = new LobbyDataGate();
     RedisConnector redis = new RedisConnector(configs.redis());
     redisConnector = redis;
     JsonCodec codec = new JsonCodec();
@@ -93,24 +139,29 @@ public final class LobbyApplication {
     RedisAssignmentStore assignments = new RedisAssignmentStore(redis, codec, executor);
     JedisMessageBroker messageBroker = new JedisMessageBroker(redis, logger);
     broker = messageBroker;
-    RedisPlayerSettingsService settings = new RedisPlayerSettingsService(redis, executor);
-    RedisCosmeticsService cosmetics =
-        new RedisCosmeticsService(redis, executor, LobbyCosmetics.catalog());
     BungeeConnector bungee = new BungeeConnector(plugin);
     bungeeConnector = bungee;
     QueueService queue = new QueueService(new QueueDeps(directory, assignments, messageBroker,
         new BukkitPlayerGateway(plugin, bungee, messages), scheduler, timeSource, settings,
-        config, logger));
+        dataGate, config, codec, logger));
     queueService = queue;
     queue.start();
-    ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, settings,
-        cosmetics, queue, mainMenuOpener(messages), logger);
     MenuDeps menuDeps =
-        new MenuDeps(settings, cosmetics, queue, scheduler, config, messages, plugin, logger);
-    registerListeners(connectionDeps, menuDeps, config);
-    registerPlayPermission();
-    registerCommands(new LobbyCommandContext(plugin, queue, messages, config));
-    logSummary(config, configs.redis(), directory);
+        new MenuDeps(settings, cosmetics, inventories, itemStacks, queue, scheduler, config,
+            dataGate, messages, plugin, logger);
+    LobbyMenuController menuController = new LobbyMenuController(menuDeps, trMenu);
+    menus = menuController;
+    ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, profiles,
+        settings, cosmetics, inventories, queue, dataGate, menuController::openMain, logger);
+    registerListeners(connectionDeps, menuController, config);
+    LobbySidebarService sidebarService = new LobbySidebarService(plugin, profiles, inventories,
+        queue, dataGate, scheduler, messages, config, logger);
+    sidebarService.start();
+    sidebar = sidebarService;
+    registerPermissions();
+    registerCommands(new LobbyCommandContext(
+        plugin, queue, directory, messages, config, dataGate, menuController));
+    logSummary(config, configs.database(), configs.redis(), directory);
   }
 
   /// Guarded teardown; each step failure is logged and the remaining steps run.
@@ -121,6 +172,19 @@ public final class LobbyApplication {
         queueService.stop();
       }
     });
+    steps.run("stop dynamic Lobby Sidebar", () -> {
+      if (sidebar != null) {
+        sidebar.close();
+        sidebar = null;
+      }
+    });
+    steps.run("close TrMenu lobby controller", () -> {
+      if (menus != null) {
+        menus.close();
+        menus = null;
+      }
+    });
+    steps.run("save profiles", this::saveAllProfiles);
     steps.run("unregister proxy channel", () -> {
       if (bungeeConnector != null) {
         bungeeConnector.unregister();
@@ -140,38 +204,68 @@ public final class LobbyApplication {
     if (executor != null) {
       steps.shutdownExecutor("shut down IO executor", executor);
     }
+    steps.run("close database", () -> {
+      if (database != null) {
+        database.close();
+      }
+    });
     steps.run("unregister listeners", () -> HandlerList.unregisterAll(plugin));
     steps.run("cancel scheduled tasks", () -> Bukkit.getScheduler().cancelTasks(plugin));
     logger.info("RaidCoreLobby 已卸载。");
   }
 
   private BootConfig loadConfigs() {
-    LobbyConfig config = LobbyConfigMapper.read(YamlResources.loadOrSaveDefault(plugin, "config.yml"));
+    var configYaml = YamlResources.loadMainConfig(
+        plugin, Map.of("database", "database.yml", "redis", "redis.yml"));
+    LobbyConfig config = LobbyConfigMapper.read(configYaml);
     config.validate();
-    RedisConfig redisConfig = RedisConfigMapper.read(YamlResources.loadOrSaveDefault(plugin, "redis.yml"));
+    DatabaseConfig databaseConfig = CoreConfigMapper.readDatabaseConfig(configYaml);
+    databaseConfig.validate();
+    RedisConfig redisConfig = RedisConfigMapper.read(configYaml);
     redisConfig.validate();
     Messages messages =
         new Messages(CoreConfigMapper.readMessages(YamlResources.loadOrSaveDefault(plugin, "messages.yml")));
-    return new BootConfig(config, redisConfig, messages);
+    return new BootConfig(config, databaseConfig, redisConfig, messages);
   }
 
-  private Consumer<Player> mainMenuOpener(Messages messages) {
-    return player -> player.openInventory(LobbyMenus.MainMenu.build(messages));
+  private Database createDatabase(DatabaseConfig databaseConfig) {
+    try {
+      return new HibernateDatabase(databaseConfig);
+    } catch (RuntimeException e) {
+      logger.severe(() -> "无法连接 PostgreSQL 数据库("
+          + databaseConfig.host() + ":" + databaseConfig.port()
+          + "/" + databaseConfig.database() + ")。Lobby 与长期玩家数据强依赖 PostgreSQL，本次启动已中止。");
+      throw e;
+    }
   }
 
-  private void registerListeners(ConnectionDeps connectionDeps, MenuDeps menuDeps,
+  private void saveAllProfiles() throws Exception {
+    ProfileService profiles = profileService;
+    if (profiles != null) {
+      profiles.saveAll().get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  private void registerListeners(ConnectionDeps connectionDeps,
+      LobbyMenuController menuController,
       LobbyConfig config) {
     PluginManager manager = plugin.getServer().getPluginManager();
     manager.registerEvents(new LobbyConnectionListener(connectionDeps), plugin);
     manager.registerEvents(new LobbyProtectionListener(config), plugin);
-    manager.registerEvents(new MenuListener(menuDeps), plugin);
+    manager.registerEvents(menuController, plugin);
   }
 
-  private void registerPlayPermission() {
+  private void registerPermissions() {
     PluginManager manager = plugin.getServer().getPluginManager();
-    if (manager.getPermission(PLAY_PERMISSION) == null) {
-      manager.addPermission(new Permission(
-          PLAY_PERMISSION, "Allows queueing for raids from the lobby.", PermissionDefault.TRUE));
+    addPermission(manager, new Permission(
+        PLAY_PERMISSION, "Allows queueing for raids from the lobby.", PermissionDefault.TRUE));
+    addPermission(manager, new Permission(
+        RaidPermissions.ADMIN, "Bypasses lobby protection.", PermissionDefault.OP));
+  }
+
+  private static void addPermission(PluginManager manager, Permission permission) {
+    if (manager.getPermission(permission.getName()) == null) {
+      manager.addPermission(permission);
     }
   }
 
@@ -189,7 +283,8 @@ public final class LobbyApplication {
     logger.info("========================================");
   }
 
-  private void logSummary(LobbyConfig config, RedisConfig redisConfig,
+  private void logSummary(LobbyConfig config, DatabaseConfig databaseConfig,
+      RedisConfig redisConfig,
       RedisInstanceDirectory directory) {
     boolean redisUp = probeRedis(directory, redisConfig);
     logger.info(() -> "RaidCoreLobby v" + plugin.getPluginMeta().getVersion()
@@ -197,6 +292,8 @@ public final class LobbyApplication {
         + "(Java " + Runtime.version().feature() + ")");
     logger.info(() -> "Redis:" + redisConfig.host() + ":" + redisConfig.port()
         + (redisUp ? " 连接正常" : " 连接失败"));
+    logger.info(() -> "PostgreSQL:" + databaseConfig.host() + ":" + databaseConfig.port()
+        + "/" + databaseConfig.database() + " 连接正常");
     logger.info(() -> "匹配轮询:" + config.queueTickSeconds()
         + " 秒 / 装扮:" + LobbyCosmetics.catalog().size() + " 款");
     logger.info("RaidCoreLobby 启动完成。");
@@ -223,5 +320,6 @@ public final class LobbyApplication {
         + redisConfig.port() + ")。大厅保持运行,但匹配已暂停;Redis 恢复后自动继续。", cause);
   }
 
-  private record BootConfig(LobbyConfig lobby, RedisConfig redis, Messages messages) {}
+  private record BootConfig(
+      LobbyConfig lobby, DatabaseConfig database, RedisConfig redis, Messages messages) {}
 }

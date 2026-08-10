@@ -14,6 +14,7 @@ public record MatchAssignment(UUID playerId, ServerId serverId, String proxyName
         Preconditions.checkNotNull(playerId, "playerId");
         Preconditions.checkNotNull(serverId, "serverId");
         Preconditions.checkNotNull(proxyName, "proxyName");
+        Preconditions.checkArgument(!proxyName.isBlank(), "proxyName must not be blank");
         Preconditions.checkNotNull(gameId, "gameId");
         Preconditions.checkNotNull(mapId, "mapId");
     }

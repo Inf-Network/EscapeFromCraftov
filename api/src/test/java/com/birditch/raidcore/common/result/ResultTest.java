@@ -29,7 +29,7 @@ class ResultTest {
         @Test
         void okYieldsSuccessRecordExposingTheValue() {
             Result<String> result = Result.ok("loot");
-            Result.Success<String> success = assertInstanceOf(Result.Success.class, result);
+            Result.Success<?> success = assertInstanceOf(Result.Success.class, result);
             assertEquals("loot", success.result());
         }
 

@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ItemIdTest {
 
     @ParameterizedTest
-    @ValueSource(strings = {"a", "ammo_556", "old_phone", "x9", "0"})
+    @ValueSource(strings = {"a", "iron_sword", "healing_potion", "x9", "0"})
     void acceptsLowercaseDigitsAndUnderscore(String value) {
         assertEquals(value, ItemId.of(value).value());
     }
@@ -28,6 +28,6 @@ class ItemIdTest {
 
     @Test
     void ofEqualsCanonicalConstructor() {
-        assertEquals(new ItemId("medkit"), ItemId.of("medkit"));
+        assertEquals(new ItemId("healing_potion"), ItemId.of("healing_potion"));
     }
 }

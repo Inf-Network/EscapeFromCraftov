@@ -11,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -38,10 +40,14 @@ import org.bukkit.entity.Player;
 public final class WorldService {
 
   private static final String WORLD_PREFIX = "raid_";
+  private static final String EDITOR_SOURCE_PREFIX = "raid_source_";
+  private static final String INSTANCE_MARKER_FILE = ".raidcore-instance";
+  private static final String INSTANCE_MARKER_HEADER = "raidcore-instance-v1";
   private static final String UID_FILE = "uid.dat";
   private static final String SESSION_LOCK_FILE = "session.lock";
 
   private final WorldServiceDeps deps;
+  private final Path worldContainer;
   /// In-flight creations by game id; entries are removed when the creation
   /// future settles so [#destroyInstanceWorld] can chain after any pending
   /// template copy instead of deleting a directory still being written to.
@@ -49,24 +55,28 @@ public final class WorldService {
 
   public WorldService(WorldServiceDeps deps) {
     this.deps = Preconditions.checkNotNull(deps, "deps");
+    // Capture the Bukkit-owned path while wiring on the main thread. Async
+    // cleanup and template copying then use only this immutable NIO value.
+    this.worldContainer = deps.plugin().getServer().getWorldContainer().toPath()
+        .toAbsolutePath().normalize();
   }
 
   /// Creates the instance world for `gameId`. When
   /// `<templateRoot>/<mapId>` exists it is copied into the server's world
   /// container (minus `uid.dat` and `session.lock`, so the copy loads as an
-  /// independent world); otherwise a flat fallback world is created and a
-  /// WARNING is logged. The future fails when the template copy or world
-  /// creation fails.
+  /// independent world). A missing template fails production creation; the
+  /// flat fallback is available only when explicitly enabled for development.
   public CompletableFuture<World> createInstanceWorld(RaidGameId gameId, RaidMapId mapId) {
     Preconditions.checkNotNull(gameId, "gameId");
     Preconditions.checkNotNull(mapId, "mapId");
     String worldName = WORLD_PREFIX + gameId.value();
     Path worldDir = worldDirectory(worldName);
-    Path templateDir = deps.templateRoot().resolve(mapId.value());
+    Path templateDir = templateDirectory(mapId);
     CompletableFuture<World> future = new CompletableFuture<>();
     pendingCreations.put(gameId, future);
     future.whenComplete((_, _) -> pendingCreations.remove(gameId, future));
-    CompletableFuture.supplyAsync(() -> copyTemplate(templateDir, worldDir), deps.ioExecutor())
+    CompletableFuture.supplyAsync(
+            () -> copyTemplate(templateDir, worldDir, gameId, mapId), deps.ioExecutor())
         .whenComplete(
             (copied, error) ->
                 deps.scheduler()
@@ -77,12 +87,54 @@ public final class WorldService {
                             return;
                           }
                           try {
-                            future.complete(loadWorld(worldName, mapId, copied));
+                            future.complete(loadWorld(worldName, gameId, mapId, copied));
                           } catch (RuntimeException e) {
                             future.completeExceptionally(e);
                           }
                         }));
     return future;
+  }
+
+  /**
+   * Removes disposable raid worlds left by a previous crash or hard stop.
+   *
+   * <p>Only directories whose names start with {@code raid_}, excluding editor
+   * source worlds ({@code raid_source_<map>}), and contain RaidCore's ownership
+   * marker are considered. A same-prefix administrator world is therefore
+   * left untouched. Bukkit unloads loaded candidates on the main thread;
+   * directory traversal and deletion stay on the IO executor so a large
+   * abandoned world cannot pause the server tick.</p>
+   */
+  public CompletableFuture<Void> cleanupOrphanInstanceWorlds() {
+    CompletableFuture<List<Path>> discovered = CompletableFuture.supplyAsync(
+        this::findOrphanDirectories, deps.ioExecutor());
+    return discovered.thenCompose(paths -> {
+      CompletableFuture<List<Path>> unloaded = new CompletableFuture<>();
+      deps.scheduler().runSync(() -> {
+        try {
+          List<Path> safeToDelete = new ArrayList<>();
+          for (Path path : paths) {
+            String worldName = path.getFileName().toString();
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && !Bukkit.unloadWorld(world, false)) {
+              deps.logger().warning("孤立实例世界无法卸载，保留目录: " + worldName);
+              continue;
+            }
+            safeToDelete.add(path);
+          }
+          unloaded.complete(safeToDelete);
+        } catch (RuntimeException e) {
+          unloaded.completeExceptionally(e);
+        }
+      });
+      return unloaded;
+    }).thenAcceptAsync(paths -> {
+      for (Path path : paths) {
+        String worldName = path.getFileName().toString();
+        deleteRecursivelyStrict(path);
+        deps.logger().info("已清理上次运行遗留的实例世界: " + worldName);
+      }
+    }, deps.ioExecutor());
   }
 
   /// Unloads the instance world of `gameId` (teleporting stragglers to the
@@ -132,16 +184,34 @@ public final class WorldService {
   }
 
   private Path worldDirectory(String worldName) {
-    return deps.plugin().getServer().getWorldContainer().toPath().resolve(worldName);
+    return worldContainer.resolve(worldName);
+  }
+
+  private Path templateDirectory(RaidMapId mapId) {
+    Path bundled = deps.templateRoot().resolve(mapId.value());
+    if (Files.isRegularFile(bundled.resolve("level.dat"))) return bundled;
+    return deps.maps().find(mapId.value())
+        .map(definition -> worldContainer.resolve(definition.worldName()).normalize())
+        .filter(path -> path.startsWith(worldContainer))
+        .orElse(bundled);
   }
 
   /// Returns whether a template was found and copied. IO failures surface as
   /// [UncheckedIOException] and fail the creation future.
-  private boolean copyTemplate(Path templateDir, Path worldDir) {
+  private boolean copyTemplate(Path templateDir, Path worldDir, RaidGameId gameId,
+      RaidMapId mapId) {
+    if (Files.exists(worldDir)) {
+      throw new RaidException("实例世界目录已存在，为避免覆盖数据而拒绝创建: " + worldDir.getFileName());
+    }
     if (!Files.isDirectory(templateDir)) {
       return false;
     }
     try {
+      // Mark before copying so a crash during a large copy leaves a directory
+      // that the next boot can identify and remove safely.
+      Files.createDirectories(worldDir.getParent());
+      Files.createDirectory(worldDir);
+      writeInstanceMarker(worldDir, gameId, mapId);
       copyDirectory(templateDir, worldDir);
       Files.deleteIfExists(worldDir.resolve(UID_FILE));
       Files.deleteIfExists(worldDir.resolve(SESSION_LOCK_FILE));
@@ -166,6 +236,10 @@ public final class WorldService {
           @Override
           public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
               throws IOException {
+            if (file.getFileName().toString().equals(INSTANCE_MARKER_FILE)) {
+              // A template can never replace the runtime ownership marker.
+              return FileVisitResult.CONTINUE;
+            }
             Files.copy(
                 file,
                 target.resolve(source.relativize(file)),
@@ -176,9 +250,14 @@ public final class WorldService {
   }
 
   /// Main thread only.
-  private World loadWorld(String worldName, RaidMapId mapId, boolean templateCopied) {
+  private World loadWorld(String worldName, RaidGameId gameId, RaidMapId mapId,
+      boolean templateCopied) {
     WorldCreator creator = new WorldCreator(worldName);
     if (!templateCopied) {
+      if (!deps.allowFlatFallback()) {
+        throw new RaidException("Map template does not exist: "
+            + deps.templateRoot().resolve(mapId.value()));
+      }
       deps.logger()
           .warning(
               "地图模板 '"
@@ -201,7 +280,37 @@ public final class WorldService {
     }
     world.setAutoSave(false);
     world.setGameRule(GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
+    if (!templateCopied) {
+      try {
+        writeInstanceMarker(worldDirectory(worldName), gameId, mapId);
+      } catch (IOException e) {
+        throw new UncheckedIOException("无法写入实例世界所有权标记: " + worldName, e);
+      }
+    }
     return world;
+  }
+
+  private static void writeInstanceMarker(Path worldDir, RaidGameId gameId, RaidMapId mapId)
+      throws IOException {
+    String marker = INSTANCE_MARKER_HEADER + "\n"
+        + "game-id=" + gameId.value() + "\n"
+        + "map-id=" + mapId.value() + "\n";
+    Files.writeString(worldDir.resolve(INSTANCE_MARKER_FILE), marker,
+        java.nio.charset.StandardCharsets.UTF_8,
+        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE);
+  }
+
+  static boolean isOwnedInstanceWorld(Path worldDir) {
+    if (worldDir == null || !Files.isDirectory(worldDir)) return false;
+    Path marker = worldDir.resolve(INSTANCE_MARKER_FILE);
+    if (Files.isSymbolicLink(marker) || !Files.isRegularFile(marker)) return false;
+    try {
+      return Files.readString(marker, java.nio.charset.StandardCharsets.UTF_8)
+          .startsWith(INSTANCE_MARKER_HEADER + "\n");
+    } catch (IOException ignored) {
+      return false;
+    }
   }
 
   /// Main thread only. Returns `true` when the world is not loaded or was
@@ -230,5 +339,41 @@ public final class WorldService {
     } catch (IOException e) {
       deps.logger().log(Level.SEVERE, "Failed to delete world directory " + directory, e);
     }
+  }
+
+  private void deleteRecursivelyStrict(Path directory) {
+    if (!Files.exists(directory)) return;
+    try (Stream<Path> paths = Files.walk(directory)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("无法清理实例世界目录: " + directory, e);
+    }
+  }
+
+  private List<Path> findOrphanDirectories() {
+    Path root = worldContainer;
+    if (!Files.isDirectory(root)) return List.of();
+    try (Stream<Path> paths = Files.list(root)) {
+      return paths.filter(Files::isDirectory)
+          .filter(path -> !Files.isSymbolicLink(path))
+          .filter(path -> isDisposableInstanceWorldName(path.getFileName().toString()))
+          .filter(path -> {
+            if (isOwnedInstanceWorld(path)) return true;
+            deps.logger().warning("发现未带 RaidCore 所有权标记的 raid_ 世界，保留目录: "
+                + path.getFileName());
+            return false;
+          })
+          .sorted()
+          .toList();
+    } catch (IOException e) {
+      throw new UncheckedIOException("无法扫描孤立实例世界目录: " + root, e);
+    }
+  }
+
+  static boolean isDisposableInstanceWorldName(String name) {
+    return name != null && name.startsWith(WORLD_PREFIX)
+        && !name.startsWith(EDITOR_SOURCE_PREFIX);
   }
 }

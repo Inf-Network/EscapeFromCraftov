@@ -189,8 +189,8 @@ class ModuleManagerTest {
   private static final class UnreachableDatabase implements Database {
 
     @Override
-    public java.sql.Connection connection() throws java.sql.SQLException {
-      throw new java.sql.SQLException("test context has no real database");
+    public <T> T transaction(java.util.function.Function<org.hibernate.Session, T> work) {
+      throw new AssertionError("test context has no real database");
     }
 
     @Override

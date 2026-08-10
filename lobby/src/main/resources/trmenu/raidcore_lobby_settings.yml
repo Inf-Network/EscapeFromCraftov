@@ -1,0 +1,22 @@
+Title: '&8个人设置'
+Layout:
+  - '#########'
+  - '#  V Q  #'
+  - '####B####'
+Options:
+  Arguments: false
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 150
+Icons:
+  '#':
+    display: { material: black_stained_glass_pane, name: ' ' }
+  V:
+    display: { material: 'source:RAIDCORELOBBY:setting-visibility' }
+    actions: { all: [ 'reset', 'command: lobby setting toggle visibility' ] }
+  Q:
+    display: { material: 'source:RAIDCORELOBBY:setting-queue' }
+    actions: { all: [ 'reset', 'command: lobby setting toggle queue_messages' ] }
+  B:
+    display: { material: arrow, name: '&e返回主菜单' }
+    actions: { all: [ 'reset', 'command: lobby' ] }
+

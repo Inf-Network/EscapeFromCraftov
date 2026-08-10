@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.raidcore.api.game.RaidGameState;
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.api.network.ServerId;
+import com.birditch.raidcore.api.network.ProvisionRequest;
 import com.birditch.raidcore.api.testing.ManualScheduler;
 import com.birditch.raidcore.core.config.RaidCoreConfig;
 import com.birditch.raidcore.game.plugin.GameServerConfig;
@@ -34,7 +35,8 @@ class InstanceProvisionerTest {
 
   private InstanceProvisioner provisioner(int minReadyInstances, int maxInstances) {
     GameServerConfig config = new GameServerConfig(
-        ServerId.of(OWN_SERVER_ID), "raid-01", minReadyInstances, "maps", false, "lobby", 2);
+        ServerId.of(OWN_SERVER_ID), "raid-01", RaidMapId.of("debug_zone"),
+        2, 15, minReadyInstances, "maps", false, "lobby", 2);
     RaidCoreConfig.GameSettings coreSettings =
         new RaidCoreConfig.GameSettings(12, 3, 1800, maxInstances);
     return new InstanceProvisioner(new ProvisionerDeps(
@@ -122,8 +124,8 @@ class InstanceProvisionerTest {
   }
 
   @Nested
-  @DisplayName("onProvisionHint")
-  class OnProvisionHint {
+  @DisplayName("onProvisionRequest")
+  class OnProvisionRequest {
 
     @Test
     @DisplayName("own serverId triggers an immediate pass")
@@ -132,7 +134,8 @@ class InstanceProvisionerTest {
       provisioner.start();
       games.created().getFirst().setState(RaidGameState.RUNNING);
 
-      provisioner.onProvisionHint(OWN_SERVER_ID);
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of(OWN_SERVER_ID), RaidMapId.of("debug_zone")));
 
       assertEquals(2, games.all().size());
     }
@@ -144,7 +147,8 @@ class InstanceProvisionerTest {
       provisioner.start();
       games.created().getFirst().setState(RaidGameState.RUNNING);
 
-      provisioner.onProvisionHint("game-02");
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of("game-02"), RaidMapId.of("debug_zone")));
 
       assertEquals(1, games.all().size());
     }

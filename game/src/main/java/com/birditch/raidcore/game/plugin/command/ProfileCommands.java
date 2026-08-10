@@ -1,6 +1,7 @@
 package com.birditch.raidcore.game.plugin.command;
 
 import com.birditch.raidcore.api.profile.ProfileService;
+import com.birditch.raidcore.api.profile.ProgressionCurve;
 import com.birditch.raidcore.api.session.PlayerSession;
 import com.birditch.raidcore.api.session.ProfileLoadState;
 import com.birditch.raidcore.api.session.SessionService;
@@ -44,12 +45,28 @@ final class ProfileCommands {
         "command.profile.state", Placeholder.component("state",
             messages.raw("state.profile." + state.name().toLowerCase(Locale.ROOT)))));
     services.require(ProfileService.class).find(playerId).ifPresent(profile -> {
+      long levelStart = ProgressionCurve.experienceForLevel(profile.level());
+      long levelProgress = profile.experience() - levelStart;
+      long levelTarget = profile.level() == ProgressionCurve.MAX_LEVEL
+          ? levelProgress
+          : ProgressionCurve.experienceForLevel(profile.level() + 1) - levelStart;
       sender.sendMessage(messages.raw(
           "command.profile.balance",
           Placeholder.unparsed("balance", profile.balance().format())));
       sender.sendMessage(messages.raw(
           "command.profile.level",
           Placeholder.unparsed("level", Integer.toString(profile.level()))));
+      sender.sendMessage(messages.raw(
+          "command.profile.experience",
+          Placeholder.unparsed("experience", Long.toString(profile.experience()))));
+      sender.sendMessage(messages.raw(
+          "command.profile.level-progress",
+          Placeholder.unparsed("progress", Long.toString(levelProgress)),
+          Placeholder.unparsed("target", Long.toString(levelTarget))));
+      sender.sendMessage(messages.raw(
+          "command.profile.next-level",
+          Placeholder.unparsed("remaining",
+              Long.toString(ProgressionCurve.experienceToNextLevel(profile.experience())))));
     });
     return Command.SINGLE_SUCCESS;
   }

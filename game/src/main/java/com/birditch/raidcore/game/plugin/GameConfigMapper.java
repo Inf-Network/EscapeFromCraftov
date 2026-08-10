@@ -1,6 +1,7 @@
 package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.network.ServerId;
+import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.bukkit.CoreConfigMapper;
 import com.birditch.raidcore.common.check.Preconditions;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -17,10 +18,26 @@ public final class GameConfigMapper {
     return new GameServerConfig(
         ServerId.of(CoreConfigMapper.stringOr(yaml, "server.id", "game-01")),
         CoreConfigMapper.stringOr(yaml, "server.proxy-name", "raid-01"),
+        RaidMapId.of(CoreConfigMapper.stringOr(yaml, "game.default-map", "debug_zone")),
+        yaml.getInt("game.minimum-players", 2),
+        yaml.getInt("game.start-countdown-seconds", 15),
         yaml.getInt("game.min-ready-instances", 1),
         CoreConfigMapper.stringOr(yaml, "game.map-template-dir", "maps"),
-        yaml.getBoolean("network.proxy-enabled", true),
+        yaml.getBoolean("game.allow-flat-fallback", false),
         CoreConfigMapper.stringOr(yaml, "network.lobby-server-name", "lobby"),
         yaml.getInt("network.snapshot-interval-seconds", 2));
+  }
+
+  public static GameplaySettings readGameplay(FileConfiguration yaml) {
+    Preconditions.checkNotNull(yaml, "yaml");
+    return new GameplaySettings(
+        yaml.getBoolean("combat.friendly-fire", false),
+        yaml.getInt("combat.attribution-seconds", 15),
+        yaml.getBoolean("scoreboard.enabled", true),
+        yaml.getInt("scoreboard.refresh-ticks", 10),
+        yaml.getInt("inventory.loot-container-size", 27),
+        yaml.getInt("progression.extraction-experience", 250),
+        yaml.getInt("progression.death-experience", 25),
+        yaml.getInt("progression.kill-experience", 100));
   }
 }

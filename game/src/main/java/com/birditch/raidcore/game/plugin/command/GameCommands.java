@@ -5,6 +5,7 @@ import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameService;
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.bukkit.Messages;
+import com.birditch.raidcore.bukkit.MapNames;
 import com.birditch.raidcore.common.result.Result;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -15,13 +16,14 @@ import io.papermc.paper.command.brigadier.Commands;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.Optional;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 
 /// `/raid game create|list|start|stop` — admin-only game management.
 final class GameCommands {
-
-  private static final String DEFAULT_MAP = "debug_zone";
 
   private GameCommands() {}
 
@@ -29,8 +31,15 @@ final class GameCommands {
     return Commands.literal("game")
         .requires(source -> source.getSender().hasPermission(RaidCommand.PERMISSION_ADMIN))
         .then(Commands.literal("create")
-            .executes(ctx -> create(context, ctx.getSource().getSender(), DEFAULT_MAP))
+            .executes(ctx -> create(context, ctx.getSource().getSender(),
+                context.serverConfig().defaultMap().value()))
             .then(Commands.argument("map", StringArgumentType.word())
+                .suggests((_, builder) -> {
+                  context.maps().all().stream()
+                      .filter(map -> map.enabled())
+                      .forEach(map -> builder.suggest(map.mapId()));
+                  return builder.buildFuture();
+                })
                 .executes(ctx -> create(
                     context, ctx.getSource().getSender(),
                     StringArgumentType.getString(ctx, "map")))))
@@ -69,6 +78,11 @@ final class GameCommands {
           "command.game.error", Placeholder.unparsed("error", reason(e))));
       return Command.SINGLE_SUCCESS;
     }
+    if (!context.maps().isEnabled(mapId.value())) {
+      sender.sendMessage(messages.raw("command.game.error",
+          Placeholder.unparsed("error", "地图尚未完成验证并启用:" + mapId.value())));
+      return Command.SINGLE_SUCCESS;
+    }
     Result<RaidGame> result = context.services().require(RaidGameService.class).create(mapId);
     switch (result) {
       case Result.Success<RaidGame>(RaidGame game) -> sender.sendMessage(messages.msg(
@@ -95,8 +109,13 @@ final class GameCommands {
       sender.sendMessage(messages.raw(
           "command.game.list-entry",
           Placeholder.unparsed("id", game.id().value()),
-          Placeholder.component("state", messages.raw("state.game." + game.state().name().toLowerCase(Locale.ROOT))),
-          Placeholder.unparsed("players", Integer.toString(game.playerCount()))));
+          Placeholder.component("map", MapNames.display(messages, game.mapId())),
+          Placeholder.component("state", messages.raw(
+              "state.game." + game.state().name().toLowerCase(Locale.ROOT))),
+          Placeholder.unparsed("players", Integer.toString(game.playerCount())),
+          Placeholder.component("world", Bukkit.getWorld("raid_" + game.id().value()) == null
+              ? Component.text("地图准备中", NamedTextColor.YELLOW)
+              : Component.text("地图已就绪", NamedTextColor.GREEN))));
     }
     return Command.SINGLE_SUCCESS;
   }
@@ -107,6 +126,14 @@ final class GameCommands {
     if (gameId.isEmpty()) {
       sender.sendMessage(context.messages().raw(
           "command.game.not-found", Placeholder.unparsed("id", rawId)));
+      return Command.SINGLE_SUCCESS;
+    }
+    // World copying is deliberately asynchronous. Do not transition a room to
+    // RUNNING before its independent world is loaded, otherwise matchmaking
+    // will correctly reject every join while the admin sees a false start.
+    if (Bukkit.getWorld("raid_" + gameId.get().value()) == null) {
+      sender.sendMessage(context.messages().raw(
+          "command.game.world-not-ready", Placeholder.unparsed("id", rawId)));
       return Command.SINGLE_SUCCESS;
     }
     sendResult(context, sender, games.start(gameId.get()), "command.game.started");

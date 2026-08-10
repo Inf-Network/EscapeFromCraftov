@@ -1,9 +1,11 @@
 package com.birditch.raidcore.api.loot;
 
 public enum LootContainerType {
-    CRATE,
-    MILITARY_CRATE,
-    MEDICAL_BOX,
-    CACHE,
-    AIRDROP
+    CHEST,
+    BARREL,
+    DUNGEON_CHEST,
+    POTION_CACHE,
+    HIDDEN_CACHE,
+    VAULT,
+    SUPPLY_DROP
 }

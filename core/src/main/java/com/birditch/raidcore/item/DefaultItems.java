@@ -8,7 +8,7 @@ import com.birditch.raidcore.api.item.ItemRarity;
 import com.birditch.raidcore.api.item.ItemRegistry;
 import com.birditch.raidcore.common.check.Preconditions;
 
-/// Demo item catalog registered during bootstrap.
+/// Minecraft-native demo item catalog registered during bootstrap.
 public final class DefaultItems {
 
   private DefaultItems() {
@@ -17,37 +17,84 @@ public final class DefaultItems {
   public static void registerAll(ItemRegistry registry) {
     Preconditions.checkNotNull(registry, "registry");
     registry.register(ItemDefinition
-        .builder(ItemId.of("old_phone"), "旧手机", ItemCategory.VALUABLE, ItemRarity.COMMON)
-        .basePrice(Money.of(1500L))
-        .weightGrams(200)
+        .builder(ItemId.of("iron_sword"), "铁剑", ItemCategory.MELEE_WEAPON,
+            ItemRarity.COMMON)
+        .basePrice(Money.of(1200L))
+        .weightGrams(1500)
         .build());
     registry.register(ItemDefinition
-        .builder(ItemId.of("copper_wire"), "铜线", ItemCategory.MATERIAL, ItemRarity.COMMON)
-        .basePrice(Money.of(800L))
-        .weightGrams(100)
-        .stackSize(16)
+        .builder(ItemId.of("iron_axe"), "铁斧", ItemCategory.MELEE_WEAPON,
+            ItemRarity.COMMON)
+        .basePrice(Money.of(1300L))
+        .weightGrams(1800)
         .build());
     registry.register(ItemDefinition
-        .builder(ItemId.of("hard_drive"), "硬盘", ItemCategory.VALUABLE, ItemRarity.RARE)
-        .basePrice(Money.of(6000L))
-        .weightGrams(400)
-        .build());
-    registry.register(ItemDefinition
-        .builder(ItemId.of("rare_chip"), "稀有芯片", ItemCategory.VALUABLE, ItemRarity.EPIC)
-        .basePrice(Money.of(35000L))
-        .weightGrams(50)
-        .build());
-    registry.register(ItemDefinition
-        .builder(ItemId.of("medkit"), "医疗包", ItemCategory.MEDICAL, ItemRarity.UNCOMMON)
-        .basePrice(Money.of(2000L))
+        .builder(ItemId.of("bow"), "弓", ItemCategory.RANGED_WEAPON, ItemRarity.COMMON)
+        .basePrice(Money.of(1000L))
         .weightGrams(800)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("crossbow"), "弩", ItemCategory.RANGED_WEAPON,
+            ItemRarity.UNCOMMON)
+        .basePrice(Money.of(2400L))
+        .weightGrams(1200)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("arrow"), "箭矢", ItemCategory.PROJECTILE, ItemRarity.COMMON)
+        .basePrice(Money.of(40L))
+        .weightGrams(30)
+        .stackSize(64)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("shield"), "盾牌", ItemCategory.SHIELD, ItemRarity.UNCOMMON)
+        .basePrice(Money.of(1800L))
+        .weightGrams(2000)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("iron_chestplate"), "铁胸甲", ItemCategory.ARMOR,
+            ItemRarity.UNCOMMON)
+        .basePrice(Money.of(3200L))
+        .weightGrams(3500)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("healing_potion"), "治疗药水", ItemCategory.POTION,
+            ItemRarity.UNCOMMON)
+        .basePrice(Money.of(1600L))
+        .weightGrams(500)
         .stackSize(4)
         .build());
     registry.register(ItemDefinition
-        .builder(ItemId.of("ammo_556"), "5.56mm 弹药", ItemCategory.AMMO, ItemRarity.COMMON)
-        .basePrice(Money.of(120L))
-        .weightGrams(12)
+        .builder(ItemId.of("golden_apple"), "金苹果", ItemCategory.HEALING,
+            ItemRarity.RARE)
+        .basePrice(Money.of(5000L))
+        .weightGrams(250)
+        .stackSize(16)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("emerald"), "绿宝石", ItemCategory.VALUABLE, ItemRarity.COMMON)
+        .basePrice(Money.of(900L))
+        .weightGrams(100)
         .stackSize(64)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("echo_shard"), "回响碎片", ItemCategory.VALUABLE,
+            ItemRarity.RARE)
+        .basePrice(Money.of(6500L))
+        .weightGrams(80)
+        .stackSize(16)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("ancient_debris"), "远古残骸", ItemCategory.MATERIAL,
+            ItemRarity.EPIC)
+        .basePrice(Money.of(30000L))
+        .weightGrams(2000)
+        .stackSize(16)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("extraction_key"), "撤离钥匙", ItemCategory.KEY,
+            ItemRarity.RARE)
+        .basePrice(Money.of(12000L))
+        .weightGrams(50)
         .build());
   }
 }

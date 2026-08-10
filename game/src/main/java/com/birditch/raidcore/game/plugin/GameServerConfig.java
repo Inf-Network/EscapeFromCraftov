@@ -1,6 +1,7 @@
 package com.birditch.raidcore.game.plugin;
 
 import com.birditch.raidcore.api.network.ServerId;
+import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.core.config.ConfigurationException;
 import java.util.ArrayList;
@@ -13,15 +14,19 @@ import java.util.List;
 public record GameServerConfig(
     ServerId serverId,
     String proxyName,
+    RaidMapId defaultMap,
+    int minimumPlayers,
+    int startCountdownSeconds,
     int minReadyInstances,
     String mapTemplateDir,
-    boolean proxyEnabled,
+    boolean allowFlatFallback,
     String lobbyServerName,
     int snapshotIntervalSeconds) {
 
   public GameServerConfig {
     Preconditions.checkNotNull(serverId, "serverId");
     Preconditions.checkNotNull(proxyName, "proxyName");
+    Preconditions.checkNotNull(defaultMap, "defaultMap");
     Preconditions.checkNotNull(mapTemplateDir, "mapTemplateDir");
     Preconditions.checkNotNull(lobbyServerName, "lobbyServerName");
   }
@@ -29,16 +34,30 @@ public record GameServerConfig(
   /// Checks all settings and aggregates every problem.
   ///
   /// @throws ConfigurationException listing every invalid setting
-  public void validate() {
+  public void validate(int maxInstances, int maxPlayers) {
     List<String> problems = new ArrayList<>();
+    if (proxyName.isBlank()) {
+      problems.add("server.proxy-name must not be blank");
+    }
     if (minReadyInstances < 0) {
       problems.add("game.min-ready-instances must not be negative");
+    } else if (minReadyInstances > maxInstances) {
+      problems.add("game.min-ready-instances must not exceed game.max-instances");
+    }
+    if (minimumPlayers < 1 || minimumPlayers > maxPlayers) {
+      problems.add("game.minimum-players must be 1..game.max-players");
+    }
+    if (startCountdownSeconds < 3 || startCountdownSeconds > 300) {
+      problems.add("game.start-countdown-seconds must be 3..300");
+    }
+    if (mapTemplateDir.isBlank()) {
+      problems.add("game.map-template-dir must not be blank");
     }
     if (snapshotIntervalSeconds < 1) {
       problems.add("network.snapshot-interval-seconds must be at least 1");
     }
-    if (proxyEnabled && lobbyServerName.isBlank()) {
-      problems.add("network.lobby-server-name must not be blank when network.proxy-enabled");
+    if (lobbyServerName.isBlank()) {
+      problems.add("network.lobby-server-name must not be blank");
     }
     if (!problems.isEmpty()) {
       throw new ConfigurationException(

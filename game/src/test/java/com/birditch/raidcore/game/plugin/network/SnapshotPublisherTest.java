@@ -63,8 +63,8 @@ class SnapshotPublisherTest {
         games,
         index,
         directory,
-        new GameServerConfig(ServerId.of("game-01"), "raid-01", 1, "maps", true, "lobby",
-            (int) INTERVAL.toSeconds()),
+        new GameServerConfig(ServerId.of("game-01"), "raid-01", MAP, 2, 15, 1, "maps", true,
+            "lobby", (int) INTERVAL.toSeconds()),
         new RaidCoreConfig(
             false,
             new RaidCoreConfig.GameSettings(12, 3, 1800, 4),

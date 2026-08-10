@@ -65,14 +65,14 @@ class DatabaseConfigTest {
             "database.database must not be blank"),
         Arguments.of(postgres("localhost", 5432, "raidcore", " "),
             "database.username must not be blank"),
-        Arguments.of(withPool(0, 2), "database.pool.maximum-pool-size must be greater than 0"),
-        Arguments.of(withPool(10, 0), "database.pool.minimum-idle must be greater than 0"));
+        Arguments.of(withPool(0, 0), "database.pool.maximum-pool-size must be greater than 0"),
+        Arguments.of(withPool(10, -1), "database.pool.minimum-idle must not be negative"));
   }
 
   @Test
   void aggregatesAllProblemsIntoASingleException() {
     DatabaseConfig config = new DatabaseConfig(" ", 0, " ", " ", "",
-        new DatabaseConfig.PoolSettings(0, 0, 0L));
+        new DatabaseConfig.PoolSettings(0, -1, 0L));
     ConfigurationException e = assertThrows(ConfigurationException.class, config::validate);
     assertEquals("""
         Invalid database configuration:
@@ -81,7 +81,10 @@ class DatabaseConfigTest {
         database.database must not be blank
         database.username must not be blank
         database.pool.maximum-pool-size must be greater than 0
-        database.pool.minimum-idle must be greater than 0""", e.getMessage());
+        database.pool.minimum-idle must not be negative
+        database.pool.connection-timeout must be at least 250 ms
+        database.pool.validation-timeout must be at least 250 ms and less than connection-timeout""",
+        e.getMessage());
   }
 
   @Test

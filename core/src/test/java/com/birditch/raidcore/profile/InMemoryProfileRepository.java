@@ -41,6 +41,7 @@ public final class InMemoryProfileRepository implements ProfileRepository {
 
   private static PlayerProfile copyOf(PlayerProfile profile) {
     return new PlayerProfile(
-        profile.playerId(), profile.name(), profile.balance(), profile.level(), profile.createdAt());
+        profile.playerId(), profile.name(), profile.balance(), profile.level(),
+        profile.experience(), profile.createdAt());
   }
 }

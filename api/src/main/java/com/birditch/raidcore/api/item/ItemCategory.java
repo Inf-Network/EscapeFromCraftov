@@ -1,12 +1,16 @@
 package com.birditch.raidcore.api.item;
 
 public enum ItemCategory {
-    WEAPON,
-    AMMO,
+    MELEE_WEAPON,
+    RANGED_WEAPON,
+    PROJECTILE,
     ARMOR,
     HELMET,
+    SHIELD,
     BACKPACK,
-    MEDICAL,
+    HEALING,
+    FOOD,
+    POTION,
     VALUABLE,
     MATERIAL,
     KEY,

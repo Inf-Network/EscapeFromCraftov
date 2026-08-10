@@ -5,6 +5,7 @@ dependencies {
     implementation(libs.hikaricp)
     implementation(libs.jedis)
     implementation(libs.gson)
+    implementation(libs.hibernate.core)
     runtimeOnly(libs.postgresql)
 
     // Exclusively for the com.birditch.raidcore.bukkit glue package.

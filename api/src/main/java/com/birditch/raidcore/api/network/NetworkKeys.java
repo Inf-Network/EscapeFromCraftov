@@ -24,13 +24,4 @@ public final class NetworkKeys {
         return "raidcore:pending:" + playerId;
     }
 
-    public static String settingsKey(UUID playerId) {
-        Preconditions.checkNotNull(playerId, "playerId");
-        return "raidcore:settings:" + playerId;
-    }
-
-    public static String cosmeticsKey(UUID playerId) {
-        Preconditions.checkNotNull(playerId, "playerId");
-        return "raidcore:cosmetics:" + playerId;
-    }
 }

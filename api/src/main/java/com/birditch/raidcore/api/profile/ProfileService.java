@@ -21,6 +21,10 @@ public interface ProfileService {
     /// Saves then evicts the cached profile.
     CompletableFuture<Void> unload(UUID playerId);
 
+    /// Evicts without persisting. Used when a wider player-data load failed and
+    /// no partially initialized/default state may be written back.
+    void discard(UUID playerId);
+
     CompletableFuture<Void> saveAll();
 
     int cachedCount();

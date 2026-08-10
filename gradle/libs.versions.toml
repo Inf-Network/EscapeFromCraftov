@@ -4,10 +4,15 @@ hikaricp = "7.1.0"
 postgresql = "42.7.13"
 jedis = "7.5.3"
 gson = "2.14.0"
+hibernate = "7.4.5.Final"
 jspecify = "1.0.1"
 junit = "6.1.3"
 shadow = "9.6.1"
 run-paper = "3.0.2"
+luckperms = "5.5"
+worldedit = "7.4.4"
+placeholderapi = "2.12.3"
+decentholograms = "2.10.1"
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
@@ -15,10 +20,15 @@ hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+hibernate-core = { module = "org.hibernate.orm:hibernate-core", version.ref = "hibernate" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+luckperms-api = { module = "net.luckperms:api", version.ref = "luckperms" }
+worldedit-bukkit = { module = "com.sk89q.worldedit:worldedit-bukkit", version.ref = "worldedit" }
+placeholderapi = { module = "me.clip:placeholderapi", version.ref = "placeholderapi" }
+decentholograms = { module = "com.github.decentsoftware-eu.decentholograms:decentholograms", version.ref = "decentholograms" }
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

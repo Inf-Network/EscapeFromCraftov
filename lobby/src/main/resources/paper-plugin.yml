@@ -1,6 +1,13 @@
 name: RaidCoreLobby
 version: '${version}'
 main: com.birditch.raidcore.lobby.RaidLobbyPlugin
+loader: com.birditch.raidcore.lobby.RaidLobbyPluginLoader
 api-version: '1.21'
-description: "Escape from Craftov · 逃离块科夫 — 大厅插件:匹配队列、玩家设置与装扮。"
+description: "Escape from Craftov · 逃离块科夫 — PostgreSQL 玩家数据、物资仓库与 Redis 匹配大厅。"
 authors: [birditch]
+dependencies:
+  server:
+    TrMenu:
+      load: BEFORE
+      required: true
+      join-classpath: false

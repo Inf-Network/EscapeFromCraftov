@@ -6,10 +6,15 @@ import com.birditch.raidcore.api.game.GameStateException;
 import com.birditch.raidcore.api.game.RaidGame;
 import com.birditch.raidcore.api.game.RaidGameId;
 import com.birditch.raidcore.api.game.RaidGameState;
+import com.birditch.raidcore.api.game.RaidExtractionArea;
+import com.birditch.raidcore.api.game.RaidAiZone;
 import com.birditch.raidcore.api.game.RaidMapId;
+import com.birditch.raidcore.api.game.RaidLootPoint;
 import com.birditch.raidcore.api.game.RaidPlayer;
+import com.birditch.raidcore.api.game.RaidPoi;
 import com.birditch.raidcore.api.game.RaidResult;
 import com.birditch.raidcore.api.game.RaidTeam;
+import com.birditch.raidcore.api.game.RaidSpawnLocation;
 import com.birditch.raidcore.api.scheduler.ScheduledTask;
 import com.birditch.raidcore.common.check.Preconditions;
 import java.time.Instant;
@@ -33,7 +38,13 @@ public final class RaidGameInstance implements RaidGame {
     private final RaidGameId id;
     private final RaidMapId mapId;
     private final Instant createdAt;
+    private final long mapRevision;
+    private final List<RaidSpawnLocation> spawnLocations;
+    private final List<RaidLootPoint> lootPoints;
     private final List<ExtractionPoint> extractionPoints;
+    private final List<RaidExtractionArea> extractionAreas;
+    private final List<RaidAiZone> aiZones;
+    private final List<RaidPoi> pois;
     private final Map<UUID, RaidPlayer> players = new LinkedHashMap<>();
     private final List<RaidTeam> teams = new ArrayList<>();
     private final Set<UUID> extractedPlayerIds = new LinkedHashSet<>();
@@ -44,11 +55,23 @@ public final class RaidGameInstance implements RaidGame {
 
     public RaidGameInstance(RaidGameId id, RaidMapId mapId, Instant createdAt,
                             List<ExtractionPoint> extractionPoints) {
+        this(id, mapId, createdAt,
+                new RaidMapRuntime(0, List.of(), List.of(), extractionPoints, List.of()));
+    }
+
+    public RaidGameInstance(RaidGameId id, RaidMapId mapId, Instant createdAt,
+                            RaidMapRuntime runtime) {
         this.id = Preconditions.checkNotNull(id, "id");
         this.mapId = Preconditions.checkNotNull(mapId, "mapId");
         this.createdAt = Preconditions.checkNotNull(createdAt, "createdAt");
-        Preconditions.checkNotNull(extractionPoints, "extractionPoints");
-        this.extractionPoints = List.copyOf(extractionPoints);
+        Preconditions.checkNotNull(runtime, "runtime");
+        this.mapRevision = runtime.revision();
+        this.spawnLocations = runtime.spawns();
+        this.lootPoints = runtime.lootPoints();
+        this.extractionPoints = runtime.extractionPoints();
+        this.extractionAreas = runtime.extractionAreas();
+        this.aiZones = runtime.aiZones();
+        this.pois = runtime.pois();
     }
 
     /// Moves the game to `next`; entering [RaidGameState#RUNNING] records `now`
@@ -153,6 +176,36 @@ public final class RaidGameInstance implements RaidGame {
     @Override
     public RaidMapId mapId() {
         return mapId;
+    }
+
+    @Override
+    public long mapRevision() {
+        return mapRevision;
+    }
+
+    @Override
+    public List<RaidSpawnLocation> spawnLocations() {
+        return spawnLocations;
+    }
+
+    @Override
+    public List<RaidExtractionArea> extractionAreas() {
+        return extractionAreas;
+    }
+
+    @Override
+    public List<RaidLootPoint> lootPoints() {
+        return lootPoints;
+    }
+
+    @Override
+    public List<RaidAiZone> aiZones() {
+        return aiZones;
+    }
+
+    @Override
+    public List<RaidPoi> pois() {
+        return pois;
     }
 
     @Override

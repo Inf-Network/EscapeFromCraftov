@@ -3,6 +3,7 @@ package com.birditch.raidcore.game.plugin.instance;
 import com.birditch.raidcore.api.game.RaidGame;
 import com.birditch.raidcore.api.game.RaidGameState;
 import com.birditch.raidcore.api.game.RaidMapId;
+import com.birditch.raidcore.api.network.ProvisionRequest;
 import com.birditch.raidcore.api.scheduler.ScheduledTask;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.common.result.Result;
@@ -20,7 +21,6 @@ import org.jspecify.annotations.Nullable;
 /// it drives.
 public final class InstanceProvisioner {
 
-  private static final RaidMapId DEFAULT_MAP = RaidMapId.of("debug_zone");
   private static final Duration PASS_INTERVAL = Duration.ofSeconds(5);
 
   private final ProvisionerDeps deps;
@@ -32,17 +32,17 @@ public final class InstanceProvisioner {
 
   public void start() {
     Preconditions.checkState(timer == null, "InstanceProvisioner already started");
-    provisionPass();
-    timer = deps.scheduler().runTimer(PASS_INTERVAL, PASS_INTERVAL, this::provisionPass);
+    provisionDefaultCapacity();
+    timer = deps.scheduler().runTimer(PASS_INTERVAL, PASS_INTERVAL, this::provisionDefaultCapacity);
   }
 
   /// Handles a lobby provision hint whose payload is the target server id;
   /// hints addressed to other servers are ignored. Callers must already have
   /// hopped to the main thread.
-  public void onProvisionHint(String serverIdPayload) {
-    Preconditions.checkNotNull(serverIdPayload, "serverIdPayload");
-    if (deps.config().serverId().value().equals(serverIdPayload)) {
-      provisionPass();
+  public void onProvisionRequest(ProvisionRequest request) {
+    Preconditions.checkNotNull(request, "request");
+    if (deps.config().serverId().equals(request.serverId())) {
+      ensureAvailable(request.mapId(), 1);
     }
   }
 
@@ -54,19 +54,28 @@ public final class InstanceProvisioner {
     }
   }
 
-  private void provisionPass() {
-    while (waitingCount() < deps.config().minReadyInstances()
+  private void provisionDefaultCapacity() {
+    ensureAvailable(deps.config().defaultMap(), deps.config().minReadyInstances());
+  }
+
+  private void ensureAvailable(RaidMapId mapId, int target) {
+    if (!deps.maps().isEnabled(mapId.value())) {
+      return;
+    }
+    while (availableWaitingCount(mapId) < target
         && deps.games().all().size() < deps.coreSettings().maxInstances()) {
-      if (deps.games().create(DEFAULT_MAP) instanceof Result.Failure<RaidGame>(String message)) {
+      if (deps.games().create(mapId) instanceof Result.Failure<RaidGame>(String message)) {
         deps.logger().warning("Instance provisioning halted: " + message);
         return;
       }
     }
   }
 
-  private long waitingCount() {
+  private long availableWaitingCount(RaidMapId mapId) {
     return deps.games().all().stream()
+        .filter(game -> game.mapId().equals(mapId))
         .filter(game -> game.state() == RaidGameState.WAITING)
+        .filter(game -> game.playerCount() < deps.coreSettings().maxPlayers())
         .count();
   }
 }

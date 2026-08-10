@@ -39,6 +39,7 @@ tab:
 # ---------------------------------------------------------------------------
 join:
   welcome: "<gray>欢迎来到</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
+  data-failed: "<red>无法读取你的个人资料。请稍后重试;若问题持续,请联系管理员。</red>"
 
 # ---------------------------------------------------------------------------
 # 大厅物品:热键栏第 5 格的“游戏菜单”指南针名称(右键打开主菜单)。
@@ -53,6 +54,7 @@ lobby:
 #   match-found  匹配成功即将跨服传送;<server> = 目标服务器名
 # ---------------------------------------------------------------------------
 queue:
+  data-loading: "<yellow>正在读取你的个人资料,请稍候……</yellow>"
   joined: "<gray>你已加入 <yellow><map></yellow> 的匹配队列。</gray>"
   already-queued: "<red>你已经在匹配队列中了。</red>"
   left: "<gray>你已离开匹配队列。</gray>"
@@ -82,6 +84,8 @@ command:
   no-permission: "<red>你没有权限这么做。</red>"
   player-only: "<red>该命令只能由玩家使用。</red>"
   invalid-map: "<red>未知的地图:<map></red>"
+  checking-map: "<gray>正在查找地图 <yellow><map></yellow> 的可用房间……</gray>"
+  map-check-failed: "<red>暂时无法读取可用地图，请稍后再试。</red>"
 
 # ---------------------------------------------------------------------------
 # 菜单文本。
@@ -91,6 +95,7 @@ command:
 #   back / close  通用“返回 / 关闭”按钮名称
 # ---------------------------------------------------------------------------
 menu:
+  action-failed: "<red>操作没有完成，请稍后再试。</red>"
   main:
     title: "大厅菜单"
     play:
@@ -105,6 +110,10 @@ menu:
       name: "<gold>装扮</gold>"
       lore: "<gray>在大厅中脱颖而出。</gray>"
       hint: "<yellow>点击浏览!</yellow>"
+    warehouse:
+      name: "<gold>物资仓库与出战</gold>"
+      lore: "<gray>整理你成功带回的战利品。</gray>|<gray>选择下一局要带的装备。</gray>"
+      hint: "<yellow>点击打开!</yellow>"
   settings:
     title: "设置"
     lobby_player_visibility:
@@ -126,6 +135,15 @@ menu:
       hint: "<yellow>点击卸下!</yellow>"
   back: "<yellow>« 返回</yellow>"
   close: "<red>关闭</red>"
+  warehouse:
+    title: "物资仓库与出战"
+    previous: "<yellow>上一页</yellow>"
+    next: "<yellow>下一页</yellow>"
+    info: "<gray>第 <yellow><page></yellow>/<yellow><pages></yellow> 页</gray>"
+    move-failed: "<red>物品移动失败，请稍后再试。</red>"
+    load-failed: "<red>物资仓库暂时无法打开，请稍后再试。</red>"
+    equipped: "<green>已放入出战栏。</green>"
+    stored: "<gray>已放回物资仓库。</gray>"
 
 # ---------------------------------------------------------------------------
 # 地图显示名:键为 “map.<地图ID>”。/play 与队列消息中的 <map> 会优先取

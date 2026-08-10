@@ -87,6 +87,12 @@ public final class DefaultProfileService implements ProfileService {
   }
 
   @Override
+  public void discard(UUID playerId) {
+    Preconditions.checkNotNull(playerId, "playerId");
+    cache.remove(playerId);
+  }
+
+  @Override
   public CompletableFuture<Void> saveAll() {
     CompletableFuture<?>[] saves =
         cache.values().stream().map(repository::save).toArray(CompletableFuture[]::new);

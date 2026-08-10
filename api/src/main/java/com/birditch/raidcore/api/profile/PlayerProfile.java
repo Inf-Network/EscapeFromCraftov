@@ -15,18 +15,26 @@ public final class PlayerProfile {
     private String name;
     private Money balance;
     private int level;
+    private long experience;
 
     public PlayerProfile(UUID playerId, String name, Money balance, int level, Instant createdAt) {
+        this(playerId, name, balance, level, 0L, createdAt);
+    }
+
+    public PlayerProfile(UUID playerId, String name, Money balance, int level,
+                         long experience, Instant createdAt) {
         Preconditions.checkNotNull(playerId, "playerId");
         Preconditions.checkNotNull(name, "name");
         Preconditions.checkArgument(!name.isBlank(), "name must not be blank");
         Preconditions.checkNotNull(balance, "balance");
         Preconditions.checkArgument(level >= 1, "level must be at least 1");
+        Preconditions.checkArgument(experience >= 0, "experience must not be negative");
         Preconditions.checkNotNull(createdAt, "createdAt");
         this.playerId = playerId;
         this.name = name;
         this.balance = balance;
         this.level = level;
+        this.experience = experience;
         this.createdAt = createdAt;
     }
 
@@ -51,6 +59,10 @@ public final class PlayerProfile {
         return level;
     }
 
+    public long experience() {
+        return experience;
+    }
+
     public Instant createdAt() {
         return createdAt;
     }
@@ -68,6 +80,13 @@ public final class PlayerProfile {
 
     public void setLevel(int level) {
         Preconditions.checkArgument(level >= 1, "level must be at least 1");
+        this.level = level;
+    }
+
+    public void setProgression(long experience, int level) {
+        Preconditions.checkArgument(experience >= 0, "experience must not be negative");
+        Preconditions.checkArgument(level >= 1, "level must be at least 1");
+        this.experience = experience;
         this.level = level;
     }
 }

@@ -21,6 +21,7 @@ import com.birditch.raidcore.api.game.RaidPlayer;
 import com.birditch.raidcore.api.game.RaidResult;
 import com.birditch.raidcore.api.game.RaidTeam;
 import com.birditch.raidcore.api.session.PlayerSession;
+import com.birditch.raidcore.api.session.ProfileLoadState;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.common.result.Result;
 import java.time.Duration;
@@ -62,8 +63,22 @@ public final class RaidGameManager implements RaidGameService {
         }
         RaidGameId gameId = uniqueGameId();
         Instant now = deps.timeSource().now();
-        RaidGameInstance game =
-                new RaidGameInstance(gameId, mapId, now, List.of(defaultExtractionPoint()));
+        Optional<RaidMapRuntime> runtimeResult = deps.maps().runtime(mapId);
+        if (runtimeResult.isEmpty()) {
+            return Result.fail(GameFailures.MAP_NOT_AVAILABLE);
+        }
+        RaidMapRuntime runtime = runtimeResult.get();
+        List<ExtractionPoint> extractionPoints = runtime.extractionPoints();
+        if (extractionPoints.isEmpty()) {
+            extractionPoints = List.of(defaultExtractionPoint());
+        }
+        // Capture the complete authored snapshot. AI and POI data are part of
+        // the immutable raid contract just like spawns and extractions; using
+        // the legacy five-argument constructor here silently discarded them.
+        RaidMapRuntime captured = new RaidMapRuntime(runtime.revision(), runtime.spawns(),
+                runtime.lootPoints(), extractionPoints, runtime.extractionAreas(),
+                runtime.aiZones(), runtime.pois());
+        RaidGameInstance game = new RaidGameInstance(gameId, mapId, now, captured);
         game.transitionTo(RaidGameState.WAITING, now);
         games.put(gameId, game);
         deps.eventBus().publish(new RaidCreatedEvent(gameId, mapId));
@@ -91,6 +106,9 @@ public final class RaidGameManager implements RaidGameService {
             return Result.fail(GameFailures.NO_SESSION);
         }
         PlayerSession session = found.get();
+        if (session.profileState() != ProfileLoadState.READY) {
+            return Result.fail(GameFailures.PROFILE_NOT_READY);
+        }
         if (session.currentGame().isPresent()) {
             return Result.fail(GameFailures.ALREADY_IN_GAME);
         }

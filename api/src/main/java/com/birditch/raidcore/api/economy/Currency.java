@@ -1,7 +1,7 @@
 package com.birditch.raidcore.api.economy;
 
 public enum Currency {
-    COINS("Coins");
+    COINS("金币");
 
     private final String displayName;
 

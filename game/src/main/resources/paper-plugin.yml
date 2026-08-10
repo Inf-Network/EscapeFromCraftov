@@ -1,6 +1,29 @@
 name: RaidCoreGame
 version: '${version}'
 main: com.birditch.raidcore.game.plugin.RaidGamePlugin
+loader: com.birditch.raidcore.game.plugin.RaidGamePluginLoader
 api-version: '1.21'
 description: "Escape from Craftov · 逃离块科夫 — 游戏服务端:单服多对局实例、独立世界、聊天/Tab 隔离的搜打撤核心。"
 authors: [birditch]
+dependencies:
+  server:
+    LuckPerms:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    WorldEdit:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    DecentHolograms:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    PlaceholderAPI:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    TrMenu:
+      load: BEFORE
+      required: true
+      join-classpath: false

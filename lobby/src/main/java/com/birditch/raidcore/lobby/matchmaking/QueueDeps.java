@@ -8,6 +8,8 @@ import com.birditch.raidcore.api.settings.PlayerSettingsService;
 import com.birditch.raidcore.common.check.Preconditions;
 import com.birditch.raidcore.common.time.TimeSource;
 import com.birditch.raidcore.lobby.LobbyConfig;
+import com.birditch.raidcore.lobby.LobbyDataGate;
+import com.birditch.raidcore.redis.JsonCodec;
 import java.util.logging.Logger;
 
 /// Collaborators of [QueueService].
@@ -19,7 +21,9 @@ public record QueueDeps(
     RaidScheduler scheduler,
     TimeSource timeSource,
     PlayerSettingsService settings,
+    LobbyDataGate dataGate,
     LobbyConfig config,
+    JsonCodec codec,
     Logger logger) {
 
   public QueueDeps {
@@ -30,7 +34,9 @@ public record QueueDeps(
     Preconditions.checkNotNull(scheduler, "scheduler");
     Preconditions.checkNotNull(timeSource, "timeSource");
     Preconditions.checkNotNull(settings, "settings");
+    Preconditions.checkNotNull(dataGate, "dataGate");
     Preconditions.checkNotNull(config, "config");
+    Preconditions.checkNotNull(codec, "codec");
     Preconditions.checkNotNull(logger, "logger");
   }
 }

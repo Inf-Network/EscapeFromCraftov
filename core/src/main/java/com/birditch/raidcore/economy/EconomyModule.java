@@ -21,7 +21,8 @@ public final class EconomyModule implements RaidModule {
         Preconditions.checkNotNull(context, "context");
         ProfileService profiles = context.services().require(ProfileService.class);
         EconomyService economy =
-                new DefaultEconomyService(profiles, context.scheduler(), new SystemTimeSource());
+                new DefaultEconomyService(profiles, context.scheduler(), new SystemTimeSource(),
+                        new HibernateEconomyRepository(context.database(), context.ioExecutor()));
         context.services().register(EconomyService.class, economy);
     }
 

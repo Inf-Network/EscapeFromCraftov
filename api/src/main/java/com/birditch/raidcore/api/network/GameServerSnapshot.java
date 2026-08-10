@@ -12,6 +12,7 @@ public record GameServerSnapshot(ServerId serverId, String proxyName, long updat
     public GameServerSnapshot {
         Preconditions.checkNotNull(serverId, "serverId");
         Preconditions.checkNotNull(proxyName, "proxyName");
+        Preconditions.checkArgument(!proxyName.isBlank(), "proxyName must not be blank");
         Preconditions.checkNotNull(instances, "instances");
         Preconditions.checkArgument(updatedAtMillis >= 0,
                 "updatedAtMillis must not be negative but was: " + updatedAtMillis);

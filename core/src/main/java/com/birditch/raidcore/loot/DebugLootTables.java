@@ -19,17 +19,46 @@ public final class DebugLootTables {
 
   public static void registerAll(LootTableRegistry registry) {
     Preconditions.checkNotNull(registry, "registry");
+    registry.register(new LootTable(LootTableId.of("raid_tier_1"), List.of(
+        new LootPool(3, List.of(
+            new LootEntry(ItemId.of("emerald"), 50, 1, 4),
+            new LootEntry(ItemId.of("arrow"), 35, 4, 12),
+            new LootEntry(ItemId.of("healing_potion"), 15, 1, 1))))));
+    registry.register(new LootTable(LootTableId.of("raid_tier_2"), List.of(
+        new LootPool(3, List.of(
+            new LootEntry(ItemId.of("emerald"), 35, 2, 6),
+            new LootEntry(ItemId.of("iron_sword"), 18, 1, 1),
+            new LootEntry(ItemId.of("bow"), 15, 1, 1),
+            new LootEntry(ItemId.of("shield"), 12, 1, 1),
+            new LootEntry(ItemId.of("healing_potion"), 20, 1, 2))))));
+    registry.register(new LootTable(LootTableId.of("raid_tier_3"), List.of(
+        new LootPool(3, List.of(
+            new LootEntry(ItemId.of("crossbow"), 20, 1, 1),
+            new LootEntry(ItemId.of("iron_chestplate"), 18, 1, 1),
+            new LootEntry(ItemId.of("golden_apple"), 15, 1, 2),
+            new LootEntry(ItemId.of("echo_shard"), 32, 1, 3),
+            new LootEntry(ItemId.of("extraction_key"), 15, 1, 1))))));
+    registry.register(new LootTable(LootTableId.of("raid_tier_4"), List.of(
+        new LootPool(3, List.of(
+            new LootEntry(ItemId.of("ancient_debris"), 10, 1, 2),
+            new LootEntry(ItemId.of("echo_shard"), 35, 2, 5),
+            new LootEntry(ItemId.of("golden_apple"), 25, 1, 3),
+            new LootEntry(ItemId.of("extraction_key"), 30, 1, 1))))));
     registry.register(new LootTable(LootTableId.of("debug_common"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("copper_wire"), 50, 1, 3),
-            new LootEntry(ItemId.of("old_phone"), 30, 1, 1),
-            new LootEntry(ItemId.of("medkit"), 15, 1, 1),
-            new LootEntry(ItemId.of("hard_drive"), 5, 1, 1))))));
-    registry.register(new LootTable(LootTableId.of("debug_military"), List.of(
+            new LootEntry(ItemId.of("emerald"), 50, 1, 4),
+            new LootEntry(ItemId.of("arrow"), 30, 4, 12),
+            new LootEntry(ItemId.of("healing_potion"), 15, 1, 1),
+            new LootEntry(ItemId.of("echo_shard"), 5, 1, 1))))));
+    registry.register(new LootTable(LootTableId.of("debug_armory"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("ammo_556"), 50, 10, 30),
-            new LootEntry(ItemId.of("medkit"), 25, 1, 2),
-            new LootEntry(ItemId.of("hard_drive"), 15, 1, 1),
-            new LootEntry(ItemId.of("rare_chip"), 3, 1, 1))))));
+            new LootEntry(ItemId.of("arrow"), 50, 8, 24),
+            new LootEntry(ItemId.of("iron_sword"), 25, 1, 1),
+            new LootEntry(ItemId.of("bow"), 15, 1, 1),
+            new LootEntry(ItemId.of("crossbow"), 8, 1, 1),
+            new LootEntry(ItemId.of("shield"), 6, 1, 1),
+            new LootEntry(ItemId.of("iron_chestplate"), 4, 1, 1),
+            new LootEntry(ItemId.of("golden_apple"), 3, 1, 1),
+            new LootEntry(ItemId.of("ancient_debris"), 1, 1, 1))))));
   }
 }

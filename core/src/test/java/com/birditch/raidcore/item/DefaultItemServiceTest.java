@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 @DisplayName("DefaultItemService")
 class DefaultItemServiceTest {
 
-  private static final ItemId MEDKIT = ItemId.of("medkit");
+  private static final ItemId HEALING_POTION = ItemId.of("healing_potion");
 
   private SimpleItemRegistry registry;
   private DefaultItemService service;
@@ -29,7 +29,7 @@ class DefaultItemServiceTest {
   void setUp() {
     registry = new SimpleItemRegistry();
     registry.register(ItemDefinition
-        .builder(MEDKIT, "Medkit", ItemCategory.MEDICAL, ItemRarity.UNCOMMON)
+        .builder(HEALING_POTION, "Healing Potion", ItemCategory.POTION, ItemRarity.UNCOMMON)
         .stackSize(4)
         .build());
     service = new DefaultItemService(registry);
@@ -38,9 +38,9 @@ class DefaultItemServiceTest {
   @Test
   @DisplayName("creates instance with fresh id and requested quantity")
   void createsInstanceWithFreshId() {
-    ItemInstance first = service.createInstance(MEDKIT, 2);
-    ItemInstance second = service.createInstance(MEDKIT, 2);
-    assertEquals(MEDKIT, first.itemId());
+    ItemInstance first = service.createInstance(HEALING_POTION, 2);
+    ItemInstance second = service.createInstance(HEALING_POTION, 2);
+    assertEquals(HEALING_POTION, first.itemId());
     assertEquals(2, first.quantity());
     assertNotEquals(first.instanceId(), second.instanceId());
   }
@@ -48,14 +48,14 @@ class DefaultItemServiceTest {
   @Test
   @DisplayName("accepts quantity at the stack limit")
   void acceptsQuantityAtStackLimit() {
-    assertEquals(4, service.createInstance(MEDKIT, 4).quantity());
+    assertEquals(4, service.createInstance(HEALING_POTION, 4).quantity());
   }
 
   @ParameterizedTest(name = "quantity {0} is rejected")
   @ValueSource(ints = {-1, 0, 5})
   @DisplayName("rejects quantity outside 1..stackSize with RaidException")
   void rejectsQuantityOutsideStackBounds(int quantity) {
-    assertThrows(RaidException.class, () -> service.createInstance(MEDKIT, quantity));
+    assertThrows(RaidException.class, () -> service.createInstance(HEALING_POTION, quantity));
   }
 
   @Test

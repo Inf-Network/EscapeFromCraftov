@@ -21,6 +21,13 @@ final class FakeSessionService implements SessionService {
         Preconditions.checkNotNull(playerId, "playerId");
         Preconditions.checkNotNull(playerName, "playerName");
         PlayerSession session = new PlayerSession(playerId, playerName, Instant.EPOCH);
+        session.markProfileReady();
+        sessions.put(playerId, session);
+        return session;
+    }
+
+    PlayerSession createLoading(UUID playerId, String playerName) {
+        PlayerSession session = new PlayerSession(playerId, playerName, Instant.EPOCH);
         sessions.put(playerId, session);
         return session;
     }

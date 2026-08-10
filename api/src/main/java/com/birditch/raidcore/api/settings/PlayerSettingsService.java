@@ -12,7 +12,7 @@ public interface PlayerSettingsService {
     /// loaded.
     boolean get(UUID playerId, SettingKey key);
 
-    /// Updates the cache immediately and persists asynchronously.
+    /// Persists asynchronously and updates the cache only after commit.
     CompletableFuture<Void> set(UUID playerId, SettingKey key, boolean value);
 
     void unload(UUID playerId);

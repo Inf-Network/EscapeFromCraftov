@@ -2,10 +2,12 @@ package com.birditch.raidcore.lobby.matchmaking;
 
 import com.birditch.raidcore.api.game.RaidMapId;
 import com.birditch.raidcore.api.matchmaking.MatchTicket;
+import com.birditch.raidcore.api.matchmaking.MatchmakingFailures;
 import com.birditch.raidcore.api.matchmaking.MatchmakingService;
 import com.birditch.raidcore.api.network.GameServerSnapshot;
 import com.birditch.raidcore.api.network.MatchAssignment;
 import com.birditch.raidcore.api.network.NetworkKeys;
+import com.birditch.raidcore.api.network.ProvisionRequest;
 import com.birditch.raidcore.api.network.ServerId;
 import com.birditch.raidcore.api.scheduler.ScheduledTask;
 import com.birditch.raidcore.api.settings.SettingKey;
@@ -82,8 +84,11 @@ public final class QueueService implements MatchmakingService {
     checkMainThread();
     Preconditions.checkNotNull(playerId, "playerId");
     Preconditions.checkNotNull(mapId, "mapId");
+    if (!deps.dataGate().isReady(playerId)) {
+      return Result.fail(MatchmakingFailures.PLAYER_DATA_NOT_READY);
+    }
     if (tickets.containsKey(playerId)) {
-      return Result.fail("Already in queue");
+      return Result.fail(MatchmakingFailures.ALREADY_QUEUED);
     }
     MatchTicket ticket = new MatchTicket(playerId, mapId, deps.timeSource().now());
     tickets.put(playerId, ticket);
@@ -127,7 +132,7 @@ public final class QueueService implements MatchmakingService {
       return;
     }
     pruneReservations();
-    boolean starving = false;
+    Set<RaidMapId> starvingMaps = new HashSet<>();
     for (MatchTicket ticket : List.copyOf(tickets.values())) {
       UUID playerId = ticket.playerId();
       if (!tickets.containsKey(playerId) || inFlight.contains(playerId)) {
@@ -137,17 +142,16 @@ public final class QueueService implements MatchmakingService {
         tickets.remove(playerId);
         continue;
       }
-      Optional<InstancePicker.Candidate> pick = InstancePicker.pick(servers, reservationCounts());
+      Optional<InstancePicker.Candidate> pick =
+          InstancePicker.pick(servers, ticket.mapId(), reservationCounts());
       if (pick.isEmpty()) {
-        starving = true;
+        starvingMaps.add(ticket.mapId());
         notifyWaiting(playerId);
         continue;
       }
       assign(ticket, pick.get());
     }
-    if (starving) {
-      publishProvisionHint(servers);
-    }
+    starvingMaps.forEach(mapId -> publishProvisionHint(servers, mapId));
   }
 
   private void assign(MatchTicket ticket, InstancePicker.Candidate candidate) {
@@ -199,15 +203,21 @@ public final class QueueService implements MatchmakingService {
 
   /// Nudges the least-loaded expandable server to provision another instance;
   /// rate-limited per server so a starved queue does not flood the channel.
-  private void publishProvisionHint(List<GameServerSnapshot> servers) {
-    Optional<ServerId> target = servers.stream()
+  private void publishProvisionHint(List<GameServerSnapshot> servers, RaidMapId mapId) {
+    Optional<GameServerSnapshot> target = servers.stream()
         .filter(server -> server.instances().size() < server.maxInstances())
-        .map(GameServerSnapshot::serverId)
-        .min(Comparator.comparing(ServerId::value));
-    if (target.isEmpty() || !provisionHints.tryUse(target.get().value())) {
+        .min(Comparator.comparingInt((GameServerSnapshot server) -> server.instances().size())
+            .thenComparing(server -> server.serverId().value()));
+    if (target.isEmpty()) {
       return;
     }
-    deps.broker().publish(NetworkKeys.PROVISION_CHANNEL, target.get().value())
+    ServerId serverId = target.get().serverId();
+    String cooldownKey = serverId.value() + ":" + mapId.value();
+    if (!provisionHints.tryUse(cooldownKey)) {
+      return;
+    }
+    String payload = deps.codec().toJson(new ProvisionRequest(serverId, mapId));
+    deps.broker().publish(NetworkKeys.PROVISION_CHANNEL, payload)
         .whenComplete((_, publishError) -> {
           if (publishError != null) {
             deps.logger().log(Level.FINE, "发布实例扩容提示失败。", publishError);

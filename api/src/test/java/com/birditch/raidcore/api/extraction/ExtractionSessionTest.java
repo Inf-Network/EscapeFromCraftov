@@ -39,7 +39,9 @@ class ExtractionSessionTest {
     class Settling {
 
         @Test
-        void completeMovesToCompleted() {
+        void timerThenDurableSettlementMoveThroughBothStates() {
+            session.beginSettlement();
+            assertEquals(ExtractionState.SETTLING, session.state());
             session.complete();
             assertEquals(ExtractionState.COMPLETED, session.state());
         }
@@ -51,13 +53,20 @@ class ExtractionSessionTest {
         }
 
         @Test
+        void completeBeforeSettlementThrowsIllegalStateException() {
+            assertThrows(IllegalStateException.class, session::complete);
+        }
+
+        @Test
         void completeTwiceThrowsIllegalStateException() {
+            session.beginSettlement();
             session.complete();
             assertThrows(IllegalStateException.class, session::complete);
         }
 
         @Test
         void failAfterCompleteThrowsIllegalStateException() {
+            session.beginSettlement();
             session.complete();
             assertThrows(IllegalStateException.class, session::fail);
         }
@@ -66,6 +75,13 @@ class ExtractionSessionTest {
         void completeAfterFailThrowsIllegalStateException() {
             session.fail();
             assertThrows(IllegalStateException.class, session::complete);
+        }
+
+        @Test
+        void pendingSettlementCanFail() {
+            session.beginSettlement();
+            session.fail();
+            assertEquals(ExtractionState.FAILED, session.state());
         }
     }
 

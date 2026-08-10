@@ -1,6 +1,6 @@
-/// Escape from Craftov lobby plugin: Redis-backed matchmaking queue, player
-/// settings and cosmetics. No SQL, no domain modules — the lobby talks to the
-/// shared fabric exclusively through Redis.
+/// Escape from Craftov lobby plugin. PostgreSQL/Hibernate is authoritative for
+/// profiles, settings, cosmetics, warehouse and loadout data; Redis is limited
+/// to expiring matchmaking, instance-directory and assignment coordination.
 @NullMarked
 package com.birditch.raidcore.lobby;
 

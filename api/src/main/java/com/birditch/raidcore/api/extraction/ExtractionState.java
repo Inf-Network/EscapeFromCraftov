@@ -4,6 +4,7 @@ public enum ExtractionState {
     LOCKED,
     AVAILABLE,
     EXTRACTING,
+    SETTLING,
     COMPLETED,
     FAILED
 }

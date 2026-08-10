@@ -15,6 +15,15 @@ dependencyResolutionManagement {
         maven("https://repo.papermc.io/repository/maven-public/") {
             name = "papermc"
         }
+        maven("https://maven.enginehub.org/repo/") {
+            name = "enginehub"
+        }
+        maven("https://repo.extendedclip.com/content/repositories/placeholderapi/") {
+            name = "placeholderapi"
+        }
+        maven("https://jitpack.io") {
+            name = "jitpack"
+        }
     }
 }
 

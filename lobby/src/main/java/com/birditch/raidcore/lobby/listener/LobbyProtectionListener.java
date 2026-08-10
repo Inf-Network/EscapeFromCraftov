@@ -17,7 +17,8 @@ import org.bukkit.inventory.PlayerInventory;
 /// Keeps the lobby world pristine while `lobby.protect` is enabled: no block
 /// changes (admins in creative excepted), no player damage or hunger, no item
 /// drops, and the managed player inventory (Game Menu compass) stays immovable.
-/// Clicks inside the lobby menus are handled by the menu listener, not here.
+/// TrMenu owns its virtual menu slots; this listener only protects the real
+/// player inventory underneath them.
 public final class LobbyProtectionListener implements Listener {
 
   private static final String ADMIN_PERMISSION = "raid.admin";

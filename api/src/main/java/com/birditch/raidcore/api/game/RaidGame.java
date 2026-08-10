@@ -14,6 +14,31 @@ public interface RaidGame {
 
     RaidMapId mapId();
 
+    /// Authored map revision captured at game creation. It never changes mid-raid.
+    default long mapRevision() {
+        return 0;
+    }
+
+    default List<RaidSpawnLocation> spawnLocations() {
+        return List.of();
+    }
+
+    default List<RaidExtractionArea> extractionAreas() {
+        return List.of();
+    }
+
+    default List<RaidLootPoint> lootPoints() {
+        return List.of();
+    }
+
+    default List<RaidAiZone> aiZones() {
+        return List.of();
+    }
+
+    default List<RaidPoi> pois() {
+        return List.of();
+    }
+
     RaidGameState state();
 
     Collection<RaidPlayer> players();

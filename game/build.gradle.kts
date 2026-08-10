@@ -7,9 +7,18 @@ description = "Escape from Craftov game-server plugin: multi-instance raids, per
 
 dependencies {
     compileOnly(libs.paper.api)
+    compileOnly(libs.luckperms.api)
+    compileOnly(libs.worldedit.bukkit)
+    compileOnly(libs.placeholderapi)
+    compileOnly(libs.decentholograms) {
+        isTransitive = false
+    }
     implementation(project(":core"))
 
     testImplementation(testFixtures(project(":api")))
+    testImplementation(libs.luckperms.api)
+    testCompileOnly(libs.paper.api)
+    testRuntimeOnly(libs.paper.api)
 }
 
 tasks.processResources {
@@ -23,19 +32,13 @@ tasks.processResources {
 tasks.shadowJar {
     archiveBaseName.set("RaidCoreGame")
     archiveClassifier.set("")
-    relocate("com.zaxxer.hikari", "com.birditch.raidcore.libs.hikari")
-    relocate("org.postgresql", "com.birditch.raidcore.libs.postgresql")
-    relocate("redis.clients", "com.birditch.raidcore.libs.jedis")
-    relocate("org.apache.commons.pool2", "com.birditch.raidcore.libs.commonspool2")
-    relocate("com.google.gson", "com.birditch.raidcore.libs.gson")
-    relocate("org.json", "com.birditch.raidcore.libs.json")
-    mergeServiceFiles()
+    // Retired auto-map experiments are not part of the production plugin.
+    exclude("com/birditch/raidcore/automap/**")
+    // Publish one plugin jar containing only RaidCore's own modules. Third-party
+    // libraries are resolved by RaidGamePluginLoader into Paper's libraries cache.
     dependencies {
-        // Paper ships slf4j; compile-only annotation libs are dead weight at runtime.
-        exclude(dependency("org.slf4j:.*:.*"))
-        exclude(dependency("org.checkerframework:checker-qual:.*"))
-        exclude(dependency("com.google.errorprone:error_prone_annotations:.*"))
-        exclude(dependency("org.jspecify:jspecify:.*"))
+        include(project(":api"))
+        include(project(":core"))
     }
 }
 

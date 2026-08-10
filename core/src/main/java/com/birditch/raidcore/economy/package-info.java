@@ -1,4 +1,5 @@
-/// Economy domain implementation: main-thread balance mutations against cached profiles.
+/// Durable economy implementation: PostgreSQL row locking, idempotent audit
+/// transactions and main-thread cache synchronization.
 @NullMarked
 package com.birditch.raidcore.economy;
 

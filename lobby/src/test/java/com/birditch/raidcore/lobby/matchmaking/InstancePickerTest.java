@@ -44,7 +44,8 @@ class InstancePickerTest {
           instance("bbbbbb", RaidGameState.WAITING, 0, 12, false),
           instance("cccccc", RaidGameState.WAITING, 12, 12, true),
           instance("dddddd", RaidGameState.WAITING, 3, 12, true));
-      Optional<InstancePicker.Candidate> pick = InstancePicker.pick(List.of(snapshot), Map.of());
+      Optional<InstancePicker.Candidate> pick =
+          InstancePicker.pick(List.of(snapshot), MAP, Map.of());
       assertTrue(pick.isPresent());
       assertEquals("dddddd", pick.orElseThrow().instance().gameId().value());
     }
@@ -55,14 +56,14 @@ class InstancePickerTest {
       InstanceSnapshot nearlyFull = instance("aaaaaa", RaidGameState.WAITING, 11, 12, true);
       String key = InstancePicker.reservationKey(SERVER_A, nearlyFull.gameId());
       Optional<InstancePicker.Candidate> pick =
-          InstancePicker.pick(List.of(server(SERVER_A, nearlyFull)), Map.of(key, 1));
+          InstancePicker.pick(List.of(server(SERVER_A, nearlyFull)), MAP, Map.of(key, 1));
       assertTrue(pick.isEmpty());
     }
 
     @Test
     @DisplayName("no servers means no candidate")
     void emptyDirectory() {
-      assertTrue(InstancePicker.pick(List.of(), Map.of()).isEmpty());
+      assertTrue(InstancePicker.pick(List.of(), MAP, Map.of()).isEmpty());
     }
   }
 
@@ -78,7 +79,7 @@ class InstancePickerTest {
           instance("fuller", RaidGameState.WAITING, 5, 12, true));
       String emptyKey = InstancePicker.reservationKey(SERVER_A, RaidGameId.of("empty1"));
       Optional<InstancePicker.Candidate> pick =
-          InstancePicker.pick(List.of(snapshot), Map.of(emptyKey, 7));
+          InstancePicker.pick(List.of(snapshot), MAP, Map.of(emptyKey, 7));
       assertEquals("empty1", pick.orElseThrow().instance().gameId().value());
     }
 
@@ -90,7 +91,7 @@ class InstancePickerTest {
       GameServerSnapshot second = server(SERVER_B,
           instance("aaaaaa", RaidGameState.WAITING, 3, 12, true));
       Optional<InstancePicker.Candidate> pick =
-          InstancePicker.pick(List.of(first, second), Map.of());
+          InstancePicker.pick(List.of(first, second), MAP, Map.of());
       assertEquals("aaaaaa", pick.orElseThrow().instance().gameId().value());
       assertEquals(SERVER_B, pick.orElseThrow().server().serverId());
     }

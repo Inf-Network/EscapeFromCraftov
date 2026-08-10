@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import redis.clients.jedis.Jedis;
+import redis.clients.jedis.RedisClient;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.params.SetParams;
 import redis.clients.jedis.resps.ScanResult;
@@ -48,12 +48,9 @@ public final class RedisInstanceDirectory implements InstanceDirectory {
     Preconditions.checkNotNull(snapshot, "snapshot");
     Preconditions.checkNotNull(ttl, "ttl");
     Preconditions.checkArgument(ttl.toMillis() > 0, "ttl must be positive");
-    return CompletableFuture.runAsync(() -> {
-      try (Jedis jedis = redis.resource()) {
-        jedis.set(NetworkKeys.serverKey(snapshot.serverId()), codec.toJson(snapshot),
-            SetParams.setParams().px(ttl.toMillis()));
-      }
-    }, ioExecutor);
+    return CompletableFuture.runAsync(() -> redis.client().set(
+        NetworkKeys.serverKey(snapshot.serverId()), codec.toJson(snapshot),
+        SetParams.setParams().px(ttl.toMillis())), ioExecutor);
   }
 
   @Override
@@ -63,18 +60,17 @@ public final class RedisInstanceDirectory implements InstanceDirectory {
 
   private List<GameServerSnapshot> fetchActiveServers() {
     List<GameServerSnapshot> servers = new ArrayList<>();
-    try (Jedis jedis = redis.resource()) {
-      for (String key : scanServerKeys(jedis)) {
-        String json = jedis.get(key);
-        if (json == null) {
-          continue;
-        }
-        try {
-          servers.add(codec.fromJson(json, GameServerSnapshot.class));
-        } catch (RaidException e) {
-          if (shouldWarn(key)) {
-            logger.log(Level.WARNING, "Skipping malformed server snapshot at " + key, e);
-          }
+    RedisClient client = redis.client();
+    for (String key : scanServerKeys(client)) {
+      String json = client.get(key);
+      if (json == null) {
+        continue;
+      }
+      try {
+        servers.add(codec.fromJson(json, GameServerSnapshot.class));
+      } catch (RaidException e) {
+        if (shouldWarn(key)) {
+          logger.log(Level.WARNING, "Skipping malformed server snapshot at " + key, e);
         }
       }
     }
@@ -91,13 +87,13 @@ public final class RedisInstanceDirectory implements InstanceDirectory {
     return now - previous >= WARN_INTERVAL_MILLIS && warnedAt.compareAndSet(previous, now);
   }
 
-  private static List<String> scanServerKeys(Jedis jedis) {
+  private static List<String> scanServerKeys(RedisClient client) {
     List<String> keys = new ArrayList<>();
     ScanParams params =
         new ScanParams().match(NetworkKeys.SERVER_KEY_PATTERN).count(SCAN_BATCH_SIZE);
     String cursor = ScanParams.SCAN_POINTER_START;
     do {
-      ScanResult<String> result = jedis.scan(cursor, params);
+      ScanResult<String> result = client.scan(cursor, params);
       keys.addAll(result.getResult());
       cursor = result.getCursor();
     } while (!ScanParams.SCAN_POINTER_START.equals(cursor));

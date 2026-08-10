@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.birditch.raidcore.api.event.extraction.PlayerExtractedEvent;
+import com.birditch.raidcore.api.event.extraction.PlayerExtractionReadyEvent;
+import com.birditch.raidcore.api.event.extraction.PlayerExtractionLockedEvent;
+import com.birditch.raidcore.api.event.extraction.PlayerExtractionAuthorizationFailedEvent;
 import com.birditch.raidcore.api.event.game.RaidEndedEvent;
 import com.birditch.raidcore.api.extraction.ExtractionCondition;
 import com.birditch.raidcore.api.extraction.ExtractionContext;
@@ -31,6 +33,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,7 +61,9 @@ class DefaultExtractionServiceTest {
     private FakeGameService games;
     private FakeRaidGame game;
     private DefaultExtractionService service;
-    private List<PlayerExtractedEvent> published;
+    private List<PlayerExtractionReadyEvent> published;
+    private List<PlayerExtractionLockedEvent> locked;
+    private List<PlayerExtractionAuthorizationFailedEvent> authorizationFailed;
 
     @BeforeEach
     void setUp() {
@@ -73,7 +79,12 @@ class DefaultExtractionServiceTest {
         games.add(game);
         service = new DefaultExtractionService(games, scheduler, eventBus, timeSource);
         published = new ArrayList<>();
-        eventBus.subscribe(PlayerExtractedEvent.class, published::add);
+        locked = new ArrayList<>();
+        authorizationFailed = new ArrayList<>();
+        eventBus.subscribe(PlayerExtractionReadyEvent.class, published::add);
+        eventBus.subscribe(PlayerExtractionLockedEvent.class, locked::add);
+        eventBus.subscribe(PlayerExtractionAuthorizationFailedEvent.class,
+                authorizationFailed::add);
     }
 
     @Nested
@@ -194,17 +205,69 @@ class DefaultExtractionServiceTest {
     class Completion {
 
         @Test
-        void completesSessionAfterPointDuration() {
+        void beginsSettlementAfterPointDuration() {
             ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
                     .orElseThrow(IllegalStateException::new);
 
             scheduler.advanceBy(POINT_DURATION);
 
-            assertEquals(ExtractionState.COMPLETED, session.state());
-            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
-            assertEquals(0, service.activeCount());
-            assertEquals(List.of(new PlayerExtractedEvent(GAME_ID, PLAYER_ID, POINT_ID)),
+            assertEquals(ExtractionState.SETTLING, session.state());
+            assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
+            assertEquals(1, service.activeCount());
+            assertEquals(List.of(new PlayerExtractionReadyEvent(GAME_ID, PLAYER_ID, POINT_ID)),
                     published);
+            assertEquals(List.of(new PlayerExtractionLockedEvent(GAME_ID, PLAYER_ID, POINT_ID)),
+                    locked);
+        }
+
+        @Test
+        void failsAndUnlocksWhenDurableAuthorizationIsRejected() {
+            ExtractionPointId paid = ExtractionPointId.of("paid_gate");
+            ExtractionCondition rejected = new ExtractionCondition() {
+                @Override public String describe() { return "付费撤离"; }
+                @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+                @Override public CompletableFuture<Boolean> authorize(ExtractionContext context) {
+                    return CompletableFuture.completedFuture(false);
+                }
+            };
+            game.addExtractionPoint(point(paid, List.of(rejected), ExtractionState.AVAILABLE));
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, paid)
+                    .orElseThrow(IllegalStateException::new);
+
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertTrue(published.isEmpty());
+            assertEquals(1, authorizationFailed.size());
+            assertEquals(0, service.activeCount());
+        }
+
+        @Test
+        void retriesTransientAuthorizationFailureWithoutPublishingTwice() {
+            ExtractionPointId paid = ExtractionPointId.of("paid_gate");
+            AtomicInteger attempts = new AtomicInteger();
+            ExtractionCondition transientFailure = new ExtractionCondition() {
+                @Override public String describe() { return "付费撤离"; }
+                @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+                @Override public CompletableFuture<Boolean> authorize(ExtractionContext context) {
+                    if (attempts.getAndIncrement() == 0) {
+                        return CompletableFuture.failedFuture(new IllegalStateException("db down"));
+                    }
+                    return CompletableFuture.completedFuture(true);
+                }
+            };
+            game.addExtractionPoint(point(
+                    paid, List.of(transientFailure), ExtractionState.AVAILABLE));
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, paid)
+                    .orElseThrow(IllegalStateException::new);
+
+            scheduler.advanceBy(POINT_DURATION);
+            assertEquals(ExtractionState.SETTLING, session.state());
+            assertTrue(published.isEmpty());
+
+            scheduler.advanceBy(Duration.ofSeconds(5));
+            assertEquals(1, published.size());
+            assertEquals(2, attempts.get());
         }
 
         @Test
@@ -220,28 +283,56 @@ class DefaultExtractionServiceTest {
 
             scheduler.advanceBy(Duration.ofMillis(1));
 
-            assertEquals(ExtractionState.COMPLETED, session.state());
+            assertEquals(ExtractionState.SETTLING, session.state());
         }
 
         @Test
-        void removesSessionBeforePublishingTheEvent() {
+        void keepsSettlingSessionVisibleWhilePublishingTheEvent() {
             List<Integer> activeCountsAtPublish = new ArrayList<>();
-            eventBus.subscribe(PlayerExtractedEvent.class,
+            eventBus.subscribe(PlayerExtractionReadyEvent.class,
                     _ -> activeCountsAtPublish.add(service.activeCount()));
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
 
             scheduler.advanceBy(POINT_DURATION);
 
-            assertEquals(List.of(0), activeCountsAtPublish);
+            assertEquals(List.of(1), activeCountsAtPublish);
         }
 
         @Test
-        void allowsANewExtractionAfterCompleting() {
+        void allowsANewExtractionOnlyAfterDurableSettlementCompletes() {
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
             scheduler.advanceBy(POINT_DURATION);
 
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, POINT_ID),
+                    ExtractionFailures.ALREADY_EXTRACTING);
+            assertTrue(service.completeSettlement(PLAYER_ID, GAME_ID, POINT_ID));
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
             assertEquals(1, service.activeCount());
+        }
+
+        @Test
+        void durableSettlementAcknowledgementIsBoundToTheExactAttempt() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertFalse(service.completeSettlement(PLAYER_ID, RaidGameId.of("other"), POINT_ID));
+            assertEquals(ExtractionState.SETTLING, session.state());
+            assertTrue(service.completeSettlement(PLAYER_ID, GAME_ID, POINT_ID));
+            assertEquals(ExtractionState.COMPLETED, session.state());
+            assertFalse(service.completeSettlement(PLAYER_ID, GAME_ID, POINT_ID));
+            assertEquals(0, service.activeCount());
+        }
+
+        @Test
+        void terminalSettlementConflictFailsAndRemovesTheSession() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertTrue(service.failSettlement(PLAYER_ID, GAME_ID, POINT_ID));
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertEquals(Optional.empty(), service.activeSession(PLAYER_ID));
         }
 
         @Test
@@ -311,6 +402,20 @@ class DefaultExtractionServiceTest {
             assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
             assertEquals(1, service.activeCount());
         }
+
+        @Test
+        void keepsEarnedSettlementPendingWhenRaidEnds() {
+            eventBus.register(service);
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+
+            eventBus.publish(endedEvent(GAME_ID));
+
+            assertEquals(ExtractionState.SETTLING, session.state());
+            assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
+            assertTrue(service.completeSettlement(PLAYER_ID, GAME_ID, POINT_ID));
+        }
     }
 
     @Nested
@@ -346,6 +451,17 @@ class DefaultExtractionServiceTest {
 
             assertTrue(service.begin(PLAYER_ID, GAME_ID, POINT_ID).isSuccess());
             assertEquals(1, service.activeCount());
+        }
+
+        @Test
+        void cannotCancelAfterTheTimerEarnedSettlement() {
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
+                    .orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertFalse(service.cancel(PLAYER_ID));
+            assertEquals(ExtractionState.SETTLING, session.state());
+            assertEquals(Optional.of(session), service.activeSession(PLAYER_ID));
         }
 
         @Test

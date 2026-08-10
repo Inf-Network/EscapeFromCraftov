@@ -2,7 +2,10 @@ package com.birditch.raidcore.game.plugin.listener;
 
 import com.birditch.raidcore.api.combat.CombatService;
 import com.birditch.raidcore.api.extraction.ExtractionService;
+import com.birditch.raidcore.api.extraction.ExtractionState;
 import com.birditch.raidcore.api.game.RaidGameService;
+import com.birditch.raidcore.api.game.RaidGameId;
+import com.birditch.raidcore.api.inventory.PlayerInventoryService;
 import com.birditch.raidcore.api.profile.ProfileService;
 import com.birditch.raidcore.api.scheduler.RaidScheduler;
 import com.birditch.raidcore.api.session.PlayerSession;
@@ -58,6 +61,7 @@ public final class GameConnectionListener implements Listener {
   private final ExtractionService extraction;
   private final RaidGameService games;
   private final CombatService combat;
+  private final PlayerInventoryService inventories;
   private final RaidScheduler scheduler;
   private final Messages messages;
   private final PendingJoinHandler pendingJoins;
@@ -72,6 +76,7 @@ public final class GameConnectionListener implements Listener {
     this.extraction = deps.services().require(ExtractionService.class);
     this.games = deps.services().require(RaidGameService.class);
     this.combat = deps.services().require(CombatService.class);
+    this.inventories = deps.services().require(PlayerInventoryService.class);
     this.scheduler = deps.scheduler();
     this.messages = deps.messages();
     this.pendingJoins = deps.pendingJoins();
@@ -82,13 +87,18 @@ public final class GameConnectionListener implements Listener {
 
   @EventHandler
   public void onJoin(PlayerJoinEvent event) {
+    // A Game process can host several unrelated rooms. Bukkit's default join
+    // announcement is server-wide and bypasses AsyncChatEvent, so never let it
+    // leak a player connection into every room.
+    event.joinMessage(null);
     Player player = event.getPlayer();
     UUID playerId = player.getUniqueId();
+    pendingJoins.prepare(player);
     sessions.create(playerId, player.getName());
+    index.setGroup(playerId, "pending:" + playerId);
     profiles
         .load(playerId, player.getName())
         .whenComplete((_, error) -> scheduler.runSync(() -> completeProfileLoad(playerId, error)));
-    pendingJoins.handle(player);
     visibility.refresh(player);
     player.sendPlayerListHeaderAndFooter(messages.raw("tab.header"), messages.raw("tab.footer"));
   }
@@ -113,14 +123,14 @@ public final class GameConnectionListener implements Listener {
     if (error == null) {
       session.get().markProfileReady();
       if (player != null) {
-        player.sendMessage(messages.raw("join.profile-loaded"));
+        pendingJoins.handle(player);
       }
       return;
     }
     session.get().markProfileFailed();
     logger.log(Level.SEVERE, "Profile load failed for player " + playerId, error);
     if (player != null) {
-      player.sendMessage(messages.raw("join.profile-failed"));
+      pendingJoins.profileFailed(player);
     }
   }
 
@@ -130,9 +140,40 @@ public final class GameConnectionListener implements Listener {
   /// the isolation group entry is dropped.
   @EventHandler
   public void onQuit(PlayerQuitEvent event) {
+    // Room membership is removed below and the remaining Tab view is refreshed
+    // explicitly. The vanilla quit announcement would otherwise be global.
+    event.quitMessage(null);
     UUID playerId = event.getPlayer().getUniqueId();
-    extraction.cancel(playerId);
+    pendingJoins.release(playerId);
+    boolean settlementPending = extraction.activeSession(playerId)
+        .filter(session -> session.state() == ExtractionState.SETTLING).isPresent();
+    if (!settlementPending) extraction.cancel(playerId);
+    RaidGameId gameId = sessions.find(playerId).flatMap(PlayerSession::currentGame).orElse(null);
+    if (gameId == null) {
+      finishQuit(playerId);
+      return;
+    }
+    // The coordinator captured an immutable carried-item snapshot before the
+    // quit event. Let its idempotent PostgreSQL retry finish; racing it with a
+    // death settlement could turn an earned extraction into a loss.
+    if (settlementPending) {
+      finishQuit(playerId);
+      return;
+    }
+    // Remove the player from the room immediately. The bridge refreshes the
+    // remaining viewers' Tab/footer now; durable loss settlement may take a
+    // slow database round-trip and must not hold up visibility updates.
     games.leave(playerId);
+    inventories.settleDeath(playerId, gameId).whenComplete((_, error) ->
+        scheduler.runSync(() -> {
+          if (error != null) {
+            logger.log(Level.SEVERE, "玩家退出时死亡损失结算失败:" + playerId, error);
+          }
+          finishQuit(playerId);
+        }));
+  }
+
+  private void finishQuit(UUID playerId) {
     combat.reset(playerId);
     sessions.end(playerId);
     index.clearGroup(playerId);

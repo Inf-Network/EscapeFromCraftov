@@ -19,7 +19,16 @@ import org.jspecify.annotations.Nullable;
 /// (bootstrap order: item, loot, profile, economy, combat, game, extraction).
 public final class GameModule implements RaidModule {
 
+    private final RaidMapProvider maps;
     private @Nullable EventSubscription subscription;
+
+    public GameModule() {
+        this(RaidMapProvider.EMPTY);
+    }
+
+    public GameModule(RaidMapProvider maps) {
+        this.maps = Preconditions.checkNotNull(maps, "maps");
+    }
 
     @Override
     public String id() {
@@ -33,7 +42,7 @@ public final class GameModule implements RaidModule {
         RaidGameManager manager = new RaidGameManager(new GameManagerDeps(
                 sessions, context.eventBus(), context.scheduler(),
                 new ThreadLocalRandomProvider(), new SystemTimeSource(),
-                context.config().game(), context.config().extraction(), context.logger()));
+                context.config().game(), context.config().extraction(), maps, context.logger()));
         context.services().register(RaidGameService.class, manager);
         subscription = context.eventBus().register(manager);
     }

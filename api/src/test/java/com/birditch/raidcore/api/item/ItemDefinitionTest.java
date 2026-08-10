@@ -12,10 +12,11 @@ import org.junit.jupiter.api.Test;
 
 class ItemDefinitionTest {
 
-    private static final ItemId ID = ItemId.of("medkit");
+    private static final ItemId ID = ItemId.of("healing_potion");
 
     private static ItemDefinition.Builder builder() {
-        return ItemDefinition.builder(ID, "Medkit", ItemCategory.MEDICAL, ItemRarity.UNCOMMON);
+        return ItemDefinition.builder(ID, "Healing Potion", ItemCategory.POTION,
+                ItemRarity.UNCOMMON);
     }
 
     @Nested
@@ -26,8 +27,8 @@ class ItemDefinitionTest {
         void appliesDocumentedDefaults() {
             ItemDefinition definition = builder().build();
             assertEquals(ID, definition.id());
-            assertEquals("Medkit", definition.displayName());
-            assertEquals(ItemCategory.MEDICAL, definition.category());
+            assertEquals("Healing Potion", definition.displayName());
+            assertEquals(ItemCategory.POTION, definition.category());
             assertEquals(ItemRarity.UNCOMMON, definition.rarity());
             assertEquals(Money.ZERO, definition.basePrice());
             assertEquals(0, definition.weightGrams());
@@ -69,7 +70,7 @@ class ItemDefinitionTest {
         @Test
         void rejectsBlankDisplayName() {
             ItemDefinition.Builder blank =
-                    ItemDefinition.builder(ID, "   ", ItemCategory.MEDICAL, ItemRarity.UNCOMMON);
+                    ItemDefinition.builder(ID, "   ", ItemCategory.POTION, ItemRarity.UNCOMMON);
             assertThrows(IllegalArgumentException.class, blank::build);
         }
 
@@ -88,10 +89,10 @@ class ItemDefinitionTest {
         @Test
         void rejectsNullComponents() {
             assertThrows(NullPointerException.class, () -> new ItemDefinition(
-                    null, "Medkit", ItemCategory.MEDICAL, ItemRarity.UNCOMMON,
+                    null, "Healing Potion", ItemCategory.POTION, ItemRarity.UNCOMMON,
                     Money.ZERO, 0, 1, true, true, true));
             assertThrows(NullPointerException.class, () -> new ItemDefinition(
-                    ID, "Medkit", ItemCategory.MEDICAL, ItemRarity.UNCOMMON,
+                    ID, "Healing Potion", ItemCategory.POTION, ItemRarity.UNCOMMON,
                     null, 0, 1, true, true, true));
         }
     }

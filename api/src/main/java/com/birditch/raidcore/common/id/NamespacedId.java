@@ -3,7 +3,7 @@ package com.birditch.raidcore.common.id;
 import com.birditch.raidcore.common.check.Preconditions;
 import java.util.regex.Pattern;
 
-/// Namespaced identifier of the form `namespace:key`, e.g. `raidcore:medkit`.
+/// Namespaced identifier of the form `namespace:key`, e.g. `raidcore:healing_potion`.
 ///
 /// Both parts must match `[a-z0-9_.-]+`.
 public record NamespacedId(String namespace, String key) {

@@ -1,4 +1,4 @@
-/// Database configuration and pooled connection access (HikariCP over PostgreSQL).
+/// Hibernate ORM transaction and HikariCP configuration over PostgreSQL.
 @NullMarked
 package com.birditch.raidcore.core.database;
 

@@ -5,8 +5,9 @@ import com.birditch.raidcore.common.check.Preconditions;
 import java.time.Instant;
 import java.util.UUID;
 
-/// An in-progress extraction attempt. Main-thread confined; starts at
-/// [ExtractionState#EXTRACTING] and settles exactly once.
+/// A main-thread-confined extraction attempt. The in-world timer moves it from
+/// [ExtractionState#EXTRACTING] to [ExtractionState#SETTLING]; only a durable
+/// inventory transaction may then complete it.
 public final class ExtractionSession {
 
     private final UUID playerId;
@@ -48,14 +49,24 @@ public final class ExtractionSession {
     }
 
     /// @throws IllegalStateException unless currently EXTRACTING
-    public void complete() {
+    public void beginSettlement() {
         requireExtracting();
+        state = ExtractionState.SETTLING;
+    }
+
+    /// @throws IllegalStateException unless currently SETTLING
+    public void complete() {
+        if (state != ExtractionState.SETTLING) {
+            throw new IllegalStateException("Extraction session is not settling: " + state);
+        }
         state = ExtractionState.COMPLETED;
     }
 
-    /// @throws IllegalStateException unless currently EXTRACTING
+    /// Fails either an in-world timer or a pending durable settlement.
     public void fail() {
-        requireExtracting();
+        if (state != ExtractionState.EXTRACTING && state != ExtractionState.SETTLING) {
+            throw new IllegalStateException("Extraction session already settled: " + state);
+        }
         state = ExtractionState.FAILED;
     }
 

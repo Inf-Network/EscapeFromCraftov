@@ -81,6 +81,11 @@ database:
   # PostgreSQL schema。Lobby 与 Game 必须一致；默认 public。
   schema: public
 
+  # 自动建表时统一添加的表名前缀（同时应用于索引名）。Lobby 与 Game 必须一致。
+  # 空字符串表示不加前缀；非空时须以小写字母开头，仅含小写字母、数字、下划线，
+  # 最长 20 字符。示例："ec_" 会把 raid_profiles 建成 ec_raid_profiles。
+  table-prefix: ""
+
   # PostgreSQL JDBC sslmode: disable / allow / prefer / require /
   # verify-ca / verify-full。公网数据库建议 verify-full。
   ssl-mode: prefer

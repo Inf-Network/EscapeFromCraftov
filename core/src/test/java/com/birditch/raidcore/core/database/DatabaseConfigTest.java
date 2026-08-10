@@ -27,6 +27,12 @@ class DatabaseConfigTest {
         "secret", new DatabaseConfig.PoolSettings(maximumPoolSize, minimumIdle, 10_000L));
   }
 
+  private static DatabaseConfig withTablePrefix(String tablePrefix) {
+    return new DatabaseConfig("localhost", 5432, "raidcore", "raidcore", "secret", "public",
+        tablePrefix, "prefer", "RaidCore", true, true, 10, 30, VALID_POOL,
+        DatabaseConfig.OrmSettings.defaults());
+  }
+
   @Test
   void validConfigurationPasses() {
     assertDoesNotThrow(() -> postgres("localhost", 5432, "raidcore", "raidcore").validate());
@@ -36,6 +42,12 @@ class DatabaseConfigTest {
   @ValueSource(ints = {1, 65535})
   void portBoundariesAreValid(int port) {
     assertDoesNotThrow(() -> postgres("localhost", port, "raidcore", "raidcore").validate());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "ec_", "s1", "a_b_c", "exactly_twenty_chars"})
+  void validTablePrefixesPass(String tablePrefix) {
+    assertDoesNotThrow(() -> withTablePrefix(tablePrefix).validate());
   }
 
   @Test
@@ -66,7 +78,15 @@ class DatabaseConfigTest {
         Arguments.of(postgres("localhost", 5432, "raidcore", " "),
             "database.username must not be blank"),
         Arguments.of(withPool(0, 0), "database.pool.maximum-pool-size must be greater than 0"),
-        Arguments.of(withPool(10, -1), "database.pool.minimum-idle must not be negative"));
+        Arguments.of(withPool(10, -1), "database.pool.minimum-idle must not be negative"),
+        Arguments.of(withTablePrefix("1abc"),
+            "database.table-prefix must be empty or match [a-z][a-z0-9_]* with at most 20 characters"),
+        Arguments.of(withTablePrefix("EC_"),
+            "database.table-prefix must be empty or match [a-z][a-z0-9_]* with at most 20 characters"),
+        Arguments.of(withTablePrefix("raid core"),
+            "database.table-prefix must be empty or match [a-z][a-z0-9_]* with at most 20 characters"),
+        Arguments.of(withTablePrefix("way_too_long_prefix_x"),
+            "database.table-prefix must be empty or match [a-z][a-z0-9_]* with at most 20 characters"));
   }
 
   @Test

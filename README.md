@@ -625,7 +625,9 @@ pois
 
 RaidCore 明确使用 **Hibernate ORM + HikariCP + PostgreSQL**，不使用 Spring Boot，也不使用 JPA 容器。
 
-Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连接池。当前持久化包含档案、等级、余额、玩家设置、装扮、物资仓库、出战栏、行动物品与幂等结算。金币变动写入 `raid_economy_transactions`，历练奖励写入 `raid_progression_transactions`；两者都以 transaction ID 防止网络重试造成重复发放或重复扣除。Redis 只保存匹配、实例目录与临时分配，不替代 PostgreSQL。
+Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连接池。当前持久化包含档案、等级、余额、玩家设置、装扮、物资仓库、出战栏、行动物品与幂等结算。金币变动写入 `raid_economy_transactions`，历练奖励写入 `raid_progression_transactions`；两者都以 transaction ID 防止网络重试造成重复发放或重复扣除。Redis 只保存匹配、实例目录与临时分配，不替代 PostgreSQL。完整表结构与命名规则见 [DATABASE.md](DATABASE.md)。
+
+`database.table-prefix` 可在自动建表时为所有表名与索引名统一添加前缀（默认空即不加），便于多套部署共用同一个库或 schema。前缀须以小写字母开头，仅含小写字母、数字、下划线，最长 20 字符；Lobby 与 Game 必须配置一致，已投产后修改前缀等于换一套全新表。
 
 常用 HikariCP 配置均有注释：最大/最小连接、获取与校验超时、空闲回收、生命周期、Keepalive、泄漏检测、启动失败策略、事务隔离、初始化 SQL、内部查询隔离和 JMX。
 

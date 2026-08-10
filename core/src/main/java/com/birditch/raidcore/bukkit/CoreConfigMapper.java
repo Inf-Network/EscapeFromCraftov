@@ -36,6 +36,7 @@ public final class CoreConfigMapper {
         stringOr(yaml, "database.username", "raidcore"),
         stringOr(yaml, "database.password", "change-me"),
         stringOr(yaml, "database.schema", "public"),
+        stringOr(yaml, "database.table-prefix", ""),
         stringOr(yaml, "database.ssl-mode", "prefer"),
         stringOr(yaml, "database.application-name", "RaidCore"),
         yaml.getBoolean("database.tcp-keepalive", true),

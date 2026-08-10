@@ -14,6 +14,7 @@ import java.util.function.Function;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -47,7 +48,8 @@ public final class HibernateDatabase implements Database {
           .applySetting("hibernate.format_sql", config.orm().formatSql())
           .applySetting("hibernate.generate_statistics", config.orm().generateStatistics())
           .build();
-      this.sessionFactory = new MetadataSources(registry)
+      TablePrefixNamingStrategy naming = new TablePrefixNamingStrategy(config.tablePrefix());
+      Metadata metadata = new MetadataSources(registry)
           .addAnnotatedClass(PlayerProfileEntity.class)
           .addAnnotatedClass(PlayerSettingEntity.class)
           .addAnnotatedClass(PlayerCosmeticEntity.class)
@@ -55,8 +57,11 @@ public final class HibernateDatabase implements Database {
           .addAnnotatedClass(RaidInventorySettlementEntity.class)
           .addAnnotatedClass(EconomyTransactionEntity.class)
           .addAnnotatedClass(ProgressionTransactionEntity.class)
-          .buildMetadata()
-          .buildSessionFactory();
+          .getMetadataBuilder()
+          .applyPhysicalNamingStrategy(naming)
+          .build();
+      naming.prefixIndexNames(metadata);
+      this.sessionFactory = metadata.buildSessionFactory();
       this.serviceRegistry = registry;
     } catch (RuntimeException e) {
       if (registry != null) {

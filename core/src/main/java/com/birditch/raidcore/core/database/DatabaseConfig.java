@@ -5,6 +5,7 @@ import com.birditch.raidcore.core.config.ConfigurationException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /// PostgreSQL, HikariCP and Hibernate ORM settings. Validation aggregates all
 /// related and cross-field failures so an operator can fix one boot at a time.
@@ -15,6 +16,7 @@ public record DatabaseConfig(
     String username,
     String password,
     String schema,
+    String tablePrefix,
     String sslMode,
     String applicationName,
     boolean tcpKeepAlive,
@@ -33,6 +35,12 @@ public record DatabaseConfig(
       "TRANSACTION_SERIALIZABLE");
   private static final Set<String> SCHEMA_ACTIONS =
       Set.of("none", "validate", "update", "create", "create-drop");
+  /// Lowercase start, then lowercase/digits/underscores. PostgreSQL folds
+  /// unquoted identifiers to lowercase, so anything else would silently rename.
+  private static final Pattern TABLE_PREFIX_PATTERN = Pattern.compile("[a-z][a-z0-9_]*");
+  /// Longest mapped identifier is 33 chars; 20 keeps every prefixed name well
+  /// under PostgreSQL's 63-byte identifier limit.
+  private static final int TABLE_PREFIX_MAX_LENGTH = 20;
 
   public DatabaseConfig {
     Preconditions.checkNotNull(host, "host");
@@ -40,6 +48,7 @@ public record DatabaseConfig(
     Preconditions.checkNotNull(username, "username");
     Preconditions.checkNotNull(password, "password");
     Preconditions.checkNotNull(schema, "schema");
+    Preconditions.checkNotNull(tablePrefix, "tablePrefix");
     Preconditions.checkNotNull(sslMode, "sslMode");
     Preconditions.checkNotNull(applicationName, "applicationName");
     Preconditions.checkNotNull(pool, "pool");
@@ -49,7 +58,7 @@ public record DatabaseConfig(
   /// Compatibility constructor used by pure unit tests and embedders.
   public DatabaseConfig(String host, int port, String database, String username,
       String password, PoolSettings pool) {
-    this(host, port, database, username, password, "public", "prefer", "RaidCore", true, true,
+    this(host, port, database, username, password, "public", "", "prefer", "RaidCore", true, true,
         10, 30, pool, OrmSettings.defaults());
   }
 
@@ -69,6 +78,12 @@ public record DatabaseConfig(
     }
     if (schema.isBlank()) {
       problems.add("database.schema must not be blank");
+    }
+    if (!tablePrefix.isEmpty()
+        && (tablePrefix.length() > TABLE_PREFIX_MAX_LENGTH
+            || !TABLE_PREFIX_PATTERN.matcher(tablePrefix).matches())) {
+      problems.add("database.table-prefix must be empty or match [a-z][a-z0-9_]* with at most "
+          + TABLE_PREFIX_MAX_LENGTH + " characters");
     }
     if (!SSL_MODES.contains(sslMode)) {
       problems.add("database.ssl-mode must be one of " + SSL_MODES);

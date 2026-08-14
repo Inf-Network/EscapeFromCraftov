@@ -3,9 +3,11 @@ package com.birditch.escapefromcraftov.api.matchmaking;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /// A player's place in the matchmaking queue.
 ///
@@ -13,16 +15,22 @@ import java.util.UUID;
 /// ticket uses its own player UUID, so unrelated tickets never become allies
 /// merely because they reached the same game instance consecutively.
 public record MatchTicket(UUID playerId, CraftovMapId mapId, Instant queuedAt, UUID teamKey,
-                          RaidMode mode, RaidDifficulty difficulty) {
+                          RaidMode mode, RaidDifficulty difficulty,
+                          @Nullable RaidTierId tierId) {
 
     /// Creates the default solo ticket. Party matchmaking may use the
     /// four-argument constructor with one shared key for all party members.
     public MatchTicket(UUID playerId, CraftovMapId mapId, Instant queuedAt) {
-        this(playerId, mapId, queuedAt, playerId, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+        this(playerId, mapId, queuedAt, playerId, RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
     }
 
     public MatchTicket(UUID playerId, CraftovMapId mapId, Instant queuedAt, UUID teamKey) {
-        this(playerId, mapId, queuedAt, teamKey, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+        this(playerId, mapId, queuedAt, teamKey, RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
+    }
+
+    public MatchTicket(UUID playerId, CraftovMapId mapId, Instant queuedAt, UUID teamKey,
+                       RaidMode mode, RaidDifficulty difficulty) {
+        this(playerId, mapId, queuedAt, teamKey, mode, difficulty, null);
     }
 
     public MatchTicket {

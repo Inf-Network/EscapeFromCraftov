@@ -1,5 +1,7 @@
 package com.birditch.escapefromcraftov.map;
 
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +18,8 @@ public record CraftovMapSnapshot(
     List<LootZoneDefinition> lootZones,
     List<AiZoneDefinition> aiZones,
     List<ExtractionDefinition> extractions,
-    List<PoiDefinition> pois) {
+    List<PoiDefinition> pois,
+    List<RaidActionProfile> actionTiers) {
 
   public CraftovMapSnapshot {
     MapIds.requireValid(mapId, "mapId");
@@ -30,6 +33,18 @@ public record CraftovMapSnapshot(
     aiZones = List.copyOf(Preconditions.checkNotNull(aiZones, "aiZones"));
     extractions = List.copyOf(Preconditions.checkNotNull(extractions, "extractions"));
     pois = List.copyOf(Preconditions.checkNotNull(pois, "pois"));
+    actionTiers = List.copyOf(Preconditions.checkNotNull(actionTiers, "actionTiers"));
+    Preconditions.checkArgument(!actionTiers.isEmpty(), "actionTiers must not be empty");
+  }
+
+  /// Source-compatible constructor for snapshots captured before action tiers.
+  public CraftovMapSnapshot(String mapId, String worldName, long revision, CuboidBounds bounds,
+      Map<String, String> metadata, List<SpawnDefinition> spawns,
+      List<LootPointDefinition> lootPoints, List<LootZoneDefinition> lootZones,
+      List<AiZoneDefinition> aiZones, List<ExtractionDefinition> extractions,
+      List<PoiDefinition> pois) {
+    this(mapId, worldName, revision, bounds, metadata, spawns, lootPoints, lootZones, aiZones,
+        extractions, pois, LegacyRaidTierResolver.defaultProfiles());
   }
 
   public static CraftovMapSnapshot capture(ManualCraftovMap map) {
@@ -38,6 +53,6 @@ public record CraftovMapSnapshot(
     Preconditions.checkArgument(map.bounds() != null, "map bounds are required before capture");
     return new CraftovMapSnapshot(map.mapId(), map.worldName(), map.revision(), map.bounds(),
         map.metadata(), map.spawns(), map.lootPoints(), map.lootZones(), map.aiZones(),
-        map.extractions(), map.pois());
+        map.extractions(), map.pois(), map.actionTiers());
   }
 }

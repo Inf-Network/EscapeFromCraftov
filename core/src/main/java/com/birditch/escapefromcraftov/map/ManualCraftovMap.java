@@ -1,7 +1,11 @@
 package com.birditch.escapefromcraftov.map;
 
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +27,8 @@ public record ManualCraftovMap(
     List<LootZoneDefinition> lootZones,
     List<AiZoneDefinition> aiZones,
     List<ExtractionDefinition> extractions,
-    List<PoiDefinition> pois) {
+    List<PoiDefinition> pois,
+    List<RaidActionProfile> actionTiers) {
 
   public static final int SCHEMA_VERSION = 1;
 
@@ -42,6 +47,29 @@ public record ManualCraftovMap(
     aiZones = List.copyOf(Preconditions.checkNotNull(aiZones, "aiZones"));
     extractions = List.copyOf(Preconditions.checkNotNull(extractions, "extractions"));
     pois = List.copyOf(Preconditions.checkNotNull(pois, "pois"));
+    actionTiers = List.copyOf(Preconditions.checkNotNull(actionTiers, "actionTiers"));
+    Preconditions.checkArgument(!actionTiers.isEmpty(), "actionTiers must not be empty");
+    HashSet<RaidTierId> tierIds = new HashSet<>();
+    HashSet<RaidActionProfile.LegacyAlias> aliases = new HashSet<>();
+    for (RaidActionProfile profile : actionTiers) {
+      Preconditions.checkArgument(tierIds.add(profile.id()),
+          "actionTiers must not contain duplicate id: " + profile.id().value());
+      for (RaidActionProfile.LegacyAlias alias : profile.legacyAliases()) {
+        Preconditions.checkArgument(aliases.add(alias),
+            "actionTiers must not contain duplicate legacy alias: " + alias);
+      }
+    }
+  }
+
+  /// Source-compatible constructor for schema v1 maps that predate action tiers.
+  public ManualCraftovMap(int schemaVersion, String mapId, String displayName, String worldName,
+      @Nullable CuboidBounds bounds, long revision, boolean enabled, Map<String, String> metadata,
+      List<SpawnDefinition> spawns, List<LootPointDefinition> lootPoints,
+      List<LootZoneDefinition> lootZones, List<AiZoneDefinition> aiZones,
+      List<ExtractionDefinition> extractions, List<PoiDefinition> pois) {
+    this(schemaVersion, mapId, displayName, worldName, bounds, revision, enabled, metadata,
+        spawns, lootPoints, lootZones, aiZones, extractions, pois,
+        LegacyRaidTierResolver.defaultProfiles());
   }
 
   public static ManualCraftovMap create(String mapId, String worldName) {
@@ -56,7 +84,8 @@ public record ManualCraftovMap(
    */
   public ManualCraftovMap copyAs(String targetMapId, String targetWorldName) {
     return new ManualCraftovMap(schemaVersion, targetMapId, displayName, targetWorldName, bounds,
-        0, false, metadata, spawns, lootPoints, lootZones, aiZones, extractions, pois);
+        0, false, metadata, spawns, lootPoints, lootZones, aiZones, extractions, pois,
+        actionTiers);
   }
 
   public List<MapObject> objects() {
@@ -79,6 +108,11 @@ public record ManualCraftovMap(
     Map<String, MapObject> result = new LinkedHashMap<>();
     for (MapObject object : objects()) result.putIfAbsent(object.id(), object);
     return Map.copyOf(result);
+  }
+
+  public Optional<RaidActionProfile> actionTier(RaidTierId id) {
+    Preconditions.checkNotNull(id, "id");
+    return actionTiers.stream().filter(profile -> profile.id().equals(id)).findFirst();
   }
 
   public ManualCraftovMap withBounds(CuboidBounds newBounds) {
@@ -111,6 +145,6 @@ public record ManualCraftovMap(
       List<PoiDefinition> newPois) {
     return new ManualCraftovMap(schemaVersion, mapId, displayName, worldName, newBounds,
         newRevision, newEnabled, metadata, newSpawns, newLootPoints, newLootZones, newAiZones,
-        newExtractions, newPois);
+        newExtractions, newPois, actionTiers);
   }
 }

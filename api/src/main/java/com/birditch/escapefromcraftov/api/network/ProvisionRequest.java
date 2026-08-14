@@ -3,20 +3,28 @@ package com.birditch.escapefromcraftov.api.network;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import org.jspecify.annotations.Nullable;
 
 /// Structured Redis pub/sub request asking one game server to prepare capacity
 /// for a specific map.
 public record ProvisionRequest(ServerId serverId, CraftovMapId mapId,
-                               RaidMode mode, RaidDifficulty difficulty, int requiredSlots) {
+                               RaidMode mode, RaidDifficulty difficulty, int requiredSlots,
+                               @Nullable RaidTierId tierId) {
 
   public ProvisionRequest(ServerId serverId, CraftovMapId mapId) {
-    this(serverId, mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL, 1);
+    this(serverId, mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL, 1, null);
   }
 
   public ProvisionRequest(ServerId serverId, CraftovMapId mapId,
       RaidMode mode, RaidDifficulty difficulty) {
-    this(serverId, mapId, mode, difficulty, 1);
+    this(serverId, mapId, mode, difficulty, 1, null);
+  }
+
+  public ProvisionRequest(ServerId serverId, CraftovMapId mapId,
+      RaidMode mode, RaidDifficulty difficulty, int requiredSlots) {
+    this(serverId, mapId, mode, difficulty, requiredSlots, null);
   }
 
   public ProvisionRequest {

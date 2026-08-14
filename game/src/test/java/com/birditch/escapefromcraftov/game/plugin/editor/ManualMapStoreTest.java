@@ -6,6 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.CuboidBounds;
@@ -35,6 +40,32 @@ class ManualMapStoreTest {
 
     assertEquals(1, persisted.revision());
     assertEquals(persisted, store.load("factory").orElseThrow());
+  }
+
+  @Test
+  void legacyYamlWithoutActionTiersGetsCanonicalCompatibilityProfiles() throws Exception {
+    Path directory = temporaryDirectory.resolve("legacy");
+    Files.createDirectories(directory);
+    Files.writeString(directory.resolve("map.yml"), """
+        schema-version: 1
+        map-id: legacy
+        display-name: Legacy
+        world: world
+        revision: 4
+        enabled: false
+        metadata: {}
+        spawns: []
+        loot-points: []
+        loot-zones: []
+        ai-zones: []
+        extractions: []
+        pois: []
+        """);
+
+    ManualCraftovMap loaded = new ManualMapStore(temporaryDirectory)
+        .load("legacy").orElseThrow();
+
+    assertEquals(LegacyRaidTierResolver.defaultProfiles(), loaded.actionTiers());
   }
 
   @Test
@@ -174,6 +205,9 @@ class ManualMapStoreTest {
             new CuboidBounds(10, 60, 450, 18, 70, 458), ManualExtractionType.NORMAL, 10,
             null, true)),
         List.of(new PoiDefinition("central_factory", "Central Factory",
-            new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)));
+            new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)),
+        List.of(new RaidActionProfile(RaidTierId.of("top_secret"), "绝密行动", 112_500,
+            1.875, 3.0, 5_000, List.of(new RaidActionProfile.LegacyAlias(
+                RaidMode.CONFIDENTIAL, RaidDifficulty.HARD)))));
   }
 }

@@ -5,17 +5,26 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import org.jspecify.annotations.Nullable;
 
 /// Point-in-time view of a single craftov instance as advertised on the network.
 public record InstanceSnapshot(CraftovGameId gameId, CraftovMapId mapId, CraftovGameState state,
                                int playerCount, int maxPlayers, boolean worldReady,
-                               RaidMode mode, RaidDifficulty difficulty) {
+                               RaidMode mode, RaidDifficulty difficulty,
+                               @Nullable RaidTierId tierId) {
 
     public InstanceSnapshot(CraftovGameId gameId, CraftovMapId mapId, CraftovGameState state,
                             int playerCount, int maxPlayers, boolean worldReady) {
         this(gameId, mapId, state, playerCount, maxPlayers, worldReady,
-                RaidMode.NORMAL, RaidDifficulty.NORMAL);
+                RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
+    }
+
+    public InstanceSnapshot(CraftovGameId gameId, CraftovMapId mapId, CraftovGameState state,
+                            int playerCount, int maxPlayers, boolean worldReady,
+                            RaidMode mode, RaidDifficulty difficulty) {
+        this(gameId, mapId, state, playerCount, maxPlayers, worldReady, mode, difficulty, null);
     }
 
     public InstanceSnapshot {

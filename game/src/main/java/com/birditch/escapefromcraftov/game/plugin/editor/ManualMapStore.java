@@ -1,6 +1,11 @@
 package com.birditch.escapefromcraftov.game.plugin.editor;
 
 import com.birditch.escapefromcraftov.api.CraftovException;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
@@ -126,7 +131,7 @@ public final class ManualMapStore {
     ManualCraftovMap draft = new ManualCraftovMap(old.schemaVersion(), old.mapId(), old.displayName(),
         old.worldName(), old.bounds(), current.revision(), old.enabled(), old.metadata(),
         old.spawns(), old.lootPoints(), old.lootZones(), old.aiZones(), old.extractions(),
-        old.pois());
+        old.pois(), old.actionTiers());
     return save(draft);
   }
 
@@ -237,6 +242,8 @@ public final class ManualMapStore {
     yaml.set("enabled", map.enabled());
     yaml.set("metadata", map.metadata());
     if (map.bounds() != null) yaml.set("bounds", boundsMap(map.bounds()));
+    yaml.set("action-tiers",
+        map.actionTiers().stream().map(ManualMapStore::actionTierMap).toList());
     yaml.set("spawns", map.spawns().stream().map(ManualMapStore::spawnMap).toList());
     yaml.set("loot-points", map.lootPoints().stream().map(ManualMapStore::lootPointMap).toList());
     yaml.set("loot-zones", map.lootZones().stream().map(ManualMapStore::lootZoneMap).toList());
@@ -255,6 +262,9 @@ public final class ManualMapStore {
         .forEach((key, value) -> metadata.put(key, String.valueOf(value)));
     CuboidBounds bounds = yaml.contains("bounds")
         ? readBounds(sectionMap(yaml, "bounds")) : null;
+    List<RaidActionProfile> actionTiers = yaml.contains("action-tiers")
+        ? yaml.getMapList("action-tiers").stream().map(ManualMapStore::readActionTier).toList()
+        : LegacyRaidTierResolver.defaultProfiles();
     return new ManualCraftovMap(schema, mapId,
         required(yaml.getString("display-name"), "display-name"),
         required(yaml.getString("world"), "world"), bounds, yaml.getLong("revision"),
@@ -264,7 +274,30 @@ public final class ManualMapStore {
         yaml.getMapList("loot-zones").stream().map(ManualMapStore::readLootZone).toList(),
         yaml.getMapList("ai-zones").stream().map(ManualMapStore::readAiZone).toList(),
         yaml.getMapList("extractions").stream().map(ManualMapStore::readExtraction).toList(),
-        yaml.getMapList("pois").stream().map(ManualMapStore::readPoi).toList());
+        yaml.getMapList("pois").stream().map(ManualMapStore::readPoi).toList(), actionTiers);
+  }
+
+  private static Map<String, Object> actionTierMap(RaidActionProfile value) {
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("id", value.id().value());
+    result.put("display-name", value.displayName());
+    result.put("minimum-loadout-value", value.minimumLoadoutValue());
+    result.put("ai-multiplier", value.aiMultiplier());
+    result.put("loot-multiplier", value.lootMultiplier());
+    result.put("entry-fee", value.entryFee());
+    result.put("legacy-aliases", value.legacyAliases().stream().map(alias -> Map.of(
+        "mode", alias.mode().id(), "difficulty", alias.difficulty().id())).toList());
+    return result;
+  }
+
+  private static RaidActionProfile readActionTier(Map<?, ?> map) {
+    return new RaidActionProfile(RaidTierId.of(string(map, "id")),
+        string(map, "display-name"), number(map, "minimum-loadout-value").longValue(),
+        number(map, "ai-multiplier").doubleValue(),
+        number(map, "loot-multiplier").doubleValue(), number(map, "entry-fee").longValue(),
+        nestedMapList(map, "legacy-aliases").stream().map(alias ->
+            new RaidActionProfile.LegacyAlias(RaidMode.parse(string(alias, "mode")),
+                RaidDifficulty.parse(string(alias, "difficulty")))).toList());
   }
 
   private static Map<String, Object> spawnMap(SpawnDefinition value) {
@@ -405,6 +438,24 @@ public final class ManualMapStore {
     if (value instanceof Map<?, ?> nested) return nested;
     if (value instanceof ConfigurationSection section) return section.getValues(false);
     throw new IllegalArgumentException("字段必须是对象: " + key);
+  }
+
+  private static List<Map<?, ?>> nestedMapList(Map<?, ?> map, String key) {
+    Object value = map.get(key);
+    if (!(value instanceof List<?> list)) {
+      throw new IllegalArgumentException("字段必须是对象列表: " + key);
+    }
+    List<Map<?, ?>> result = new ArrayList<>(list.size());
+    for (Object element : list) {
+      if (element instanceof Map<?, ?> nested) {
+        result.add(nested);
+      } else if (element instanceof ConfigurationSection section) {
+        result.add(section.getValues(false));
+      } else {
+        throw new IllegalArgumentException("字段必须是对象列表: " + key);
+      }
+    }
+    return List.copyOf(result);
   }
 
   private static Number number(Map<?, ?> map, String key) {

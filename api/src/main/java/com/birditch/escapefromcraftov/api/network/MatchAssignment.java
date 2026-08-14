@@ -4,27 +4,36 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /// Routing decision made by the lobby: which server and craftov instance a player
 /// should join next.
 public record MatchAssignment(UUID playerId, ServerId serverId, String proxyName,
                               CraftovGameId gameId, CraftovMapId mapId, UUID teamKey,
-                              RaidMode mode, RaidDifficulty difficulty) {
+                              RaidMode mode, RaidDifficulty difficulty,
+                              @Nullable RaidTierId tierId) {
 
     /// Creates a solo assignment whose team key cannot collide with another
     /// player's ticket. Party matchmaking supplies a shared key explicitly.
     public MatchAssignment(UUID playerId, ServerId serverId, String proxyName,
                            CraftovGameId gameId, CraftovMapId mapId) {
         this(playerId, serverId, proxyName, gameId, mapId, playerId,
-                RaidMode.NORMAL, RaidDifficulty.NORMAL);
+                RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
     }
 
     public MatchAssignment(UUID playerId, ServerId serverId, String proxyName,
                            CraftovGameId gameId, CraftovMapId mapId, UUID teamKey) {
         this(playerId, serverId, proxyName, gameId, mapId, teamKey,
-                RaidMode.NORMAL, RaidDifficulty.NORMAL);
+                RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
+    }
+
+    public MatchAssignment(UUID playerId, ServerId serverId, String proxyName,
+                           CraftovGameId gameId, CraftovMapId mapId, UUID teamKey,
+                           RaidMode mode, RaidDifficulty difficulty) {
+        this(playerId, serverId, proxyName, gameId, mapId, teamKey, mode, difficulty, null);
     }
 
     public MatchAssignment {

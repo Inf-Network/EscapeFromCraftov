@@ -16,7 +16,9 @@ class MapSnapshotTest {
 
     assertEquals(4, snapshot.revision());
     assertEquals(2, snapshot.extractions().size());
+    assertEquals(original.actionTiers(), snapshot.actionTiers());
     assertEquals(1, edited.extractions().size());
     assertThrows(UnsupportedOperationException.class, snapshot.extractions()::clear);
+    assertThrows(UnsupportedOperationException.class, snapshot.actionTiers()::clear);
   }
 }

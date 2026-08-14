@@ -2,6 +2,7 @@ package com.birditch.escapefromcraftov.redis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,6 +12,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
@@ -36,7 +38,8 @@ class JsonCodecTest {
     return new GameServerSnapshot(ServerId.of("game-01"), "craftov-01", 1_723_105_530_000L, 4,
         List.of(
             new InstanceSnapshot(CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"),
-                CraftovGameState.WAITING, 2, 12, true),
+                CraftovGameState.WAITING, 2, 12, true, RaidMode.CONFIDENTIAL,
+                RaidDifficulty.HARD, RaidTierId.of("top_secret")),
             new InstanceSnapshot(CraftovGameId.of("d4e5f6"), CraftovMapId.of("debug_zone"),
                 CraftovGameState.RUNNING, 12, 12, false)));
   }
@@ -62,7 +65,7 @@ class JsonCodecTest {
     MatchAssignment assignment = new MatchAssignment(
         UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), ServerId.of("game-01"),
         "craftov-01", CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"), teamKey,
-        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD);
+        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, RaidTierId.of("top_secret"));
     assertEquals(assignment, codec.fromJson(codec.toJson(assignment), MatchAssignment.class));
   }
 
@@ -80,16 +83,17 @@ class JsonCodecTest {
     assertEquals(playerId, decoded.teamKey());
     assertEquals(RaidMode.NORMAL, decoded.mode());
     assertEquals(RaidDifficulty.NORMAL, decoded.difficulty());
+    assertNull(decoded.tierId());
   }
 
   @Test
   void ticketAndProvisionRequestRoundTripRuleset() {
     MatchTicket ticket = new MatchTicket(UUID.randomUUID(), CraftovMapId.of("debug_zone"),
         Instant.ofEpochSecond(12), UUID.randomUUID(),
-        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY);
+        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY, RaidTierId.of("confidential"));
     ProvisionRequest request = new ProvisionRequest(
         ServerId.of("game-01"), CraftovMapId.of("debug_zone"),
-        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY);
+        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY, 2, RaidTierId.of("confidential"));
 
     assertEquals(ticket, codec.fromJson(codec.toJson(ticket), MatchTicket.class));
     assertEquals(request, codec.fromJson(codec.toJson(request), ProvisionRequest.class));
@@ -106,14 +110,22 @@ class JsonCodecTest {
         {"gameId":{"value":"a1b2c3"},"mapId":{"value":"debug_zone"},\
         "state":"WAITING","playerCount":0,"maxPlayers":12,"worldReady":true}
         """;
+    String legacyProvision = """
+        {"serverId":{"value":"game-01"},"mapId":{"value":"debug_zone"}}
+        """;
 
     MatchTicket ticket = codec.fromJson(legacyTicket, MatchTicket.class);
     InstanceSnapshot instance = codec.fromJson(legacyInstance, InstanceSnapshot.class);
+    ProvisionRequest provision = codec.fromJson(legacyProvision, ProvisionRequest.class);
 
     assertEquals(RaidMode.NORMAL, ticket.mode());
     assertEquals(RaidDifficulty.NORMAL, ticket.difficulty());
     assertEquals(RaidMode.NORMAL, instance.mode());
     assertEquals(RaidDifficulty.NORMAL, instance.difficulty());
+    assertEquals(1, provision.requiredSlots());
+    assertNull(ticket.tierId());
+    assertNull(instance.tierId());
+    assertNull(provision.tierId());
   }
 
   @Test

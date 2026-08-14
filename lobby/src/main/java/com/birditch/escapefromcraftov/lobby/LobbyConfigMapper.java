@@ -28,6 +28,7 @@ public final class LobbyConfigMapper {
     }
     return new LobbyConfig(
         yaml.getInt("queue.tick-seconds", 1),
+        yaml.getInt("queue.minimum-players", 2),
         yaml.getInt("queue.reservation-ttl-seconds", 30),
         yaml.getInt("queue.assignment-ttl-seconds", 30),
         yaml.getBoolean("lobby.protect", true),

@@ -13,6 +13,7 @@ import java.util.Set;
 /// value ranges; call [#validate] after loading.
 public record LobbyConfig(
     int queueTickSeconds,
+    int queueMinimumPlayers,
     int reservationTtlSeconds,
     int assignmentTtlSeconds,
     boolean protectLobby,
@@ -36,6 +37,9 @@ public record LobbyConfig(
     List<String> problems = new ArrayList<>();
     if (queueTickSeconds <= 0) {
       problems.add("queue.tick-seconds must be greater than 0");
+    }
+    if (queueMinimumPlayers <= 0) {
+      problems.add("queue.minimum-players must be greater than 0");
     }
     if (reservationTtlSeconds <= 0) {
       problems.add("queue.reservation-ttl-seconds must be greater than 0");

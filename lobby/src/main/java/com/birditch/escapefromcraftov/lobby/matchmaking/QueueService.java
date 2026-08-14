@@ -36,13 +36,14 @@ import org.jspecify.annotations.Nullable;
 /// FIFO matchmaking queue driven by a main-thread timer.
 ///
 /// Every tick reads the Redis instance directory off-thread, hops back to the
-/// main thread and assigns the oldest tickets to the fullest joinable
-/// instances (see [InstancePicker]). A successful assignment is persisted as a
-/// pending key before the player is proxied; a failed persist keeps the ticket
-/// for the next tick. While that write is in flight the ticket is marked and
-/// skipped, so a slow write is never double-assigned. Slot reservations with a
-/// TTL bridge the gap between two directory snapshots so one instance is never
-/// oversold.
+/// main thread and groups complete parties from the same matchmaking pool into
+/// a cohort. A cohort is only assigned when it brings one `WAITING` instance to
+/// the configured minimum player count. Every pending key in the cohort must be
+/// persisted before anybody is proxied; a failed persist keeps the online
+/// parties queued for the next tick. While those writes are in flight the
+/// tickets are marked and skipped, so a slow write is never double-assigned.
+/// Slot reservations with a TTL bridge the gap between two directory snapshots
+/// so one instance is never oversold.
 ///
 /// Main-thread confined; Redis failures degrade to rate-limited warnings and
 /// matchmaking resumes as soon as Redis returns.
@@ -182,30 +183,145 @@ public final class QueueService implements MatchmakingService {
       return;
     }
     pruneReservations();
-    Map<MatchPool, Integer> starvingPools = new LinkedHashMap<>();
-    for (TicketGroup group : ticketGroups()) {
-      if (!group.isStillQueuedIn(tickets) || group.members().stream()
-          .map(MatchTicket::playerId).anyMatch(inFlight::contains)) {
-        continue;
-      }
-      if (group.members().stream().map(MatchTicket::playerId)
-          .anyMatch(playerId -> !deps.players().isOnline(playerId))) {
+    List<TicketGroup> groups = ticketGroups();
+    for (TicketGroup group : groups) {
+      if (group.isStillQueuedIn(tickets) && group.members().stream()
+          .map(MatchTicket::playerId).anyMatch(playerId -> !deps.players().isOnline(playerId))) {
         dequeueTeam(group.first().playerId());
-        continue;
       }
-      MatchTicket first = group.first();
-      Optional<InstancePicker.Candidate> pick =
-          InstancePicker.pick(servers, first.mapId(), first.mode(), first.difficulty(),
-              group.size(), reservationCounts());
-      if (pick.isEmpty()) {
-        starvingPools.merge(MatchPool.of(first), group.size(), Math::max);
-        group.members().forEach(ticket -> notifyWaiting(ticket.playerId()));
-        continue;
-      }
-      assign(group, pick.get());
     }
+    Map<MatchPool, List<TicketGroup>> groupsByPool = new LinkedHashMap<>();
+    for (TicketGroup group : groups) {
+      if (group.isStillQueuedIn(tickets)) {
+        groupsByPool.computeIfAbsent(MatchPool.of(group.first()), _ -> new ArrayList<>())
+            .add(group);
+      }
+    }
+    Map<MatchPool, Integer> starvingPools = new LinkedHashMap<>();
+    groupsByPool.forEach((pool, poolGroups) ->
+        processPool(servers, pool, poolGroups, starvingPools));
     starvingPools.forEach((pool, requiredSlots) ->
         publishProvisionHint(servers, pool, requiredSlots));
+  }
+
+  private void processPool(List<GameServerSnapshot> servers, MatchPool pool,
+      List<TicketGroup> poolGroups, Map<MatchPool, Integer> starvingPools) {
+    while (true) {
+      List<TicketGroup> available = poolGroups.stream()
+          .filter(group -> group.isStillQueuedIn(tickets))
+          .filter(group -> group.members().stream().map(MatchTicket::playerId)
+              .noneMatch(inFlight::contains))
+          .toList();
+      if (available.isEmpty()) {
+        return;
+      }
+      Optional<CohortPlan> plan = planCohort(servers, pool, available);
+      if (plan.isPresent()) {
+        assign(plan.get().cohort(), plan.get().candidate());
+        continue;
+      }
+      available.stream().flatMap(group -> group.members().stream())
+          .forEach(ticket -> notifyWaiting(ticket.playerId()));
+      int requiredSlots = Math.max(
+          deps.config().queueMinimumPlayers(),
+          available.stream().mapToInt(TicketGroup::size).max().orElse(1));
+      if (InstancePicker.pick(servers, pool.mapId(), pool.mode(), pool.difficulty(),
+          requiredSlots, reservationCounts()).isEmpty()) {
+        starvingPools.merge(pool, requiredSlots, Math::max);
+      }
+      return;
+    }
+  }
+
+  /// Finds complete parties that can bring one joinable instance to the
+  /// minimum player count. The smallest viable seed is selected first, then
+  /// the same cohort absorbs additional FIFO parties while capacity remains.
+  private Optional<CohortPlan> planCohort(List<GameServerSnapshot> servers,
+      MatchPool pool, List<TicketGroup> groups) {
+    int queuedSlots = groups.stream().mapToInt(TicketGroup::size).sum();
+    int largestInstance = servers.stream().flatMap(server -> server.instances().stream())
+        .mapToInt(instance -> instance.maxPlayers()).max().orElse(0);
+    int maximumSeedSize = Math.min(queuedSlots, largestInstance);
+    if (maximumSeedSize == 0) {
+      return Optional.empty();
+    }
+    Map<Integer, List<TicketGroup>> choices = cohortChoices(groups, maximumSeedSize);
+    Map<String, Integer> reserved = reservationCounts();
+    for (int size = 1; size <= maximumSeedSize; size++) {
+      List<TicketGroup> seed = choices.get(size);
+      if (seed == null) {
+        continue;
+      }
+      Optional<InstancePicker.Candidate> picked = InstancePicker.pick(
+          serversMeetingMinimum(servers, size), pool.mapId(), pool.mode(), pool.difficulty(),
+          size, reserved);
+      if (picked.isEmpty()) {
+        continue;
+      }
+      InstancePicker.Candidate candidate = picked.get();
+      int load = candidate.instance().playerCount() + reserved.getOrDefault(
+          InstancePicker.reservationKey(
+              candidate.server().serverId(), candidate.instance().gameId()), 0);
+      List<TicketGroup> cohortGroups = new ArrayList<>(seed);
+      int remaining = candidate.instance().maxPlayers() - load - size;
+      for (TicketGroup group : groups) {
+        if (!cohortGroups.contains(group) && group.size() <= remaining) {
+          cohortGroups.add(group);
+          remaining -= group.size();
+        }
+      }
+      return Optional.of(new CohortPlan(new TicketCohort(cohortGroups), candidate));
+    }
+    return Optional.empty();
+  }
+
+  /// Reservations protect capacity but cannot satisfy the start threshold:
+  /// an in-flight cohort may still fail. Only players already present in the
+  /// directory snapshot plus this complete cohort are counted as start-ready.
+  private List<GameServerSnapshot> serversMeetingMinimum(
+      List<GameServerSnapshot> servers, int cohortSize) {
+    return servers.stream().map(server -> new GameServerSnapshot(
+        server.serverId(), server.proxyName(), server.updatedAtMillis(), server.maxInstances(),
+        server.instances().stream().filter(instance ->
+            instance.playerCount() + cohortSize >= deps.config().queueMinimumPlayers()).toList()))
+        .toList();
+  }
+
+  /// Dynamic programming over small party sizes. For each exact size the
+  /// combination containing the earliest possible queue groups is retained.
+  private Map<Integer, List<TicketGroup>> cohortChoices(
+      List<TicketGroup> groups, int maximumSize) {
+    Map<Integer, List<TicketGroup>> choices = new LinkedHashMap<>();
+    choices.put(0, List.of());
+    for (TicketGroup group : groups) {
+      List<Map.Entry<Integer, List<TicketGroup>>> previous =
+          new ArrayList<>(choices.entrySet());
+      for (Map.Entry<Integer, List<TicketGroup>> entry : previous) {
+        int combinedSize = entry.getKey() + group.size();
+        if (combinedSize > maximumSize) {
+          continue;
+        }
+        List<TicketGroup> combined = new ArrayList<>(entry.getValue());
+        combined.add(group);
+        List<TicketGroup> existing = choices.get(combinedSize);
+        if (existing == null || isEarlierCombination(combined, existing, groups)) {
+          choices.put(combinedSize, List.copyOf(combined));
+        }
+      }
+    }
+    return choices;
+  }
+
+  private boolean isEarlierCombination(List<TicketGroup> candidate,
+      List<TicketGroup> existing, List<TicketGroup> queueOrder) {
+    for (TicketGroup group : queueOrder) {
+      boolean candidateContains = candidate.contains(group);
+      boolean existingContains = existing.contains(group);
+      if (candidateContains != existingContains) {
+        return candidateContains;
+      }
+    }
+    return false;
   }
 
   private List<TicketGroup> ticketGroups() {
@@ -215,10 +331,10 @@ public final class QueueService implements MatchmakingService {
     return byTeam.values().stream().map(TicketGroup::new).toList();
   }
 
-  private void assign(TicketGroup group, InstancePicker.Candidate candidate) {
+  private void assign(TicketCohort cohort, InstancePicker.Candidate candidate) {
     String reservationKey = InstancePicker.reservationKey(
         candidate.server().serverId(), candidate.instance().gameId());
-    List<MatchAssignment> groupAssignments = group.members().stream()
+    List<MatchAssignment> cohortAssignments = cohort.members().stream()
         .map(ticket -> new MatchAssignment(
             ticket.playerId(),
             candidate.server().serverId(),
@@ -233,41 +349,42 @@ public final class QueueService implements MatchmakingService {
         + Duration.ofSeconds(deps.config().reservationTtlSeconds()).toMillis();
     List<Long> instanceReservations =
         reservations.computeIfAbsent(reservationKey, _ -> new ArrayList<>());
-    for (int i = 0; i < group.size(); i++) instanceReservations.add(expiresAt);
-    groupAssignments.forEach(assignment -> inFlight.add(assignment.playerId()));
+    for (int i = 0; i < cohort.size(); i++) instanceReservations.add(expiresAt);
+    cohortAssignments.forEach(assignment -> inFlight.add(assignment.playerId()));
     Duration assignmentTtl = Duration.ofSeconds(deps.config().assignmentTtlSeconds());
-    CompletableFuture<?>[] writes = groupAssignments.stream()
+    CompletableFuture<?>[] writes = cohortAssignments.stream()
         .map(assignment -> deps.assignments().storePending(assignment, assignmentTtl))
         .toArray(CompletableFuture[]::new);
     CompletableFuture.allOf(writes).whenComplete((_, storeError) ->
         deps.scheduler().runSync(() -> afterStore(
-            group, groupAssignments, reservationKey, expiresAt, storeError)));
+            cohort, cohortAssignments, reservationKey, expiresAt, storeError)));
   }
 
   /// Runs on the main thread after the pending key write and clears the
   /// in-flight marker. Failure releases the reservation and keeps the ticket
   /// so the next tick retries; success removes the ticket and proxies the
   /// player.
-  private void afterStore(TicketGroup group, List<MatchAssignment> assignments,
+  private void afterStore(TicketCohort cohort, List<MatchAssignment> assignments,
       String reservationKey, long expiresAt,
       @Nullable Throwable storeError) {
     assignments.forEach(assignment -> inFlight.remove(assignment.playerId()));
     if (storeError != null) {
       releaseReservations(reservationKey, expiresAt, assignments.size());
       removePendingBestEffort(assignments);
+      removeOfflineGroups(cohort);
       if (redisWarnings.tryUse("store")) {
         deps.logger().log(Level.WARNING,
-            "写入匹配分配到 Redis 失败,该队伍完整保留在队列中等待下一轮。", storeError);
+            "写入匹配分配到 Redis 失败,在线队伍完整保留在队列中等待下一轮。", storeError);
       }
       return;
     }
     // A leave/offline action may have removed the group while Redis writes
-    // were in flight. Delete those pending keys and never proxy a partial team.
-    if (!group.isStillQueuedIn(tickets) || assignments.stream()
+    // were in flight. Delete every pending key and never proxy a partial cohort.
+    if (!cohort.isStillQueuedIn(tickets) || assignments.stream()
         .map(MatchAssignment::playerId).anyMatch(playerId -> !deps.players().isOnline(playerId))) {
-      if (group.isStillQueuedIn(tickets)) dequeueTeam(group.first().playerId());
       releaseReservations(reservationKey, expiresAt, assignments.size());
       removePendingBestEffort(assignments);
+      removeOfflineGroups(cohort);
       return;
     }
     assignments.forEach(assignment -> tickets.remove(assignment.playerId()));
@@ -276,6 +393,16 @@ public final class QueueService implements MatchmakingService {
           Map.of("server", assignment.proxyName()));
       deps.players().connectToServer(assignment.playerId(), assignment.proxyName());
     });
+  }
+
+  private void removeOfflineGroups(TicketCohort cohort) {
+    for (TicketGroup group : cohort.groups()) {
+      boolean offline = group.members().stream().map(MatchTicket::playerId)
+          .anyMatch(playerId -> !deps.players().isOnline(playerId));
+      if (offline && group.isStillQueuedIn(tickets)) {
+        dequeueTeam(group.first().playerId());
+      }
+    }
   }
 
   private void removePendingBestEffort(Collection<MatchAssignment> assignments) {
@@ -353,6 +480,37 @@ public final class QueueService implements MatchmakingService {
 
     private static MatchPool of(MatchTicket ticket) {
       return new MatchPool(ticket.mapId(), ticket.mode(), ticket.difficulty());
+    }
+  }
+
+  private record CohortPlan(
+      TicketCohort cohort, InstancePicker.Candidate candidate) {}
+
+  /// One atomic cross-party assignment batch. Its groups always share one
+  /// matchmaking pool, while every group remains an indivisible party.
+  private record TicketCohort(List<TicketGroup> groups) {
+
+    private TicketCohort {
+      groups = List.copyOf(groups);
+      Preconditions.checkArgument(!groups.isEmpty(), "ticket cohort must not be empty");
+      MatchTicket first = groups.getFirst().first();
+      Preconditions.checkArgument(groups.stream().map(TicketGroup::first).allMatch(ticket ->
+              ticket.mapId().equals(first.mapId())
+                  && ticket.mode() == first.mode()
+                  && ticket.difficulty() == first.difficulty()),
+          "ticket cohort groups must share one matchmaking pool");
+    }
+
+    private List<MatchTicket> members() {
+      return groups.stream().flatMap(group -> group.members().stream()).toList();
+    }
+
+    private int size() {
+      return groups.stream().mapToInt(TicketGroup::size).sum();
+    }
+
+    private boolean isStillQueuedIn(Map<UUID, MatchTicket> queued) {
+      return groups.stream().allMatch(group -> group.isStillQueuedIn(queued));
     }
   }
 

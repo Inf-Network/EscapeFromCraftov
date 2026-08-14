@@ -62,7 +62,7 @@ class QueueServiceTest {
   private final JsonCodec codec = new JsonCodec();
   private final QueueService service = new QueueService(new QueueDeps(
       directory, assignments, broker, players, scheduler, timeSource, settings,
-      dataGate, new LobbyConfig(1, 30, 60, false, true, 20, 5, MAP, Set.of(MAP)), codec,
+      dataGate, new LobbyConfig(1, 2, 30, 60, false, true, 20, 5, MAP, Set.of(MAP)), codec,
       silentLogger()));
 
   @BeforeEach
@@ -153,7 +153,7 @@ class QueueServiceTest {
     void carriesExplicitTeamKey() {
       UUID playerId = onlinePlayer();
       UUID teamKey = UUID.fromString("00000000-0000-0000-0000-000000000099");
-      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 1, 12))));
 
       MatchTicket ticket = service.queue(playerId, MAP, teamKey)
           .orElseThrow(IllegalStateException::new);
@@ -161,6 +161,93 @@ class QueueServiceTest {
 
       assertEquals(teamKey, ticket.teamKey());
       assertEquals(teamKey, assignments.stored.getFirst().teamKey());
+    }
+
+    @Test
+    @DisplayName("one solo remains in Lobby until a compatible second solo forms a cohort")
+    void soloWaitsForMinimumCohort() {
+      UUID first = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+      assertTrue(service.queue(first, MAP).isSuccess());
+
+      tick();
+
+      assertTrue(assignments.stored.isEmpty());
+      assertEquals(1, service.queueSize());
+      assertTrue(players.connections.isEmpty());
+
+      UUID second = onlinePlayer();
+      assertTrue(service.queue(second, MAP).isSuccess());
+      tick();
+
+      assertEquals(2, assignments.stored.size());
+      assignments.results.get(0).complete(null);
+      assertTrue(players.connections.isEmpty());
+      assignments.results.get(1).complete(null);
+      assertEquals(0, service.queueSize());
+      assertEquals(Set.of(first, second), players.connections.stream()
+          .map(FakePlayerGateway.Connection::playerId).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    @DisplayName("in-flight reservations never make a later solo start-ready")
+    void reservationsDoNotSatisfyMinimumPlayers() {
+      UUID first = onlinePlayer();
+      UUID second = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 3))));
+      service.queue(first, MAP);
+      service.queue(second, MAP);
+      tick();
+      assertEquals(2, assignments.stored.size());
+
+      UUID third = onlinePlayer();
+      service.queue(third, MAP);
+      tick();
+
+      assertEquals(2, assignments.stored.size());
+      assertTrue(service.ticket(third).isPresent());
+      assertTrue(players.connections.isEmpty());
+    }
+
+    @Test
+    @DisplayName("parties from different rule pools never satisfy each other's minimum")
+    void differentPoolsNeverFormOneCohort() {
+      UUID normal = onlinePlayer();
+      UUID confidential = onlinePlayer();
+      directory.respondWith(List.of(server(
+          waitingInstance("normal", 0, 12, RaidMode.NORMAL, RaidDifficulty.NORMAL),
+          waitingInstance("secret", 0, 12,
+              RaidMode.CONFIDENTIAL, RaidDifficulty.NORMAL))));
+      service.queue(normal, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL, normal);
+      service.queue(confidential, MAP, RaidMode.CONFIDENTIAL,
+          RaidDifficulty.NORMAL, confidential);
+
+      tick();
+
+      assertTrue(assignments.stored.isEmpty());
+      assertEquals(2, service.queueSize());
+    }
+
+    @Test
+    @DisplayName("cohort packing favours the oldest compatible complete parties")
+    void cohortPackingPreservesFifoWhenPossible() {
+      UUID oldestSolo = onlinePlayer();
+      UUID newerLeader = onlinePlayer();
+      UUID newerMember = onlinePlayer();
+      UUID newestSolo = onlinePlayer();
+      UUID newerParty = UUID.randomUUID();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 2))));
+      service.queue(oldestSolo, MAP);
+      service.queueParty(List.of(newerLeader, newerMember), MAP,
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, newerParty);
+      service.queue(newestSolo, MAP);
+
+      tick();
+
+      assertEquals(List.of(oldestSolo, newestSolo), assignments.stored.stream()
+          .map(MatchAssignment::playerId).toList());
+      assertTrue(service.ticket(newerLeader).isPresent());
+      assertTrue(service.ticket(newerMember).isPresent());
     }
 
     @Test
@@ -239,6 +326,26 @@ class QueueServiceTest {
     }
 
     @Test
+    @DisplayName("one solo going offline during cohort writes cancels the whole cohort")
+    void offlineSoloDuringStoreCancelsCrossPartyCohort() {
+      UUID first = onlinePlayer();
+      UUID second = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 2))));
+      service.queue(first, MAP);
+      service.queue(second, MAP);
+      tick();
+
+      players.online.remove(second);
+      assignments.results.forEach(result -> result.complete(null));
+
+      assertEquals(Set.of(first, second), assignments.removed);
+      assertTrue(service.ticket(first).isPresent());
+      assertTrue(service.ticket(second).isEmpty());
+      assertEquals(1, service.queueSize());
+      assertTrue(players.connections.isEmpty());
+    }
+
+    @Test
     @DisplayName("an offline player is dropped from the queue without an assignment")
     void offlinePlayerDropped() {
       UUID playerId = readyPlayer();
@@ -272,7 +379,7 @@ class QueueServiceTest {
     void storeFailureRetriesInFifoOrder() {
       UUID first = onlinePlayer();
       UUID second = onlinePlayer();
-      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 1))));
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 1, 2))));
       assertTrue(service.queue(first, MAP).isSuccess());
       assertTrue(service.queue(second, MAP).isSuccess());
 
@@ -298,7 +405,7 @@ class QueueServiceTest {
     @DisplayName("extra ticks during a slow write never double-assign the ticket")
     void slowStoreIsNotDoubleAssigned() {
       UUID playerId = onlinePlayer();
-      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 1, 12))));
       assertTrue(service.queue(playerId, MAP).isSuccess());
 
       tick();
@@ -326,27 +433,31 @@ class QueueServiceTest {
       UUID first = onlinePlayer();
       UUID second = onlinePlayer();
       UUID third = onlinePlayer();
+      UUID fourth = onlinePlayer();
       directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 2))));
       assertTrue(service.queue(first, MAP).isSuccess());
       assertTrue(service.queue(second, MAP).isSuccess());
       assertTrue(service.queue(third, MAP).isSuccess());
+      assertTrue(service.queue(fourth, MAP).isSuccess());
 
       tick();
       assertEquals(2, assignments.stored.size());
       assignments.results.get(0).complete(null);
       assignments.results.get(1).complete(null);
-      assertEquals(1, service.queueSize());
+      assertEquals(2, service.queueSize());
 
       // The directory snapshot still advertises zero players; only the two
-      // reservations (TTL 30s, taken at t=1s) keep the third ticket out.
+      // reservations (TTL 30s, taken at t=1s) keep the second cohort out.
       ticks(25);
       assertEquals(2, assignments.stored.size());
       assertTrue(service.ticket(third).isPresent());
+      assertTrue(service.ticket(fourth).isPresent());
 
-      // Past t=31s the reservations lapse and the third player is assigned.
+      // Past t=31s the reservations lapse and the second complete cohort is assigned.
       ticks(5);
-      assertEquals(3, assignments.stored.size());
+      assertEquals(4, assignments.stored.size());
       assertEquals(third, assignments.stored.get(2).playerId());
+      assertEquals(fourth, assignments.stored.get(3).playerId());
     }
   }
 
@@ -368,7 +479,7 @@ class QueueServiceTest {
           codec.fromJson(broker.published.getFirst().payload(), ProvisionRequest.class);
       assertEquals(SERVER, request.serverId());
       assertEquals(MAP, request.mapId());
-      assertEquals(1, request.requiredSlots());
+      assertEquals(2, request.requiredSlots());
 
       tick();
       assertEquals(2, broker.published.size());

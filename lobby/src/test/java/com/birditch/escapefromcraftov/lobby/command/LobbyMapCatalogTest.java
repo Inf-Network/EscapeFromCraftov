@@ -20,7 +20,7 @@ class LobbyMapCatalogTest {
     CraftovMapId configured = CraftovMapId.of("debug_zone");
     CraftovMapId imported = CraftovMapId.of("factory");
     LobbyConfig config = new LobbyConfig(
-        1, 30, 30, true, true, 20, 5, configured, Set.of(configured));
+        1, 2, 30, 30, true, true, 20, 5, configured, Set.of(configured));
     InstanceSnapshot room = new InstanceSnapshot(CraftovGameId.of("abc123"), imported,
         CraftovGameState.WAITING, 0, 12, true);
     GameServerSnapshot server = new GameServerSnapshot(ServerId.of("game-01"), "craftov-01",
@@ -34,7 +34,7 @@ class LobbyMapCatalogTest {
   void deduplicatesConfiguredAndAdvertisedMaps() {
     CraftovMapId map = CraftovMapId.of("factory");
     LobbyConfig config = new LobbyConfig(
-        1, 30, 30, true, true, 20, 5, map, Set.of(map));
+        1, 2, 30, 30, true, true, 20, 5, map, Set.of(map));
     InstanceSnapshot room = new InstanceSnapshot(CraftovGameId.of("abc123"), map,
         CraftovGameState.RUNNING, 8, 12, true);
     GameServerSnapshot server = new GameServerSnapshot(ServerId.of("game-01"), "craftov-01",

@@ -29,6 +29,6 @@ class RaidResultTest {
     assertThrows(IllegalArgumentException.class, () -> new RaidResult(
         RaidResult.idFor(gameId, playerId), gameId, playerId, CraftovMapId.of("carville"),
         RaidMode.NORMAL, RaidDifficulty.NORMAL, RaidOutcome.KILLED,
-        Instant.ofEpochSecond(20), Instant.ofEpochSecond(10), 0, 0, 0, 0, 0));
+        Instant.ofEpochSecond(20), Instant.ofEpochSecond(10), 0, 0, 0, 0, 0, 0));
   }
 }

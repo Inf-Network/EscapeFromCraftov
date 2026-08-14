@@ -70,6 +70,17 @@ public final class RaidResultCollector {
     if (raid != null && !terminal.containsKey(key)) raid.kills++;
   }
 
+  /** Adds one authored-AI kill to both the total and explicit PvE counters. */
+  public void recordPveKill(CraftovGameId gameId, UUID playerId) {
+    Key key = new Key(Preconditions.checkNotNull(gameId, "gameId"),
+        Preconditions.checkNotNull(playerId, "playerId"));
+    MutableRaid raid = active.get(key);
+    if (raid != null && !terminal.containsKey(key)) {
+      raid.kills++;
+      raid.pveKills++;
+    }
+  }
+
   /**
    * Freezes and persists one terminal report. Extracted item count uses physical
    * quantity, and value/earnings use the authoritative item registry base price.
@@ -110,7 +121,7 @@ public final class RaidResultCollector {
       long earnings = outcome == RaidOutcome.EXTRACTED ? value : 0L;
       result = new RaidResult(RaidResult.idFor(gameId, playerId), gameId, playerId,
           raid.mapId, raid.mode, raid.difficulty, outcome, raid.startedAt, time.now(),
-          raid.kills, count, value, experience, earnings);
+          raid.kills, raid.pveKills, count, value, experience, earnings);
       terminal.put(key, result);
       active.remove(key);
     }
@@ -130,6 +141,14 @@ public final class RaidResultCollector {
     return raid == null ? 0 : raid.kills;
   }
 
+  public int pveKills(CraftovGameId gameId, UUID playerId) {
+    Key key = new Key(gameId, playerId);
+    RaidResult result = terminal.get(key);
+    if (result != null) return result.pveKills();
+    MutableRaid raid = active.get(key);
+    return raid == null ? 0 : raid.pveKills;
+  }
+
   /** Releases bounded in-memory snapshots after all result futures for a room complete. */
   public void discard(CraftovGameId gameId) {
     Preconditions.checkNotNull(gameId, "gameId");
@@ -145,6 +164,7 @@ public final class RaidResultCollector {
     private final RaidDifficulty difficulty;
     private Instant startedAt;
     private int kills;
+    private int pveKills;
 
     private MutableRaid(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
         Instant startedAt) {

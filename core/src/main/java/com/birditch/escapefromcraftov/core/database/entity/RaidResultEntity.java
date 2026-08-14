@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.ColumnDefault;
 
 /** Immutable PostgreSQL row for one player's terminal result in one raid. */
 @Entity
@@ -47,6 +48,9 @@ public class RaidResultEntity {
   private Instant endedAt;
   @Column(name = "kills", nullable = false, updatable = false)
   private int kills;
+  @ColumnDefault("0")
+  @Column(name = "pve_kills", nullable = false, updatable = false)
+  private int pveKills;
   @Column(name = "extracted_item_count", nullable = false, updatable = false)
   private int extractedItemCount;
   @Column(name = "extracted_value", nullable = false, updatable = false)
@@ -60,7 +64,7 @@ public class RaidResultEntity {
 
   public RaidResultEntity(UUID resultId, String gameId, UUID playerId, String mapId,
       RaidMode mode, RaidDifficulty difficulty, RaidOutcome outcome, Instant startedAt,
-      Instant endedAt, int kills, int extractedItemCount, long extractedValue,
+      Instant endedAt, int kills, int pveKills, int extractedItemCount, long extractedValue,
       long experience, long earnings) {
     this.resultId = resultId;
     this.gameId = gameId;
@@ -72,10 +76,20 @@ public class RaidResultEntity {
     this.startedAt = startedAt;
     this.endedAt = endedAt;
     this.kills = kills;
+    this.pveKills = pveKills;
     this.extractedItemCount = extractedItemCount;
     this.extractedValue = extractedValue;
     this.experience = experience;
     this.earnings = earnings;
+  }
+
+  /** Compatibility constructor for callers predating the dedicated PvE column. */
+  public RaidResultEntity(UUID resultId, String gameId, UUID playerId, String mapId,
+      RaidMode mode, RaidDifficulty difficulty, RaidOutcome outcome, Instant startedAt,
+      Instant endedAt, int kills, int extractedItemCount, long extractedValue,
+      long experience, long earnings) {
+    this(resultId, gameId, playerId, mapId, mode, difficulty, outcome, startedAt, endedAt,
+        kills, 0, extractedItemCount, extractedValue, experience, earnings);
   }
 
   public UUID resultId() { return resultId; }
@@ -88,6 +102,7 @@ public class RaidResultEntity {
   public Instant startedAt() { return startedAt; }
   public Instant endedAt() { return endedAt; }
   public int kills() { return kills; }
+  public int pveKills() { return pveKills; }
   public int extractedItemCount() { return extractedItemCount; }
   public long extractedValue() { return extractedValue; }
   public long experience() { return experience; }

@@ -20,7 +20,10 @@ public record RaidResult(
     RaidOutcome outcome,
     Instant startedAt,
     Instant endedAt,
+    /** Total confirmed kills, including hostile players and authored AI. */
     int kills,
+    /** Authored AI kills included in {@link #kills}. */
+    int pveKills,
     int extractedItemCount,
     long extractedValue,
     long experience,
@@ -39,6 +42,8 @@ public record RaidResult(
     Preconditions.checkArgument(!endedAt.isBefore(startedAt),
         "endedAt must not precede startedAt");
     Preconditions.checkArgument(kills >= 0, "kills must not be negative");
+    Preconditions.checkArgument(pveKills >= 0 && pveKills <= kills,
+        "pveKills must be between 0 and kills");
     Preconditions.checkArgument(extractedItemCount >= 0,
         "extractedItemCount must not be negative");
     Preconditions.checkArgument(extractedValue >= 0, "extractedValue must not be negative");
@@ -46,6 +51,19 @@ public record RaidResult(
     Preconditions.checkArgument(earnings >= 0, "earnings must not be negative");
     Preconditions.checkArgument(resultId.equals(idFor(gameId, playerId)),
         "resultId must be the deterministic game/player id");
+  }
+
+  /** Source/binary-compatible constructor for reports written before PvE kills were split out. */
+  public RaidResult(UUID resultId, CraftovGameId gameId, UUID playerId, CraftovMapId mapId,
+      RaidMode mode, RaidDifficulty difficulty, RaidOutcome outcome, Instant startedAt,
+      Instant endedAt, int kills, int extractedItemCount, long extractedValue,
+      long experience, long earnings) {
+    this(resultId, gameId, playerId, mapId, mode, difficulty, outcome, startedAt, endedAt,
+        kills, 0, extractedItemCount, extractedValue, experience, earnings);
+  }
+
+  public int pvpKills() {
+    return kills - pveKills;
   }
 
   /** Stable idempotency key shared by every settlement path. */

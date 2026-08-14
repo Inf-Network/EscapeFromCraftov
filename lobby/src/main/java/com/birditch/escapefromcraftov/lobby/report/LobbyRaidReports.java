@@ -51,7 +51,8 @@ public final class LobbyRaidReports {
           .append(Component.text(result.mapId().value() + "  ", NamedTextColor.WHITE))
           .append(Component.text(outcome(result.outcome()) + "  ",
               success ? NamedTextColor.GREEN : NamedTextColor.RED))
-          .append(Component.text("击杀 " + result.kills() + " / 带出价值 "
+          .append(Component.text("玩家击杀 " + result.pvpKills() + " / AI击杀 "
+              + result.pveKills() + " / 带出价值 "
               + result.extractedValue() + " / 经验 +" + result.experience(),
               NamedTextColor.YELLOW)));
     }

@@ -24,7 +24,8 @@ public final class RaidResultPresenter {
     player.sendMessage(Component.text("行动战报  ", NamedTextColor.GOLD)
         .append(Component.text(outcomeName(result.outcome()),
             success ? NamedTextColor.GREEN : NamedTextColor.RED)));
-    player.sendMessage(Component.text("击杀 " + result.kills() + "  ·  带出 "
+    player.sendMessage(Component.text("玩家击杀 " + result.pvpKills() + "  ·  AI击杀 "
+        + result.pveKills() + "  ·  带出 "
         + result.extractedItemCount() + " 件  ·  物资价值 " + result.extractedValue(),
         NamedTextColor.YELLOW));
     player.sendMessage(Component.text("经验 +" + result.experience() + "  ·  收益 "

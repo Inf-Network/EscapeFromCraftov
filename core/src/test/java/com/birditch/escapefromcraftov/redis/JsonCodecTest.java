@@ -17,6 +17,8 @@ import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.network.ServerId;
+import com.birditch.escapefromcraftov.api.report.RaidOutcome;
+import com.birditch.escapefromcraftov.api.report.RaidResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -112,6 +114,23 @@ class JsonCodecTest {
     assertEquals(RaidDifficulty.NORMAL, ticket.difficulty());
     assertEquals(RaidMode.NORMAL, instance.mode());
     assertEquals(RaidDifficulty.NORMAL, instance.difficulty());
+  }
+
+  @Test
+  void oldRaidResultWithoutPveKillsDefaultsToZero() {
+    CraftovGameId gameId = CraftovGameId.of("raid-1");
+    UUID playerId = UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+    RaidResult current = new RaidResult(RaidResult.idFor(gameId, playerId), gameId, playerId,
+        CraftovMapId.of("debug_zone"), RaidMode.NORMAL, RaidDifficulty.NORMAL,
+        RaidOutcome.EXTRACTED, Instant.ofEpochSecond(10), Instant.ofEpochSecond(20),
+        2, 1, 3, 4_000, 100, 4_000);
+    String legacyJson = codec.toJson(current).replace("\"pveKills\":1,", "");
+
+    RaidResult decoded = codec.fromJson(legacyJson, RaidResult.class);
+
+    assertEquals(2, decoded.kills());
+    assertEquals(0, decoded.pveKills());
+    assertEquals(2, decoded.pvpKills());
   }
 
   @Nested

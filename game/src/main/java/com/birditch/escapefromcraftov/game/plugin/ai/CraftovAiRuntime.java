@@ -8,11 +8,19 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.loot.LootRollContext;
+import com.birditch.escapefromcraftov.api.loot.LootService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
+import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +44,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Pillager;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Skeleton;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -64,6 +73,9 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
   private final CraftovScheduler scheduler;
+  private final LootService loot;
+  private final CraftovItemStacks itemStacks;
+  private final RaidResultRuntime raidReports;
   private final Logger logger;
   private final NamespacedKey gameKey;
   private final NamespacedKey zoneKey;
@@ -73,11 +85,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private boolean closed;
 
   public CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
-      CraftovScheduler scheduler, Logger logger) {
+      CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
+      RaidResultRuntime raidReports, Logger logger) {
     Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
+    this.loot = Preconditions.checkNotNull(loot, "loot");
+    this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
+    this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
     this.logger = Preconditions.checkNotNull(logger, "logger");
     gameKey = new NamespacedKey(plugin, "ai_game");
     zoneKey = new NamespacedKey(plugin, "ai_zone");
@@ -94,12 +110,17 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     stop(event.gameId());
   }
 
-  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onAiDeath(EntityDeathEvent event) {
     PersistentDataContainer data = event.getEntity().getPersistentDataContainer();
     String rawGame = data.get(gameKey, PersistentDataType.STRING);
     String rawZone = data.get(zoneKey, PersistentDataType.STRING);
     if (rawGame == null || rawZone == null) return;
+    // Authored AI must never leak vanilla equipment or mob drops into the
+    // durable economy. Preserve only already-tagged Craftov items contributed
+    // by another compatible handler, then append this runtime's reward.
+    event.getDrops().removeIf(stack -> !itemStacks.isCraftovItem(stack));
+    event.setDroppedExp(0);
     GameRuntime runtime = runtimes.values().stream()
         .filter(candidate -> candidate.gameId().value().equals(rawGame))
         .findFirst().orElse(null);
@@ -109,6 +130,39 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     ZoneRuntime zone = runtime.zones().get(rawZone);
     if (zone == null || !zone.entities().remove(event.getEntity().getUniqueId())) return;
     scheduleRefill(runtime, zone, Duration.ofSeconds(zone.definition().respawnSeconds()));
+    reward(event, runtime, zone);
+  }
+
+  private void reward(EntityDeathEvent event, GameRuntime runtime, ZoneRuntime zone) {
+    Player killer = event.getEntity().getKiller();
+    if (killer == null || worlds.gameByWorld(killer.getWorld().getName())
+        .filter(runtime.gameId()::equals).isEmpty()) {
+      return;
+    }
+    CraftovGame game = games.find(runtime.gameId())
+        .filter(candidate -> candidate.state() == CraftovGameState.RUNNING)
+        .orElse(null);
+    if (game == null || game.players().stream()
+        .noneMatch(player -> player.playerId().equals(killer.getUniqueId()))) {
+      return;
+    }
+    double effectiveDifficulty = zone.definition().difficulty() * runtime.difficultyMultiplier();
+    AiRuntimePolicy.LootProfile profile = AiRuntimePolicy.loot(
+        effectiveDifficulty, runtime.mode(), runtime.difficulty());
+    raidReports.recordPveKill(runtime.gameId(), killer.getUniqueId());
+    try {
+      LootRollContext context = new LootRollContext(killer.getUniqueId(), runtime.gameId());
+      List<ItemStack> rewards = new ArrayList<>();
+      for (int roll = 0; roll < profile.rolls(); roll++) {
+        for (ItemInstance instance : loot.roll(profile.tableId(), context)) {
+          rewards.addAll(itemStacks.fromInstance(instance));
+        }
+      }
+      event.getDrops().addAll(rewards);
+    } catch (RuntimeException failure) {
+      logger.log(Level.WARNING, "生成 AI 击杀物资失败: " + runtime.gameId().value() + "/"
+          + zone.definition().id() + "/T" + profile.tier(), failure);
+    }
   }
 
   @Override
@@ -138,6 +192,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     cancelPendingStart(gameId);
     GameRuntime runtime = new GameRuntime(
         gameId, worldName, game.difficulty().multiplier() * game.mode().aiMultiplier(),
+        game.mode(), game.difficulty(),
         new LinkedHashMap<>());
     runtimes.put(gameId, runtime);
     for (CraftovAiZone definition : game.aiZones()) {
@@ -337,6 +392,8 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       CraftovGameId gameId,
       String worldName,
       double difficultyMultiplier,
+      RaidMode mode,
+      RaidDifficulty difficulty,
       Map<String, ZoneRuntime> zones) {}
 
   private static final class ZoneRuntime {

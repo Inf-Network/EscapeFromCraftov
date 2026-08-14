@@ -629,7 +629,9 @@ public final class GameApplication {
         games, index, itemStacks, configs.messages(), trMenu, logger);
     deathCrates = deathCrateController;
     deathCrateSubscription = context.eventBus().register(deathCrateController);
-    CraftovAiRuntime instanceAi = new CraftovAiRuntime(plugin, games, index, scheduler, logger);
+    CraftovAiRuntime instanceAi = new CraftovAiRuntime(
+        plugin, games, index, scheduler, context.services().require(LootService.class),
+        itemStacks, reportRuntime, logger);
     aiRuntime = instanceAi;
     aiSubscription = context.eventBus().register(instanceAi);
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(

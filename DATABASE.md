@@ -190,7 +190,8 @@ schema（默认 `public`），共享下列全部表。
 | `difficulty` | varchar(24) | NOT NULL | `EASY` / `NORMAL` / `HARD` |
 | `outcome` | varchar(24) | NOT NULL | `EXTRACTED` / `KILLED` / `QUIT` / `TIMED_OUT` / `FAILED` / `ABORTED` |
 | `started_at` / `ended_at` | timestamptz(6) | NOT NULL | 实际行动起止时间 |
-| `kills` | integer | NOT NULL | 敌对玩家击杀数 |
+| `kills` | integer | NOT NULL | 玩家与地图 AI 的总击杀数 |
+| `pve_kills` | integer | NOT NULL, DEFAULT 0 | 地图 AI 击杀数；必须在 `0..kills` 内，玩家击杀数为两者之差 |
 | `extracted_item_count` | integer | NOT NULL | 最终保留物资数量 |
 | `extracted_value` | bigint | NOT NULL | 最终保留物资基础价值 |
 | `experience` | bigint | NOT NULL | 本局经验收益 |
@@ -213,6 +214,9 @@ schema（默认 `public`），共享下列全部表。
   执行成功后再以 `schema-action: validate` 启动 Lobby。
 - 启用行动战报前执行 `database/migrations/20260814_raid_results.sql`；Lobby 与 Game
   共用该表，需在任一端升级启动前完成迁移。
+- 已有行动战报库升级 AI 击杀统计时，再执行
+  `database/migrations/20260814_raid_results_pve_kills.sql`；脚本会把旧记录回填为 0，
+  并添加 `pve_kills <= kills` 约束。
 - 运行时开启 Hibernate 的 named-index validation；`validate` 模式会在唯一实例
   索引缺失时拒绝启动，不能只添加两列而漏掉索引。
 - `craftov_player_items` 上的仓库/出战栏写路径使用 `pg_advisory_xact_lock`

@@ -73,8 +73,16 @@ public final class RaidResultRuntime implements AutoCloseable {
     collector.recordKill(gameId, playerId);
   }
 
+  public void recordPveKill(CraftovGameId gameId, UUID playerId) {
+    collector.recordPveKill(gameId, playerId);
+  }
+
   public int kills(CraftovGameId gameId, UUID playerId) {
     return collector.kills(gameId, playerId);
+  }
+
+  public int pveKills(CraftovGameId gameId, UUID playerId) {
+    return collector.pveKills(gameId, playerId);
   }
 
   /**

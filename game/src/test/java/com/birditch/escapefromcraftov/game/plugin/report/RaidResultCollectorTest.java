@@ -42,6 +42,7 @@ class RaidResultCollectorTest {
     collector.track(game, playerId);
     collector.recordKill(game.id(), playerId);
     collector.recordKill(game.id(), playerId);
+    collector.recordPveKill(game.id(), playerId);
     List<ItemInstance> loot = List.of(new ItemInstance(UUID.randomUUID(), itemId, 3));
 
     RaidResult first = collector.complete(game.id(), playerId, RaidOutcome.EXTRACTED,
@@ -50,7 +51,9 @@ class RaidResultCollectorTest {
         List.of(), 0).join();
 
     assertSame(first, retried);
-    assertEquals(2, first.kills());
+    assertEquals(3, first.kills());
+    assertEquals(2, first.pvpKills());
+    assertEquals(1, first.pveKills());
     assertEquals(3, first.extractedItemCount());
     assertEquals(7_500, first.extractedValue());
     assertEquals(7_500, first.earnings());

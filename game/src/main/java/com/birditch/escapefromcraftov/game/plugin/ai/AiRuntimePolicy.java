@@ -1,5 +1,8 @@
 package com.birditch.escapefromcraftov.game.plugin.ai;
 
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.loot.LootTableId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.SplittableRandom;
 
@@ -25,6 +28,18 @@ final class AiRuntimePolicy {
     return new DifficultyProfile(health, damage, movement, equipmentTier);
   }
 
+  /** Maps effective zone pressure onto the shared T1-T4 Craftov loot tables. */
+  static LootProfile loot(double effectiveDifficulty, RaidMode mode,
+      RaidDifficulty difficulty) {
+    Preconditions.checkArgument(Double.isFinite(effectiveDifficulty) && effectiveDifficulty >= 0,
+        "effectiveDifficulty must be finite and non-negative");
+    Preconditions.checkNotNull(mode, "mode");
+    Preconditions.checkNotNull(difficulty, "difficulty");
+    int tier = Math.clamp((int) Math.ceil(effectiveDifficulty), 1, 4);
+    int rolls = Math.addExact(mode.lootRolls(), difficulty.lootBonusRolls());
+    return new LootProfile(LootTableId.of("craftov_tier_" + tier), tier, rolls);
+  }
+
   private static double clamp(double value, double minimum, double maximum) {
     return Math.max(minimum, Math.min(maximum, value));
   }
@@ -34,4 +49,6 @@ final class AiRuntimePolicy {
       double damageMultiplier,
       double movementMultiplier,
       int equipmentTier) {}
+
+  record LootProfile(LootTableId tableId, int tier, int rolls) {}
 }

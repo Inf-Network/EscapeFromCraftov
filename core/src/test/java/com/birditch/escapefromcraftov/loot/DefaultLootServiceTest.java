@@ -50,7 +50,8 @@ class DefaultLootServiceTest {
   class Roll {
 
     @ParameterizedTest(name = "{0} yields one stack per pool roll")
-    @ValueSource(strings = {"debug_common", "debug_armory"})
+    @ValueSource(strings = {"craftov_tier_1", "craftov_tier_2", "craftov_tier_3",
+        "craftov_tier_4", "debug_common", "debug_armory"})
     void yieldsOneStackPerPoolRoll(String tableName) {
       List<ItemInstance> result = service.roll(LootTableId.of(tableName), LootRollContext.empty());
 

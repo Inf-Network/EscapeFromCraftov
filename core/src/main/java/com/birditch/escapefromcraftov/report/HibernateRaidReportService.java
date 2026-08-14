@@ -55,14 +55,16 @@ public final class HibernateRaidReportService implements RaidReportService {
   private static RaidResultEntity toEntity(RaidResult result) {
     return new RaidResultEntity(result.resultId(), result.gameId().value(), result.playerId(),
         result.mapId().value(), result.mode(), result.difficulty(), result.outcome(),
-        result.startedAt(), result.endedAt(), result.kills(), result.extractedItemCount(),
+        result.startedAt(), result.endedAt(), result.kills(), result.pveKills(),
+        result.extractedItemCount(),
         result.extractedValue(), result.experience(), result.earnings());
   }
 
   static RaidResult fromEntity(RaidResultEntity entity) {
     return new RaidResult(entity.resultId(), CraftovGameId.of(entity.gameId()), entity.playerId(),
         CraftovMapId.of(entity.mapId()), entity.mode(), entity.difficulty(), entity.outcome(),
-        entity.startedAt(), entity.endedAt(), entity.kills(), entity.extractedItemCount(),
+        entity.startedAt(), entity.endedAt(), entity.kills(), entity.pveKills(),
+        entity.extractedItemCount(),
         entity.extractedValue(), entity.experience(), entity.earnings());
   }
 }

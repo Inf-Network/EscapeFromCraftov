@@ -22,11 +22,12 @@ class HibernateRaidReportServiceTest {
     RaidResult expected = new RaidResult(RaidResult.idFor(gameId, playerId), gameId, playerId,
         CraftovMapId.of("test_flat"), RaidMode.CONFIDENTIAL, RaidDifficulty.HARD,
         RaidOutcome.EXTRACTED, Instant.ofEpochSecond(100), Instant.ofEpochSecond(400),
-        3, 14, 82_000, 1_250, 82_000);
+        3, 2, 14, 82_000, 1_250, 82_000);
     RaidResultEntity entity = new RaidResultEntity(expected.resultId(), gameId.value(), playerId,
         expected.mapId().value(), expected.mode(), expected.difficulty(), expected.outcome(),
-        expected.startedAt(), expected.endedAt(), expected.kills(), expected.extractedItemCount(),
-        expected.extractedValue(), expected.experience(), expected.earnings());
+        expected.startedAt(), expected.endedAt(), expected.kills(), expected.pveKills(),
+        expected.extractedItemCount(), expected.extractedValue(), expected.experience(),
+        expected.earnings());
 
     assertEquals(expected, HibernateRaidReportService.fromEntity(entity));
   }

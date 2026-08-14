@@ -189,6 +189,15 @@ loot:
   deposit-blocked: "<yellow>这是公共物资箱，只能取出物品，不能存入物品。</yellow>"
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
   taken: "<green>物资已放入本局背包。</green>"
+  event-locked: "<red>高价值目标尚未清除，这个事件物资箱仍被锁定。</red>"
+  event-protected: "<red>事件物资正由击杀者小队优先搜索。</red> <gray><seconds> 秒后对本局公开。</gray>"
+  event-priority: "<green>高价值目标击杀归属已验证。</green> <gray>你的小队还有 <seconds> 秒优先搜索时间。</gray>"
+
+map-event:
+  activated: "<dark_red><bold>高价值目标出现</bold></dark_red> <gray>事件:</gray> <red><event></red>"
+  spawned: "<gold>已确认目标位置:</gold> <red><event></red>"
+  completed: "<green><bold>高价值目标已清除</bold></green> <gray>事件物资已解锁:</gray> <yellow><event></yellow>"
+  failed: "<red>高价值目标事件无法启动:</red> <gray><event></gray>"
 
 # 阵亡箱。玩家阵亡时，本局可识别物资会转移到死亡地点的公共虚拟箱。
 death-crate:

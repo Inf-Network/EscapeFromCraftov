@@ -30,6 +30,7 @@ public final class ManualMapValidator {
     validateCounts(map, settings, issues);
     validateBounds(map, bounds, issues);
     validateReferences(map, references, issues);
+    validateEvents(map, issues);
     validateSpawnTeams(map, issues);
     validateExtractionRoutes(map, issues);
     validateDistances(map, settings, issues);
@@ -97,6 +98,72 @@ public final class ManualMapValidator {
       if (count > 1) error(issues, "duplicate_id", id,
           "对象 ID 在地图内重复: " + id);
     });
+    Set<String> objectIds = counts.keySet();
+    Set<String> eventIds = new HashSet<>();
+    for (MapEventDefinition event : map.events()) {
+      if (!eventIds.add(event.id())) {
+        error(issues, "event_id_duplicate", event.id(),
+            "地图事件 ID 重复: " + event.id());
+      }
+      if (objectIds.contains(event.id())) {
+        error(issues, "event_id_conflict", event.id(),
+            "地图事件 ID 不能与地图对象 ID 相同: " + event.id());
+      }
+    }
+  }
+
+  private static void validateEvents(ManualCraftovMap map, List<MapValidationIssue> issues) {
+    Map<String, AiZoneDefinition> aiZones = new HashMap<>();
+    for (AiZoneDefinition zone : map.aiZones()) aiZones.putIfAbsent(zone.id(), zone);
+    Map<String, LootPointDefinition> lootPoints = new HashMap<>();
+    for (LootPointDefinition point : map.lootPoints()) lootPoints.putIfAbsent(point.id(), point);
+    Set<String> claimedAiZones = new HashSet<>();
+    Set<String> claimedCaches = new HashSet<>();
+    for (MapEventDefinition event : map.events()) {
+      if (!event.enabled()) continue;
+      AiZoneDefinition aiZone = aiZones.get(event.aiZoneId());
+      if (aiZone == null) {
+        error(issues, "event_ai_zone_missing", event.id(),
+            "地图事件引用了不存在的 AI 区域: " + event.aiZoneId());
+      } else if (!aiZone.enabled()) {
+        error(issues, "event_ai_zone_disabled", event.id(),
+            "地图事件引用的 AI 区域未启用: " + event.aiZoneId());
+      }
+      LootPointDefinition cache = lootPoints.get(event.cacheLootPointId());
+      if (cache == null) {
+        error(issues, "event_cache_loot_missing", event.id(),
+            "地图事件引用了不存在的 Loot 点: " + event.cacheLootPointId());
+      } else if (!cache.enabled()) {
+        error(issues, "event_cache_loot_disabled", event.id(),
+            "地图事件引用的 Loot 点未启用: " + event.cacheLootPointId());
+      }
+      if (!claimedAiZones.add(event.aiZoneId())) {
+        error(issues, "event_ai_zone_reused", event.id(),
+            "同一个 AI 区域不能被多个启用事件复用: " + event.aiZoneId());
+      }
+      if (!claimedCaches.add(event.cacheLootPointId())) {
+        error(issues, "event_cache_loot_reused", event.id(),
+            "同一个 Loot 点不能被多个启用事件复用: " + event.cacheLootPointId());
+      }
+      if (event.startDelaySeconds() < 0 || event.startDelaySeconds() > 3_600) {
+        error(issues, "event_start_delay_invalid", event.id(),
+            "地图事件延迟必须为 0..3600 秒");
+      }
+      if (!Double.isFinite(event.healthMultiplier()) || event.healthMultiplier() <= 0
+          || event.healthMultiplier() > 20) {
+        error(issues, "event_health_multiplier_invalid", event.id(),
+            "地图事件生命倍率必须是有限值且在 (0, 20] 内");
+      }
+      if (!Double.isFinite(event.damageMultiplier()) || event.damageMultiplier() <= 0
+          || event.damageMultiplier() > 8) {
+        error(issues, "event_damage_multiplier_invalid", event.id(),
+            "地图事件伤害倍率必须是有限值且在 (0, 8] 内");
+      }
+      if (event.protectionSeconds() < 0 || event.protectionSeconds() > 300) {
+        error(issues, "event_protection_seconds_invalid", event.id(),
+            "地图事件保护时间必须为 0..300 秒");
+      }
+    }
   }
 
   private static void validateCounts(ManualCraftovMap map, ManualMapValidationSettings settings,

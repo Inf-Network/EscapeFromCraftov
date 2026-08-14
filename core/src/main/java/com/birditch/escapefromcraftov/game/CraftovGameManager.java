@@ -108,7 +108,7 @@ public final class CraftovGameManager implements CraftovGameService {
         CraftovMapRuntime captured = new CraftovMapRuntime(runtime.revision(), runtime.spawns(),
                 runtime.lootPoints(), runtime.lootZones(), extractionPoints,
                 runtime.extractionAreas(), runtime.aiZones(), runtime.pois(),
-                runtime.actionTiers());
+                runtime.actionTiers(), runtime.mapEvents());
         CraftovGameInstance game = new CraftovGameInstance(
                 gameId, mapId, mode, difficulty, actionProfile, now, captured);
         game.transitionTo(CraftovGameState.WAITING, now);

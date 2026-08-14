@@ -10,6 +10,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.jspecify.annotations.Nullable;
 
 /** Finds a bounded, two-block-high safe position inside an authored AI region. */
 final class CraftovAiSpawnResolver {
@@ -23,6 +24,10 @@ final class CraftovAiSpawnResolver {
   private CraftovAiSpawnResolver() {}
 
   static Optional<Location> resolve(World world, CraftovAiZone zone, long seed) {
+    return Optional.ofNullable(resolveResult(world, zone, seed).location());
+  }
+
+  static Resolution resolveResult(World world, CraftovAiZone zone, long seed) {
     Preconditions.checkNotNull(world, "world");
     Preconditions.checkNotNull(zone, "zone");
     SplittableRandom random = new SplittableRandom(seed);
@@ -37,14 +42,18 @@ final class CraftovAiSpawnResolver {
           coordinate(random, zone.minZ(), zone.maxZ())));
     }
     columns.add(new Column(midpoint(zone.minX(), zone.maxX()), midpoint(zone.minZ(), zone.maxZ())));
+    boolean unloaded = false;
     for (Column column : columns) {
       // World#getBlockAt may synchronously load a chunk. Instance AI never does
       // that: an unloaded authored column is unavailable until Paper loads it.
-      if (!world.isChunkLoaded(column.x() >> 4, column.z() >> 4)) continue;
+      if (!world.isChunkLoaded(column.x() >> 4, column.z() >> 4)) {
+        unloaded = true;
+        continue;
+      }
       Optional<Location> location = resolveColumn(world, zone, column, random);
-      if (location.isPresent()) return location;
+      if (location.isPresent()) return new Resolution(Status.FOUND, location.get());
     }
-    return Optional.empty();
+    return new Resolution(unloaded ? Status.UNLOADED : Status.NO_SAFE_POSITION, null);
   }
 
   private static Optional<Location> resolveColumn(World world, CraftovAiZone zone, Column column,
@@ -95,4 +104,12 @@ final class CraftovAiSpawnResolver {
   }
 
   private record Column(int x, int z) {}
+
+  enum Status {
+    FOUND,
+    UNLOADED,
+    NO_SAFE_POSITION
+  }
+
+  record Resolution(Status status, @Nullable Location location) {}
 }

@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
 import com.birditch.escapefromcraftov.api.game.CraftovLootZone;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.CraftovResult;
@@ -54,6 +55,7 @@ public final class CraftovGameInstance implements CraftovGame {
     private final List<CraftovExtractionArea> extractionAreas;
     private final List<CraftovAiZone> aiZones;
     private final List<CraftovPoi> pois;
+    private final List<CraftovMapEvent> mapEvents;
     private final Map<UUID, CraftovPlayer> players = new LinkedHashMap<>();
     private final List<CraftovTeam> teams = new ArrayList<>();
     private final Map<UUID, CraftovTeam> teamsByKey = new LinkedHashMap<>();
@@ -99,6 +101,7 @@ public final class CraftovGameInstance implements CraftovGame {
         this.extractionAreas = runtime.extractionAreas();
         this.aiZones = runtime.aiZones();
         this.pois = runtime.pois();
+        this.mapEvents = runtime.mapEvents();
     }
 
     /// Moves the game to `next`; entering [CraftovGameState#RUNNING] records `now`
@@ -275,6 +278,11 @@ public final class CraftovGameInstance implements CraftovGame {
     @Override
     public List<CraftovPoi> pois() {
         return pois;
+    }
+
+    @Override
+    public List<CraftovMapEvent> mapEvents() {
+        return mapEvents;
     }
 
     @Override

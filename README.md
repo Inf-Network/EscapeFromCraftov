@@ -52,7 +52,9 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 
 ### AI
 
-管理员可以配置 AI Zone、数量范围、刷新时间与难度。行动中会生成 Minecraft 原生生物，并应用安全落点、难度缩放、装备、奖励和有界行为；更复杂的巡逻与 Boss 地图事件仍属后续功能。
+管理员可以配置 AI Zone、数量范围、刷新时间与难度。行动中会生成 Minecraft 原生生物，并应用安全落点、难度缩放、装备、奖励和有界行为。
+
+地图还可以在 `map.yml` 中配置可选的 `HIGH_VALUE_TARGET` 事件。启用事件会独占其引用的 AI Zone，不再进行普通 AI 刷新；延迟结束后，系统只会在已加载区块中的安全落点生成 Boss。击杀 Boss 会解锁事件引用的现有 Loot Point，并按击杀瞬间冻结的小队 UUID 提供限时优先搜索权。
 
 ### 撤离点
 
@@ -88,6 +90,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 | 虚拟 Loot 搜索与撤离结算 | 完成 | 共享一次性 Loot GUI，成功撤离后入仓 |
 | 局内二维携行与整理 | 完成 | 口袋/胸挂/背包分区、占格、隔舱、锁定格、原子移动和受限旋转；`/craftov carry` 打开 |
 | AI 战斗 | 完成（基础） | AI Zone 原生生物、安全生成、难度缩放、装备、奖励与有界行为 |
+| 高价值目标地图事件 | 完成（YAML） | 延迟生成 Boss、事件专属 AI Zone、击杀解锁现有搜索缓存和小队限时优先权；事件编辑器命令与 `EVENT_COMPLETED` 撤离条件尚未实现 |
 | Minecraft PvP 结算与队伍规则 | 完成 | 原生伤害边界、友伤配置、击杀归属和死亡结算 |
 | 动态 Sidebar / BossBar / Action Bar | 完成 | 编辑器和行动中使用个人稳定 HUD |
 | 剑/斧/弓/弩/盾牌物品分类 | 完成 | 默认领域物品与 LootTable 已使用 Minecraft 语义 |
@@ -630,11 +633,37 @@ bounds
 spawns
 loot-points / loot-zones
 ai-zones
+events（可选）
 extractions
 pois
 ```
 
-旧版本位于 `maps/<map-id>/revisions/`。YAML 可用于审计和备份，但正常编辑请使用游戏内命令。
+`events` 是可选根字段；没有该字段的旧地图按空事件列表加载，原有行为不变。当前支持的事件类型是 `HIGH_VALUE_TARGET`：
+
+```yaml
+events:
+  - id: warehouse_boss
+    enabled: true
+    display-name: 仓库高价值目标
+    type: HIGH_VALUE_TARGET
+    ai-zone-id: warehouse_guard
+    cache-loot-point-id: warehouse_cache
+    start-delay-seconds: 15
+    health-multiplier: 4.0
+    damage-multiplier: 1.5
+    protection-seconds: 30
+```
+
+- `id` 必须在事件中唯一，也不能与其他地图对象 ID 冲突。
+- `enabled` 控制该事件是否参与本局；`display-name` 是玩家可见名称；`type` 当前只能是 `HIGH_VALUE_TARGET`。
+- `ai-zone-id` 必须引用一个已启用的 AI Zone；`cache-loot-point-id` 必须引用一个已启用、已经存在的 Loot Point。新配置中，同一个 AI Zone 或 Loot Point 不能被多个启用事件复用。
+- `start-delay-seconds` 范围是 `0..3600`；`health-multiplier` 是 `(0, 20]` 内的有限值；`damage-multiplier` 是 `(0, 8]` 内的有限值；`protection-seconds` 范围是 `0..300`。
+
+启用事件引用的 AI Zone 不参与普通补怪。事件从行动开始计时，延迟结束后只在已加载区块的安全落点生成一个 Boss，不会为了生成主动加载区块。区域区块尚未加载时，每个事件只保留一个低频重试任务，每 5 秒尝试一次，最多 60 次；耗尽后事件失败，不会留下无限重试。Boss 与普通 AI 共用每区 32、每局 128 的实体上限，也共用每 100 ms 最多 8 次 AI 决策和 4 次新寻路的预算；实体上的 `game`、`zone`、`event` PDC 必须同时匹配当前实例才会被事件运行时接受。
+
+事件关联的是现有搜索缓存，不会创建第二套容器。Boss 死亡采用 first-wins，只结算一次且不会普通重生；完成时冻结合法击杀者当时的小队 UUID，并在 `protection-seconds` 内只允许该队搜索，之后向同局玩家公开。没有合法击杀者时立即公开。交互、搜索、恢复、展示、打开、翻页、拿取和物资源提交都会重新检查事件状态；事件未完成、失败或状态缺失时缓存一律保持锁定。
+
+旧版本位于 `maps/<map-id>/revisions/`。普通地图对象仍应使用游戏内编辑器；高价值目标事件目前没有编辑器命令或菜单，必须直接维护 `map.yml`。撤离系统当前也没有 `EVENT_COMPLETED` 条件，不能把“完成指定事件”配置为撤离前置条件。
 
 ## PostgreSQL、Hibernate 与 HikariCP
 
@@ -658,7 +687,7 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 
 ### 一定要编辑 YAML 吗？
 
-不需要。游戏内编辑器是主要入口，YAML 用于存储、审计和备份。
+普通地图对象不需要，游戏内编辑器仍是主要入口，YAML 用于存储、审计和备份。`HIGH_VALUE_TARGET` 事件是当前例外：事件编辑器命令和菜单尚未实现，需要直接编辑 `map.yml`。
 
 ### 一定要安装这些扩展插件吗？
 
@@ -782,9 +811,9 @@ Domain 不 import Bukkit 或第三方插件。Paper 世界访问、PDC、粒子�
 - 只正式支持 Cuboid；WorldEdit Polygon 会变成包围盒。
 - DecentHolograms 会标出预览半径内的地图对象，但默认每位管理员最多同时显示 32 个；选中和错误对象优先，避免 200+ Loot 地图产生无上限实体压力。
 - 地图必须由管理员人工放置点位和划分区域；当前不提供自动扫描或自动生成正式地图配置。
-- AI Zone 已生成原生 AI 实体并提供基础有界行为；复杂巡逻和 Boss 地图事件仍待扩展。
+- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件已可通过 `map.yml` 使用，但事件编辑器命令、菜单和 `EVENT_COMPLETED` 撤离条件尚未实现。
 - Loot Point 已提供右键搜索与共享容器 UI。
 - 仓库、出战栏、局内二维携行整理、装备/物资损失和撤离结算已经闭环。二维位置当前是单局内存权威，跨局结算仍以唯一 `ItemInstance` 为单位。
 - 未在本仓库内运行五个硬依赖插件的完整 Paper 交互服，只验证了公开 API 编译与依赖解析；正式部署仍应检查每个插件的实际版本和启动日志。
 
-下一阶段最值得优先完成：**基于现有 AI Zone 的巡逻与地图事件**，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。
+下一阶段最值得优先完成：**高价值目标事件的游戏内编辑器与 `EVENT_COMPLETED` 撤离条件**、基于现有 AI Zone 的复杂巡逻，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。

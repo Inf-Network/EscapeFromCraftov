@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.event.EventBus;
@@ -12,12 +13,15 @@ import com.birditch.escapefromcraftov.api.game.GameFailures;
 import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEvent;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEventType;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
 import com.birditch.escapefromcraftov.api.testing.MutableTimeSource;
 import com.birditch.escapefromcraftov.common.random.SeededRandomProvider;
@@ -66,6 +70,9 @@ class CraftovMapRuntimeSnapshotTest {
     assertEquals("scavengers", game.aiZones().getFirst().id());
     assertEquals(1, game.pois().size());
     assertEquals("central_factory", game.pois().getFirst().id());
+    assertEquals(1, game.mapEvents().size());
+    assertEquals("factory_overseer", game.mapEvents().getFirst().id());
+    assertThrows(UnsupportedOperationException.class, game.mapEvents()::clear);
   }
 
   @Test
@@ -109,14 +116,18 @@ class CraftovMapRuntimeSnapshotTest {
     ExtractionPointId pointId = ExtractionPointId.of("north_gate");
     return new CraftovMapRuntime(revision,
         List.of(new CraftovSpawnLocation("spawn", x, 64, 10, 0, 0)),
-        List.of(),
+        List.of(), List.of(),
         List.of(new ExtractionPoint(pointId, "North Gate", ExtractionType.NORMAL,
             Duration.ofSeconds(10), List.of(), ExtractionState.AVAILABLE)),
         List.of(new CraftovExtractionArea(pointId, "North Gate", 0, 60, 450, 8, 70, 458)),
         List.of(new CraftovAiZone("scavengers", "zombie", 2, 4, 60, 1.0, "scavengers",
             100, 60, 100, 120, 80, 120)),
         List.of(new CraftovPoi("central_factory", "中央工厂", 3,
-            180, 40, 180, 320, 90, 320)));
+            180, 40, 180, 320, 90, 320)),
+        LegacyRaidTierResolver.defaultProfiles(),
+        List.of(new CraftovMapEvent("factory_overseer", "Factory Overseer",
+            CraftovMapEventType.HIGH_VALUE_TARGET, "scavengers", "boss_cache", 15, 4,
+            1.5, 30, true)));
   }
 
   private static final class MutableProvider implements CraftovMapProvider {

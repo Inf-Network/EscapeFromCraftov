@@ -30,6 +30,8 @@ final class CraftovAiSpawnResolverTest {
     CraftovAiZone zone = new CraftovAiZone("guards", "scav", 1, 2, 30, 1,
         "scav", -128, 60, -128, 128, 80, 128);
 
+    assertEquals(CraftovAiSpawnResolver.Status.UNLOADED,
+        CraftovAiSpawnResolver.resolveResult(world, zone, 42).status());
     assertTrue(CraftovAiSpawnResolver.resolve(world, zone, 42).isEmpty());
     assertTrue(chunkChecks.get() > 0);
     assertEquals(0, blockReads.get());

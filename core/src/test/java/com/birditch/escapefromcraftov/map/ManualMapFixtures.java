@@ -24,7 +24,10 @@ final class ManualMapFixtures {
         List.of(extraction("north_gate", 10, 450, ManualExtractionType.NORMAL, null),
             extraction("south_gate", 450, 450, ManualExtractionType.TIMED, "600")),
         List.of(new PoiDefinition("central_factory", "Central Factory",
-            new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)));
+            new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)))
+        .withEvents(List.of(new MapEventDefinition("factory_overseer", "Factory Overseer",
+            MapEventType.HIGH_VALUE_TARGET, "ai_zone_a", "loot_a", 15, 4, 1.5,
+            30, true)));
   }
 
   static ManualMapReferences references() {

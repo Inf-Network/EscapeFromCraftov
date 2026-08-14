@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.editor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +21,8 @@ import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
 import com.birditch.escapefromcraftov.map.ManualCraftovMap;
+import com.birditch.escapefromcraftov.map.MapEventDefinition;
+import com.birditch.escapefromcraftov.map.MapEventType;
 import com.birditch.escapefromcraftov.map.PoiDefinition;
 import com.birditch.escapefromcraftov.map.SpawnDefinition;
 import java.nio.file.Files;
@@ -41,6 +44,10 @@ class ManualMapStoreTest {
 
     assertEquals(1, persisted.revision());
     assertEquals(persisted, store.load("factory").orElseThrow());
+    String yaml = assertDoesNotThrow(() ->
+        Files.readString(temporaryDirectory.resolve("factory/map.yml")));
+    assertTrue(yaml.contains("events:"));
+    assertTrue(yaml.contains("cache-loot-point-id: loot_a"));
   }
 
   @Test
@@ -82,6 +89,7 @@ class ManualMapStoreTest {
     assertEquals(LegacyRaidTierResolver.defaultProfiles(), loaded.actionTiers());
     assertEquals("legacy_spawn", loaded.spawns().getFirst().routeGroup());
     assertEquals(null, loaded.extractions().getFirst().routeScope());
+    assertTrue(loaded.events().isEmpty());
   }
 
   @Test
@@ -204,7 +212,7 @@ class ManualMapStoreTest {
     assertThrows(com.birditch.escapefromcraftov.api.CraftovException.class, store::loadAll);
   }
 
-  private static ManualCraftovMap map() {
+  static ManualCraftovMap map() {
     CuboidBounds bounds = new CuboidBounds(0, 0, 0, 500, 100, 500);
     return new ManualCraftovMap(ManualCraftovMap.SCHEMA_VERSION, "factory", "Factory", "world",
         bounds, 0, false, Map.of("author", "admin"),
@@ -234,6 +242,9 @@ class ManualMapStoreTest {
             new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)),
         List.of(new RaidActionProfile(RaidTierId.of("top_secret"), "绝密行动", 112_500,
             1.875, 3.0, 5_000, List.of(new RaidActionProfile.LegacyAlias(
-                RaidMode.CONFIDENTIAL, RaidDifficulty.HARD)))));
+                RaidMode.CONFIDENTIAL, RaidDifficulty.HARD)))),
+        List.of(new MapEventDefinition("factory_overseer", "Factory Overseer",
+            MapEventType.HIGH_VALUE_TARGET, "ai_zone_a", "loot_a", 15, 4, 1.5,
+            30, true)));
   }
 }

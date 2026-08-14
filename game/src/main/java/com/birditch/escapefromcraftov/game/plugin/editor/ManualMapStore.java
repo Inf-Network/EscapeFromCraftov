@@ -17,6 +17,8 @@ import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
 import com.birditch.escapefromcraftov.map.ManualCraftovMap;
+import com.birditch.escapefromcraftov.map.MapEventDefinition;
+import com.birditch.escapefromcraftov.map.MapEventType;
 import com.birditch.escapefromcraftov.map.PoiDefinition;
 import com.birditch.escapefromcraftov.map.SpawnDefinition;
 import java.io.IOException;
@@ -133,7 +135,7 @@ public final class ManualMapStore {
     ManualCraftovMap draft = new ManualCraftovMap(old.schemaVersion(), old.mapId(), old.displayName(),
         old.worldName(), old.bounds(), current.revision(), old.enabled(), old.metadata(),
         old.spawns(), old.lootPoints(), old.lootZones(), old.aiZones(), old.extractions(),
-        old.pois(), old.actionTiers());
+        old.pois(), old.actionTiers(), old.events());
     return save(draft);
   }
 
@@ -252,6 +254,7 @@ public final class ManualMapStore {
     yaml.set("ai-zones", map.aiZones().stream().map(ManualMapStore::aiZoneMap).toList());
     yaml.set("extractions", map.extractions().stream().map(ManualMapStore::extractionMap).toList());
     yaml.set("pois", map.pois().stream().map(ManualMapStore::poiMap).toList());
+    yaml.set("events", map.events().stream().map(ManualMapStore::eventMap).toList());
     return yaml;
   }
 
@@ -276,7 +279,10 @@ public final class ManualMapStore {
         yaml.getMapList("loot-zones").stream().map(ManualMapStore::readLootZone).toList(),
         yaml.getMapList("ai-zones").stream().map(ManualMapStore::readAiZone).toList(),
         yaml.getMapList("extractions").stream().map(ManualMapStore::readExtraction).toList(),
-        yaml.getMapList("pois").stream().map(ManualMapStore::readPoi).toList(), actionTiers);
+        yaml.getMapList("pois").stream().map(ManualMapStore::readPoi).toList(), actionTiers,
+        yaml.contains("events")
+            ? yaml.getMapList("events").stream().map(ManualMapStore::readEvent).toList()
+            : List.of());
   }
 
   private static Map<String, Object> actionTierMap(RaidActionProfile value) {
@@ -390,6 +396,19 @@ public final class ManualMapStore {
     return result;
   }
 
+  private static Map<String, Object> eventMap(MapEventDefinition value) {
+    Map<String, Object> result = base(value.id(), value.enabled());
+    result.put("display-name", value.displayName());
+    result.put("type", value.type().name());
+    result.put("ai-zone-id", value.aiZoneId());
+    result.put("cache-loot-point-id", value.cacheLootPointId());
+    result.put("start-delay-seconds", value.startDelaySeconds());
+    result.put("health-multiplier", value.healthMultiplier());
+    result.put("damage-multiplier", value.damageMultiplier());
+    result.put("protection-seconds", value.protectionSeconds());
+    return result;
+  }
+
   private static SpawnDefinition readSpawn(Map<?, ?> map) {
     return new SpawnDefinition(string(map, "id"), readPosition(nested(map, "position")),
         number(map, "yaw").floatValue(), number(map, "pitch").floatValue(),
@@ -457,6 +476,16 @@ public final class ManualMapStore {
   private static PoiDefinition readPoi(Map<?, ?> map) {
     return new PoiDefinition(string(map, "id"), string(map, "display-name"),
         readBounds(nested(map, "bounds")), number(map, "tier").intValue(), bool(map, "enabled"));
+  }
+
+  private static MapEventDefinition readEvent(Map<?, ?> map) {
+    return new MapEventDefinition(string(map, "id"), string(map, "display-name"),
+        MapEventType.valueOf(string(map, "type").toUpperCase(java.util.Locale.ROOT)),
+        string(map, "ai-zone-id"), string(map, "cache-loot-point-id"),
+        number(map, "start-delay-seconds").intValue(),
+        number(map, "health-multiplier").doubleValue(),
+        number(map, "damage-multiplier").doubleValue(),
+        number(map, "protection-seconds").intValue(), bool(map, "enabled"));
   }
 
   private static Map<String, Object> base(String id, boolean enabled) {

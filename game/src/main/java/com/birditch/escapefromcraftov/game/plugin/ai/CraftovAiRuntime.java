@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEvent;
 import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
@@ -20,9 +21,13 @@ import com.birditch.escapefromcraftov.api.loot.LootService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
+import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventBossPolicy;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventRuntime;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker;
 import com.birditch.escapefromcraftov.game.plugin.ownership.LootClaim;
 import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
@@ -41,6 +46,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -101,10 +107,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private final RaidResultRuntime raidReports;
   private final LootOwnershipController lootOwnership;
   private final Predicate<UUID> combatAlive;
+  private final @Nullable MapEventRuntime mapEvents;
+  private final @Nullable Messages messages;
   private final Logger logger;
   private final NamespacedKey gameKey;
   private final NamespacedKey zoneKey;
   private final NamespacedKey teamKey;
+  private final NamespacedKey eventKey;
+  private final NamespacedKey eventHealthMultiplierKey;
+  private final NamespacedKey eventDamageMultiplierKey;
   private final NamespacedKey projectileDamageMultiplierKey;
   private final NamespacedKey projectileBaseDamageKey;
   private final Map<CraftovGameId, GameRuntime> runtimes = new HashMap<>();
@@ -120,7 +131,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
       RaidResultRuntime raidReports, LootOwnershipController lootOwnership, Logger logger) {
     this(plugin, games, worlds, scheduler, loot, itemStacks, raidReports, lootOwnership,
-        _ -> true, logger);
+        _ -> true, null, null, logger);
   }
 
   /**
@@ -132,13 +143,23 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       RaidResultRuntime raidReports, LootOwnershipController lootOwnership,
       CombatService combat, Logger logger) {
     this(plugin, games, worlds, scheduler, loot, itemStacks, raidReports, lootOwnership,
-        aliveLookup(combat), logger);
+        aliveLookup(combat), null, null, logger);
+  }
+
+  public CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
+      CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
+      RaidResultRuntime raidReports, LootOwnershipController lootOwnership,
+      CombatService combat, MapEventRuntime mapEvents, Messages messages, Logger logger) {
+    this(plugin, games, worlds, scheduler, loot, itemStacks, raidReports, lootOwnership,
+        aliveLookup(combat), Preconditions.checkNotNull(mapEvents, "mapEvents"),
+        Preconditions.checkNotNull(messages, "messages"), logger);
   }
 
   private CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
       CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
       RaidResultRuntime raidReports, LootOwnershipController lootOwnership,
-      Predicate<UUID> combatAlive, Logger logger) {
+      Predicate<UUID> combatAlive, @Nullable MapEventRuntime mapEvents,
+      @Nullable Messages messages, Logger logger) {
     Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
@@ -148,10 +169,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
     this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
     this.combatAlive = Preconditions.checkNotNull(combatAlive, "combatAlive");
+    this.mapEvents = mapEvents;
+    this.messages = messages;
     this.logger = Preconditions.checkNotNull(logger, "logger");
     gameKey = new NamespacedKey(plugin, "ai_game");
     zoneKey = new NamespacedKey(plugin, "ai_zone");
     teamKey = new NamespacedKey(plugin, "ai_team");
+    eventKey = new NamespacedKey(plugin, "ai_event");
+    eventHealthMultiplierKey = new NamespacedKey(plugin, "ai_event_health_multiplier");
+    eventDamageMultiplierKey = new NamespacedKey(plugin, "ai_event_damage_multiplier");
     projectileDamageMultiplierKey = new NamespacedKey(plugin, "ai_projectile_damage_multiplier");
     projectileBaseDamageKey = new NamespacedKey(plugin, "ai_projectile_base_damage");
     tacticsTask = scheduler.runTimer(Duration.ZERO, TACTICS_TICK, this::tickTactics);
@@ -223,6 +249,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     double effectiveDifficulty = handle.zone().definition().difficulty()
         * handle.runtime().difficultyMultiplier();
     double damageMultiplier = AiRuntimePolicy.difficulty(effectiveDifficulty).damageMultiplier();
+    if (handle.eventId() != null) {
+      java.util.OptionalDouble combined = MapEventBossPolicy.projectileMultiplier(
+          damageMultiplier, ownedBossEvent(handle, shooter));
+      if (combined.isEmpty()) {
+        event.setCancelled(true);
+        return;
+      }
+      damageMultiplier = combined.getAsDouble();
+    }
     PersistentDataContainer data = projectile.getPersistentDataContainer();
     data.set(gameKey, PersistentDataType.STRING, handle.runtime().gameId().value());
     data.set(zoneKey, PersistentDataType.STRING, handle.zone().definition().id());
@@ -263,6 +298,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     }
     if (event.getEntity() instanceof Player player
         && eligibleCombatTarget(handle, player)) {
+      if (handle.eventId() != null) {
+        CraftovMapEvent boss = ownedBossEvent(handle, source);
+        java.util.OptionalDouble scaled = MapEventBossPolicy.scaleDamage(event.getDamage(), boss);
+        if (scaled.isEmpty()) {
+          event.setCancelled(true);
+          return;
+        }
+        event.setDamage(scaled.getAsDouble());
+      }
       return;
     }
     event.setCancelled(true);
@@ -358,6 +402,21 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         || zone.agents().get(event.getEntity().getUniqueId()) != handle.agent()) return;
     agents.remove(event.getEntity().getUniqueId());
     zone.agents().remove(event.getEntity().getUniqueId());
+    if (handle.eventId() != null) {
+      CraftovMapEvent boss = ownedBossEvent(handle, event.getEntity());
+      MapEventRuntime eventRuntime = mapEvents;
+      Player killer = event.getEntity().getKiller();
+      if (boss == null || eventRuntime == null) {
+        if (eventRuntime != null) loseBoss(handle);
+        return;
+      }
+      if (eventRuntime.complete(runtime.gameId(), handle.eventId(),
+          event.getEntity().getUniqueId(), killer == null ? null : killer.getUniqueId())
+          .isEmpty()) return;
+      announce(runtime, "map-event.completed", boss);
+      reward(event, runtime, zone);
+      return;
+    }
     scheduleRefill(runtime, zone, Duration.ofSeconds(zone.definition().respawnSeconds()));
     reward(event, runtime, zone);
   }
@@ -402,6 +461,33 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     }
   }
 
+  private void announce(GameRuntime runtime, String key, CraftovMapEvent event) {
+    Messages configured = messages;
+    if (configured == null) return;
+    CraftovGame game = games.find(runtime.gameId())
+        .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).orElse(null);
+    if (game == null) return;
+    Component message;
+    try {
+      message = configured.raw(key, Placeholder.unparsed("event", event.displayName()));
+    } catch (RuntimeException failure) {
+      logger.log(Level.WARNING, "渲染地图事件消息失败: " + key, failure);
+      return;
+    }
+    for (CraftovPlayer participant : game.players()) {
+      if (participant.extracted()) continue;
+      Player online = Bukkit.getPlayer(participant.playerId());
+      if (online != null && online.isOnline()
+          && runtime.worldName().equals(online.getWorld().getName())) {
+        try {
+          online.sendMessage(message);
+        } catch (RuntimeException failure) {
+          logger.log(Level.FINE, "发送地图事件消息失败: " + participant.playerId(), failure);
+        }
+      }
+    }
+  }
+
   @Override
   public void close() {
     if (closed) return;
@@ -428,8 +514,18 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       return;
     }
     cancelPendingStart(gameId);
-    AiRuntimePolicy.CapacityCheck capacity = AiRuntimePolicy.capacity(game.aiZones().stream()
-        .map(zone -> new AiRuntimePolicy.ZoneCapacity(zone.id(), zone.maximum())).toList());
+    List<CraftovMapEvent> eventDefinitions = mapEvents == null ? List.of()
+        : game.mapEvents().stream().filter(CraftovMapEvent::enabled).toList();
+    java.util.Set<String> eventZoneIds = eventDefinitions.stream()
+        .map(CraftovMapEvent::aiZoneId).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    List<AiRuntimePolicy.ZoneCapacity> capacities = new ArrayList<>();
+    game.aiZones().stream().filter(zone -> !eventZoneIds.contains(zone.id()))
+        .map(zone -> new AiRuntimePolicy.ZoneCapacity(zone.id(), zone.maximum()))
+        .forEach(capacities::add);
+    eventDefinitions.stream()
+        .map(definition -> new AiRuntimePolicy.ZoneCapacity("event-" + definition.id(), 1))
+        .forEach(capacities::add);
+    AiRuntimePolicy.CapacityCheck capacity = AiRuntimePolicy.capacity(capacities);
     if (!capacity.allowed()) {
       logger.severe("AI 运行时拒绝超限地图 " + gameId.value() + ": " + capacity.reason()
           + "（每区上限 " + AiRuntimePolicy.MAXIMUM_ZONE_POPULATION + "，每局上限 "
@@ -444,12 +540,13 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         new LinkedHashMap<>());
     runtimes.put(gameId, runtime);
     for (CraftovAiZone definition : game.aiZones()) {
+      boolean eventOnly = eventZoneIds.contains(definition.id());
       long seed = seed(gameId, definition.id());
-      int target = AiRuntimePolicy.targetPopulation(
+      int target = eventOnly ? 0 : AiRuntimePolicy.targetPopulation(
           definition.minimum(), definition.maximum(), seed);
-      ZoneRuntime zone = new ZoneRuntime(definition, target, new LinkedHashMap<>());
+      ZoneRuntime zone = new ZoneRuntime(definition, target, eventOnly, new LinkedHashMap<>());
       runtime.zones().put(definition.id(), zone);
-      enqueueRefill(runtime, zone);
+      if (!eventOnly) enqueueRefill(runtime, zone);
     }
     logger.info("AI 区域运行时已启动: " + gameId.value() + "，区域 "
         + runtime.zones().size() + " 个，目标敌人 " + runtime.zones().values().stream()
@@ -472,13 +569,21 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
 
   private void enqueueRefill(GameRuntime runtime, ZoneRuntime zone) {
     if (closed || runtimes.get(runtime.gameId()) != runtime || zone.refillQueued
-        || zone.targetPopulation() <= zone.agents().size()) return;
+        || zone.eventOnly() || zone.targetPopulation() <= zone.agents().size()) return;
     zone.refillQueued = true;
     refillQueue.addLast(new RefillRequest(runtime, zone));
   }
 
   private void processRefillQueue() {
-    for (int attempt = 0;
+    int attempt = 0;
+    MapEventRuntime eventRuntime = mapEvents;
+    while (eventRuntime != null && attempt < AiRuntimePolicy.MAXIMUM_SPAWN_ATTEMPTS_PER_TICK) {
+      MapEventTracker.Activation activation = eventRuntime.claimNextActivation().orElse(null);
+      if (activation == null) break;
+      processEventActivation(eventRuntime, activation);
+      attempt++;
+    }
+    for (;
         attempt < AiRuntimePolicy.MAXIMUM_SPAWN_ATTEMPTS_PER_TICK
             && !refillQueue.isEmpty(); attempt++) {
       RefillRequest request = refillQueue.removeFirst();
@@ -490,7 +595,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       if (game == null || runtimes.get(runtime.gameId()) != runtime
           || zone.targetPopulation() <= zone.agents().size()) continue;
       World world = Bukkit.getWorld(runtime.worldName());
-      Mob mob = world == null ? null : spawn(runtime, zone, world);
+      Mob mob = world == null ? null : spawn(runtime, zone, world, null).mob();
       if (mob == null) {
         logger.warning("AI 区域没有已加载的安全生成点，将稍后重试: "
             + runtime.gameId().value() + "/" + zone.definition().id() + " ("
@@ -501,43 +606,133 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(),
           System.nanoTime());
       zone.agents().put(mob.getUniqueId(), agent);
-      agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent));
+      agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent, null));
       enqueueRefill(runtime, zone);
     }
   }
 
-  private @Nullable Mob spawn(GameRuntime runtime, ZoneRuntime zone, World world) {
-    long sequence = zone.nextSequence++;
-    long seed = seed(runtime.gameId(), zone.definition().id()) ^ (sequence * 0x9e3779b97f4a7c15L);
-    Location location = CraftovAiSpawnResolver.resolve(world, zone.definition(), seed).orElse(null);
-    if (location == null) return null;
-    EntityType type = entityType(zone.definition().aiType());
-    try {
-      Entity spawned = world.spawnEntity(location, type, CreatureSpawnEvent.SpawnReason.CUSTOM);
-      if (!(spawned instanceof Mob mob)) {
-        spawned.remove();
-        return null;
+  private void processEventActivation(MapEventRuntime eventRuntime,
+      MapEventTracker.Activation activation) {
+    CraftovMapEvent definition = activation.event();
+    GameRuntime runtime = runtimes.get(activation.gameId());
+    ZoneRuntime zone = runtime == null ? null : runtime.zones().get(definition.aiZoneId());
+    CraftovGame game = games.find(activation.gameId())
+        .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).orElse(null);
+    if (game == null) {
+      eventRuntime.fail(activation);
+      return;
+    }
+    if (runtime == null) {
+      if (!eventRuntime.retryUnloaded(activation)) {
+        logger.warning("Boss 事件等待实例运行时超时: " + activation.gameId().value() + "/"
+            + definition.id());
       }
-      own(mob, runtime.gameId(), zone.definition());
-      configure(mob, zone.definition(), runtime.difficultyMultiplier());
-      mob.setAware(false);
-      return mob;
-    } catch (RuntimeException exception) {
-      logger.log(Level.WARNING, "生成 AI 失败: " + runtime.gameId().value() + "/"
-          + zone.definition().id() + "/" + type, exception);
-      return null;
+      return;
+    }
+    if (activation.attempt() == 1) announce(runtime, "map-event.activated", definition);
+    if (zone == null || !zone.eventOnly() || !MapEventBossPolicy.valid(definition)) {
+      if (eventRuntime.fail(activation) && runtime != null) {
+        announce(runtime, "map-event.failed", definition);
+      }
+      return;
+    }
+    World world = Bukkit.getWorld(runtime.worldName());
+    if (world == null) {
+      retryEvent(eventRuntime, runtime, activation);
+      return;
+    }
+    SpawnAttempt result = spawn(runtime, zone, world, definition);
+    if (result.status() == CraftovAiSpawnResolver.Status.UNLOADED) {
+      retryEvent(eventRuntime, runtime, activation);
+      return;
+    }
+    Mob mob = result.mob();
+    if (mob == null) {
+      if (eventRuntime.fail(activation)) announce(runtime, "map-event.failed", definition);
+      return;
+    }
+    if (!eventRuntime.spawned(activation, mob.getUniqueId())) {
+      mob.remove();
+      return;
+    }
+    AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(), System.nanoTime());
+    zone.agents().put(mob.getUniqueId(), agent);
+    agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent, definition.id()));
+    announce(runtime, "map-event.spawned", definition);
+  }
+
+  private void retryEvent(MapEventRuntime eventRuntime, GameRuntime runtime,
+      MapEventTracker.Activation activation) {
+    if (!eventRuntime.retryUnloaded(activation)) {
+      announce(runtime, "map-event.failed", activation.event());
+    } else if (activation.attempt() == 1) {
+      logger.info("Boss 事件等待已加载区块: " + runtime.gameId().value() + "/"
+          + activation.event().id());
     }
   }
 
-  private void own(Mob mob, CraftovGameId gameId, CraftovAiZone zone) {
+  private SpawnAttempt spawn(GameRuntime runtime, ZoneRuntime zone, World world,
+      @Nullable CraftovMapEvent event) {
+    long sequence = zone.nextSequence++;
+    long seed = seed(runtime.gameId(), zone.definition().id()) ^ (sequence * 0x9e3779b97f4a7c15L);
+    CraftovAiSpawnResolver.Resolution resolution =
+        CraftovAiSpawnResolver.resolveResult(world, zone.definition(), seed);
+    Location location = resolution.location();
+    if (location == null) return new SpawnAttempt(resolution.status(), null);
+    EntityType type = entityType(zone.definition().aiType());
+    Entity spawned = null;
+    try {
+      spawned = world.spawnEntity(location, type, CreatureSpawnEvent.SpawnReason.CUSTOM);
+      if (!(spawned instanceof Mob mob)) {
+        spawned.remove();
+        return new SpawnAttempt(CraftovAiSpawnResolver.Status.NO_SAFE_POSITION, null);
+      }
+      own(mob, runtime.gameId(), zone.definition(), event);
+      configure(mob, zone.definition(), runtime.difficultyMultiplier());
+      if (event != null) configureBoss(mob, event);
+      mob.setAware(false);
+      return new SpawnAttempt(CraftovAiSpawnResolver.Status.FOUND, mob);
+    } catch (RuntimeException exception) {
+      if (spawned != null) spawned.remove();
+      logger.log(Level.WARNING, "生成 AI 失败: " + runtime.gameId().value() + "/"
+          + zone.definition().id() + "/" + type, exception);
+      return new SpawnAttempt(CraftovAiSpawnResolver.Status.NO_SAFE_POSITION, null);
+    }
+  }
+
+  private void own(Mob mob, CraftovGameId gameId, CraftovAiZone zone,
+      @Nullable CraftovMapEvent event) {
     PersistentDataContainer data = mob.getPersistentDataContainer();
     data.set(gameKey, PersistentDataType.STRING, gameId.value());
     data.set(zoneKey, PersistentDataType.STRING, zone.id());
     data.set(teamKey, PersistentDataType.STRING, zone.team());
+    if (event == null) {
+      data.remove(eventKey);
+      data.remove(eventHealthMultiplierKey);
+      data.remove(eventDamageMultiplierKey);
+    } else {
+      if (!MapEventBossPolicy.valid(event)) {
+        throw new IllegalArgumentException("invalid boss event multipliers: " + event.id());
+      }
+      data.set(eventKey, PersistentDataType.STRING, event.id());
+      data.set(eventHealthMultiplierKey, PersistentDataType.DOUBLE, event.healthMultiplier());
+      data.set(eventDamageMultiplierKey, PersistentDataType.DOUBLE, event.damageMultiplier());
+    }
     mob.addScoreboardTag("craftov_ai");
     mob.setPersistent(true);
     mob.setRemoveWhenFarAway(false);
     mob.setCanPickupItems(false);
+  }
+
+  private static void configureBoss(Mob mob, CraftovMapEvent event) {
+    if (!MapEventBossPolicy.valid(event)) {
+      throw new IllegalArgumentException("invalid boss event multipliers: " + event.id());
+    }
+    scale(mob, Attribute.MAX_HEALTH, event.healthMultiplier());
+    AttributeInstance health = mob.getAttribute(Attribute.MAX_HEALTH);
+    if (health != null) mob.setHealth(health.getValue());
+    mob.customName(Component.text(event.displayName(), NamedTextColor.DARK_RED));
+    mob.setCustomNameVisible(true);
   }
 
   private static void configure(Mob mob, CraftovAiZone zone, double raidDifficultyMultiplier) {
@@ -636,17 +831,24 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
 
   private void tickAgent(AgentHandle handle, List<Player> targets, long now, PathBudget paths) {
     Entity entity = Bukkit.getEntity(handle.agent().entityId());
+    World runtimeWorld = Bukkit.getWorld(handle.runtime().worldName());
     if (!(entity instanceof Mob mob)) {
-      World world = Bukkit.getWorld(handle.runtime().worldName());
       // A persistent entity may simply be serialized with an unloaded chunk.
       // Keep its slot reserved; replacing it would duplicate the AI on reload.
-      if (world != null && !chunkLoaded(world, handle.agent().lastPosition)) return;
+      if (runtimeWorld != null && AiEntityPresencePolicy.reserveIdentity(
+          false, false, chunkLoaded(runtimeWorld, handle.agent().lastPosition))) return;
       detach(handle, true);
       return;
     }
     handle.agent().lastPosition = Point.of(mob.getLocation());
+    if (!entity.isValid() && runtimeWorld != null && AiEntityPresencePolicy.reserveIdentity(
+        true, false, chunkLoaded(runtimeWorld, handle.agent().lastPosition))) return;
     if (!entity.isValid() || !handle.runtime().worldName().equals(entity.getWorld().getName())
-        || !ownedBy(entity, handle.runtime().gameId())) {
+        || !ownedBy(entity, handle.runtime().gameId())
+        || !handle.zone().definition().id().equals(entity.getPersistentDataContainer()
+            .get(zoneKey, PersistentDataType.STRING))
+        || (handle.eventId() != null && ownedBossEvent(handle, entity) == null)) {
+      if (handle.eventId() != null && entity.isValid()) entity.remove();
       detach(handle, true);
       return;
     }
@@ -954,15 +1156,53 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private void detach(AgentHandle handle, boolean refill) {
     if (agents.remove(handle.agent().entityId()) != handle) return;
     handle.zone().agents().remove(handle.agent().entityId());
-    if (refill) scheduleRefill(handle.runtime(), handle.zone(), FAILED_SPAWN_RETRY);
+    if (refill && handle.eventId() == null) {
+      scheduleRefill(handle.runtime(), handle.zone(), FAILED_SPAWN_RETRY);
+    } else if (refill && handle.eventId() != null && mapEvents != null) {
+      loseBoss(handle);
+    }
+  }
+
+  private void loseBoss(AgentHandle handle) {
+    MapEventRuntime eventRuntime = mapEvents;
+    String eventId = handle.eventId();
+    if (eventRuntime == null || eventId == null) return;
+    boolean retrying = eventRuntime.lostActive(handle.runtime().gameId(), eventId,
+        handle.agent().entityId());
+    if (!retrying && eventRuntime.state(handle.runtime().gameId(), eventId)
+        == MapEventTracker.State.FAILED) {
+      eventRuntime.event(handle.runtime().gameId(), eventId)
+          .ifPresent(event -> announce(handle.runtime(), "map-event.failed", event));
+    }
   }
 
   private @Nullable AgentHandle ownedAgent(Entity entity) {
     if (!(entity instanceof Mob mob)) return null;
     AgentHandle handle = agents.get(mob.getUniqueId());
     if (handle == null || !handle.runtime().worldName().equals(mob.getWorld().getName())
-        || !ownedBy(mob, handle.runtime().gameId())) return null;
+        || !ownedBy(mob, handle.runtime().gameId())
+        || !handle.zone().definition().id().equals(mob.getPersistentDataContainer()
+            .get(zoneKey, PersistentDataType.STRING))) return null;
+    String taggedEvent = mob.getPersistentDataContainer()
+        .get(eventKey, PersistentDataType.STRING);
+    if (handle.eventId() == null ? taggedEvent != null : ownedBossEvent(handle, mob) == null) {
+      return null;
+    }
     return handle;
+  }
+
+  private @Nullable CraftovMapEvent ownedBossEvent(AgentHandle handle, Entity entity) {
+    String eventId = handle.eventId();
+    MapEventRuntime eventRuntime = mapEvents;
+    if (eventId == null || eventRuntime == null
+        || !eventRuntime.ownsActive(handle.runtime().gameId(), eventId,
+            entity.getUniqueId())) return null;
+    CraftovMapEvent definition = eventRuntime.event(handle.runtime().gameId(), eventId).orElse(null);
+    PersistentDataContainer data = entity.getPersistentDataContainer();
+    return definition != null && MapEventBossPolicy.matchesPdc(definition,
+        data.get(eventKey, PersistentDataType.STRING),
+        data.get(eventHealthMultiplierKey, PersistentDataType.DOUBLE),
+        data.get(eventDamageMultiplierKey, PersistentDataType.DOUBLE)) ? definition : null;
   }
 
   private boolean taggedAi(Entity entity) {
@@ -1000,7 +1240,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   }
 
   private void scheduleRefill(GameRuntime runtime, ZoneRuntime zone, Duration delay) {
-    if (zone.refillTask != null || zone.refillQueued
+    if (zone.eventOnly() || zone.refillTask != null || zone.refillQueued
         || zone.targetPopulation() <= zone.agents().size()) return;
     zone.refillTask = scheduler.runLater(delay.isZero() ? Duration.ofMillis(50) : delay, () -> {
       zone.refillTask = null;
@@ -1068,9 +1308,11 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       Map<String, ZoneRuntime> zones) {}
 
   private record AgentHandle(
-      GameRuntime runtime, ZoneRuntime zone, AgentRuntime agent) {}
+      GameRuntime runtime, ZoneRuntime zone, AgentRuntime agent, @Nullable String eventId) {}
 
   private record RefillRequest(GameRuntime runtime, ZoneRuntime zone) {}
+
+  private record SpawnAttempt(CraftovAiSpawnResolver.Status status, @Nullable Mob mob) {}
 
   private static final class AgentRuntime {
     private final UUID entityId;
@@ -1141,20 +1383,23 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private static final class ZoneRuntime {
     private final CraftovAiZone definition;
     private final int targetPopulation;
+    private final boolean eventOnly;
     private final Map<UUID, AgentRuntime> agents;
     private long nextSequence;
     private @Nullable ScheduledTask refillTask;
     private boolean refillQueued;
 
-    private ZoneRuntime(CraftovAiZone definition, int targetPopulation,
+    private ZoneRuntime(CraftovAiZone definition, int targetPopulation, boolean eventOnly,
         Map<UUID, AgentRuntime> agents) {
       this.definition = definition;
       this.targetPopulation = targetPopulation;
+      this.eventOnly = eventOnly;
       this.agents = agents;
     }
 
     CraftovAiZone definition() { return definition; }
     int targetPopulation() { return targetPopulation; }
+    boolean eventOnly() { return eventOnly; }
     Map<UUID, AgentRuntime> agents() { return agents; }
   }
 }

@@ -25,6 +25,8 @@ import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.RaidInventoryMutationGate;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventRuntime;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,6 +58,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared, one-roll-per-craftov Loot state with a TrMenu-owned search interface.
@@ -79,6 +82,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final RaidCarryController carry;
   private final RaidInventoryMutationGate mutationGate;
   private final Predicate<Block> deathCrateMarker;
+  private final @Nullable MapEventRuntime mapEvents;
   private final AutoCloseable itemSource;
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
   private final Map<ContainerKey, CraftovLootPoint> resolvedPoints = new HashMap<>();
@@ -91,7 +95,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
       TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry) {
     this(games, loot, itemStacks, items, worlds, messages, inventorySize, menus, scheduler, carry,
-        RaidInventoryMutationGate.legacyAllowAll(), _ -> false);
+        RaidInventoryMutationGate.legacyAllowAll(), _ -> false, null);
   }
 
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
@@ -99,13 +103,22 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry,
       RaidInventoryMutationGate mutationGate) {
     this(games, loot, itemStacks, items, worlds, messages, inventorySize, menus, scheduler, carry,
-        mutationGate, _ -> false);
+        mutationGate, _ -> false, null);
   }
 
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
       ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
       TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry,
       RaidInventoryMutationGate mutationGate, Predicate<Block> deathCrateMarker) {
+    this(games, loot, itemStacks, items, worlds, messages, inventorySize, menus, scheduler, carry,
+        mutationGate, deathCrateMarker, null);
+  }
+
+  public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
+      ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
+      TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry,
+      RaidInventoryMutationGate mutationGate, Predicate<Block> deathCrateMarker,
+      MapEventRuntime mapEvents) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
@@ -120,6 +133,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     this.carry = Preconditions.checkNotNull(carry, "carry");
     this.mutationGate = Preconditions.checkNotNull(mutationGate, "mutationGate");
     this.deathCrateMarker = Preconditions.checkNotNull(deathCrateMarker, "deathCrateMarker");
+    this.mapEvents = mapEvents;
     this.itemSource = menus.registerItemSource("CRAFTOVCORELOOT", this::menuItem);
   }
 
@@ -212,6 +226,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       if (taken == null || taken.isEmpty()) return;
       transferred = carry.transferIntoCargo(player, taken,
           () -> mutationGate.allows(player.getUniqueId())
+              && cacheAllowed(validated.game(), validated.point(), player, false)
               && container.removeIfSame(containerSlot, taken));
     }
     if (!transferred) {
@@ -272,6 +287,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private void beginSearch(Player player, CraftovGame game, CraftovLootPoint point) {
+    if (!cacheAllowed(game, point, player, true)) return;
     UUID playerId = player.getUniqueId();
     ContainerKey key = new ContainerKey(game.id(), point.id());
     resolvedPoints.putIfAbsent(key, point);
@@ -323,6 +339,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     CraftovGame game = games.find(expected.key().gameId()).orElse(null);
     if (!activeMember(game, player)
+        || !cacheAllowed(game, expected.point(), player, false)
         || expected.point().distanceSquared(player.getX(), player.getY(), player.getZ())
             > INTERACTION_DISTANCE_SQUARED) {
       cancelSearch(player, true);
@@ -340,6 +357,10 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private void finishSearch(Player player, CraftovGame game, SearchSession expected) {
+    if (!cacheAllowed(game, expected.point(), player, true)) {
+      cancelSearch(player, false);
+      return;
+    }
     if (!searches.remove(player.getUniqueId(), expected)) return;
     expected.task().cancel();
     player.hideBossBar(expected.bar());
@@ -552,6 +573,11 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       throw new IllegalStateException("当前状态禁止打开 Loot 菜单");
     }
     LootView view = views.get(player.getUniqueId());
+    CraftovGame game = view == null ? null : games.find(view.key().gameId()).orElse(null);
+    CraftovLootPoint point = game == null || view == null ? null : point(game, view.key());
+    if (point == null || !cacheAllowed(game, point, player, false)) {
+      throw new IllegalStateException("事件物资尚未解锁");
+    }
     if (view == null || !menus.open(player, "escapefromcraftov_loot",
         Integer.toString(view.page() + 1),
         Integer.toString(Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE)),
@@ -564,6 +590,9 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     if (!mutationGate.allows(player.getUniqueId())) return air();
     LootView view = views.get(player.getUniqueId());
     if (view == null) return air();
+    CraftovGame game = games.find(view.key().gameId()).orElse(null);
+    CraftovLootPoint point = game == null ? null : point(game, view.key());
+    if (point == null || !cacheAllowed(game, point, player, false)) return air();
     LootContainerState container = containers.get(view.key());
     if (container == null) return air();
     String normalized = id.toLowerCase(Locale.ROOT);
@@ -615,7 +644,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     LootContainerState container = containers.get(view.key());
     if (container == null) throw new IllegalStateException("Loot 容器已关闭");
-    return new ValidatedView(view, container);
+    return new ValidatedView(view, container, game, point);
   }
 
   private boolean validViewLocation(CraftovGame game, Player player, CraftovLootPoint point,
@@ -627,6 +656,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       ContainerKey key, Location location) {
     if (location == null || !mutationGate.allows(player.getUniqueId())
         || !activeMember(game, player)
+        || !cacheAllowed(game, point, player, false)
         || location.getWorld() == null
         || worlds.gameByWorld(location.getWorld().getName()).filter(key.gameId()::equals).isEmpty()) {
       return false;
@@ -669,6 +699,29 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       contents.set(index, placed);
       remaining.setAmount(remaining.getAmount() - moved);
     }
+  }
+
+  private boolean cacheAllowed(@Nullable CraftovGame game, CraftovLootPoint point, Player player,
+      boolean notify) {
+    MapEventRuntime eventRuntime = mapEvents;
+    if (eventRuntime == null) return true;
+    if (game == null) return false;
+    MapEventTracker.CacheAccess access = eventRuntime.cacheAccess(
+        game.id(), point.id(), player.getUniqueId());
+    if (access.allowed()) {
+      if (notify && access.kind() == MapEventTracker.CacheAccessKind.PRIORITY) {
+        player.sendMessage(messages.raw("loot.event-priority",
+            Placeholder.unparsed("seconds", Long.toString(access.secondsRemaining()))));
+      }
+      return true;
+    }
+    if (notify) {
+      String key = access.kind() == MapEventTracker.CacheAccessKind.PROTECTED
+          ? "loot.event-protected" : "loot.event-locked";
+      player.sendMessage(messages.raw(key,
+          Placeholder.unparsed("seconds", Long.toString(access.secondsRemaining()))));
+    }
+    return false;
   }
 
   private static boolean activeMember(CraftovGame game, Player player) {
@@ -791,7 +844,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
   private record SearchSession(ContainerKey key, CraftovLootPoint point, String worldName,
       long startedAtNanos, long durationNanos, BossBar bar, ScheduledTask task) {}
-  private record ValidatedView(LootView view, LootContainerState container) {}
+  private record ValidatedView(LootView view, LootContainerState container,
+                               CraftovGame game, CraftovLootPoint point) {}
 
   private static final class RevealSession {
     private final ContainerKey key;

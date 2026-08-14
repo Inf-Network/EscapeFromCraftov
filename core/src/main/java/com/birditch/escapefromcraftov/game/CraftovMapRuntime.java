@@ -5,6 +5,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
 import com.birditch.escapefromcraftov.api.game.CraftovLootZone;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
@@ -25,7 +26,18 @@ public record CraftovMapRuntime(
     List<CraftovExtractionArea> extractionAreas,
     List<CraftovAiZone> aiZones,
     List<CraftovPoi> pois,
-    List<RaidActionProfile> actionTiers) {
+    List<RaidActionProfile> actionTiers,
+    List<CraftovMapEvent> mapEvents) {
+
+  /** Compatibility constructor for runtimes captured before map events. */
+  public CraftovMapRuntime(long revision, List<CraftovSpawnLocation> spawns,
+      List<CraftovLootPoint> lootPoints, List<CraftovLootZone> lootZones,
+      List<ExtractionPoint> extractionPoints, List<CraftovExtractionArea> extractionAreas,
+      List<CraftovAiZone> aiZones, List<CraftovPoi> pois,
+      List<RaidActionProfile> actionTiers) {
+    this(revision, spawns, lootPoints, lootZones, extractionPoints, extractionAreas, aiZones, pois,
+        actionTiers, List.of());
+  }
 
   /** Compatibility constructor for providers that do not expose AI/POI data. */
   public CraftovMapRuntime(long revision, List<CraftovSpawnLocation> spawns,
@@ -64,6 +76,7 @@ public record CraftovMapRuntime(
     aiZones = List.copyOf(Preconditions.checkNotNull(aiZones, "aiZones"));
     pois = List.copyOf(Preconditions.checkNotNull(pois, "pois"));
     actionTiers = List.copyOf(Preconditions.checkNotNull(actionTiers, "actionTiers"));
+    mapEvents = List.copyOf(Preconditions.checkNotNull(mapEvents, "mapEvents"));
     Preconditions.checkArgument(!actionTiers.isEmpty(), "actionTiers must not be empty");
     HashSet<RaidTierId> tierIds = new HashSet<>();
     for (RaidActionProfile profile : actionTiers) {

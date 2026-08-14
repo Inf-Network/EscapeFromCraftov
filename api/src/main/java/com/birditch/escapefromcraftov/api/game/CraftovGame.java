@@ -65,6 +65,10 @@ public interface CraftovGame {
         return List.of();
     }
 
+    default List<CraftovMapEvent> mapEvents() {
+        return List.of();
+    }
+
     CraftovGameState state();
 
     Collection<CraftovPlayer> players();

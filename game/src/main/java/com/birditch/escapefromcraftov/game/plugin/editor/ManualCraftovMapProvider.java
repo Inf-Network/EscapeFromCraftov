@@ -16,6 +16,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
 import com.birditch.escapefromcraftov.api.game.CraftovLootZone;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEvent;
+import com.birditch.escapefromcraftov.api.game.CraftovMapEventType;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnArea;
@@ -126,8 +128,14 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
         new CraftovPoi(value.id(), value.displayName(), value.tier(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
             value.bounds().maxY(), value.bounds().maxZ())).toList();
+    List<CraftovMapEvent> mapEvents = map.events().stream().filter(value -> value.enabled())
+        .map(value -> new CraftovMapEvent(value.id(), value.displayName(),
+            CraftovMapEventType.valueOf(value.type().name()), value.aiZoneId(),
+            value.cacheLootPointId(), value.startDelaySeconds(), value.healthMultiplier(),
+            value.damageMultiplier(), value.protectionSeconds(), true))
+        .toList();
     return new CraftovMapRuntime(map.revision(), spawns, lootPoints, lootZones, points, areas,
-        aiZones, pois, map.actionTiers());
+        aiZones, pois, map.actionTiers(), mapEvents);
   }
 
   private static LootContainerType containerType(String value) {

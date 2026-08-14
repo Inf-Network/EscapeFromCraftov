@@ -80,6 +80,7 @@ import com.birditch.escapefromcraftov.game.plugin.network.PendingDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingPlayerGuard;
 import com.birditch.escapefromcraftov.game.plugin.loot.CraftovLootListener;
+import com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventRuntime;
 import com.birditch.escapefromcraftov.game.plugin.medical.MedicalConditionListener;
 import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
@@ -160,6 +161,7 @@ public final class GameApplication {
   private @Nullable EventSubscription reportSubscription;
   private @Nullable EventSubscription combatSubscription;
   private @Nullable EventSubscription aiSubscription;
+  private @Nullable EventSubscription mapEventSubscription;
   private @Nullable EventSubscription pendingJoinSubscription;
   private @Nullable EventSubscription waitingArrivalSubscription;
   private @Nullable CraftovLootListener lootMenus;
@@ -168,6 +170,7 @@ public final class GameApplication {
   private @Nullable MedicalConditionListener medicalConditions;
   private @Nullable RaidResultRuntime raidReports;
   private @Nullable CraftovAiRuntime aiRuntime;
+  private @Nullable MapEventRuntime mapEventRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable RaidCarryController raidCarry;
   private @Nullable RaidCarryMenuController raidCarryMenus;
@@ -238,6 +241,7 @@ public final class GameApplication {
       SecureContainerController secureContainers,
       RaidCarryMenuController carryMenus,
       InstanceWorldBridge bridge,
+      MapEventRuntime mapEvents,
       CraftovAiRuntime aiRuntime) {}
 
   public GameApplication(CraftovGamePlugin plugin) {
@@ -676,6 +680,12 @@ public final class GameApplication {
         new BukkitCraftovStartNotifier(configs.messages()), logger,
         server.minimumPlayers(), server.startCountdownSeconds());
     startCoordinator = starts;
+    MapEventRuntime eventRuntime = new MapEventRuntime(
+        games, scheduler, new SystemTimeSource(), logger);
+    mapEventRuntime = eventRuntime;
+    // Register before any start coordinator timer and before AI so zero-delay
+    // event state exists when both consume the same CraftovStartedEvent.
+    mapEventSubscription = context.eventBus().register(eventRuntime);
     CraftovSidebarService sidebarService = new CraftovSidebarService(plugin, games,
         mapRuntime.sessions(), mapRuntime.service(),
         extractionService,
@@ -696,7 +706,7 @@ public final class GameApplication {
         block -> {
           DeathCrateListener current = this.deathCrates;
           return current != null && current.isMarker(block);
-        });
+        }, eventRuntime);
     lootMenus = lootMenuController;
     lootSubscription = context.eventBus().register(lootMenuController);
     InstanceWorldBridge instanceBridge = new InstanceWorldBridge(
@@ -717,7 +727,7 @@ public final class GameApplication {
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(
         plugin, games, index, scheduler, context.services().require(LootService.class),
         itemStacks, reportRuntime, ownership,
-        context.services().require(CombatService.class), logger);
+        context.services().require(CombatService.class), eventRuntime, configs.messages(), logger);
     aiRuntime = instanceAi;
     aiSubscription = context.eventBus().register(instanceAi);
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(
@@ -763,7 +773,7 @@ public final class GameApplication {
         mutationGate, extractionRoutes, ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, carryMenuController,
-        instanceBridge, instanceAi);
+        instanceBridge, eventRuntime, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -985,6 +995,14 @@ public final class GameApplication {
     if (aiRuntime != null) {
       aiRuntime.close();
       aiRuntime = null;
+    }
+    if (mapEventSubscription != null) {
+      mapEventSubscription.unsubscribe();
+      mapEventSubscription = null;
+    }
+    if (mapEventRuntime != null) {
+      mapEventRuntime.close();
+      mapEventRuntime = null;
     }
   }
 

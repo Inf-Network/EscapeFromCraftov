@@ -50,6 +50,7 @@ import com.birditch.escapefromcraftov.game.plugin.hud.CraftovSidebarService;
 import com.birditch.escapefromcraftov.game.plugin.listener.ExtractionRegionListener;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapRegistry;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapService;
+import com.birditch.escapefromcraftov.game.plugin.editor.BukkitMapEnvironmentValidator;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapStore;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualCraftovMapProvider;
 import com.birditch.escapefromcraftov.game.plugin.editor.EditorConfirmationService;
@@ -400,7 +401,8 @@ public final class GameApplication {
     ManualMapService manualService = new ManualMapService(manualStore, manualRegistry,
         configs.editor().validation(), world -> references(context.services(), world),
         plugin.getDataFolder().toPath().resolve(configs.server().mapTemplateDir()),
-        plugin.getServer().getWorldContainer().toPath());
+        plugin.getServer().getWorldContainer().toPath(),
+        new BukkitMapEnvironmentValidator(plugin.getServer()));
     EditorSessionService sessions = new EditorSessionService();
     editorSessions = sessions;
     EditorSelectionService selections = new EditorSelectionService();

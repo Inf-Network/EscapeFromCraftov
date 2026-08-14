@@ -7,12 +7,15 @@ import com.birditch.escapefromcraftov.map.ManualMapValidationResult;
 import com.birditch.escapefromcraftov.map.ManualMapValidationSettings;
 import com.birditch.escapefromcraftov.map.ManualMapValidator;
 import com.birditch.escapefromcraftov.map.ManualCraftovMap;
+import com.birditch.escapefromcraftov.map.MapValidationIssue;
+import com.birditch.escapefromcraftov.map.MapValidationSeverity;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
@@ -27,27 +30,39 @@ public final class ManualMapService {
   private final ManualMapValidator validator;
   private final ManualMapValidationSettings settings;
   private final Function<String, ManualMapReferences> references;
+  private final ManualMapEnvironmentValidator environmentValidator;
   private final @Nullable Path templateRoot;
   private final @Nullable Path worldRoot;
 
   public ManualMapService(ManualMapStore store, ManualMapRegistry registry,
       ManualMapValidationSettings settings, Function<String, ManualMapReferences> references) {
-    this(store, registry, settings, references, null, null);
+    this(store, registry, settings, references, null, null, ManualMapEnvironmentValidator.none());
   }
 
   public ManualMapService(ManualMapStore store, ManualMapRegistry registry,
       ManualMapValidationSettings settings, Function<String, ManualMapReferences> references,
       @Nullable Path templateRoot) {
-    this(store, registry, settings, references, templateRoot, null);
+    this(store, registry, settings, references, templateRoot, null,
+        ManualMapEnvironmentValidator.none());
   }
 
   public ManualMapService(ManualMapStore store, ManualMapRegistry registry,
       ManualMapValidationSettings settings, Function<String, ManualMapReferences> references,
       @Nullable Path templateRoot, @Nullable Path worldRoot) {
+    this(store, registry, settings, references, templateRoot, worldRoot,
+        ManualMapEnvironmentValidator.none());
+  }
+
+  public ManualMapService(ManualMapStore store, ManualMapRegistry registry,
+      ManualMapValidationSettings settings, Function<String, ManualMapReferences> references,
+      @Nullable Path templateRoot, @Nullable Path worldRoot,
+      ManualMapEnvironmentValidator environmentValidator) {
     this.store = Preconditions.checkNotNull(store, "store");
     this.registry = Preconditions.checkNotNull(registry, "registry");
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.references = Preconditions.checkNotNull(references, "references");
+    this.environmentValidator = Preconditions.checkNotNull(environmentValidator,
+        "environmentValidator");
     this.templateRoot = templateRoot;
     this.worldRoot = worldRoot;
     this.validator = new ManualMapValidator();
@@ -143,7 +158,22 @@ public final class ManualMapService {
   }
 
   public ManualMapValidationResult validate(ManualCraftovMap map) {
-    return validator.validate(map, references.apply(map.worldName()), settings);
+    ManualMapReferences resolvedReferences = references.apply(map.worldName());
+    ManualMapValidationResult structural = validator.validate(map, resolvedReferences, settings);
+    if (!resolvedReferences.worldExists()) return structural;
+    List<MapValidationIssue> environmentIssues = Preconditions.checkNotNull(
+        environmentValidator.validate(map), "environment validation issues");
+    if (environmentIssues.isEmpty()) return structural;
+    List<MapValidationIssue> combined =
+        new ArrayList<>(structural.issues().size() + environmentIssues.size());
+    combined.addAll(structural.issues());
+    combined.addAll(environmentIssues);
+    long errors = combined.stream().filter(issue ->
+        issue.severity() == MapValidationSeverity.ERROR).count();
+    long warnings = combined.stream().filter(issue ->
+        issue.severity() == MapValidationSeverity.WARNING).count();
+    int qualityScore = (int) Math.max(0, 100 - errors * 20 - warnings * 4);
+    return new ManualMapValidationResult(combined, qualityScore);
   }
 
   public ManualCraftovMap setEnabled(String mapId, boolean enabled) {

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.ServerId;
@@ -64,6 +66,23 @@ class InstancePickerTest {
     @DisplayName("no servers means no candidate")
     void emptyDirectory() {
       assertTrue(InstancePicker.pick(List.of(), MAP, Map.of()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("mode, difficulty and whole-party capacity must all match")
+    void filtersPoolAndPartyCapacity() {
+      InstanceSnapshot normal = new InstanceSnapshot(CraftovGameId.of("normal"), MAP,
+          CraftovGameState.WAITING, 0, 12, true, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+      InstanceSnapshot confidential = new InstanceSnapshot(CraftovGameId.of("secret"), MAP,
+          CraftovGameState.WAITING, 10, 12, true,
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD);
+
+      assertTrue(InstancePicker.pick(List.of(server(SERVER_A, normal, confidential)), MAP,
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, 3, Map.of()).isEmpty());
+      assertEquals("secret", InstancePicker.pick(
+          List.of(server(SERVER_A, normal, confidential)), MAP,
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, 2, Map.of())
+          .orElseThrow().instance().gameId().value());
     }
   }
 

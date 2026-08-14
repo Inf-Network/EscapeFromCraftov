@@ -130,6 +130,10 @@ public final class PendingJoinHandler {
       rejectAssignment(player, "game.assignment-invalid", "地图不匹配");
       return;
     }
+    if (game.mode() != assignment.mode() || game.difficulty() != assignment.difficulty()) {
+      rejectAssignment(player, "game.assignment-invalid", "模式或难度不匹配");
+      return;
+    }
     if (game.state() != CraftovGameState.WAITING || !deps.index().isReady(game.id())) {
       rejectAssignment(player, "game.assignment-invalid", "对局实例尚未就绪");
       return;

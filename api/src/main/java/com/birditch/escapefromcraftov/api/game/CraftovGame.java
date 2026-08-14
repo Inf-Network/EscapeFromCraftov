@@ -14,6 +14,14 @@ public interface CraftovGame {
 
     CraftovMapId mapId();
 
+    default RaidMode mode() {
+        return RaidMode.NORMAL;
+    }
+
+    default RaidDifficulty difficulty() {
+        return RaidDifficulty.NORMAL;
+    }
+
     /// Authored map revision captured at game creation. It never changes mid-craftov.
     default long mapRevision() {
         return 0;

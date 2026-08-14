@@ -26,6 +26,8 @@ import com.birditch.escapefromcraftov.lobby.matchmaking.QueueService;
 import com.birditch.escapefromcraftov.lobby.menu.LobbyMenuController;
 import com.birditch.escapefromcraftov.lobby.menu.MenuDeps;
 import com.birditch.escapefromcraftov.lobby.hud.LobbySidebarService;
+import com.birditch.escapefromcraftov.lobby.party.InMemoryPartyService;
+import com.birditch.escapefromcraftov.lobby.party.PartyService;
 import com.birditch.escapefromcraftov.redis.JedisMessageBroker;
 import com.birditch.escapefromcraftov.redis.JsonCodec;
 import com.birditch.escapefromcraftov.redis.RedisAssignmentStore;
@@ -34,6 +36,7 @@ import com.birditch.escapefromcraftov.redis.RedisConnector;
 import com.birditch.escapefromcraftov.redis.RedisInstanceDirectory;
 import com.birditch.escapefromcraftov.profile.DefaultProfileService;
 import com.birditch.escapefromcraftov.profile.HibernateProfileRepository;
+import com.birditch.escapefromcraftov.profile.HibernateStarterKitService;
 import com.birditch.escapefromcraftov.inventory.HibernatePlayerInventoryService;
 import com.birditch.escapefromcraftov.item.DefaultItems;
 import com.birditch.escapefromcraftov.item.SimpleItemRegistry;
@@ -42,6 +45,8 @@ import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.settings.HibernatePlayerSettingsService;
+import com.birditch.escapefromcraftov.vendor.HibernateMilitaryVendorService;
+import com.birditch.escapefromcraftov.vendor.MilitaryVendorService;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import com.mojang.brigadier.tree.LiteralCommandNode;
@@ -108,9 +113,15 @@ public final class LobbyApplication {
         "trmenu/escapefromcraftov_lobby_cosmetics.yml", "escapefromcraftov_lobby_cosmetics.yml");
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_lobby_warehouse.yml", "escapefromcraftov_lobby_warehouse.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_vendor.yml", "escapefromcraftov_lobby_vendor.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_vendor_sell.yml",
+        "escapefromcraftov_lobby_vendor_sell.yml");
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_lobby_main", "escapefromcraftov_lobby_settings",
-        "escapefromcraftov_lobby_cosmetics", "escapefromcraftov_lobby_warehouse");
+        "escapefromcraftov_lobby_cosmetics", "escapefromcraftov_lobby_warehouse",
+        "escapefromcraftov_lobby_vendor", "escapefromcraftov_lobby_vendor_sell");
     logger.info("Menu provider: " + trMenu.status()
         + " (all EscapeFromCraftov inventory menus are rendered by TrMenu)");
     PaperCraftovScheduler scheduler = new PaperCraftovScheduler(plugin);
@@ -131,6 +142,10 @@ public final class LobbyApplication {
     DefaultItems.registerAll(itemRegistry);
     CraftovItemStacks itemStacks = new CraftovItemStacks(itemRegistry);
     PlayerInventoryService inventories = new HibernatePlayerInventoryService(db, executor);
+    MilitaryVendorService vendor = new HibernateMilitaryVendorService(
+        db, executor, itemRegistry, timeSource);
+    HibernateStarterKitService starterKit = new HibernateStarterKitService(
+        db, executor, itemRegistry, timeSource);
     LobbyDataGate dataGate = new LobbyDataGate();
     RedisConnector redis = new RedisConnector(configs.redis());
     redisConnector = redis;
@@ -146,13 +161,17 @@ public final class LobbyApplication {
         dataGate, config, codec, logger));
     queueService = queue;
     queue.start();
+    // Process-local by design for the first Party loop. The PartyService API
+    // keeps commands ready for a Redis implementation when Lobby is replicated.
+    PartyService parties = new InMemoryPartyService();
     MenuDeps menuDeps =
-        new MenuDeps(settings, cosmetics, inventories, itemStacks, queue, scheduler, config,
-            dataGate, messages, plugin, logger);
+        new MenuDeps(settings, cosmetics, inventories, profiles, vendor, itemRegistry,
+            itemStacks, queue, scheduler, config, dataGate, messages, plugin, logger);
     LobbyMenuController menuController = new LobbyMenuController(menuDeps, trMenu);
     menus = menuController;
     ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, profiles,
-        settings, cosmetics, inventories, queue, dataGate, menuController::openMain, logger);
+        starterKit, settings, cosmetics, inventories, queue, parties, dataGate,
+        menuController::openMain, logger);
     registerListeners(connectionDeps, menuController, config);
     LobbySidebarService sidebarService = new LobbySidebarService(plugin, profiles, inventories,
         queue, dataGate, scheduler, messages, config, logger);
@@ -160,7 +179,7 @@ public final class LobbyApplication {
     sidebar = sidebarService;
     registerPermissions();
     registerCommands(new LobbyCommandContext(
-        plugin, queue, directory, messages, config, dataGate, menuController));
+        plugin, queue, directory, messages, config, dataGate, menuController, parties));
     logSummary(config, configs.database(), configs.redis(), directory);
   }
 

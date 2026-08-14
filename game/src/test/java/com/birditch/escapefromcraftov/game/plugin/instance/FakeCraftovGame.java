@@ -8,6 +8,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovResult;
 import com.birditch.escapefromcraftov.api.game.CraftovTeam;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.time.Instant;
 import java.util.Collection;
@@ -21,12 +23,21 @@ public final class FakeCraftovGame implements CraftovGame {
 
   private final CraftovGameId id;
   private final CraftovMapId mapId;
+  private final RaidMode mode;
+  private final RaidDifficulty difficulty;
   private CraftovGameState state = CraftovGameState.WAITING;
   private int playerCount;
 
   public FakeCraftovGame(CraftovGameId id, CraftovMapId mapId) {
+    this(id, mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+  }
+
+  public FakeCraftovGame(CraftovGameId id, CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty) {
     this.id = Preconditions.checkNotNull(id, "id");
     this.mapId = Preconditions.checkNotNull(mapId, "mapId");
+    this.mode = Preconditions.checkNotNull(mode, "mode");
+    this.difficulty = Preconditions.checkNotNull(difficulty, "difficulty");
   }
 
   public void setState(CraftovGameState state) {
@@ -46,6 +57,16 @@ public final class FakeCraftovGame implements CraftovGame {
   @Override
   public CraftovMapId mapId() {
     return mapId;
+  }
+
+  @Override
+  public RaidMode mode() {
+    return mode;
+  }
+
+  @Override
+  public RaidDifficulty difficulty() {
+    return difficulty;
   }
 
   @Override

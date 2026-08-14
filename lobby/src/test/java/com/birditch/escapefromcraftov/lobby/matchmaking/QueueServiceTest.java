@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
@@ -101,6 +103,12 @@ class QueueServiceTest {
         CraftovGameId.of(gameId), MAP, CraftovGameState.WAITING, playerCount, maxPlayers, true);
   }
 
+  private static InstanceSnapshot waitingInstance(String gameId, int playerCount, int maxPlayers,
+      RaidMode mode, RaidDifficulty difficulty) {
+    return new InstanceSnapshot(CraftovGameId.of(gameId), MAP, CraftovGameState.WAITING,
+        playerCount, maxPlayers, true, mode, difficulty);
+  }
+
   private static Logger silentLogger() {
     Logger logger = Logger.getAnonymousLogger();
     logger.setUseParentHandlers(false);
@@ -153,6 +161,81 @@ class QueueServiceTest {
 
       assertEquals(teamKey, ticket.teamKey());
       assertEquals(teamKey, assignments.stored.getFirst().teamKey());
+    }
+
+    @Test
+    @DisplayName("a complete party is reserved and assigned as one indivisible group")
+    void assignsWholePartyTogether() {
+      UUID leader = onlinePlayer();
+      UUID second = onlinePlayer();
+      UUID third = onlinePlayer();
+      UUID teamKey = UUID.randomUUID();
+      directory.respondWith(List.of(server(waitingInstance(
+          "secure", 0, 3, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD))));
+
+      var queued = service.queueParty(List.of(leader, second, third), MAP,
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, teamKey);
+      assertTrue(queued.isSuccess());
+      tick();
+
+      assertEquals(3, assignments.stored.size());
+      assertTrue(assignments.stored.stream().allMatch(assignment ->
+          assignment.gameId().equals(CraftovGameId.of("secure"))
+              && assignment.teamKey().equals(teamKey)
+              && assignment.mode() == RaidMode.CONFIDENTIAL
+              && assignment.difficulty() == RaidDifficulty.HARD));
+      assignments.results.forEach(result -> result.complete(null));
+      assertEquals(0, service.queueSize());
+      assertEquals(3, players.connections.size());
+    }
+
+    @Test
+    @DisplayName("a party is not partially queued when any member is not ready")
+    void partyQueueIsAtomic() {
+      UUID ready = readyPlayer();
+      UUID notReady = UUID.randomUUID();
+
+      var result = service.queueParty(List.of(ready, notReady), MAP,
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, UUID.randomUUID());
+
+      assertTrue(result.error().isPresent());
+      assertEquals(0, service.queueSize());
+    }
+
+    @Test
+    @DisplayName("partial Redis write failure cleans every pending key and retries the whole party")
+    void partialStoreFailureCleansWholeParty() {
+      UUID leader = onlinePlayer();
+      UUID member = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 2))));
+      service.queueParty(List.of(leader, member), MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, UUID.randomUUID());
+      tick();
+
+      assignments.results.get(0).complete(null);
+      assignments.results.get(1).completeExceptionally(new RuntimeException("redis down"));
+
+      assertEquals(Set.of(leader, member), assignments.removed);
+      assertEquals(2, service.queueSize());
+      assertTrue(players.connections.isEmpty());
+    }
+
+    @Test
+    @DisplayName("a member going offline during writes cancels every assignment")
+    void offlineDuringStoreCancelsWholeParty() {
+      UUID leader = onlinePlayer();
+      UUID member = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 2))));
+      service.queueParty(List.of(leader, member), MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, UUID.randomUUID());
+      tick();
+
+      players.online.remove(member);
+      assignments.results.forEach(result -> result.complete(null));
+
+      assertEquals(Set.of(leader, member), assignments.removed);
+      assertEquals(0, service.queueSize());
+      assertTrue(players.connections.isEmpty());
     }
 
     @Test
@@ -285,9 +368,28 @@ class QueueServiceTest {
           codec.fromJson(broker.published.getFirst().payload(), ProvisionRequest.class);
       assertEquals(SERVER, request.serverId());
       assertEquals(MAP, request.mapId());
+      assertEquals(1, request.requiredSlots());
 
       tick();
       assertEquals(2, broker.published.size());
+    }
+
+    @Test
+    @DisplayName("a party provision hint carries the slots required to keep it indivisible")
+    void provisionHintCarriesWholePartySize() {
+      UUID first = onlinePlayer();
+      UUID second = onlinePlayer();
+      UUID third = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("small", 0, 2))));
+      service.queueParty(List.of(first, second, third), MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, UUID.randomUUID());
+
+      tick();
+
+      ProvisionRequest request = codec.fromJson(
+          broker.published.getFirst().payload(), ProvisionRequest.class);
+      assertEquals(3, request.requiredSlots());
+      assertTrue(assignments.stored.isEmpty());
     }
 
     @Test
@@ -341,6 +443,7 @@ class QueueServiceTest {
     private final List<MatchAssignment> stored = new ArrayList<>();
     private final List<Duration> ttls = new ArrayList<>();
     private final List<CompletableFuture<Void>> results = new ArrayList<>();
+    private final Set<UUID> removed = new HashSet<>();
 
     @Override
     public CompletableFuture<Void> storePending(MatchAssignment assignment, Duration ttl) {
@@ -354,6 +457,12 @@ class QueueServiceTest {
     @Override
     public CompletableFuture<Optional<MatchAssignment>> consumePending(UUID playerId) {
       return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<Void> removePending(UUID playerId) {
+      removed.add(playerId);
+      return CompletableFuture.completedFuture(null);
     }
   }
 

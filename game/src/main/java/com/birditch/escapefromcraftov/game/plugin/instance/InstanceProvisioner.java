@@ -3,11 +3,14 @@ package com.birditch.escapefromcraftov.game.plugin.instance;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import java.time.Duration;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /// Self-provisioning: keeps at least `min-ready-instances` WAITING craftov
@@ -22,6 +25,7 @@ import org.jspecify.annotations.Nullable;
 public final class InstanceProvisioner {
 
   private static final Duration PASS_INTERVAL = Duration.ofSeconds(5);
+  private static final Duration EMPTY_WAITING_TTL = Duration.ofSeconds(120);
 
   private final ProvisionerDeps deps;
   private @Nullable ScheduledTask timer;
@@ -32,8 +36,8 @@ public final class InstanceProvisioner {
 
   public void start() {
     Preconditions.checkState(timer == null, "InstanceProvisioner already started");
-    provisionDefaultCapacity();
-    timer = deps.scheduler().runTimer(PASS_INTERVAL, PASS_INTERVAL, this::provisionDefaultCapacity);
+    maintenancePass();
+    timer = deps.scheduler().runTimer(PASS_INTERVAL, PASS_INTERVAL, this::maintenancePass);
   }
 
   /// Handles a lobby provision hint whose payload is the target server id;
@@ -42,7 +46,8 @@ public final class InstanceProvisioner {
   public void onProvisionRequest(ProvisionRequest request) {
     Preconditions.checkNotNull(request, "request");
     if (deps.config().serverId().equals(request.serverId())) {
-      ensureAvailable(request.mapId(), 1);
+      ensureAvailable(request.mapId(), request.mode(), request.difficulty(),
+          request.requiredSlots(), 1);
     }
   }
 
@@ -55,27 +60,71 @@ public final class InstanceProvisioner {
   }
 
   private void provisionDefaultCapacity() {
-    ensureAvailable(deps.config().defaultMap(), deps.config().minReadyInstances());
+    ensureAvailable(deps.config().defaultMap(), RaidMode.NORMAL, RaidDifficulty.NORMAL,
+        1, deps.config().minReadyInstances());
   }
 
-  private void ensureAvailable(CraftovMapId mapId, int target) {
+  private void maintenancePass() {
+    retireExpiredEmptyWaitingRooms();
+    provisionDefaultCapacity();
+  }
+
+  /// On-demand pools must not consume the finite instance cap forever. A long
+  /// grace period keeps Lobby reservations/slow proxy transfers safe; the
+  /// default pool always retains its configured ready floor.
+  private void retireExpiredEmptyWaitingRooms() {
+    var cutoff = deps.timeSource().now().minus(EMPTY_WAITING_TTL);
+    CraftovMapId defaultMap = deps.config().defaultMap();
+    long defaultReady = availableWaitingCount(
+        defaultMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, 1);
+    for (CraftovGame game : List.copyOf(deps.games().all())) {
+      if (game.state() != CraftovGameState.WAITING || game.playerCount() != 0
+          || game.createdAt().isAfter(cutoff)) {
+        continue;
+      }
+      boolean defaultPool = game.mapId().equals(defaultMap)
+          && game.mode() == RaidMode.NORMAL
+          && game.difficulty() == RaidDifficulty.NORMAL;
+      if (defaultPool && defaultReady <= deps.config().minReadyInstances()) {
+        continue;
+      }
+      Result<CraftovGame> stopped = deps.games().stop(game.id());
+      if (stopped instanceof Result.Failure<CraftovGame>(String message)) {
+        deps.logger().warning("Failed to retire stale WAITING instance "
+            + game.id().value() + ": " + message);
+      } else if (defaultPool) {
+        defaultReady--;
+      }
+    }
+  }
+
+  private void ensureAvailable(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, int requiredSlots, int target) {
     if (!deps.maps().isEnabled(mapId.value())) {
       return;
     }
-    while (availableWaitingCount(mapId) < target
+    if (requiredSlots > deps.coreSettings().maxPlayers()) {
+      deps.logger().warning("Instance provisioning cannot fit a party of " + requiredSlots
+          + " into max-players=" + deps.coreSettings().maxPlayers());
+      return;
+    }
+    while (availableWaitingCount(mapId, mode, difficulty, requiredSlots) < target
         && deps.games().all().size() < deps.coreSettings().maxInstances()) {
-      if (deps.games().create(mapId) instanceof Result.Failure<CraftovGame>(String message)) {
+      if (deps.games().create(mapId, mode, difficulty)
+          instanceof Result.Failure<CraftovGame>(String message)) {
         deps.logger().warning("Instance provisioning halted: " + message);
         return;
       }
     }
   }
 
-  private long availableWaitingCount(CraftovMapId mapId) {
+  private long availableWaitingCount(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, int requiredSlots) {
     return deps.games().all().stream()
         .filter(game -> game.mapId().equals(mapId))
+        .filter(game -> game.mode() == mode && game.difficulty() == difficulty)
         .filter(game -> game.state() == CraftovGameState.WAITING)
-        .filter(game -> game.playerCount() < deps.coreSettings().maxPlayers())
+        .filter(game -> game.playerCount() + requiredSlots <= deps.coreSettings().maxPlayers())
         .count();
   }
 }

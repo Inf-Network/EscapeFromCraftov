@@ -12,6 +12,13 @@ public interface CraftovGameService {
     /// instance cap is already in use.
     Result<CraftovGame> create(CraftovMapId mapId);
 
+    /// Creates a room for one exact matchmaking pool. Compatibility
+    /// implementations may retain NORMAL/NORMAL behaviour.
+    default Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
+                                       RaidDifficulty difficulty) {
+        return create(mapId);
+    }
+
     Optional<CraftovGame> find(CraftovGameId id);
 
     Collection<CraftovGame> all();

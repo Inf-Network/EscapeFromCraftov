@@ -1,8 +1,10 @@
 package com.birditch.escapefromcraftov.lobby.listener;
 
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.api.economy.Money;
 import com.birditch.escapefromcraftov.lobby.CosmeticApplier;
 import com.birditch.escapefromcraftov.lobby.LobbyVisibility;
+import com.birditch.escapefromcraftov.profile.StarterKitResult;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -46,19 +48,23 @@ public final class LobbyConnectionListener implements Listener {
     player.sendPlayerListHeaderAndFooter(
         deps.messages().raw("tab.header"), deps.messages().raw("tab.footer"));
     CompletableFuture<Integer> recovered = deps.inventories().purgeOrphanedCraftovItems(playerId);
+    CompletableFuture<StarterKitResult> starter = deps.profiles()
+        .load(playerId, player.getName())
+        .thenCompose(deps.starterKit()::initialize);
     CompletableFuture.allOf(
-            deps.profiles().load(playerId, player.getName()),
+            starter,
             deps.settings().load(playerId),
             deps.cosmetics().load(playerId),
             recovered)
         .whenComplete((_, error) ->
-            deps.scheduler().runSync(() -> completeLoad(player, recovered, error)));
+            deps.scheduler().runSync(() -> completeLoad(player, recovered, starter, error)));
   }
 
   @EventHandler
   public void onQuit(PlayerQuitEvent event) {
     UUID playerId = event.getPlayer().getUniqueId();
     deps.matchmaking().dequeue(playerId);
+    deps.parties().disconnect(playerId);
     boolean wasReady = deps.dataGate().isReady(playerId);
     deps.dataGate().clear(playerId);
     if (wasReady) {
@@ -111,6 +117,7 @@ public final class LobbyConnectionListener implements Listener {
   /// never left half-initialized. When the player already left, the freshly
   /// cached entries are unloaded so a stale async load never leaks.
   private void completeLoad(Player player, CompletableFuture<Integer> recovered,
+      CompletableFuture<StarterKitResult> starter,
       @Nullable Throwable error) {
     UUID playerId = player.getUniqueId();
     if (!player.isOnline()) {
@@ -132,9 +139,17 @@ public final class LobbyConnectionListener implements Listener {
       deps.logger().info("已为 " + player.getName() + " 清理 " + removed
           + " 件未完成行动中的遗留物品");
     }
+    StarterKitResult starterResult = starter.join();
+    // The profile cache is main-thread confined. Publish the authoritative
+    // balance created by the wider profile+kit transaction before opening the gate.
+    deps.profiles().require(playerId).setBalance(
+        Money.of(starterResult.balanceAfter().units()));
     deps.dataGate().markReady(playerId);
     player.getInventory().setItem(COMPASS_HOTBAR_SLOT, buildCompass());
     player.sendMessage(deps.messages().raw("join.welcome"));
+    if (starterResult.granted()) {
+      player.sendMessage(deps.messages().raw("join.starter-granted"));
+    }
     CosmeticApplier.apply(player, deps.cosmetics().equipped(playerId).orElse(null));
     LobbyVisibility.apply(deps.plugin(), deps.settings(), player);
   }

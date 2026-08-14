@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.lobby.LobbyConfig;
 import com.birditch.escapefromcraftov.lobby.LobbyDataGate;
 import com.birditch.escapefromcraftov.lobby.CraftovLobbyPlugin;
 import com.birditch.escapefromcraftov.lobby.menu.LobbyMenuController;
+import com.birditch.escapefromcraftov.lobby.party.PartyService;
 
 /// Collaborators shared by every lobby command node.
 public record LobbyCommandContext(
@@ -17,7 +18,8 @@ public record LobbyCommandContext(
     Messages messages,
     LobbyConfig config,
     LobbyDataGate dataGate,
-    LobbyMenuController menus) {
+    LobbyMenuController menus,
+    PartyService parties) {
 
   public LobbyCommandContext {
     Preconditions.checkNotNull(plugin, "plugin");
@@ -27,5 +29,6 @@ public record LobbyCommandContext(
     Preconditions.checkNotNull(config, "config");
     Preconditions.checkNotNull(dataGate, "dataGate");
     Preconditions.checkNotNull(menus, "menus");
+    Preconditions.checkNotNull(parties, "parties");
   }
 }

@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
+import com.birditch.escapefromcraftov.api.testing.MutableTimeSource;
 import com.birditch.escapefromcraftov.core.config.EscapeFromCraftovConfig;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import java.time.Duration;
@@ -26,11 +29,13 @@ class InstanceProvisionerTest {
 
   private FakeGameService games;
   private ManualScheduler scheduler;
+  private MutableTimeSource timeSource;
 
   @BeforeEach
   void setUp() {
     games = new FakeGameService();
     scheduler = new ManualScheduler();
+    timeSource = new MutableTimeSource(0);
   }
 
   private InstanceProvisioner provisioner(int minReadyInstances, int maxInstances) {
@@ -43,6 +48,8 @@ class InstanceProvisionerTest {
         games,
         coreSettings,
         config,
+        _ -> true,
+        timeSource,
         scheduler,
         Logger.getLogger(InstanceProvisionerTest.class.getName())));
   }
@@ -141,6 +148,40 @@ class InstanceProvisionerTest {
     }
 
     @Test
+    @DisplayName("a non-default pool gets its own correctly tagged room")
+    void provisionsExactRequestedPool() {
+      InstanceProvisioner provisioner = provisioner(1, 4);
+      provisioner.start();
+
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of(OWN_SERVER_ID), CraftovMapId.of("debug_zone"),
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD));
+
+      assertEquals(2, games.all().size());
+      assertEquals(RaidMode.CONFIDENTIAL, games.created().getLast().mode());
+      assertEquals(RaidDifficulty.HARD, games.created().getLast().difficulty());
+    }
+
+    @Test
+    @DisplayName("a party that cannot fit in an existing room triggers a fresh room")
+    void provisionsForWholePartyCapacity() {
+      InstanceProvisioner provisioner = provisioner(1, 4);
+      provisioner.start();
+      FakeCraftovGame nearlyFull = (FakeCraftovGame) games.create(
+          CraftovMapId.of("debug_zone"), RaidMode.CONFIDENTIAL, RaidDifficulty.HARD)
+          .value().orElseThrow();
+      nearlyFull.setPlayerCount(11);
+
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of(OWN_SERVER_ID), CraftovMapId.of("debug_zone"),
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, 2));
+
+      assertEquals(3, games.all().size());
+      assertEquals(0, games.created().getLast().playerCount());
+      assertEquals(RaidMode.CONFIDENTIAL, games.created().getLast().mode());
+    }
+
+    @Test
     @DisplayName("foreign serverId is ignored")
     void foreignServerIdIsIgnored() {
       InstanceProvisioner provisioner = provisioner(1, 4);
@@ -151,6 +192,29 @@ class InstanceProvisionerTest {
           ServerId.of("game-02"), CraftovMapId.of("debug_zone")));
 
       assertEquals(1, games.all().size());
+    }
+  }
+
+  @Nested
+  @DisplayName("idle pool retirement")
+  class IdlePoolRetirement {
+
+    @Test
+    @DisplayName("retires stale on-demand rooms while retaining the default ready floor")
+    void retiresOnDemandButKeepsDefaultFloor() {
+      InstanceProvisioner provisioner = provisioner(1, 4);
+      provisioner.start();
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of(OWN_SERVER_ID), CraftovMapId.of("debug_zone"),
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD));
+      assertEquals(2, games.all().size());
+
+      timeSource.advance(Duration.ofSeconds(121));
+      scheduler.advanceBy(PASS_INTERVAL);
+
+      assertEquals(1, games.all().size());
+      assertEquals(RaidMode.NORMAL, games.created().getFirst().mode());
+      assertEquals(RaidDifficulty.NORMAL, games.created().getFirst().difficulty());
     }
   }
 

@@ -9,9 +9,13 @@ import com.birditch.escapefromcraftov.api.CraftovException;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
+import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import java.time.Instant;
 import java.util.List;
@@ -55,7 +59,8 @@ class JsonCodecTest {
     UUID teamKey = UUID.fromString("00000000-0000-0000-0000-000000000099");
     MatchAssignment assignment = new MatchAssignment(
         UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), ServerId.of("game-01"),
-        "craftov-01", CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"), teamKey);
+        "craftov-01", CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"), teamKey,
+        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD);
     assertEquals(assignment, codec.fromJson(codec.toJson(assignment), MatchAssignment.class));
   }
 
@@ -71,6 +76,42 @@ class JsonCodecTest {
     MatchAssignment decoded = codec.fromJson(legacyJson, MatchAssignment.class);
 
     assertEquals(playerId, decoded.teamKey());
+    assertEquals(RaidMode.NORMAL, decoded.mode());
+    assertEquals(RaidDifficulty.NORMAL, decoded.difficulty());
+  }
+
+  @Test
+  void ticketAndProvisionRequestRoundTripRuleset() {
+    MatchTicket ticket = new MatchTicket(UUID.randomUUID(), CraftovMapId.of("debug_zone"),
+        Instant.ofEpochSecond(12), UUID.randomUUID(),
+        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY);
+    ProvisionRequest request = new ProvisionRequest(
+        ServerId.of("game-01"), CraftovMapId.of("debug_zone"),
+        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY);
+
+    assertEquals(ticket, codec.fromJson(codec.toJson(ticket), MatchTicket.class));
+    assertEquals(request, codec.fromJson(codec.toJson(request), ProvisionRequest.class));
+  }
+
+  @Test
+  void oldSnapshotAndTicketWithoutRulesetDefaultToNormal() {
+    String legacyTicket = """
+        {"playerId":"6ba7b810-9dad-11d1-80b4-00c04fd430c8",\
+        "mapId":{"value":"debug_zone"},"queuedAt":0,\
+        "teamKey":"00000000-0000-0000-0000-000000000099"}
+        """;
+    String legacyInstance = """
+        {"gameId":{"value":"a1b2c3"},"mapId":{"value":"debug_zone"},\
+        "state":"WAITING","playerCount":0,"maxPlayers":12,"worldReady":true}
+        """;
+
+    MatchTicket ticket = codec.fromJson(legacyTicket, MatchTicket.class);
+    InstanceSnapshot instance = codec.fromJson(legacyInstance, InstanceSnapshot.class);
+
+    assertEquals(RaidMode.NORMAL, ticket.mode());
+    assertEquals(RaidDifficulty.NORMAL, ticket.difficulty());
+    assertEquals(RaidMode.NORMAL, instance.mode());
+    assertEquals(RaidDifficulty.NORMAL, instance.difficulty());
   }
 
   @Nested

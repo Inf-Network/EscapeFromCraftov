@@ -136,7 +136,8 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       return;
     }
     cancelPendingStart(gameId);
-    GameRuntime runtime = new GameRuntime(gameId, worldName, new LinkedHashMap<>());
+    GameRuntime runtime = new GameRuntime(
+        gameId, worldName, game.difficulty().multiplier(), new LinkedHashMap<>());
     runtimes.put(gameId, runtime);
     for (CraftovAiZone definition : game.aiZones()) {
       long seed = seed(gameId, definition.id());
@@ -198,7 +199,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         return null;
       }
       own(mob, runtime.gameId(), zone.definition());
-      configure(mob, zone.definition());
+      configure(mob, zone.definition(), runtime.difficultyMultiplier());
       return mob;
     } catch (RuntimeException exception) {
       logger.log(Level.WARNING, "生成 AI 失败: " + runtime.gameId().value() + "/"
@@ -218,14 +219,15 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     mob.setCanPickupItems(false);
   }
 
-  private static void configure(Mob mob, CraftovAiZone zone) {
-    AiRuntimePolicy.DifficultyProfile profile = AiRuntimePolicy.difficulty(zone.difficulty());
+  private static void configure(Mob mob, CraftovAiZone zone, double raidDifficultyMultiplier) {
+    double effectiveDifficulty = zone.difficulty() * raidDifficultyMultiplier;
+    AiRuntimePolicy.DifficultyProfile profile = AiRuntimePolicy.difficulty(effectiveDifficulty);
     scale(mob, Attribute.MAX_HEALTH, profile.healthMultiplier());
     scale(mob, Attribute.ATTACK_DAMAGE, profile.damageMultiplier());
     scale(mob, Attribute.MOVEMENT_SPEED, profile.movementMultiplier());
     AttributeInstance health = mob.getAttribute(Attribute.MAX_HEALTH);
     if (health != null) mob.setHealth(health.getValue());
-    int stars = Math.clamp((int) Math.ceil(zone.difficulty()), 1, 5);
+    int stars = Math.clamp((int) Math.ceil(effectiveDifficulty), 1, 5);
     mob.customName(Component.text("敌对 AI · " + zone.id() + " " + "★".repeat(stars),
         profile.equipmentTier() >= 2 ? NamedTextColor.RED : NamedTextColor.GOLD));
     mob.setCustomNameVisible(profile.equipmentTier() >= 2);
@@ -333,6 +335,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private record GameRuntime(
       CraftovGameId gameId,
       String worldName,
+      double difficultyMultiplier,
       Map<String, ZoneRuntime> zones) {}
 
   private static final class ZoneRuntime {

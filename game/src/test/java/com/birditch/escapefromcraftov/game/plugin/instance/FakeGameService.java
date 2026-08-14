@@ -4,6 +4,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import java.util.Collection;
@@ -39,7 +41,7 @@ public final class FakeGameService implements CraftovGameService {
 
   /// Adds a game directly, bypassing [#create] and its call counter.
   public FakeCraftovGame addGame(CraftovMapId mapId) {
-    FakeCraftovGame game = newGame(mapId);
+    FakeCraftovGame game = newGame(mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL);
     games.put(game.id(), game);
     return game;
   }
@@ -51,12 +53,20 @@ public final class FakeGameService implements CraftovGameService {
 
   @Override
   public Result<CraftovGame> create(CraftovMapId mapId) {
+    return create(mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+  }
+
+  @Override
+  public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty) {
     Preconditions.checkNotNull(mapId, "mapId");
+    Preconditions.checkNotNull(mode, "mode");
+    Preconditions.checkNotNull(difficulty, "difficulty");
     createCalls++;
     if (failCreateWith != null) {
       return Result.fail(failCreateWith);
     }
-    FakeCraftovGame game = newGame(mapId);
+    FakeCraftovGame game = newGame(mapId, mode, difficulty);
     games.put(game.id(), game);
     return Result.ok(game);
   }
@@ -98,10 +108,15 @@ public final class FakeGameService implements CraftovGameService {
 
   @Override
   public Result<CraftovGame> stop(CraftovGameId id) {
-    throw new UnsupportedOperationException("stop is not supported by FakeGameService");
+    FakeCraftovGame game = games.remove(id);
+    if (game == null) return Result.fail("game not found");
+    game.setState(com.birditch.escapefromcraftov.api.game.CraftovGameState.DESTROYED);
+    return Result.ok(game);
   }
 
-  private FakeCraftovGame newGame(CraftovMapId mapId) {
-    return new FakeCraftovGame(CraftovGameId.of("game-" + nextId++), mapId);
+  private FakeCraftovGame newGame(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty) {
+    return new FakeCraftovGame(
+        CraftovGameId.of("game-" + nextId++), mapId, mode, difficulty);
   }
 }

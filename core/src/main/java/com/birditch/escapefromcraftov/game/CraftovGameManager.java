@@ -20,6 +20,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovResult;
 import com.birditch.escapefromcraftov.api.game.CraftovTeam;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.session.PlayerSession;
 import com.birditch.escapefromcraftov.api.session.ProfileLoadState;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
@@ -55,8 +57,16 @@ public final class CraftovGameManager implements CraftovGameService {
 
     @Override
     public Result<CraftovGame> create(CraftovMapId mapId) {
+        return create(mapId, RaidMode.NORMAL, RaidDifficulty.NORMAL);
+    }
+
+    @Override
+    public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
+                                      RaidDifficulty difficulty) {
         requireMainThread();
         Preconditions.checkNotNull(mapId, "mapId");
+        Preconditions.checkNotNull(mode, "mode");
+        Preconditions.checkNotNull(difficulty, "difficulty");
         int maxInstances = deps.settings().maxInstances();
         if (games.size() >= maxInstances) {
             return Result.fail(GameFailures.instanceLimitReached(maxInstances));
@@ -78,7 +88,8 @@ public final class CraftovGameManager implements CraftovGameService {
         CraftovMapRuntime captured = new CraftovMapRuntime(runtime.revision(), runtime.spawns(),
                 runtime.lootPoints(), runtime.lootZones(), extractionPoints,
                 runtime.extractionAreas(), runtime.aiZones(), runtime.pois());
-        CraftovGameInstance game = new CraftovGameInstance(gameId, mapId, now, captured);
+        CraftovGameInstance game = new CraftovGameInstance(
+                gameId, mapId, mode, difficulty, now, captured);
         game.transitionTo(CraftovGameState.WAITING, now);
         games.put(gameId, game);
         deps.eventBus().publish(new CraftovCreatedEvent(gameId, mapId));

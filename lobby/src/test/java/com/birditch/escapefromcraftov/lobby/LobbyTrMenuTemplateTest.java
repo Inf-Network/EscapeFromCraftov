@@ -22,7 +22,9 @@ class LobbyTrMenuTemplateTest {
       "trmenu/escapefromcraftov_lobby_main.yml",
       "trmenu/escapefromcraftov_lobby_settings.yml",
       "trmenu/escapefromcraftov_lobby_cosmetics.yml",
-      "trmenu/escapefromcraftov_lobby_warehouse.yml");
+      "trmenu/escapefromcraftov_lobby_warehouse.yml",
+      "trmenu/escapefromcraftov_lobby_vendor.yml",
+      "trmenu/escapefromcraftov_lobby_vendor_sell.yml");
   private static final Pattern WAREHOUSE_SOURCE =
       Pattern.compile("source:CRAFTOVCORELOBBY:warehouse-(\\d+)");
 
@@ -68,6 +70,25 @@ class LobbyTrMenuTemplateTest {
     }
     assertTrue(yaml.contains("slots: [ 9-17 ]"));
     assertTrue(yaml.contains("Hide-Player-Inventory: true"));
+  }
+
+  @Test
+  void vendorShowsEveryOfferAndOnlySellsPagedWarehouseRows() throws IOException {
+    String vendor = read("trmenu/escapefromcraftov_lobby_vendor.yml");
+    String sell = read("trmenu/escapefromcraftov_lobby_vendor_sell.yml");
+
+    for (int offer = 0; offer < 13; offer++) {
+      assertTrue(vendor.contains("source:CRAFTOVCORELOBBY:vendor-offer-" + offer));
+      assertTrue(vendor.contains("command: lobby vendor buy " + offer + " 1"));
+      assertTrue(vendor.contains("command: lobby vendor buy " + offer + " 8"));
+      assertTrue(vendor.contains("command: lobby vendor buy " + offer + " 16"));
+    }
+    for (int slot = 0; slot < 27; slot++) {
+      assertTrue(sell.contains("source:CRAFTOVCORELOBBY:vendor-sell-" + slot));
+      assertTrue(sell.contains("command: lobby vendor sell " + slot));
+    }
+    assertTrue(sell.contains("只可出售长期仓库物品"));
+    assertTrue(sell.contains("出战栏和行动中物品不会显示"));
   }
 
   @Test

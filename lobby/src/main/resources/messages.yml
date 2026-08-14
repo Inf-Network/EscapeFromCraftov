@@ -39,6 +39,7 @@ tab:
 # ---------------------------------------------------------------------------
 join:
   welcome: "<gray>欢迎来到</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
+  starter-granted: "<green>首次建档完成！</green> <gray>已发放</gray> <gold>100,000 金币</gold> <gray>和一套基础行动物资，可在仓库中查看。</gray>"
   data-failed: "<red>无法读取你的个人资料。请稍后重试;若问题持续,请联系管理员。</red>"
 
 # ---------------------------------------------------------------------------
@@ -144,6 +145,17 @@ menu:
     load-failed: "<red>物资仓库暂时无法打开，请稍后再试。</red>"
     equipped: "<green>已放入出战栏。</green>"
     stored: "<gray>已放回物资仓库。</gray>"
+  vendor:
+    balance-name: "<gold>当前余额</gold>"
+    balance-lore: "<gray><balance> 金币</gray>"
+    busy: "<yellow>上一笔军需处交易仍在处理，请稍候。</yellow>"
+    failed: "<red>军需处交易未完成，请稍后再试。</red>"
+    load-failed: "<red>暂时无法读取可出售物资，请稍后再试。</red>"
+    insufficient: "<red>金币不足，无法购买这组物资。</red>"
+    quantity-limited: "<red>该物品不可堆叠购买；本次最多可购买 ×<maximum>。</red>"
+    item-changed: "<yellow>该物品已移动或售出，列表已刷新。</yellow>"
+    bought: "<green>已购买</green> <yellow><item> ×<quantity></yellow><gray>，支付 <price> 金币；余额 <balance>。</gray>"
+    sold: "<green>已出售</green> <yellow><item> ×<quantity></yellow><gray>，获得 <price> 金币；余额 <balance>。</gray>"
 
 # ---------------------------------------------------------------------------
 # 地图显示名:键为 “map.<地图ID>”。/play 与队列消息中的 <map> 会优先取

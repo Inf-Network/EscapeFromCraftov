@@ -46,4 +46,11 @@ public final class RedisAssignmentStore implements AssignmentStore {
           : Optional.of(codec.fromJson(json, MatchAssignment.class));
     }, ioExecutor);
   }
+
+  @Override
+  public CompletableFuture<Void> removePending(UUID playerId) {
+    Preconditions.checkNotNull(playerId, "playerId");
+    return CompletableFuture.runAsync(
+        () -> redis.client().del(NetworkKeys.pendingKey(playerId)), ioExecutor);
+  }
 }

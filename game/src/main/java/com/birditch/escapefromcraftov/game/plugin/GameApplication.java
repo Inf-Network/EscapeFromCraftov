@@ -552,7 +552,7 @@ public final class GameApplication {
     aiSubscription = context.eventBus().register(instanceAi);
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(
         new ProvisionerDeps(games, configs.core().game(), server, maps::isEnabled,
-            scheduler, logger));
+            new SystemTimeSource(), scheduler, logger));
     provisioner = instanceProvisioner;
     SnapshotPublisher snapshotPublisher = new SnapshotPublisher(new PublisherDeps(
         games, index, directory, server, configs.core(),

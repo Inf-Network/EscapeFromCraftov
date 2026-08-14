@@ -15,6 +15,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
 import com.birditch.escapefromcraftov.api.testing.MutableTimeSource;
 import com.birditch.escapefromcraftov.common.random.SeededRandomProvider;
@@ -63,6 +65,17 @@ class CraftovMapRuntimeSnapshotTest {
     assertEquals("scavengers", game.aiZones().getFirst().id());
     assertEquals(1, game.pois().size());
     assertEquals("central_factory", game.pois().getFirst().id());
+  }
+
+  @Test
+  void creatingCraftovCapturesMatchmakingModeAndDifficulty() {
+    CraftovGameManager manager = manager(_ -> Optional.of(runtime(7, 10)));
+
+    CraftovGame game = manager.create(CraftovMapId.of("factory"),
+        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD).value().orElseThrow();
+
+    assertEquals(RaidMode.CONFIDENTIAL, game.mode());
+    assertEquals(RaidDifficulty.HARD, game.difficulty());
   }
 
   private static CraftovGameManager manager(CraftovMapProvider provider) {

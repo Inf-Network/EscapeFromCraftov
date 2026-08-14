@@ -3,6 +3,8 @@ package com.birditch.escapefromcraftov.lobby.matchmaking;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.ServerId;
@@ -26,21 +28,39 @@ public final class InstancePicker {
       List<GameServerSnapshot> servers,
       CraftovMapId requestedMap,
       Map<String, Integer> reservedByInstance) {
+    return pick(servers, requestedMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, 1,
+        reservedByInstance);
+  }
+
+  /// Selects one instance for a complete queue group. `requiredSlots` is
+  /// checked as a unit, so a three-player party is never partially placed.
+  public static Optional<Candidate> pick(
+      List<GameServerSnapshot> servers,
+      CraftovMapId requestedMap,
+      RaidMode requestedMode,
+      RaidDifficulty requestedDifficulty,
+      int requiredSlots,
+      Map<String, Integer> reservedByInstance) {
     Preconditions.checkNotNull(servers, "servers");
     Preconditions.checkNotNull(requestedMap, "requestedMap");
+    Preconditions.checkNotNull(requestedMode, "requestedMode");
+    Preconditions.checkNotNull(requestedDifficulty, "requestedDifficulty");
+    Preconditions.checkArgument(requiredSlots >= 1, "requiredSlots must be at least 1");
     Preconditions.checkNotNull(reservedByInstance, "reservedByInstance");
     Candidate best = null;
     int bestLoad = -1;
     for (GameServerSnapshot server : servers) {
       for (InstanceSnapshot instance : server.instances()) {
         if (!instance.mapId().equals(requestedMap)
+            || instance.mode() != requestedMode
+            || instance.difficulty() != requestedDifficulty
             || instance.state() != CraftovGameState.WAITING
             || !instance.worldReady()) {
           continue;
         }
         int load = instance.playerCount() + reservedByInstance.getOrDefault(
             reservationKey(server.serverId(), instance.gameId()), 0);
-        if (load >= instance.maxPlayers()) {
+        if (load + requiredSlots > instance.maxPlayers()) {
           continue;
         }
         if (beatsBest(best, bestLoad, instance, load)) {

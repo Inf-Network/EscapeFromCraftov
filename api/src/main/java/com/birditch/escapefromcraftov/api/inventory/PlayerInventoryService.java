@@ -29,6 +29,14 @@ public interface PlayerInventoryService {
   /// Deletes every claimed item for this craftov and returns the durable outcome.
   CompletableFuture<CraftovSettlementResult> settleDeath(UUID playerId, CraftovGameId gameId);
 
+  /// Applies a failed-craftov settlement while returning the explicitly protected
+  /// physical stacks (for example a secure container) to WAREHOUSE. All other
+  /// claimed CRAFTOV rows are lost. The protected snapshot is immutable across
+  /// retries and is subject to the same global instance-identity checks as a
+  /// successful extraction.
+  CompletableFuture<CraftovSettlementResult> settleLoss(
+      UUID playerId, CraftovGameId gameId, List<ItemInstance> protectedItems);
+
   /// Applies death-loss to stale CRAFTOV rows left by an interrupted server.
   CompletableFuture<Integer> purgeOrphanedCraftovItems(UUID playerId);
 }

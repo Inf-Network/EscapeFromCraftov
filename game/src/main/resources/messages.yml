@@ -53,6 +53,7 @@ command:
       tutorial: "查看一局行动的完整玩法"
       info: "查看插件运行状态"
       profile: "查看你的个人档案"
+      secure: "打开行动中的 3 格安全箱"
       map-import: "从地图文件夹导入 Minecraft 世界或完整 Craftov 地图包"
       map-create: "创建一张由管理员手工编辑的 Craftov 地图"
       map-manage: "查看、启用或停用已导入的地图"
@@ -89,7 +90,7 @@ command:
     line-3: "<gray>3. 你会遇到其他玩家，未来也会遇到地图 AI；交战不是唯一目标。</gray>"
     line-4: "<gray>4. 背包装满后前往撤离点，部分出口需要等待、付费或携带钥匙。</gray>"
     line-5: "<gray>5. 进入撤离区域会自动开始倒计时，离开区域会取消。</gray>"
-    line-6: "<yellow>只有成功撤离，找到的物资才算真正带回；死亡可能失去随身物品。</yellow>"
+    line-6: "<yellow>只有成功撤离，普通随身物资才会带回；/craftov secure 内的 3 格物资即使阵亡也会保留。</yellow>"
   info:
     header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>运行状态</gray>"
     # <version> 插件版本;<minecraft> MC 版本;<java> Java 版本
@@ -185,6 +186,20 @@ loot:
   deposit-blocked: "<yellow>这是公共物资箱，只能取出物品，不能存入物品。</yellow>"
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
   taken: "<green>物资已放入本局背包。</green>"
+
+# 三格行动安全箱。物品存入后离开普通背包，阵亡、退出或超时仍会回仓。
+secure:
+  not-in-craftov: "<red>你当前不在可操作安全箱的行动中。</red>"
+  settling: "<yellow>本局物资正在结算，安全箱已锁定。</yellow>"
+  open-failed: "<red>安全箱界面打开失败，请重新输入 <yellow>/craftov secure</yellow>。</red>"
+  open-first: "<yellow>请先输入 <gold>/craftov secure</gold> 打开安全箱。</yellow>"
+  empty-hand: "<yellow>请先把要保护的 EscapeFromCraftov 物资拿在主手。</yellow>"
+  craftov-items-only: "<red>安全箱只能存放带物品身份的 EscapeFromCraftov 物资。</red>"
+  invalid-stack: "<red>这个物品栈无法安全保存，请换一个物品或联系管理员。</red>"
+  full: "<yellow>安全箱 3 个槽位都已占用，请先取回一件物资。</yellow>"
+  inventory-full: "<yellow>普通背包没有空槽，无法取回安全箱物资。</yellow>"
+  stored: "<green>物资已放入安全箱；本局失败时仍会带回仓库。</green>"
+  taken: "<yellow>物资已取回普通背包，阵亡时会再次丢失。</yellow>"
 
 inventory:
   loadout-loading: "<gray>正在领取你的出战装备……</gray>"

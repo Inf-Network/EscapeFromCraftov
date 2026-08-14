@@ -1,0 +1,32 @@
+Title: '&8行动安全箱 &7· &a3 格'
+Layout:
+  - '#ABC#D#Q#'
+Options:
+  Arguments: false
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 100
+Icons:
+  '#':
+    display: { material: black_stained_glass_pane, name: ' ' }
+  A:
+    display: { material: 'source:CRAFTOVCORESECURE:slot-0' }
+    actions: { all: [ 'reset', 'command: craftov ui secure take 0' ] }
+  B:
+    display: { material: 'source:CRAFTOVCORESECURE:slot-1' }
+    actions: { all: [ 'reset', 'command: craftov ui secure take 1' ] }
+  C:
+    display: { material: 'source:CRAFTOVCORESECURE:slot-2' }
+    actions: { all: [ 'reset', 'command: craftov ui secure take 2' ] }
+  D:
+    display:
+      material: hopper
+      name: '&a存入主手物资'
+      lore:
+        - '&7只能存放 EscapeFromCraftov 物品'
+        - '&7阵亡或行动超时仍会带回仓库'
+        - ''
+        - '&e点击存入完整物品栈'
+    actions: { all: [ 'reset', 'command: craftov ui secure store' ] }
+  Q:
+    display: { material: barrier, name: '&c关闭', lore: [ '&7安全箱内容仍会留在本局' ] }
+    actions: { all: close }

@@ -16,6 +16,7 @@ import com.birditch.escapefromcraftov.core.service.ServiceRegistry;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -43,6 +44,7 @@ public final class GameConnectionListener implements Listener {
       PendingJoinHandler pendingJoins,
       VisibilityService visibility,
       InstanceWorldIndex index,
+      SecureContainerController secureContainers,
       Logger logger) {
 
     public Deps {
@@ -52,6 +54,7 @@ public final class GameConnectionListener implements Listener {
       Preconditions.checkNotNull(pendingJoins, "pendingJoins");
       Preconditions.checkNotNull(visibility, "visibility");
       Preconditions.checkNotNull(index, "index");
+      Preconditions.checkNotNull(secureContainers, "secureContainers");
       Preconditions.checkNotNull(logger, "logger");
     }
   }
@@ -67,6 +70,7 @@ public final class GameConnectionListener implements Listener {
   private final PendingJoinHandler pendingJoins;
   private final VisibilityService visibility;
   private final InstanceWorldIndex index;
+  private final SecureContainerController secureContainers;
   private final Logger logger;
 
   public GameConnectionListener(Deps deps) {
@@ -82,6 +86,7 @@ public final class GameConnectionListener implements Listener {
     this.pendingJoins = deps.pendingJoins();
     this.visibility = deps.visibility();
     this.index = deps.index();
+    this.secureContainers = deps.secureContainers();
     this.logger = deps.logger();
   }
 
@@ -167,7 +172,8 @@ public final class GameConnectionListener implements Listener {
   }
 
   private void settleQuitLoss(UUID playerId, CraftovGameId gameId, int attempt) {
-    inventories.settleDeath(playerId, gameId).whenComplete((_, error) ->
+    var protectedItems = secureContainers.beginSettlement(gameId, playerId);
+    inventories.settleLoss(playerId, gameId, protectedItems).whenComplete((_, error) ->
         scheduler.runSync(() -> {
           if (error != null) {
             logger.log(Level.WARNING,
@@ -178,6 +184,7 @@ public final class GameConnectionListener implements Listener {
                 () -> settleQuitLoss(playerId, gameId, attempt + 1));
             return;
           }
+          secureContainers.completeSettlement(gameId, playerId);
           games.leave(playerId);
           finishQuit(playerId);
         }));

@@ -21,7 +21,8 @@ class TrMenuTemplateTest {
   private static final List<String> MENUS = List.of(
       "trmenu/escapefromcraftov_editor_toolbar.yml",
       "trmenu/escapefromcraftov_editor_object.yml",
-      "trmenu/escapefromcraftov_loot.yml");
+      "trmenu/escapefromcraftov_loot.yml",
+      "trmenu/escapefromcraftov_secure.yml");
   private static final Pattern LOOT_SOURCE =
       Pattern.compile("source:CRAFTOVCORELOOT:slot-(\\d+)");
 
@@ -65,6 +66,17 @@ class TrMenuTemplateTest {
         + "      join-classpath: false"));
     assertTrue(yaml.contains("    DecentHolograms:\n      load: BEFORE\n      required: true\n"
         + "      join-classpath: true"));
+  }
+
+  @Test
+  void secureTemplateHasThreeProtectedSlotsAndValidatedActions() throws IOException {
+    String yaml = read("trmenu/escapefromcraftov_secure.yml");
+    for (int slot = 0; slot < 3; slot++) {
+      assertTrue(yaml.contains("source:CRAFTOVCORESECURE:slot-" + slot));
+      assertTrue(yaml.contains("command: craftov ui secure take " + slot));
+    }
+    assertTrue(yaml.contains("command: craftov ui secure store"));
+    assertTrue(yaml.contains("Hide-Player-Inventory: true"));
   }
 
   @Test

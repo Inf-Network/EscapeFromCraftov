@@ -20,6 +20,7 @@ public final class CraftovCommand {
         .then(InfoCommands.tutorial(context))
         .then(InfoCommands.info(context))
         .then(ProfileCommands.profile(context))
+        .then(SecureCommands.secure(context))
         .then(ManualMapCommands.map(context))
         .then(EditorCommands.editor(context))
         .then(UiCommands.ui(context))

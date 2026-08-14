@@ -39,9 +39,23 @@ final class UiCommands {
               }
               context.lootMenus().page(player, direction.equals("next") ? 1 : -1);
             }))));
+    LiteralArgumentBuilder<CommandSourceStack> secure = Commands.literal("secure")
+        .then(Commands.literal("store")
+            .executes(ctx -> execute(ctx.getSource(), context.secureContainers()::storeHeld)));
+    secure.then(Commands.literal("take")
+        .then(Commands.argument("slot", IntegerArgumentType.integer(0, 2))
+            .suggests((_, builder) -> {
+              builder.suggest(0);
+              builder.suggest(1);
+              builder.suggest(2);
+              return builder.buildFuture();
+            })
+            .executes(ctx -> execute(ctx.getSource(), player -> context.secureContainers().take(
+                player, IntegerArgumentType.getInteger(ctx, "slot"))))));
     return Commands.literal("ui")
         .requires(source -> source.getSender() instanceof Player)
-        .then(loot);
+        .then(loot)
+        .then(secure);
   }
 
   private static int execute(CommandSourceStack source, PlayerAction action) {

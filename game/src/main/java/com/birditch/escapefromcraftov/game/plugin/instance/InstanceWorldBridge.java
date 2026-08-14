@@ -16,6 +16,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionPointId;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
 import com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureSettlementItems;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
 import java.util.HashMap;
@@ -123,7 +124,8 @@ public final class InstanceWorldBridge implements Listener {
   private void settleCraftovEnd(CraftovGameId gameId, List<UUID> deaths,
       List<PendingExtraction> extracting, int attempt) {
     List<CompletableFuture<?>> settlements = new ArrayList<>();
-    deaths.stream().map(playerId -> deps.inventories().settleDeath(playerId, gameId))
+    deaths.stream().map(playerId -> deps.inventories().settleLoss(playerId, gameId,
+            deps.secureContainers().beginSettlement(gameId, playerId)))
         .forEach(settlements::add);
     extracting.stream().map(PendingExtraction::completion).forEach(settlements::add);
     CompletableFuture.allOf(settlements.toArray(CompletableFuture[]::new))
@@ -143,6 +145,8 @@ public final class InstanceWorldBridge implements Listener {
             deps.scheduler().runLater(Duration.ofSeconds(5),
                 () -> settleCraftovEnd(gameId, deaths, extracting, next));
           } else {
+            deaths.forEach(playerId ->
+                deps.secureContainers().completeSettlement(gameId, playerId));
             finishCraftovEnd(gameId, deaths);
           }
         }));
@@ -190,8 +194,16 @@ public final class InstanceWorldBridge implements Listener {
       return;
     }
     freeze(event.playerId());
+    List<ItemInstance> carried;
+    try {
+      carried = settlementItems(player, event.gameId());
+    } catch (RuntimeException invalidSnapshot) {
+      rejectInvalidExtractionSnapshot(event.gameId(), event.playerId(), event.pointId(),
+          invalidSnapshot);
+      return;
+    }
     pendingExtractions.put(key, new PendingExtraction(event.gameId(), event.playerId(),
-        event.pointId(), scanCarriedItems(player), new CompletableFuture<>()));
+        event.pointId(), carried, new CompletableFuture<>()));
   }
 
   @Subscribe
@@ -209,6 +221,7 @@ public final class InstanceWorldBridge implements Listener {
     boolean running = deps.games().find(event.gameId())
         .filter(game -> game.state() == CraftovGameState.RUNNING).isPresent();
     if (running) {
+      deps.secureContainers().cancelSettlement(event.gameId(), event.playerId());
       pending.completion().complete(CraftovInventoryOutcome.LOST);
     } else {
       settleLockedFailure(event.gameId(), event.playerId(), pending.completion(), 0);
@@ -229,8 +242,16 @@ public final class InstanceWorldBridge implements Listener {
         return;
       }
       freeze(event.playerId());
-      pending = new PendingExtraction(event.gameId(), event.playerId(), event.pointId(),
-          scanCarriedItems(player), new CompletableFuture<>());
+      List<ItemInstance> carried;
+      try {
+        carried = settlementItems(player, event.gameId());
+      } catch (RuntimeException invalidSnapshot) {
+        rejectInvalidExtractionSnapshot(event.gameId(), event.playerId(), event.pointId(),
+            invalidSnapshot);
+        return;
+      }
+      pending = new PendingExtraction(event.gameId(), event.playerId(), event.pointId(), carried,
+          new CompletableFuture<>());
       pendingExtractions.put(key, pending);
     }
     if (!pending.pointId().equals(event.pointId())) {
@@ -386,6 +407,7 @@ public final class InstanceWorldBridge implements Listener {
   private void finishExtractionSettlement(SettlementKey key, PendingExtraction pending,
       CraftovSettlementResult result) {
     pendingExtractions.remove(key, pending);
+    deps.secureContainers().completeSettlement(pending.gameId(), pending.playerId());
     Player online = Bukkit.getPlayer(pending.playerId());
     if (result.outcome() == CraftovInventoryOutcome.EXTRACTED) {
       if (!deps.extractions().completeSettlement(
@@ -419,7 +441,8 @@ public final class InstanceWorldBridge implements Listener {
 
   private void settleLockedFailure(CraftovGameId gameId, UUID playerId,
       CompletableFuture<CraftovInventoryOutcome> completion, int attempt) {
-    deps.inventories().settleDeath(playerId, gameId).whenComplete((_, failure) ->
+    var protectedItems = deps.secureContainers().beginSettlement(gameId, playerId);
+    deps.inventories().settleLoss(playerId, gameId, protectedItems).whenComplete((_, failure) ->
         deps.scheduler().runSync(() -> {
           if (failure != null) {
             deps.logger().log(Level.WARNING,
@@ -429,6 +452,7 @@ public final class InstanceWorldBridge implements Listener {
                 () -> settleLockedFailure(gameId, playerId, completion, attempt + 1));
             return;
           }
+          deps.secureContainers().completeSettlement(gameId, playerId);
           if (completion != null) completion.complete(CraftovInventoryOutcome.LOST);
           if (!deps.games().leave(playerId).isSuccess()) returnToLobby(playerId);
         }));
@@ -559,6 +583,19 @@ public final class InstanceWorldBridge implements Listener {
     ItemStack offHand = player.getInventory().getItemInOffHand();
     if (offHand != null) contents.add(offHand);
     return deps.itemStacks().scan(contents.toArray(ItemStack[]::new));
+  }
+
+  private List<ItemInstance> settlementItems(Player player, CraftovGameId gameId) {
+    return SecureSettlementItems.merge(scanCarriedItems(player),
+        deps.secureContainers().beginSettlement(gameId, player.getUniqueId()));
+  }
+
+  private void rejectInvalidExtractionSnapshot(CraftovGameId gameId, UUID playerId,
+      ExtractionPointId pointId, RuntimeException failure) {
+    deps.logger().log(Level.SEVERE,
+        "撤离快照包含无效或重复的物品实例，按行动失败结算:" + playerId, failure);
+    deps.extractions().failSettlement(playerId, gameId, pointId);
+    settleLockedFailure(gameId, playerId, null, 0);
   }
 
   private boolean containsInstance(Player player, UUID instanceId) {

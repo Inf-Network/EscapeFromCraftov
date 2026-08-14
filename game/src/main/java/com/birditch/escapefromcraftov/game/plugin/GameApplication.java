@@ -70,6 +70,7 @@ import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartCoordinator;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.game.plugin.world.WorldService;
 import com.birditch.escapefromcraftov.game.plugin.world.WorldServiceDeps;
 import com.birditch.escapefromcraftov.item.ItemModule;
@@ -137,6 +138,7 @@ public final class GameApplication {
   private @Nullable EventSubscription aiSubscription;
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable CraftovAiRuntime aiRuntime;
+  private @Nullable SecureContainerController secureContainers;
   private @Nullable InstanceProvisioner provisioner;
   private @Nullable SnapshotPublisher publisher;
   private @Nullable CraftovStartCoordinator startCoordinator;
@@ -190,6 +192,7 @@ public final class GameApplication {
       GameCombatListener combat,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
+      SecureContainerController secureContainers,
       InstanceWorldBridge bridge,
       CraftovAiRuntime aiRuntime) {}
 
@@ -211,9 +214,11 @@ public final class GameApplication {
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_editor_object.yml", "escapefromcraftov_editor_object.yml");
     installed |= trMenu.installDefault("trmenu/escapefromcraftov_loot.yml", "escapefromcraftov_loot.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_secure.yml", "escapefromcraftov_secure.yml");
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_editor_toolbar", "escapefromcraftov_editor_object",
-        "escapefromcraftov_loot");
+        "escapefromcraftov_loot", "escapefromcraftov_secure");
     logger.info("Menu provider: " + trMenu.status()
         + " (all EscapeFromCraftov inventory menus are rendered by TrMenu)");
     CraftovContext context = createContext(configs.core(), configs.database());
@@ -232,7 +237,7 @@ public final class GameApplication {
             configs.server(), context.scheduler(), maps.service(), maps.registry(), maps.sessions(),
             maps.selections(), maps.wand(), maps.confirmations(), maps.objectMenus(),
             maps.visualization(), maps.interaction(),
-            wiring.lootMenus(), trMenu, configs.editor(),
+            wiring.lootMenus(), wiring.secureContainers(), trMenu, configs.editor(),
             maps.integrations().selections(), maps.integrations().permissions()));
     summary.log(context.services(), modules, configs.server(), new StartupSummary.SummaryConfigs(
         configs.core(), configs.redis(), summary.probeRedis(wiring.directory())));
@@ -302,14 +307,24 @@ public final class GameApplication {
     Optional<CraftovGameService> games = registry.find(CraftovGameService.class);
     Optional<PlayerInventoryService> inventories = registry.find(PlayerInventoryService.class);
     if (games.isEmpty() || inventories.isEmpty()) return;
+    record ActiveLoss(com.birditch.escapefromcraftov.api.game.CraftovGameId gameId,
+                      java.util.UUID playerId,
+                      CompletableFuture<com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult> future) {}
+    SecureContainerController secure = secureContainers;
+    List<ActiveLoss> activeLosses = games.get().all().stream()
+        .flatMap(game -> game.players().stream().map(player -> {
+          List<com.birditch.escapefromcraftov.api.item.ItemInstance> protectedItems = secure == null
+              ? List.of() : secure.beginSettlement(game.id(), player.playerId());
+          return new ActiveLoss(game.id(), player.playerId(),
+              inventories.get().settleLoss(player.playerId(), game.id(), protectedItems));
+        })).toList();
     List<CompletableFuture<com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult>> settlements =
-        games.get().all().stream()
-        .flatMap(game -> game.players().stream()
-            .map(player -> inventories.get().settleDeath(player.playerId(), game.id())))
-        .toList();
+        activeLosses.stream().map(ActiveLoss::future).toList();
     if (settlements.isEmpty()) return;
     CompletableFuture.allOf(settlements.toArray(CompletableFuture[]::new))
         .get(15, TimeUnit.SECONDS);
+    if (secure != null) activeLosses.forEach(loss ->
+        secure.completeSettlement(loss.gameId(), loss.playerId()));
   }
 
   /// Domain game destruction and Bukkit world destruction are separate
@@ -495,10 +510,13 @@ public final class GameApplication {
     this.visibility = visibility;
     CraftovItemStacks itemStacks = new CraftovItemStacks(context.services().require(ItemRegistry.class));
     PlayerInventoryService inventories = context.services().require(PlayerInventoryService.class);
+    SecureContainerController secure = new SecureContainerController(
+        games, index, itemStacks, configs.messages(), trMenu);
+    secureContainers = secure;
     GameCombatListener combatListener = new GameCombatListener(plugin, games,
         context.services().require(CombatService.class), inventories,
         context.services().require(com.birditch.escapefromcraftov.api.profile.ProgressionService.class),
-        index, scheduler, configs.messages(), configs.gameplay());
+        index, scheduler, configs.messages(), configs.gameplay(), secure);
     CraftovStartCoordinator starts = new CraftovStartCoordinator(games, index, scheduler,
         new BukkitCraftovStartNotifier(configs.messages()), logger,
         server.minimumPlayers(), server.startCountdownSeconds());
@@ -526,7 +544,7 @@ public final class GameApplication {
             inventories,
             context.services().require(
                 com.birditch.escapefromcraftov.api.extraction.ExtractionService.class), itemStacks,
-            context.eventBus(), worlds, index, visibility, bungee, server, configs.messages(), trMenu,
+            secure, context.eventBus(), worlds, index, visibility, bungee, server, configs.messages(), trMenu,
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(plugin, games, index, scheduler, logger);
@@ -558,7 +576,7 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        sidebarService, lootMenuController, instanceBridge, instanceAi);
+        sidebarService, lootMenuController, secure, instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -606,7 +624,7 @@ public final class GameApplication {
         plugin);
     pluginManager.registerEvents(new GameConnectionListener(new GameConnectionListener.Deps(
         context.services(), context.scheduler(), configs.messages(), wiring.pendingJoins(),
-        wiring.visibility(), wiring.index(), logger)), plugin);
+        wiring.visibility(), wiring.index(), wiring.secureContainers(), logger)), plugin);
     pluginManager.registerEvents(new PendingPlayerGuard(wiring.pendingJoins()), plugin);
     pluginManager.registerEvents(new ExtractionRegionListener(
         context.services().require(CraftovGameService.class),
@@ -646,6 +664,12 @@ public final class GameApplication {
       if (lootMenus != null) {
         lootMenus.close();
         lootMenus = null;
+      }
+    });
+    steps.run("close TrMenu secure container controller", () -> {
+      if (secureContainers != null) {
+        secureContainers.close();
+        secureContainers = null;
       }
     });
     steps.run("stop instance provisioner", () -> {

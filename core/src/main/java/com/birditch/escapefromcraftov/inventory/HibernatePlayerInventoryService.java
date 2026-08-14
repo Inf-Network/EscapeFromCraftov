@@ -119,6 +119,13 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
   }
 
   @Override
+  public CompletableFuture<CraftovSettlementResult> settleLoss(
+      UUID playerId, CraftovGameId gameId, List<ItemInstance> protectedItems) {
+    Preconditions.checkNotNull(protectedItems, "protectedItems");
+    return settle(playerId, gameId, CraftovInventoryOutcome.LOST, List.copyOf(protectedItems));
+  }
+
+  @Override
   public CompletableFuture<Integer> purgeOrphanedCraftovItems(UUID playerId) {
     Preconditions.checkNotNull(playerId, "playerId");
     return CompletableFuture.supplyAsync(() -> database.transaction(session -> {
@@ -154,12 +161,13 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
       // old CRAFTOV row and its replacement simultaneously in Hibernate's action queue.
       session.flush();
       Instant now = Instant.now();
-      if (outcome == CraftovInventoryOutcome.EXTRACTED) {
-        for (ItemInstance item : orderedCarriedItems) {
-          session.persist(new PlayerItemEntity(UUID.randomUUID(), playerId, item.instanceId(),
-              item.itemId().value(), item.quantity(), InventoryLocation.WAREHOUSE, null,
-              item.opaquePayload(), now));
-        }
+      // `orderedCarriedItems` means everything that survives this transaction.
+      // On extraction that is the complete carried snapshot; on a loss it is
+      // only the protected secure-container snapshot.
+      for (ItemInstance item : orderedCarriedItems) {
+        session.persist(new PlayerItemEntity(UUID.randomUUID(), playerId, item.instanceId(),
+            item.itemId().value(), item.quantity(), InventoryLocation.WAREHOUSE, null,
+            item.opaquePayload(), now));
       }
       session.persist(new CraftovInventorySettlementEntity(
           settlementId, playerId, gameId.value(), outcome, now));

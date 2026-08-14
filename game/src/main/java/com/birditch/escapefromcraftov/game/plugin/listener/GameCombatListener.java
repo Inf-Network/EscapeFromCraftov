@@ -15,6 +15,7 @@ import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,13 +51,14 @@ public final class GameCombatListener implements Listener {
   private final CraftovScheduler scheduler;
   private final Messages messages;
   private final GameplaySettings settings;
+  private final SecureContainerController secureContainers;
   private final Map<UUID, Attack> lastAttackers = new HashMap<>();
   private final Map<UUID, Integer> kills = new HashMap<>();
 
   public GameCombatListener(Plugin plugin, CraftovGameService games, CombatService combat,
       PlayerInventoryService inventories, ProgressionService progression,
       InstanceWorldIndex worlds, CraftovScheduler scheduler, Messages messages,
-      GameplaySettings settings) {
+      GameplaySettings settings, SecureContainerController secureContainers) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.combat = Preconditions.checkNotNull(combat, "combat");
@@ -66,6 +68,7 @@ public final class GameCombatListener implements Listener {
     this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.settings = Preconditions.checkNotNull(settings, "settings");
+    this.secureContainers = Preconditions.checkNotNull(secureContainers, "secureContainers");
   }
 
   @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -145,7 +148,8 @@ public final class GameCombatListener implements Listener {
 
   private void settleDeath(Player victim, CraftovGameId gameId, int attempt) {
     UUID victimId = victim.getUniqueId();
-    inventories.settleDeath(victimId, gameId).whenComplete((_, failure) ->
+    var protectedItems = secureContainers.beginSettlement(gameId, victimId);
+    inventories.settleLoss(victimId, gameId, protectedItems).whenComplete((_, failure) ->
         scheduler.runSync(() -> {
           if (failure != null) {
             org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.WARNING,
@@ -157,6 +161,7 @@ public final class GameCombatListener implements Listener {
                 () -> settleDeath(victim, gameId, attempt + 1));
             return;
           }
+          secureContainers.completeSettlement(gameId, victimId);
           if (victim.isOnline()) {
             victim.setInvulnerable(true);
             try {

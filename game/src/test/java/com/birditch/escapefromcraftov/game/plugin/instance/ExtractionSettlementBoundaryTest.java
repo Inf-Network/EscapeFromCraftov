@@ -15,11 +15,12 @@ class ExtractionSettlementBoundaryTest {
     String locked = method(source, "onPlayerExtractionLocked", "onPlayerExtractionAuthorizationFailed");
     String ready = method(source, "onPlayerExtractionReady", "onSettlingMove");
 
-    assertTrue(locked.contains("scanCarriedItems(player)"));
+    assertTrue(locked.contains("settlementItems(player, event.gameId())"),
+        "locked snapshot must merge ordinary inventory with the secure container");
     assertTrue(locked.contains("pendingExtractions.put"));
     assertTrue(locked.contains("freeze(event.playerId())"));
     assertTrue(ready.indexOf("pendingExtractions.get(key)")
-        < ready.indexOf("scanCarriedItems(player)"),
+        < ready.indexOf("settlementItems(player, event.gameId())"),
         "ready must consume the locked snapshot before its defensive recovery path");
   }
 

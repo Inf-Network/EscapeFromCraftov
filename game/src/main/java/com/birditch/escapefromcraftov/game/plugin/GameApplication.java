@@ -37,6 +37,7 @@ import com.birditch.escapefromcraftov.game.GameModule;
 import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
 import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
+import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
 import com.birditch.escapefromcraftov.game.plugin.instance.BridgeDeps;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceProvisioner;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldBridge;
@@ -135,8 +136,10 @@ public final class GameApplication {
   private @Nullable BungeeConnector bungeeConnector;
   private @Nullable EventSubscription bridgeSubscription;
   private @Nullable EventSubscription lootSubscription;
+  private @Nullable EventSubscription deathCrateSubscription;
   private @Nullable EventSubscription aiSubscription;
   private @Nullable CraftovLootListener lootMenus;
+  private @Nullable DeathCrateListener deathCrates;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable InstanceProvisioner provisioner;
@@ -192,6 +195,7 @@ public final class GameApplication {
       GameCombatListener combat,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
+      DeathCrateListener deathCrates,
       SecureContainerController secureContainers,
       InstanceWorldBridge bridge,
       CraftovAiRuntime aiRuntime) {}
@@ -216,9 +220,12 @@ public final class GameApplication {
     installed |= trMenu.installDefault("trmenu/escapefromcraftov_loot.yml", "escapefromcraftov_loot.yml");
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_secure.yml", "escapefromcraftov_secure.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_death_crate.yml", "escapefromcraftov_death_crate.yml");
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_editor_toolbar", "escapefromcraftov_editor_object",
-        "escapefromcraftov_loot", "escapefromcraftov_secure");
+        "escapefromcraftov_loot", "escapefromcraftov_secure",
+        "escapefromcraftov_death_crate");
     logger.info("Menu provider: " + trMenu.status()
         + " (all EscapeFromCraftov inventory menus are rendered by TrMenu)");
     CraftovContext context = createContext(configs.core(), configs.database());
@@ -237,7 +244,8 @@ public final class GameApplication {
             configs.server(), context.scheduler(), maps.service(), maps.registry(), maps.sessions(),
             maps.selections(), maps.wand(), maps.confirmations(), maps.objectMenus(),
             maps.visualization(), maps.interaction(),
-            wiring.lootMenus(), wiring.secureContainers(), trMenu, configs.editor(),
+            wiring.lootMenus(), wiring.deathCrates(), wiring.secureContainers(), trMenu,
+            configs.editor(),
             maps.integrations().selections(), maps.integrations().permissions()));
     summary.log(context.services(), modules, configs.server(), new StartupSummary.SummaryConfigs(
         configs.core(), configs.redis(), summary.probeRedis(wiring.directory())));
@@ -547,6 +555,10 @@ public final class GameApplication {
             secure, context.eventBus(), worlds, index, visibility, bungee, server, configs.messages(), trMenu,
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
+    DeathCrateListener deathCrateController = new DeathCrateListener(
+        games, index, itemStacks, configs.messages(), trMenu, logger);
+    deathCrates = deathCrateController;
+    deathCrateSubscription = context.eventBus().register(deathCrateController);
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(plugin, games, index, scheduler, logger);
     aiRuntime = instanceAi;
     aiSubscription = context.eventBus().register(instanceAi);
@@ -576,7 +588,8 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        sidebarService, lootMenuController, secure, instanceBridge, instanceAi);
+        sidebarService, lootMenuController, deathCrateController, secure, instanceBridge,
+        instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -632,6 +645,7 @@ public final class GameApplication {
         wiring.index(), configs.messages()), plugin);
     pluginManager.registerEvents(wiring.combat(), plugin);
     pluginManager.registerEvents(wiring.bridge(), plugin);
+    pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
     pluginManager.registerEvents(wiring.aiRuntime(), plugin);
     pluginManager.registerEvents(maps.visualization(), plugin);
@@ -658,6 +672,18 @@ public final class GameApplication {
       if (lootSubscription != null) {
         lootSubscription.unsubscribe();
         lootSubscription = null;
+      }
+    });
+    steps.run("unsubscribe death crate listener", () -> {
+      if (deathCrateSubscription != null) {
+        deathCrateSubscription.unsubscribe();
+        deathCrateSubscription = null;
+      }
+    });
+    steps.run("close death crate controller", () -> {
+      if (deathCrates != null) {
+        deathCrates.close();
+        deathCrates = null;
       }
     });
     steps.run("close TrMenu Loot controller", () -> {

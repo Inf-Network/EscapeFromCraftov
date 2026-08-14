@@ -1,0 +1,308 @@
+Title: '&8阵亡箱 &7· &f{0}/{1} &7· &6{2} 件'
+Layout:
+  - '         '
+  - '         '
+  - '         '
+  - '         '
+  - '         '
+  - '         '
+Options:
+  Arguments: true
+  Default-Arguments: [ '1', '1', '0' ]
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 100
+Icons:
+  D0:
+    display:
+      slots: [ 0 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-0'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 0' ]
+  D1:
+    display:
+      slots: [ 1 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-1'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 1' ]
+  D2:
+    display:
+      slots: [ 2 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-2'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 2' ]
+  D3:
+    display:
+      slots: [ 3 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-3'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 3' ]
+  D4:
+    display:
+      slots: [ 4 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-4'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 4' ]
+  D5:
+    display:
+      slots: [ 5 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-5'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 5' ]
+  D6:
+    display:
+      slots: [ 6 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-6'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 6' ]
+  D7:
+    display:
+      slots: [ 7 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-7'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 7' ]
+  D8:
+    display:
+      slots: [ 8 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-8'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 8' ]
+  D9:
+    display:
+      slots: [ 9 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-9'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 9' ]
+  D10:
+    display:
+      slots: [ 10 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-10'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 10' ]
+  D11:
+    display:
+      slots: [ 11 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-11'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 11' ]
+  D12:
+    display:
+      slots: [ 12 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-12'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 12' ]
+  D13:
+    display:
+      slots: [ 13 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-13'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 13' ]
+  D14:
+    display:
+      slots: [ 14 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-14'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 14' ]
+  D15:
+    display:
+      slots: [ 15 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-15'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 15' ]
+  D16:
+    display:
+      slots: [ 16 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-16'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 16' ]
+  D17:
+    display:
+      slots: [ 17 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-17'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 17' ]
+  D18:
+    display:
+      slots: [ 18 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-18'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 18' ]
+  D19:
+    display:
+      slots: [ 19 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-19'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 19' ]
+  D20:
+    display:
+      slots: [ 20 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-20'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 20' ]
+  D21:
+    display:
+      slots: [ 21 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-21'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 21' ]
+  D22:
+    display:
+      slots: [ 22 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-22'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 22' ]
+  D23:
+    display:
+      slots: [ 23 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-23'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 23' ]
+  D24:
+    display:
+      slots: [ 24 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-24'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 24' ]
+  D25:
+    display:
+      slots: [ 25 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-25'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 25' ]
+  D26:
+    display:
+      slots: [ 26 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-26'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 26' ]
+  D27:
+    display:
+      slots: [ 27 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-27'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 27' ]
+  D28:
+    display:
+      slots: [ 28 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-28'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 28' ]
+  D29:
+    display:
+      slots: [ 29 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-29'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 29' ]
+  D30:
+    display:
+      slots: [ 30 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-30'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 30' ]
+  D31:
+    display:
+      slots: [ 31 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-31'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 31' ]
+  D32:
+    display:
+      slots: [ 32 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-32'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 32' ]
+  D33:
+    display:
+      slots: [ 33 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-33'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 33' ]
+  D34:
+    display:
+      slots: [ 34 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-34'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 34' ]
+  D35:
+    display:
+      slots: [ 35 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-35'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 35' ]
+  D36:
+    display:
+      slots: [ 36 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-36'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 36' ]
+  D37:
+    display:
+      slots: [ 37 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-37'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 37' ]
+  D38:
+    display:
+      slots: [ 38 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-38'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 38' ]
+  D39:
+    display:
+      slots: [ 39 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-39'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 39' ]
+  D40:
+    display:
+      slots: [ 40 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-40'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 40' ]
+  D41:
+    display:
+      slots: [ 41 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-41'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 41' ]
+  D42:
+    display:
+      slots: [ 42 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-42'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 42' ]
+  D43:
+    display:
+      slots: [ 43 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-43'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 43' ]
+  D44:
+    display:
+      slots: [ 44 ]
+      material: 'source:CRAFTOVCOREDEATH:slot-44'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate take 44' ]
+  Previous:
+    display:
+      slots: [ 45 ]
+      material: arrow
+      name: '&e上一页'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate page previous' ]
+  Info:
+    display:
+      slots: [ 49 ]
+      material: barrel
+      name: '&6阵亡箱'
+      lore:
+        - '&7同一行动内的未撤离成员可以共享取出'
+        - '&c只能取出，禁止存入、Shift 点击和拖入'
+        - ''
+        - '&7剩余 &f{2} &7件'
+  Next:
+    display:
+      slots: [ 53 ]
+      material: arrow
+      name: '&e下一页'
+    actions:
+      all: [ 'reset', 'command: craftov ui death-crate page next' ]

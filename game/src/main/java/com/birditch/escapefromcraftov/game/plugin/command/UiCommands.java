@@ -52,10 +52,34 @@ final class UiCommands {
             })
             .executes(ctx -> execute(ctx.getSource(), player -> context.secureContainers().take(
                 player, IntegerArgumentType.getInteger(ctx, "slot"))))));
+    LiteralArgumentBuilder<CommandSourceStack> deathCrate = Commands.literal("death-crate")
+        .then(Commands.literal("take")
+            .then(Commands.argument("slot", IntegerArgumentType.integer(0, 44))
+                .suggests((_, builder) -> {
+                  for (int slot = 0; slot < 45; slot++) builder.suggest(slot);
+                  return builder.buildFuture();
+                })
+                .executes(ctx -> execute(ctx.getSource(), player -> context.deathCrates().take(
+                    player, IntegerArgumentType.getInteger(ctx, "slot"))))));
+    deathCrate.then(Commands.literal("page")
+        .then(Commands.argument("direction", StringArgumentType.word())
+            .suggests((_, builder) -> {
+              builder.suggest("previous");
+              builder.suggest("next");
+              return builder.buildFuture();
+            })
+            .executes(ctx -> execute(ctx.getSource(), player -> {
+              String direction = StringArgumentType.getString(ctx, "direction");
+              if (!direction.equals("previous") && !direction.equals("next")) {
+                throw new IllegalArgumentException("方向只能是 previous 或 next");
+              }
+              context.deathCrates().page(player, direction.equals("next") ? 1 : -1);
+            }))));
     return Commands.literal("ui")
         .requires(source -> source.getSender() instanceof Player)
         .then(loot)
-        .then(secure);
+        .then(secure)
+        .then(deathCrate);
   }
 
   private static int execute(CommandSourceStack source, PlayerAction action) {

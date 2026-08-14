@@ -187,6 +187,19 @@ loot:
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
   taken: "<green>物资已放入本局背包。</green>"
 
+# 阵亡箱。玩家阵亡时，本局可识别物资会转移到死亡地点的公共虚拟箱。
+death-crate:
+  created: "<yellow>你携带的 <items> 件物资已留在附近的 <crates> 个阵亡箱中。</yellow>"
+  placement-failed: "<red>附近没有安全位置生成阵亡箱，部分物资保持原版掉落。</red>"
+  not-accessible: "<red>只有本局仍在行动、尚未撤离的成员可以打开这个阵亡箱。</red>"
+  open-failed: "<red>阵亡箱界面打开失败，请重新右键箱体。</red>"
+  open-first: "<yellow>请先右键一个有效的阵亡箱。</yellow>"
+  inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
+  taken: "<green>已从阵亡箱取出物资。</green>"
+  emptied: "<gray>阵亡箱已搜空并消失。</gray>"
+  too-far: "<yellow>你离阵亡箱太远，界面已关闭。</yellow>"
+  deposit-blocked: "<yellow>阵亡箱只能取出物品，不能存入、Shift 点击或拖入。</yellow>"
+
 # 三格行动安全箱。物品存入后离开普通背包，阵亡、退出或超时仍会回仓。
 secure:
   not-in-craftov: "<red>你当前不在可操作安全箱的行动中。</red>"

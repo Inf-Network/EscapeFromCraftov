@@ -20,6 +20,7 @@ import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorSettings;
 import com.birditch.escapefromcraftov.game.plugin.integration.PermissionProvider;
 import com.birditch.escapefromcraftov.game.plugin.integration.SelectionProvider;
 import com.birditch.escapefromcraftov.game.plugin.loot.CraftovLootListener;
+import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.map.EditorSessionService;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
@@ -43,6 +44,7 @@ public record CommandContext(
     EditorVisualizationService editorVisualization,
     EditorInteractionService editorInteraction,
     CraftovLootListener lootMenus,
+    DeathCrateListener deathCrates,
     SecureContainerController secureContainers,
     TrMenuBridge trMenu,
     MapEditorSettings editorSettings,
@@ -67,6 +69,7 @@ public record CommandContext(
     Preconditions.checkNotNull(editorVisualization, "editorVisualization");
     Preconditions.checkNotNull(editorInteraction, "editorInteraction");
     Preconditions.checkNotNull(lootMenus, "lootMenus");
+    Preconditions.checkNotNull(deathCrates, "deathCrates");
     Preconditions.checkNotNull(secureContainers, "secureContainers");
     Preconditions.checkNotNull(trMenu, "trMenu");
     Preconditions.checkNotNull(editorSettings, "editorSettings");

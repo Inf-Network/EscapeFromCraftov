@@ -9,6 +9,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
 import com.birditch.escapefromcraftov.api.loot.LootRollContext;
 import com.birditch.escapefromcraftov.api.loot.LootService;
+import com.birditch.escapefromcraftov.api.loot.LootContainerType;
+import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
+import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
@@ -22,6 +25,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Duration;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -31,6 +38,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -50,12 +58,15 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final Messages messages;
   private final int inventorySize;
   private final TrMenuBridge menus;
+  private final CraftovScheduler scheduler;
   private final AutoCloseable itemSource;
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
   private final Map<UUID, LootView> views = new HashMap<>();
+  private final Map<UUID, SearchSession> searches = new HashMap<>();
 
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
-      InstanceWorldIndex worlds, Messages messages, int inventorySize, TrMenuBridge menus) {
+      InstanceWorldIndex worlds, Messages messages, int inventorySize, TrMenuBridge menus,
+      CraftovScheduler scheduler) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
@@ -65,6 +76,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
         && inventorySize % 9 == 0, "inventorySize must be a multiple of 9 from 9..54");
     this.inventorySize = inventorySize;
     this.menus = Preconditions.checkNotNull(menus, "menus");
+    this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
     this.itemSource = menus.registerItemSource("CRAFTOVCORELOOT", this::menuItem);
   }
 
@@ -85,17 +97,21 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     CraftovLootPoint point = nearest(game, target).orElse(null);
     if (point == null) return;
     event.setCancelled(true);
-    ContainerKey key = new ContainerKey(game.id(), point.id());
-    containers.computeIfAbsent(key, _ -> createContainer(game, point, player));
-    views.put(player.getUniqueId(), new LootView(key, 0));
-    open(player);
-    player.sendMessage(messages.raw("loot.opened"));
+    beginSearch(player, game, point);
   }
 
   @EventHandler
   public void onQuit(PlayerQuitEvent event) {
+    cancelSearch(event.getPlayer(), false);
     menus.close(event.getPlayer(), "escapefromcraftov_loot");
     views.remove(event.getPlayer().getUniqueId());
+  }
+
+  @EventHandler(ignoreCancelled = true)
+  public void onDamage(EntityDamageEvent event) {
+    if (event.getEntity() instanceof Player player && searches.containsKey(player.getUniqueId())) {
+      cancelSearch(player, true);
+    }
   }
 
   public void take(Player player, int visibleSlot) {
@@ -136,6 +152,13 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   @Subscribe
   public void onCraftovEnded(CraftovEndedEvent event) {
+    searches.entrySet().removeIf(entry -> {
+      if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
+      Player player = org.bukkit.Bukkit.getPlayer(entry.getKey());
+      entry.getValue().task().cancel();
+      if (player != null) player.hideBossBar(entry.getValue().bar());
+      return true;
+    });
     containers.keySet().removeIf(key -> key.gameId().equals(event.gameId()));
     views.entrySet().removeIf(entry -> {
       if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
@@ -147,6 +170,109 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   public int activeContainerCount() {
     return containers.size();
+  }
+
+  private void beginSearch(Player player, CraftovGame game, CraftovLootPoint point) {
+    UUID playerId = player.getUniqueId();
+    SearchSession current = searches.get(playerId);
+    ContainerKey key = new ContainerKey(game.id(), point.id());
+    if (current != null) {
+      if (current.key().equals(key)) player.sendActionBar(messages.raw("loot.already-searching"));
+      return;
+    }
+    double seconds = searchSeconds(point);
+    BossBar bar = BossBar.bossBar(
+        Component.text("搜索 " + containerName(point.containerType()) + " · T" + point.tier(),
+            NamedTextColor.GOLD), 0, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
+    player.showBossBar(bar);
+    long startedAt = System.nanoTime();
+    long durationNanos = (long) (seconds * 1_000_000_000L);
+    SearchSession[] holder = new SearchSession[1];
+    ScheduledTask task = scheduler.runTimer(Duration.ZERO, Duration.ofMillis(100),
+        () -> tickSearch(playerId, holder[0]));
+    SearchSession session = new SearchSession(key, point, player.getWorld().getName(),
+        startedAt, durationNanos, bar, task);
+    holder[0] = session;
+    searches.put(playerId, session);
+    player.sendMessage(messages.raw("loot.search-started"));
+  }
+
+  private void tickSearch(UUID playerId, SearchSession expected) {
+    if (expected == null || searches.get(playerId) != expected) return;
+    Player player = org.bukkit.Bukkit.getPlayer(playerId);
+    if (player == null || !player.isOnline()
+        || !player.getWorld().getName().equals(expected.worldName())) {
+      cancelSearch(playerId, false);
+      return;
+    }
+    CraftovGame game = games.find(expected.key().gameId()).orElse(null);
+    if (!activeMember(game, player)
+        || expected.point().distanceSquared(player.getX(), player.getY(), player.getZ())
+            > INTERACTION_DISTANCE_SQUARED) {
+      cancelSearch(player, true);
+      return;
+    }
+    long elapsed = Math.max(0, System.nanoTime() - expected.startedAtNanos());
+    float progress = (float) Math.min(1, elapsed / (double) expected.durationNanos());
+    expected.bar().progress(progress);
+    int filled = Math.min(10, Math.max(0, (int) Math.floor(progress * 10)));
+    player.sendActionBar(Component.text("搜索中 ", NamedTextColor.YELLOW)
+        .append(Component.text("■".repeat(filled), NamedTextColor.GOLD))
+        .append(Component.text("□".repeat(10 - filled), NamedTextColor.DARK_GRAY)));
+    if (progress < 1) return;
+    finishSearch(player, game, expected);
+  }
+
+  private void finishSearch(Player player, CraftovGame game, SearchSession expected) {
+    if (!searches.remove(player.getUniqueId(), expected)) return;
+    expected.task().cancel();
+    player.hideBossBar(expected.bar());
+    containers.computeIfAbsent(expected.key(), _ -> createContainer(game, expected.point(), player));
+    views.put(player.getUniqueId(), new LootView(expected.key(), 0));
+    open(player);
+    player.sendMessage(messages.raw("loot.opened"));
+  }
+
+  private void cancelSearch(Player player, boolean notify) {
+    if (player == null) return;
+    SearchSession removed = searches.remove(player.getUniqueId());
+    if (removed == null) return;
+    removed.task().cancel();
+    player.hideBossBar(removed.bar());
+    if (notify) player.sendActionBar(messages.raw("loot.search-cancelled"));
+  }
+
+  private void cancelSearch(UUID playerId, boolean notify) {
+    Player player = org.bukkit.Bukkit.getPlayer(playerId);
+    if (player != null) {
+      cancelSearch(player, notify);
+      return;
+    }
+    SearchSession removed = searches.remove(playerId);
+    if (removed != null) removed.task().cancel();
+  }
+
+  private static double searchSeconds(CraftovLootPoint point) {
+    double base = switch (point.containerType()) {
+      case BARREL -> 1.2;
+      case CHEST, DUNGEON_CHEST -> 1.6;
+      case POTION_CACHE, HIDDEN_CACHE -> 2.0;
+      case SUPPLY_DROP -> 2.8;
+      case VAULT -> 4.0;
+    };
+    return base + (point.tier() - 1) * 0.55;
+  }
+
+  private static String containerName(LootContainerType type) {
+    return switch (type) {
+      case CHEST -> "物资箱";
+      case BARREL -> "补给桶";
+      case DUNGEON_CHEST -> "武器箱";
+      case POTION_CACHE -> "医疗箱";
+      case HIDDEN_CACHE -> "隐秘储藏";
+      case VAULT -> "保险柜";
+      case SUPPLY_DROP -> "空投箱";
+    };
   }
 
   private void open(Player player) {
@@ -275,11 +401,17 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   @Override
   public void close() throws Exception {
+    for (Map.Entry<UUID, SearchSession> entry : List.copyOf(searches.entrySet())) {
+      Player player = org.bukkit.Bukkit.getPlayer(entry.getKey());
+      entry.getValue().task().cancel();
+      if (player != null) player.hideBossBar(entry.getValue().bar());
+    }
     for (Player player : List.copyOf(org.bukkit.Bukkit.getOnlinePlayers())) {
       menus.close(player, "escapefromcraftov_loot");
     }
     itemSource.close();
     views.clear();
+    searches.clear();
     containers.clear();
   }
 
@@ -291,6 +423,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private record LootView(ContainerKey key, int page) {}
+  private record SearchSession(ContainerKey key, CraftovLootPoint point, String worldName,
+      long startedAtNanos, long durationNanos, BossBar bar, ScheduledTask task) {}
   private record ValidatedView(LootView view, LootContainerState container) {}
 
   private static final class LootContainerState {

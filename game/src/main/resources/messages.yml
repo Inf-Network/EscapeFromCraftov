@@ -168,7 +168,10 @@ extraction:
 
 loot:
   title: "<gold>搜索物资</gold>"
-  opened: "<gray>正在搜索附近的物资……物品会与本局玩家共享。</gray>"
+  search-started: "<gray>开始搜索；离开容器或受到伤害会中断。</gray>"
+  already-searching: "<yellow>你正在搜索这个容器。</yellow>"
+  search-cancelled: "<red>搜索已中断。</red>"
+  opened: "<green>搜索完成。</green> <gray>容器内容与本局所有玩家共享。</gray>"
   not-running: "<red>当前还不能搜索物资。</red>"
   deposit-blocked: "<yellow>这是公共物资箱，只能取出物品，不能存入物品。</yellow>"
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"

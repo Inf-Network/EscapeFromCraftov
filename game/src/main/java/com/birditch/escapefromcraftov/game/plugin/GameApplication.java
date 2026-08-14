@@ -509,7 +509,7 @@ public final class GameApplication {
     starts.start();
     CraftovLootListener lootMenuController = new CraftovLootListener(games,
         context.services().require(LootService.class), itemStacks, index, configs.messages(),
-        configs.gameplay().lootContainerSize(), trMenu);
+        configs.gameplay().lootContainerSize(), trMenu, scheduler);
     lootMenus = lootMenuController;
     lootSubscription = context.eventBus().register(lootMenuController);
     InstanceWorldBridge instanceBridge = new InstanceWorldBridge(

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
@@ -126,6 +127,7 @@ class QueueServiceTest {
       assertEquals(PROXY, assignment.proxyName());
       assertEquals(CraftovGameId.of("aaaaaa"), assignment.gameId());
       assertEquals(MAP, assignment.mapId());
+      assertEquals(playerId, assignment.teamKey());
       assertEquals(Duration.ofSeconds(60), assignments.ttls.getFirst());
       assertEquals(1, service.queueSize());
 
@@ -136,6 +138,21 @@ class QueueServiceTest {
           playerId, "queue.match-found", Map.of("server", PROXY))), players.sent);
       assertEquals(List.of(new FakePlayerGateway.Connection(playerId, PROXY)),
           players.connections);
+    }
+
+    @Test
+    @DisplayName("an explicit future-party key is carried from ticket into assignment")
+    void carriesExplicitTeamKey() {
+      UUID playerId = onlinePlayer();
+      UUID teamKey = UUID.fromString("00000000-0000-0000-0000-000000000099");
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+
+      MatchTicket ticket = service.queue(playerId, MAP, teamKey)
+          .orElseThrow(IllegalStateException::new);
+      tick();
+
+      assertEquals(teamKey, ticket.teamKey());
+      assertEquals(teamKey, assignments.stored.getFirst().teamKey());
     }
 
     @Test

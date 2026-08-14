@@ -47,6 +47,7 @@ class CraftovGameManagerTest {
     private static final UUID CARA = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID DAVE = UUID.fromString("00000000-0000-0000-0000-000000000004");
     private static final UUID EVE = UUID.fromString("00000000-0000-0000-0000-000000000005");
+    private static final UUID PARTY = UUID.fromString("00000000-0000-0000-0000-000000000099");
     private static final CraftovMapId MAP_ID = CraftovMapId.of("debug_zone");
     private static final ExtractionPointId NORTH_GATE = ExtractionPointId.of("north_gate");
     private static final Duration GAME_DURATION = Duration.ofSeconds(60);
@@ -175,7 +176,7 @@ class CraftovGameManagerTest {
         }
 
         @Test
-        @DisplayName("fills teams of team-size before creating new ones, rejects a 5th player")
+        @DisplayName("solo joins create enemy teams and the game still rejects a 5th player")
         void failsWhenGameIsFull() {
             CraftovGame game = createGame();
             joinWithSession(game.id(), ALICE, "Alice");
@@ -186,9 +187,24 @@ class CraftovGameManagerTest {
 
             assertFailure(manager.join(game.id(), EVE), GameFailures.GAME_FULL);
             assertEquals(4, game.playerCount());
+            assertEquals(OptionalInt.of(2), playerIn(game, BOB).teamId());
+            assertEquals(OptionalInt.of(3), playerIn(game, CARA).teamId());
+            assertEquals(4, game.teams().size());
+        }
+
+        @Test
+        @DisplayName("only joins carrying the same future-party key share a team")
+        void sharedTeamKeyCreatesAllies() {
+            CraftovGame game = createGame();
+            sessions.create(ALICE, "Alice");
+            sessions.create(BOB, "Bob");
+
+            assertTrue(manager.join(game.id(), ALICE, PARTY).isSuccess());
+            assertTrue(manager.join(game.id(), BOB, PARTY).isSuccess());
+
+            assertEquals(OptionalInt.of(1), playerIn(game, ALICE).teamId());
             assertEquals(OptionalInt.of(1), playerIn(game, BOB).teamId());
-            assertEquals(OptionalInt.of(2), playerIn(game, CARA).teamId());
-            assertEquals(2, game.teams().size());
+            assertEquals(1, game.teams().size());
         }
     }
 

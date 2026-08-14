@@ -81,16 +81,22 @@ public final class QueueService implements MatchmakingService {
 
   @Override
   public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId) {
+    return queue(playerId, mapId, playerId);
+  }
+
+  @Override
+  public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, UUID teamKey) {
     checkMainThread();
     Preconditions.checkNotNull(playerId, "playerId");
     Preconditions.checkNotNull(mapId, "mapId");
+    Preconditions.checkNotNull(teamKey, "teamKey");
     if (!deps.dataGate().isReady(playerId)) {
       return Result.fail(MatchmakingFailures.PLAYER_DATA_NOT_READY);
     }
     if (tickets.containsKey(playerId)) {
       return Result.fail(MatchmakingFailures.ALREADY_QUEUED);
     }
-    MatchTicket ticket = new MatchTicket(playerId, mapId, deps.timeSource().now());
+    MatchTicket ticket = new MatchTicket(playerId, mapId, deps.timeSource().now(), teamKey);
     tickets.put(playerId, ticket);
     return Result.ok(ticket);
   }
@@ -162,7 +168,8 @@ public final class QueueService implements MatchmakingService {
         candidate.server().serverId(),
         candidate.server().proxyName(),
         candidate.instance().gameId(),
-        candidate.instance().mapId());
+        candidate.instance().mapId(),
+        ticket.teamKey());
     long expiresAt = deps.timeSource().currentMillis()
         + Duration.ofSeconds(deps.config().reservationTtlSeconds()).toMillis();
     reservations.computeIfAbsent(reservationKey, _ -> new ArrayList<>()).add(expiresAt);

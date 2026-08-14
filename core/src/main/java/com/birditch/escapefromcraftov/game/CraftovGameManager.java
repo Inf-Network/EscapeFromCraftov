@@ -98,9 +98,15 @@ public final class CraftovGameManager implements CraftovGameService {
 
     @Override
     public Result<CraftovGame> join(CraftovGameId gameId, UUID playerId) {
+        return join(gameId, playerId, playerId);
+    }
+
+    @Override
+    public Result<CraftovGame> join(CraftovGameId gameId, UUID playerId, UUID teamKey) {
         requireMainThread();
         Preconditions.checkNotNull(gameId, "gameId");
         Preconditions.checkNotNull(playerId, "playerId");
+        Preconditions.checkNotNull(teamKey, "teamKey");
         Optional<PlayerSession> found = deps.sessions().find(playerId);
         if (found.isEmpty()) {
             return Result.fail(GameFailures.NO_SESSION);
@@ -123,8 +129,10 @@ public final class CraftovGameManager implements CraftovGameService {
             return Result.fail(GameFailures.GAME_FULL);
         }
         CraftovPlayer player = new CraftovPlayer(playerId, session.playerName());
-        CraftovTeam team = game.teamWithSpaceOrCreate(deps.settings().teamSize());
-        team.addMember(playerId);
+        CraftovTeam team = game.teamForKeyOrCreate(teamKey, deps.settings().teamSize());
+        if (!team.addMember(playerId)) {
+            return Result.fail(GameFailures.GAME_FULL);
+        }
         player.assignTeam(team.teamId());
         game.addPlayer(player);
         session.enterGame(gameId);

@@ -142,7 +142,8 @@ public final class PendingJoinHandler {
     }
     deps.editorSessions().exit(player.getUniqueId(), false);
     deps.editorSelections().clear(player.getUniqueId());
-    Result<CraftovGame> joined = deps.games().join(assignment.gameId(), player.getUniqueId());
+    Result<CraftovGame> joined = deps.games().join(
+        assignment.gameId(), player.getUniqueId(), assignment.teamKey());
     if (joined instanceof Result.Failure<CraftovGame>(String message)) {
       rejectAssignment(player,
           GameFailures.GAME_FULL.equals(message) ? "game.instance-full" : "game.assignment-invalid",
@@ -155,6 +156,9 @@ public final class PendingJoinHandler {
       leaveAndReturn(player);
       return;
     }
+    // This point is intentionally after a valid assignment and successful
+    // domain join. Editor fallback never receives raid state normalization.
+    RaidEntryState.reset(player);
     player.sendMessage(deps.messages().raw("inventory.loadout-loading"));
     claimLoadout(player, assignment, 0);
   }

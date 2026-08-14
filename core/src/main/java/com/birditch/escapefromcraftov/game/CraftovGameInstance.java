@@ -47,6 +47,7 @@ public final class CraftovGameInstance implements CraftovGame {
     private final List<CraftovPoi> pois;
     private final Map<UUID, CraftovPlayer> players = new LinkedHashMap<>();
     private final List<CraftovTeam> teams = new ArrayList<>();
+    private final Map<UUID, CraftovTeam> teamsByKey = new LinkedHashMap<>();
     private final Set<UUID> extractedPlayerIds = new LinkedHashSet<>();
     private CraftovGameState state = CraftovGameState.CREATED;
     private @Nullable Instant startedAt;
@@ -114,6 +115,7 @@ public final class CraftovGameInstance implements CraftovGame {
             return Optional.empty();
         }
         teams.forEach(team -> team.removeMember(playerId));
+        teamsByKey.entrySet().removeIf(entry -> entry.getValue().size() == 0);
         return Optional.of(removed);
     }
 
@@ -146,6 +148,22 @@ public final class CraftovGameInstance implements CraftovGame {
         CraftovTeam team = new CraftovTeam(teams.size() + 1, capacity);
         teams.add(team);
         return team;
+    }
+
+    /// Returns the team deliberately associated with [teamKey], or creates a
+    /// new one. Unlike [#teamWithSpaceOrCreate], this never fills unrelated
+    /// teams by arrival order: only tickets carrying the same key become allies.
+    public CraftovTeam teamForKeyOrCreate(UUID teamKey, int capacity) {
+        Preconditions.checkNotNull(teamKey, "teamKey");
+        Preconditions.checkArgument(capacity >= 1, "capacity must be at least 1");
+        CraftovTeam existing = teamsByKey.get(teamKey);
+        if (existing != null) {
+            return existing;
+        }
+        CraftovTeam created = new CraftovTeam(teams.size() + 1, capacity);
+        teams.add(created);
+        teamsByKey.put(teamKey, created);
+        return created;
     }
 
     public void setResult(CraftovResult result) {

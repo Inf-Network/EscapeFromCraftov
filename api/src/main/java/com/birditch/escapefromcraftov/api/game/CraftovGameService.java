@@ -18,6 +18,13 @@ public interface CraftovGameService {
 
     Result<CraftovGame> join(CraftovGameId gameId, UUID playerId);
 
+    /// Joins using the lobby-issued team key. Equal keys deliberately share a
+    /// team (future Party support); unrelated solo tickets have unique keys.
+    /// Legacy implementations may retain their previous allocation behaviour.
+    default Result<CraftovGame> join(CraftovGameId gameId, UUID playerId, UUID teamKey) {
+        return join(gameId, playerId);
+    }
+
     Result<CraftovGame> leave(UUID playerId);
 
     Result<CraftovGame> start(CraftovGameId id);

@@ -52,10 +52,25 @@ class JsonCodecTest {
 
   @Test
   void roundTripsMatchAssignment() {
+    UUID teamKey = UUID.fromString("00000000-0000-0000-0000-000000000099");
     MatchAssignment assignment = new MatchAssignment(
         UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), ServerId.of("game-01"),
-        "craftov-01", CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"));
+        "craftov-01", CraftovGameId.of("a1b2c3"), CraftovMapId.of("debug_zone"), teamKey);
     assertEquals(assignment, codec.fromJson(codec.toJson(assignment), MatchAssignment.class));
+  }
+
+  @Test
+  void oldMatchAssignmentWithoutTeamKeyDefaultsToSoloPlayerKey() {
+    UUID playerId = UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+    String legacyJson = """
+        {"playerId":"6ba7b810-9dad-11d1-80b4-00c04fd430c8",\
+        "serverId":{"value":"game-01"},"proxyName":"craftov-01",\
+        "gameId":{"value":"a1b2c3"},"mapId":{"value":"debug_zone"}}
+        """;
+
+    MatchAssignment decoded = codec.fromJson(legacyJson, MatchAssignment.class);
+
+    assertEquals(playerId, decoded.teamKey());
   }
 
   @Nested

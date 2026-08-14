@@ -15,6 +15,7 @@ import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
+import com.birditch.escapefromcraftov.api.matchmaking.SquadFillMode;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
@@ -112,7 +113,8 @@ class JsonCodecTest {
   void ticketAndProvisionRequestRoundTripRuleset() {
     MatchTicket ticket = new MatchTicket(UUID.randomUUID(), CraftovMapId.of("debug_zone"),
         Instant.ofEpochSecond(12), UUID.randomUUID(),
-        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY, RaidTierId.of("confidential"));
+        RaidMode.CONFIDENTIAL, RaidDifficulty.EASY, RaidTierId.of("confidential"),
+        SquadFillMode.AUTO_FILL);
     ProvisionRequest request = new ProvisionRequest(
         ServerId.of("game-01"), CraftovMapId.of("debug_zone"),
         RaidMode.CONFIDENTIAL, RaidDifficulty.EASY, 2, RaidTierId.of("confidential"));
@@ -142,6 +144,7 @@ class JsonCodecTest {
 
     assertEquals(RaidMode.NORMAL, ticket.mode());
     assertEquals(RaidDifficulty.NORMAL, ticket.difficulty());
+    assertEquals(SquadFillMode.NO_FILL, ticket.fillMode());
     assertEquals(RaidMode.NORMAL, instance.mode());
     assertEquals(RaidDifficulty.NORMAL, instance.difficulty());
     assertEquals(1, provision.requiredSlots());

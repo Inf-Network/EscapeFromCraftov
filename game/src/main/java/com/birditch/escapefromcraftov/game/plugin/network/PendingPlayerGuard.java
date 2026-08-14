@@ -43,12 +43,12 @@ public final class PendingPlayerGuard implements Listener {
     }
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  @EventHandler(priority = EventPriority.LOW, ignoreCancelled = false)
   public void onDamage(EntityDamageEvent event) {
     if (event.getEntity() instanceof Player player && pending(player)) event.setCancelled(true);
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  @EventHandler(priority = EventPriority.LOW, ignoreCancelled = false)
   public void onAttack(EntityDamageByEntityEvent event) {
     Player attacker = attacker(event.getDamager());
     if (attacker != null && pending(attacker)) event.setCancelled(true);

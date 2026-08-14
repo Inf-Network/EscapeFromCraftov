@@ -101,6 +101,10 @@ combat:
   # 最近一次有效攻击者保留多少秒，用于死亡击杀归属与击杀提示。
   attribution-seconds: 15
 
+loot:
+  # 击杀者及其队伍优先搜索阵亡箱和 AI 掉落的时长；到期后本局公开。
+  ownership-seconds: 30
+
 scoreboard:
   # 编辑器和 Craftov 中的个人动态 Sidebar 总开关。
   enabled: true

@@ -12,6 +12,7 @@ import com.birditch.escapefromcraftov.api.inventory.PlayerInventorySnapshot;
 import com.birditch.escapefromcraftov.api.inventory.StoredItem;
 import com.birditch.escapefromcraftov.api.item.ItemDefinition;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
+import com.birditch.escapefromcraftov.api.matchmaking.SquadFillMode;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
@@ -96,7 +97,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     CraftovMapId nextMap = next(maps, view.selection().mapId());
     replaceAndRefresh(player, view.withSelection(
         normalizeSelection(new Selection(nextMap, view.selection().mode(),
-            view.selection().difficulty()), view.catalog())));
+            view.selection().difficulty(), null, view.selection().fillMode()), view.catalog())));
   }
 
   /** Canonical catalog path; on old snapshots it retains the legacy mode cycle. */
@@ -116,7 +117,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     RaidActionProfile selected = next(tiers, current);
     RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(selected);
     replaceAndRefresh(player, view.withSelection(new Selection(view.selection().mapId(),
-        alias.mode(), alias.difficulty(), selected.id())));
+        alias.mode(), alias.difficulty(), selected.id(), view.selection().fillMode())));
   }
 
   public void cycleMode(Player player) {
@@ -132,7 +133,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     replaceAndRefresh(player, view.withSelection(new Selection(
         view.selection().mapId(),
         next(List.of(RaidMode.values()), view.selection().mode()),
-        view.selection().difficulty())));
+        view.selection().difficulty(), null, view.selection().fillMode())));
   }
 
   public void cycleDifficulty(Player player) {
@@ -145,7 +146,22 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     }
     replaceAndRefresh(player, view.withSelection(new Selection(
         view.selection().mapId(), view.selection().mode(),
-        next(List.of(RaidDifficulty.values()), view.selection().difficulty()))));
+        next(List.of(RaidDifficulty.values()), view.selection().difficulty()), null,
+        view.selection().fillMode())));
+  }
+
+  public void cycleFill(Player player) {
+    PreparationView view = requireView(player);
+    SquadFillMode replacement = view.selection().fillMode() == SquadFillMode.AUTO_FILL
+        ? SquadFillMode.NO_FILL : SquadFillMode.AUTO_FILL;
+    setFillMode(player, replacement);
+  }
+
+  public void setFillMode(Player player, SquadFillMode fillMode) {
+    PreparationView view = requireView(player);
+    replaceAndRefresh(player, view.withSelection(new Selection(
+        view.selection().mapId(), view.selection().mode(), view.selection().difficulty(),
+        view.selection().tierId(), Preconditions.checkNotNull(fillMode, "fillMode"))));
   }
 
   /**
@@ -201,6 +217,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
       case "map" -> mapItem(view);
       case "mode", "tier" -> modeItem(view);
       case "difficulty" -> difficultyItem(view);
+      case "fill" -> fillItem(view);
       case "loadout" -> loadoutItem(view);
       case "start" -> startItem(view);
       default -> new ItemStack(Material.AIR);
@@ -273,6 +290,16 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
             Placeholder.component("state", messages.raw(stateKey))), view.itemCount() > 0);
   }
 
+  private ItemStack fillItem(PreparationView view) {
+    SquadFillMode fillMode = view.selection().fillMode();
+    Component state = messages.raw("menu.preparation.fill." + fillMode.id());
+    return item(fillMode == SquadFillMode.AUTO_FILL
+            ? Material.LIME_BANNER : Material.GRAY_BANNER,
+        messages.raw("menu.preparation.fill.name"),
+        messages.lines("menu.preparation.fill.lore", Placeholder.component("state", state)),
+        fillMode == SquadFillMode.AUTO_FILL);
+  }
+
   private ItemStack startItem(PreparationView view) {
     boolean empty = view.itemCount() == 0;
     RaidActionProfile profile = selectedTier(view);
@@ -328,7 +355,8 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   }
 
   private Selection defaultSelection() {
-    return new Selection(config.defaultMap(), RaidMode.NORMAL, RaidDifficulty.NORMAL);
+    return new Selection(config.defaultMap(), RaidMode.NORMAL, RaidDifficulty.NORMAL, null,
+        SquadFillMode.AUTO_FILL);
   }
 
   private CompletableFuture<LobbyActionCatalog> loadCatalog() {
@@ -344,13 +372,15 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
       LobbyActionCatalog catalog) {
     List<RaidActionProfile> profiles = catalog.tiers(selection.mapId());
     if (profiles.isEmpty()) {
-      return new Selection(selection.mapId(), selection.mode(), selection.difficulty());
+      return new Selection(selection.mapId(), selection.mode(), selection.difficulty(), null,
+          selection.fillMode());
     }
     RaidActionProfile selected = selection.tierId() == null ? null
         : catalog.find(selection.mapId(), selection.tierId()).orElse(null);
     if (selected == null) selected = profiles.getFirst();
     RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(selected);
-    return new Selection(selection.mapId(), alias.mode(), alias.difficulty(), selected.id());
+    return new Selection(selection.mapId(), alias.mode(), alias.difficulty(), selected.id(),
+        selection.fillMode());
   }
 
   private Money totalValue(List<StoredItem> loadout) {
@@ -415,16 +445,22 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   public record Selection(
       CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
-      @Nullable RaidTierId tierId) {
+      @Nullable RaidTierId tierId, SquadFillMode fillMode) {
 
     public Selection(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty) {
-      this(mapId, mode, difficulty, null);
+      this(mapId, mode, difficulty, null, SquadFillMode.AUTO_FILL);
+    }
+
+    public Selection(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
+        @Nullable RaidTierId tierId) {
+      this(mapId, mode, difficulty, tierId, SquadFillMode.AUTO_FILL);
     }
 
     public Selection {
       Preconditions.checkNotNull(mapId, "mapId");
       Preconditions.checkNotNull(mode, "mode");
       Preconditions.checkNotNull(difficulty, "difficulty");
+      Preconditions.checkNotNull(fillMode, "fillMode");
     }
   }
 

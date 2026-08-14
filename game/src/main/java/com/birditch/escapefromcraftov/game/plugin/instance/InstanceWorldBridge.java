@@ -356,13 +356,13 @@ public final class InstanceWorldBridge implements Listener {
     }
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  @EventHandler(priority = EventPriority.LOW, ignoreCancelled = false)
   public void onSettlingDamage(EntityDamageByEntityEvent event) {
     Player attacker = attacker(event.getDamager());
     if (attacker != null && settling(attacker)) event.setCancelled(true);
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  @EventHandler(priority = EventPriority.LOW, ignoreCancelled = false)
   public void onSettlingIncomingDamage(EntityDamageEvent event) {
     if (event.getEntity() instanceof Player player && settling(player)) {
       event.setCancelled(true);

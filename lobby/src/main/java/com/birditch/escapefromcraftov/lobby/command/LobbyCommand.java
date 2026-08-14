@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
+import com.birditch.escapefromcraftov.api.matchmaking.SquadFillMode;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.bukkit.Messages;
@@ -71,6 +72,17 @@ public final class LobbyCommand {
                 }))
             .executes(ctx -> play(context, ctx, StringArgumentType.getString(ctx, "map"),
                 RaidMode.NORMAL, RaidDifficulty.NORMAL, null))
+            .then(Commands.literal("fill")
+                .then(Commands.argument("fill_mode", StringArgumentType.word())
+                    .suggests((_, builder) -> {
+                      for (SquadFillMode fillMode : SquadFillMode.values()) {
+                        builder.suggest(fillMode.id());
+                      }
+                      return builder.buildFuture();
+                    })
+                    .executes(ctx -> play(context, ctx,
+                        StringArgumentType.getString(ctx, "map"), RaidMode.NORMAL,
+                        RaidDifficulty.NORMAL, null, parseFillMode(ctx)))))
             .then(Commands.literal("tier")
                 .then(Commands.argument("tier_id", StringArgumentType.word())
                     .suggests((suggestionContext, builder) -> context.directory().activeServers()
@@ -90,7 +102,19 @@ public final class LobbyCommand {
                         }))
                     .executes(ctx -> playTier(context, ctx,
                         StringArgumentType.getString(ctx, "map"),
-                        StringArgumentType.getString(ctx, "tier_id")))))
+                        StringArgumentType.getString(ctx, "tier_id")))
+                    .then(Commands.literal("fill")
+                        .then(Commands.argument("fill_mode", StringArgumentType.word())
+                            .suggests((_, builder) -> {
+                              for (SquadFillMode fillMode : SquadFillMode.values()) {
+                                builder.suggest(fillMode.id());
+                              }
+                              return builder.buildFuture();
+                            })
+                            .executes(ctx -> playTier(context, ctx,
+                                StringArgumentType.getString(ctx, "map"),
+                                StringArgumentType.getString(ctx, "tier_id"),
+                                parseFillMode(ctx)))))))
             .then(Commands.argument("mode", StringArgumentType.word())
                 .suggests((_, builder) -> {
                   for (RaidMode mode : RaidMode.values()) builder.suggest(mode.id());
@@ -220,7 +244,18 @@ public final class LobbyCommand {
         .then(Commands.literal("tier").executes(ctx -> menuAction(
             context, ctx, context.raidPreparation()::cycleTier)))
         .then(Commands.literal("difficulty").executes(ctx -> menuAction(
-            context, ctx, context.raidPreparation()::cycleDifficulty))));
+            context, ctx, context.raidPreparation()::cycleDifficulty)))
+        .then(Commands.literal("fill").executes(ctx -> menuAction(
+            context, ctx, context.raidPreparation()::cycleFill))));
+    raid.then(Commands.literal("fill")
+        .then(Commands.argument("fill_mode", StringArgumentType.word())
+            .suggests((_, builder) -> {
+              for (SquadFillMode fillMode : SquadFillMode.values()) {
+                builder.suggest(fillMode.id());
+              }
+              return builder.buildFuture();
+            })
+            .executes(ctx -> setPreparationFill(context, ctx))));
     raid.then(Commands.literal("start").executes(ctx -> startPreparedRaid(context, ctx)));
     return raid;
   }
@@ -234,13 +269,20 @@ public final class LobbyCommand {
           context.raidPreparation().confirmStart(player).orElse(null);
       if (selection != null) {
         return play(context, ctx, selection.mapId().value(),
-            selection.mode(), selection.difficulty(), selection.tierId());
+            selection.mode(), selection.difficulty(), selection.tierId(), selection.fillMode());
       }
     } catch (RuntimeException error) {
       player.sendMessage(Component.text(error.getMessage() == null
           ? "行动准备失败" : error.getMessage(), NamedTextColor.RED));
     }
     return Command.SINGLE_SUCCESS;
+  }
+
+  private static int setPreparationFill(LobbyCommandContext context,
+      CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+    SquadFillMode fillMode = parseFillMode(ctx);
+    return menuAction(context, ctx, player ->
+        context.raidPreparation().setFillMode(player, fillMode));
   }
 
   private static LiteralArgumentBuilder<CommandSourceStack> vendorNode(
@@ -401,6 +443,12 @@ public final class LobbyCommand {
   private static int play(LobbyCommandContext context, CommandContext<CommandSourceStack> ctx,
       @Nullable String rawMap, RaidMode mode, RaidDifficulty difficulty,
       @Nullable RaidTierId tierId) {
+    return play(context, ctx, rawMap, mode, difficulty, tierId, SquadFillMode.AUTO_FILL);
+  }
+
+  private static int play(LobbyCommandContext context, CommandContext<CommandSourceStack> ctx,
+      @Nullable String rawMap, RaidMode mode, RaidDifficulty difficulty,
+      @Nullable RaidTierId tierId, SquadFillMode fillMode) {
     Player player = playerOrNull(ctx, context.messages());
     if (player == null) {
       return Command.SINGLE_SUCCESS;
@@ -421,15 +469,21 @@ public final class LobbyCommand {
       }
     }
     if (tierId != null) {
-      lookupTierAndQueue(context, player, mapId, tierId);
+      lookupTierAndQueue(context, player, mapId, tierId, fillMode);
       return Command.SINGLE_SUCCESS;
     }
-    lookupLiveMap(context, player, mapId, mode, difficulty);
+    lookupLiveMap(context, player, mapId, mode, difficulty, fillMode);
     return Command.SINGLE_SUCCESS;
   }
 
   private static int playTier(LobbyCommandContext context,
       CommandContext<CommandSourceStack> ctx, String rawMap, String rawTier) {
+    return playTier(context, ctx, rawMap, rawTier, SquadFillMode.AUTO_FILL);
+  }
+
+  private static int playTier(LobbyCommandContext context,
+      CommandContext<CommandSourceStack> ctx, String rawMap, String rawTier,
+      SquadFillMode fillMode) {
     RaidTierId tierId;
     try {
       tierId = RaidTierId.of(rawTier);
@@ -441,12 +495,12 @@ public final class LobbyCommand {
       }
       return Command.SINGLE_SUCCESS;
     }
-    return play(context, ctx, rawMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, tierId);
+    return play(context, ctx, rawMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, tierId, fillMode);
   }
 
   /** Validates a canonical tier against the live Game catalog before queue mutation. */
   private static void lookupTierAndQueue(LobbyCommandContext context, Player player,
-      CraftovMapId mapId, RaidTierId tierId) {
+      CraftovMapId mapId, RaidTierId tierId, SquadFillMode fillMode) {
     player.sendMessage(context.messages().raw("command.checking-map",
         Placeholder.unparsed("map", mapId.value())));
     try {
@@ -471,7 +525,8 @@ public final class LobbyCommand {
               }
               if (!requireDataReady(context, player)) return;
               RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(profile);
-              queueMatch(context, player, mapId, alias.mode(), alias.difficulty(), profile);
+              queueMatch(context, player, mapId, alias.mode(), alias.difficulty(), profile,
+                  fillMode);
             });
           });
     } catch (RuntimeException error) {
@@ -485,14 +540,14 @@ public final class LobbyCommand {
   /// servers retain legacy mode+difficulty; once any capable Game advertises
   /// this map, the matching authored alias is mandatory and cannot be bypassed.
   private static void lookupLiveMap(LobbyCommandContext context, Player player, CraftovMapId mapId,
-      RaidMode mode, RaidDifficulty difficulty) {
+      RaidMode mode, RaidDifficulty difficulty, SquadFillMode fillMode) {
     player.sendMessage(context.messages().raw("command.checking-map",
         Placeholder.unparsed("map", mapId.value())));
     try {
       context.directory().activeServers().orTimeout(2, TimeUnit.SECONDS)
           .whenComplete((servers, error) ->
               scheduleMapLookupResult(
-                  context, player, mapId, mode, difficulty, servers, error));
+                  context, player, mapId, mode, difficulty, fillMode, servers, error));
     } catch (RuntimeException error) {
       context.plugin().getLogger().warning(
           "查询可用地图失败，暂时不能加入动态地图 " + mapId.value() + ": " + error);
@@ -502,6 +557,7 @@ public final class LobbyCommand {
 
   private static void scheduleMapLookupResult(LobbyCommandContext context, Player player,
       CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
+      SquadFillMode fillMode,
       @Nullable List<GameServerSnapshot> servers,
       @Nullable Throwable error) {
     if (!context.plugin().isEnabled()) return;
@@ -531,7 +587,7 @@ public final class LobbyCommand {
           return;
         }
         if (requireDataReady(context, player)) {
-          queueMatch(context, player, mapId, mode, difficulty, profile);
+          queueMatch(context, player, mapId, mode, difficulty, profile, fillMode);
         }
         return;
       }
@@ -541,22 +597,22 @@ public final class LobbyCommand {
         return;
       }
       if (requireDataReady(context, player)) {
-        queueMatch(context, player, mapId, mode, difficulty, null);
+        queueMatch(context, player, mapId, mode, difficulty, null, fillMode);
       }
     });
   }
 
   private static void queueMatch(LobbyCommandContext context, Player requester,
       CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
-      @Nullable RaidActionProfile tier) {
+      @Nullable RaidActionProfile tier, SquadFillMode requestedFillMode) {
     PartyView party = context.parties().party(requester.getUniqueId()).orElse(null);
     if (party != null && !party.isLeader(requester.getUniqueId())) {
       requester.sendMessage(Component.text("只有队长可以让全队开始匹配", NamedTextColor.RED));
       return;
     }
-    List<UUID> members = party == null ? List.of(requester.getUniqueId()) : party.members();
-    UUID teamKey = party == null ? requester.getUniqueId() : party.partyId();
-    for (UUID memberId : members) {
+    RaidQueueRequest request = RaidQueueRequest.create(requester.getUniqueId(), party, mapId,
+        mode, difficulty, tier, requestedFillMode);
+    for (UUID memberId : request.members()) {
       Player member = Bukkit.getPlayer(memberId);
       if (member == null || !member.isOnline()) {
         requester.sendMessage(Component.text(
@@ -570,8 +626,6 @@ public final class LobbyCommand {
         return;
       }
     }
-    QueuePartyRequest request = new QueuePartyRequest(members, teamKey, mapId, mode, difficulty,
-        tier);
     if (tier != null) {
       beginTierPreflight(context, requester, request);
       return;
@@ -580,7 +634,7 @@ public final class LobbyCommand {
   }
 
   private static void beginTierPreflight(LobbyCommandContext context, Player requester,
-      QueuePartyRequest request) {
+      RaidQueueRequest request) {
     RaidActionProfile tier = Preconditions.checkNotNull(request.tier(), "tier");
     boolean mutationInFlight = request.members().stream().anyMatch(memberId ->
         context.menus().hasPendingRaidMutation(memberId)
@@ -618,7 +672,7 @@ public final class LobbyCommand {
   }
 
   private static void afterTierPreflight(LobbyCommandContext context, Player requester,
-      QueuePartyRequest request, @Nullable List<ActionTierPreflight.Member> members,
+      RaidQueueRequest request, @Nullable List<ActionTierPreflight.Member> members,
       @Nullable Throwable error, RaidActionProfile tier) {
     try {
       if (!requester.isOnline()) return;
@@ -671,7 +725,7 @@ public final class LobbyCommand {
   }
 
   private static boolean sameParty(LobbyCommandContext context, Player requester,
-      QueuePartyRequest request) {
+      RaidQueueRequest request) {
     PartyView current = context.parties().party(requester.getUniqueId()).orElse(null);
     List<UUID> members = current == null ? List.of(requester.getUniqueId()) : current.members();
     UUID teamKey = current == null ? requester.getUniqueId() : current.partyId();
@@ -680,10 +734,11 @@ public final class LobbyCommand {
   }
 
   private static void enqueueParty(LobbyCommandContext context, Player requester,
-      QueuePartyRequest request) {
+      RaidQueueRequest request) {
     RaidActionProfile tier = request.tier();
     var queued = context.matchmaking().queueParty(request.members(), request.mapId(),
-        request.mode(), request.difficulty(), request.teamKey(), tier == null ? null : tier.id());
+        request.mode(), request.difficulty(), request.teamKey(), tier == null ? null : tier.id(),
+        request.fillMode());
     if (queued.error().isPresent()) {
       requester.sendMessage(Component.text(queued.error().orElseThrow(), NamedTextColor.RED));
       return;
@@ -697,14 +752,9 @@ public final class LobbyCommand {
           ? Component.text("模式 " + request.mode().id() + " · 难度 "
               + request.difficulty().id(), NamedTextColor.GRAY)
           : Component.text("行动等级 " + tier.displayName(), NamedTextColor.GRAY));
-    }
-  }
-
-  private record QueuePartyRequest(List<UUID> members, UUID teamKey, CraftovMapId mapId,
-                                   RaidMode mode, RaidDifficulty difficulty,
-                                   @Nullable RaidActionProfile tier) {
-    private QueuePartyRequest {
-      members = List.copyOf(members);
+      member.sendMessage(Component.text(request.fillMode() == SquadFillMode.AUTO_FILL
+          ? "队伍补充 自动补满（最多 3 人）" : "队伍补充 不补队友",
+          NamedTextColor.GRAY));
     }
   }
 
@@ -725,6 +775,16 @@ public final class LobbyCommand {
     } catch (IllegalArgumentException error) {
       throw new SimpleCommandExceptionType(
           () -> "难度只能是 easy、normal 或 hard").create();
+    }
+  }
+
+  private static SquadFillMode parseFillMode(CommandContext<CommandSourceStack> ctx)
+      throws CommandSyntaxException {
+    try {
+      return SquadFillMode.parse(StringArgumentType.getString(ctx, "fill_mode"));
+    } catch (IllegalArgumentException error) {
+      throw new SimpleCommandExceptionType(
+          () -> "补队模式只能是 auto_fill 或 no_fill").create();
     }
   }
 

@@ -35,6 +35,7 @@ public final class GameConfigMapper {
     return new GameplaySettings(
         yaml.getBoolean("combat.friendly-fire", false),
         yaml.getInt("combat.attribution-seconds", 15),
+        yaml.getInt("loot.ownership-seconds", 30),
         yaml.getBoolean("scoreboard.enabled", true),
         yaml.getInt("scoreboard.refresh-ticks", 10),
         yaml.getInt("inventory.loot-container-size", 27),

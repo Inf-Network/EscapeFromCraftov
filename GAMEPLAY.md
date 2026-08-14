@@ -24,11 +24,11 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 | Loot Point | 地图作者放置的一个物资点，可以绑定箱子，也可以是看不见的虚拟物资点。 |
 | 公共搜索箱 | 同一局玩家看到的是同一个箱子；第一次打开时生成内容，之后只剩没被拿走的物品。 |
 | 物资仓库 | 你在大厅里整理的安全储物空间。成功撤离的战利品会放到这里；死亡不会把本局携带物品放回这里。它不是地图里的箱子，也不是本局背包。 |
-| 出战栏 / Loadout | 在大厅选定、下一局准备带入地图的物品。当前最多 9 个物品栈。 |
+| 出战栏 / Loadout | 在大厅选定、下一局准备带入地图的具名装备位：主手、副手、头部、身体、快捷位、胸挂和背包等。 |
 | 本局背包 | Minecraft 原生玩家背包。进入 Game 后它就是行动背包；只有成功撤离，里面的战利品才会送进物资仓库。 |
 | 撤离 | 在指定区域站满倒计时离开地图。离开区域会取消进度。 |
 | POI | Point of Interest，兴趣点。它是地图上一个值得探索的区域，例如仓库、建筑群或地下设施。 |
-| AI 区域 | 预留给生物或其他 PvE 威胁的地图区域。当前只保存地图数据，AI 战斗仍在开发。 |
+| AI 区域 | 地图作者配置的 PvE 区域。行动开始后会在安全落脚点生成 Minecraft 原生敌对生物，并按区域难度缩放属性、装备、数量和掉落。 |
 
 ## 2. 玩家指南
 
@@ -36,13 +36,13 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 
 1. 在 Lobby 打开“游戏菜单”，进入“物资仓库与出战”。
 2. 把想带走的物品点击放入上方的出战栏。物品移动成功后，下一局就会按这份出战清单准备。
-3. 点击“开始游戏”，选择地图并进入匹配队列。
+3. 点击“开始游戏”，在行动准备页选择地图、行动等级和队伍补充方式，再进入匹配队列。
 4. 传送到 Game 并正式开局后，服务器原子领取出战栏。主手、护甲、胸挂、背包和快捷物品按具名位置发放；HUD 会显示地图、队伍、时间、携行格数、负重和携带价值。
 5. 在建筑、道路、房间和地下区域寻找 Loot Point。对准物资点右键就是“搜索 Loot”。
 6. 取走物品后决定继续探索，还是带着已有收获前往撤离点。
 7. 进入撤离区域后开始倒计时。保持在区域内，BossBar 会显示进度；离开区域会取消。
 8. 撤离完成后，服务器读取本局背包，把战利品送进物资仓库，然后才把你送回 Lobby。
-9. 如果死亡、主动退出或行动超时，本局 CRAFTOV 物品会丢失，不会自动回仓库。死亡掉落的物品仍是 Minecraft 世界中的物品，其他玩家可以拾取并带走。
+9. 如果死亡、主动退出或行动超时，本局 CRAFTOV 物品会丢失，不会自动回仓库。死亡物资会放入附近阵亡箱；有效击杀者及其队伍拥有 30 秒优先搜索权，之后才对本局存活玩家公开。
 
 ### 2.2 物资仓库与出战栏
 
@@ -74,7 +74,7 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 
 ### 2.4 队伍
 
-匹配进入同一实例的玩家会按 `game.team-size` 自动编队。Sidebar 会显示你的队伍编号；队友仍然是 Minecraft 玩家，名字、装备和声音不会被插件伪装成机器人。
+单人准备页默认为“自动补满”：兼容的散人票按排队顺序每最多 3 人共享一个队伍。选择“不补队友”时，散人保持独立队伍；手工 Party 永远保持原队且不吸收陌生人。两种补队选择仍可作为对手进入同一房间，不会被分裂成两条永久等待的队列。Sidebar 会显示你的队伍编号。
 
 默认规则：
 
@@ -102,13 +102,15 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 
 死亡会进入 Minecraft 原生死亡流程。服务器在死亡结算成功后才允许返回大厅；本局装备和背包物资按“死亡损失”处理。退出服务器也按离开行动处理，避免通过 Alt+F4 逃避损失。
 
+玩家击杀和 AI 击杀共用战利品归属边界。服务器冻结击杀者当时的队伍 UUID，阵亡箱每次打开和每次取物都重新校验；AI 实体掉落在玩家、生物或漏斗尝试拾取时重新校验。环境死亡和无效友伤不会伪造击杀归属。
+
 行动时间结束时，仍在地图中的玩家统一按未撤离处理。服务器会先为所有剩余玩家完成损失结算，再卸载实例世界。
 
 ### 2.7 你在屏幕上会看到什么
 
 - **Sidebar**：地图、阶段、剩余时间、存活人数、队伍、携行格数、总负重、携带价值、击杀和撤离提示。
 - **BossBar**：正在撤离时显示引导进度。
-- **Action Bar**：当前工具、撤离状态等短信息。
+- **Action Bar**：当前工具、撤离状态、战利品优先权与剩余时间等短信息。
 - **Title / Subtitle**：进入编辑器、进入行动、模式切换等阶段提示。
 - **聊天框**：战斗击杀提示、结算结果和错误说明。
 - **搜索箱 GUI**：公共 Loot 容器，只允许拿取，不能把自己的物品倒进去。
@@ -176,12 +178,21 @@ EscapeFromCraftov 支持管理员单独安装的 TrMenu 社区版 3.12.5：
 
 ```text
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_main.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_preparation.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_settings.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_cosmetics.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_warehouse.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_vendor.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_vendor_sell.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_mine.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_list.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_confirm.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_editor_toolbar.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_editor_object.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_loot.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_death_crate.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_secure.yml
 ```
 
 已经存在的文件不会被覆盖。大厅主菜单、仓库、设置、外观、行动 Loot、编辑工具栏和对象属性全部由 TrMenu 3.12.5 渲染。EscapeFromCraftov 通过 TrMenu 的动态物品源提供实时 `ItemStack`，并通过受保护命令处理点击；每次点击都会重新检查对应 TrMenu 菜单仍然打开，并检查数据状态、权限、房间、距离和当前会话。关闭菜单后重放内部动作命令不会生效。桥接同时识别社区版公开 API 的两套包名（`me.arasple.mc.trmenu` 和 `trplugins.menu`）；公开 API 不可用时才由控制台兼容路径打开菜单，不要求普通玩家拥有 TrMenu 管理权限。Hibernate 和本局容器仍是物品事实源，TrMenu 只负责菜单表现与交互。
@@ -296,9 +307,13 @@ factory/
 | --- | --- | --- |
 | `/play` | 使用大厅默认地图加入匹配队列；匹配成功后会被送进一个已经准备好的 Game 房间。 | `/play` |
 | `/play <map>` | 指定地图加入匹配队列；Tab 会列出 Lobby 常驻地图和在线 Game 房间实际公布的地图。 | `/play factory` |
+| `/play <map> fill <auto_fill\|no_fill>` | 指定散人是否允许自动组成最多三人队。手工 Party 会强制保持不补人。 | `/play test_flat fill no_fill` |
+| `/play <map> tier <tier> [fill <mode>]` | 按在线 Game 公布的行动等级匹配，并可同时选择补队方式。 | `/play test_flat tier confidential fill auto_fill` |
 | `/leavequeue` | 取消自己尚未完成的匹配排队，不会退出已经开始的行动。 | `/leavequeue` |
 | `/lobby` | 打开大厅主菜单，进入游戏、物资仓库、设置和装扮。 | `/lobby` |
 | `/menu` | `/lobby` 的快捷别名，作用完全相同。 | `/menu` |
+| `/lobby raid` | 打开行动准备页，选择地图、行动等级、补队方式并查看出战摘要。 | `/lobby raid` |
+| `/lobby raid fill <auto_fill\|no_fill>` | 在已打开的行动准备页中直接设置补队方式。 | `/lobby raid fill auto_fill` |
 | `/lobby warehouse` | 打开物资仓库与下一局出战栏；点击物品可在两处间移动。 | `/lobby warehouse` |
 | `/lobby settings` | 打开大厅玩家可见性和匹配提示设置。 | `/lobby settings` |
 | `/lobby cosmetics` | 打开外观收藏并查看当前装备。 | `/lobby cosmetics` |
@@ -602,9 +617,9 @@ git diff --check
 ### 4.8 当前限制与下一阶段
 
 - 正式地图必须由管理员人工配置；运行时不提供自动扫描或自动生成点位命令。
-- AI Zone 已能保存和显示，但完整生物生成、寻路和 PvE 行为尚未完成。
-- 仓库、出战栏、Loot、撤离入库和死亡损失已经形成闭环；商店、交易行、安全箱和跨局保险属于规划功能。
+- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；更复杂的巡逻、据点战术和 Boss 事件仍是后续功能。
+- 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、撤离入库和死亡损失已形成闭环。当前携行容量是一维格数模型；真正的二维物品尺寸、旋转和不规则胸挂网格尚未强制启用。
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是 AI Zone 的 Minecraft 生物行为：复用现有地图区域、Loot 风险和 Sidebar，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是二维携行网格、出生侧撤离分配，以及基于现有 AI Zone 的巡逻与地图事件；仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

@@ -131,6 +131,11 @@ menu:
       easy: "<green>简单</green>"
       normal: "<yellow>普通</yellow>"
       hard: "<red>困难</red>"
+    fill:
+      name: "<gold>队伍补充</gold>"
+      lore: "<gray>当前：</gray><state>|<gray>自动补队会将散人组成最多 3 人小队</gray>|<gray>已组 Party 永远保持原队，不补陌生队友</gray>|<yellow>点击切换</yellow>"
+      auto_fill: "<green>自动补满（推荐）</green>"
+      no_fill: "<gray>不补队友</gray>"
     loadout:
       name: "<gold>出战栏摘要</gold>"
       lore: "<gray>占用堆栈：</gray><yellow><stacks>/9</yellow>|<gray>物品数量：</gray><yellow><items></yellow>|<gray>整备重量：</gray><yellow><weight></yellow>|<gray>基础总价值：</gray><gold><value> 金币</gold>|<state>|<yellow>点击前往仓库配装</yellow>"

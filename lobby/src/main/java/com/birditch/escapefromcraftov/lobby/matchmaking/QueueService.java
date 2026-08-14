@@ -7,6 +7,7 @@ import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingFailures;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingService;
+import com.birditch.escapefromcraftov.api.matchmaking.SquadFillMode;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
@@ -51,6 +52,7 @@ import org.jspecify.annotations.Nullable;
 /// matchmaking resumes as soon as Redis returns.
 public final class QueueService implements MatchmakingService {
 
+  private static final int AUTO_FILL_SQUAD_SIZE = 3;
   private static final Duration PROVISION_HINT_COOLDOWN = Duration.ofSeconds(10);
   private static final Duration WAITING_MESSAGE_COOLDOWN = Duration.ofSeconds(15);
   private static final Duration REDIS_WARNING_COOLDOWN = Duration.ofSeconds(30);
@@ -105,8 +107,15 @@ public final class QueueService implements MatchmakingService {
   @Override
   public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
       RaidDifficulty difficulty, UUID teamKey, @Nullable RaidTierId tierId) {
+    return queue(playerId, mapId, mode, difficulty, teamKey, tierId, SquadFillMode.NO_FILL);
+  }
+
+  @Override
+  public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, UUID teamKey, @Nullable RaidTierId tierId,
+      SquadFillMode fillMode) {
     Result<List<MatchTicket>> result = queueParty(
-        List.of(playerId), mapId, mode, difficulty, teamKey, tierId);
+        List.of(playerId), mapId, mode, difficulty, teamKey, tierId, fillMode);
     return result.map(List::getFirst);
   }
 
@@ -120,12 +129,21 @@ public final class QueueService implements MatchmakingService {
   public Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
       RaidMode mode, RaidDifficulty difficulty, UUID teamKey,
       @Nullable RaidTierId tierId) {
+    return queueParty(playerIds, mapId, mode, difficulty, teamKey, tierId,
+        SquadFillMode.NO_FILL);
+  }
+
+  @Override
+  public Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
+      RaidMode mode, RaidDifficulty difficulty, UUID teamKey,
+      @Nullable RaidTierId tierId, SquadFillMode fillMode) {
     checkMainThread();
     Preconditions.checkNotNull(playerIds, "playerIds");
     Preconditions.checkNotNull(mapId, "mapId");
     Preconditions.checkNotNull(mode, "mode");
     Preconditions.checkNotNull(difficulty, "difficulty");
     Preconditions.checkNotNull(teamKey, "teamKey");
+    Preconditions.checkNotNull(fillMode, "fillMode");
     List<UUID> members = playerIds.stream().distinct().toList();
     if (members.size() != playerIds.size() || members.isEmpty() || members.size() > 3) {
       return Result.fail(MatchmakingFailures.PARTY_SIZE_INVALID);
@@ -141,10 +159,14 @@ public final class QueueService implements MatchmakingService {
         || tickets.values().stream().anyMatch(ticket -> ticket.teamKey().equals(teamKey))) {
       return Result.fail(MatchmakingFailures.ALREADY_QUEUED);
     }
+    // A shared or explicit team key denotes an authored party. Parties are
+    // atomic and never absorb strangers, even if a stale caller requests fill.
+    boolean explicitParty = members.size() > 1 || !teamKey.equals(members.getFirst());
+    SquadFillMode effectiveFill = explicitParty ? SquadFillMode.NO_FILL : fillMode;
     var queuedAt = deps.timeSource().now();
     List<MatchTicket> created = members.stream()
         .map(playerId -> new MatchTicket(
-            playerId, mapId, queuedAt, teamKey, mode, difficulty, tierId))
+            playerId, mapId, queuedAt, teamKey, mode, difficulty, tierId, effectiveFill))
         .toList();
     created.forEach(ticket -> tickets.put(ticket.playerId(), ticket));
     return Result.ok(created);
@@ -355,18 +377,31 @@ public final class QueueService implements MatchmakingService {
     String reservationKey = InstancePicker.reservationKey(
         candidate.server().serverId(), candidate.instance().gameId(),
         candidate.instance().tierId());
-    List<MatchAssignment> cohortAssignments = cohort.members().stream()
-        .map(ticket -> new MatchAssignment(
+    List<MatchTicket> members = cohort.members();
+    List<MatchAssignment> cohortAssignments = new ArrayList<>(members.size());
+    UUID fillTeamKey = null;
+    int fillTeamMembers = AUTO_FILL_SQUAD_SIZE;
+    for (MatchTicket ticket : members) {
+      UUID assignmentTeamKey = ticket.teamKey();
+      if (ticket.fillMode() == SquadFillMode.AUTO_FILL) {
+        if (fillTeamMembers == AUTO_FILL_SQUAD_SIZE) {
+          fillTeamKey = ticket.playerId();
+          fillTeamMembers = 0;
+        }
+        assignmentTeamKey = Preconditions.checkNotNull(fillTeamKey, "fillTeamKey");
+        fillTeamMembers++;
+      }
+      cohortAssignments.add(new MatchAssignment(
             ticket.playerId(),
             candidate.server().serverId(),
             candidate.server().proxyName(),
             candidate.instance().gameId(),
             candidate.instance().mapId(),
-            ticket.teamKey(),
+            assignmentTeamKey,
             ticket.mode(),
             ticket.difficulty(),
-            ticket.tierId()))
-        .toList();
+            ticket.tierId()));
+    }
     long expiresAt = deps.timeSource().currentMillis()
         + Duration.ofSeconds(deps.config().reservationTtlSeconds()).toMillis();
     List<Long> instanceReservations =
@@ -564,8 +599,12 @@ public final class QueueService implements MatchmakingService {
                   && ticket.mapId().equals(first.mapId())
                   && ticket.mode() == first.mode()
                   && ticket.difficulty() == first.difficulty()
-                  && Objects.equals(ticket.tierId(), first.tierId())),
+                  && Objects.equals(ticket.tierId(), first.tierId())
+                  && ticket.fillMode() == first.fillMode()),
           "ticket group members must share team key and matchmaking pool");
+      Preconditions.checkArgument(first.fillMode() == SquadFillMode.NO_FILL
+              || members.size() == 1,
+          "auto-fill ticket groups must contain one solo player");
     }
 
     private MatchTicket first() {

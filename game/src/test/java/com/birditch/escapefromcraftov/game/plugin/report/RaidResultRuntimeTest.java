@@ -51,7 +51,7 @@ class RaidResultRuntimeTest {
     };
     RaidResultCollector collector = new RaidResultCollector(reports,
         new SimpleItemRegistry(), new MutableTimeSource(0));
-    GameplaySettings settings = new GameplaySettings(false, 10, true, 10,
+    GameplaySettings settings = new GameplaySettings(false, 10, 30, true, 10,
         54, 300, 50, 100);
     return new RaidResultRuntime(new FakeGameService(), collector,
         new ManualScheduler(), settings, Logger.getAnonymousLogger());

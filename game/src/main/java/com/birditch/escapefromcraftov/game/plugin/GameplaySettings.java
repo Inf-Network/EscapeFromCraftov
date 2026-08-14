@@ -8,6 +8,7 @@ import java.util.List;
 public record GameplaySettings(
     boolean friendlyFire,
     int attributionSeconds,
+    int lootOwnershipSeconds,
     boolean scoreboardEnabled,
     int scoreboardRefreshTicks,
     int lootContainerSize,
@@ -19,6 +20,9 @@ public record GameplaySettings(
     List<String> problems = new ArrayList<>();
     if (attributionSeconds < 1 || attributionSeconds > 120) {
       problems.add("combat.attribution-seconds must be 1..120");
+    }
+    if (lootOwnershipSeconds < 1 || lootOwnershipSeconds > 300) {
+      problems.add("loot.ownership-seconds must be 1..300");
     }
     if (scoreboardRefreshTicks < 1 || scoreboardRefreshTicks > 100) {
       problems.add("scoreboard.refresh-ticks must be 1..100");

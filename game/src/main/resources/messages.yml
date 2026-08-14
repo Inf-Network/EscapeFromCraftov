@@ -193,6 +193,8 @@ death-crate:
   created: "<yellow>你携带的 <items> 件物资已留在附近的 <crates> 个阵亡箱中。</yellow>"
   placement-failed: "<red>附近没有安全位置生成阵亡箱，部分物资保持原版掉落。</red>"
   not-accessible: "<red>只有本局仍在行动、尚未撤离的成员可以打开这个阵亡箱。</red>"
+  protected: "<red>这个阵亡箱正由击杀者小队优先搜索。</red> <gray><seconds> 秒后对本局公开。</gray>"
+  priority-access: "<green>击杀归属已验证。</green> <gray>你的小队还有 <seconds> 秒优先搜索时间。</gray>"
   open-failed: "<red>阵亡箱界面打开失败，请重新右键箱体。</red>"
   open-first: "<yellow>请先右键一个有效的阵亡箱。</yellow>"
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
@@ -200,6 +202,13 @@ death-crate:
   emptied: "<gray>阵亡箱已搜空并消失。</gray>"
   too-far: "<yellow>你离阵亡箱太远，界面已关闭。</yellow>"
   deposit-blocked: "<yellow>阵亡箱只能取出物品，不能存入、Shift 点击或拖入。</yellow>"
+
+# 玩家阵亡箱和 AI 实体掉落共用的击杀归属提示。
+loot-ownership:
+  protected: "<red>该物资属于击杀者小队。</red> <gray><seconds> 秒后对本局公开。</gray>"
+  priority: "<green>小队优先物资。</green> <gray>剩余 <seconds> 秒保护时间。</gray>"
+  whole-stack: "<yellow>归属物资必须整组拾取，请先腾出足够携行空间。</yellow>"
+  not-accessible: "<red>只有本局仍在行动、尚未撤离的成员可以拾取该物资。</red>"
 
 # 组队行动倒地与救援。每名玩家每局最多触发一次倒地；无人可救时直接阵亡。
 downed:

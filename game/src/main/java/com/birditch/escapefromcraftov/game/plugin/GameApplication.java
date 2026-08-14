@@ -76,6 +76,7 @@ import com.birditch.escapefromcraftov.game.plugin.loot.CraftovLootListener;
 import com.birditch.escapefromcraftov.game.plugin.medical.MedicalConditionListener;
 import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultCollector;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
@@ -149,6 +150,7 @@ public final class GameApplication {
   private @Nullable EventSubscription lootSubscription;
   private @Nullable EventSubscription deathCrateSubscription;
   private @Nullable EventSubscription reportSubscription;
+  private @Nullable EventSubscription combatSubscription;
   private @Nullable EventSubscription aiSubscription;
   private @Nullable EventSubscription pendingJoinSubscription;
   private @Nullable EventSubscription waitingArrivalSubscription;
@@ -160,6 +162,7 @@ public final class GameApplication {
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable RaidCarryController raidCarry;
+  private @Nullable LootOwnershipController lootOwnership;
   private @Nullable InstanceProvisioner provisioner;
   private @Nullable SnapshotPublisher publisher;
   private @Nullable CraftovStartCoordinator startCoordinator;
@@ -213,6 +216,7 @@ public final class GameApplication {
       PendingJoinHandler pendingJoins,
       CraftovItemStacks itemStacks,
       RaidCarryController carry,
+      LootOwnershipController lootOwnership,
       GameCombatListener combat,
       DownedPlayerListener downedPlayers,
       MedicalConditionListener medicalConditions,
@@ -289,6 +293,12 @@ public final class GameApplication {
       if (raidCarry != null) {
         raidCarry.close();
         raidCarry = null;
+      }
+    });
+    steps.run("clear loot ownership runtime", () -> {
+      if (lootOwnership != null) {
+        lootOwnership.close();
+        lootOwnership = null;
       }
     });
     steps.run("stop modules", () -> {
@@ -602,10 +612,16 @@ public final class GameApplication {
         carryController, configs.messages(), trMenu);
     context.services().register(SecureContainerController.class, secure);
     secureContainers = secure;
+    LootOwnershipController ownership = new LootOwnershipController(
+        plugin, games, index, configs.messages(), new SystemTimeSource(),
+        java.time.Duration.ofSeconds(configs.gameplay().lootOwnershipSeconds()));
+    lootOwnership = ownership;
     GameCombatListener combatListener = new GameCombatListener(plugin, games,
         context.services().require(CombatService.class), inventories,
         context.services().require(com.birditch.escapefromcraftov.api.profile.ProgressionService.class),
-        index, scheduler, configs.messages(), configs.gameplay(), secure, reportRuntime);
+        index, scheduler, configs.messages(), configs.gameplay(), secure, reportRuntime,
+        ownership);
+    combatSubscription = context.eventBus().register(combatListener);
     DownedPlayerListener downedPlayerController = new DownedPlayerListener(games,
         context.services().require(CombatService.class),
         context.services().require(com.birditch.escapefromcraftov.api.combat.DownedService.class),
@@ -651,12 +667,13 @@ public final class GameApplication {
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
     DeathCrateListener deathCrateController = new DeathCrateListener(
-        games, index, itemStacks, configs.messages(), trMenu, logger, carryController);
+        games, context.services().require(CombatService.class), index, itemStacks,
+        configs.messages(), trMenu, logger, carryController, ownership);
     deathCrates = deathCrateController;
     deathCrateSubscription = context.eventBus().register(deathCrateController);
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(
         plugin, games, index, scheduler, context.services().require(LootService.class),
-        itemStacks, reportRuntime, logger);
+        itemStacks, reportRuntime, ownership, logger);
     aiRuntime = instanceAi;
     aiSubscription = context.eventBus().register(instanceAi);
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(
@@ -699,7 +716,7 @@ public final class GameApplication {
     waitingArrivalTimeout = arrivalTimeout;
     waitingArrivalSubscription = context.eventBus().register(arrivalTimeout);
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, carryController,
-        combatListener,
+        ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
   }
@@ -766,6 +783,9 @@ public final class GameApplication {
     pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
     pluginManager.registerEvents(wiring.aiRuntime(), plugin);
+    // Register last among runtime pickup listeners: its MONITOR commit must see
+    // cancellations from carry, downed, pending and settlement guards first.
+    pluginManager.registerEvents(wiring.lootOwnership(), plugin);
     pluginManager.registerEvents(maps.visualization(), plugin);
     pluginManager.registerEvents(maps.interaction(), plugin);
     pluginManager.registerEvents(maps.objectMenus(), plugin);
@@ -817,6 +837,12 @@ public final class GameApplication {
       if (deathCrateSubscription != null) {
         deathCrateSubscription.unsubscribe();
         deathCrateSubscription = null;
+      }
+    });
+    steps.run("unsubscribe combat attribution listener", () -> {
+      if (combatSubscription != null) {
+        combatSubscription.unsubscribe();
+        combatSubscription = null;
       }
     });
     steps.run("unsubscribe raid report runtime", () -> {

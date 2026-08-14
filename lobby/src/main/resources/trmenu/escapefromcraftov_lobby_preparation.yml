@@ -2,7 +2,7 @@ Title: '&8行动准备'
 Layout:
   - '#########'
   - '#M#R#D#S#'
-  - '#W##L##B#'
+  - '#W#F#L#B#'
 Options:
   Arguments: false
   Hide-Player-Inventory: true
@@ -28,6 +28,9 @@ Icons:
       name: '&6前往物资仓库'
       lore: [ '&7整理下一局的出战装备', '', '&e点击打开' ]
     actions: { all: [ 'reset', 'command: lobby warehouse' ] }
+  F:
+    display: { material: 'source:CRAFTOVPREPARATION:fill' }
+    actions: { all: [ 'reset', 'command: lobby raid cycle fill' ] }
   L:
     display: { material: 'source:CRAFTOVPREPARATION:loadout' }
     actions: { all: [ 'reset', 'command: lobby warehouse' ] }

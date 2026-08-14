@@ -2,6 +2,9 @@ package com.birditch.escapefromcraftov.game.plugin.listener;
 
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.combat.PlayerCombatState;
+import com.birditch.escapefromcraftov.api.event.Subscribe;
+import com.birditch.escapefromcraftov.api.event.combat.PlayerDownedEvent;
+import com.birditch.escapefromcraftov.api.event.combat.PlayerRevivedEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
@@ -18,6 +21,7 @@ import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
@@ -58,14 +62,17 @@ public final class GameCombatListener implements Listener {
   private final GameplaySettings settings;
   private final SecureContainerController secureContainers;
   private final RaidResultRuntime raidReports;
+  private final LootOwnershipController lootOwnership;
   private final Map<UUID, Attack> lastAttackers = new HashMap<>();
   private final Map<UUID, Integer> kills = new HashMap<>();
+  private final FriendlyAttributionCandidates<EntityDamageByEntityEvent> friendlyCandidates =
+      new FriendlyAttributionCandidates<>();
 
   public GameCombatListener(Plugin plugin, CraftovGameService games, CombatService combat,
       PlayerInventoryService inventories, ProgressionService progression,
       InstanceWorldIndex worlds, CraftovScheduler scheduler, Messages messages,
       GameplaySettings settings, SecureContainerController secureContainers,
-      RaidResultRuntime raidReports) {
+      RaidResultRuntime raidReports, LootOwnershipController lootOwnership) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.combat = Preconditions.checkNotNull(combat, "combat");
@@ -77,6 +84,7 @@ public final class GameCombatListener implements Listener {
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.secureContainers = Preconditions.checkNotNull(secureContainers, "secureContainers");
     this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
+    this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
   }
 
   @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -97,18 +105,56 @@ public final class GameCombatListener implements Listener {
         event.setCancelled(true);
         return;
       }
-      if (!settings.friendlyFire() && CraftovTeamRules.sameTeam(game,
-          attacker.getUniqueId(), victim.getUniqueId())) {
-        event.setCancelled(true);
-        attacker.sendMessage(messages.raw("combat.friendly-fire-blocked"));
+      if (CraftovTeamRules.sameTeam(game, attacker.getUniqueId(), victim.getUniqueId())) {
+        if (GameCombatAttributionPolicy.friendlyDamage(settings.friendlyFire())
+            == GameCombatAttributionPolicy.FriendlyDamage.CANCEL_AND_KEEP_HOSTILE) {
+          event.setCancelled(true);
+          attacker.sendMessage(messages.raw("combat.friendly-fire-blocked"));
+          // A cancelled hit is not effective evidence and must not erase the
+          // last valid hostile attacker.
+          return;
+        }
+        // Enabled friendly damage is evaluated again at MONITOR. Downed and
+        // other HIGHEST rules may still cancel it. Only an ALIVE victim can
+        // synchronously enter downed from this particular friendly event.
+        if (combat.stateOf(victim.getUniqueId()) == PlayerCombatState.ALIVE) {
+          friendlyCandidates.begin(victim.getUniqueId(), game.id(), byEntity);
+        }
         return;
       }
       lastAttackers.put(victim.getUniqueId(), new Attack(attacker.getUniqueId(),
-          System.currentTimeMillis()));
+          game.id(), System.currentTimeMillis()));
     }
   }
 
-  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  /** Always closes the event candidate; only an effective final hit clears evidence. */
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+  public void onEffectiveFriendlyDamage(EntityDamageByEntityEvent event) {
+    if (!(event.getEntity() instanceof Player victim)) return;
+    if (friendlyCandidates.finish(event, event.isCancelled(), event.getFinalDamage())) {
+      lastAttackers.remove(victim.getUniqueId());
+    }
+  }
+
+  /** Confirms that a cancelled lethal friendly event actually took the victim down. */
+  @Subscribe
+  public void onPlayerDowned(PlayerDownedEvent event) {
+    if (friendlyCandidates.confirmsDowned(event.playerId(), event.gameId())) {
+      lastAttackers.remove(event.playerId());
+    }
+  }
+
+  /** A completed teammate rescue closes the old downing encounter's attribution window. */
+  @Subscribe
+  public void onPlayerRevived(PlayerRevivedEvent event) {
+    lastAttackers.remove(event.playerId());
+  }
+
+  /**
+   * HIGHEST is deliberate: the validated claim must exist before the death-crate
+   * MONITOR handler captures drops, independent of listener registration order.
+   */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onDeath(PlayerDeathEvent event) {
     Player victim = event.getEntity();
     CraftovGame game = gameOf(victim).orElse(null);
@@ -122,18 +168,24 @@ public final class GameCombatListener implements Listener {
     combat.setState(victim.getUniqueId(), PlayerCombatState.DEAD);
     UUID victimId = victim.getUniqueId();
     Attack attack = lastAttackers.remove(victimId);
-    if (attack != null && System.currentTimeMillis() - attack.atMillis()
-        <= Duration.ofSeconds(settings.attributionSeconds()).toMillis()) {
-      int total = kills.merge(attack.attackerId(), 1, Integer::sum);
-      raidReports.recordKill(game.id(), attack.attackerId());
-      Player killer = org.bukkit.Bukkit.getPlayer(attack.attackerId());
+    UUID attributedKiller = attack != null && attack.gameId().equals(game.id())
+        && System.currentTimeMillis() - attack.atMillis()
+        <= Duration.ofSeconds(settings.attributionSeconds()).toMillis()
+        ? attack.attackerId() : null;
+    // Publish the authoritative loot claim before any presentation or reward
+    // side effect can fail; DeathCrate's MONITOR handler consumes this record.
+    lootOwnership.recordPlayerDeath(game, victimId, attributedKiller);
+    if (attributedKiller != null) {
+      int total = kills.merge(attributedKiller, 1, Integer::sum);
+      raidReports.recordKill(game.id(), attributedKiller);
+      Player killer = org.bukkit.Bukkit.getPlayer(attributedKiller);
       if (killer != null) killer.sendMessage(messages.raw("combat.kill-confirmed",
           Placeholder.unparsed("victim", victim.getName()),
           Placeholder.unparsed("kills", Integer.toString(total))));
       broadcast(game, messages.raw("combat.kill-feed",
           Placeholder.unparsed("attacker", killer == null ? "玩家" : killer.getName()),
           Placeholder.unparsed("victim", victim.getName())));
-      awardProgression("kill", attack.attackerId(), game.id(), victimId,
+      awardProgression("kill", attributedKiller, game.id(), victimId,
           settings.killExperience(), "击败敌对玩家", 0);
     } else {
       broadcast(game, messages.raw("combat.death-feed",
@@ -151,6 +203,7 @@ public final class GameCombatListener implements Listener {
   public void onQuit(PlayerQuitEvent event) {
     UUID id = event.getPlayer().getUniqueId();
     lastAttackers.remove(id);
+    friendlyCandidates.clear(id);
     kills.remove(id);
   }
 
@@ -237,5 +290,5 @@ public final class GameCombatListener implements Listener {
     }
   }
 
-  private record Attack(UUID attackerId, long atMillis) {}
+  private record Attack(UUID attackerId, CraftovGameId gameId, long atMillis) {}
 }

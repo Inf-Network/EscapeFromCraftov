@@ -1,5 +1,6 @@
 package com.birditch.escapefromcraftov.game.plugin.deathcrate;
 
+import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.event.Subscribe;
 import com.birditch.escapefromcraftov.api.event.game.CraftovEndedEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
@@ -12,6 +13,9 @@ import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootAccess;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootClaim;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -63,27 +67,32 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
   private static final int[] SEARCH_Y = {0, 1, -1, 2, 3};
 
   private final CraftovGameService games;
+  private final CombatService combat;
   private final InstanceWorldIndex worlds;
   private final CraftovItemStacks itemStacks;
   private final Messages messages;
   private final TrMenuBridge menus;
   private final Logger logger;
   private final RaidCarryController carry;
+  private final LootOwnershipController lootOwnership;
   private final AutoCloseable itemSource;
   private final Map<UUID, DeathCrate> crates = new HashMap<>();
   private final Map<MarkerKey, UUID> cratesByMarker = new HashMap<>();
   private final Map<UUID, CrateView> views = new HashMap<>();
 
-  public DeathCrateListener(CraftovGameService games, InstanceWorldIndex worlds,
+  public DeathCrateListener(CraftovGameService games, CombatService combat,
+      InstanceWorldIndex worlds,
       CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus, Logger logger,
-      RaidCarryController carry) {
+      RaidCarryController carry, LootOwnershipController lootOwnership) {
     this.games = Preconditions.checkNotNull(games, "games");
+    this.combat = Preconditions.checkNotNull(combat, "combat");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.logger = Preconditions.checkNotNull(logger, "logger");
     this.carry = Preconditions.checkNotNull(carry, "carry");
+    this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
     this.itemSource = menus.registerItemSource("CRAFTOVCOREDEATH", this::menuItem);
   }
 
@@ -96,6 +105,7 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     List<ItemStack> recognized = event.getDrops().stream()
         .filter(itemStacks::isCraftovItem).toList();
     if (recognized.isEmpty()) return;
+    LootClaim claim = lootOwnership.playerDeathClaim(game.id(), victim.getUniqueId());
 
     normalizeIdentities(recognized);
     Set<ItemStack> captured = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
@@ -110,14 +120,19 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
         victim.sendMessage(messages.raw("death-crate.placement-failed"));
         continue;
       }
+      // A physical AI-drop claim must not survive after this death crate's
+      // newer player-kill claim supersedes it.
+      batch.forEach(lootOwnership::clearProtection);
       UUID crateId = UUID.randomUUID();
       DeathCrate crate = new DeathCrate(crateId, game.id(), victim.getUniqueId(),
-          victim.getName(), marker, new DeathCrateState<>(batch, ItemStack::clone));
+          marker, new DeathCrateState<>(batch, ItemStack::clone), claim);
       crates.put(crateId, crate);
       cratesByMarker.put(marker.key(), crateId);
       captured.addAll(batch);
       crateCount++;
     }
+    recognized.stream().filter(stack -> !captured.contains(stack))
+        .forEach(stack -> lootOwnership.protectDrop(stack, claim));
     if (captured.isEmpty()) return;
     event.getDrops().removeIf(captured::contains);
     victim.sendMessage(messages.raw("death-crate.created",
@@ -136,9 +151,14 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     Player player = event.getPlayer();
     DeathCrate crate = crates.get(crateId);
     if (crate == null) return;
-    if (!canOpen(player, crate)) {
-      player.sendMessage(messages.raw("death-crate.not-accessible"));
+    LootAccess access = access(player, crate);
+    if (!access.allowed()) {
+      deny(player, access);
       return;
+    }
+    if (access.kind() == LootAccess.Kind.PRIORITY) {
+      player.sendActionBar(messages.raw("death-crate.priority-access",
+          Placeholder.unparsed("seconds", Integer.toString(access.secondsRemaining()))));
     }
     views.put(player.getUniqueId(), new CrateView(crateId, 0));
     if (!openMenu(player, crate, 0)) {
@@ -258,6 +278,7 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
         .filter(crate -> crate.gameId().equals(event.gameId()))
         .map(DeathCrate::id).toList();
     ended.forEach(this::removeCrate);
+    lootOwnership.clearGame(event.gameId());
   }
 
   public int activeCrateCount() {
@@ -287,6 +308,13 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
       lore.add(Component.empty());
       lore.add(Component.text("点击取出到本局背包", NamedTextColor.GREEN)
           .decoration(TextDecoration.ITALIC, false));
+      LootAccess access = access(player, crate);
+      lore.add((switch (access.kind()) {
+        case PRIORITY -> Component.text(
+            "你的小队优先 · " + access.secondsRemaining() + " 秒", NamedTextColor.GOLD);
+        case PUBLIC -> Component.text("本局公开物资", NamedTextColor.GRAY);
+        case PROTECTED, NOT_ACCESSIBLE -> Component.text("当前无权取出", NamedTextColor.RED);
+      }).decoration(TextDecoration.ITALIC, false));
       meta.lore(lore);
     });
     return display;
@@ -299,10 +327,12 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     }
     CrateView view = views.get(player.getUniqueId());
     DeathCrate crate = view == null ? null : crates.get(view.crateId());
-    if (crate == null || !canOpen(player, crate)) {
+    LootAccess access = crate == null ? new LootAccess(LootAccess.Kind.NOT_ACCESSIBLE, 0)
+        : access(player, crate);
+    if (crate == null || !access.allowed()) {
       views.remove(player.getUniqueId());
       menus.close(player, MENU_ID);
-      player.sendMessage(messages.raw("death-crate.not-accessible"));
+      deny(player, access);
       return null;
     }
     if (!closeEnough(player.getLocation(), crate.marker())) {
@@ -314,11 +344,29 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     return new ValidatedView(view, crate);
   }
 
-  private boolean canOpen(Player player, DeathCrate crate) {
+  private LootAccess access(Player player, DeathCrate crate) {
     CraftovGameId gameId = worlds.gameByWorld(player.getWorld().getName()).orElse(null);
-    if (!crate.gameId().equals(gameId)) return false;
+    if (!crate.gameId().equals(gameId)) {
+      return new LootAccess(LootAccess.Kind.NOT_ACCESSIBLE, 0);
+    }
     CraftovGame game = games.find(crate.gameId()).orElse(null);
-    return activeMember(game, player.getUniqueId());
+    LootAccess claimAccess = game == null
+        ? new LootAccess(LootAccess.Kind.NOT_ACCESSIBLE, 0)
+        : lootOwnership.access(game, player.getUniqueId(), crate.claim());
+    return DeathCrateAccessPolicy.filter(combat.stateOf(player.getUniqueId()), claimAccess);
+  }
+
+  private boolean canOpen(Player player, DeathCrate crate) {
+    return access(player, crate).allowed();
+  }
+
+  private void deny(Player player, LootAccess access) {
+    if (access.kind() == LootAccess.Kind.PROTECTED) {
+      player.sendMessage(messages.raw("death-crate.protected",
+          Placeholder.unparsed("seconds", Integer.toString(access.secondsRemaining()))));
+      return;
+    }
+    player.sendMessage(messages.raw("death-crate.not-accessible"));
   }
 
   private Optional<CraftovGame> gameOf(Player player) {
@@ -448,16 +496,16 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     itemSource.close();
   }
 
-  private record DeathCrate(UUID id, CraftovGameId gameId, UUID ownerId, String ownerName,
-                            Marker marker, DeathCrateState<ItemStack> state) {
+  private record DeathCrate(UUID id, CraftovGameId gameId, UUID ownerId,
+                            Marker marker, DeathCrateState<ItemStack> state, LootClaim claim) {
 
     private DeathCrate {
       Preconditions.checkNotNull(id, "id");
       Preconditions.checkNotNull(gameId, "gameId");
       Preconditions.checkNotNull(ownerId, "ownerId");
-      Preconditions.checkNotNull(ownerName, "ownerName");
       Preconditions.checkNotNull(marker, "marker");
       Preconditions.checkNotNull(state, "state");
+      Preconditions.checkNotNull(claim, "claim");
     }
   }
 

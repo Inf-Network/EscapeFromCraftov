@@ -12,6 +12,7 @@ import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingFailures;
+import com.birditch.escapefromcraftov.api.matchmaking.SquadFillMode;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
@@ -190,7 +191,8 @@ class QueueServiceTest {
     void soloWaitsForMinimumCohort() {
       UUID first = onlinePlayer();
       directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
-      assertTrue(service.queue(first, MAP).isSuccess());
+      assertTrue(service.queue(first, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          first, null, SquadFillMode.NO_FILL).isSuccess());
 
       tick();
 
@@ -199,16 +201,90 @@ class QueueServiceTest {
       assertTrue(players.connections.isEmpty());
 
       UUID second = onlinePlayer();
-      assertTrue(service.queue(second, MAP).isSuccess());
+      assertTrue(service.queue(second, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          second, null, SquadFillMode.NO_FILL).isSuccess());
       tick();
 
       assertEquals(2, assignments.stored.size());
+      assertEquals(Set.of(first, second), assignments.stored.stream()
+          .map(MatchAssignment::teamKey).collect(java.util.stream.Collectors.toSet()));
       assignments.results.get(0).complete(null);
       assertTrue(players.connections.isEmpty());
       assignments.results.get(1).complete(null);
       assertEquals(0, service.queueSize());
       assertEquals(Set.of(first, second), players.connections.stream()
           .map(FakePlayerGateway.Connection::playerId).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    @DisplayName("an interleaved no-fill enemy does not break the three auto-fill squad")
+    void interleavedNoFillDoesNotBreakAutoFillSquad() {
+      UUID first = onlinePlayer();
+      UUID enemy = onlinePlayer();
+      UUID second = onlinePlayer();
+      UUID third = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+
+      service.queue(first, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          first, null, SquadFillMode.AUTO_FILL);
+      service.queue(enemy, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          enemy, null, SquadFillMode.NO_FILL);
+      service.queue(second, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          second, null, SquadFillMode.AUTO_FILL);
+      service.queue(third, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          third, null, SquadFillMode.AUTO_FILL);
+      tick();
+
+      assertEquals(4, assignments.stored.size());
+      assertEquals(first, assignments.stored.get(0).teamKey());
+      assertEquals(enemy, assignments.stored.get(1).teamKey());
+      assertEquals(first, assignments.stored.get(2).teamKey());
+      assertEquals(first, assignments.stored.get(3).teamKey());
+    }
+
+    @Test
+    @DisplayName("auto-fill solos form squads of at most three")
+    void autoFillSolosBecomeThreePlayerSquads() {
+      UUID first = onlinePlayer();
+      UUID second = onlinePlayer();
+      UUID third = onlinePlayer();
+      UUID fourth = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+
+      MatchTicket firstTicket = service.queue(first, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, first, null, SquadFillMode.AUTO_FILL)
+          .orElseThrow(IllegalStateException::new);
+      service.queue(second, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, second, null, SquadFillMode.AUTO_FILL);
+      service.queue(third, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, third, null, SquadFillMode.AUTO_FILL);
+      service.queue(fourth, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, fourth, null, SquadFillMode.AUTO_FILL);
+      tick();
+
+      assertEquals(SquadFillMode.AUTO_FILL, firstTicket.fillMode());
+      assertEquals(4, assignments.stored.size());
+      assertTrue(assignments.stored.subList(0, 3).stream().allMatch(assignment ->
+          assignment.teamKey().equals(first)));
+      assertEquals(fourth, assignments.stored.get(3).teamKey());
+    }
+
+    @Test
+    @DisplayName("auto-fill and no-fill solos can start one room as different teams")
+    void fillModesShareRoomButNotTeam() {
+      UUID autoFill = onlinePlayer();
+      UUID noFill = onlinePlayer();
+      directory.respondWith(List.of(server(waitingInstance("aaaaaa", 0, 12))));
+
+      service.queue(autoFill, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          autoFill, null, SquadFillMode.AUTO_FILL);
+      service.queue(noFill, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          noFill, null, SquadFillMode.NO_FILL);
+      tick();
+
+      assertEquals(2, assignments.stored.size());
+      assertEquals(autoFill, assignments.stored.getFirst().teamKey());
+      assertEquals(noFill, assignments.stored.get(1).teamKey());
     }
 
     @Test
@@ -281,12 +357,18 @@ class QueueServiceTest {
       UUID second = onlinePlayer();
       UUID third = onlinePlayer();
       UUID teamKey = UUID.randomUUID();
+      UUID solo = onlinePlayer();
       directory.respondWith(List.of(tierServer(waitingInstance(
           "secure", 0, 3, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, TOP_SECRET))));
 
       var queued = service.queueParty(List.of(leader, second, third), MAP,
-          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, teamKey, TOP_SECRET);
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, teamKey, TOP_SECRET,
+          SquadFillMode.AUTO_FILL);
+      service.queue(solo, MAP, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, solo, TOP_SECRET,
+          SquadFillMode.AUTO_FILL);
       assertTrue(queued.isSuccess());
+      assertTrue(queued.orElseThrow(IllegalStateException::new).stream().allMatch(ticket ->
+          ticket.fillMode() == SquadFillMode.NO_FILL));
       tick();
 
       assertEquals(3, assignments.stored.size());
@@ -297,7 +379,8 @@ class QueueServiceTest {
               && assignment.difficulty() == RaidDifficulty.HARD
               && assignment.tierId().equals(TOP_SECRET)));
       assignments.results.forEach(result -> result.complete(null));
-      assertEquals(0, service.queueSize());
+      assertEquals(1, service.queueSize());
+      assertTrue(service.ticket(solo).isPresent());
       assertEquals(3, players.connections.size());
     }
 
@@ -505,6 +588,27 @@ class QueueServiceTest {
   @Nested
   @DisplayName("starvation")
   class Starvation {
+
+    @Test
+    @DisplayName("mixed fill groups publish one room provision sized for the largest party")
+    void mixedFillGroupsProvisionOneRoom() {
+      UUID autoFill = onlinePlayer();
+      UUID leader = onlinePlayer();
+      UUID second = onlinePlayer();
+      UUID third = onlinePlayer();
+      directory.respondWith(List.of(server()));
+      service.queue(autoFill, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL,
+          autoFill, null, SquadFillMode.AUTO_FILL);
+      service.queueParty(List.of(leader, second, third), MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, UUID.randomUUID(), null, SquadFillMode.NO_FILL);
+
+      tick();
+
+      assertEquals(1, broker.published.size());
+      ProvisionRequest request = codec.fromJson(
+          broker.published.getFirst().payload(), ProvisionRequest.class);
+      assertEquals(3, request.requiredSlots());
+    }
 
     @Test
     @DisplayName("a starved queue publishes one provision hint per cooldown window")

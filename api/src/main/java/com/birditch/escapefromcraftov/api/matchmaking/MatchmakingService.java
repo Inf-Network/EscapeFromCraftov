@@ -42,6 +42,17 @@ public interface MatchmakingService {
         return queue(playerId, mapId, mode, difficulty, teamKey);
     }
 
+    /// Squad-fill-aware queue entry point. Old implementations preserve their
+    /// historical no-fill behaviour and fail closed when auto-fill is requested.
+    default Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
+                                      RaidDifficulty difficulty, UUID teamKey,
+                                      @Nullable RaidTierId tierId, SquadFillMode fillMode) {
+        if (fillMode == SquadFillMode.AUTO_FILL) {
+            return Result.fail(MatchmakingFailures.SQUAD_FILL_QUEUE_UNSUPPORTED);
+        }
+        return queue(playerId, mapId, mode, difficulty, teamKey, tierId);
+    }
+
     /// Atomically queues one complete party. Implementations must either add
     /// every member with the shared team key or add none of them.
     default Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
@@ -63,6 +74,19 @@ public interface MatchmakingService {
             return Result.fail(MatchmakingFailures.ACTION_TIER_QUEUE_UNSUPPORTED);
         }
         return queueParty(playerIds, mapId, mode, difficulty, teamKey);
+    }
+
+    /// Squad-fill-aware atomic queue. Implementations must never split an
+    /// explicit party; compatibility implementations accept only no-fill.
+    default Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
+                                                 RaidMode mode, RaidDifficulty difficulty,
+                                                 UUID teamKey,
+                                                 @Nullable RaidTierId tierId,
+                                                 SquadFillMode fillMode) {
+        if (fillMode == SquadFillMode.AUTO_FILL) {
+            return Result.fail(MatchmakingFailures.SQUAD_FILL_QUEUE_UNSUPPORTED);
+        }
+        return queueParty(playerIds, mapId, mode, difficulty, teamKey, tierId);
     }
 
     /// Returns whether the player had a ticket to remove.

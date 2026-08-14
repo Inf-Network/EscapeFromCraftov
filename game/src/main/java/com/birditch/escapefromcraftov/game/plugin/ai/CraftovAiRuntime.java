@@ -20,6 +20,8 @@ import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootClaim;
+import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -78,6 +80,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private final LootService loot;
   private final CraftovItemStacks itemStacks;
   private final RaidResultRuntime raidReports;
+  private final LootOwnershipController lootOwnership;
   private final Logger logger;
   private final NamespacedKey gameKey;
   private final NamespacedKey zoneKey;
@@ -88,7 +91,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
 
   public CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
       CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
-      RaidResultRuntime raidReports, Logger logger) {
+      RaidResultRuntime raidReports, LootOwnershipController lootOwnership, Logger logger) {
     Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
@@ -96,6 +99,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
     this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
+    this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
     this.logger = Preconditions.checkNotNull(logger, "logger");
     gameKey = new NamespacedKey(plugin, "ai_game");
     zoneKey = new NamespacedKey(plugin, "ai_zone");
@@ -110,6 +114,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   @Subscribe
   public void onCraftovEnded(CraftovEndedEvent event) {
     stop(event.gameId());
+    lootOwnership.clearGame(event.gameId());
   }
 
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -148,6 +153,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         .noneMatch(player -> player.playerId().equals(killer.getUniqueId()))) {
       return;
     }
+    LootClaim claim = lootOwnership.claimForKiller(game, killer.getUniqueId());
     double effectiveDifficulty = zone.definition().difficulty() * runtime.difficultyMultiplier();
     AiRuntimePolicy.LootProfile profile = AiRuntimePolicy.loot(
         effectiveDifficulty, runtime.mode(), runtime.difficulty(), runtime.actionProfile(),
@@ -166,6 +172,11 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     } catch (RuntimeException failure) {
       logger.log(Level.WARNING, "生成 AI 击杀物资失败: " + runtime.gameId().value() + "/"
           + zone.definition().id() + "/T" + profile.tier(), failure);
+    } finally {
+      // ItemSpawnEvent registers these PDC claims on the actual spawned Item
+      // entities; marking the death list alone is not treated as runtime state.
+      event.getDrops().stream().filter(itemStacks::isCraftovItem)
+          .forEach(stack -> lootOwnership.protectDrop(stack, claim));
     }
   }
 

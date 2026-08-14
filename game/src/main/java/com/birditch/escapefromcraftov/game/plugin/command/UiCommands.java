@@ -75,11 +75,33 @@ final class UiCommands {
               }
               context.deathCrates().page(player, direction.equals("next") ? 1 : -1);
             }))));
+    LiteralArgumentBuilder<CommandSourceStack> carry = Commands.literal("carry");
+    carry.then(carryAction(context, "left", true));
+    carry.then(carryAction(context, "right", false));
     return Commands.literal("ui")
         .requires(source -> source.getSender() instanceof Player)
         .then(loot)
         .then(secure)
-        .then(deathCrate);
+        .then(deathCrate)
+        .then(carry);
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> carryAction(
+      CommandContext context, String name, boolean left) {
+    return Commands.literal(name)
+        .then(Commands.argument("nonce", StringArgumentType.word())
+            .suggests((_, builder) -> builder.suggest("use-the-open-menu").buildFuture())
+            .then(Commands.argument("slot", IntegerArgumentType.integer(0, 51))
+                .suggests((_, builder) -> {
+                  for (int slot = 0; slot < 52; slot++) builder.suggest(slot);
+                  return builder.buildFuture();
+                })
+                .executes(ctx -> execute(ctx.getSource(), player -> {
+                  String nonce = StringArgumentType.getString(ctx, "nonce");
+                  int slot = IntegerArgumentType.getInteger(ctx, "slot");
+                  if (left) context.carryMenus().left(player, nonce, slot);
+                  else context.carryMenus().right(player, nonce, slot);
+                }))));
   }
 
   private static int execute(CommandSourceStack source, PlayerAction action) {

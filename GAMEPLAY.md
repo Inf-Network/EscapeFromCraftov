@@ -23,9 +23,9 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 | 搜索 Loot | 走到一个物资点，右键打开搜索箱，查看并拿走里面的物品；不是输入指令，也不是扫描玩家。 |
 | Loot Point | 地图作者放置的一个物资点，可以绑定箱子，也可以是看不见的虚拟物资点。 |
 | 公共搜索箱 | 同一局玩家看到的是同一个箱子；第一次打开时生成内容，之后只剩没被拿走的物品。 |
-| 物资仓库 | 你在大厅里整理的安全储物空间。成功撤离的战利品会放到这里；死亡不会把本局携带物品放回这里。它不是地图里的箱子，也不是本局背包。 |
+| 物资仓库 | 你在大厅里整理的安全储物空间。成功撤离的战利品会放到这里；死亡不会把本局携带物品放回这里。它不是地图里的箱子，也不是本局携行。 |
 | 出战栏 / Loadout | 在大厅选定、下一局准备带入地图的具名装备位：主手、副手、头部、身体、快捷位、胸挂和背包等。 |
-| 本局背包 | Minecraft 原生玩家背包。进入 Game 后它就是行动背包；只有成功撤离，里面的战利品才会送进物资仓库。 |
+| 本局携行 | 服务器在行动内存中维护的口袋、胸挂和背包二维布局，并投影到 Minecraft 玩家物品栏。只有成功撤离，里面的战利品才会送进物资仓库。 |
 | 撤离 | 在指定区域站满倒计时离开地图。离开区域会取消进度。 |
 | POI | Point of Interest，兴趣点。它是地图上一个值得探索的区域，例如仓库、建筑群或地下设施。 |
 | AI 区域 | 地图作者配置的 PvE 区域。行动开始后会在安全落脚点生成 Minecraft 原生敌对生物，并按区域难度缩放属性、装备、数量和掉落。 |
@@ -39,9 +39,9 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 3. 点击“开始游戏”，在行动准备页选择地图、行动等级和队伍补充方式，再进入匹配队列。
 4. 传送到 Game 并正式开局后，服务器原子领取出战栏。主手、护甲、胸挂、背包和快捷物品按具名位置发放；HUD 会显示地图、队伍、时间、本队出口、携行格数、负重和携带价值。
 5. 在建筑、道路、房间和地下区域寻找 Loot Point。对准物资点右键就是“搜索 Loot”。
-6. 取走物品后决定继续探索，还是带着已有收获前往撤离点。
+6. 取走物品后可执行 `/craftov carry` 整理口袋、胸挂和背包，再决定继续探索还是带着已有收获前往撤离点。
 7. 进入撤离区域后开始倒计时。保持在区域内，BossBar 会显示进度；离开区域会取消。
-8. 撤离完成后，服务器读取本局背包，把战利品送进物资仓库，然后才把你送回 Lobby。
+8. 撤离完成后，服务器核对并锁定本局携行快照，把其中的战利品送进物资仓库，然后才把你送回 Lobby。
 9. 如果死亡、主动退出或行动超时，本局 CRAFTOV 物品会丢失，不会自动回仓库。死亡物资会放入附近阵亡箱；有效击杀者及其队伍拥有 30 秒优先搜索权，之后才对本局存活玩家公开。
 
 ### 2.2 物资仓库与出战栏
@@ -56,9 +56,11 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 
 菜单中的物品不能拖动、不能 Shift 点击、不能用数字键换位，也不能放入玩家背包。点击一个物品后，EscapeFromCraftov 会先确认移动成功，再刷新界面；网络异常时不会假装移动成功。
 
-胸挂和背包决定本局可用容器格：当前基础胸挂为 6 格、巡逻背包为 12 格，另有 4 个固定口袋。未解锁的原版背包槽会被占位并阻止点击、拖拽、Shift、数字键、换手和拾取绕过。携带物超过舒适负重后会减速并禁止冲刺，达到硬上限后不能继续取物。内建 3 格安全箱可保护允许放入的物品，但胸挂、背包和箭矢不能放入，且安全箱内容计入限重撤离。
+胸挂和背包决定本局可用容器格；口袋、容器容量、物品尺寸和可否旋转都属于本服物品定义与平衡配置，不代表其他游戏的官方数值。未解锁的原版背包槽会被占位并阻止点击、拖拽、Shift、数字键、换手和拾取绕过。携带物超过舒适负重后会减速并禁止冲刺，达到硬上限后不能继续取物。内建安全箱可保护允许放入的物品，且安全箱内容计入限重撤离。
 
-二维携行的权威核心已经具备物品占格、禁用格、胸挂隔舱、全布局唯一物品身份和跨容器原子移动；每件物品只保存一个锚点，不会为了占多个格复制 UUID/NBT。当前 Paper 玩家物品栏仍使用上面的一维格数布局，二维菜单与持久位置尚未接入，因此服务器不会把尚未显示的网格规则伪装成已经生效。旋转能力默认关闭，尺寸是本服可配置规则，不宣称是其他游戏的隐藏数值。
+行动处于 `RUNNING` 且角色仍可操作时，执行 `/craftov carry` 会打开 6 行 TrMenu：口袋为绿色、胸挂为橙色、背包为蓝色，未解锁位置显示为锁定格。左键一个物品或它覆盖的格可选择该物品，再左键目标空格执行移动；右键只会尝试旋转服务端物品定义允许旋转的物品。所有移动都由服务端重新定位唯一物品实例、检查隔舱/碰撞/负重和布局版本，并以一次原子转移提交；失败时不会留下半次移动。
+
+二维布局中的格坐标和朝向当前是**本局 Game 进程内存的权威状态**，Minecraft 玩家物品栏只是它的实体投影。每件物品只有一个 `ItemInstance` 和一个锚点；其他占用格是不带物品身份的显示占位，不会复制 UUID/NBT。当前不会把二维位置当作跨局持久字段；撤离、死亡和重试结算仍按唯一 `ItemInstance` 身份收集物品，而不是按 TrMenu 图标或覆盖格结算。
 
 ### 2.3 Minecraft 战斗
 
@@ -120,6 +122,7 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 - **Title / Subtitle**：进入编辑器、进入行动、模式切换等阶段提示。
 - **聊天框**：战斗击杀提示、结算结果和错误说明。
 - **搜索箱 GUI**：公共 Loot 容器，只允许拿取，不能把自己的物品倒进去。
+- **携行整理 GUI**：`/craftov carry` 打开当前口袋、胸挂和背包的二维投影；菜单图标只负责显示与发起受保护动作。
 
 ## 3. 管理员指南
 
@@ -199,9 +202,10 @@ Game/plugins/TrMenu/menus/escapefromcraftov_editor_object.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_loot.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_death_crate.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_secure.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_carry.yml
 ```
 
-已经存在的文件不会被覆盖。大厅主菜单、仓库、设置、外观、行动 Loot、编辑工具栏和对象属性全部由 TrMenu 3.12.5 渲染。EscapeFromCraftov 通过 TrMenu 的动态物品源提供实时 `ItemStack`，并通过受保护命令处理点击；每次点击都会重新检查对应 TrMenu 菜单仍然打开，并检查数据状态、权限、房间、距离和当前会话。关闭菜单后重放内部动作命令不会生效。桥接同时识别社区版公开 API 的两套包名（`me.arasple.mc.trmenu` 和 `trplugins.menu`）；公开 API 不可用时才由控制台兼容路径打开菜单，不要求普通玩家拥有 TrMenu 管理权限。Hibernate 和本局容器仍是物品事实源，TrMenu 只负责菜单表现与交互。
+已经存在的文件不会被覆盖。大厅主菜单、仓库、设置、外观、行动 Loot、携行整理、编辑工具栏和对象属性全部由 TrMenu 3.12.5 渲染。EscapeFromCraftov 通过 TrMenu 的动态物品源提供克隆的实时 `ItemStack`，并通过受保护命令处理点击；每次点击都会重新检查对应 TrMenu 菜单仍然打开，并检查数据状态、权限、房间、距离和当前会话。携行整理还会绑定随机 nonce、对局、布局 epoch/version 和角色可操作状态。关闭菜单后重放内部动作命令不会生效。桥接同时识别社区版公开 API 的两套包名（`me.arasple.mc.trmenu` 和 `trplugins.menu`）；公开 API 不可用时才由控制台兼容路径打开菜单，不要求普通玩家拥有 TrMenu 管理权限。Hibernate、本局容器和局内携行布局仍是物品事实源，TrMenu 只负责菜单表现与交互。
 
 菜单生命周期同样交给 TrMenu：断线、对局结束、编辑动作失效、数据未就绪和服务端关闭时，EscapeFromCraftov 会调用 TrMenu 3.12.5 的 `MenuSession.close(...)` 与 `shut()`，完整关闭窗口、触发关闭事件、停止菜单任务并清理会话。这里没有 Bukkit 原生窗口 fallback；API 不兼容会作为明确的集成错误暴露，不会悄悄切换到第二套菜单生命周期。
 
@@ -334,6 +338,7 @@ factory/
 | `/craftov tutorial` | 用玩家能看懂的方式说明一局行动怎么玩。 | `/craftov tutorial` |
 | `/craftov info` | 查看服务端版本、已加载模块和当前运行计数。 | `/craftov info` |
 | `/craftov profile` | 查看自己的等级、余额和资料状态。 | `/craftov profile` |
+| `/craftov carry` | 仅在进行中的行动里打开二维携行整理菜单；左键选择物品后再点空格移动，右键只处理物品定义允许的旋转。 | `/craftov carry` |
 | `/craftov map import <source>` | 后台导入普通 Minecraft 世界或完整地图包，地图 ID 默认使用来源文件夹名。Tab 会列出可导入目录。 | `/craftov map import factory` |
 | `/craftov map import <source> <target>` | 后台导入地图并指定新的地图 ID，适合同一地形的不同玩法版本。 | `/craftov map import factory factory_night` |
 | `/craftov map create <id> <world>` | 高级兼容命令：登记已加载世界并从零制作地图；普通流程不需要它。 | `/craftov map create prototype world` |
@@ -353,6 +358,8 @@ factory/
 | `/craftov editor property <action> <forward\|reverse>` | TrMenu 属性按钮动作；重新检查编辑会话、对象类型和 LuckPerms 权限后修改草稿。 | `/craftov editor property slot_a forward` |
 | `/craftov ui loot take <0-44>` | TrMenu Loot 格子动作；重新检查房间、距离、共享槽位和背包容量后取物。 | `/craftov ui loot take 0` |
 | `/craftov ui loot page <previous\|next>` | TrMenu Loot 翻页动作；只对当前有效搜索会话生效。 | `/craftov ui loot page next` |
+| `/craftov ui carry left <nonce> <0-51>` | **仅供携行 TrMenu 菜单内部调用，不可手工使用。** 服务端只把显示槽号映射为当前布局格，并重新检查 nonce、菜单、对局、角色状态和布局版本。 | 菜单自动生成 |
+| `/craftov ui carry right <nonce> <0-51>` | **仅供携行 TrMenu 菜单内部调用，不可手工使用。** 服务端重新定位该格对应的物品，并只在物品定义允许时尝试旋转。 | 菜单自动生成 |
 | `/craftov editor wand` | 获取左右键选区工具，用来框选边界和区域。 | `/craftov editor wand` |
 | `/craftov editor map bounds` | 把当前选区设置为可游玩地图边界。 | `/craftov editor map bounds` |
 | `/craftov editor tool <tool>` | 切换当前编辑工具；后续的快捷交互和预览会以这个工具为准。 | `/craftov editor tool loot` |
@@ -511,7 +518,7 @@ map-editor:
 - 插件拒绝启动：先看 Java 25、Paper 1.21.11 和 PostgreSQL 连接，再看 Hikari 日志；Game/Lobby 都强依赖 PostgreSQL。
 - 仓库打不开：确认两个服务端连接同一个数据库/schema，并检查 Hibernate `validate` 是否与当前表结构一致。
 - 地图实例创建失败：确认地图世界存在、模板目录可读、`game.allow-flat-fallback` 是否只在本地开发开启。
-- 撤离结算失败：不要强制 `/server lobby`。系统会锁定倒计时结束时的背包快照并每 5 秒自动重试；检查 PostgreSQL 和 `craftov_player_items` / `craftov_inventory_settlements` 表后恢复服务即可。
+- 撤离结算失败：不要强制 `/server lobby`。系统会锁定倒计时结束时的唯一物品携行快照并每 5 秒自动重试；检查 PostgreSQL 和 `craftov_player_items` / `craftov_inventory_settlements` 表后恢复服务即可。
 
 ## 4. 开发者指南
 
@@ -520,7 +527,7 @@ map-editor:
 ```text
 api    -> 领域接口、不可变记录、事件和权限
 core   -> Hibernate ORM、Hikari、Redis、领域服务、物品/掉落/游戏实现
-game   -> Paper Game 适配、世界副本、地图编辑器、TrMenu Loot、PvP、HUD
+game   -> Paper Game 适配、世界副本、地图编辑器、TrMenu Loot/携行、PvP、HUD
 lobby  -> Paper Lobby 适配、匹配、TrMenu 仓库/出战、设置和装扮
 ```
 
@@ -531,7 +538,7 @@ Game 和 Lobby 是两个独立进程。`core` 可以使用 Paper glue 下的有�
 ```text
 WAREHOUSE  --大厅点击-->  LOADOUT
 LOADOUT   --进服原子领取--> CRAFTOV(gameId)
-CRAFTOV      --原生背包/TrMenu搜索--> 玩家实际携带物
+CRAFTOV      --Loot搜索/二维携行原子转移--> 玩家实际携带物
 CRAFTOV      --撤离事务--> WAREHOUSE
 CRAFTOV      --死亡/退出/超时--> 删除（损失）
 ```
@@ -542,7 +549,7 @@ Hibernate 实体：
 - `craftov_inventory_settlements`：`gameId + playerId` 的幂等终态标记，防止重复撤离或死亡同时写入。
 - 既有档案、设置、装扮实体：同一 Hibernate `SessionFactory` 和 HikariCP 池。
 
-仓库移动和领取在事务中完成；结算先删除 CRAFTOV 行，再按实际背包内容写入新的 WAREHOUSE 行。不能从 Bukkit 物品名称推断所有权，必须读取 `escapefromcraftov:item_id`、`escapefromcraftov:instance_id` 等 PDC 标记。
+仓库移动和领取在事务中完成；结算前会让局内携行控制器核对内存布局与 Minecraft 实体锚点，并按每个唯一 `ItemInstance` 生成快照。结算再删除 CRAFTOV 行，并按这份实际携行快照写入新的 WAREHOUSE 行。二维格坐标当前不作为跨局持久字段；不能从 Bukkit 物品名称、TrMenu 图标或覆盖格推断所有权，必须读取 `escapefromcraftov:item_id`、`escapefromcraftov:instance_id` 等 PDC 标记。
 
 ### 4.3 Loot 运行时流程
 
@@ -553,7 +560,7 @@ Hibernate 实体：
 1. 玩家在正确实例、正确世界、`RUNNING` 状态下右键物资点。
 2. 第一次打开调用 `LootService.roll`，生成带 PDC 的 Bukkit `ItemStack`，并保存到本局共享容器状态。
 3. TrMenu 通过 `CustomItemSourceEvent` 显示当前槽位；已经被拿走的物品不会重新生成。
-4. 点击物品会调用受保护取物动作，再次检查本局、玩家、Loot 点距离、槽位和完整背包容量；成功后才从共享状态移除并放入本局背包。
+4. 点击物品会调用受保护取物动作，再次检查本局、玩家、Loot 点距离、槽位和二维携行容量；成功完成唯一实例的原子接纳后，才从共享状态移除。
 5. TrMenu 隐藏真实玩家物品栏且没有自由存入槽，玩家不能拖拽、Shift 点击或数字键把自己的物品放进公共容器。
 6. `CraftovEndedEvent` 关闭相关视图并清理本局容器缓存。
 
@@ -565,7 +572,7 @@ Hibernate 实体：
 ExtractionService 完成引导
   -> Session: EXTRACTING -> SETTLING
   -> PlayerExtractionReadyEvent
-  -> 主线程锁定一次 Bukkit 背包快照并保护玩家
+  -> 主线程核对局内布局与实体锚点，锁定一次携行快照并保护玩家
   -> 异步 Hibernate settleExtraction
   -> 失败时以同一快照自动重试
   -> 既有 EXTRACTED 视为幂等成功；既有 LOST 视为终态冲突
@@ -600,7 +607,7 @@ ExtractionService 完成引导
 | Action Bar | 当前工具和短状态。 |
 | Title/SubTitle | 进入编辑器、进入行动、撤离成功等阶段切换。 |
 | DecentHolograms | 编辑器附近对象标签、选中详情和验证错误，按管理员个人可见。EscapeFromCraftov 不创建 TextDisplay/ArmorStand 全息图。 |
-| TrMenu Inventory GUI | Lobby 主菜单、仓库、出战栏、设置、外观、Loot 搜索和编辑器工具栏/对象属性。 |
+| TrMenu Inventory GUI | Lobby 主菜单、仓库、出战栏、设置、外观、Loot 搜索、局内携行整理和编辑器工具栏/对象属性。 |
 | Tab Header/Footer | Lobby 显示大厅；Game 动态显示当前地图、本局人数和“只显示本房间玩家”。 |
 | Tab 玩家名 | Game 房间内显示 `[地图] 队 N · 玩家名`，不同房间的玩家不会出现在彼此列表。 |
 | Chat | 房间聊天只发送给同一 `game:<房间>` 隔离组，并在游戏聊天前显示“[本局]”；加入、退出、死亡和击杀提示同样不会泄漏到其他房间。`/msg`、`/tell`、`/w` 只能联系同房间玩家，`/me` 只在本房间广播。 |
@@ -610,7 +617,7 @@ ExtractionService 完成引导
 硬依赖集成遵循适配器边界：LuckPerms 用于权限，WorldEdit 用于读取选区，DecentHolograms 是唯一全息图实现，PlaceholderAPI 用于对外占位符，TrMenu 负责全部 Inventory GUI。动态物品由 EscapeFromCraftov 注入 TrMenu，点击后仍由 EscapeFromCraftov 执行权限、会话和事务校验。缺失、版本不匹配或适配器初始化失败会阻止加载；ProtocolLib、Citizens、MythicMobs、ItemsAdder、Oraxen、FAWE 与 Vault 的评估和暂不硬依赖原因见 README。
 
 PlaceholderAPI 当前注册的占位符包括 `map`、`game_id`、`game_state`、`player_state`、`team`、`money`、
-`level`、`experience`、`experience_to_next_level`、`alive_players`、`loot_value`、`remaining_time` 和 `extracted`。`loot_value` 读取本局背包内物资的真实估值，
+`level`、`experience`、`experience_to_next_level`、`alive_players`、`loot_value`、`remaining_time` 和 `extracted`。`loot_value` 读取本局携行内物资的真实估值，
 `level`、`experience` 和 `experience_to_next_level` 分别读取行动等级、累计历练和距离下一级的历练；`remaining_time` 读取当前行动计时，`extracted` 读取当前玩家的撤离状态；不在行动中或无法取得真实状态时返回空值，
 不显示伪造的默认数字。
 
@@ -628,8 +635,8 @@ git diff --check
 
 - 正式地图必须由管理员人工配置；运行时不提供自动扫描或自动生成点位命令。
 - AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；更复杂的巡逻、据点战术和 Boss 事件仍是后续功能。
-- 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、撤离入库和死亡损失已形成闭环。二维网格、隔舱、占格和原子转移的 API/Core 权威模型已经完成；Paper 运行时仍是一维格数界面，尚未把二维位置写入玩家菜单和持久结算。
+- 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、局内二维携行整理、撤离入库和死亡损失已形成闭环。二维网格、隔舱、占格和原子转移已经接入 Paper 运行时与 `/craftov carry`；格坐标/朝向当前只由单局内存权威维护，跨局结算仍按唯一 `ItemInstance`，不持久化菜单排列。
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是把二维携行模型接入实际菜单与结算，以及基于现有 AI Zone 的巡逻与地图事件；仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是基于现有 AI Zone 的巡逻与地图事件；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

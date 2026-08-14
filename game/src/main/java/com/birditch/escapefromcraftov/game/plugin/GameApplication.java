@@ -44,6 +44,7 @@ import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
 import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryMenuController;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryPickupListener;
 import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
 import com.birditch.escapefromcraftov.game.plugin.downed.DownedPlayerListener;
@@ -169,6 +170,7 @@ public final class GameApplication {
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable RaidCarryController raidCarry;
+  private @Nullable RaidCarryMenuController raidCarryMenus;
   private @Nullable LootOwnershipController lootOwnership;
   private @Nullable InstanceProvisioner provisioner;
   private @Nullable SnapshotPublisher publisher;
@@ -234,6 +236,7 @@ public final class GameApplication {
       CraftovLootListener lootMenus,
       DeathCrateListener deathCrates,
       SecureContainerController secureContainers,
+      RaidCarryMenuController carryMenus,
       InstanceWorldBridge bridge,
       CraftovAiRuntime aiRuntime) {}
 
@@ -259,10 +262,12 @@ public final class GameApplication {
         "trmenu/escapefromcraftov_secure.yml", "escapefromcraftov_secure.yml");
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_death_crate.yml", "escapefromcraftov_death_crate.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_carry.yml", "escapefromcraftov_carry.yml");
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_editor_toolbar", "escapefromcraftov_editor_object",
         "escapefromcraftov_loot", "escapefromcraftov_secure",
-        "escapefromcraftov_death_crate");
+        "escapefromcraftov_death_crate", "escapefromcraftov_carry");
     logger.info("Menu provider: " + trMenu.status()
         + " (all EscapeFromCraftov inventory menus are rendered by TrMenu)");
     CraftovContext context = createContext(configs.core(), configs.database());
@@ -281,7 +286,8 @@ public final class GameApplication {
             configs.server(), context.scheduler(), maps.service(), maps.registry(), maps.sessions(),
             maps.selections(), maps.wand(), maps.confirmations(), maps.objectMenus(),
             maps.visualization(), maps.interaction(),
-            wiring.lootMenus(), wiring.deathCrates(), wiring.secureContainers(), trMenu,
+            wiring.lootMenus(), wiring.deathCrates(), wiring.secureContainers(),
+            wiring.carryMenus(), trMenu,
             configs.editor(),
             maps.integrations().selections(), maps.integrations().permissions()));
     summary.log(context.services(), modules, configs.server(), new StartupSummary.SummaryConfigs(
@@ -297,6 +303,12 @@ public final class GameApplication {
         registry -> registry.find(CraftovGameService.class).ifPresent(CraftovGameService::destroyAll)));
     steps.run("destroy instance worlds", this::destroyInstanceWorlds);
     steps.run("save profiles", this::saveAllProfiles);
+    steps.run("close TrMenu raid carry organizer", () -> {
+      if (raidCarryMenus != null) {
+        raidCarryMenus.close();
+        raidCarryMenus = null;
+      }
+    });
     stopNetwork(steps);
     steps.run("stop raid carry controller", () -> {
       if (raidCarry != null) {
@@ -622,6 +634,11 @@ public final class GameApplication {
         context.services().require(ItemGridService.class), itemStacks,
         context.services().require(ItemRegistry.class));
     raidCarry = carryController;
+    RaidCarryMenuController carryMenuController = new RaidCarryMenuController(
+        context.eventBus(), games, index, carryController, mutationGate,
+        context.services().require(ItemGridService.class),
+        context.services().require(ItemRegistry.class), itemStacks, trMenu, scheduler, logger);
+    raidCarryMenus = carryMenuController;
     RaidResultCollector reportCollector = new RaidResultCollector(
         new HibernateRaidReportService(context.database(), executor),
         context.services().require(ItemRegistry.class), new SystemTimeSource());
@@ -745,7 +762,8 @@ public final class GameApplication {
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, carryController,
         mutationGate, extractionRoutes, ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
-        lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
+        lootMenuController, deathCrateController, secure, carryMenuController,
+        instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -808,6 +826,7 @@ public final class GameApplication {
     pluginManager.registerEvents(wiring.bridge(), plugin);
     // Carry's mutating drop commits must observe pending/downed/settlement blockers first.
     pluginManager.registerEvents(wiring.carry(), plugin);
+    pluginManager.registerEvents(wiring.carryMenus(), plugin);
     pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
     pluginManager.registerEvents(wiring.aiRuntime(), plugin);

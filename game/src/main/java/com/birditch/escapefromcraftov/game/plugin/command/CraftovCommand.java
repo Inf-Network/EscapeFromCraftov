@@ -21,6 +21,7 @@ public final class CraftovCommand {
         .then(InfoCommands.info(context))
         .then(ProfileCommands.profile(context))
         .then(SecureCommands.secure(context))
+        .then(CarryCommands.carry(context))
         .then(ManualMapCommands.map(context))
         .then(EditorCommands.editor(context))
         .then(UiCommands.ui(context))

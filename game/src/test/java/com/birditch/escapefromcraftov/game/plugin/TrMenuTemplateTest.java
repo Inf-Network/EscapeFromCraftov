@@ -22,7 +22,8 @@ class TrMenuTemplateTest {
       "trmenu/escapefromcraftov_editor_toolbar.yml",
       "trmenu/escapefromcraftov_editor_object.yml",
       "trmenu/escapefromcraftov_loot.yml",
-      "trmenu/escapefromcraftov_secure.yml");
+      "trmenu/escapefromcraftov_secure.yml",
+      "trmenu/escapefromcraftov_carry.yml");
   private static final Pattern LOOT_SOURCE =
       Pattern.compile("source:CRAFTOVCORELOOT:slot-(\\d+)");
 
@@ -76,6 +77,21 @@ class TrMenuTemplateTest {
       assertTrue(yaml.contains("command: craftov ui secure take " + slot));
     }
     assertTrue(yaml.contains("command: craftov ui secure store"));
+    assertTrue(yaml.contains("Hide-Player-Inventory: true"));
+  }
+
+  @Test
+  void carryTemplateMapsEveryClickableCellThroughTheNonceBoundHiddenEndpoint()
+      throws IOException {
+    String yaml = read("trmenu/escapefromcraftov_carry.yml");
+    for (int slot = 0; slot < 52; slot++) {
+      assertTrue(yaml.contains("source:CRAFTOVCORECARRY:cell-" + slot));
+      assertTrue(yaml.contains("craftov ui carry left {0} " + slot));
+      assertTrue(yaml.contains("craftov ui carry right {0} " + slot));
+    }
+    assertTrue(yaml.contains("source:CRAFTOVCORECARRY:summary"));
+    assertTrue(yaml.contains("Default-Arguments: [ 'invalid' ]"));
+    assertFalse(yaml.contains("{1}"), "formatted weight must not become an unsafe TrMenu arg");
     assertTrue(yaml.contains("Hide-Player-Inventory: true"));
   }
 

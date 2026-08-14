@@ -54,6 +54,7 @@ command:
       info: "查看插件运行状态"
       profile: "查看你的个人档案"
       secure: "打开行动中的 3 格安全箱"
+      carry: "打开行动中的二维携行整理界面"
       map-import: "从地图文件夹导入 Minecraft 世界或完整 Craftov 地图包"
       map-create: "创建一张由管理员手工编辑的 Craftov 地图"
       map-manage: "查看、启用或停用已导入的地图"

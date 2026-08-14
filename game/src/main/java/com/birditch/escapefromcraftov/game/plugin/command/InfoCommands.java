@@ -29,7 +29,8 @@ final class InfoCommands {
       new HelpEntry("craftov tutorial", "command.help.desc.tutorial"),
       new HelpEntry("craftov info", "command.help.desc.info"),
       new HelpEntry("craftov profile", "command.help.desc.profile"),
-      new HelpEntry("craftov secure", "command.help.desc.secure"));
+      new HelpEntry("craftov secure", "command.help.desc.secure"),
+      new HelpEntry("craftov carry", "command.help.desc.carry"));
 
   private static final List<HelpEntry> ADMIN_HELP_ENTRIES = List.of(
       new HelpEntry("craftov map import <source> [target]", "command.help.desc.map-import"),

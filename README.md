@@ -6,7 +6,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 
 玩家带着装备进入独立地图，搜索物资，与怪物或其他玩家战斗，然后尝试活着撤离。找到东西还不算真正拥有；只有撤离成功，战利品才会进入你的**物资仓库**。死亡则可能失去本局携带的装备与物资。
 
-当前版本的重点是：Game/Lobby 强制分服、PostgreSQL 玩家数据、多对局实例、Manual First 可视化地图编辑器，以及已经接通的 Loot、原生背包、撤离入库和死亡损失闭环。AI 实体、交易行等仍在开发中，本文不会把规划功能写成已完成。
+当前版本的重点是：Game/Lobby 强制分服、PostgreSQL 玩家数据、多对局实例、Manual First 可视化地图编辑器，以及已经接通的 Loot、局内二维携行整理、撤离入库和死亡损失闭环。本文不会把规划功能写成已完成。
 
 ## 什么是搜打撤？
 
@@ -27,18 +27,18 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 3. Game 从地图模板复制一个独立世界。
 4. 玩家从该局固定的出生点进入地图。
 5. 玩家搜索 Loot，使用剑、斧、弓、弩、盾牌、药水和地形应对 AI 或其他玩家。
-6. 玩家管理背包，决定继续冒险还是撤离。
+6. 玩家可用 `/craftov carry` 整理口袋、胸挂和背包中的二维携行布局，再决定继续冒险还是撤离。
 7. 进入撤离区域并等待倒计时。
 8. 成功撤离或对局结束后返回 Lobby。
 9. 成功撤离后，战利品会安全送回你的物资仓库。
 
-目前分服、匹配数据、实例世界、出生点、Loot 交互、条件撤离、原生 PvP、物品结算和返回 Lobby 已接通；AI 生物行为仍未实现。
+目前分服、匹配数据、实例世界、出生点、Loot 交互、局内二维携行、条件撤离、原生 PvP、基础 AI 生物行为、物品结算和返回 Lobby 已接通。
 
 ## 游戏核心系统
 
-### 物资仓库与背包
+### 物资仓库与局内携行
 
-物资仓库保存成功带回的长期物品，出战栏决定下一局带入的物品，本局使用 Minecraft 原生背包。撤离会把实际携带的战利品送回物资仓库；死亡/退出/超时则删除本局物品。
+物资仓库保存成功带回的长期物品，出战栏决定下一局带入的物品。进入行动后，服务器以局内内存中的二维布局管理口袋、胸挂和背包，并把它投影到 Minecraft 玩家物品栏；`/craftov carry` 打开 TrMenu 整理界面。格坐标和朝向当前只在本局内存中生效，撤离与死亡结算仍按每件物品唯一的 `ItemInstance` 身份处理，不按菜单图标或覆盖格结算。
 
 ### Loot 与物资
 
@@ -52,7 +52,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 
 ### AI
 
-管理员可以配置 AI Zone、数量范围、刷新时间与难度。AI 计划使用 Minecraft 生物、原生装备和药水效果构成 PvE 威胁。AI 实体、寻路和战斗行为尚未实现。
+管理员可以配置 AI Zone、数量范围、刷新时间与难度。行动中会生成 Minecraft 原生生物，并应用安全落点、难度缩放、装备、奖励和有界行为；更复杂的巡逻与 Boss 地图事件仍属后续功能。
 
 ### 撤离点
 
@@ -86,7 +86,8 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 | DecentHolograms / PlaceholderAPI | 硬依赖 | 编辑器标签和对外占位符，缺失或适配器异常时拒绝加载 Game |
 | TrMenu 社区版 3.12.5 | 硬依赖 | Lobby/Game 全部 Inventory GUI；动态物品由 EscapeFromCraftov 数据源注入 |
 | 虚拟 Loot 搜索与撤离结算 | 完成 | 共享一次性 Loot GUI，成功撤离后入仓 |
-| AI 战斗 | 未完成 | 当前只有 AI Zone 配置 |
+| 局内二维携行与整理 | 完成 | 口袋/胸挂/背包分区、占格、隔舱、锁定格、原子移动和受限旋转；`/craftov carry` 打开 |
+| AI 战斗 | 完成（基础） | AI Zone 原生生物、安全生成、难度缩放、装备、奖励与有界行为 |
 | Minecraft PvP 结算与队伍规则 | 完成 | 原生伤害边界、友伤配置、击杀归属和死亡结算 |
 | 动态 Sidebar / BossBar / Action Bar | 完成 | 编辑器和行动中使用个人稳定 HUD |
 | 剑/斧/弓/弩/盾牌物品分类 | 完成 | 默认领域物品与 LootTable 已使用 Minecraft 语义 |
@@ -155,17 +156,27 @@ EscapeFromCraftov 会在 TrMenu 已加载时，把没有同名文件的内置模
 
 ```text
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_main.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_preparation.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_settings.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_cosmetics.yml
 Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_warehouse.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_vendor.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_vendor_sell.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_mine.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_list.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_market_confirm.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_editor_toolbar.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_editor_object.yml
 Game/plugins/TrMenu/menus/escapefromcraftov_loot.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_death_crate.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_secure.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_carry.yml
 ```
 
 已有文件绝不会被覆盖，管理员可以直接修改材质、布局和文字。EscapeFromCraftov 优先调用 TrMenu 3.12.5 的公开 `TrMenuAPI`（兼容社区版历史上使用过的 `me.arasple.mc.trmenu` 与当前源码使用的 `trplugins.menu` 两套包名）；只有公开 API 不可用时，才由控制台通过同版本的 `/trmenu open` 兼容路径打开菜单，普通玩家不需要 TrMenu 管理员权限。首次复制模板后会要求 TrMenu 重载；约 10 秒内仍缺少任一必需菜单时，对应 EscapeFromCraftov 插件会停用并在日志列出菜单 ID。
 
-所有 Inventory GUI 都由 TrMenu 创建和保护，没有原生 GUI fallback。动态仓库物品、共享 Loot 和地图对象属性通过 TrMenu 的 `CustomItemSourceEvent` 取得真实 `ItemStack`。点击只会调用 EscapeFromCraftov 的动作端点；动作端点会再次检查对应 TrMenu 菜单仍处于打开状态，并检查玩家数据、房间、距离、权限、编辑会话、对象和当前页，再执行 Hibernate 事务或本局状态修改。复制菜单内部动作命令、关闭菜单后重放命令，都不能绕过这些校验。这样既使用 TrMenu 的虚拟菜单能力，也不把物品所有权和结算权限交给 YAML 脚本。
+所有 Inventory GUI 都由 TrMenu 创建和保护，没有原生 GUI fallback。动态仓库物品、共享 Loot、二维携行格和地图对象属性通过 TrMenu 的 `CustomItemSourceEvent` 取得 `ItemStack`；其中携行格只向菜单提供当前服务端视图的克隆。点击只会调用 EscapeFromCraftov 的动作端点；动作端点会再次检查对应 TrMenu 菜单仍处于打开状态，并检查玩家数据、房间、距离、权限、编辑会话、对象和当前页，再执行 Hibernate 事务或本局状态修改。复制菜单内部动作命令、关闭菜单后重放命令，都不能绕过这些校验。这样既使用 TrMenu 的虚拟菜单能力，也不把物品所有权、局内布局和结算权限交给 YAML 脚本。
 
 菜单关闭也由 TrMenu 会话负责：玩家断线、离开 Loot、编辑操作失效、数据尚未就绪或插件停服时，EscapeFromCraftov 会调用 TrMenu 3.12.5 的 `MenuSession.close(...)` 和 `shut()`，关闭数据包窗口、触发关闭事件、取消菜单任务并清理查看会话。没有 Bukkit 原生窗口 fallback；如果 TrMenu API 不兼容，EscapeFromCraftov 会记录明确的集成错误，而不是悄悄切换到第二套菜单生命周期。
 
@@ -497,6 +508,9 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 
 | 命令 | 作用 |
 |---|---|
+| `/craftov carry` | 仅在进行中的行动里打开二维携行整理菜单；左键选择物品后再点空格移动，右键只旋转服务端物品定义允许旋转的物品 |
+| `/craftov ui carry left <nonce> <0-51>` | **仅供携行 TrMenu 内部调用，不要手工使用**；随机会话令牌、当前菜单、本局状态和布局版本不匹配时不会执行 |
+| `/craftov ui carry right <nonce> <0-51>` | **仅供携行 TrMenu 内部调用，不要手工使用**；服务端会重新定位物品并校验是否允许旋转 |
 | `/craftov game create [map]` | 创建 WAITING 对局 |
 | `/craftov game list` | 查看每个房间的地图、状态、人数与世界副本准备状态 |
 | `/craftov game start <id>` | 管理员跳过自动开局倒计时；正常房间达到最低人数会自动开始 |
@@ -574,7 +588,7 @@ LuckPerms 是 Game 的硬依赖；权限节点由 LuckPerms 分配和审计，Bu
 %escapefromcraftov_extracted%
 ```
 
-其中 `loot_value` 是玩家当前本局背包里 EscapeFromCraftov 物资的估算总价值，
+其中 `loot_value` 是玩家当前本局携行中 EscapeFromCraftov 物资的估算总价值，
 `remaining_time` 是行动还剩的秒数，`extracted` 是该玩家在当前对局是否已经成功撤离。
 `level` 是行动等级，`experience` 是累计历练，`experience_to_next_level` 是距离下一级还需要的历练。
 玩家不在行动中、行动尚未开始或 PlaceholderAPI 只能拿到离线玩家时，相关值会留空，
@@ -768,9 +782,9 @@ Domain 不 import Bukkit 或第三方插件。Paper 世界访问、PDC、粒子�
 - 只正式支持 Cuboid；WorldEdit Polygon 会变成包围盒。
 - DecentHolograms 会标出预览半径内的地图对象，但默认每位管理员最多同时显示 32 个；选中和错误对象优先，避免 200+ Loot 地图产生无上限实体压力。
 - 地图必须由管理员人工放置点位和划分区域；当前不提供自动扫描或自动生成正式地图配置。
-- AI Zone 尚未生成 AI 实体。
+- AI Zone 已生成原生 AI 实体并提供基础有界行为；复杂巡逻和 Boss 地图事件仍待扩展。
 - Loot Point 已提供右键搜索与共享容器 UI。
-- 仓库、出战栏、装备/物资损失和撤离结算已经闭环。
+- 仓库、出战栏、局内二维携行整理、装备/物资损失和撤离结算已经闭环。二维位置当前是单局内存权威，跨局结算仍以唯一 `ItemInstance` 为单位。
 - 未在本仓库内运行五个硬依赖插件的完整 Paper 交互服，只验证了公开 API 编译与依赖解析；正式部署仍应检查每个插件的实际版本和启动日志。
 
-下一阶段最值得优先完成：**AI Zone 的 Minecraft 生物生成、寻路和 PvE 行为**。随后可以实现安全箱、商店、交易行和倒地救援等跨局系统。
+下一阶段最值得优先完成：**基于现有 AI Zone 的巡逻与地图事件**，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。

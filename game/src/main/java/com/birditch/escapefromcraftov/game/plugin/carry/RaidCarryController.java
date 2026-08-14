@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.event.game.PlayerLeftCraftovEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.inventory.GridItemPlacement;
 import com.birditch.escapefromcraftov.api.inventory.GridPosition;
+import com.birditch.escapefromcraftov.api.inventory.GridRotation;
 import com.birditch.escapefromcraftov.api.inventory.ItemGrid;
 import com.birditch.escapefromcraftov.api.inventory.ItemGridLayout;
 import com.birditch.escapefromcraftov.api.inventory.ItemGridService;
@@ -36,6 +37,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
@@ -68,6 +70,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Authoritative physical projection of the raid's pocket, rig and backpack grids.
@@ -109,6 +112,8 @@ public final class RaidCarryController implements Listener, AutoCloseable {
   private final ScheduledTask ticker;
   private final Map<UUID, CarryState> states = new HashMap<>();
   private final Map<PlayerDropItemEvent, FrozenDrop> frozenDrops = new WeakHashMap<>();
+  private final List<Consumer<Player>> deactivationListeners = new ArrayList<>();
+  private long nextEpoch;
 
   public RaidCarryController(Plugin plugin, EventBus events, CraftovScheduler scheduler,
       RaidCarryService carry, ItemGridService grids, CraftovItemStacks itemStacks,
@@ -140,7 +145,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
     RaidCarryGridPlanner.Plan plan = planner.plan(capacity, claimed);
     Map<Integer, ItemInstance> expected = expectedEquipmentBaselines(claimed);
     if (capacity.legacyCompatibility()) captureLegacyEquipment(player, expected);
-    CarryState state = new CarryState(gameId, claimed, capacity, expected,
+    CarryState state = new CarryState(gameId, ++nextEpoch, claimed, capacity, expected,
         plan, plan.emptyLayout());
     validateInitialEquipment(player, state);
 
@@ -223,6 +228,119 @@ public final class RaidCarryController implements Listener, AutoCloseable {
 
   public boolean active(UUID playerId) {
     return states.containsKey(Preconditions.checkNotNull(playerId, "playerId"));
+  }
+
+  /**
+   * Immutable, non-authoritative rendering view for the TrMenu carry organizer. Mutations still
+   * have to pass {@link #mutateFromMenu(Player, MenuMutation)} with this exact binding.
+   */
+  public Optional<MenuView> menuView(Player player) {
+    Preconditions.checkNotNull(player, "player");
+    CarryState state = states.get(player.getUniqueId());
+    if (state == null) return Optional.empty();
+    refresh(player);
+    return Optional.of(menuView(state));
+  }
+
+  /** Registers a main-thread lifecycle hook used to close projections before carry is cleared. */
+  public AutoCloseable onDeactivated(Consumer<Player> listener) {
+    Consumer<Player> checked = Preconditions.checkNotNull(listener, "listener");
+    deactivationListeners.add(checked);
+    return () -> deactivationListeners.remove(checked);
+  }
+
+  /**
+   * The sole transaction used by the carry organizer. The caller supplies only a previously
+   * server-issued binding, selected identity, and a server-mapped destination cell. Physical
+   * anchors are reconciled and the version is compared again before the identity is relocated.
+   */
+  public MenuMutationResult mutateFromMenu(Player player, MenuMutation mutation) {
+    Preconditions.checkNotNull(player, "player");
+    Preconditions.checkNotNull(mutation, "mutation");
+    CarryState state = states.get(player.getUniqueId());
+    if (state == null || !state.gameId.equals(mutation.gameId())
+        || state.epoch != mutation.epoch()) {
+      return new MenuMutationResult(MenuMutationStatus.INACTIVE, null);
+    }
+
+    try {
+      synchronizePhysical(player, state);
+      validateEquipment(player, state);
+      state.snapshot = snapshotForLayout(player, state, state.layout);
+    } catch (RuntimeException invalid) {
+      markInvalid(player, state, invalid);
+      return new MenuMutationResult(MenuMutationStatus.REJECTED, null);
+    }
+    if (state.version != mutation.version()) {
+      return new MenuMutationResult(MenuMutationStatus.STALE, menuView(state));
+    }
+
+    LocatedPlacement source = locate(state, mutation.instanceId()).orElse(null);
+    if (source == null) {
+      return new MenuMutationResult(MenuMutationStatus.STALE, menuView(state));
+    }
+    String targetGrid;
+    GridPosition targetAnchor;
+    GridRotation targetRotation;
+    if (mutation.kind() == MenuMutationKind.ROTATE) {
+      if (!items.require(source.placement().item().itemId()).footprint().rotatable()) {
+        return new MenuMutationResult(MenuMutationStatus.REJECTED, menuView(state));
+      }
+      targetGrid = source.region().id();
+      targetAnchor = source.placement().anchor();
+      targetRotation = source.placement().rotation() == GridRotation.DEFAULT
+          ? GridRotation.CLOCKWISE_90 : GridRotation.DEFAULT;
+    } else {
+      RaidCarryGridPlanner.Region region = state.plan.region(mutation.targetGridId())
+          .orElse(null);
+      if (region == null || region.shape().compartmentAt(mutation.targetAnchor()).isEmpty()) {
+        return new MenuMutationResult(MenuMutationStatus.REJECTED, menuView(state));
+      }
+      targetGrid = region.id();
+      targetAnchor = mutation.targetAnchor();
+      targetRotation = source.placement().rotation();
+    }
+
+    ItemGridLayout beforeLayout = state.layout;
+    var changed = grids.transfer(beforeLayout, source.region().id(), targetGrid,
+        source.placement().item().instanceId(), targetAnchor, targetRotation);
+    if (!changed.accepted()) {
+      return new MenuMutationResult(MenuMutationStatus.REJECTED,
+          state.snapshot == null ? null : menuView(state));
+    }
+
+    RaidCarrySnapshot afterSnapshot;
+    try {
+      afterSnapshot = snapshotForLayout(player, state, changed.layout());
+    } catch (RuntimeException rejected) {
+      return new MenuMutationResult(MenuMutationStatus.REJECTED, menuView(state));
+    }
+    try {
+      // Rendering is the only physical mutation. It must finish before the logical CAS commits.
+      render(player, state, changed.layout());
+    } catch (RuntimeException renderFailure) {
+      try {
+        render(player, state, beforeLayout);
+      } catch (RuntimeException rollbackFailure) {
+        renderFailure.addSuppressed(rollbackFailure);
+        markInvalid(player, state, renderFailure);
+      }
+      return new MenuMutationResult(MenuMutationStatus.REJECTED,
+          state.snapshot == null ? null : menuView(state));
+    }
+
+    state.layout = changed.layout();
+    state.snapshot = afterSnapshot;
+    state.version++;
+    state.invalid = false;
+    state.invalidLogged = false;
+    try {
+      applySnapshot(player, afterSnapshot);
+    } catch (RuntimeException movementFailure) {
+      // Weight presentation is not allowed to roll back an already committed identity move.
+      logBestEffort(Level.WARNING, "携行整理已提交，但负重属性刷新失败", movementFailure);
+    }
+    return new MenuMutationResult(MenuMutationStatus.COMMITTED, menuView(state));
   }
 
   /** Non-mutating admission projection after first reconciling normal physical consumption. */
@@ -490,6 +608,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
   /** Removes only synthetic projections and movement state; real anchor stacks remain. */
   public void clear(Player player) {
     Preconditions.checkNotNull(player, "player");
+    if (states.containsKey(player.getUniqueId())) notifyDeactivated(player);
     states.remove(player.getUniqueId());
     removePlaceholders(player.getInventory());
     removeMovement(player);
@@ -699,6 +818,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
     Player player = event.getEntity();
     if (!states.containsKey(player.getUniqueId())) return;
     event.getDrops().removeIf(this::placeholder);
+    notifyDeactivated(player);
     states.remove(player.getUniqueId());
     removeMovement(player);
   }
@@ -1059,6 +1179,21 @@ public final class RaidCarryController implements Listener, AutoCloseable {
     return snapshotForLayout(player, state.capacity, layout, -1);
   }
 
+  private MenuView menuView(CarryState state) {
+    return new MenuView(state.gameId, state.epoch, state.version, state.capacity,
+        state.snapshot, state.plan.regions(), state.plan.lockedPhysicalSlots(), state.layout);
+  }
+
+  private void notifyDeactivated(Player player) {
+    for (Consumer<Player> listener : List.copyOf(deactivationListeners)) {
+      try {
+        listener.accept(player);
+      } catch (RuntimeException failure) {
+        logBestEffort(Level.WARNING, "关闭携行整理视图失败: " + player.getUniqueId(), failure);
+      }
+    }
+  }
+
   private RaidCarrySnapshot snapshotForLayout(Player player, RaidCarryCapacity capacity,
       ItemGridLayout layout, int omittedEquipmentSlot) {
     List<ItemStack> equipmentStacks = new ArrayList<>();
@@ -1379,6 +1514,73 @@ public final class RaidCarryController implements Listener, AutoCloseable {
       if (player == null) states.remove(playerId);
       else clear(player);
     }
+    deactivationListeners.clear();
+  }
+
+  public enum MenuMutationKind {
+    MOVE,
+    ROTATE
+  }
+
+  public enum MenuMutationStatus {
+    COMMITTED,
+    STALE,
+    REJECTED,
+    INACTIVE
+  }
+
+  public record MenuView(
+      CraftovGameId gameId,
+      long epoch,
+      long version,
+      RaidCarryCapacity capacity,
+      RaidCarrySnapshot snapshot,
+      List<RaidCarryGridPlanner.Region> regions,
+      Set<Integer> lockedPhysicalSlots,
+      ItemGridLayout layout) {
+
+    public MenuView {
+      Preconditions.checkNotNull(gameId, "gameId");
+      Preconditions.checkArgument(epoch > 0, "epoch must be positive");
+      Preconditions.checkArgument(version >= 0, "version must not be negative");
+      Preconditions.checkNotNull(capacity, "capacity");
+      Preconditions.checkNotNull(snapshot, "snapshot");
+      regions = List.copyOf(Preconditions.checkNotNull(regions, "regions"));
+      lockedPhysicalSlots = Set.copyOf(
+          Preconditions.checkNotNull(lockedPhysicalSlots, "lockedPhysicalSlots"));
+      Preconditions.checkNotNull(layout, "layout");
+    }
+  }
+
+  public record MenuMutation(
+      CraftovGameId gameId,
+      long epoch,
+      long version,
+      UUID instanceId,
+      MenuMutationKind kind,
+      String targetGridId,
+      GridPosition targetAnchor) {
+
+    public MenuMutation {
+      Preconditions.checkNotNull(gameId, "gameId");
+      Preconditions.checkArgument(epoch > 0, "epoch must be positive");
+      Preconditions.checkArgument(version >= 0, "version must not be negative");
+      Preconditions.checkNotNull(instanceId, "instanceId");
+      Preconditions.checkNotNull(kind, "kind");
+      Preconditions.checkNotNull(targetGridId, "targetGridId");
+      Preconditions.checkNotNull(targetAnchor, "targetAnchor");
+    }
+  }
+
+  public record MenuMutationResult(
+      MenuMutationStatus status,
+      @Nullable MenuView view) {
+
+    public MenuMutationResult {
+      Preconditions.checkNotNull(status, "status");
+      Preconditions.checkArgument(status != MenuMutationStatus.COMMITTED || view != null,
+          "committed mutations require a current view");
+    }
   }
 
   private record LocatedPlacement(
@@ -1408,6 +1610,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
 
   private static final class CarryState {
     private final CraftovGameId gameId;
+    private final long epoch;
     private List<StoredItem> claimedLoadout;
     private RaidCarryCapacity capacity;
     private final Map<Integer, ItemInstance> expectedEquipment;
@@ -1418,10 +1621,11 @@ public final class RaidCarryController implements Listener, AutoCloseable {
     private boolean invalidLogged;
     private long version;
 
-    private CarryState(CraftovGameId gameId, List<StoredItem> claimedLoadout,
+    private CarryState(CraftovGameId gameId, long epoch, List<StoredItem> claimedLoadout,
         RaidCarryCapacity capacity, Map<Integer, ItemInstance> expectedEquipment,
         RaidCarryGridPlanner.Plan plan, ItemGridLayout layout) {
       this.gameId = gameId;
+      this.epoch = epoch;
       this.claimedLoadout = claimedLoadout;
       this.capacity = capacity;
       this.expectedEquipment = new LinkedHashMap<>(expectedEquipment);

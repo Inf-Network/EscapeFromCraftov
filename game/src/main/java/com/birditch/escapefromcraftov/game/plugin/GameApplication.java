@@ -513,7 +513,8 @@ public final class GameApplication {
     sidebar = sidebarService;
     starts.start();
     CraftovLootListener lootMenuController = new CraftovLootListener(games,
-        context.services().require(LootService.class), itemStacks, index, configs.messages(),
+        context.services().require(LootService.class), itemStacks,
+        context.services().require(ItemRegistry.class), index, configs.messages(),
         configs.gameplay().lootContainerSize(), trMenu, scheduler);
     lootMenus = lootMenuController;
     lootSubscription = context.eventBus().register(lootMenuController);

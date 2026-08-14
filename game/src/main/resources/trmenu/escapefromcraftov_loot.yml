@@ -1,4 +1,4 @@
-Title: '&8搜索物资 &7({0}/{1})'
+Title: '&8搜索物资 &7· &6{2} &7T{3} &7({0}/{1})'
 Layout:
   - '         '
   - '         '
@@ -8,7 +8,7 @@ Layout:
   - '         '
 Options:
   Arguments: true
-  Default-Arguments: [ '1', '1' ]
+  Default-Arguments: [ '1', '1', 'SUPPLY', '1' ]
   Hide-Player-Inventory: true
   Min-Click-Delay: 100
 Icons:
@@ -299,11 +299,10 @@ Icons:
       slots: [ 49 ]
       material: book
       name: '&6公共物资容器'
-      lore: [ '&7第 {0}/{1} 页', '&7点击物品会放入本局背包', '&c不能把自己的物品存入这里' ]
+      lore: [ '&7{2} · Tier {3} · 第 {0}/{1} 页', '&7灰色物品会按顺序逐件辨识', '&7已辨识物品点击后放入本局背包', '&c不能把自己的物品存入这里' ]
   Next:
     display:
       slots: [ 53 ]
       material: arrow
       name: '&e下一页'
     actions: { all: [ 'reset', 'command: craftov ui loot page next' ] }
-

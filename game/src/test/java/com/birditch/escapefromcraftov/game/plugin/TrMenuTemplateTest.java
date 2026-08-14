@@ -53,6 +53,8 @@ class TrMenuTemplateTest {
           "missing Loot action for slot " + slot);
     }
     assertTrue(yaml.contains("Hide-Player-Inventory: true"));
+    assertTrue(yaml.contains("Default-Arguments: [ '1', '1', 'SUPPLY', '1' ]"));
+    assertTrue(yaml.contains("{2} &7T{3}"), "Loot title must expose container type and tier");
   }
 
   @Test

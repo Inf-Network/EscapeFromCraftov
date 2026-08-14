@@ -7,6 +7,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
+import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
+import com.birditch.escapefromcraftov.api.item.ItemRarity;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.loot.LootRollContext;
 import com.birditch.escapefromcraftov.api.loot.LootService;
 import com.birditch.escapefromcraftov.api.loot.LootContainerType;
@@ -29,14 +32,21 @@ import java.time.Duration;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
@@ -54,6 +64,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final CraftovGameService games;
   private final LootService loot;
   private final CraftovItemStacks itemStacks;
+  private final ItemRegistry items;
   private final InstanceWorldIndex worlds;
   private final Messages messages;
   private final int inventorySize;
@@ -63,13 +74,16 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
   private final Map<UUID, LootView> views = new HashMap<>();
   private final Map<UUID, SearchSession> searches = new HashMap<>();
+  private final Map<PlayerContainerKey, LootRevealProgress> revealProgress = new HashMap<>();
+  private final Map<UUID, RevealSession> reveals = new HashMap<>();
 
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
-      InstanceWorldIndex worlds, Messages messages, int inventorySize, TrMenuBridge menus,
-      CraftovScheduler scheduler) {
+      ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
+      TrMenuBridge menus, CraftovScheduler scheduler) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
+    this.items = Preconditions.checkNotNull(items, "items");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     Preconditions.checkArgument(inventorySize >= 9 && inventorySize <= 54
@@ -103,14 +117,42 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   @EventHandler
   public void onQuit(PlayerQuitEvent event) {
     cancelSearch(event.getPlayer(), false);
+    stopView(event.getPlayer(), false, false);
     menus.close(event.getPlayer(), "escapefromcraftov_loot");
-    views.remove(event.getPlayer().getUniqueId());
   }
 
-  @EventHandler(ignoreCancelled = true)
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onDamage(EntityDamageEvent event) {
-    if (event.getEntity() instanceof Player player && searches.containsKey(player.getUniqueId())) {
-      cancelSearch(player, true);
+    if (!(event.getEntity() instanceof Player player) || event.getFinalDamage() <= 0) return;
+    if (searches.containsKey(player.getUniqueId())) cancelSearch(player, true);
+    if (views.containsKey(player.getUniqueId())) stopView(player, true, true);
+  }
+
+  @EventHandler
+  public void onInventoryClose(InventoryCloseEvent event) {
+    if (!(event.getPlayer() instanceof Player player)
+        || !views.containsKey(player.getUniqueId())) return;
+    // TrMenu may close and reopen its packet window while refreshing a dynamic
+    // page. Recheck on the next tick so only a real close ends the live task.
+    scheduler.runLater(Duration.ZERO, () -> {
+      if (views.containsKey(player.getUniqueId())
+          && !menus.isViewing(player, "escapefromcraftov_loot")) {
+        stopView(player, false, false);
+      }
+    });
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onMove(PlayerMoveEvent event) {
+    Player player = event.getPlayer();
+    LootView view = views.get(player.getUniqueId());
+    if (view == null) return;
+    CraftovGame game = games.find(view.key().gameId()).orElse(null);
+    CraftovLootPoint point = game == null ? null : game.lootPoints().stream()
+        .filter(candidate -> candidate.id().equals(view.key().lootPointId()))
+        .findFirst().orElse(null);
+    if (point == null || !validViewLocation(game, player, point, view.key(), event.getTo())) {
+      stopView(player, true, true);
     }
   }
 
@@ -121,6 +163,12 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     ValidatedView validated = validateView(player);
     int containerSlot = validated.view().page() * PAGE_SIZE + visibleSlot;
     LootContainerState container = validated.container();
+    LootRevealProgress progress = revealProgress.get(
+        new PlayerContainerKey(player.getUniqueId(), validated.view().key()));
+    if (progress == null || !progress.isRevealed(containerSlot)) {
+      player.sendActionBar(messages.raw("loot.unidentified"));
+      return;
+    }
     ItemStack taken;
     synchronized (container) {
       taken = container.item(containerSlot);
@@ -137,7 +185,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       }
     }
     player.sendActionBar(messages.raw("loot.taken"));
-    open(player);
+    refreshViewers(validated.view().key());
   }
 
   public void page(Player player, int direction) {
@@ -146,8 +194,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     ValidatedView validated = validateView(player);
     int totalPages = Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE);
     int page = Math.max(0, Math.min(totalPages - 1, validated.view().page() + direction));
-    views.put(player.getUniqueId(), new LootView(validated.view().key(), page));
-    open(player);
+    views.put(player.getUniqueId(), validated.view().withPage(page));
+    openOrStop(player);
   }
 
   @Subscribe
@@ -159,7 +207,13 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       if (player != null) player.hideBossBar(entry.getValue().bar());
       return true;
     });
+    reveals.entrySet().removeIf(entry -> {
+      if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
+      entry.getValue().task().cancel();
+      return true;
+    });
     containers.keySet().removeIf(key -> key.gameId().equals(event.gameId()));
+    revealProgress.keySet().removeIf(key -> key.container().gameId().equals(event.gameId()));
     views.entrySet().removeIf(entry -> {
       if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
       Player player = org.bukkit.Bukkit.getPlayer(entry.getKey());
@@ -174,12 +228,26 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   private void beginSearch(Player player, CraftovGame game, CraftovLootPoint point) {
     UUID playerId = player.getUniqueId();
-    SearchSession current = searches.get(playerId);
     ContainerKey key = new ContainerKey(game.id(), point.id());
+    PlayerContainerKey progressKey = new PlayerContainerKey(playerId, key);
+    LootRevealProgress previous = revealProgress.get(progressKey);
+    LootContainerState existing = containers.get(key);
+    if (previous != null && existing != null) {
+      cancelSearch(player, false);
+      stopView(player, false, false);
+      views.put(playerId, new LootView(key, 0, point.containerType(), point.tier()));
+      if (!openOrStop(player)) return;
+      startReveal(player, key, point, existing, previous);
+      player.sendActionBar(messages.raw("loot.reveal-resumed"));
+      notifyTeammatesSearching(game, player, point);
+      return;
+    }
+    SearchSession current = searches.get(playerId);
     if (current != null) {
       if (current.key().equals(key)) player.sendActionBar(messages.raw("loot.already-searching"));
       return;
     }
+    stopView(player, false, false);
     double seconds = searchSeconds(point);
     BossBar bar = BossBar.bossBar(
         Component.text("搜索 " + containerName(point.containerType()) + " · T" + point.tier(),
@@ -195,6 +263,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     holder[0] = session;
     searches.put(playerId, session);
     player.sendMessage(messages.raw("loot.search-started"));
+    notifyTeammatesSearching(game, player, point);
   }
 
   private void tickSearch(UUID playerId, SearchSession expected) {
@@ -227,9 +296,15 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     if (!searches.remove(player.getUniqueId(), expected)) return;
     expected.task().cancel();
     player.hideBossBar(expected.bar());
-    containers.computeIfAbsent(expected.key(), _ -> createContainer(game, expected.point(), player));
-    views.put(player.getUniqueId(), new LootView(expected.key(), 0));
-    open(player);
+    LootContainerState container = containers.computeIfAbsent(expected.key(),
+        _ -> createContainer(game, expected.point(), player));
+    PlayerContainerKey progressKey = new PlayerContainerKey(player.getUniqueId(), expected.key());
+    LootRevealProgress progress = revealProgress.computeIfAbsent(progressKey,
+        _ -> new LootRevealProgress(container.occupiedSlots()));
+    views.put(player.getUniqueId(), new LootView(expected.key(), 0,
+        expected.point().containerType(), expected.point().tier()));
+    if (!openOrStop(player)) return;
+    startReveal(player, expected.key(), expected.point(), container, progress);
     player.sendMessage(messages.raw("loot.opened"));
   }
 
@@ -250,6 +325,135 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     SearchSession removed = searches.remove(playerId);
     if (removed != null) removed.task().cancel();
+  }
+
+  private void startReveal(Player player, ContainerKey key, CraftovLootPoint point,
+      LootContainerState container, LootRevealProgress progress) {
+    UUID playerId = player.getUniqueId();
+    RevealSession old = reveals.remove(playerId);
+    if (old != null) old.task().cancel();
+    long now = System.nanoTime();
+    int nextSlot = progress.nextPresentSlot(container::hasItem);
+    long nextAt = nextSlot < 0 ? Long.MAX_VALUE
+        : now + revealDelayNanos(point, container.item(nextSlot));
+    RevealSession[] holder = new RevealSession[1];
+    ScheduledTask task = scheduler.runTimer(Duration.ZERO, Duration.ofMillis(100),
+        () -> tickReveal(playerId, holder[0]));
+    RevealSession session = new RevealSession(key, point, container, progress, nextAt, task);
+    holder[0] = session;
+    reveals.put(playerId, session);
+  }
+
+  private void tickReveal(UUID playerId, RevealSession expected) {
+    if (expected == null || reveals.get(playerId) != expected) return;
+    Player player = org.bukkit.Bukkit.getPlayer(playerId);
+    if (player == null || !player.isOnline()) {
+      stopView(playerId);
+      return;
+    }
+    LootView view = views.get(playerId);
+    if (view == null || !view.key().equals(expected.key())
+        || !menus.isViewing(player, "escapefromcraftov_loot")) {
+      stopView(playerId);
+      return;
+    }
+    CraftovGame game = games.find(expected.key().gameId()).orElse(null);
+    if (!validViewLocation(game, player, expected.point(), expected.key())) {
+      stopView(player, true, true);
+      return;
+    }
+    int slot = expected.progress().nextPresentSlot(expected.container()::hasItem);
+    if (slot < 0) {
+      completeReveal(playerId, player, expected);
+      return;
+    }
+    long now = System.nanoTime();
+    if (now < expected.nextRevealAtNanos()) return;
+    ItemStack item = expected.container().item(slot);
+    if (item == null || item.isEmpty()) {
+      expected.nextRevealAtNanos(now);
+      return;
+    }
+    expected.progress().reveal(slot);
+    ItemRarity rarity = rarity(item);
+    if (!openOrStop(player)) {
+      expected.progress().rollbackReveal(slot);
+      return;
+    }
+    playRevealFeedback(player, item, rarity, expected.progress());
+    int next = expected.progress().nextPresentSlot(expected.container()::hasItem);
+    if (next < 0) {
+      completeReveal(playerId, player, expected);
+    } else {
+      expected.nextRevealAtNanos(
+          now + revealDelayNanos(expected.point(), expected.container().item(next)));
+    }
+  }
+
+  private void completeReveal(UUID playerId, Player player, RevealSession expected) {
+    if (!reveals.remove(playerId, expected)) return;
+    expected.task().cancel();
+    player.sendActionBar(messages.raw("loot.reveal-complete"));
+  }
+
+  private long revealDelayNanos(CraftovLootPoint point, ItemStack item) {
+    return Duration.ofMillis(LootRevealPolicy.delayMillis(point.containerType(), point.tier(),
+        rarity(item))).toNanos();
+  }
+
+  private void playRevealFeedback(Player player, ItemStack item, ItemRarity rarity,
+      LootRevealProgress progress) {
+    Component name = item.hasItemMeta() && item.getItemMeta().hasItemName()
+        ? Objects.requireNonNull(item.getItemMeta().itemName())
+        : Component.translatable(item.getType().translationKey());
+    player.sendActionBar(messages.raw("loot.revealed",
+        Placeholder.component("item", name),
+        Placeholder.unparsed("current", Integer.toString(progress.completedCount())),
+        Placeholder.unparsed("total", Integer.toString(progress.totalCount()))));
+    Sound sound = rarity.ordinal() >= ItemRarity.EPIC.ordinal()
+        ? Sound.ENTITY_PLAYER_LEVELUP : Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
+    float pitch = Math.min(1.8f, 0.85f + rarity.ordinal() * 0.12f);
+    player.playSound(player.getLocation(), sound, SoundCategory.PLAYERS, 0.55f, pitch);
+  }
+
+  private ItemRarity rarity(ItemStack item) {
+    if (item == null || item.isEmpty()) return ItemRarity.COMMON;
+    return itemStacks.read(item).flatMap(tagged -> items.find(tagged.itemId()))
+        .map(definition -> definition.rarity()).orElse(ItemRarity.COMMON);
+  }
+
+  private void stopView(Player player, boolean notify, boolean closeMenu) {
+    UUID playerId = player.getUniqueId();
+    RevealSession removed = reveals.remove(playerId);
+    if (removed != null) removed.task().cancel();
+    views.remove(playerId);
+    if (closeMenu) menus.close(player, "escapefromcraftov_loot");
+    if (notify) player.sendActionBar(messages.raw(
+        removed == null ? "loot.view-closed" : "loot.reveal-cancelled"));
+  }
+
+  private void stopView(UUID playerId) {
+    RevealSession removed = reveals.remove(playerId);
+    if (removed != null) removed.task().cancel();
+    views.remove(playerId);
+  }
+
+  private void notifyTeammatesSearching(CraftovGame game, Player player,
+      CraftovLootPoint point) {
+    CraftovPlayer searching = game.players().stream()
+        .filter(candidate -> candidate.playerId().equals(player.getUniqueId())).findFirst()
+        .orElse(null);
+    if (searching == null || searching.teamId().isEmpty()) return;
+    int teamId = searching.teamId().getAsInt();
+    for (CraftovPlayer candidate : game.players()) {
+      if (candidate.playerId().equals(player.getUniqueId()) || candidate.teamId().isEmpty()
+          || candidate.teamId().getAsInt() != teamId || candidate.extracted()) continue;
+      Player teammate = org.bukkit.Bukkit.getPlayer(candidate.playerId());
+      if (teammate == null || !teammate.isOnline()) continue;
+      teammate.sendActionBar(messages.raw("loot.teammate-searching",
+          Placeholder.unparsed("player", player.getName()),
+          Placeholder.unparsed("container", containerName(point.containerType()))));
+    }
   }
 
   private static double searchSeconds(CraftovLootPoint point) {
@@ -275,11 +479,23 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     };
   }
 
+  private boolean openOrStop(Player player) {
+    try {
+      open(player);
+      return true;
+    } catch (RuntimeException failure) {
+      stopView(player, false, true);
+      player.sendMessage(messages.raw("loot.open-failed"));
+      return false;
+    }
+  }
+
   private void open(Player player) {
     LootView view = views.get(player.getUniqueId());
     if (view == null || !menus.open(player, "escapefromcraftov_loot",
         Integer.toString(view.page() + 1),
-        Integer.toString(Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE)))) {
+        Integer.toString(Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE)),
+        containerToken(view.containerType()), Integer.toString(view.tier()))) {
       throw new IllegalStateException("TrMenu 无法打开 Loot 搜索菜单");
     }
   }
@@ -298,38 +514,60 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       return air();
     }
     if (visible < 0 || visible >= PAGE_SIZE) return air();
-    ItemStack item = container.item(view.page() * PAGE_SIZE + visible);
-    return item == null ? air() : item;
+    int containerSlot = view.page() * PAGE_SIZE + visible;
+    ItemStack item = container.item(containerSlot);
+    if (item == null) return air();
+    LootRevealProgress progress = revealProgress.get(
+        new PlayerContainerKey(player.getUniqueId(), view.key()));
+    return progress != null && progress.isRevealed(containerSlot) ? item : unknownItem();
+  }
+
+  private void refreshViewers(ContainerKey key) {
+    for (Map.Entry<UUID, LootView> entry : List.copyOf(views.entrySet())) {
+      if (!entry.getValue().key().equals(key)) continue;
+      Player viewer = org.bukkit.Bukkit.getPlayer(entry.getKey());
+      if (viewer == null || !viewer.isOnline()
+          || !menus.isViewing(viewer, "escapefromcraftov_loot")) continue;
+      openOrStop(viewer);
+    }
   }
 
   private ValidatedView validateView(Player player) {
     LootView view = views.get(player.getUniqueId());
     if (view == null) throw new IllegalStateException("Loot 搜索会话已结束");
     if (!menus.isViewing(player, "escapefromcraftov_loot")) {
-      views.remove(player.getUniqueId());
+      stopView(player, false, false);
       throw new IllegalStateException("请先打开物资搜索界面");
     }
     CraftovGame game = games.find(view.key().gameId()).orElse(null);
-    if (!activeMember(game, player)
-        || !worlds.gameByWorld(player.getWorld().getName()).filter(view.key().gameId()::equals)
-            .isPresent()) {
+    CraftovLootPoint point = game == null ? null : game.lootPoints().stream()
+        .filter(value -> value.id().equals(view.key().lootPointId())).findFirst().orElse(null);
+    if (point == null || !validViewLocation(game, player, point, view.key())) {
       views.remove(player.getUniqueId());
+      RevealSession reveal = reveals.remove(player.getUniqueId());
+      if (reveal != null) reveal.task().cancel();
       menus.close(player, "escapefromcraftov_loot");
-      throw new IllegalStateException("你已经不在这场行动中");
-    }
-    CraftovLootPoint point = game.lootPoints().stream()
-        .filter(value -> value.id().equals(view.key().lootPointId())).findFirst()
-        .orElseThrow(() -> new IllegalStateException("Loot 点已不存在"));
-    Location location = player.getLocation();
-    if (point.distanceSquared(location.getX(), location.getY(), location.getZ())
-        > INTERACTION_DISTANCE_SQUARED) {
-      views.remove(player.getUniqueId());
-      menus.close(player, "escapefromcraftov_loot");
-      throw new IllegalStateException("你离物资点太远了");
+      throw new IllegalStateException("你已离开物资容器或当前行动");
     }
     LootContainerState container = containers.get(view.key());
     if (container == null) throw new IllegalStateException("Loot 容器已关闭");
     return new ValidatedView(view, container);
+  }
+
+  private boolean validViewLocation(CraftovGame game, Player player, CraftovLootPoint point,
+      ContainerKey key) {
+    return validViewLocation(game, player, point, key, player.getLocation());
+  }
+
+  private boolean validViewLocation(CraftovGame game, Player player, CraftovLootPoint point,
+      ContainerKey key, Location location) {
+    if (location == null || !activeMember(game, player)
+        || location.getWorld() == null
+        || worlds.gameByWorld(location.getWorld().getName()).filter(key.gameId()::equals).isEmpty()) {
+      return false;
+    }
+    return point.distanceSquared(location.getX(), location.getY(), location.getZ())
+        <= INTERACTION_DISTANCE_SQUARED;
   }
 
   private LootContainerState createContainer(CraftovGame game, CraftovLootPoint point, Player player) {
@@ -399,6 +637,32 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     return new ItemStack(Material.AIR);
   }
 
+  private static ItemStack unknownItem() {
+    ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+    item.editMeta(meta -> {
+      meta.itemName(Component.text("未识别物资", NamedTextColor.DARK_GRAY)
+          .decoration(TextDecoration.ITALIC, false));
+      meta.lore(List.of(
+          Component.text("正在辨识内容……", NamedTextColor.GRAY)
+              .decoration(TextDecoration.ITALIC, false),
+          Component.text("揭示前无法取出", NamedTextColor.RED)
+              .decoration(TextDecoration.ITALIC, false)));
+    });
+    return item;
+  }
+
+  private static String containerToken(LootContainerType type) {
+    return switch (type) {
+      case CHEST -> "SUPPLY";
+      case BARREL -> "BARREL";
+      case DUNGEON_CHEST -> "WEAPON";
+      case POTION_CACHE -> "MEDICAL";
+      case HIDDEN_CACHE -> "HIDDEN";
+      case VAULT -> "VAULT";
+      case SUPPLY_DROP -> "AIRDROP";
+    };
+  }
+
   @Override
   public void close() throws Exception {
     for (Map.Entry<UUID, SearchSession> entry : List.copyOf(searches.entrySet())) {
@@ -406,12 +670,15 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       entry.getValue().task().cancel();
       if (player != null) player.hideBossBar(entry.getValue().bar());
     }
+    for (RevealSession reveal : List.copyOf(reveals.values())) reveal.task().cancel();
     for (Player player : List.copyOf(org.bukkit.Bukkit.getOnlinePlayers())) {
       menus.close(player, "escapefromcraftov_loot");
     }
     itemSource.close();
     views.clear();
     searches.clear();
+    reveals.clear();
+    revealProgress.clear();
     containers.clear();
   }
 
@@ -422,10 +689,48 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
   }
 
-  private record LootView(ContainerKey key, int page) {}
+  private record PlayerContainerKey(UUID playerId, ContainerKey container) {
+    private PlayerContainerKey {
+      Objects.requireNonNull(playerId);
+      Objects.requireNonNull(container);
+    }
+  }
+
+  private record LootView(ContainerKey key, int page, LootContainerType containerType, int tier) {
+    private LootView withPage(int newPage) {
+      return new LootView(key, newPage, containerType, tier);
+    }
+  }
   private record SearchSession(ContainerKey key, CraftovLootPoint point, String worldName,
       long startedAtNanos, long durationNanos, BossBar bar, ScheduledTask task) {}
   private record ValidatedView(LootView view, LootContainerState container) {}
+
+  private static final class RevealSession {
+    private final ContainerKey key;
+    private final CraftovLootPoint point;
+    private final LootContainerState container;
+    private final LootRevealProgress progress;
+    private final ScheduledTask task;
+    private long nextRevealAtNanos;
+
+    private RevealSession(ContainerKey key, CraftovLootPoint point, LootContainerState container,
+        LootRevealProgress progress, long nextRevealAtNanos, ScheduledTask task) {
+      this.key = key;
+      this.point = point;
+      this.container = container;
+      this.progress = progress;
+      this.nextRevealAtNanos = nextRevealAtNanos;
+      this.task = task;
+    }
+
+    private ContainerKey key() { return key; }
+    private CraftovLootPoint point() { return point; }
+    private LootContainerState container() { return container; }
+    private LootRevealProgress progress() { return progress; }
+    private ScheduledTask task() { return task; }
+    private long nextRevealAtNanos() { return nextRevealAtNanos; }
+    private void nextRevealAtNanos(long value) { nextRevealAtNanos = value; }
+  }
 
   private static final class LootContainerState {
     private final List<ItemStack> contents;
@@ -438,6 +743,21 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       if (slot < 0 || slot >= contents.size()) return null;
       ItemStack item = contents.get(slot);
       return item == null ? null : item.clone();
+    }
+
+    private synchronized boolean hasItem(int slot) {
+      if (slot < 0 || slot >= contents.size()) return false;
+      ItemStack item = contents.get(slot);
+      return item != null && !item.isEmpty();
+    }
+
+    private synchronized List<Integer> occupiedSlots() {
+      List<Integer> slots = new ArrayList<>();
+      for (int slot = 0; slot < contents.size(); slot++) {
+        ItemStack item = contents.get(slot);
+        if (item != null && !item.isEmpty()) slots.add(slot);
+      }
+      return List.copyOf(slots);
     }
 
     private void remove(int slot) {

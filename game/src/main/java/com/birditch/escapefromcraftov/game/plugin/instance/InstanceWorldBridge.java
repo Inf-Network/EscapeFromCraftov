@@ -16,6 +16,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionPointId;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
 import com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.report.RaidOutcome;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureSettlementItems;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
@@ -118,15 +119,22 @@ public final class InstanceWorldBridge implements Listener {
         .map(PendingExtraction::playerId).collect(java.util.stream.Collectors.toSet());
     List<UUID> deaths = remaining.stream()
         .filter(playerId -> !extractionPlayers.contains(playerId)).toList();
-    settleCraftovEnd(event.gameId(), deaths, extracting, 0);
+    Map<UUID, List<ItemInstance>> protectedByPlayer = new HashMap<>();
+    deaths.forEach(playerId -> {
+      deps.raidReports().declareOutcome(event.gameId(), playerId, RaidOutcome.TIMED_OUT);
+      protectedByPlayer.put(playerId,
+          deps.secureContainers().beginSettlement(event.gameId(), playerId));
+    });
+    settleCraftovEnd(event.gameId(), protectedByPlayer, extracting, 0);
   }
 
-  private void settleCraftovEnd(CraftovGameId gameId, List<UUID> deaths,
+  private void settleCraftovEnd(CraftovGameId gameId,
+      Map<UUID, List<ItemInstance>> protectedByPlayer,
       List<PendingExtraction> extracting, int attempt) {
-    List<CompletableFuture<?>> settlements = new ArrayList<>();
-    deaths.stream().map(playerId -> deps.inventories().settleLoss(playerId, gameId,
-            deps.secureContainers().beginSettlement(gameId, playerId)))
-        .forEach(settlements::add);
+    Map<UUID, CompletableFuture<CraftovSettlementResult>> lossSettlements = new HashMap<>();
+    protectedByPlayer.forEach((playerId, protectedItems) -> lossSettlements.put(playerId,
+        deps.inventories().settleLoss(playerId, gameId, protectedItems)));
+    List<CompletableFuture<?>> settlements = new ArrayList<>(lossSettlements.values());
     extracting.stream().map(PendingExtraction::completion).forEach(settlements::add);
     CompletableFuture.allOf(settlements.toArray(CompletableFuture[]::new))
         .whenComplete((_, failure) ->
@@ -135,7 +143,8 @@ public final class InstanceWorldBridge implements Listener {
             int next = attempt + 1;
             pendingEndAttempts.put(gameId, next);
             if (attempt == 0) {
-              deaths.stream().map(Bukkit::getPlayer).filter(java.util.Objects::nonNull)
+              protectedByPlayer.keySet().stream().map(Bukkit::getPlayer)
+                  .filter(java.util.Objects::nonNull)
                   .forEach(player -> player.sendMessage(
                       deps.messages().raw("game.end-settlement-failed")));
             }
@@ -143,11 +152,17 @@ public final class InstanceWorldBridge implements Listener {
                 "对局结束损失结算失败，将在 5 秒后自动重试 (第 " + next + " 次): " + gameId.value(),
                 failure);
             deps.scheduler().runLater(Duration.ofSeconds(5),
-                () -> settleCraftovEnd(gameId, deaths, extracting, next));
+                () -> settleCraftovEnd(gameId, protectedByPlayer, extracting, next));
           } else {
-            deaths.forEach(playerId ->
-                deps.secureContainers().completeSettlement(gameId, playerId));
-            finishCraftovEnd(gameId, deaths);
+            protectedByPlayer.forEach((playerId, protectedItems) -> {
+              deps.secureContainers().completeSettlement(gameId, playerId);
+              CraftovSettlementResult result = lossSettlements.get(playerId).join();
+              RaidOutcome outcome = result.outcome() == CraftovInventoryOutcome.EXTRACTED
+                  ? RaidOutcome.EXTRACTED
+                  : deps.raidReports().outcomeOr(gameId, playerId, RaidOutcome.TIMED_OUT);
+              deps.raidReports().complete(gameId, playerId, outcome, protectedItems);
+            });
+            finishCraftovEnd(gameId, List.copyOf(protectedByPlayer.keySet()));
           }
         }));
   }
@@ -190,7 +205,7 @@ public final class InstanceWorldBridge implements Listener {
     if (player == null) {
       deps.logger().warning("撤离锁定时玩家已离线，按行动失败结算:" + event.playerId());
       deps.extractions().failSettlement(event.playerId(), event.gameId(), event.pointId());
-      settleLockedFailure(event.gameId(), event.playerId(), null, 0);
+      beginLockedFailure(event.gameId(), event.playerId(), null);
       return;
     }
     freeze(event.playerId());
@@ -224,7 +239,7 @@ public final class InstanceWorldBridge implements Listener {
       deps.secureContainers().cancelSettlement(event.gameId(), event.playerId());
       pending.completion().complete(CraftovInventoryOutcome.LOST);
     } else {
-      settleLockedFailure(event.gameId(), event.playerId(), pending.completion(), 0);
+      beginLockedFailure(event.gameId(), event.playerId(), pending.completion());
     }
   }
 
@@ -238,7 +253,7 @@ public final class InstanceWorldBridge implements Listener {
         deps.logger().warning("撤离授权完成时没有可用的背包快照，按行动失败结算:"
             + event.playerId());
         deps.extractions().failSettlement(event.playerId(), event.gameId(), event.pointId());
-        settleLockedFailure(event.gameId(), event.playerId(), null, 0);
+        beginLockedFailure(event.gameId(), event.playerId(), null);
         return;
       }
       freeze(event.playerId());
@@ -258,7 +273,7 @@ public final class InstanceWorldBridge implements Listener {
       deps.logger().severe("撤离快照与授权点不一致，拒绝继续结算:" + event.playerId());
       pendingExtractions.remove(key, pending);
       deps.extractions().failSettlement(event.playerId(), event.gameId(), event.pointId());
-      settleLockedFailure(event.gameId(), event.playerId(), pending.completion(), 0);
+      beginLockedFailure(event.gameId(), event.playerId(), pending.completion());
       return;
     }
     settleExtraction(key, pending, 0);
@@ -410,6 +425,8 @@ public final class InstanceWorldBridge implements Listener {
     deps.secureContainers().completeSettlement(pending.gameId(), pending.playerId());
     Player online = Bukkit.getPlayer(pending.playerId());
     if (result.outcome() == CraftovInventoryOutcome.EXTRACTED) {
+      deps.raidReports().complete(pending.gameId(), pending.playerId(),
+          RaidOutcome.EXTRACTED, pending.carried());
       if (!deps.extractions().completeSettlement(
           pending.playerId(), pending.gameId(), pending.pointId())) {
         deps.logger().warning("撤离仓库事务已成功，但领域会话已不存在:" + pending.playerId());
@@ -439,21 +456,34 @@ public final class InstanceWorldBridge implements Listener {
     }
   }
 
+  private void beginLockedFailure(CraftovGameId gameId, UUID playerId,
+      CompletableFuture<CraftovInventoryOutcome> completion) {
+    deps.raidReports().declareOutcome(gameId, playerId, RaidOutcome.FAILED);
+    List<ItemInstance> protectedItems = deps.secureContainers().beginSettlement(gameId, playerId);
+    settleLockedFailure(gameId, playerId, protectedItems, completion, 0);
+  }
+
   private void settleLockedFailure(CraftovGameId gameId, UUID playerId,
+      List<ItemInstance> protectedItems,
       CompletableFuture<CraftovInventoryOutcome> completion, int attempt) {
-    var protectedItems = deps.secureContainers().beginSettlement(gameId, playerId);
-    deps.inventories().settleLoss(playerId, gameId, protectedItems).whenComplete((_, failure) ->
+    deps.inventories().settleLoss(playerId, gameId, protectedItems)
+        .whenComplete((result, failure) ->
         deps.scheduler().runSync(() -> {
-          if (failure != null) {
+          if (failure != null || result == null) {
             deps.logger().log(Level.WARNING,
                 "锁定撤离失败后的损失结算失败，将在 5 秒后重试 (第 " + (attempt + 1)
                     + " 次):" + playerId, failure);
             deps.scheduler().runLater(Duration.ofSeconds(5),
-                () -> settleLockedFailure(gameId, playerId, completion, attempt + 1));
+                () -> settleLockedFailure(gameId, playerId, protectedItems,
+                    completion, attempt + 1));
             return;
           }
           deps.secureContainers().completeSettlement(gameId, playerId);
-          if (completion != null) completion.complete(CraftovInventoryOutcome.LOST);
+          RaidOutcome outcome = result.outcome() == CraftovInventoryOutcome.EXTRACTED
+              ? RaidOutcome.EXTRACTED
+              : deps.raidReports().outcomeOr(gameId, playerId, RaidOutcome.FAILED);
+          deps.raidReports().complete(gameId, playerId, outcome, protectedItems);
+          if (completion != null) completion.complete(result.outcome());
           if (!deps.games().leave(playerId).isSuccess()) returnToLobby(playerId);
         }));
   }
@@ -595,7 +625,7 @@ public final class InstanceWorldBridge implements Listener {
     deps.logger().log(Level.SEVERE,
         "撤离快照包含无效或重复的物品实例，按行动失败结算:" + playerId, failure);
     deps.extractions().failSettlement(playerId, gameId, pointId);
-    settleLockedFailure(gameId, playerId, null, 0);
+    beginLockedFailure(gameId, playerId, null);
   }
 
   private boolean containsInstance(Player player, UUID instanceId) {

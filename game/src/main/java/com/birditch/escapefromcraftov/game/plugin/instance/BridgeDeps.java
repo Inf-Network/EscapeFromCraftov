@@ -15,6 +15,7 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import com.birditch.escapefromcraftov.game.plugin.world.WorldService;
 import java.util.logging.Logger;
 
@@ -28,6 +29,7 @@ public record BridgeDeps(
     ExtractionService extractions,
     CraftovItemStacks itemStacks,
     SecureContainerController secureContainers,
+    RaidResultRuntime raidReports,
     EventBus eventBus,
     WorldService worlds,
     InstanceWorldIndex index,
@@ -48,6 +50,7 @@ public record BridgeDeps(
     Preconditions.checkNotNull(extractions, "extractions");
     Preconditions.checkNotNull(itemStacks, "itemStacks");
     Preconditions.checkNotNull(secureContainers, "secureContainers");
+    Preconditions.checkNotNull(raidReports, "raidReports");
     Preconditions.checkNotNull(eventBus, "eventBus");
     Preconditions.checkNotNull(worlds, "worlds");
     Preconditions.checkNotNull(index, "index");

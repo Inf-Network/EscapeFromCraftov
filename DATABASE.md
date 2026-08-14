@@ -175,6 +175,30 @@ schema（默认 `public`），共享下列全部表。
 
 索引：`idx_craftov_market_operation_listing` on `(listing_id)`。
 
+## craftov_raid_results — 行动战报
+
+每名玩家在每个行动实例中最多一条终局战报。`result_id` 由行动 ID 与玩家 UUID
+确定性生成，死亡、退出、撤离和超时等并发终局路径共享同一幂等键。
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `result_id` | uuid | PK | 确定性战报 ID |
+| `game_id` | varchar(96) | NOT NULL | 行动实例 ID |
+| `player_id` | uuid | NOT NULL | 玩家 UUID |
+| `map_id` | varchar(96) | NOT NULL | 地图 ID |
+| `raid_mode` | varchar(24) | NOT NULL | `NORMAL` / `CONFIDENTIAL` |
+| `difficulty` | varchar(24) | NOT NULL | `EASY` / `NORMAL` / `HARD` |
+| `outcome` | varchar(24) | NOT NULL | `EXTRACTED` / `KILLED` / `QUIT` / `TIMED_OUT` / `FAILED` / `ABORTED` |
+| `started_at` / `ended_at` | timestamptz(6) | NOT NULL | 实际行动起止时间 |
+| `kills` | integer | NOT NULL | 敌对玩家击杀数 |
+| `extracted_item_count` | integer | NOT NULL | 最终保留物资数量 |
+| `extracted_value` | bigint | NOT NULL | 最终保留物资基础价值 |
+| `experience` | bigint | NOT NULL | 本局经验收益 |
+| `earnings` | bigint | NOT NULL | 撤离收益价值 |
+
+唯一约束：`uk_craftov_raid_result_game_player` on `(game_id, player_id)`；索引：
+`idx_craftov_raid_result_player_time` on `(player_id, ended_at)`。
+
 ## 运维备注
 
 - 表之间没有外键约束，实体互不关联；`player_id` 的一致性由业务层保证。
@@ -187,6 +211,8 @@ schema（默认 `public`），共享下列全部表。
 - 启用玩家交易行前执行 `database/migrations/20260814_player_market.sql`；脚本使用
   普通事务，并会把 `craftov_player_items.location` 的枚举约束扩展为允许 `MARKET`；
   执行成功后再以 `schema-action: validate` 启动 Lobby。
+- 启用行动战报前执行 `database/migrations/20260814_raid_results.sql`；Lobby 与 Game
+  共用该表，需在任一端升级启动前完成迁移。
 - 运行时开启 Hibernate 的 named-index validation；`validate` 模式会在唯一实例
   索引缺失时拒绝启动，不能只添加两列而漏掉索引。
 - `craftov_player_items` 上的仓库/出战栏写路径使用 `pg_advisory_xact_lock`

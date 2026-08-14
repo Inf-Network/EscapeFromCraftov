@@ -52,6 +52,8 @@ import com.birditch.escapefromcraftov.vendor.HibernateMilitaryVendorService;
 import com.birditch.escapefromcraftov.vendor.MilitaryVendorService;
 import com.birditch.escapefromcraftov.market.HibernatePlayerMarketService;
 import com.birditch.escapefromcraftov.market.PlayerMarketService;
+import com.birditch.escapefromcraftov.report.HibernateRaidReportService;
+import com.birditch.escapefromcraftov.lobby.report.LobbyRaidReports;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import com.mojang.brigadier.tree.LiteralCommandNode;
@@ -165,6 +167,8 @@ public final class LobbyApplication {
     MilitaryVendorService vendor = new HibernateMilitaryVendorService(
         db, executor, itemRegistry, timeSource);
     PlayerMarketService market = new HibernatePlayerMarketService(db, executor, timeSource);
+    LobbyRaidReports raidReports = new LobbyRaidReports(
+        new HibernateRaidReportService(db, executor), scheduler);
     marketExpiryTask = scheduler.runTimer(Duration.ofSeconds(10), Duration.ofMinutes(1), () ->
         market.expireDue().exceptionally(error -> {
           logger.log(Level.WARNING, "回收过期交易行挂单失败", error);
@@ -210,7 +214,7 @@ public final class LobbyApplication {
     registerPermissions();
     registerCommands(new LobbyCommandContext(
         plugin, queue, directory, messages, config, dataGate,
-        menuController, marketMenuController, parties));
+        menuController, marketMenuController, raidReports, parties));
     logSummary(config, configs.database(), configs.redis(), directory);
   }
 

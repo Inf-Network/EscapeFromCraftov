@@ -9,6 +9,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovTeamRules;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
+import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.report.RaidOutcome;
 import com.birditch.escapefromcraftov.api.profile.ProgressionService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.Messages;
@@ -16,9 +19,11 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
@@ -52,13 +57,15 @@ public final class GameCombatListener implements Listener {
   private final Messages messages;
   private final GameplaySettings settings;
   private final SecureContainerController secureContainers;
+  private final RaidResultRuntime raidReports;
   private final Map<UUID, Attack> lastAttackers = new HashMap<>();
   private final Map<UUID, Integer> kills = new HashMap<>();
 
   public GameCombatListener(Plugin plugin, CraftovGameService games, CombatService combat,
       PlayerInventoryService inventories, ProgressionService progression,
       InstanceWorldIndex worlds, CraftovScheduler scheduler, Messages messages,
-      GameplaySettings settings, SecureContainerController secureContainers) {
+      GameplaySettings settings, SecureContainerController secureContainers,
+      RaidResultRuntime raidReports) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.combat = Preconditions.checkNotNull(combat, "combat");
@@ -69,6 +76,7 @@ public final class GameCombatListener implements Listener {
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.secureContainers = Preconditions.checkNotNull(secureContainers, "secureContainers");
+    this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
   }
 
   @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -117,6 +125,7 @@ public final class GameCombatListener implements Listener {
     if (attack != null && System.currentTimeMillis() - attack.atMillis()
         <= Duration.ofSeconds(settings.attributionSeconds()).toMillis()) {
       int total = kills.merge(attack.attackerId(), 1, Integer::sum);
+      raidReports.recordKill(game.id(), attack.attackerId());
       Player killer = org.bukkit.Bukkit.getPlayer(attack.attackerId());
       if (killer != null) killer.sendMessage(messages.raw("combat.kill-confirmed",
           Placeholder.unparsed("victim", victim.getName()),
@@ -132,7 +141,10 @@ public final class GameCombatListener implements Listener {
     }
     awardProgression("death", victimId, game.id(), victimId,
         settings.deathExperience(), "行动参与", 0);
-    settleDeath(victim, game.id(), 0);
+    raidReports.declareOutcome(game.id(), victimId, RaidOutcome.KILLED);
+    List<ItemInstance> protectedItems = secureContainers.beginSettlement(
+        game.id(), victimId);
+    settleDeath(victim, game.id(), protectedItems, 0);
   }
 
   @EventHandler
@@ -146,22 +158,25 @@ public final class GameCombatListener implements Listener {
     return kills.getOrDefault(playerId, 0);
   }
 
-  private void settleDeath(Player victim, CraftovGameId gameId, int attempt) {
+  private void settleDeath(Player victim, CraftovGameId gameId,
+      List<ItemInstance> protectedItems, int attempt) {
     UUID victimId = victim.getUniqueId();
-    var protectedItems = secureContainers.beginSettlement(gameId, victimId);
-    inventories.settleLoss(victimId, gameId, protectedItems).whenComplete((_, failure) ->
+    inventories.settleLoss(victimId, gameId, protectedItems).whenComplete((result, failure) ->
         scheduler.runSync(() -> {
-          if (failure != null) {
+          if (failure != null || result == null) {
             org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.WARNING,
                 "死亡损失结算失败，将自动重试:" + victimId, failure);
             if (attempt == 0 && victim.isOnline()) {
               victim.sendMessage(messages.raw("combat.settlement-failed"));
             }
             scheduler.runLater(Duration.ofSeconds(5),
-                () -> settleDeath(victim, gameId, attempt + 1));
+                () -> settleDeath(victim, gameId, protectedItems, attempt + 1));
             return;
           }
           secureContainers.completeSettlement(gameId, victimId);
+          if (result.outcome() == CraftovInventoryOutcome.LOST) {
+            raidReports.complete(gameId, victimId, RaidOutcome.KILLED, protectedItems);
+          }
           if (victim.isOnline()) {
             victim.setInvulnerable(true);
             try {

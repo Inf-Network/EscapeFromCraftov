@@ -161,6 +161,8 @@ public final class LobbyCommand {
                         IntegerArgumentType.getInteger(ctx, "slot")))))));
     root.then(vendorNode(context));
     root.then(marketNode(context));
+    root.then(Commands.literal("reports")
+        .executes(ctx -> menuAction(context, ctx, context.raidReports()::show)));
     if (includeParty) root.then(partyNode(context));
     return root.build();
   }

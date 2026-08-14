@@ -1,11 +1,15 @@
 package com.birditch.escapefromcraftov.game.plugin.listener;
 
 import com.birditch.escapefromcraftov.api.combat.CombatService;
+import com.birditch.escapefromcraftov.api.combat.PlayerCombatState;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionService;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionState;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
+import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.report.RaidOutcome;
 import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.session.PlayerSession;
@@ -17,6 +21,8 @@ import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -45,6 +51,7 @@ public final class GameConnectionListener implements Listener {
       VisibilityService visibility,
       InstanceWorldIndex index,
       SecureContainerController secureContainers,
+      RaidResultRuntime raidReports,
       Logger logger) {
 
     public Deps {
@@ -55,6 +62,7 @@ public final class GameConnectionListener implements Listener {
       Preconditions.checkNotNull(visibility, "visibility");
       Preconditions.checkNotNull(index, "index");
       Preconditions.checkNotNull(secureContainers, "secureContainers");
+      Preconditions.checkNotNull(raidReports, "raidReports");
       Preconditions.checkNotNull(logger, "logger");
     }
   }
@@ -71,6 +79,7 @@ public final class GameConnectionListener implements Listener {
   private final VisibilityService visibility;
   private final InstanceWorldIndex index;
   private final SecureContainerController secureContainers;
+  private final RaidResultRuntime raidReports;
   private final Logger logger;
 
   public GameConnectionListener(Deps deps) {
@@ -87,6 +96,7 @@ public final class GameConnectionListener implements Listener {
     this.visibility = deps.visibility();
     this.index = deps.index();
     this.secureContainers = deps.secureContainers();
+    this.raidReports = deps.raidReports();
     this.logger = deps.logger();
   }
 
@@ -168,23 +178,29 @@ public final class GameConnectionListener implements Listener {
     // Keep the room membership until the durable loss transaction completes.
     // The game manager ends a vacated RUNNING room after the final leave, so
     // removing first could unload its world while this settlement is in flight.
-    settleQuitLoss(playerId, gameId, 0);
+    raidReports.declareOutcome(gameId, playerId, RaidOutcome.QUIT);
+    List<ItemInstance> protectedItems = secureContainers.beginSettlement(gameId, playerId);
+    boolean reportQuit = combat.stateOf(playerId) != PlayerCombatState.DEAD;
+    settleQuitLoss(playerId, gameId, protectedItems, reportQuit, 0);
   }
 
-  private void settleQuitLoss(UUID playerId, CraftovGameId gameId, int attempt) {
-    var protectedItems = secureContainers.beginSettlement(gameId, playerId);
-    inventories.settleLoss(playerId, gameId, protectedItems).whenComplete((_, error) ->
+  private void settleQuitLoss(UUID playerId, CraftovGameId gameId,
+      List<ItemInstance> protectedItems, boolean reportQuit, int attempt) {
+    inventories.settleLoss(playerId, gameId, protectedItems).whenComplete((result, error) ->
         scheduler.runSync(() -> {
-          if (error != null) {
+          if (error != null || result == null) {
             logger.log(Level.WARNING,
                 "玩家退出时死亡损失结算失败，将在 5 秒后自动重试 (第 " + (attempt + 1)
                     + " 次):" + playerId,
                 error);
             scheduler.runLater(java.time.Duration.ofSeconds(5),
-                () -> settleQuitLoss(playerId, gameId, attempt + 1));
+                () -> settleQuitLoss(playerId, gameId, protectedItems, reportQuit, attempt + 1));
             return;
           }
           secureContainers.completeSettlement(gameId, playerId);
+          if (reportQuit && result.outcome() == CraftovInventoryOutcome.LOST) {
+            raidReports.complete(gameId, playerId, RaidOutcome.QUIT, protectedItems);
+          }
           games.leave(playerId);
           finishQuit(playerId);
         }));

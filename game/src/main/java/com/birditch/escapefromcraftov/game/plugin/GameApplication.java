@@ -71,6 +71,8 @@ import com.birditch.escapefromcraftov.game.plugin.loot.CraftovLootListener;
 import com.birditch.escapefromcraftov.game.plugin.medical.MedicalConditionListener;
 import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultCollector;
+import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartCoordinator;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
@@ -92,6 +94,7 @@ import com.birditch.escapefromcraftov.redis.RedisAssignmentStore;
 import com.birditch.escapefromcraftov.redis.RedisConfig;
 import com.birditch.escapefromcraftov.redis.RedisConnector;
 import com.birditch.escapefromcraftov.redis.RedisInstanceDirectory;
+import com.birditch.escapefromcraftov.report.HibernateRaidReportService;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.util.List;
 import java.util.Map;
@@ -139,11 +142,13 @@ public final class GameApplication {
   private @Nullable EventSubscription bridgeSubscription;
   private @Nullable EventSubscription lootSubscription;
   private @Nullable EventSubscription deathCrateSubscription;
+  private @Nullable EventSubscription reportSubscription;
   private @Nullable EventSubscription aiSubscription;
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable DeathCrateListener deathCrates;
   private @Nullable DownedPlayerListener downedPlayers;
   private @Nullable MedicalConditionListener medicalConditions;
+  private @Nullable RaidResultRuntime raidReports;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable InstanceProvisioner provisioner;
@@ -199,6 +204,7 @@ public final class GameApplication {
       GameCombatListener combat,
       DownedPlayerListener downedPlayers,
       MedicalConditionListener medicalConditions,
+      RaidResultRuntime raidReports,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
       DeathCrateListener deathCrates,
@@ -323,13 +329,19 @@ public final class GameApplication {
     if (games.isEmpty() || inventories.isEmpty()) return;
     record ActiveLoss(com.birditch.escapefromcraftov.api.game.CraftovGameId gameId,
                       java.util.UUID playerId,
+                      List<com.birditch.escapefromcraftov.api.item.ItemInstance> protectedItems,
                       CompletableFuture<com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult> future) {}
     SecureContainerController secure = secureContainers;
+    RaidResultRuntime reports = raidReports;
     List<ActiveLoss> activeLosses = games.get().all().stream()
         .flatMap(game -> game.players().stream().map(player -> {
+          if (reports != null) {
+            reports.declareOutcome(game.id(), player.playerId(),
+                com.birditch.escapefromcraftov.api.report.RaidOutcome.ABORTED);
+          }
           List<com.birditch.escapefromcraftov.api.item.ItemInstance> protectedItems = secure == null
               ? List.of() : secure.beginSettlement(game.id(), player.playerId());
-          return new ActiveLoss(game.id(), player.playerId(),
+          return new ActiveLoss(game.id(), player.playerId(), protectedItems,
               inventories.get().settleLoss(player.playerId(), game.id(), protectedItems));
         })).toList();
     List<CompletableFuture<com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult>> settlements =
@@ -337,6 +349,21 @@ public final class GameApplication {
     if (settlements.isEmpty()) return;
     CompletableFuture.allOf(settlements.toArray(CompletableFuture[]::new))
         .get(15, TimeUnit.SECONDS);
+    if (reports != null) {
+      CompletableFuture<?>[] reportWrites = activeLosses.stream()
+          .map(loss -> {
+            var settlement = loss.future().join();
+            var outcome = settlement.outcome()
+                == com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome.EXTRACTED
+                ? com.birditch.escapefromcraftov.api.report.RaidOutcome.EXTRACTED
+                : reports.outcomeOr(loss.gameId(), loss.playerId(),
+                    com.birditch.escapefromcraftov.api.report.RaidOutcome.ABORTED);
+            return reports.complete(loss.gameId(), loss.playerId(), outcome,
+                loss.protectedItems());
+          })
+          .toArray(CompletableFuture[]::new);
+      CompletableFuture.allOf(reportWrites).get(10, TimeUnit.SECONDS);
+    }
     if (secure != null) activeLosses.forEach(loss ->
         secure.completeSettlement(loss.gameId(), loss.playerId()));
   }
@@ -524,13 +551,20 @@ public final class GameApplication {
     this.visibility = visibility;
     CraftovItemStacks itemStacks = new CraftovItemStacks(context.services().require(ItemRegistry.class));
     PlayerInventoryService inventories = context.services().require(PlayerInventoryService.class);
+    RaidResultCollector reportCollector = new RaidResultCollector(
+        new HibernateRaidReportService(context.database(), executor),
+        context.services().require(ItemRegistry.class), new SystemTimeSource());
+    RaidResultRuntime reportRuntime = new RaidResultRuntime(
+        games, reportCollector, scheduler, configs.gameplay(), logger);
+    raidReports = reportRuntime;
+    reportSubscription = context.eventBus().register(reportRuntime);
     SecureContainerController secure = new SecureContainerController(
         games, index, itemStacks, configs.messages(), trMenu);
     secureContainers = secure;
     GameCombatListener combatListener = new GameCombatListener(plugin, games,
         context.services().require(CombatService.class), inventories,
         context.services().require(com.birditch.escapefromcraftov.api.profile.ProgressionService.class),
-        index, scheduler, configs.messages(), configs.gameplay(), secure);
+        index, scheduler, configs.messages(), configs.gameplay(), secure, reportRuntime);
     DownedPlayerListener downedPlayerController = new DownedPlayerListener(games,
         context.services().require(CombatService.class),
         context.services().require(com.birditch.escapefromcraftov.api.combat.DownedService.class),
@@ -568,7 +602,8 @@ public final class GameApplication {
             inventories,
             context.services().require(
                 com.birditch.escapefromcraftov.api.extraction.ExtractionService.class), itemStacks,
-            secure, context.eventBus(), worlds, index, visibility, bungee, server, configs.messages(), trMenu,
+            secure, reportRuntime, context.eventBus(), worlds, index, visibility, bungee, server,
+            configs.messages(), trMenu,
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
     DeathCrateListener deathCrateController = new DeathCrateListener(
@@ -604,8 +639,8 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        downedPlayerController, medicalConditionController, sidebarService, lootMenuController,
-        deathCrateController, secure, instanceBridge, instanceAi);
+        downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
+        lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -653,7 +688,8 @@ public final class GameApplication {
         plugin);
     pluginManager.registerEvents(new GameConnectionListener(new GameConnectionListener.Deps(
         context.services(), context.scheduler(), configs.messages(), wiring.pendingJoins(),
-        wiring.visibility(), wiring.index(), wiring.secureContainers(), logger)), plugin);
+        wiring.visibility(), wiring.index(), wiring.secureContainers(), wiring.raidReports(),
+        logger)), plugin);
     pluginManager.registerEvents(new PendingPlayerGuard(wiring.pendingJoins()), plugin);
     pluginManager.registerEvents(new ExtractionRegionListener(
         context.services().require(CraftovGameService.class),
@@ -696,6 +732,18 @@ public final class GameApplication {
       if (deathCrateSubscription != null) {
         deathCrateSubscription.unsubscribe();
         deathCrateSubscription = null;
+      }
+    });
+    steps.run("unsubscribe raid report runtime", () -> {
+      if (reportSubscription != null) {
+        reportSubscription.unsubscribe();
+        reportSubscription = null;
+      }
+    });
+    steps.run("stop raid report runtime", () -> {
+      if (raidReports != null) {
+        raidReports.close();
+        raidReports = null;
       }
     });
     steps.run("close death crate controller", () -> {

@@ -121,9 +121,10 @@ class LobbyTrMenuTemplateTest {
   }
 
   @Test
-  void mainMenuExposesPlayerMarket() throws IOException {
+  void mainMenuExposesPlayerMarketAndRecentRaidReports() throws IOException {
     String main = read("trmenu/escapefromcraftov_lobby_main.yml");
     assertTrue(main.contains("command: lobby market"));
+    assertTrue(main.contains("command: lobby reports"));
   }
 
   @Test

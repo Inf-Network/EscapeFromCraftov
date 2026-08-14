@@ -38,6 +38,7 @@ class ItemDefinitionTest {
             assertTrue(definition.droppable());
             assertEquals(0, definition.containerSlots());
             assertTrue(definition.secureAllowed());
+            assertEquals(ItemFootprint.SINGLE_CELL, definition.footprint());
         }
 
         @Test
@@ -50,6 +51,7 @@ class ItemDefinitionTest {
                     .sellable(false)
                     .droppable(false)
                     .secureAllowed(false)
+                    .footprint(ItemFootprint.rotatable(2, 3))
                     .build();
             assertEquals(Money.of(2000), definition.basePrice());
             assertEquals(800, definition.weightGrams());
@@ -58,6 +60,7 @@ class ItemDefinitionTest {
             assertFalse(definition.sellable());
             assertFalse(definition.droppable());
             assertFalse(definition.secureAllowed());
+            assertEquals(ItemFootprint.rotatable(2, 3), definition.footprint());
         }
 
         @Test
@@ -107,6 +110,11 @@ class ItemDefinitionTest {
         void rejectsStackSizeBelowOne() {
             ItemDefinition.Builder zero = builder().stackSize(0);
             assertThrows(IllegalArgumentException.class, zero::build);
+        }
+
+        @Test
+        void normalizesMissingLegacyFootprint() {
+            assertEquals(ItemFootprint.SINGLE_CELL, builder().footprint(null).build().footprint());
         }
 
         @Test

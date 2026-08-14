@@ -3,12 +3,16 @@ package com.birditch.escapefromcraftov.item;
 import com.birditch.escapefromcraftov.api.economy.Money;
 import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.item.ItemDefinition;
+import com.birditch.escapefromcraftov.api.item.ItemFootprint;
 import com.birditch.escapefromcraftov.api.item.ItemId;
 import com.birditch.escapefromcraftov.api.item.ItemRarity;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 
 /// Minecraft-native demo item catalog registered during bootstrap.
+///
+/// Grid footprints below are EscapeFromCraftov server-development tuning values.
+/// They are not claimed to be official dimensions from another game.
 public final class DefaultItems {
 
   private DefaultItems() {
@@ -21,23 +25,27 @@ public final class DefaultItems {
             ItemRarity.COMMON)
         .basePrice(Money.of(1200L))
         .weightGrams(1500)
+        .footprint(ItemFootprint.of(1, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("iron_axe"), "铁斧", ItemCategory.MELEE_WEAPON,
             ItemRarity.COMMON)
         .basePrice(Money.of(1300L))
         .weightGrams(1800)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("bow"), "弓", ItemCategory.RANGED_WEAPON, ItemRarity.COMMON)
         .basePrice(Money.of(1000L))
         .weightGrams(800)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("crossbow"), "弩", ItemCategory.RANGED_WEAPON,
             ItemRarity.UNCOMMON)
         .basePrice(Money.of(2400L))
         .weightGrams(1200)
+        .footprint(ItemFootprint.of(2, 2))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("arrow"), "箭矢", ItemCategory.PROJECTILE, ItemRarity.COMMON)
@@ -50,12 +58,14 @@ public final class DefaultItems {
         .builder(ItemId.of("shield"), "盾牌", ItemCategory.SHIELD, ItemRarity.UNCOMMON)
         .basePrice(Money.of(1800L))
         .weightGrams(2000)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("iron_chestplate"), "铁胸甲", ItemCategory.ARMOR,
             ItemRarity.UNCOMMON)
         .basePrice(Money.of(3200L))
         .weightGrams(3500)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("basic_rig"), "基础胸挂", ItemCategory.CHEST_RIG,
@@ -64,6 +74,7 @@ public final class DefaultItems {
         .weightGrams(1200)
         .containerSlots(6)
         .secureAllowed(false)
+        .footprint(ItemFootprint.of(2, 2))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("patrol_backpack"), "巡逻背包", ItemCategory.BACKPACK,
@@ -72,6 +83,7 @@ public final class DefaultItems {
         .weightGrams(1800)
         .containerSlots(12)
         .secureAllowed(false)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("healing_potion"), "治疗药水", ItemCategory.POTION,
@@ -120,6 +132,7 @@ public final class DefaultItems {
         .basePrice(Money.of(30000L))
         .weightGrams(2000)
         .stackSize(16)
+        .footprint(ItemFootprint.of(2, 2))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("military_processor"), "军用运算核心", ItemCategory.VALUABLE,
@@ -127,18 +140,21 @@ public final class DefaultItems {
         .basePrice(Money.of(42_000L))
         .weightGrams(600)
         .stackSize(4)
+        .footprint(ItemFootprint.of(2, 2))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("golden_lion"), "鎏金雄狮", ItemCategory.VALUABLE,
             ItemRarity.LEGENDARY)
         .basePrice(Money.of(120_000L))
         .weightGrams(3_200)
+        .footprint(ItemFootprint.of(2, 3))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("classified_document"), "绝密行动档案", ItemCategory.VALUABLE,
             ItemRarity.ARTIFACT)
         .basePrice(Money.of(350_000L))
         .weightGrams(300)
+        .footprint(ItemFootprint.of(2, 1))
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("extraction_key"), "撤离钥匙", ItemCategory.KEY,

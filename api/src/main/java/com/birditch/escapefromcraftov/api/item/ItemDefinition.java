@@ -16,7 +16,8 @@ public record ItemDefinition(
         boolean sellable,
         boolean droppable,
         int containerSlots,
-        boolean secureAllowed) {
+        boolean secureAllowed,
+        ItemFootprint footprint) {
 
     public ItemDefinition {
         Preconditions.checkNotNull(id, "id");
@@ -33,6 +34,8 @@ public record ItemDefinition(
                         ? containerSlots >= 1 && containerSlots <= 27
                         : containerSlots == 0,
                 "chest rigs/backpacks require 1..27 container slots; other items require 0");
+        // Compatibility for definitions serialized before grid footprints existed.
+        footprint = footprint == null ? ItemFootprint.SINGLE_CELL : footprint;
     }
 
     /// Binary/source-compatible constructor retained for definitions without carry metadata.
@@ -40,7 +43,7 @@ public record ItemDefinition(
             ItemRarity rarity, Money basePrice, int weightGrams, int stackSize,
             boolean tradable, boolean sellable, boolean droppable) {
         this(id, displayName, category, rarity, basePrice, weightGrams, stackSize,
-                tradable, sellable, droppable, 0, true);
+                tradable, sellable, droppable, 0, true, ItemFootprint.SINGLE_CELL);
     }
 
     /// Source-compatible constructor retained for definitions written before secure-box rules.
@@ -48,11 +51,23 @@ public record ItemDefinition(
             ItemRarity rarity, Money basePrice, int weightGrams, int stackSize,
             boolean tradable, boolean sellable, boolean droppable, int containerSlots) {
         this(id, displayName, category, rarity, basePrice, weightGrams, stackSize,
-                tradable, sellable, droppable, containerSlots, true);
+                tradable, sellable, droppable, containerSlots, true,
+                ItemFootprint.SINGLE_CELL);
+    }
+
+    /// Source-compatible constructor retained for definitions written before grid footprints.
+    public ItemDefinition(ItemId id, String displayName, ItemCategory category,
+            ItemRarity rarity, Money basePrice, int weightGrams, int stackSize,
+            boolean tradable, boolean sellable, boolean droppable, int containerSlots,
+            boolean secureAllowed) {
+        this(id, displayName, category, rarity, basePrice, weightGrams, stackSize,
+                tradable, sellable, droppable, containerSlots, secureAllowed,
+                ItemFootprint.SINGLE_CELL);
     }
 
     /// Builder with defaults: basePrice [Money#ZERO], weightGrams/containerSlots 0,
-    /// stackSize 1, tradable/sellable/droppable/secureAllowed all `true`.
+    /// stackSize 1, a one-cell footprint, and
+    /// tradable/sellable/droppable/secureAllowed all `true`.
     public static Builder builder(ItemId id, String displayName, ItemCategory category, ItemRarity rarity) {
         return new Builder(id, displayName, category, rarity);
     }
@@ -71,6 +86,7 @@ public record ItemDefinition(
         private boolean droppable = true;
         private int containerSlots;
         private boolean secureAllowed = true;
+        private ItemFootprint footprint = ItemFootprint.SINGLE_CELL;
 
         private Builder(ItemId id, String displayName, ItemCategory category, ItemRarity rarity) {
             this.id = id;
@@ -121,10 +137,16 @@ public record ItemDefinition(
             return this;
         }
 
+        /// Server-configured rectangular cargo footprint; defaults to one cell.
+        public Builder footprint(ItemFootprint footprint) {
+            this.footprint = footprint;
+            return this;
+        }
+
         public ItemDefinition build() {
             return new ItemDefinition(id, displayName, category, rarity, basePrice,
                     weightGrams, stackSize, tradable, sellable, droppable, containerSlots,
-                    secureAllowed);
+                    secureAllowed, footprint);
         }
     }
 }

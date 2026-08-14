@@ -1,7 +1,9 @@
 package com.birditch.escapefromcraftov.game.plugin.network;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
@@ -60,6 +62,31 @@ class PendingJoinHandlerTest {
         new java.util.concurrent.CompletionException(cause));
 
     assertSame(cause, PendingJoinHandler.unwrap(wrapped));
+  }
+
+  @Test
+  void waitingEntryCanBeCancelledWithoutStartingAClaim() {
+    var entry = new PendingJoinHandler.PendingEntry(
+        assignment(PLAYER, SERVER, "craftov-backend-01"));
+
+    assertTrue(entry.cancelBeforeClaim());
+    assertEquals(PendingJoinHandler.ClaimOutcome.UNCLAIMED, entry.completion().join());
+    assertFalse(entry.beginClaim());
+  }
+
+  @Test
+  void startedEntryExposesOneCompletionForAQuitClaimBarrier() {
+    var entry = new PendingJoinHandler.PendingEntry(
+        assignment(PLAYER, SERVER, "craftov-backend-01"));
+
+    assertTrue(entry.beginClaim());
+    assertFalse(entry.beginClaim());
+    assertFalse(entry.completion().isDone());
+    entry.requestQuit();
+    assertTrue(entry.quitRequested());
+
+    entry.complete(PendingJoinHandler.ClaimOutcome.CLAIMED);
+    assertEquals(PendingJoinHandler.ClaimOutcome.CLAIMED, entry.completion().join());
   }
 
   private static MatchAssignment assignment(UUID playerId, ServerId serverId, String proxyName) {

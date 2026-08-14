@@ -159,12 +159,27 @@ public final class GameConnectionListener implements Listener {
     // explicitly. The vanilla quit announcement would otherwise be global.
     event.quitMessage(null);
     UUID playerId = event.getPlayer().getUniqueId();
-    pendingJoins.release(playerId);
     boolean settlementPending = extraction.activeSession(playerId)
         .filter(session -> session.state() == ExtractionState.SETTLING).isPresent();
     if (!settlementPending) extraction.cancel(playerId);
     CraftovGameId gameId = sessions.find(playerId).flatMap(PlayerSession::currentGame).orElse(null);
     if (gameId == null) {
+      pendingJoins.release(playerId);
+      finishQuit(playerId);
+      return;
+    }
+    var game = games.find(gameId).orElse(null);
+    if (game == null) {
+      pendingJoins.release(playerId);
+      finishQuit(playerId);
+      return;
+    }
+    // Membership alone is not a raid entry. Before RUNNING, the retained
+    // assignment has not claimed LOADOUT and quitting must be a lossless room
+    // leave with no terminal raid report.
+    if (game.startedAt().isEmpty()) {
+      pendingJoins.cancelBeforeStart(playerId, gameId);
+      games.leave(playerId);
       finishQuit(playerId);
       return;
     }
@@ -172,9 +187,32 @@ public final class GameConnectionListener implements Listener {
     // quit event. Let its idempotent PostgreSQL retry finish; racing it with a
     // death settlement could turn an earned extraction into a loss.
     if (settlementPending) {
+      pendingJoins.release(playerId);
       finishQuit(playerId);
       return;
     }
+    Optional<java.util.concurrent.CompletableFuture<PendingJoinHandler.ClaimOutcome>> deferred =
+        pendingJoins.deferStartedQuit(playerId, gameId);
+    if (deferred.isPresent()) {
+      deferred.get().whenComplete((outcome, error) -> scheduler.runSync(() -> {
+        if (error != null) {
+          logger.log(Level.SEVERE, "等待开局配装领取完成失败:" + playerId, error);
+          games.leave(playerId);
+          finishQuit(playerId);
+        } else if (outcome == PendingJoinHandler.ClaimOutcome.CLAIMED) {
+          beginQuitLoss(playerId, gameId);
+        } else {
+          // Mapping failed and the handler durably restored the loadout.
+          games.leave(playerId);
+          finishQuit(playerId);
+        }
+      }));
+      return;
+    }
+    beginQuitLoss(playerId, gameId);
+  }
+
+  private void beginQuitLoss(UUID playerId, CraftovGameId gameId) {
     // Keep the room membership until the durable loss transaction completes.
     // The game manager ends a vacated RUNNING room after the final leave, so
     // removing first could unload its world while this settlement is in flight.

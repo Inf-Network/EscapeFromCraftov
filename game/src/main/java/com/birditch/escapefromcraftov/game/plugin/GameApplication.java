@@ -144,6 +144,7 @@ public final class GameApplication {
   private @Nullable EventSubscription deathCrateSubscription;
   private @Nullable EventSubscription reportSubscription;
   private @Nullable EventSubscription aiSubscription;
+  private @Nullable EventSubscription pendingJoinSubscription;
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable DeathCrateListener deathCrates;
   private @Nullable DownedPlayerListener downedPlayers;
@@ -161,6 +162,7 @@ public final class GameApplication {
   private @Nullable IntegrationManager integrationManager;
   private @Nullable CraftovSidebarService sidebar;
   private @Nullable VisibilityService visibility;
+  private @Nullable PendingJoinHandler pendingJoins;
 
   /// Everything loaded from the plugin's YAML resources, validated.
   private record Configs(
@@ -327,13 +329,30 @@ public final class GameApplication {
     Optional<CraftovGameService> games = registry.find(CraftovGameService.class);
     Optional<PlayerInventoryService> inventories = registry.find(PlayerInventoryService.class);
     if (games.isEmpty() || inventories.isEmpty()) return;
+    record WaitingMembership(com.birditch.escapefromcraftov.api.game.CraftovGameId gameId,
+                             java.util.UUID playerId) {}
     record ActiveLoss(com.birditch.escapefromcraftov.api.game.CraftovGameId gameId,
                       java.util.UUID playerId,
                       List<com.birditch.escapefromcraftov.api.item.ItemInstance> protectedItems,
                       CompletableFuture<com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult> future) {}
     SecureContainerController secure = secureContainers;
     RaidResultRuntime reports = raidReports;
+    List<WaitingMembership> waiting = games.get().all().stream()
+        .filter(game -> game.startedAt().isEmpty())
+        .flatMap(game -> game.players().stream()
+            .map(player -> new WaitingMembership(game.id(), player.playerId())))
+        .toList();
+    PendingJoinHandler pending = pendingJoins;
+    for (WaitingMembership membership : waiting) {
+      if (pending != null) {
+        pending.cancelBeforeStart(membership.playerId(), membership.gameId());
+      }
+      games.get().leave(membership.playerId());
+    }
     List<ActiveLoss> activeLosses = games.get().all().stream()
+        // Only a room that actually reached RUNNING has claimed loadouts and
+        // owns a raid result. WAITING/PREPARING memberships above are lossless.
+        .filter(game -> game.startedAt().isPresent())
         .flatMap(game -> game.players().stream().map(player -> {
           if (reports != null) {
             reports.declareOutcome(game.id(), player.playerId(),
@@ -635,9 +654,12 @@ public final class GameApplication {
     broker.subscribe(NetworkKeys.PROVISION_CHANNEL,
         payload -> handleProvisionRequest(codec, payload, scheduler, instanceProvisioner));
     PendingJoinHandler pendingJoins = new PendingJoinHandler(new PendingDeps(
-        assignments, games, server, index, bungee, inventories, itemStacks, trMenu, visibility,
+        assignments, games, server, index, bungee, inventories, itemStacks,
+        context.services().require(ItemRegistry.class), trMenu, visibility,
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
+    this.pendingJoins = pendingJoins;
+    pendingJoinSubscription = context.eventBus().register(pendingJoins);
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
@@ -717,9 +739,20 @@ public final class GameApplication {
   /// Network teardown runs before module stop so the directory heartbeat
   /// fast-expires and no provision hint arrives mid-shutdown.
   private void stopNetwork(ShutdownSteps steps) {
+    steps.run("unsubscribe pending join lifecycle", () -> {
+      if (pendingJoinSubscription != null) {
+        pendingJoinSubscription.unsubscribe();
+        pendingJoinSubscription = null;
+      }
+      if (pendingJoins != null) {
+        pendingJoins.close();
+        pendingJoins = null;
+      }
+    });
     steps.run("unsubscribe instance bridge", () -> {
       if (bridgeSubscription != null) {
         bridgeSubscription.unsubscribe();
+        bridgeSubscription = null;
       }
     });
     steps.run("unsubscribe loot listener", () -> {

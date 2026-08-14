@@ -1,29 +1,42 @@
 package com.birditch.escapefromcraftov.game.plugin.network;
 
-import com.birditch.escapefromcraftov.api.game.GameFailures;
 import com.birditch.escapefromcraftov.api.CraftovPermissions;
+import com.birditch.escapefromcraftov.api.event.Subscribe;
+import com.birditch.escapefromcraftov.api.event.game.CraftovStartedEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
+import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
-import com.birditch.escapefromcraftov.api.network.MatchAssignment;
-import com.birditch.escapefromcraftov.api.inventory.StoredItem;
+import com.birditch.escapefromcraftov.api.game.GameFailures;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryClosedException;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
+import com.birditch.escapefromcraftov.api.inventory.StoredItem;
+import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
 import com.birditch.escapefromcraftov.map.EditorSession;
-import java.util.concurrent.CompletionException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 
 /// Consumes the lobby-issued pending match assignment when a player joins this
 /// server and routes them into the assigned craftov instance.
@@ -35,6 +48,12 @@ public final class PendingJoinHandler {
 
   private final PendingDeps deps;
   private final Set<UUID> pendingPlayers = ConcurrentHashMap.newKeySet();
+  private final Map<UUID, PendingEntry> retainedAssignments = new ConcurrentHashMap<>();
+
+  public enum ClaimOutcome {
+    CLAIMED,
+    UNCLAIMED
+  }
 
   public PendingJoinHandler(PendingDeps deps) {
     this.deps = Preconditions.checkNotNull(deps, "deps");
@@ -55,8 +74,76 @@ public final class PendingJoinHandler {
     return pendingPlayers.contains(Preconditions.checkNotNull(playerId, "playerId"));
   }
 
+  /** Clears a connection that never entered a running craftov. */
   public void release(UUID playerId) {
-    pendingPlayers.remove(Preconditions.checkNotNull(playerId, "playerId"));
+    UUID checked = Preconditions.checkNotNull(playerId, "playerId");
+    pendingPlayers.remove(checked);
+    PendingEntry entry = retainedAssignments.get(checked);
+    if (entry != null && entry.cancelBeforeClaim()) {
+      retainedAssignments.remove(checked, entry);
+    }
+  }
+
+  /**
+   * Removes a WAITING membership without ever moving its LOADOUT rows. The game
+   * listener calls this before leaving the room on quit and shutdown.
+   */
+  public void cancelBeforeStart(UUID playerId, CraftovGameId gameId) {
+    Preconditions.checkNotNull(gameId, "gameId");
+    UUID checked = Preconditions.checkNotNull(playerId, "playerId");
+    pendingPlayers.remove(checked);
+    PendingEntry entry = retainedAssignments.get(checked);
+    if (entry != null && entry.assignment.gameId().equals(gameId)
+        && entry.cancelBeforeClaim()) {
+      retainedAssignments.remove(checked, entry);
+    }
+  }
+
+  /**
+   * Serializes a RUNNING quit behind the start-time loadout claim. Empty means
+   * the player had already finished preparation and can use the normal loss
+   * path immediately.
+   */
+  public Optional<CompletableFuture<ClaimOutcome>> deferStartedQuit(
+      UUID playerId, CraftovGameId gameId) {
+    Preconditions.checkNotNull(gameId, "gameId");
+    UUID checked = Preconditions.checkNotNull(playerId, "playerId");
+    pendingPlayers.remove(checked);
+    PendingEntry entry = retainedAssignments.get(checked);
+    if (entry == null || !entry.assignment.gameId().equals(gameId)) {
+      return Optional.empty();
+    }
+    entry.requestQuit();
+    beginClaim(entry);
+    return Optional.of(entry.completion());
+  }
+
+  /** Starts every retained assignment for the room, exactly once. */
+  @Subscribe
+  public void onCraftovStarted(CraftovStartedEvent event) {
+    for (PendingEntry entry : List.copyOf(retainedAssignments.values())) {
+      if (!entry.assignment.gameId().equals(event.gameId())) continue;
+      UUID playerId = entry.assignment.playerId();
+      Player player = Bukkit.getPlayer(playerId);
+      boolean stillMember = deps.games().find(event.gameId()).stream()
+          .flatMap(game -> game.players().stream())
+          .anyMatch(member -> member.playerId().equals(playerId));
+      if (player == null || !player.isOnline() || !stillMember) {
+        cancelBeforeStart(playerId, event.gameId());
+        if (stillMember) deps.games().leave(playerId);
+        continue;
+      }
+      beginClaim(entry);
+    }
+  }
+
+  /** Releases retained references after the event subscription is removed. */
+  public void close() {
+    pendingPlayers.clear();
+    for (PendingEntry entry : retainedAssignments.values()) {
+      entry.complete(ClaimOutcome.UNCLAIMED);
+    }
+    retainedAssignments.clear();
   }
 
   /// Called only after the player's PostgreSQL profile is ready.
@@ -163,25 +250,48 @@ public final class PendingJoinHandler {
     // This point is intentionally after a valid assignment and successful
     // domain join. Editor fallback never receives raid state normalization.
     RaidEntryState.reset(player);
-    player.sendMessage(deps.messages().raw("inventory.loadout-loading"));
-    claimLoadout(player, assignment, 0);
+    PendingEntry entry = new PendingEntry(assignment);
+    PendingEntry previous = retainedAssignments.putIfAbsent(player.getUniqueId(), entry);
+    if (previous != null) {
+      deps.logger().severe("玩家存在重复的待领取匹配分配:" + player.getUniqueId());
+      leaveAndReturn(player);
+      return;
+    }
+    // start() publishes synchronously, but checking the durable domain view
+    // also protects against a future subscriber/order change.
+    if (game.startedAt().isPresent()) beginClaim(entry);
   }
 
-  private void claimLoadout(Player player, MatchAssignment assignment, int attempt) {
-    if (!player.isOnline()) return;
-    deps.inventories().claimLoadout(player.getUniqueId(), assignment.gameId())
+  private void beginClaim(PendingEntry entry) {
+    if (!entry.beginClaim()) return;
+    Player player = Bukkit.getPlayer(entry.assignment.playerId());
+    if (player != null && player.isOnline() && !entry.quitRequested()) {
+      player.sendMessage(deps.messages().raw("inventory.loadout-loading"));
+    }
+    claimLoadout(entry, 0);
+  }
+
+  private void claimLoadout(PendingEntry entry, int attempt) {
+    MatchAssignment assignment = entry.assignment;
+    if (retainedAssignments.get(assignment.playerId()) != entry) return;
+    deps.inventories().claimLoadout(assignment.playerId(), assignment.gameId())
         .whenComplete((items, error) -> deps.scheduler().runSync(() ->
-            finishLoadout(player, assignment, items, error, attempt)));
+            finishLoadout(entry, items, error, attempt)));
   }
 
-  private void finishLoadout(Player player, MatchAssignment assignment,
-      List<StoredItem> items, Throwable error, int attempt) {
+  private void finishLoadout(PendingEntry entry, List<StoredItem> items,
+      Throwable error, int attempt) {
+    MatchAssignment assignment = entry.assignment;
+    UUID playerId = assignment.playerId();
+    Player player = Bukkit.getPlayer(playerId);
+    if (retainedAssignments.get(playerId) != entry) return;
     if (error != null || items == null) {
       Throwable cause = unwrap(error);
       if (cause instanceof CraftovInventoryClosedException closed) {
-        deps.logger().warning("出战装备领取已被既有结算关闭:" + player.getUniqueId()
+        deps.logger().warning("出战装备领取已被既有结算关闭:" + playerId
             + "/" + closed.outcome());
-        if (player.isOnline()) {
+        completeEntry(entry, ClaimOutcome.UNCLAIMED);
+        if (player != null && player.isOnline() && !entry.quitRequested()) {
           player.sendMessage(deps.messages().raw("inventory.loadout-closed"));
           leaveAndReturn(player);
         }
@@ -189,68 +299,125 @@ public final class PendingJoinHandler {
       }
       deps.logger().log(Level.WARNING,
           "领取出战栏失败，将在 5 秒后自动重试 (第 " + (attempt + 1) + " 次):"
-              + player.getUniqueId(), cause);
-      if (!player.isOnline()) return;
-      if (attempt == 0) {
+              + playerId, cause);
+      if (player != null && player.isOnline() && !entry.quitRequested() && attempt == 0) {
         player.sendMessage(deps.messages().raw("inventory.loadout-retrying"));
       }
       deps.scheduler().runLater(Duration.ofSeconds(5),
-          () -> claimLoadout(player, assignment, attempt + 1));
+          () -> claimLoadout(entry, attempt + 1));
       return;
     }
-    if (!player.isOnline()) {
-      // PlayerQuitEvent owns the idempotent death settlement and room leave.
+    if (entry.quitRequested() || player == null || !player.isOnline()) {
+      // The quit listener is waiting on this exact future. Completing only
+      // after claimLoadout commits prevents settleLoss from closing the raid
+      // before LOADOUT has moved to CRAFTOV.
+      completeEntry(entry, ClaimOutcome.CLAIMED);
       return;
     }
     try {
       for (StoredItem item : items) {
-        var overflow = player.getInventory().addItem(
-            deps.itemStacks().fromStored(item).toArray(org.bukkit.inventory.ItemStack[]::new));
-        if (!overflow.isEmpty()) {
-          throw new IllegalStateException("出战物品超过玩家背包容量");
-        }
+        giveClaimedItem(player, item);
       }
     } catch (RuntimeException mappingFailure) {
       clearInventory(player);
       List<ItemInstance> restore = items.stream().map(item ->
           new ItemInstance(item.instanceId(), item.itemId(), item.quantity(),
               item.opaquePayload())).toList();
-      restoreClaimedLoadout(player, assignment, restore, mappingFailure, 0);
+      entry.markRestoring();
+      restoreClaimedLoadout(entry, restore, mappingFailure, 0);
       return;
     }
-    release(player.getUniqueId());
+    completeEntry(entry, ClaimOutcome.CLAIMED);
     player.setInvulnerable(false);
     player.sendMessage(deps.messages().raw("game.sent-to-instance",
         Placeholder.unparsed("id", assignment.gameId().value()),
         Placeholder.component("map", MapNames.display(deps.messages(), assignment.mapId()))));
   }
 
-  private void restoreClaimedLoadout(Player player, MatchAssignment assignment,
+  private void giveClaimedItem(Player player, StoredItem item) {
+    ItemCategory category = deps.items().require(item.itemId()).category();
+    List<ItemStack> backpack = new ArrayList<>();
+    for (ItemStack stack : deps.itemStacks().fromStored(item)) {
+      if (!tryEquip(player.getInventory(), category, stack)) backpack.add(stack);
+    }
+    if (!backpack.isEmpty()
+        && !player.getInventory().addItem(backpack.toArray(ItemStack[]::new)).isEmpty()) {
+      throw new IllegalStateException("出战物品超过玩家背包容量");
+    }
+  }
+
+  static boolean tryEquip(PlayerInventory inventory, ItemCategory category, ItemStack stack) {
+    if (stack.getAmount() != 1) return false;
+    if (category == ItemCategory.SHIELD) {
+      if (!empty(inventory.getItemInOffHand())) return false;
+      inventory.setItemInOffHand(stack);
+      return true;
+    }
+    if (category != ItemCategory.ARMOR && category != ItemCategory.HELMET) return false;
+    EquipmentSlot slot = armorSlot(category, stack.getType()).orElse(null);
+    if (slot == null) return false;
+    if (!empty(inventory.getItem(slot))) return false;
+    inventory.setItem(slot, stack);
+    return true;
+  }
+
+  static Optional<EquipmentSlot> armorSlot(ItemCategory category, Material material) {
+    if (category != ItemCategory.ARMOR && category != ItemCategory.HELMET) {
+      return Optional.empty();
+    }
+    EquipmentSlot slot = material.getEquipmentSlot();
+    if (category == ItemCategory.HELMET && slot != EquipmentSlot.HEAD) {
+      return Optional.empty();
+    }
+    return switch (slot) {
+      case HEAD, CHEST, LEGS, FEET -> Optional.of(slot);
+      default -> Optional.empty();
+    };
+  }
+
+  private static boolean empty(ItemStack stack) {
+    return stack == null || stack.isEmpty();
+  }
+
+  private void restoreClaimedLoadout(PendingEntry entry,
       List<ItemInstance> restore, RuntimeException mappingFailure, int attempt) {
-    deps.inventories().settleExtraction(player.getUniqueId(), assignment.gameId(), restore)
+    MatchAssignment assignment = entry.assignment;
+    UUID playerId = assignment.playerId();
+    deps.inventories().settleExtraction(playerId, assignment.gameId(), restore)
         .whenComplete((result, error) -> deps.scheduler().runSync(() -> {
+          if (retainedAssignments.get(playerId) != entry) return;
+          Player player = Bukkit.getPlayer(playerId);
           if (error != null || result == null) {
             deps.logger().log(Level.WARNING,
                 "恢复未发放的出战装备失败，将在 5 秒后自动重试 (第 " + (attempt + 1)
-                    + " 次):" + player.getUniqueId(), error == null ? mappingFailure : error);
-            if (player.isOnline() && attempt == 0) {
+                    + " 次):" + playerId, error == null ? mappingFailure : error);
+            if (player != null && player.isOnline() && !entry.quitRequested() && attempt == 0) {
               player.sendMessage(deps.messages().raw("inventory.loadout-restore-retrying"));
             }
             deps.scheduler().runLater(Duration.ofSeconds(5), () ->
-                restoreClaimedLoadout(player, assignment, restore, mappingFailure, attempt + 1));
+                restoreClaimedLoadout(entry, restore, mappingFailure, attempt + 1));
             return;
           }
           deps.logger().log(Level.SEVERE, "无法把出战装备转换成 Minecraft 物品:"
-              + player.getUniqueId(), mappingFailure);
-          if (player.isOnline()) {
+              + playerId, mappingFailure);
+          boolean quitRequested = entry.quitRequested();
+          completeEntry(entry, ClaimOutcome.UNCLAIMED);
+          if (!quitRequested && player != null && player.isOnline()) {
             player.sendMessage(deps.messages().raw(result.outcome()
                 == CraftovInventoryOutcome.EXTRACTED
                 ? "inventory.loadout-restored" : "inventory.loadout-closed"));
             leaveAndReturn(player);
-          } else {
-            deps.games().leave(player.getUniqueId());
+          } else if (!quitRequested) {
+            deps.games().leave(playerId);
           }
         }));
+  }
+
+  private void completeEntry(PendingEntry entry, ClaimOutcome outcome) {
+    UUID playerId = entry.assignment.playerId();
+    retainedAssignments.remove(playerId, entry);
+    pendingPlayers.remove(playerId);
+    entry.complete(outcome);
   }
 
   private void leaveAndReturn(Player player) {
@@ -311,6 +478,58 @@ public final class PendingJoinHandler {
       return TargetValidation.PROXY_NAME_MISMATCH;
     }
     return TargetValidation.VALID;
+  }
+
+  static final class PendingEntry {
+
+    private final MatchAssignment assignment;
+    private final CompletableFuture<ClaimOutcome> completion = new CompletableFuture<>();
+    private ClaimPhase phase = ClaimPhase.WAITING;
+    private boolean quitRequested;
+
+    PendingEntry(MatchAssignment assignment) {
+      this.assignment = Preconditions.checkNotNull(assignment, "assignment");
+    }
+
+    boolean beginClaim() {
+      if (phase != ClaimPhase.WAITING) return false;
+      phase = ClaimPhase.CLAIMING;
+      return true;
+    }
+
+    boolean cancelBeforeClaim() {
+      if (phase != ClaimPhase.WAITING) return false;
+      complete(ClaimOutcome.UNCLAIMED);
+      return true;
+    }
+
+    void markRestoring() {
+      if (phase == ClaimPhase.CLAIMING) phase = ClaimPhase.RESTORING;
+    }
+
+    void requestQuit() {
+      quitRequested = true;
+    }
+
+    boolean quitRequested() {
+      return quitRequested;
+    }
+
+    CompletableFuture<ClaimOutcome> completion() {
+      return completion;
+    }
+
+    void complete(ClaimOutcome outcome) {
+      phase = ClaimPhase.COMPLETE;
+      completion.complete(outcome);
+    }
+  }
+
+  private enum ClaimPhase {
+    WAITING,
+    CLAIMING,
+    RESTORING,
+    COMPLETE
   }
 
   enum TargetValidation {

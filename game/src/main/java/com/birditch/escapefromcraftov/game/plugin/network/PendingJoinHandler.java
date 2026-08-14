@@ -9,6 +9,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.GameFailures;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryClosedException;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
+import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import com.birditch.escapefromcraftov.api.inventory.StoredItem;
 import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
@@ -315,7 +316,10 @@ public final class PendingJoinHandler {
       return;
     }
     try {
-      for (StoredItem item : items) {
+      List<StoredItem> ordered = items.stream()
+          .sorted(java.util.Comparator.comparingInt(item -> item.loadoutSlot() == null ? 1 : 0))
+          .toList();
+      for (StoredItem item : ordered) {
         giveClaimedItem(player, item);
       }
     } catch (RuntimeException mappingFailure) {
@@ -336,6 +340,10 @@ public final class PendingJoinHandler {
 
   private void giveClaimedItem(Player player, StoredItem item) {
     ItemCategory category = deps.items().require(item.itemId()).category();
+    if (item.loadoutSlot() != null) {
+      giveNamedItem(player.getInventory(), item, category);
+      return;
+    }
     List<ItemStack> backpack = new ArrayList<>();
     for (ItemStack stack : deps.itemStacks().fromStored(item)) {
       if (!tryEquip(player.getInventory(), category, stack)) backpack.add(stack);
@@ -344,6 +352,86 @@ public final class PendingJoinHandler {
         && !player.getInventory().addItem(backpack.toArray(ItemStack[]::new)).isEmpty()) {
       throw new IllegalStateException("出战物品超过玩家背包容量");
     }
+  }
+
+  private void giveNamedItem(PlayerInventory inventory, StoredItem item, ItemCategory category) {
+    LoadoutSlot slot = item.loadoutSlot();
+    if (slot == null || !slot.accepts(category)) {
+      throw new IllegalStateException("持久化配装位与物品类别不匹配: " + item.itemId());
+    }
+    NamedStackPlan<ItemStack> plan = planNamedStacks(slot, deps.itemStacks().fromStored(item));
+    ItemStack stack = plan.equipped();
+    switch (slot) {
+      case MAIN_HAND -> putHotbar(inventory, 0, stack);
+      case OFF_HAND -> {
+        if (!empty(inventory.getItemInOffHand())) {
+          throw new IllegalStateException("副手配装位发生冲突");
+        }
+        inventory.setItemInOffHand(stack);
+      }
+      case HEAD -> putArmor(inventory, category, stack, EquipmentSlot.HEAD);
+      case BODY_ARMOR -> putArmor(inventory, category, stack, EquipmentSlot.CHEST);
+      case QUICK_USE_1 -> putHotbar(inventory, 1, stack);
+      case QUICK_USE_2 -> putHotbar(inventory, 2, stack);
+      case CHEST_RIG, BACKPACK, SECURE_CONTAINER ->
+          throw new IllegalStateException("保留配装位不能包含物品: " + slot);
+    }
+    for (ItemStack overflow : plan.backpack()) putBackpack(inventory, overflow);
+  }
+
+  /**
+   * A quick-use durable stack may expand into several unstackable Bukkit items
+   * (for example two healing potions). The first stays in the named hotbar cell;
+   * every derived physical stack is carried in the backpack. Equipment positions
+   * remain strictly one physical stack.
+   */
+  static <T> NamedStackPlan<T> planNamedStacks(LoadoutSlot slot, List<T> stacks) {
+    Preconditions.checkNotNull(slot, "slot");
+    Preconditions.checkNotNull(stacks, "stacks");
+    if (stacks.isEmpty()) throw new IllegalStateException("具名配装位没有可发放的物品");
+    boolean quickUse = slot == LoadoutSlot.QUICK_USE_1 || slot == LoadoutSlot.QUICK_USE_2;
+    if (!quickUse && stacks.size() != 1) {
+      throw new IllegalStateException("具名装备位包含多个物品堆栈: " + slot);
+    }
+    return new NamedStackPlan<>(stacks.getFirst(),
+        quickUse ? List.copyOf(stacks.subList(1, stacks.size())) : List.of());
+  }
+
+  record NamedStackPlan<T>(T equipped, List<T> backpack) {
+    NamedStackPlan {
+      Preconditions.checkNotNull(equipped, "equipped");
+      backpack = List.copyOf(Preconditions.checkNotNull(backpack, "backpack"));
+    }
+  }
+
+  private static void putBackpack(PlayerInventory inventory, ItemStack stack) {
+    // Vanilla main-inventory cells 9..35 are the carried backpack area. Do not
+    // let a derived potion occupy another named hotbar position.
+    for (int index = 9; index < 36; index++) {
+      if (!empty(inventory.getItem(index))) continue;
+      inventory.setItem(index, stack);
+      return;
+    }
+    throw new IllegalStateException("出战物品超过玩家背包容量");
+  }
+
+  private static void putHotbar(PlayerInventory inventory, int index, ItemStack stack) {
+    if (!empty(inventory.getItem(index))) {
+      throw new IllegalStateException("快捷栏配装位发生冲突: " + index);
+    }
+    inventory.setItem(index, stack);
+    if (index == 0) inventory.setHeldItemSlot(0);
+  }
+
+  private static void putArmor(PlayerInventory inventory, ItemCategory category,
+      ItemStack stack, EquipmentSlot expected) {
+    if (stack.getAmount() != 1 || armorSlot(category, stack.getType()).orElse(null) != expected) {
+      throw new IllegalStateException("护甲配装位与实际装备类型不匹配: " + expected);
+    }
+    if (!empty(inventory.getItem(expected))) {
+      throw new IllegalStateException("护甲配装位发生冲突: " + expected);
+    }
+    inventory.setItem(expected, stack);
   }
 
   static boolean tryEquip(PlayerInventory inventory, ItemCategory category, ItemStack stack) {

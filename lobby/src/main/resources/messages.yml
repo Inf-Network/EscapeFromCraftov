@@ -116,7 +116,7 @@ menu:
       hard: "<red>困难</red>"
     loadout:
       name: "<gold>出战栏摘要</gold>"
-      lore: "<gray>占用堆栈：</gray><yellow><stacks>/9</yellow>|<gray>物品数量：</gray><yellow><items></yellow>|<gray>基础总价值：</gray><gold><value> 金币</gold>|<state>|<yellow>点击前往仓库配装</yellow>"
+      lore: "<gray>占用堆栈：</gray><yellow><stacks>/9</yellow>|<gray>物品数量：</gray><yellow><items></yellow>|<gray>整备重量：</gray><yellow><weight></yellow>|<gray>基础总价值：</gray><gold><value> 金币</gold>|<state>|<yellow>点击前往仓库配装</yellow>"
       ready: "<green>出战物资已准备</green>"
       empty: "<red>出战栏为空，将空手入局</red>"
     start:
@@ -170,7 +170,7 @@ menu:
     info: "<gray>第 <yellow><page></yellow>/<yellow><pages></yellow> 页</gray>"
     move-failed: "<red>物品移动失败，请稍后再试。</red>"
     load-failed: "<red>物资仓库暂时无法打开，请稍后再试。</red>"
-    equipped: "<green>已放入出战栏。</green>"
+    equipped: "<green>已装备到 <yellow><slot></yellow>。</green>"
     stored: "<gray>已放回物资仓库。</gray>"
   vendor:
     balance-name: "<gold>当前余额</gold>"

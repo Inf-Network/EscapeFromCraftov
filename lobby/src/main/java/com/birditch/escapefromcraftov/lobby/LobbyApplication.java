@@ -169,7 +169,8 @@ public final class LobbyApplication {
     SimpleItemRegistry itemRegistry = new SimpleItemRegistry();
     DefaultItems.registerAll(itemRegistry);
     CraftovItemStacks itemStacks = new CraftovItemStacks(itemRegistry);
-    PlayerInventoryService inventories = new HibernatePlayerInventoryService(db, executor);
+    PlayerInventoryService inventories = new HibernatePlayerInventoryService(
+        db, executor, itemRegistry);
     MilitaryVendorService vendor = new HibernateMilitaryVendorService(
         db, executor, itemRegistry, timeSource);
     PlayerMarketService market = new HibernatePlayerMarketService(db, executor, timeSource);

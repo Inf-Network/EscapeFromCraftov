@@ -74,6 +74,9 @@ class LobbyTrMenuTemplateTest {
           "missing warehouse action for slot " + slot);
     }
     assertTrue(yaml.contains("slots: [ 9-17 ]"));
+    assertTrue(yaml.contains("上方 9 格: 具名配装位"));
+    assertTrue(yaml.contains("旧版无槽位配装仍会完整显示并兼容入局"));
+    assertTrue(yaml.contains("安全箱为内建 3 格"));
     assertTrue(yaml.contains("Hide-Player-Inventory: true"));
   }
 
@@ -143,6 +146,7 @@ class LobbyTrMenuTemplateTest {
     assertTrue(yaml.contains("command: lobby raid cycle difficulty"));
     assertTrue(yaml.contains("command: lobby raid start"));
     assertTrue(yaml.contains("command: lobby warehouse"));
+    assertTrue(read("messages.yml").contains("<weight>"));
     assertFalse(yaml.contains("command: play"));
   }
 

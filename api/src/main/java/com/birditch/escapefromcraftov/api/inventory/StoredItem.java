@@ -16,7 +16,8 @@ public record StoredItem(
     int quantity,
     InventoryLocation location,
     @Nullable CraftovGameId craftovId,
-    @Nullable String opaquePayload) {
+    @Nullable String opaquePayload,
+    @Nullable LoadoutSlot loadoutSlot) {
 
   public StoredItem {
     Preconditions.checkNotNull(storageId, "storageId");
@@ -26,6 +27,16 @@ public record StoredItem(
     Preconditions.checkNotNull(location, "location");
     Preconditions.checkArgument(location == InventoryLocation.CRAFTOV == (craftovId != null),
         "craftovId must be present exactly for CRAFTOV items");
+    Preconditions.checkArgument(loadoutSlot == null || location == InventoryLocation.LOADOUT
+            || location == InventoryLocation.CRAFTOV,
+        "loadoutSlot is only valid for LOADOUT or CRAFTOV items");
+  }
+
+  /// Source-compatible constructor retained for callers written before named loadout slots.
+  public StoredItem(UUID storageId, UUID instanceId, ItemId itemId, int quantity,
+      InventoryLocation location, @Nullable CraftovGameId craftovId,
+      @Nullable String opaquePayload) {
+    this(storageId, instanceId, itemId, quantity, location, craftovId, opaquePayload, null);
   }
 
   /// Compatibility constructor for rows created before durable item instances were stored.
@@ -33,7 +44,7 @@ public record StoredItem(
   /// instance id on first load.
   public StoredItem(UUID storageId, ItemId itemId, int quantity,
       InventoryLocation location, @Nullable CraftovGameId craftovId) {
-    this(storageId, storageId, itemId, quantity, location, craftovId, null);
+    this(storageId, storageId, itemId, quantity, location, craftovId, null, null);
   }
 
   public Optional<CraftovGameId> currentCraftov() {
@@ -42,5 +53,9 @@ public record StoredItem(
 
   public Optional<String> payload() {
     return Optional.ofNullable(opaquePayload);
+  }
+
+  public Optional<LoadoutSlot> namedLoadoutSlot() {
+    return Optional.ofNullable(loadoutSlot);
   }
 }

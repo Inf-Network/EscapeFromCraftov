@@ -250,11 +250,10 @@ Icons:
       slots: [ 49 ]
       material: book
       name: '&6物资仓库'
-      lore: [ '&7上方 9 格: 下一局出战装备', '&7下方 27 格: 长期保存物资', '&7第 {0}/{1} 页', '&e点击物品在两处之间移动' ]
+      lore: [ '&7上方 9 格: 具名配装位', '&7旧版无槽位配装仍会完整显示并兼容入局', '&7安全箱为内建 3 格', '&7下方 27 格: 长期保存物资', '&7第 {0}/{1} 页', '&e点击物品自动装备或放回' ]
   Next:
     display:
       slots: [ 53 ]
       material: arrow
       name: '&e下一页'
     actions: { all: [ 'reset', 'command: lobby warehouse page next' ] }
-

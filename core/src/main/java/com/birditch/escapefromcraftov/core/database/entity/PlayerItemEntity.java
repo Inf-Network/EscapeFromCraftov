@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.core.database.entity;
 
 import com.birditch.escapefromcraftov.api.inventory.InventoryLocation;
+import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -48,6 +49,11 @@ public class PlayerItemEntity {
   @Column(name = "craftov_id")
   private @Nullable String craftovId;
 
+  /// Nullable for warehouse rows and legacy LOADOUT rows created before named positions.
+  @Enumerated(EnumType.STRING)
+  @Column(name = "loadout_slot", length = 32)
+  private @Nullable LoadoutSlot loadoutSlot;
+
   /// Adapter-owned, versioned Base64 item data. PostgreSQL TEXT avoids truncating rich NBT/meta.
   @Column(name = "item_data", columnDefinition = "text")
   private @Nullable String itemData;
@@ -69,6 +75,13 @@ public class PlayerItemEntity {
   public PlayerItemEntity(UUID storageId, UUID playerId, @Nullable UUID instanceId,
       String itemId, int quantity, InventoryLocation location, @Nullable String craftovId,
       @Nullable String itemData, Instant updatedAt) {
+    this(storageId, playerId, instanceId, itemId, quantity, location, craftovId,
+        itemData, null, updatedAt);
+  }
+
+  public PlayerItemEntity(UUID storageId, UUID playerId, @Nullable UUID instanceId,
+      String itemId, int quantity, InventoryLocation location, @Nullable String craftovId,
+      @Nullable String itemData, @Nullable LoadoutSlot loadoutSlot, Instant updatedAt) {
     this.storageId = storageId;
     this.playerId = playerId;
     this.instanceId = instanceId;
@@ -77,12 +90,25 @@ public class PlayerItemEntity {
     this.location = location;
     this.craftovId = craftovId;
     this.itemData = itemData;
+    this.loadoutSlot = loadoutSlot;
     this.updatedAt = updatedAt;
   }
 
   public void moveTo(InventoryLocation target, @Nullable String newCraftovId, Instant now) {
+    InventoryLocation previous = location;
     location = target;
     craftovId = newCraftovId;
+    if (target != InventoryLocation.CRAFTOV
+        && !(target == InventoryLocation.LOADOUT && previous == InventoryLocation.LOADOUT)) {
+      loadoutSlot = null;
+    }
+    updatedAt = now;
+  }
+
+  public void moveToLoadout(LoadoutSlot targetSlot, Instant now) {
+    location = InventoryLocation.LOADOUT;
+    craftovId = null;
+    loadoutSlot = targetSlot;
     updatedAt = now;
   }
 
@@ -101,4 +127,5 @@ public class PlayerItemEntity {
   public InventoryLocation location() { return location; }
   public @Nullable String craftovId() { return craftovId; }
   public @Nullable String itemData() { return itemData; }
+  public @Nullable LoadoutSlot loadoutSlot() { return loadoutSlot; }
 }

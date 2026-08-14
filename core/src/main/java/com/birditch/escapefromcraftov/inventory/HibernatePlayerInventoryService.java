@@ -2,6 +2,7 @@ package com.birditch.escapefromcraftov.inventory;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.inventory.InventoryLocation;
+import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventorySnapshot;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
@@ -10,6 +11,7 @@ import com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult;
 import com.birditch.escapefromcraftov.api.inventory.StoredItem;
 import com.birditch.escapefromcraftov.api.item.ItemId;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.core.database.Database;
 import com.birditch.escapefromcraftov.core.database.entity.PlayerItemEntity;
@@ -25,16 +27,24 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import org.jspecify.annotations.Nullable;
 
 /// Hibernate implementation with atomic loadout claims and idempotent settlement.
 public final class HibernatePlayerInventoryService implements PlayerInventoryService {
 
   private final Database database;
   private final ExecutorService executor;
+  private final @Nullable ItemRegistry itemRegistry;
 
   public HibernatePlayerInventoryService(Database database, ExecutorService executor) {
+    this(database, executor, null);
+  }
+
+  public HibernatePlayerInventoryService(Database database, ExecutorService executor,
+      @Nullable ItemRegistry itemRegistry) {
     this.database = Preconditions.checkNotNull(database, "database");
     this.executor = Preconditions.checkNotNull(executor, "executor");
+    this.itemRegistry = itemRegistry;
   }
 
   @Override
@@ -49,10 +59,19 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
   @Override
   public CompletableFuture<PlayerInventorySnapshot> move(
       UUID playerId, UUID storageId, InventoryLocation target) {
+    return move(playerId, storageId, target, null);
+  }
+
+  @Override
+  public CompletableFuture<PlayerInventorySnapshot> move(
+      UUID playerId, UUID storageId, InventoryLocation target,
+      @Nullable LoadoutSlot loadoutSlot) {
     Preconditions.checkNotNull(playerId, "playerId");
     Preconditions.checkNotNull(storageId, "storageId");
     Preconditions.checkArgument(target == InventoryLocation.WAREHOUSE
         || target == InventoryLocation.LOADOUT, "target must be WAREHOUSE or LOADOUT");
+    Preconditions.checkArgument(loadoutSlot == null || target == InventoryLocation.LOADOUT,
+        "loadoutSlot is only valid when targeting LOADOUT");
     return CompletableFuture.supplyAsync(() -> database.transaction(session -> {
       lockPlayer(session, playerId);
       PlayerItemEntity item = session.find(PlayerItemEntity.class, storageId);
@@ -72,7 +91,33 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
           throw new IllegalStateException("出战栏已满，最多 " + MAX_LOADOUT_STACKS + " 个物品栈");
         }
       }
-      item.moveTo(target, null, Instant.now());
+      if (loadoutSlot != null) {
+        ItemRegistry registry = itemRegistry;
+        if (registry == null) {
+          throw new IllegalStateException("当前物资服务尚未启用具名配装");
+        }
+        var definition = registry.require(ItemId.of(item.itemId()));
+        if (!loadoutSlot.accepts(definition.category())) {
+          throw new IllegalArgumentException("该物品不能装备到 " + loadoutSlot);
+        }
+        if (item.quantity() > definition.stackSize()
+            || (loadoutSlot != LoadoutSlot.QUICK_USE_1
+                && loadoutSlot != LoadoutSlot.QUICK_USE_2 && item.quantity() != 1)) {
+          throw new IllegalArgumentException("该物品堆栈数量不能装备到 " + loadoutSlot);
+        }
+        long occupied = session.createSelectionQuery(
+            "select count(*) from PlayerItemEntity where playerId = :playerId "
+                + "and location = :location and loadoutSlot = :loadoutSlot "
+                + "and storageId <> :storageId",
+            Long.class).setParameter("playerId", playerId)
+            .setParameter("location", InventoryLocation.LOADOUT)
+            .setParameter("loadoutSlot", loadoutSlot)
+            .setParameter("storageId", storageId).getSingleResult();
+        if (occupied != 0) throw new IllegalStateException("配装位置已被占用: " + loadoutSlot);
+        item.moveToLoadout(loadoutSlot, Instant.now());
+      } else {
+        item.moveTo(target, null, Instant.now());
+      }
       session.flush();
       return snapshot(playerId, session.createSelectionQuery(
           "from PlayerItemEntity where playerId = :playerId order by updatedAt, storageId",
@@ -251,7 +296,7 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
     CraftovGameId craftovId = entity.craftovId() == null ? null : CraftovGameId.of(entity.craftovId());
     return new StoredItem(entity.storageId(), entity.instanceIdOrStorageId(),
         ItemId.of(entity.itemId()), entity.quantity(), entity.location(), craftovId,
-        entity.itemData());
+        entity.itemData(), entity.loadoutSlot());
   }
 
   private static String settlementId(UUID playerId, CraftovGameId gameId) {

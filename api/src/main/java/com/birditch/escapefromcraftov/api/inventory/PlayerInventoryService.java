@@ -5,6 +5,7 @@ import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import org.jspecify.annotations.Nullable;
 
 /// PostgreSQL-backed player item ownership and idempotent craftov settlement.
 public interface PlayerInventoryService {
@@ -16,6 +17,21 @@ public interface PlayerInventoryService {
   /// Moves one stack between WAREHOUSE and LOADOUT.
   CompletableFuture<PlayerInventorySnapshot> move(
       UUID playerId, UUID storageId, InventoryLocation target);
+
+  /**
+   * Moves one stack and, when targeting LOADOUT, assigns a server-validated
+   * named position. Implementations predating named positions remain compatible
+   * through the default null-slot path.
+   */
+  default CompletableFuture<PlayerInventorySnapshot> move(
+      UUID playerId, UUID storageId, InventoryLocation target,
+      @Nullable LoadoutSlot loadoutSlot) {
+    if (loadoutSlot != null) {
+      return CompletableFuture.failedFuture(
+          new UnsupportedOperationException("named loadout slots are not supported"));
+    }
+    return move(playerId, storageId, target);
+  }
 
   /// Atomically moves the current LOADOUT into one CRAFTOV. Repeated claims for
   /// the same craftov return the already claimed rows.

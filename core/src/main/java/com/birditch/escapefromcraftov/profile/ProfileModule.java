@@ -4,6 +4,7 @@ import com.birditch.escapefromcraftov.api.profile.ProfileRepository;
 import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.api.profile.ProgressionService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.session.SessionService;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.time.SystemTimeSource;
@@ -36,7 +37,8 @@ public final class ProfileModule implements CraftovModule {
         new HibernateProgressionRepository(context.database(), context.ioExecutor()),
         context.scheduler(), timeSource));
     services.register(PlayerInventoryService.class,
-        new HibernatePlayerInventoryService(context.database(), context.ioExecutor()));
+        new HibernatePlayerInventoryService(context.database(), context.ioExecutor(),
+            services.require(ItemRegistry.class)));
     services.register(SessionService.class, new DefaultSessionService(timeSource));
   }
 

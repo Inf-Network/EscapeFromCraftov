@@ -3,8 +3,10 @@ package com.birditch.escapefromcraftov.lobby.menu;
 import com.birditch.escapefromcraftov.api.cosmetics.Cosmetic;
 import com.birditch.escapefromcraftov.api.cosmetics.CosmeticId;
 import com.birditch.escapefromcraftov.api.inventory.InventoryLocation;
+import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventorySnapshot;
 import com.birditch.escapefromcraftov.api.inventory.StoredItem;
+import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.item.ItemDefinition;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.api.item.ItemRarity;
@@ -46,6 +48,7 @@ import org.jspecify.annotations.Nullable;
 public final class LobbyMenuController implements Listener, AutoCloseable {
 
   private static final int LOADOUT_SLOTS = 9;
+  private static final List<LoadoutSlot> NAMED_LOADOUT_SLOTS = List.of(LoadoutSlot.values());
   private static final int WAREHOUSE_PAGE_SIZE = 27;
   private static final String SETTINGS_MENU = "escapefromcraftov_lobby_settings";
   private static final String COSMETICS_MENU = "escapefromcraftov_lobby_cosmetics";
@@ -235,10 +238,16 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
     WarehouseView view = requireWarehouseView(player);
     StoredItem item = storedAt(view, visibleSlot).orElse(null);
     UUID playerId = player.getUniqueId();
-    if (item == null || !warehouseBusy.add(playerId)) return;
+    if (item == null) return;
     InventoryLocation target = visibleSlot < LOADOUT_SLOTS
         ? InventoryLocation.WAREHOUSE : InventoryLocation.LOADOUT;
-    deps.inventories().move(playerId, item.storageId(), target)
+    @Nullable LoadoutSlot loadoutSlot = target == InventoryLocation.LOADOUT
+        ? availableSlot(item, view.snapshot()) : null;
+    if (!warehouseBusy.add(playerId)) return;
+    var movement = target == InventoryLocation.LOADOUT
+        ? deps.inventories().move(playerId, item.storageId(), target, loadoutSlot)
+        : deps.inventories().move(playerId, item.storageId(), target);
+    movement
         .whenComplete((_, error) -> deps.scheduler().runSync(() -> {
           warehouseBusy.remove(playerId);
           if (!player.isOnline()) return;
@@ -246,8 +255,10 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
             deps.logger().log(Level.WARNING, "仓库物品移动失败:" + playerId, error);
             player.sendMessage(deps.messages().raw("menu.warehouse.move-failed"));
           } else {
-            player.sendMessage(deps.messages().raw(target == InventoryLocation.LOADOUT
-                ? "menu.warehouse.equipped" : "menu.warehouse.stored"));
+            player.sendMessage(target == InventoryLocation.LOADOUT
+                ? deps.messages().raw("menu.warehouse.equipped",
+                    Placeholder.unparsed("slot", slotName(loadoutSlot)))
+                : deps.messages().raw("menu.warehouse.stored"));
           }
           if (menus.isViewing(player, WAREHOUSE_MENU)) openWarehouse(player, view.page());
         }));
@@ -315,9 +326,54 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
     WarehouseView view = warehouseViews.get(player.getUniqueId());
     if (view == null) return air();
     StoredItem stored = storedAt(view, visibleSlot).orElse(null);
-    if (stored == null) return air();
+    if (stored == null) {
+      return visibleSlot < LOADOUT_SLOTS
+          ? emptyLoadoutSlot(NAMED_LOADOUT_SLOTS.get(visibleSlot)) : air();
+    }
     List<ItemStack> stacks = deps.itemStacks().fromStored(stored);
-    return stacks.isEmpty() ? air() : stacks.getFirst();
+    if (stacks.isEmpty()) return air();
+    ItemStack stack = stacks.getFirst();
+    if (visibleSlot < LOADOUT_SLOTS) {
+      List<Component> lore = new ArrayList<>(Optional.ofNullable(stack.lore()).orElse(List.of()));
+      lore.add(Component.empty());
+      if (stored.loadoutSlot() == null) {
+        lore.add(Component.text("旧版兼容配装 · 将按物品类型自动装备", NamedTextColor.YELLOW)
+            .decoration(TextDecoration.ITALIC, false));
+      } else {
+        lore.add(Component.text("配装位: " + slotName(stored.loadoutSlot()), NamedTextColor.GREEN)
+            .decoration(TextDecoration.ITALIC, false));
+      }
+      lore.add(Component.text("点击放回长期仓库", NamedTextColor.GRAY)
+          .decoration(TextDecoration.ITALIC, false));
+      stack.lore(lore);
+    }
+    return stack;
+  }
+
+  private static ItemStack emptyLoadoutSlot(LoadoutSlot slot) {
+    Material material = switch (slot) {
+      case MAIN_HAND -> Material.IRON_SWORD;
+      case OFF_HAND -> Material.SHIELD;
+      case HEAD -> Material.IRON_HELMET;
+      case BODY_ARMOR -> Material.IRON_CHESTPLATE;
+      case CHEST_RIG -> Material.LEATHER_CHESTPLATE;
+      case BACKPACK -> Material.BUNDLE;
+      case QUICK_USE_1 -> Material.REDSTONE;
+      case QUICK_USE_2 -> Material.GLOWSTONE_DUST;
+      case SECURE_CONTAINER -> Material.ENDER_CHEST;
+    };
+    List<Component> lore = new ArrayList<>();
+    if (slot == LoadoutSlot.SECURE_CONTAINER) {
+      lore.add(Component.text("内建安全箱 · 3 格", NamedTextColor.LIGHT_PURPLE));
+      lore.add(Component.text("局内使用 /craftov secure", NamedTextColor.GRAY));
+    } else if (slot == LoadoutSlot.CHEST_RIG || slot == LoadoutSlot.BACKPACK) {
+      lore.add(Component.text("第一阶段保留位置", NamedTextColor.DARK_GRAY));
+      lore.add(Component.text("当前物品目录暂无兼容容器", NamedTextColor.GRAY));
+    } else {
+      lore.add(Component.text("从下方仓库点击兼容物品即可装备", NamedTextColor.GRAY));
+    }
+    return item(material,
+        Component.text("空 · " + slotName(slot), NamedTextColor.DARK_GRAY), lore, false);
   }
 
   private ItemStack vendorBalanceItem(Player player) {
@@ -534,13 +590,71 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
     List<StoredItem> values;
     int index;
     if (visibleSlot < LOADOUT_SLOTS) {
-      values = view.snapshot().at(InventoryLocation.LOADOUT);
+      values = loadoutDisplay(view.snapshot());
       index = visibleSlot;
     } else {
       values = view.snapshot().at(InventoryLocation.WAREHOUSE);
       index = view.page() * WAREHOUSE_PAGE_SIZE + visibleSlot - LOADOUT_SLOTS;
     }
-    return index >= 0 && index < values.size() ? Optional.of(values.get(index)) : Optional.empty();
+    return index >= 0 && index < values.size()
+        ? Optional.ofNullable(values.get(index)) : Optional.empty();
+  }
+
+  private LoadoutSlot availableSlot(StoredItem stored, PlayerInventorySnapshot snapshot) {
+    List<StoredItem> loadout = snapshot.at(InventoryLocation.LOADOUT);
+    if (loadout.size() >= LOADOUT_SLOTS) {
+      throw new IllegalStateException("出战栏已满，先放回一件物品");
+    }
+    ItemCategory category = deps.itemRegistry().require(stored.itemId()).category();
+    Set<LoadoutSlot> occupied = new HashSet<>();
+    for (StoredItem existing : loadout) {
+      if (existing.loadoutSlot() != null) occupied.add(existing.loadoutSlot());
+    }
+    for (LoadoutSlot slot : NAMED_LOADOUT_SLOTS) {
+      if (slot.accepts(category) && !occupied.contains(slot)) return slot;
+    }
+    boolean hasCompatiblePosition = NAMED_LOADOUT_SLOTS.stream()
+        .anyMatch(slot -> slot.accepts(category));
+    if (!hasCompatiblePosition) {
+      throw new IllegalArgumentException("该物品不能放入当前具名配装位");
+    }
+    throw new IllegalStateException("该类型的具名配装位已被占用");
+  }
+
+  /** Named rows occupy their exact cell; legacy null rows fill the remaining cells unchanged. */
+  private static List<StoredItem> loadoutDisplay(PlayerInventorySnapshot snapshot) {
+    StoredItem[] cells = new StoredItem[LOADOUT_SLOTS];
+    List<StoredItem> compatibilityRows = new ArrayList<>();
+    for (StoredItem stored : snapshot.at(InventoryLocation.LOADOUT)) {
+      LoadoutSlot slot = stored.loadoutSlot();
+      if (slot != null && cells[slot.ordinal()] == null) {
+        cells[slot.ordinal()] = stored;
+      } else {
+        compatibilityRows.add(stored);
+      }
+    }
+    int legacyIndex = 0;
+    for (int index = 0; index < cells.length && legacyIndex < compatibilityRows.size(); index++) {
+      if (cells[index] == null) cells[index] = compatibilityRows.get(legacyIndex++);
+    }
+    List<StoredItem> displayed = new ArrayList<>(LOADOUT_SLOTS);
+    for (StoredItem stored : cells) displayed.add(stored);
+    return displayed;
+  }
+
+  private static String slotName(@Nullable LoadoutSlot slot) {
+    if (slot == null) return "旧版兼容位";
+    return switch (slot) {
+      case MAIN_HAND -> "主手";
+      case OFF_HAND -> "副手";
+      case HEAD -> "头盔";
+      case BODY_ARMOR -> "护甲";
+      case CHEST_RIG -> "胸挂";
+      case BACKPACK -> "背包";
+      case QUICK_USE_1 -> "快捷位 1";
+      case QUICK_USE_2 -> "快捷位 2";
+      case SECURE_CONTAINER -> "安全箱";
+    };
   }
 
   private Optional<StoredItem> vendorSellAt(VendorSellView view, int visibleSlot) {

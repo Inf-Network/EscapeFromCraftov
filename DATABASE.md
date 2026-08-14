@@ -84,6 +84,7 @@ schema（默认 `public`），共享下列全部表。
 | `quantity` | integer | NOT NULL | 数量 |
 | `location` | varchar(255) | NOT NULL | 枚举 `InventoryLocation`：`WAREHOUSE` / `LOADOUT` / `CRAFTOV` / `MARKET` |
 | `craftov_id` | varchar(255) | 可空 | 处于行动中时所属的 craftov 实例 ID |
+| `loadout_slot` | varchar(32) | 可空 | 具名配装位；仅 `LOADOUT` / `CRAFTOV` 可用，旧版无槽位配装保持 `NULL` |
 | `item_data` | text | 可空 | Paper 版本化物品数据，保留耐久、附魔、Lore、药水与 PDC |
 | `updated_at` | timestamptz(6) | NOT NULL | 最近更新时间 |
 | `version` | bigint | | 乐观锁版本 |
@@ -93,6 +94,7 @@ schema（默认 `public`），共享下列全部表。
 - `idx_craftov_items_owner_location` on `(player_id, location)`
 - `idx_craftov_items_owner_craftov` on `(player_id, craftov_id)`
 - `uk_craftov_items_instance` UNIQUE on `(instance_id)`；PostgreSQL 允许多条旧行保持 `NULL`
+- `uk_craftov_items_named_loadout` 局部 UNIQUE on `(player_id, loadout_slot)`，仅约束非空的 `LOADOUT` 行；旧版 `NULL` 行不参与
 
 ## craftov_inventory_settlements — 行动结算幂等标记
 
@@ -209,6 +211,9 @@ schema（默认 `public`），共享下列全部表。
 - 旧库升级物品实例结构时，先执行
   `database/migrations/20260814_item_instance_payload.sql`。该脚本须由 psql
   以 autocommit 执行；使用 `table-prefix` 时先替换脚本中的表名与索引名。
+- 启用具名配装位前执行 `database/migrations/20260814_named_loadout_slots.sql`。
+  脚本包含 `CREATE INDEX CONCURRENTLY`，必须按 autocommit 执行，不能包在事务中；
+  旧 `LOADOUT + loadout_slot IS NULL` 行不会被迁移或删除。
 - 启用玩家交易行前执行 `database/migrations/20260814_player_market.sql`；脚本使用
   普通事务，并会把 `craftov_player_items.location` 的枚举约束扩展为允许 `MARKET`；
   执行成功后再以 `schema-action: validate` 启动 Lobby。

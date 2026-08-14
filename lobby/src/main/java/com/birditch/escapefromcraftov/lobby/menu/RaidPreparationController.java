@@ -138,7 +138,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     }
     List<StoredItem> loadout = snapshot.at(InventoryLocation.LOADOUT);
     views.put(playerId, new PreparationView(selection, loadout.size(), totalQuantity(loadout),
-        totalValue(loadout), false));
+        totalValue(loadout), totalWeightGrams(loadout), false));
     openMenu(player);
   }
 
@@ -192,6 +192,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
             Placeholder.unparsed("stacks", Integer.toString(view.stackCount())),
             Placeholder.unparsed("items", Integer.toString(view.itemCount())),
             Placeholder.unparsed("value", view.totalValue().format()),
+            Placeholder.unparsed("weight", formatWeight(view.totalWeightGrams())),
             Placeholder.component("state", messages.raw(stateKey))), view.itemCount() > 0);
   }
 
@@ -253,6 +254,22 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     return total;
   }
 
+  private long totalWeightGrams(List<StoredItem> loadout) {
+    long total = 0;
+    for (StoredItem stored : loadout) {
+      ItemDefinition definition = itemRegistry.find(stored.itemId()).orElse(null);
+      if (definition == null) continue;
+      total = Math.addExact(total,
+          Math.multiplyExact((long) definition.weightGrams(), stored.quantity()));
+    }
+    return total;
+  }
+
+  private static String formatWeight(long grams) {
+    if (grams < 1_000) return grams + " g";
+    return String.format(Locale.ROOT, "%.2f kg", grams / 1_000.0);
+  }
+
   private static <T> T next(List<T> values, T current) {
     Preconditions.checkArgument(!values.isEmpty(), "selection values must not be empty");
     int index = values.indexOf(current);
@@ -295,14 +312,17 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
       int stackCount,
       int itemCount,
       Money totalValue,
+      long totalWeightGrams,
       boolean emptyLoadoutConfirmed) {
 
     private PreparationView withSelection(Selection replacement) {
-      return new PreparationView(replacement, stackCount, itemCount, totalValue, false);
+      return new PreparationView(replacement, stackCount, itemCount, totalValue,
+          totalWeightGrams, false);
     }
 
     private PreparationView confirmEmptyLoadout() {
-      return new PreparationView(selection, stackCount, itemCount, totalValue, true);
+      return new PreparationView(selection, stackCount, itemCount, totalValue,
+          totalWeightGrams, true);
     }
   }
 }

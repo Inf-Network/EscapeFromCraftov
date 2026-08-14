@@ -3,13 +3,16 @@ package com.birditch.escapefromcraftov.game.plugin.network;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -87,6 +90,17 @@ class PendingJoinHandlerTest {
 
     entry.complete(PendingJoinHandler.ClaimOutcome.CLAIMED);
     assertEquals(PendingJoinHandler.ClaimOutcome.CLAIMED, entry.completion().join());
+  }
+
+  @Test
+  void quickUseKeepsFirstPhysicalStackNamedAndCarriesDerivedStacksInBackpack() {
+    PendingJoinHandler.NamedStackPlan<String> quick = PendingJoinHandler.planNamedStacks(
+        LoadoutSlot.QUICK_USE_1, List.of("potion-1", "potion-2"));
+
+    assertEquals("potion-1", quick.equipped());
+    assertEquals(List.of("potion-2"), quick.backpack());
+    assertThrows(IllegalStateException.class, () -> PendingJoinHandler.planNamedStacks(
+        LoadoutSlot.MAIN_HAND, List.of("sword-1", "sword-2")));
   }
 
   private static MatchAssignment assignment(UUID playerId, ServerId serverId, String proxyName) {

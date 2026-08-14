@@ -1,5 +1,5 @@
 # ============================================================================
-#  RaidCoreLobby 主配置(config.yml)
+#  EscapeFromCraftovLobby 主配置(config.yml)
 #  Escape from Craftov · 逃离块科夫 —— 大厅插件核心设置
 # ============================================================================
 #
@@ -21,7 +21,7 @@ queue:
   # 建议 ≥ 跨服传送 + 快照刷新所需时间。
   reservation-ttl-seconds: 30
 
-  # 匹配分配键(raidcore:pending:<玩家UUID>)的 Redis TTL(秒)。
+  # 匹配分配键(escapefromcraftov:pending:<玩家UUID>)的 Redis TTL(秒)。
   # 玩家必须在此时间内到达游戏服务端,过期视为放弃。类型:整数,必须 > 0。
   assignment-ttl-seconds: 30
 
@@ -30,7 +30,7 @@ queue:
 # ---------------------------------------------------------------------------
 lobby:
   # 大厅保护。类型:布尔。true 时禁止破坏/放置方块、玩家受伤、饥饿消耗、
-  # 丢弃物品与移动背包物品(管理员 raid.admin + 创造模式除外)。
+  # 丢弃物品与移动背包物品(管理员 craftov.admin + 创造模式除外)。
   protect: true
 
   # /play 不带参数与主菜单"开始游戏"使用的默认地图 ID。类型:字符串,
@@ -72,10 +72,10 @@ database:
   # PostgreSQL 地址、端口与数据库名。Lobby 与 Game 必须连接同一个库。
   host: localhost
   port: 5432
-  database: raidcore
+  database: escapefromcraftov
 
-  # 建议使用 RaidCore 专用低权限账号。
-  username: raidcore
+  # 建议使用 EscapeFromCraftov 专用低权限账号。
+  username: escapefromcraftov
   password: change-me
 
   # PostgreSQL schema。Lobby 与 Game 必须一致；默认 public。
@@ -83,14 +83,14 @@ database:
 
   # 自动建表时统一添加的表名前缀（同时应用于索引名）。Lobby 与 Game 必须一致。
   # 空字符串表示不加前缀；非空时须以小写字母开头，仅含小写字母、数字、下划线，
-  # 最长 20 字符。示例："ec_" 会把 raid_profiles 建成 ec_raid_profiles。
+  # 最长 20 字符。示例："ec_" 会把 craftov_profiles 建成 ec_craftov_profiles。
   table-prefix: ""
 
   # PostgreSQL JDBC sslmode: disable / allow / prefer / require /
   # verify-ca / verify-full。公网数据库建议 verify-full。
   ssl-mode: prefer
   # 写入 pg_stat_activity，便于区分连接来自 Lobby 还是 Game。
-  application-name: RaidCoreLobby
+  application-name: EscapeFromCraftovLobby
   # 保持 TCP 连接活性，并让驱动把批量 INSERT 改写成多值写入。
   tcp-keepalive: true
   rewrite-batched-inserts: true

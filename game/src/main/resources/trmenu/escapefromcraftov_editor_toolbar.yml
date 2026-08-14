@@ -1,0 +1,83 @@
+Title: '&8Craftov 地图编辑器'
+Layout:
+  - '#########'
+  - '#MSLZAEP#'
+  - '#WVHNRBT#'
+  - '#UOQCGYX#'
+  - '#########'
+Options:
+  Arguments: false
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 150
+Events:
+  Open:
+    - condition: 'perm *craftov.editor'
+      deny:
+        - 'tell: &c你没有地图编辑权限。'
+        - 'return'
+Icons:
+  '#':
+    display: { material: black_stained_glass_pane, name: ' ' }
+  M:
+    display: { material: map, name: '&6地图边界', lore: [ '&7使用当前选区设置可游玩边界' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool map' ] }
+  S:
+    display: { material: lime_banner, name: '&a出生点', lore: [ '&7切换到出生点编辑工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool spawn' ] }
+  L:
+    display: { material: chest, name: '&e物资点', lore: [ '&7切换到物资点编辑工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool loot' ] }
+  Z:
+    display: { material: yellow_wool, name: '&e物资区域', lore: [ '&7切换到物资区域编辑工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool lootzone' ] }
+  A:
+    display: { material: zombie_head, name: '&c生物区域', lore: [ '&7切换到 PvE 生物区域工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool ai' ] }
+  E:
+    display: { material: light_blue_wool, name: '&b撤离区域', lore: [ '&7切换到撤离区域编辑工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool extraction' ] }
+  P:
+    display: { material: purple_wool, name: '&d兴趣点', lore: [ '&7切换到 POI 编辑工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor tool poi' ] }
+  W:
+    display: { material: wooden_axe, name: '&6选区工具', lore: [ '&7领取 EscapeFromCraftov 选区工具' ] }
+    actions: { all: [ 'close', 'command: craftov editor wand' ] }
+  V:
+    display: { material: ender_eye, name: '&b显示全部标记', lore: [ '&7恢复所有对象类型的可视化' ] }
+    actions: { all: 'command: craftov editor show all' }
+  H:
+    display: { material: spyglass, name: '&7隐藏全部标记', lore: [ '&7临时隐藏所有对象标记' ] }
+    actions: { all: 'command: craftov editor hide all' }
+  N:
+    display: { material: compass, name: '&f附近对象', lore: [ '&7列出当前位置附近的地图对象' ] }
+    actions: { all: [ 'close', 'command: craftov editor nearby' ] }
+  R:
+    display: { material: spectral_arrow, name: '&f传送到选中对象', lore: [ '&7安全传送到当前选择' ] }
+    actions: { all: [ 'close', 'command: craftov editor tp' ] }
+  B:
+    display: { material: writable_book, name: '&f对象属性', lore: [ '&7打开当前选中对象的属性菜单' ] }
+    actions: { all: 'command: craftov editor property open' }
+  T:
+    display: { material: target, name: '&f验证地图', lore: [ '&7检查地图闭环和对象有效性' ] }
+    actions: { all: [ 'close', 'command: craftov editor validate' ] }
+  U:
+    display: { material: arrow, name: '&6撤销', lore: [ '&7撤销最近一次编辑' ] }
+    actions: { all: [ 'reset', 'command: craftov editor undo' ] }
+  O:
+    display: { material: chorus_fruit, name: '&6重做', lore: [ '&7恢复最近一次撤销' ] }
+    actions: { all: [ 'reset', 'command: craftov editor redo' ] }
+  Q:
+    display: { material: clock, name: '&f历史版本', lore: [ '&7查看可回滚的地图版本' ] }
+    actions: { all: [ 'close', 'command: craftov editor history' ] }
+  C:
+    display: { material: book, name: '&a保存地图', lore: [ '&7验证并保存为新的不可变版本' ] }
+    actions: { all: [ 'close', 'command: craftov editor save' ] }
+  G:
+    display: { material: command_block, name: '&b编辑状态', lore: [ '&7查看选区、工具、脏状态与进度' ] }
+    actions: { all: [ 'close', 'command: craftov editor status' ] }
+  Y:
+    display: { material: knowledge_book, name: '&e编辑帮助', lore: [ '&7显示完整编辑器操作说明' ] }
+    actions: { all: [ 'close', 'command: craftov editor help' ] }
+  X:
+    display: { material: barrier, name: '&c关闭', lore: [ '&7返回地图编辑世界' ] }
+    actions: { all: close }

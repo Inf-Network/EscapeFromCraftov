@@ -20,12 +20,12 @@ tasks.processResources {
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("RaidCoreLobby")
+    archiveBaseName.set("EscapeFromCraftovLobby")
     archiveClassifier.set("")
     // Lobby never needs the retired auto-map research package from core.
-    exclude("com/birditch/raidcore/automap/**")
-    // Publish one plugin jar containing only RaidCore's own modules. Third-party
-    // libraries are resolved by RaidLobbyPluginLoader into Paper's libraries cache.
+    exclude("com/birditch/escapefromcraftov/automap/**")
+    // Publish one plugin jar containing only EscapeFromCraftov's own modules. Third-party
+    // libraries are resolved by CraftovLobbyPluginLoader into Paper's libraries cache.
     dependencies {
         include(project(":api"))
         include(project(":core"))
@@ -37,7 +37,7 @@ tasks.assemble {
 }
 
 tasks.register("buildPlugin") {
-    group = "raidcore"
-    description = "Builds the deployable RaidCoreLobby plugin jar."
+    group = "escapefromcraftov"
+    description = "Builds the deployable EscapeFromCraftovLobby plugin jar."
     dependsOn(tasks.shadowJar)
 }

@@ -1,7 +1,7 @@
-name: RaidCoreLobby
+name: EscapeFromCraftovLobby
 version: '${version}'
-main: com.birditch.raidcore.lobby.RaidLobbyPlugin
-loader: com.birditch.raidcore.lobby.RaidLobbyPluginLoader
+main: com.birditch.escapefromcraftov.lobby.CraftovLobbyPlugin
+loader: com.birditch.escapefromcraftov.lobby.CraftovLobbyPluginLoader
 api-version: '1.21'
 description: "Escape from Craftov · 逃离块科夫 — PostgreSQL 玩家数据、物资仓库与 Redis 匹配大厅。"
 authors: [birditch]

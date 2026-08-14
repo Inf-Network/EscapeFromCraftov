@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.run.paper)
 }
 
-description = "Escape from Craftov game-server plugin: multi-instance raids, per-instance worlds, chat/tab isolation, Redis instance directory."
+description = "Escape from Craftov game-server plugin: multi-instance craftovs, per-instance worlds, chat/tab isolation, Redis instance directory."
 
 dependencies {
     compileOnly(libs.paper.api)
@@ -30,12 +30,12 @@ tasks.processResources {
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("RaidCoreGame")
+    archiveBaseName.set("EscapeFromCraftovGame")
     archiveClassifier.set("")
     // Retired auto-map experiments are not part of the production plugin.
-    exclude("com/birditch/raidcore/automap/**")
-    // Publish one plugin jar containing only RaidCore's own modules. Third-party
-    // libraries are resolved by RaidGamePluginLoader into Paper's libraries cache.
+    exclude("com/birditch/escapefromcraftov/automap/**")
+    // Publish one plugin jar containing only EscapeFromCraftov's own modules. Third-party
+    // libraries are resolved by CraftovGamePluginLoader into Paper's libraries cache.
     dependencies {
         include(project(":api"))
         include(project(":core"))
@@ -47,8 +47,8 @@ tasks.assemble {
 }
 
 tasks.register("buildPlugin") {
-    group = "raidcore"
-    description = "Builds the deployable RaidCoreGame plugin jar."
+    group = "escapefromcraftov"
+    description = "Builds the deployable EscapeFromCraftovGame plugin jar."
     dependsOn(tasks.shadowJar)
 }
 

@@ -1,5 +1,5 @@
 # ============================================================================
-#  RaidCoreGame 消息配置(messages.yml)
+#  EscapeFromCraftovGame 消息配置(messages.yml)
 #  Escape from Craftov · 逃离块科夫 —— 游戏服务端的全部玩家可见文本
 # ============================================================================
 #
@@ -18,7 +18,7 @@
 # ============================================================================
 
 # 管理/调试命令输出的前缀(游戏流程消息不使用)。
-prefix: "<gold>Raid</gold> <dark_gray>»</dark_gray> "
+prefix: "<gold>Craftov</gold> <dark_gray>»</dark_gray> "
 
 # ---------------------------------------------------------------------------
 # Tab 列表页眉/页脚:品牌横幅(页眉两行:拉丁大标题 + 中文副标题)。
@@ -30,13 +30,13 @@ tab:
 # ---------------------------------------------------------------------------
 # 命令输出。
 #   help.entry     <command> = 命令用法;<description> = 命令说明
-#   info.*         /raid info 状态总览;占位符见各行注释
-#   game.*         /raid game 系列;<id> = 实例编号;<map> = 地图;
+#   info.*         /craftov info 状态总览;占位符见各行注释
+#   game.*         /craftov game 系列;<id> = 实例编号;<map> = 地图;
 #                  <state> = 状态;<players> = 人数;<count> = 实例总数;
 #                  <error> = 失败原因
-#   debug.loot.*   /raid debug loot 掉落测试;<table> = 掉落表;
+#   debug.loot.*   /craftov debug loot 掉落测试;<table> = 掉落表;
 #                  <item> = 物品名;<quantity> = 数量
-#   profile.*      /raid profile 个人档案;<player>/<balance>/<level>/<state>/
+#   profile.*      /craftov profile 个人档案;<player>/<balance>/<level>/<state>/
 #                  <experience>/<progress>/<target>/<remaining>
 # ---------------------------------------------------------------------------
 command:
@@ -44,8 +44,8 @@ command:
   player-only: "<red>该命令只能由玩家使用。</red>"
   help:
     header: "<gold><bold>ESCAPE FROM CRAFTOV</bold></gold> <dark_gray>·</dark_gray> <gray>命令列表</gray>"
-    admin-header: "<gold><bold>RAIDCORE ADMIN</bold></gold> <dark_gray>·</dark_gray> <gray>管理员命令</gray>"
-    admin-hint: "<gray>管理员可输入 <yellow>/raid help admin</yellow> 查看地图与实例命令。</gray>"
+    admin-header: "<gold><bold>CRAFTOVCORE ADMIN</bold></gold> <dark_gray>·</dark_gray> <gray>管理员命令</gray>"
+    admin-hint: "<gray>管理员可输入 <yellow>/craftov help admin</yellow> 查看地图与实例命令。</gray>"
     entry: "<yellow>/<command></yellow> <dark_gray>-</dark_gray> <gray><description></gray>"
     # 每条命令的说明文字(由 entry 的 <description> 引用)。
     desc:
@@ -53,8 +53,8 @@ command:
       tutorial: "查看一局行动的完整玩法"
       info: "查看插件运行状态"
       profile: "查看你的个人档案"
-      map-import: "从地图文件夹导入 Minecraft 世界或完整 Raid 地图包"
-      map-create: "创建一张由管理员手工编辑的 Raid 地图"
+      map-import: "从地图文件夹导入 Minecraft 世界或完整 Craftov 地图包"
+      map-create: "创建一张由管理员手工编辑的 Craftov 地图"
       map-manage: "查看、启用或停用已导入的地图"
       map-list: "列出本服已登记的地图"
       map-info: "查看指定地图的版本、点位和启用状态"
@@ -130,7 +130,7 @@ command:
 join:
   profile-loaded: "<gray>欢迎来到</gray> <gold><bold>Escape from Craftov</bold></gold> <gray>·</gray> <yellow>逃离块科夫</yellow>"
   profile-failed: "<red>你的档案加载失败,请重新进入服务器或联系管理员。</red>"
-  editor-ready: "<green>编辑权限已验证。</green> <gray>输入 <yellow>/raid map list</yellow> 查看地图，或使用 <yellow>/raid editor enter <地图></yellow> 开始编辑。</gray>"
+  editor-ready: "<green>编辑权限已验证。</green> <gray>输入 <yellow>/craftov map list</yellow> 查看地图，或使用 <yellow>/craftov editor enter <地图></yellow> 开始编辑。</gray>"
 
 # ---------------------------------------------------------------------------
 # 对局流程。

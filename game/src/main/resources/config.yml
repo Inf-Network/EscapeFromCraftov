@@ -1,5 +1,5 @@
 # ============================================================================
-#  RaidCoreGame 主配置(config.yml)
+#  EscapeFromCraftovGame 主配置(config.yml)
 #  Escape from Craftov · 逃离块科夫 —— 游戏服务端核心设置
 # ============================================================================
 #
@@ -21,13 +21,13 @@ server:
 
   # 本服在 Velocity/BungeeCord 代理中注册的服务器名。类型:字符串。
   # 大厅匹配成功后就是用这个名字把玩家 /server 过来的,必须与代理配置一致。
-  proxy-name: raid-01
+  proxy-name: craftov-01
 
 # ---------------------------------------------------------------------------
 # 对局实例规则。
 # ---------------------------------------------------------------------------
 game:
-  # 自动补备与 /raid game create 不带地图参数时使用的地图 ID。
+  # 自动补备与 /craftov game create 不带地图参数时使用的地图 ID。
   # 对应模板目录必须存在；生产环境不会静默生成调试地图。
   default-map: debug_zone
 
@@ -38,7 +38,7 @@ game:
   team-size: 3
 
   # 房间达到多少名玩家后自动开始倒计时。范围 1..max-players。
-  # 人数在倒计时期间不足时会自动取消；管理员仍可手工 /raid game start。
+  # 人数在倒计时期间不足时会自动取消；管理员仍可手工 /craftov game start。
   minimum-players: 2
 
   # 达到最低人数后的自动开局倒计时(秒)。范围 3..300。
@@ -57,9 +57,9 @@ game:
   # 类型:整数,0 ~ max-instances。0 表示只按需创建(大厅提示后才补)。
   min-ready-instances: 1
 
-  # 地图模板目录(相对本插件数据目录 plugins/RaidCoreGame/)。类型:字符串。
+  # 地图模板目录(相对本插件数据目录 plugins/EscapeFromCraftovGame/)。类型:字符串。
   # 每个实例创建时会把 <此目录>/<地图ID>/ 整份复制为新世界;
-  # 管理员覆盖地图也可使用 /raid map create 时登记的世界目录作为只读复制来源。
+  # 管理员覆盖地图也可使用 /craftov map create 时登记的世界目录作为只读复制来源。
   map-template-dir: maps
 
   # 仅限本地开发。false 时地图模板缺失会让实例创建失败并自动销毁，
@@ -96,7 +96,7 @@ combat:
   attribution-seconds: 15
 
 scoreboard:
-  # 编辑器和 Raid 中的个人动态 Sidebar 总开关。
+  # 编辑器和 Craftov 中的个人动态 Sidebar 总开关。
   enabled: true
   # 刷新间隔 tick。10 = 0.5 秒；只更新内容，不重建玩家 Scoreboard。
   refresh-ticks: 10
@@ -120,7 +120,7 @@ progression:
 map-editor:
   # 每张地图保留多少个旧 revision，不含当前版本。范围 1 ~ 20。
   retained-revisions: 3
-  # 批量删除等危险操作的 /raid editor confirm 有效时间。范围 5 ~ 60 秒。
+  # 批量删除等危险操作的 /craftov editor confirm 有效时间。范围 5 ~ 60 秒。
   confirmation-seconds: 15
   # 管理员进入编辑器后的默认个人可视半径。范围 16 ~ 512 格。
   default-visibility-radius: 96
@@ -153,10 +153,10 @@ database:
   # 根据 orm.schema-action 管理。
   host: localhost
   port: 5432
-  database: raidcore
+  database: escapefromcraftov
 
-  # 建议为 RaidCore 创建独立低权限账号，仅授予本数据库的 DDL/DML 权限。
-  username: raidcore
+  # 建议为 EscapeFromCraftov 创建独立低权限账号，仅授予本数据库的 DDL/DML 权限。
+  username: escapefromcraftov
   password: change-me
 
   # PostgreSQL schema。Lobby 与 Game 必须一致；默认 public。
@@ -164,7 +164,7 @@ database:
 
   # 自动建表时统一添加的表名前缀（同时应用于索引名）。Lobby 与 Game 必须一致。
   # 空字符串表示不加前缀；非空时须以小写字母开头，仅含小写字母、数字、下划线，
-  # 最长 20 字符。示例："ec_" 会把 raid_profiles 建成 ec_raid_profiles。
+  # 最长 20 字符。示例："ec_" 会把 craftov_profiles 建成 ec_craftov_profiles。
   # 注意：已投产后修改前缀等于换一套全新表，旧表数据不会自动迁移。
   table-prefix: ""
 
@@ -173,7 +173,7 @@ database:
   ssl-mode: prefer
 
   # 写入 PostgreSQL pg_stat_activity，便于区分连接来源。
-  application-name: RaidCoreGame
+  application-name: EscapeFromCraftovGame
 
   # JDBC 网络与批处理优化。
   tcp-keepalive: true

@@ -1,6 +1,6 @@
-# RaidCore
+# EscapeFromCraftov
 
-RaidCore 是一个运行在 Minecraft Paper 上的「搜打撤」游戏框架，游戏名是 **Escape from Craftov / 逃离块科夫**。
+EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏框架，游戏名是 **Escape from Craftov / 逃离块科夫**。
 
 完整的玩家玩法、管理员运营、代理配置、数据库闭环和开发者扩展说明见 [GAMEPLAY.md](GAMEPLAY.md)。
 
@@ -48,7 +48,7 @@ RaidCore 是一个运行在 Minecraft Paper 上的「搜打撤」游戏框架，
 
 战斗完全以 Minecraft 1.21.11 的原生规则为基础：剑和斧负责近战，弓和弩负责远程压制，盾牌用于格挡，护甲与附魔改变攻防，药水、金苹果和食物负责恢复或提供状态效果。击退、暴击、投射物、火焰、摔落、岩浆和其他环境伤害都属于行动中的风险。
 
-同一 Raid 实例中的玩家可以使用这些原生机制 PvP。RaidCore 会取消跨实例/非行动阶段伤害，按配置处理队伍友伤，解析近战和投射物击杀归属，并在死亡结算成功后返回大厅。倒地救援和耐久专属结算仍属规划。
+同一 Craftov 实例中的玩家可以使用这些原生机制 PvP。EscapeFromCraftov 会取消跨实例/非行动阶段伤害，按配置处理队伍友伤，解析近战和投射物击杀归属，并在死亡结算成功后返回大厅。倒地救援和耐久专属结算仍属规划。
 
 ### AI
 
@@ -61,7 +61,7 @@ RaidCore 是一个运行在 Minecraft Paper 上的「搜打撤」游戏框架，
 - `NORMAL`：直接撤离。
 - `TIMED`：行动开始达到指定秒数后开放。
 - `PAID`：支付金币后撤离，同一局只扣一次；扣费失败时不会吞掉物资。
-- `ITEM_REQUIRED`：背包中需要带有指定 `raidcore:item_id` PDC 的物品。
+- `ITEM_REQUIRED`：背包中需要带有指定 `escapefromcraftov:item_id` PDC 的物品。
 
 每局创建时会捕获地图 revision、出生点和撤离区域。管理员之后保存地图不会热改正在运行的对局，只影响下一局。
 
@@ -84,7 +84,7 @@ RaidCore 是一个运行在 Minecraft Paper 上的「搜打撤」游戏框架，
 | 对局地图快照 | 完成 | 运行中对局不会被热编辑改变 |
 | WorldEdit / LuckPerms | 硬依赖 | 地图选区和权限事实源，缺失时拒绝加载 Game |
 | DecentHolograms / PlaceholderAPI | 硬依赖 | 编辑器标签和对外占位符，缺失或适配器异常时拒绝加载 Game |
-| TrMenu 社区版 3.12.5 | 硬依赖 | Lobby/Game 全部 Inventory GUI；动态物品由 RaidCore 数据源注入 |
+| TrMenu 社区版 3.12.5 | 硬依赖 | Lobby/Game 全部 Inventory GUI；动态物品由 EscapeFromCraftov 数据源注入 |
 | 虚拟 Loot 搜索与撤离结算 | 完成 | 共享一次性 Loot GUI，成功撤离后入仓 |
 | AI 战斗 | 未完成 | 当前只有 AI Zone 配置 |
 | Minecraft PvP 结算与队伍规则 | 完成 | 原生伤害边界、友伤配置、击杀归属和死亡结算 |
@@ -101,13 +101,13 @@ Game 和 Lobby 是互斥角色，不能把两个 Jar 放进同一个 Paper 服�
 Velocity / BungeeCord
   |
   +-- Lobby Paper
-  |     +-- RaidCoreLobby.jar
+  |     +-- EscapeFromCraftovLobby.jar
   |
   +-- Game Paper #1
-  |     +-- RaidCoreGame.jar
+  |     +-- EscapeFromCraftovGame.jar
   |
   +-- Game Paper #2 (可选)
-        +-- RaidCoreGame.jar
+        +-- EscapeFromCraftovGame.jar
 
 Lobby + Game -------- PostgreSQL
        长期玩家数据     档案/等级/余额/设置/装扮
@@ -116,7 +116,7 @@ Lobby <-------------> Redis <-------------> Game
        匹配分配/实例快照/扩容消息，全部带 TTL
 ```
 
-一个 Game Paper 可以同时承载多局 Raid，每局使用独立世界副本。房间之间会隔离实体、Tab、普通聊天、私聊目标、加入/退出提示、死亡提示和击杀提示。Lobby 只负责大厅、菜单和匹配，不承载 Raid；Game 不提供内置 Lobby 回退。
+一个 Game Paper 可以同时承载多局 Craftov，每局使用独立世界副本。房间之间会隔离实体、Tab、普通聊天、私聊目标、加入/退出提示、死亡提示和击杀提示。Lobby 只负责大厅、菜单和匹配，不承载 Craftov；Game 不提供内置 Lobby 回退。
 
 ## 安装要求
 
@@ -127,7 +127,7 @@ Lobby <-------------> Redis <-------------> Game
 - Velocity 或 BungeeCord，负责跨服传送。
 - 第一次启动可访问 Maven Central。
 
-HikariCP、PostgreSQL JDBC、Hibernate、Jedis 和 Gson 由 Paper PluginLoader 下载到服务器 `libraries/` 缓存。它们不会打进 RaidCore Jar；坐标不变时 Paper 会复用缓存。
+HikariCP、PostgreSQL JDBC、Hibernate、Jedis 和 Gson 由 Paper PluginLoader 下载到服务器 `libraries/` 缓存。它们不会打进 EscapeFromCraftov Jar；坐标不变时 Paper 会复用缓存。
 
 ### 必须安装的扩展插件
 
@@ -143,45 +143,45 @@ HikariCP、PostgreSQL JDBC、Hibernate、Jedis 和 Gson 由 Paper PluginLoader �
 
 #### TrMenu 3.12.5（硬依赖）
 
-RaidCore 已针对社区版 **TrMenu 3.12.5** 做了适配。官方资料和源码入口：
+EscapeFromCraftov 已针对社区版 **TrMenu 3.12.5** 做了适配。官方资料和源码入口：
 
 - 文档：[TrMenu v3 文档](https://hhhhhy.gitbook.io/trmenu-v3)
 - 社区仓库：[CoderKuo/TrMenu](https://github.com/CoderKuo/TrMenu)
 - 下载：[TrMenu-3.12.5.jar](https://github.com/CoderKuo/TrMenu/releases/download/trmenu/TrMenu-3.12.5.jar)
 
-安装时把下载的 `TrMenu-3.12.5.jar` 分别放进 **Lobby 和 Game 两个服务端自己的 `plugins/` 目录**，然后重启对应服务端。发布文件 SHA-256 为 `6f8019dcb20cecda3d16e8dfb5f6aad08f2ece603350f73759976fd1926281f6`。TrMenu 是独立插件，不会被下载或打包进 RaidCore Jar。当前适配会严格检查版本必须是 `3.12.5`；缺失、被禁用或版本不匹配都会阻止对应 RaidCore 插件继续运行。
+安装时把下载的 `TrMenu-3.12.5.jar` 分别放进 **Lobby 和 Game 两个服务端自己的 `plugins/` 目录**，然后重启对应服务端。发布文件 SHA-256 为 `6f8019dcb20cecda3d16e8dfb5f6aad08f2ece603350f73759976fd1926281f6`。TrMenu 是独立插件，不会被下载或打包进 EscapeFromCraftov Jar。当前适配会严格检查版本必须是 `3.12.5`；缺失、被禁用或版本不匹配都会阻止对应 EscapeFromCraftov 插件继续运行。
 
-RaidCore 会在 TrMenu 已加载时，把没有同名文件的内置模板复制到 TrMenu 的 `menus/` 目录：
+EscapeFromCraftov 会在 TrMenu 已加载时，把没有同名文件的内置模板复制到 TrMenu 的 `menus/` 目录：
 
 ```text
-Lobby/plugins/TrMenu/menus/raidcore_lobby_main.yml
-Lobby/plugins/TrMenu/menus/raidcore_lobby_settings.yml
-Lobby/plugins/TrMenu/menus/raidcore_lobby_cosmetics.yml
-Lobby/plugins/TrMenu/menus/raidcore_lobby_warehouse.yml
-Game/plugins/TrMenu/menus/raidcore_editor_toolbar.yml
-Game/plugins/TrMenu/menus/raidcore_editor_object.yml
-Game/plugins/TrMenu/menus/raidcore_loot.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_main.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_settings.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_cosmetics.yml
+Lobby/plugins/TrMenu/menus/escapefromcraftov_lobby_warehouse.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_editor_toolbar.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_editor_object.yml
+Game/plugins/TrMenu/menus/escapefromcraftov_loot.yml
 ```
 
-已有文件绝不会被覆盖，管理员可以直接修改材质、布局和文字。RaidCore 优先调用 TrMenu 3.12.5 的公开 `TrMenuAPI`（兼容社区版历史上使用过的 `me.arasple.mc.trmenu` 与当前源码使用的 `trplugins.menu` 两套包名）；只有公开 API 不可用时，才由控制台通过同版本的 `/trmenu open` 兼容路径打开菜单，普通玩家不需要 TrMenu 管理员权限。首次复制模板后会要求 TrMenu 重载；约 10 秒内仍缺少任一必需菜单时，对应 RaidCore 插件会停用并在日志列出菜单 ID。
+已有文件绝不会被覆盖，管理员可以直接修改材质、布局和文字。EscapeFromCraftov 优先调用 TrMenu 3.12.5 的公开 `TrMenuAPI`（兼容社区版历史上使用过的 `me.arasple.mc.trmenu` 与当前源码使用的 `trplugins.menu` 两套包名）；只有公开 API 不可用时，才由控制台通过同版本的 `/trmenu open` 兼容路径打开菜单，普通玩家不需要 TrMenu 管理员权限。首次复制模板后会要求 TrMenu 重载；约 10 秒内仍缺少任一必需菜单时，对应 EscapeFromCraftov 插件会停用并在日志列出菜单 ID。
 
-所有 Inventory GUI 都由 TrMenu 创建和保护，没有原生 GUI fallback。动态仓库物品、共享 Loot 和地图对象属性通过 TrMenu 的 `CustomItemSourceEvent` 取得真实 `ItemStack`。点击只会调用 RaidCore 的动作端点；动作端点会再次检查对应 TrMenu 菜单仍处于打开状态，并检查玩家数据、房间、距离、权限、编辑会话、对象和当前页，再执行 Hibernate 事务或本局状态修改。复制菜单内部动作命令、关闭菜单后重放命令，都不能绕过这些校验。这样既使用 TrMenu 的虚拟菜单能力，也不把物品所有权和结算权限交给 YAML 脚本。
+所有 Inventory GUI 都由 TrMenu 创建和保护，没有原生 GUI fallback。动态仓库物品、共享 Loot 和地图对象属性通过 TrMenu 的 `CustomItemSourceEvent` 取得真实 `ItemStack`。点击只会调用 EscapeFromCraftov 的动作端点；动作端点会再次检查对应 TrMenu 菜单仍处于打开状态，并检查玩家数据、房间、距离、权限、编辑会话、对象和当前页，再执行 Hibernate 事务或本局状态修改。复制菜单内部动作命令、关闭菜单后重放命令，都不能绕过这些校验。这样既使用 TrMenu 的虚拟菜单能力，也不把物品所有权和结算权限交给 YAML 脚本。
 
-菜单关闭也由 TrMenu 会话负责：玩家断线、离开 Loot、编辑操作失效、数据尚未就绪或插件停服时，RaidCore 会调用 TrMenu 3.12.5 的 `MenuSession.close(...)` 和 `shut()`，关闭数据包窗口、触发关闭事件、取消菜单任务并清理查看会话。没有 Bukkit 原生窗口 fallback；如果 TrMenu API 不兼容，RaidCore 会记录明确的集成错误，而不是悄悄切换到第二套菜单生命周期。
+菜单关闭也由 TrMenu 会话负责：玩家断线、离开 Loot、编辑操作失效、数据尚未就绪或插件停服时，EscapeFromCraftov 会调用 TrMenu 3.12.5 的 `MenuSession.close(...)` 和 `shut()`，关闭数据包窗口、触发关闭事件、取消菜单任务并清理查看会话。没有 Bukkit 原生窗口 fallback；如果 TrMenu API 不兼容，EscapeFromCraftov 会记录明确的集成错误，而不是悄悄切换到第二套菜单生命周期。
 
 ### 其他插件评估
 
-下面这些插件都逐项评估过，但当前不加入硬依赖。硬依赖不是“装得越多越好”：只有 RaidCore 正在消费它的公开 API、能用它替代重复实现，并且不会抢走 PostgreSQL/地图快照的事实所有权，才进入启动链。
+下面这些插件都逐项评估过，但当前不加入硬依赖。硬依赖不是“装得越多越好”：只有 EscapeFromCraftov 正在消费它的公开 API、能用它替代重复实现，并且不会抢走 PostgreSQL/地图快照的事实所有权，才进入启动链。
 
 | 插件 | 当前决定 | 评估结论 |
 |---|---|---|
 | ProtocolLib | 暂不作为硬依赖 | Paper 1.21.11 已覆盖事件、Sidebar、Tab 和房间隔离；只有将来需要数据包级实体裁剪或自定义点击协议时，才增加独立 ProtocolLib Adapter。 |
 | Citizens | 暂不作为硬依赖 | 适合托管 Bukkit NPC，但会与 MythicMobs 的生物定义重叠；AI Zone 目前只有地图定义，尚未消费 Citizens API。 |
 | MythicMobs | 暂不作为硬依赖 | 适合复杂技能和生物脚本，但属于独立内容系统，且部分发行形态受许可影响；确定 PvE 内容方案后只能在 Citizens/MythicMobs 中选择一个适配器。 |
-| ItemsAdder | 暂不作为硬依赖 | 可提供资源包和自定义物品外观，但不能成为 RaidCore 仓库和结算的事实源；强制它会让纯原版服务器无法部署。 |
+| ItemsAdder | 暂不作为硬依赖 | 可提供资源包和自定义物品外观，但不能成为 EscapeFromCraftov 仓库和结算的事实源；强制它会让纯原版服务器无法部署。 |
 | Oraxen | 暂不作为硬依赖 | 与 ItemsAdder 属于同类外观方案，不能同时硬依赖；未来若选择 Oraxen，只增加物品外观适配器，不改变 PDC + Hibernate 结算。 |
-| FAWE | 暂不作为硬依赖 | FAWE 是 WorldEdit 的高性能操作实现；RaidCore 当前只读取选区、不批量改方块，强制安装反而增加与 WorldEdit 的版本耦合。 |
-| Vault | 暂不作为硬依赖 | Vault 适合统一外部经济，但 RaidCore 的金币必须和 PostgreSQL 物资结算在同一事务内，不能让另一个经济插件成为权威余额。未来可做只读展示适配器。 |
+| FAWE | 暂不作为硬依赖 | FAWE 是 WorldEdit 的高性能操作实现；EscapeFromCraftov 当前只读取选区、不批量改方块，强制安装反而增加与 WorldEdit 的版本耦合。 |
+| Vault | 暂不作为硬依赖 | Vault 适合统一外部经济，但 EscapeFromCraftov 的金币必须和 PostgreSQL 物资结算在同一事务内，不能让另一个经济插件成为权威余额。未来可做只读展示适配器。 |
 
 ## 安装
 
@@ -190,8 +190,8 @@ Game/plugins/TrMenu/menus/raidcore_loot.yml
 示例仅用于开发，请更换密码：
 
 ```sql
-CREATE USER raidcore WITH PASSWORD 'replace-this-password';
-CREATE DATABASE raidcore OWNER raidcore;
+CREATE USER escapefromcraftov WITH PASSWORD 'replace-this-password';
+CREATE DATABASE escapefromcraftov OWNER escapefromcraftov;
 ```
 
 默认 `database.orm.schema-action: update` 由 Hibernate 管理当前实体表。生产结构稳定后建议改为 `validate`，并使用受控迁移。不要在生产使用 `create` 或 `create-drop`。
@@ -203,24 +203,24 @@ CREATE DATABASE raidcore OWNER raidcore;
 ### 3. 安装 Jar
 
 ```text
-Lobby/plugins/RaidCoreLobby-0.1.0-SNAPSHOT.jar
-Game/plugins/RaidCoreGame-0.1.0-SNAPSHOT.jar
+Lobby/plugins/EscapeFromCraftovLobby-0.1.0-SNAPSHOT.jar
+Game/plugins/EscapeFromCraftovGame-0.1.0-SNAPSHOT.jar
 ```
 
-必须插件放进对应服务端的 `plugins/`。Lobby 和 Game 都要各自安装同一个 TrMenu 3.12.5 社区版 Jar；Game 还必须安装 LuckPerms、WorldEdit、DecentHolograms 和 PlaceholderAPI。任一硬依赖缺失时，Paper 会拒绝加载对应 RaidCore 插件。
+必须插件放进对应服务端的 `plugins/`。Lobby 和 Game 都要各自安装同一个 TrMenu 3.12.5 社区版 Jar；Game 还必须安装 LuckPerms、WorldEdit、DecentHolograms 和 PlaceholderAPI。任一硬依赖缺失时，Paper 会拒绝加载对应 EscapeFromCraftov 插件。
 
 ### 4. 第一次启动
 
 新安装只需要维护：
 
 ```text
-plugins/RaidCoreLobby/config.yml
-plugins/RaidCoreLobby/messages.yml
+plugins/EscapeFromCraftovLobby/config.yml
+plugins/EscapeFromCraftovLobby/messages.yml
 
-plugins/RaidCoreGame/config.yml
-plugins/RaidCoreGame/messages.yml
-plugins/RaidCoreGame/imports/              # 等待导入的普通世界或完整地图包
-plugins/RaidCoreGame/maps/<map-id>/map.yml
+plugins/EscapeFromCraftovGame/config.yml
+plugins/EscapeFromCraftovGame/messages.yml
+plugins/EscapeFromCraftovGame/imports/              # 等待导入的普通世界或完整地图包
+plugins/EscapeFromCraftovGame/maps/<map-id>/map.yml
 ```
 
 旧版独立 `database.yml` 与 `redis.yml` 会迁入 `config.yml`。旧 `auto-setup.yml` 不再读取，也不会在新安装中生成。
@@ -230,12 +230,12 @@ plugins/RaidCoreGame/maps/<map-id>/map.yml
 Lobby 与 Game 的 PostgreSQL、Redis地址和凭据必须一致。Game 还需要配置：
 
 - `server.id`：Redis 网络内唯一，例如 `game-01`。
-- `server.proxy-name`：代理中的名字，例如 `raid-01`。
+- `server.proxy-name`：代理中的名字，例如 `craftov-01`。
 - `network.lobby-server-name`：代理中的 Lobby 名字，例如 `lobby`。
 
 Game 会把 `server.id`、`server.proxy-name` 和房间列表发布到 Redis，Lobby 直接使用快照里的代理名称传送玩家，不再维护第二份 Game 名称清单。玩家到达 Game 后还会校验分配中的玩家 UUID、内部服务器 ID 和代理后端名；任意一项不一致都会拒绝进入并送回 Lobby。
 
-执行 `/raid info` 检查版本、模块和运行数据。
+执行 `/craftov info` 检查版本、模块和运行数据。
 
 ## 5 分钟快速开始
 
@@ -244,32 +244,32 @@ Game 会把 `server.id`、`server.proxy-name` 和房间列表发布到 Redis，L
 1. 把普通 Minecraft 世界或完整地图包放入 Game 服务端：
 
 ```text
-plugins/RaidCoreGame/imports/factory/level.dat
-plugins/RaidCoreGame/imports/factory/region/
-# 可选：plugins/RaidCoreGame/imports/factory/map.yml
+plugins/EscapeFromCraftovGame/imports/factory/level.dat
+plugins/EscapeFromCraftovGame/imports/factory/region/
+# 可选：plugins/EscapeFromCraftovGame/imports/factory/map.yml
 ```
 
-2. 给 Builder 分配编辑权限，然后通过代理进入 `plugins/RaidCoreGame/config.yml` 中 `server.proxy-name` 对应的 Game backend。例如代理名为 `raid-backend-01`：
+2. 给 Builder 分配编辑权限，然后通过代理进入 `plugins/EscapeFromCraftovGame/config.yml` 中 `server.proxy-name` 对应的 Game backend。例如代理名为 `craftov-backend-01`：
 
 ```text
-/lp user <玩家名> permission set raid.editor true
-/lp user <玩家名> permission set raid.editor.map true
-/server raid-backend-01
+/lp user <玩家名> permission set craftov.editor true
+/lp user <玩家名> permission set craftov.editor.map true
+/server craftov-backend-01
 ```
 
-没有匹配分配时，只有 `raid.editor` 或 `raid.admin` 玩家可以留在 Game；他们会进入彼此隔离的地图编辑组。普通玩家仍会被送回 Lobby。Redis 查询失败不会被误判为编辑入口。
+没有匹配分配时，只有 `craftov.editor` 或 `craftov.admin` 玩家可以留在 Game；他们会进入彼此隔离的地图编辑组。普通玩家仍会被送回 Lobby。Redis 查询失败不会被误判为编辑入口。
 
 3. 使用 Tab 选择地图文件夹并导入：
 
 ```text
-/raid map import factory
+/craftov map import factory
 ```
 
 导入在后台完成。看到“已导入地图”后进入编辑器：
 
 ```text
-/raid editor enter factory
-/raid editor menu
+/craftov editor enter factory
+/craftov editor menu
 ```
 
 4. 使用 WorldEdit 木斧框出整张地图的可游玩范围，然后登记 Bounds：
@@ -277,33 +277,33 @@ plugins/RaidCoreGame/imports/factory/region/
 ```text
 //wand
 # 左键 Pos1，右键 Pos2
-/raid editor map bounds
+/craftov editor map bounds
 ```
 
 5. 站到合适位置创建出生点和物资点；撤离点、Loot Zone、AI Zone 和 POI 使用 WorldEdit 选区创建：
 
 ```text
-/raid editor spawn create
-/raid editor loot create
+/craftov editor spawn create
+/craftov editor loot create
 
 # 框出撤离区域后
-/raid editor extraction create north_gate normal
+/craftov editor extraction create north_gate normal
 
 # 可选区域
-/raid editor lootzone create warehouse raid_tier_2
-/raid editor ai zone create warehouse_guard
-/raid editor poi create warehouse 2
+/craftov editor lootzone create warehouse craftov_tier_2
+/craftov editor ai zone create warehouse_guard
+/craftov editor poi create warehouse 2
 ```
 
-至少放置配置要求数量的 Spawn 和 Extraction。右侧动态计分板会持续显示对象数量、完成度、评分、错误、警告、当前工具、选中对象和未保存状态。绿色是出生点，黄色是物资，红色是 AI，蓝色是撤离，紫色是 POI，白色是地图边界或当前选中对象。
+至少放置配置要求数量的 Spawn 和 Extraction。右侧动态计分板会持续显示对象数量、完成度、评分、错误、警告、当前工具、选中对象和未保存状态。橙色是地图边界，绿色是出生点，黄色是物资，红色是 AI，青色是撤离，紫色是 POI；FAWE 当前选区会按当前编辑工具显示同色加粗边框。
 
 6. 验证、保存、启用，再创建测试房间：
 
 ```text
-/raid editor validate
-/raid editor save
-/raid map enable factory
-/raid game create factory
+/craftov editor validate
+/craftov editor save
+/craftov map enable factory
+/craftov game create factory
 ```
 
 `validate` 有 ERROR 时不能启用；WARNING 可以保存和测试，但上线前应逐项确认。正式测试时从 Lobby 输入：
@@ -312,32 +312,32 @@ plugins/RaidCoreGame/imports/factory/region/
 /play factory
 ```
 
-完整流程是：**放地图 → 导入 → 进入编辑器 → 框选/放置 → Validate → Save → Enable → 创建房间**。管理员不需要打开 YAML 或手抄坐标，但必须亲自决定点位和区域；RaidCore 不会猜测地图设计师的意图。
+完整流程是：**放地图 → 导入 → 进入编辑器 → 框选/放置 → Validate → Save → Enable → 创建房间**。管理员不需要打开 YAML 或手抄坐标，但必须亲自决定点位和区域；EscapeFromCraftov 不会猜测地图设计师的意图。
 
-第一个 `factory` 房间创建并发布到实例目录后，Lobby 的 `/play <map>` Tab 补全会自动出现 `factory`。`lobby.enabled-maps` 用于常驻展示和默认选择，不再是发现新房间的唯一来源。每个房间都会从 `raid_source_factory` 再复制独立的 `raid_<房间ID>` 世界，结束结算后卸载并删除该副本，导入来源与编辑源都不会被修改。
+第一个 `factory` 房间创建并发布到实例目录后，Lobby 的 `/play <map>` Tab 补全会自动出现 `factory`。`lobby.enabled-maps` 用于常驻展示和默认选择，不再是发现新房间的唯一来源。每个房间都会从 `craftov_source_factory` 再复制独立的 `craftov_<房间ID>` 世界，结束结算后卸载并删除该副本，导入来源与编辑源都不会被修改。
 
-`raid_<房间ID>` 是 RaidCore 保留的临时世界命名空间；每个副本都会写入一个 RaidCore 所有权标记，Game 服务端启动时只会卸载并清理带有该标记、且上次异常停止留下的目录。
-`raid_source_<map-id>` 是编辑源，明确不会被这项清理删除。仍建议不要把正式地图或其他插件的长期世界命名为 `raid_...`，以免和运行实例混淆；没有所有权标记的同名前缀世界不会被自动删除。
+`craftov_<房间ID>` 是 EscapeFromCraftov 保留的临时世界命名空间；每个副本都会写入一个 EscapeFromCraftov 所有权标记，Game 服务端启动时只会卸载并清理带有该标记、且上次异常停止留下的目录。
+`craftov_source_<map-id>` 是编辑源，明确不会被这项清理删除。仍建议不要把正式地图或其他插件的长期世界命名为 `craftov_...`，以免和运行实例混淆；没有所有权标记的同名前缀世界不会被自动删除。
 
 ### 为什么是 Manual First？
 
-RaidCore 不会自动猜测哪里应该是医院、高价值区、AI 防线或撤离出口。相同建筑在不同玩法中可能承担完全不同的作用，自动生成无法理解 Builder 的路线、视野和风险设计。
+EscapeFromCraftov 不会自动猜测哪里应该是医院、高价值区、AI 防线或撤离出口。相同建筑在不同玩法中可能承担完全不同的作用，自动生成无法理解 Builder 的路线、视野和风险设计。
 
-正式地图配置以管理员在编辑器中保存的内容为唯一权威。RaidCore 负责把制作过程变得直观：WorldEdit 负责选区，TrMenu 负责属性菜单，DecentHolograms 和粒子负责空间标记，动态计分板显示进度，Validator 自动发现错误，revision 负责回滚。地图原方块不会被编辑器修改。
+正式地图配置以管理员在编辑器中保存的内容为唯一权威。EscapeFromCraftov 负责把制作过程变得直观：WorldEdit 负责选区，TrMenu 负责属性菜单，DecentHolograms 和粒子负责空间标记，动态计分板显示进度，Validator 自动发现错误，revision 负责回滚。地图原方块不会被编辑器修改。
 
 ## 地图编辑器
 
 ### 选区
 
-安装 WorldEdit 时，RaidCore 优先读取当前 WorldEdit 选区：
+安装 WorldEdit 时，EscapeFromCraftov 优先读取当前 WorldEdit 选区：
 
 ```text
 //wand
 ```
 
-木斧左键设置 Pos1，右键设置 Pos2。完成后直接执行 RaidCore 的区域命令。
+木斧左键设置 Pos1，右键设置 Pos2。完成后直接执行 EscapeFromCraftov 的区域命令。
 
-WorldEdit 是 Game 的硬依赖；RaidCore 仍保留带 PDC 标记的 `/raid editor wand` 作为第二套选区输入方式，左键方块设位置 1，右键方块设位置 2。显示名称被修改也不会让它失效。
+WorldEdit 是 Game 的硬依赖；EscapeFromCraftov 仍保留带 PDC 标记的 `/craftov editor wand` 作为第二套选区输入方式，左键方块设位置 1，右键方块设位置 2。显示名称被修改也不会让它失效。
 
 第一阶段只保存精确的轴对齐 Cuboid。WorldEdit 多边形选区会转换为包围它的 Cuboid。
 
@@ -345,7 +345,8 @@ WorldEdit 是 Game 的硬依赖；RaidCore 仍保留带 PDC 标记的 `/raid edi
 
 编辑器每位管理员各自可见：
 
-- 白色：地图边界或当前选中对象。
+- 橙色：地图边界。
+- 加粗同色边框：当前 FAWE 选区或当前选中对象。
 - 绿色：Spawn。
 - 黄色：Loot / Loot Zone。
 - 红色：AI Zone。
@@ -364,7 +365,7 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 - 最多保留 100 步 Undo/Redo；保存成功后历史会清空，以新 revision 作为新的撤销基线，旧 revision 不会被撤销操作重新带回。
 - `exit` 不会丢弃未保存修改；必须先保存或明确使用 `exit discard`。
 - 成功退出时会同步关闭编辑器 TrMenu、移除个人 DecentHolograms 标签与点击标记，并取消尚未确认的危险操作。
-- 批量删除先进入 15 秒确认窗口，再执行 `/raid editor confirm`。
+- 批量删除先进入 15 秒确认窗口，再执行 `/craftov editor confirm`。
 - 保存使用临时文件与原子替换。
 
 ## 命令大全
@@ -389,119 +390,119 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 
 | 命令 | 作用 |
 |---|---|
-| `/raid map import <source> [target]` | 后台导入普通 Minecraft 世界或带 `map.yml` 的完整地图包；来源和默认目标支持 Tab 补全 |
-| `/raid map create <map> <world>` | 高级兼容入口：登记已加载世界并从零编辑 |
-| `/raid map list` | 列出地图 |
-| `/raid map info <map>` | 查看 revision 与对象数量 |
-| `/raid map preview <map>` | 进入个人可视的预览与高级编辑模式 |
-| `/raid map enable <map>` | 验证通过后启用 |
-| `/raid map disable <map>` | 禁止创建新对局 |
+| `/craftov map import <source> [target]` | 后台导入普通 Minecraft 世界或带 `map.yml` 的完整地图包；来源和默认目标支持 Tab 补全 |
+| `/craftov map create <map> <world>` | 高级兼容入口：登记已加载世界并从零编辑 |
+| `/craftov map list` | 列出地图 |
+| `/craftov map info <map>` | 查看 revision 与对象数量 |
+| `/craftov map preview <map>` | 进入个人可视的预览与高级编辑模式 |
+| `/craftov map enable <map>` | 验证通过后启用 |
+| `/craftov map disable <map>` | 禁止创建新对局 |
 
 ### 编辑会话
 
 | 命令 | 作用 |
 |---|---|
-| `/raid editor` | 按当前世界或默认地图进入编辑模式；再次执行会退出编辑模式 |
-| `/raid editor enter <map>` | 进入指定地图的编辑模式 |
-| `/raid editor exit [discard]` | 退出；`discard` 明确丢弃修改 |
-| `/raid editor status` | 查看当前工具、选中项与保存状态 |
-| `/raid editor help` | 查看简短帮助 |
-| `/raid editor menu` | 使用 TrMenu 打开完整编辑工具栏 |
-| `/raid editor property open` | 使用 TrMenu 打开当前选中对象的动态属性菜单 |
-| `/raid editor property <action> <forward\|reverse>` | TrMenu 属性按钮动作；再次校验对象和权限后修改草稿 |
-| `/raid editor wand` | 获取内置选区工具 |
-| `/raid editor map bounds` | 当前选区设为地图边界 |
-| `/raid editor tool <tool>` | 切换当前编辑工具，方便配合快捷栏和预览 |
+| `/craftov editor` | 按当前世界或默认地图进入编辑模式；再次执行会退出编辑模式 |
+| `/craftov editor enter <map>` | 进入指定地图的编辑模式 |
+| `/craftov editor exit [discard]` | 退出；`discard` 明确丢弃修改 |
+| `/craftov editor status` | 查看当前工具、选中项与保存状态 |
+| `/craftov editor help` | 查看简短帮助 |
+| `/craftov editor menu` | 使用 TrMenu 打开完整编辑工具栏 |
+| `/craftov editor property open` | 使用 TrMenu 打开当前选中对象的动态属性菜单 |
+| `/craftov editor property <action> <forward\|reverse>` | TrMenu 属性按钮动作；再次校验对象和权限后修改草稿 |
+| `/craftov editor wand` | 获取内置选区工具 |
+| `/craftov editor map bounds` | 当前选区设为地图边界 |
+| `/craftov editor tool <tool>` | 切换当前编辑工具，方便配合快捷栏和预览 |
 
 ### 创建对象
 
 | 命令 | 作用 |
 |---|---|
-| `/raid editor spawn create [id]` | 在当前位置创建出生点 |
-| `/raid editor spawn region create <id>` | 从选区创建出生区域；运行时只使用安全落脚点，并把单次检查限制在 24 个候选内 |
-| `/raid editor loot create` | 当前坐标创建虚拟 Loot，自动 ID 与默认表 |
-| `/raid editor loot create <id> <loot-table>` | 指定 ID 和 LootTable |
-| `/raid editor loot bind` | 把准星所指方块绑定为 Loot |
-| `/raid editor spawn team <team>` | 修改出生点队伍：`players`/`any` 通用，`red`=队伍 1，`blue`=队伍 2，也可用 `team3`、`team_3` 等数字队伍 |
-| `/raid editor spawn weight <weight>` | 修改出生点在当前队伍候选池内的随机权重 |
-| `/raid editor spawn enable` | 启用选中的出生点 |
-| `/raid editor spawn disable` | 停用选中的出生点 |
-| `/raid editor loot type <container-type>` | 修改物资容器类型 |
-| `/raid editor loot table <loot-table>` | 修改物资掉落表 |
-| `/raid editor loot tier <1-4>` | 修改物资稀有度 |
-| `/raid editor loot enable` | 启用选中的物资点 |
-| `/raid editor loot disable` | 停用选中的物资点 |
-| `/raid editor lootzone create <id> [loot-table]` | 从选区创建 Loot Zone；省略掉落表时使用当前注册的默认表 |
-| `/raid editor lootzone table <loot-table>` | 修改物资区域的掉落表 |
-| `/raid editor lootzone tier <1-4>` | 修改物资区域层级 |
-| `/raid editor lootzone density <value>` | 修改物资区域密度 |
-| `/raid editor lootzone danger <0-1>` | 修改物资区域危险度 |
-| `/raid editor lootzone enable` | 启用选中的物资区域 |
-| `/raid editor lootzone disable` | 停用选中的物资区域 |
-| `/raid editor ai zone create <id>` | 从选区创建 AI Zone |
-| `/raid editor ai type <type>` | 修改生物区域类型标签 |
-| `/raid editor ai minimum <count>` | 修改生物区域最小数量 |
-| `/raid editor ai maximum <count>` | 修改生物区域最大数量 |
-| `/raid editor ai respawn <seconds>` | 修改生物区域重生间隔 |
-| `/raid editor ai difficulty <value>` | 修改生物区域难度 |
-| `/raid editor ai team <team>` | 修改生物区域阵营 |
-| `/raid editor ai enable` | 启用选中的生物区域 |
-| `/raid editor ai disable` | 停用选中的生物区域 |
-| `/raid editor extraction create <id> [normal]` | 创建普通撤离点 |
-| `/raid editor extraction create <id> item <item-id>` | 创建钥匙撤离点 |
-| `/raid editor extraction create <id> paid <cost>` | 创建付费撤离点 |
-| `/raid editor extraction create <id> timed <seconds>` | 创建计时撤离点 |
-| `/raid editor extraction name <name>` | 修改撤离点显示名 |
-| `/raid editor extraction duration <seconds>` | 修改撤离点倒计时 |
-| `/raid editor extraction type <type> [value]` | 修改撤离点类型和条件 |
-| `/raid editor extraction condition <value>` | 修改撤离点条件值 |
-| `/raid editor extraction enable` | 启用选中的撤离点 |
-| `/raid editor extraction disable` | 停用选中的撤离点 |
-| `/raid editor poi create <id> [tier]` | 从选区创建 POI，Tier 为 1 至 4 |
-| `/raid editor poi name <name>` | 修改兴趣点名称 |
-| `/raid editor poi tier <1-4>` | 修改兴趣点层级 |
-| `/raid editor poi enable` | 启用选中的兴趣点 |
-| `/raid editor poi disable` | 停用选中的兴趣点 |
+| `/craftov editor spawn create [id]` | 在当前位置创建出生点 |
+| `/craftov editor spawn region create <id>` | 从选区创建出生区域；运行时只使用安全落脚点，并把单次检查限制在 24 个候选内 |
+| `/craftov editor loot create` | 当前坐标创建虚拟 Loot，自动 ID 与默认表 |
+| `/craftov editor loot create <id> <loot-table>` | 指定 ID 和 LootTable |
+| `/craftov editor loot bind` | 把准星所指方块绑定为 Loot |
+| `/craftov editor spawn team <team>` | 修改出生点队伍：`players`/`any` 通用，`red`=队伍 1，`blue`=队伍 2，也可用 `team3`、`team_3` 等数字队伍 |
+| `/craftov editor spawn weight <weight>` | 修改出生点在当前队伍候选池内的随机权重 |
+| `/craftov editor spawn enable` | 启用选中的出生点 |
+| `/craftov editor spawn disable` | 停用选中的出生点 |
+| `/craftov editor loot type <container-type>` | 修改物资容器类型 |
+| `/craftov editor loot table <loot-table>` | 修改物资掉落表 |
+| `/craftov editor loot tier <1-4>` | 修改物资稀有度 |
+| `/craftov editor loot enable` | 启用选中的物资点 |
+| `/craftov editor loot disable` | 停用选中的物资点 |
+| `/craftov editor lootzone create <id> [loot-table]` | 从选区创建 Loot Zone；省略掉落表时使用当前注册的默认表 |
+| `/craftov editor lootzone table <loot-table>` | 修改物资区域的掉落表 |
+| `/craftov editor lootzone tier <1-4>` | 修改物资区域层级 |
+| `/craftov editor lootzone density <value>` | 修改物资区域密度 |
+| `/craftov editor lootzone danger <0-1>` | 修改物资区域危险度 |
+| `/craftov editor lootzone enable` | 启用选中的物资区域 |
+| `/craftov editor lootzone disable` | 停用选中的物资区域 |
+| `/craftov editor ai zone create <id>` | 从选区创建 AI Zone |
+| `/craftov editor ai type <type>` | 修改生物区域类型标签 |
+| `/craftov editor ai minimum <count>` | 修改生物区域最小数量 |
+| `/craftov editor ai maximum <count>` | 修改生物区域最大数量 |
+| `/craftov editor ai respawn <seconds>` | 修改生物区域重生间隔 |
+| `/craftov editor ai difficulty <value>` | 修改生物区域难度 |
+| `/craftov editor ai team <team>` | 修改生物区域阵营 |
+| `/craftov editor ai enable` | 启用选中的生物区域 |
+| `/craftov editor ai disable` | 停用选中的生物区域 |
+| `/craftov editor extraction create <id> [normal]` | 创建普通撤离点 |
+| `/craftov editor extraction create <id> item <item-id>` | 创建钥匙撤离点 |
+| `/craftov editor extraction create <id> paid <cost>` | 创建付费撤离点 |
+| `/craftov editor extraction create <id> timed <seconds>` | 创建计时撤离点 |
+| `/craftov editor extraction name <name>` | 修改撤离点显示名 |
+| `/craftov editor extraction duration <seconds>` | 修改撤离点倒计时 |
+| `/craftov editor extraction type <type> [value]` | 修改撤离点类型和条件 |
+| `/craftov editor extraction condition <value>` | 修改撤离点条件值 |
+| `/craftov editor extraction enable` | 启用选中的撤离点 |
+| `/craftov editor extraction disable` | 停用选中的撤离点 |
+| `/craftov editor poi create <id> [tier]` | 从选区创建 POI，Tier 为 1 至 4 |
+| `/craftov editor poi name <name>` | 修改兴趣点名称 |
+| `/craftov editor poi tier <1-4>` | 修改兴趣点层级 |
+| `/craftov editor poi enable` | 启用选中的兴趣点 |
+| `/craftov editor poi disable` | 停用选中的兴趣点 |
 
 ### 调整与检查
 
 | 命令 | 作用 |
 |---|---|
-| `/raid editor select <id>` | 选择地图对象，Tab 会列出当前地图所有对象 |
-| `/raid editor info [id]` | 查看准星指向或指定对象的完整字段，并自动选择对象 |
-| `/raid editor tp [id]` | 安全传送到准星指向或指定对象附近 |
-| `/raid editor move` | 把选中对象移到当前位置 |
-| `/raid editor clone <new-id>` | 在当前位置克隆选中对象 |
-| `/raid editor copy` | 把当前选中对象放入本次编辑会话的剪贴板 |
-| `/raid editor paste <new-id>` | 在当前位置粘贴剪贴板对象，并使用新的 ID |
-| `/raid editor delete [id]` | 删除指定或选中对象 |
-| `/raid editor delete type <type>` | 请求批量删除同类对象 |
-| `/raid editor batch enable [type]` | 按当前选区批量启用对象 |
-| `/raid editor batch disable [type]` | 按当前选区批量停用对象 |
-| `/raid editor batch table <loot-table>` | 按当前选区统一设置 Loot 组合 |
-| `/raid editor batch tier <1-4>` | 按当前选区统一设置 Loot/POI 等级 |
-| `/raid editor batch delete [type]` | 按当前选区请求批量删除，需二次确认 |
-| `/raid editor confirm` | 确认待执行的危险操作 |
-| `/raid editor undo` / `redo` | 撤销或重做 |
-| `/raid editor show\|hide <type\|all>` | 过滤个人可视对象 |
-| `/raid editor show\|hide bounds` | 单独显示或隐藏地图边界 |
-| `/raid editor radius <16..512>` | 调整可视半径 |
-| `/raid editor nearby` | 按距离列出附近对象，聊天结果可点击选择 |
-| `/raid editor validate` | 显示评分、ERROR 和 WARNING |
-| `/raid editor save` | 保存新 revision |
-| `/raid editor history` | 查看当前与可回滚 revision |
-| `/raid editor rollback <revision>` | 恢复旧版本并保存为新 revision |
+| `/craftov editor select <id>` | 选择地图对象，Tab 会列出当前地图所有对象 |
+| `/craftov editor info [id]` | 查看准星指向或指定对象的完整字段，并自动选择对象 |
+| `/craftov editor tp [id]` | 安全传送到准星指向或指定对象附近 |
+| `/craftov editor move` | 把选中对象移到当前位置 |
+| `/craftov editor clone <new-id>` | 在当前位置克隆选中对象 |
+| `/craftov editor copy` | 把当前选中对象放入本次编辑会话的剪贴板 |
+| `/craftov editor paste <new-id>` | 在当前位置粘贴剪贴板对象，并使用新的 ID |
+| `/craftov editor delete [id]` | 删除指定或选中对象 |
+| `/craftov editor delete type <type>` | 请求批量删除同类对象 |
+| `/craftov editor batch enable [type]` | 按当前选区批量启用对象 |
+| `/craftov editor batch disable [type]` | 按当前选区批量停用对象 |
+| `/craftov editor batch table <loot-table>` | 按当前选区统一设置 Loot 组合 |
+| `/craftov editor batch tier <1-4>` | 按当前选区统一设置 Loot/POI 等级 |
+| `/craftov editor batch delete [type]` | 按当前选区请求批量删除，需二次确认 |
+| `/craftov editor confirm` | 确认待执行的危险操作 |
+| `/craftov editor undo` / `redo` | 撤销或重做 |
+| `/craftov editor show\|hide <type\|all>` | 过滤个人可视对象 |
+| `/craftov editor show\|hide bounds` | 单独显示或隐藏地图边界 |
+| `/craftov editor radius <16..512>` | 调整可视半径 |
+| `/craftov editor nearby` | 按距离列出附近对象，聊天结果可点击选择 |
+| `/craftov editor validate` | 显示评分、ERROR 和 WARNING |
+| `/craftov editor save` | 保存新 revision |
+| `/craftov editor history` | 查看当前与可回滚 revision |
+| `/craftov editor rollback <revision>` | 恢复旧版本并保存为新 revision |
 
 ### 对局
 
 | 命令 | 作用 |
 |---|---|
-| `/raid game create [map]` | 创建 WAITING 对局 |
-| `/raid game list` | 查看每个房间的地图、状态、人数与世界副本准备状态 |
-| `/raid game start <id>` | 管理员跳过自动开局倒计时；正常房间达到最低人数会自动开始 |
-| `/raid game stop <id>` | 停止并清理对局 |
+| `/craftov game create [map]` | 创建 WAITING 对局 |
+| `/craftov game list` | 查看每个房间的地图、状态、人数与世界副本准备状态 |
+| `/craftov game start <id>` | 管理员跳过自动开局倒计时；正常房间达到最低人数会自动开始 |
+| `/craftov game stop <id>` | 停止并清理对局 |
 
-编辑器在预览半径内会创建仅当前管理员可见的隐形交互标记：左键选择对象，潜行右键打开属性菜单。菜单中的物品不能移动、拖拽、Shift 点击或数字键换位；删除仍需 `/raid editor confirm`。`validate` 后带对象 ID 的 ERROR 会以红色叉号和悬浮说明显示，地图改动后旧报告会自动失效。
+编辑器在预览半径内会创建仅当前管理员可见的隐形交互标记：左键选择对象，潜行右键打开属性菜单。菜单中的物品不能移动、拖拽、Shift 点击或数字键换位；删除仍需 `/craftov editor confirm`。`validate` 后带对象 ID 的 ERROR 会以红色叉号和悬浮说明显示，地图改动后旧报告会自动失效。
 
 ## 验证规则
 
@@ -517,39 +518,39 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 - Spawn 之间、Spawn 到 Extraction 的距离。
 - Loot 重叠与 Extraction 区域重叠。
 
-ERROR 会阻止 `/raid map enable`。启动时已启用地图若验证失败，会保存一个禁用 revision，防止实例继续创建。
+ERROR 会阻止 `/craftov map enable`。启动时已启用地图若验证失败，会保存一个禁用 revision，防止实例继续创建。
 
 ## 权限
 
-`raid.admin` 是总管理权限。下面权限适合用 LuckPerms 分配给不同地图岗位：
+`craftov.admin` 是总管理权限。下面权限适合用 LuckPerms 分配给不同地图岗位：
 
 | 权限 | 作用 |
 |---|---|
-| `raid.editor` | 允许无匹配分配进入 Game 的独立编辑组，并使用编辑器通用查看功能 |
-| `raid.editor.map` | 创建地图、修改 Bounds、启用/禁用 |
-| `raid.editor.spawn` | 编辑 Spawn |
-| `raid.editor.loot` | 编辑 Loot 与 Loot Zone |
-| `raid.editor.ai` | 编辑 AI Zone |
-| `raid.editor.extraction` | 编辑 Extraction |
-| `raid.editor.poi` | 编辑 POI |
-| `raid.editor.delete` | 删除与批量删除 |
-| `raid.editor.save` | 保存新 revision |
-| `raid.editor.rollback` | 回滚 revision |
-| `raid.command.info` | `/raid help`、`info`、`tutorial` |
-| `raid.lobby.play` | Lobby 选择地图与匹配 |
+| `craftov.editor` | 允许无匹配分配进入 Game 的独立编辑组，并使用编辑器通用查看功能 |
+| `craftov.editor.map` | 创建地图、修改 Bounds、启用/禁用 |
+| `craftov.editor.spawn` | 编辑 Spawn |
+| `craftov.editor.loot` | 编辑 Loot 与 Loot Zone |
+| `craftov.editor.ai` | 编辑 AI Zone |
+| `craftov.editor.extraction` | 编辑 Extraction |
+| `craftov.editor.poi` | 编辑 POI |
+| `craftov.editor.delete` | 删除与批量删除 |
+| `craftov.editor.save` | 保存新 revision |
+| `craftov.editor.rollback` | 回滚 revision |
+| `craftov.command.info` | `/craftov help`、`info`、`tutorial` |
+| `craftov.lobby.play` | Lobby 选择地图与匹配 |
 
 LuckPerms 示例：
 
 ```text
-/lp group admin permission set raid.admin true
-/lp group builder permission set raid.editor true
-/lp group builder permission set raid.editor.map true
-/lp group builder permission set raid.editor.spawn true
-/lp group builder permission set raid.editor.loot true
+/lp group admin permission set craftov.admin true
+/lp group builder permission set craftov.editor true
+/lp group builder permission set craftov.editor.map true
+/lp group builder permission set craftov.editor.spawn true
+/lp group builder permission set craftov.editor.loot true
 ```
 
 LuckPerms 是 Game 的硬依赖；权限节点由 LuckPerms 分配和审计，Bukkit OP 只作为 LuckPerms 的超级管理员语义保留。
-`raid.command.info` 和 `raid.lobby.play` 默认允许普通玩家，管理与编辑权限默认仅 OP。LuckPerms
+`craftov.command.info` 和 `craftov.lobby.play` 默认允许普通玩家，管理与编辑权限默认仅 OP。LuckPerms
 对某个节点给出明确的 `true` 或 `false` 时以该结果为准；没有配置该节点时回退到上述默认值，
 所以新服不需要先配权限就能使用帮助、教程和匹配。
 
@@ -558,22 +559,22 @@ LuckPerms 是 Game 的硬依赖；权限节点由 LuckPerms 分配和审计，Bu
 当前真实提供：
 
 ```text
-%raidcore_map%
-%raidcore_game_id%
-%raidcore_game_state%
-%raidcore_player_state%
-%raidcore_team%
-%raidcore_money%
-%raidcore_level%
-%raidcore_experience%
-%raidcore_experience_to_next_level%
-%raidcore_alive_players%
-%raidcore_loot_value%
-%raidcore_remaining_time%
-%raidcore_extracted%
+%escapefromcraftov_map%
+%escapefromcraftov_game_id%
+%escapefromcraftov_game_state%
+%escapefromcraftov_player_state%
+%escapefromcraftov_team%
+%escapefromcraftov_money%
+%escapefromcraftov_level%
+%escapefromcraftov_experience%
+%escapefromcraftov_experience_to_next_level%
+%escapefromcraftov_alive_players%
+%escapefromcraftov_loot_value%
+%escapefromcraftov_remaining_time%
+%escapefromcraftov_extracted%
 ```
 
-其中 `loot_value` 是玩家当前本局背包里 RaidCore 物资的估算总价值，
+其中 `loot_value` 是玩家当前本局背包里 EscapeFromCraftov 物资的估算总价值，
 `remaining_time` 是行动还剩的秒数，`extracted` 是该玩家在当前对局是否已经成功撤离。
 `level` 是行动等级，`experience` 是累计历练，`experience_to_next_level` 是距离下一级还需要的历练。
 玩家不在行动中、行动尚未开始或 PlaceholderAPI 只能拿到离线玩家时，相关值会留空，
@@ -585,7 +586,7 @@ LuckPerms 是 Game 的硬依赖；权限节点由 LuckPerms 分配和审计，Bu
 
 Game 和 Lobby 的数据库、Redis、网络与玩法配置都在各自的主配置中。数据库配置不再拆成多个文件。
 
-Game 的 `server.minimum-players` 控制房间达到多少人后自动开始倒计时，`server.start-countdown-seconds` 控制倒计时长度。倒计时期间人数低于最低值会取消；人数重新满足后会重新开始。管理员仍可使用 `/raid game start <game>` 手工开局。
+Game 的 `server.minimum-players` 控制房间达到多少人后自动开始倒计时，`server.start-countdown-seconds` 控制倒计时长度。倒计时期间人数低于最低值会取消；人数重新满足后会重新开始。管理员仍可使用 `/craftov game start <game>` 手工开局。
 
 Game 的 `map-editor` 节控制正式地图制作流程：
 
@@ -623,9 +624,9 @@ pois
 
 ## PostgreSQL、Hibernate 与 HikariCP
 
-RaidCore 明确使用 **Hibernate ORM + HikariCP + PostgreSQL**，不使用 Spring Boot，也不使用 JPA 容器。
+EscapeFromCraftov 明确使用 **Hibernate ORM + HikariCP + PostgreSQL**，不使用 Spring Boot，也不使用 JPA 容器。
 
-Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连接池。当前持久化包含档案、等级、余额、玩家设置、装扮、物资仓库、出战栏、行动物品与幂等结算。金币变动写入 `raid_economy_transactions`，历练奖励写入 `raid_progression_transactions`；两者都以 transaction ID 防止网络重试造成重复发放或重复扣除。Redis 只保存匹配、实例目录与临时分配，不替代 PostgreSQL。完整表结构与命名规则见 [DATABASE.md](DATABASE.md)。
+Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连接池。当前持久化包含档案、等级、余额、玩家设置、装扮、物资仓库、出战栏、行动物品与幂等结算。金币变动写入 `craftov_economy_transactions`，历练奖励写入 `craftov_progression_transactions`；两者都以 transaction ID 防止网络重试造成重复发放或重复扣除。Redis 只保存匹配、实例目录与临时分配，不替代 PostgreSQL。完整表结构与命名规则见 [DATABASE.md](DATABASE.md)。
 
 `database.table-prefix` 可在自动建表时为所有表名与索引名统一添加前缀（默认空即不加），便于多套部署共用同一个库或 schema。前缀须以小写字母开头，仅含小写字母、数字、下划线，最长 20 字符；Lobby 与 Game 必须配置一致，已投产后修改前缀等于换一套全新表。
 
@@ -647,7 +648,7 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 
 ### 一定要安装这些扩展插件吗？
 
-需要。Game 的硬依赖是 LuckPerms、WorldEdit、DecentHolograms、PlaceholderAPI 和 TrMenu 3.12.5；Lobby 需要 TrMenu 3.12.5。缺少其中任何一个，Paper 会拒绝加载对应 RaidCore 插件。`/raid editor wand` 只是 WorldEdit 已安装后的第二套选区操作，不是替代依赖。
+需要。Game 的硬依赖是 LuckPerms、WorldEdit、DecentHolograms、PlaceholderAPI 和 TrMenu 3.12.5；Lobby 需要 TrMenu 3.12.5。缺少其中任何一个，Paper 会拒绝加载对应 EscapeFromCraftov 插件。`/craftov editor wand` 只是 WorldEdit 已安装后的第二套选区操作，不是替代依赖。
 
 ### 两个管理员可以同时编辑吗？
 
@@ -655,7 +656,7 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 
 ### 为什么地图不能启用？
 
-执行 `/raid editor validate`。ERROR 必须修复，WARNING 不阻止启用。
+执行 `/craftov editor validate`。ERROR 必须修复，WARNING 不阻止启用。
 
 ### 可以同时开多局吗？
 
@@ -681,15 +682,15 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 
 ### WorldEdit 选区无法读取
 
-确认两个位置都在当前地图世界，选区完整，并检查启动日志是否显示 `Integration WorldEdit: FOUND`。仍失败时使用 `/raid editor wand` 重新设置两个点；如果 Game 启动日志显示依赖错误，先修复 WorldEdit 安装或版本，不要绕过硬依赖。
+确认两个位置都在当前地图世界，选区完整，并检查启动日志是否显示 `Integration WorldEdit: FOUND`。仍失败时使用 `/craftov editor wand` 重新设置两个点；如果 Game 启动日志显示依赖错误，先修复 WorldEdit 安装或版本，不要绕过硬依赖。
 
 ### 看不到编辑器标记
 
-确认已 `/raid editor enter <map>`、人在正确世界、对象类型没有被 hide，且 `radius` 足够大。再检查 `Integration DecentHolograms: FOUND`；依赖未正确加载时 Game 不会进入可编辑状态。
+确认已 `/craftov editor enter <map>`、人在正确世界、对象类型没有被 hide，且 `radius` 足够大。再检查 `Integration DecentHolograms: FOUND`；依赖未正确加载时 Game 不会进入可编辑状态。
 
 ### revision 冲突
 
-另一名管理员已经保存。不要覆盖磁盘文件；先 `/raid editor exit discard`，重新进入最新 revision，再重做需要保留的修改。
+另一名管理员已经保存。不要覆盖磁盘文件；先 `/craftov editor exit discard`，重新进入最新 revision，再重做需要保留的修改。
 
 ### 对局世界创建失败
 
@@ -713,11 +714,11 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 构建产物：
 
 ```text
-game/build/libs/RaidCoreGame-<version>.jar
-lobby/build/libs/RaidCoreLobby-<version>.jar
+game/build/libs/EscapeFromCraftovGame-<version>.jar
+lobby/build/libs/EscapeFromCraftovLobby-<version>.jar
 ```
 
-第三方运行库由 Paper 下载，五个硬依赖插件由服务器管理员单独安装；它们都不应出现在 RaidCore Jar 内。
+第三方运行库由 Paper 下载，五个硬依赖插件由服务器管理员单独安装；它们都不应出现在 EscapeFromCraftov Jar 内。
 
 ## Developer Guide
 
@@ -734,15 +735,15 @@ Paper
 
 ```text
 core/map
-  ManualRaidMap / MapObject
+  ManualCraftovMap / MapObject
   ManualMapEditor / EditorSession
   MapObjectIndex / ManualMapValidator
-  RaidMapSnapshot
+  CraftovMapSnapshot
 
 game/plugin/editor
   ManualMapStore / ManualMapRegistry / ManualMapService
   EditorSelection / Visualization / Wand / Confirmation
-  ManualRaidMapProvider
+  ManualCraftovMapProvider
 
 game/plugin/integration
   WorldEdit / LuckPerms / DecentHolograms / PlaceholderAPI required adapters

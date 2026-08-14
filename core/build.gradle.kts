@@ -1,4 +1,4 @@
-description = "RaidCore shared implementation: runtime backbone, all domain implementations, Redis infrastructure, and the shared Bukkit glue package. Only com.birditch.raidcore.bukkit may touch Paper API."
+description = "EscapeFromCraftov shared implementation: runtime backbone, all domain implementations, Redis infrastructure, and the shared Bukkit glue package. Only com.birditch.escapefromcraftov.bukkit may touch Paper API."
 
 dependencies {
     api(project(":api"))
@@ -8,7 +8,7 @@ dependencies {
     implementation(libs.hibernate.core)
     runtimeOnly(libs.postgresql)
 
-    // Exclusively for the com.birditch.raidcore.bukkit glue package.
+    // Exclusively for the com.birditch.escapefromcraftov.bukkit glue package.
     compileOnly(libs.paper.api)
 
     testImplementation(testFixtures(project(":api")))

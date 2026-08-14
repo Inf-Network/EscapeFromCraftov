@@ -27,7 +27,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RaidCore"
+rootProject.name = "EscapeFromCraftov"
 
 include(
     "api",

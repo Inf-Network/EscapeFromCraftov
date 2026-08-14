@@ -1,10 +1,13 @@
 package com.birditch.escapefromcraftov.game.plugin.ai;
 
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.loot.LootTableId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import java.util.SplittableRandom;
+import org.jspecify.annotations.Nullable;
 
 /** Pure population and difficulty rules used by the Bukkit AI runtime. */
 final class AiRuntimePolicy {
@@ -31,12 +34,18 @@ final class AiRuntimePolicy {
   /** Maps effective zone pressure onto the shared T1-T4 Craftov loot tables. */
   static LootProfile loot(double effectiveDifficulty, RaidMode mode,
       RaidDifficulty difficulty) {
+    return loot(effectiveDifficulty, mode, difficulty, null, 0);
+  }
+
+  static LootProfile loot(double effectiveDifficulty, RaidMode mode,
+      RaidDifficulty difficulty, @Nullable RaidActionProfile actionProfile, long sourceSeed) {
     Preconditions.checkArgument(Double.isFinite(effectiveDifficulty) && effectiveDifficulty >= 0,
         "effectiveDifficulty must be finite and non-negative");
     Preconditions.checkNotNull(mode, "mode");
     Preconditions.checkNotNull(difficulty, "difficulty");
     int tier = Math.clamp((int) Math.ceil(effectiveDifficulty), 1, 4);
-    int rolls = Math.addExact(mode.lootRolls(), difficulty.lootBonusRolls());
+    int rolls = RaidActionRuntimePolicy.lootRolls(
+        mode, difficulty, actionProfile, sourceSeed);
     return new LootProfile(LootTableId.of("craftov_tier_" + tier), tier, rolls);
   }
 

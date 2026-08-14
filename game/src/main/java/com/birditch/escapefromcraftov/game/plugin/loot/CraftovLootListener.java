@@ -19,6 +19,7 @@ import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -307,7 +308,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     expected.task().cancel();
     player.hideBossBar(expected.bar());
     LootContainerState container = containers.computeIfAbsent(expected.key(),
-        _ -> createContainer(game, expected.point(), player));
+        _ -> createContainer(game, expected.key(), expected.point(), player));
     PlayerContainerKey progressKey = new PlayerContainerKey(player.getUniqueId(), expected.key());
     LootRevealProgress progress = revealProgress.computeIfAbsent(progressKey,
         _ -> new LootRevealProgress(container.occupiedSlots()));
@@ -579,9 +580,12 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
         <= INTERACTION_DISTANCE_SQUARED;
   }
 
-  private LootContainerState createContainer(CraftovGame game, CraftovLootPoint point, Player player) {
+  private LootContainerState createContainer(CraftovGame game, ContainerKey key,
+      CraftovLootPoint point, Player player) {
     List<ItemStack> contents = new ArrayList<>(java.util.Collections.nCopies(inventorySize, null));
-    int rolls = game.mode().lootRolls() + game.difficulty().lootBonusRolls();
+    int rolls = RaidActionRuntimePolicy.lootRolls(game.mode(), game.difficulty(),
+        game.actionProfile().orElse(null),
+        RaidActionRuntimePolicy.sourceSeed(game.id(), "container:" + key.lootPointId()));
     LootRollContext context = new LootRollContext(player.getUniqueId(), game.id());
     for (int roll = 0; roll < rolls; roll++) {
       loot.roll(point.lootTableId(), context).stream()

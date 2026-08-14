@@ -3,8 +3,11 @@ package com.birditch.escapefromcraftov.game.plugin.ai;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AiRuntimePolicyTest {
@@ -46,5 +49,15 @@ class AiRuntimePolicyTest {
         1.0, RaidMode.NORMAL, RaidDifficulty.EASY).rolls());
     assertEquals(3, AiRuntimePolicy.loot(
         1.0, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD).rolls());
+  }
+
+  @Test
+  void canonicalProfileControlsAiDropRollsWithoutChangingDifficultyTierSelection() {
+    RaidActionProfile profile = new RaidActionProfile(RaidTierId.of("custom"), "自定义", 0,
+        1.4, 4.0, 0, List.of());
+    var loot = AiRuntimePolicy.loot(2.2, RaidMode.NORMAL, RaidDifficulty.EASY,
+        profile, 99);
+    assertEquals("craftov_tier_3", loot.tableId().value());
+    assertEquals(4, loot.rolls());
   }
 }

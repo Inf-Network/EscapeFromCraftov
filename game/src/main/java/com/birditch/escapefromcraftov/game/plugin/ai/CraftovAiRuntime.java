@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
@@ -17,6 +18,7 @@ import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
@@ -148,7 +150,9 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     }
     double effectiveDifficulty = zone.definition().difficulty() * runtime.difficultyMultiplier();
     AiRuntimePolicy.LootProfile profile = AiRuntimePolicy.loot(
-        effectiveDifficulty, runtime.mode(), runtime.difficulty());
+        effectiveDifficulty, runtime.mode(), runtime.difficulty(), runtime.actionProfile(),
+        RaidActionRuntimePolicy.sourceSeed(runtime.gameId(),
+            "ai-drop:" + event.getEntity().getUniqueId()));
     raidReports.recordPveKill(runtime.gameId(), killer.getUniqueId());
     try {
       LootRollContext context = new LootRollContext(killer.getUniqueId(), runtime.gameId());
@@ -190,9 +194,11 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       return;
     }
     cancelPendingStart(gameId);
+    RaidActionProfile actionProfile = game.actionProfile().orElse(null);
     GameRuntime runtime = new GameRuntime(
-        gameId, worldName, game.difficulty().multiplier() * game.mode().aiMultiplier(),
-        game.mode(), game.difficulty(),
+        gameId, worldName,
+        RaidActionRuntimePolicy.aiMultiplier(game.mode(), game.difficulty(), actionProfile),
+        game.mode(), game.difficulty(), actionProfile,
         new LinkedHashMap<>());
     runtimes.put(gameId, runtime);
     for (CraftovAiZone definition : game.aiZones()) {
@@ -394,6 +400,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       double difficultyMultiplier,
       RaidMode mode,
       RaidDifficulty difficulty,
+      @Nullable RaidActionProfile actionProfile,
       Map<String, ZoneRuntime> zones) {}
 
   private static final class ZoneRuntime {

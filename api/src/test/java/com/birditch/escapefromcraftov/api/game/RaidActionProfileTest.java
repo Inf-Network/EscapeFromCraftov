@@ -30,7 +30,11 @@ class RaidActionProfileTest {
     assertThrows(IllegalArgumentException.class, () -> RaidTierId.of("Top Secret"));
     assertThrows(IllegalArgumentException.class, () -> profile(-1, 1, 1, 0));
     assertThrows(IllegalArgumentException.class, () -> profile(0, 0, 1, 0));
+    assertThrows(IllegalArgumentException.class, () -> profile(
+        0, RaidActionProfile.MAX_AI_MULTIPLIER + 0.01, 1, 0));
     assertThrows(IllegalArgumentException.class, () -> profile(0, 1, Double.NaN, 0));
+    assertThrows(IllegalArgumentException.class, () -> profile(
+        0, 1, RaidActionProfile.MAX_LOOT_MULTIPLIER + 0.01, 0));
     assertThrows(IllegalArgumentException.class, () -> profile(0, 1, 1, -1));
   }
 

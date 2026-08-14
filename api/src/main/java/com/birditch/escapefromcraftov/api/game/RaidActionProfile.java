@@ -16,16 +16,23 @@ public record RaidActionProfile(
     long entryFee,
     List<LegacyAlias> legacyAliases) {
 
+  /** Safety ceiling preventing authored profiles from overwhelming the main thread. */
+  public static final double MAX_AI_MULTIPLIER = 8.0;
+  /** Maximum complete loot-table rolls contributed by one shared source. */
+  public static final double MAX_LOOT_MULTIPLIER = 16.0;
+
   public RaidActionProfile {
     Preconditions.checkNotNull(id, "id");
     Preconditions.checkNotNull(displayName, "displayName");
     Preconditions.checkArgument(!displayName.isBlank(), "displayName must not be blank");
     Preconditions.checkArgument(minimumLoadoutValue >= 0,
         "minimumLoadoutValue must not be negative");
-    Preconditions.checkArgument(Double.isFinite(aiMultiplier) && aiMultiplier > 0,
-        "aiMultiplier must be finite and positive");
-    Preconditions.checkArgument(Double.isFinite(lootMultiplier) && lootMultiplier > 0,
-        "lootMultiplier must be finite and positive");
+    Preconditions.checkArgument(Double.isFinite(aiMultiplier) && aiMultiplier > 0
+            && aiMultiplier <= MAX_AI_MULTIPLIER,
+        "aiMultiplier must be finite and in (0, " + MAX_AI_MULTIPLIER + "]");
+    Preconditions.checkArgument(Double.isFinite(lootMultiplier) && lootMultiplier > 0
+            && lootMultiplier <= MAX_LOOT_MULTIPLIER,
+        "lootMultiplier must be finite and in (0, " + MAX_LOOT_MULTIPLIER + "]");
     Preconditions.checkArgument(entryFee >= 0, "entryFee must not be negative");
     legacyAliases = List.copyOf(Preconditions.checkNotNull(legacyAliases, "legacyAliases"));
     Preconditions.checkArgument(new HashSet<>(legacyAliases).size() == legacyAliases.size(),

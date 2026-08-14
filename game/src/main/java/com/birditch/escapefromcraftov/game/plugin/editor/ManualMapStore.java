@@ -12,6 +12,7 @@ import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.CuboidBounds;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
 import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRouteScope;
 import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
@@ -308,6 +309,7 @@ public final class ManualMapStore {
     result.put("pitch", value.pitch());
     result.put("team", value.team());
     result.put("weight", value.weight());
+    result.put("route-group", value.routeGroup());
     if (value.spawnRegion() != null) result.put("region", boundsMap(value.spawnRegion()));
     return result;
   }
@@ -355,6 +357,10 @@ public final class ManualMapStore {
       result.put("conditions", value.conditions().stream()
           .map(ManualMapStore::extractionConditionMap).toList());
     }
+    if (value.routeScope() != null) {
+      result.put("route-global", value.routeScope().global());
+      result.put("eligible-spawn-groups", value.routeScope().eligibleSpawnGroups());
+    }
     return result;
   }
 
@@ -388,7 +394,8 @@ public final class ManualMapStore {
     return new SpawnDefinition(string(map, "id"), readPosition(nested(map, "position")),
         number(map, "yaw").floatValue(), number(map, "pitch").floatValue(),
         string(map, "team"), number(map, "weight").doubleValue(), bool(map, "enabled"),
-        map.containsKey("region") ? readBounds(nested(map, "region")) : null);
+        map.containsKey("region") ? readBounds(nested(map, "region")) : null,
+        map.containsKey("route-group") ? string(map, "route-group") : string(map, "id"));
   }
 
   private static LootPointDefinition readLootPoint(Map<?, ?> map) {
@@ -418,7 +425,16 @@ public final class ManualMapStore {
         bool(map, "enabled"), map.containsKey("conditions")
             ? nestedMapList(map, "conditions").stream()
                 .map(ManualMapStore::readExtractionCondition).toList()
-            : List.of());
+            : List.of(), routeScope(map));
+  }
+
+  private static ExtractionRouteScope routeScope(Map<?, ?> map) {
+    if (!map.containsKey("route-global") && !map.containsKey("eligible-spawn-groups")) {
+      return null;
+    }
+    boolean global = map.containsKey("route-global") && bool(map, "route-global");
+    return new ExtractionRouteScope(global, map.containsKey("eligible-spawn-groups")
+        ? stringList(map, "eligible-spawn-groups") : List.of());
   }
 
   private static ExtractionRuleDefinition readExtractionCondition(Map<?, ?> map) {
@@ -515,6 +531,14 @@ public final class ManualMapStore {
 
   private static String string(Map<?, ?> map, String key) {
     return required(nullableString(map.get(key)), key);
+  }
+
+  private static List<String> stringList(Map<?, ?> map, String key) {
+    Object value = map.get(key);
+    if (!(value instanceof List<?> values)) {
+      throw new IllegalArgumentException("字段必须是列表: " + key);
+    }
+    return values.stream().map(String::valueOf).toList();
   }
 
   private static @Nullable String nullableString(@Nullable Object value) {

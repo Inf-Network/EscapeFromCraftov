@@ -55,11 +55,24 @@ class ManualMapStoreTest {
         revision: 4
         enabled: false
         metadata: {}
-        spawns: []
+        spawns:
+          - id: legacy_spawn
+            enabled: true
+            position: {x: 1, y: 64, z: 1}
+            yaw: 0
+            pitch: 0
+            team: players
+            weight: 1.0
         loot-points: []
         loot-zones: []
         ai-zones: []
-        extractions: []
+        extractions:
+          - id: legacy_exit
+            enabled: true
+            display-name: Legacy Exit
+            bounds: {min-x: 10, min-y: 60, min-z: 10, max-x: 12, max-y: 70, max-z: 12}
+            type: NORMAL
+            duration-seconds: 10
         pois: []
         """);
 
@@ -67,6 +80,8 @@ class ManualMapStoreTest {
         .load("legacy").orElseThrow();
 
     assertEquals(LegacyRaidTierResolver.defaultProfiles(), loaded.actionTiers());
+    assertEquals("legacy_spawn", loaded.spawns().getFirst().routeGroup());
+    assertEquals(null, loaded.extractions().getFirst().routeScope());
   }
 
   @Test
@@ -194,7 +209,7 @@ class ManualMapStoreTest {
     return new ManualCraftovMap(ManualCraftovMap.SCHEMA_VERSION, "factory", "Factory", "world",
         bounds, 0, false, Map.of("author", "admin"),
         List.of(new SpawnDefinition("spawn_a", new BlockPosition(20, 64, 20), 10, 0,
-            "players", 1, true, null)),
+            "players", 1, true, null, "north")),
         List.of(new LootPointDefinition("loot_a", new BlockPosition(250, 64, 250),
             "virtual", "debug_common", 2, true, true)),
         List.of(new LootZoneDefinition("loot_zone_a",
@@ -212,7 +227,9 @@ class ManualMapStoreTest {
                 new ExtractionRuleDefinition.RandomOpen(0.5),
                 new ExtractionRuleDefinition.NoBackpack(),
                 new ExtractionRuleDefinition.MaxWeight(30_000),
-                new ExtractionRuleDefinition.Capacity(3)))),
+                new ExtractionRuleDefinition.Capacity(3)),
+            new com.birditch.escapefromcraftov.map.ExtractionRouteScope(
+                false, List.of("north")))),
         List.of(new PoiDefinition("central_factory", "Central Factory",
             new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)),
         List.of(new RaidActionProfile(RaidTierId.of("top_secret"), "绝密行动", 112_500,

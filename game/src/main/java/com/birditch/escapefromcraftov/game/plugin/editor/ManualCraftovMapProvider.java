@@ -10,6 +10,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionPointId;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionState;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionType;
 import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
+import com.birditch.escapefromcraftov.api.game.CraftovExtractionRouteScope;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
@@ -90,7 +91,8 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
             value.position().z(), value.yaw(), value.pitch(), value.team(), value.weight(),
             value.spawnRegion() == null ? null : new CraftovSpawnArea(
                 value.spawnRegion().minX(), value.spawnRegion().minY(), value.spawnRegion().minZ(),
-                value.spawnRegion().maxX(), value.spawnRegion().maxY(), value.spawnRegion().maxZ())))
+                value.spawnRegion().maxX(), value.spawnRegion().maxY(), value.spawnRegion().maxZ()),
+            value.routeGroup()))
         .toList();
     List<CraftovLootPoint> lootPoints = map.lootPoints().stream()
         .filter(value -> value.enabled())
@@ -111,7 +113,10 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
     List<CraftovExtractionArea> areas = enabledExtractions.stream().map(value ->
         new CraftovExtractionArea(pointId(value), value.displayName(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
-            value.bounds().maxY(), value.bounds().maxZ())).toList();
+            value.bounds().maxY(), value.bounds().maxZ(), value.routeScope() == null ? null
+                : new CraftovExtractionRouteScope(value.routeScope().global(),
+                    new java.util.LinkedHashSet<>(
+                        value.routeScope().eligibleSpawnGroups())))).toList();
     List<CraftovAiZone> aiZones = map.aiZones().stream().filter(value -> value.enabled()).map(value ->
         new CraftovAiZone(value.id(), value.aiType(), value.minimum(), value.maximum(),
             value.respawnSeconds(), value.difficulty(), value.team(), value.bounds().minX(),

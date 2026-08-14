@@ -316,13 +316,13 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
       case SpawnDefinition value -> switch (action) {
         case SPAWN_TEAM -> new SpawnDefinition(value.id(), value.position(), value.yaw(),
             value.pitch(), cycle(SPAWN_TEAMS, value.team(), direction), value.weight(),
-            value.enabled(), value.spawnRegion());
+            value.enabled(), value.spawnRegion(), value.routeGroup());
         case SPAWN_WEIGHT -> new SpawnDefinition(value.id(), value.position(), value.yaw(),
             value.pitch(), value.team(), Math.max(0.25, value.weight() + direction * 0.25),
-            value.enabled(), value.spawnRegion());
+            value.enabled(), value.spawnRegion(), value.routeGroup());
         case SPAWN_DIRECTION -> new SpawnDefinition(value.id(), value.position(),
             player.getLocation().getYaw(), player.getLocation().getPitch(), value.team(),
-            value.weight(), value.enabled(), value.spawnRegion());
+            value.weight(), value.enabled(), value.spawnRegion(), value.routeGroup());
         default -> value;
       };
       case LootPointDefinition value -> switch (action) {
@@ -379,7 +379,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
         case EXTRACTION_DURATION -> new ExtractionDefinition(value.id(), value.displayName(),
             value.bounds(), value.extractionType(),
             Math.max(1, value.durationSeconds() + direction * 5), value.conditionValue(),
-            value.enabled(), value.conditions());
+            value.enabled(), value.conditions(), value.routeScope());
         case EXTRACTION_CONDITION -> extractionCondition(value, direction);
         default -> value;
       };
@@ -399,7 +399,8 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
       case TIMED -> "600";
     };
     return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(), type,
-        value.durationSeconds(), condition, value.enabled(), value.conditions());
+        value.durationSeconds(), condition, value.enabled(), value.conditions(),
+        value.routeScope());
   }
 
   private ExtractionDefinition extractionCondition(ExtractionDefinition value, int direction) {
@@ -411,13 +412,14 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
     };
     return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(),
         value.extractionType(), value.durationSeconds(), condition, value.enabled(),
-        value.conditions());
+        value.conditions(), value.routeScope());
   }
 
   private static MapObject enabled(MapObject object, boolean enabled) {
     return switch (object) {
       case SpawnDefinition value -> new SpawnDefinition(value.id(), value.position(), value.yaw(),
-          value.pitch(), value.team(), value.weight(), enabled, value.spawnRegion());
+          value.pitch(), value.team(), value.weight(), enabled, value.spawnRegion(),
+          value.routeGroup());
       case LootPointDefinition value -> new LootPointDefinition(value.id(), value.position(),
           value.containerType(), value.lootTable(), value.tier(), value.virtualContainer(), enabled);
       case LootZoneDefinition value -> new LootZoneDefinition(value.id(), value.bounds(),
@@ -427,7 +429,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
           value.difficulty(), value.team(), enabled);
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(), value.displayName(),
           value.bounds(), value.extractionType(), value.durationSeconds(), value.conditionValue(),
-          enabled, value.conditions());
+          enabled, value.conditions(), value.routeScope());
       case PoiDefinition value -> new PoiDefinition(value.id(), value.displayName(), value.bounds(),
           value.tier(), enabled);
     };

@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.map.EditorSession;
 import com.birditch.escapefromcraftov.map.EditorTool;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
 import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRouteScope;
 import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
@@ -234,12 +235,19 @@ final class EditorCommands {
     result.then(Commands.literal("team").then(Commands.argument("team", StringArgumentType.word())
         .suggests((_, builder) -> suggest(builder, "players", "red", "blue", "any"))
         .executes(ctx -> player(ctx.getSource().getSender(), value ->
-            updateSpawn(context, value, StringArgumentType.getString(ctx, "team"), null, null)))));
+            updateSpawn(context, value, StringArgumentType.getString(ctx, "team"), null, null,
+                null)))));
     result.then(Commands.literal("weight").then(Commands.argument("weight",
         DoubleArgumentType.doubleArg(0.0001))
         .suggests((_, builder) -> suggest(builder, "0.5", "1.0", "2.0"))
         .executes(ctx -> player(ctx.getSource().getSender(), value ->
-            updateSpawn(context, value, null, DoubleArgumentType.getDouble(ctx, "weight"), null)))));
+            updateSpawn(context, value, null, DoubleArgumentType.getDouble(ctx, "weight"), null,
+                null)))));
+    result.then(Commands.literal("route-group").then(Commands.argument("group",
+        StringArgumentType.word()).suggests((ctx, builder) -> suggestRouteGroups(
+            context, ctx.getSource().getSender(), builder))
+        .executes(ctx -> player(ctx.getSource().getSender(), value -> updateSpawn(context, value,
+            null, null, StringArgumentType.getString(ctx, "group"), null)))));
     result.then(Commands.literal("enable").executes(ctx -> toggleSpawn(context, ctx, true)));
     result.then(Commands.literal("disable").executes(ctx -> toggleSpawn(context, ctx, false)));
     return result;
@@ -410,11 +418,30 @@ final class EditorCommands {
                 "extraction_key", "100", "300", "600")).executes(ctx -> player(ctx.getSource().getSender(), value ->
                 updateExtraction(context, value, null, null, null,
                     StringArgumentType.getString(ctx, "value"), null)))))
+        .then(extractionRouteBranch(context))
         .then(extractionRuleBranch(context))
         .then(Commands.literal("enable").executes(ctx -> player(ctx.getSource().getSender(), value ->
             updateExtraction(context, value, null, null, null, null, true))))
         .then(Commands.literal("disable").executes(ctx -> player(ctx.getSource().getSender(), value ->
             updateExtraction(context, value, null, null, null, null, false))));
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> extractionRouteBranch(
+      CommandContext context) {
+    return Commands.literal("route")
+        .then(Commands.literal("global").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> updateExtractionRoute(context, value,
+                new ExtractionRouteScope(true, List.of())))))
+        .then(Commands.literal("groups").then(Commands.argument("groups",
+            StringArgumentType.greedyString()).suggests((ctx, builder) -> suggestRouteGroups(
+                context, ctx.getSource().getSender(), builder))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateExtractionRoute(
+                context, value, new ExtractionRouteScope(false, parseRouteGroups(
+                    StringArgumentType.getString(ctx, "groups"))))))))
+        .then(Commands.literal("clear").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> updateExtractionRoute(context, value, null))))
+        .then(Commands.literal("list").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> listExtractionRoute(context, value))));
   }
 
   private static LiteralArgumentBuilder<CommandSourceStack> extractionRuleBranch(
@@ -665,10 +692,10 @@ final class EditorCommands {
 
   private static int help(Player player) {
     helpGroup(player, "地图", "/craftov editor enter|exit|status|map bounds|wand|menu");
-    helpGroup(player, "出生", "/craftov editor spawn create|region|team|weight|enable|disable");
+    helpGroup(player, "出生", "/craftov editor spawn create|region|team|weight|route-group|enable|disable");
     helpGroup(player, "物资", "/craftov editor loot|lootzone create|table|tier|density|danger");
     helpGroup(player, "生物", "/craftov editor ai zone|type|minimum|maximum|respawn|difficulty");
-    helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition|rule");
+    helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition|route|rule");
     helpGroup(player, "对象", "/craftov editor select|info [id]|tp [id]|move|clone|copy|paste|delete");
     helpGroup(player, "批量", "/craftov editor batch enable|disable|table|tier|delete");
     helpGroup(player, "显示", "/craftov editor show|hide|radius|nearby；左键选择，潜行右键属性");
@@ -774,19 +801,20 @@ final class EditorCommands {
   }
 
   private static int updateSpawn(CommandContext context, Player player, String team,
-      Double weight, Boolean enabled) {
+      Double weight, String routeGroup, Boolean enabled) {
     return replaceSelected(context, player, MapObjectType.SPAWN, "出生点", object -> {
       SpawnDefinition value = (SpawnDefinition) object;
       return new SpawnDefinition(value.id(), value.position(), value.yaw(), value.pitch(),
           team == null ? value.team() : team, weight == null ? value.weight() : weight,
-          enabled == null ? value.enabled() : enabled, value.spawnRegion());
+          enabled == null ? value.enabled() : enabled, value.spawnRegion(),
+          routeGroup == null ? value.routeGroup() : routeGroup);
     });
   }
 
   private static int toggleSpawn(CommandContext context,
       com.mojang.brigadier.context.CommandContext<CommandSourceStack> command, boolean enabled) {
     return player(command.getSource().getSender(), value ->
-        updateSpawn(context, value, null, null, enabled));
+        updateSpawn(context, value, null, null, null, enabled));
   }
 
   private static int updateLoot(CommandContext context, Player player, String containerType,
@@ -857,8 +885,42 @@ final class EditorCommands {
       }
       return new ExtractionDefinition(value.id(), displayName == null ? value.displayName() : displayName,
           value.bounds(), type, durationSeconds == null ? value.durationSeconds() : durationSeconds,
-          condition, enabled == null ? value.enabled() : enabled, value.conditions());
+          condition, enabled == null ? value.enabled() : enabled, value.conditions(),
+          value.routeScope());
     });
+  }
+
+  private static int updateExtractionRoute(CommandContext context, Player player,
+      ExtractionRouteScope routeScope) {
+    return replaceSelected(context, player, MapObjectType.EXTRACTION, "撤离路线", object -> {
+      ExtractionDefinition value = (ExtractionDefinition) object;
+      return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(),
+          value.extractionType(), value.durationSeconds(), value.conditionValue(), value.enabled(),
+          value.conditions(), routeScope);
+    });
+  }
+
+  private static int listExtractionRoute(CommandContext context, Player player) {
+    EditorSession session = session(context, player);
+    MapObject selected = session.draft().findObject(selected(session))
+        .orElseThrow(() -> new IllegalStateException("选中的对象不存在"));
+    if (!(selected instanceof ExtractionDefinition extraction)) {
+      throw new IllegalStateException("当前选择不是撤离点");
+    }
+    ExtractionRouteScope scope = extraction.routeScope();
+    String description = scope == null ? "未配置（兼容自动路线）"
+        : scope.global() ? "全队全局出口"
+        : "出生组: " + String.join(", ", scope.eligibleSpawnGroups());
+    player.sendMessage(Component.text("撤离路线 " + extraction.id() + " · " + description,
+        NamedTextColor.GOLD));
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static List<String> parseRouteGroups(String raw) {
+    List<String> groups = java.util.Arrays.stream(raw.trim().split("[,\\s]+"))
+        .filter(value -> !value.isBlank()).distinct().toList();
+    if (groups.isEmpty()) throw new IllegalArgumentException("至少填写一个出生路线组");
+    return groups;
   }
 
   private static int addExtractionSwitch(CommandContext context, Player player, String switchId) {
@@ -926,7 +988,7 @@ final class EditorCommands {
       List<ExtractionRuleDefinition> rules) {
     return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(),
         value.extractionType(), value.durationSeconds(), value.conditionValue(), value.enabled(),
-        rules);
+        rules, value.routeScope());
   }
 
   private static int listExtractionRules(CommandContext context, Player player) {
@@ -1434,6 +1496,17 @@ final class EditorCommands {
   private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
       suggest(com.mojang.brigadier.suggestion.SuggestionsBuilder builder, String... values) {
     for (String value : values) builder.suggest(value);
+    return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestRouteGroups(CommandContext context, CommandSender sender,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+          session.draft().spawns().stream().map(SpawnDefinition::routeGroup).distinct()
+              .forEach(builder::suggest));
+    }
     return builder.buildFuture();
   }
 

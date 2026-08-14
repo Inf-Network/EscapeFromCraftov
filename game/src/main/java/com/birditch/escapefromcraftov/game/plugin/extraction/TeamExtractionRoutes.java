@@ -19,14 +19,16 @@ import java.util.UUID;
 
 /// Main-thread-confined runtime state for team spawns and extraction routes.
 ///
-/// A route only becomes authoritative after a valid map extraction area has
-/// been selected. Missing legacy spatial data therefore remains fail-open,
-/// while a real frozen route is fail-closed for every other exit.
+/// Authored route maps are fail-closed until a team route freezes. Legacy maps
+/// remain fail-open before assignment; damaged maps without any reliable
+/// unconditional exit enter an explicit degraded fail-open mode so their own
+/// extraction conditions remain the final authority instead of trapping players.
 public final class TeamExtractionRoutes {
 
   private final Map<RouteKey, CraftovSpawnLocation> spawns = new HashMap<>();
   private final Map<RouteKey, ResolvedTeamSpawn> resolvedSpawns = new HashMap<>();
   private final Map<RouteKey, Set<ExtractionPointId>> routes = new HashMap<>();
+  private final Set<RouteKey> degradedFailOpen = new HashSet<>();
 
   public Optional<CraftovSpawnLocation> spawn(CraftovGameId gameId, int teamId) {
     Preconditions.checkNotNull(gameId, "gameId");
@@ -56,9 +58,11 @@ public final class TeamExtractionRoutes {
     ResolvedTeamSpawn resolved = resolvedSpawns.computeIfAbsent(key,
         _ -> new ResolvedTeamSpawn(x, y, z, yaw, pitch, fallback));
     if (resolved.fallback()) {
+      String routeGroup = "fallback_team_" + teamId;
       spawns.put(key, new CraftovSpawnLocation("fallback_team_" + teamId,
           (int) Math.floor(resolved.x()), (int) Math.floor(resolved.y()),
-          (int) Math.floor(resolved.z()), resolved.yaw(), resolved.pitch()));
+          (int) Math.floor(resolved.z()), resolved.yaw(), resolved.pitch(), "players", 1.0,
+          null, routeGroup));
     }
     return resolved;
   }
@@ -85,8 +89,42 @@ public final class TeamExtractionRoutes {
   /// A later teleport cannot move the team's assigned extraction.
   public Optional<ExtractionPointId> freezeRoute(
       CraftovGame game, int teamId, double actualSpawnX, double actualSpawnZ) {
-    return freezeRoute(game, teamId, actualSpawnX, actualSpawnZ, Set.of())
+    return freezeAutomaticRoute(game, teamId, actualSpawnX, actualSpawnZ)
         .stream().findFirst();
+  }
+
+  private Set<ExtractionPointId> freezeAutomaticRoute(
+      CraftovGame game, int teamId, double actualSpawnX, double actualSpawnZ) {
+    RouteKey key = new RouteKey(game.id(), teamId);
+    Set<ExtractionPointId> existing = routes.get(key);
+    if (existing != null) return existing;
+    if (degradedFailOpen.contains(key)) return Set.of();
+    Set<ExtractionPointId> reliable = reliablePrimaryIds(game);
+    if (reliable.isEmpty()) {
+      degradedFailOpen.add(key);
+      return Set.of();
+    }
+    boolean authoredScopes = hasAuthoredScopes(game);
+    if (!authoredScopes) {
+      return freezeRoute(game, teamId, actualSpawnX, actualSpawnZ, Set.of());
+    }
+    String routeGroup = Optional.ofNullable(spawns.get(key))
+        .map(CraftovSpawnLocation::routeGroup).orElse("fallback_team_" + teamId);
+    Set<ExtractionPointId> matching = new LinkedHashSet<>();
+    game.extractionAreas().stream().filter(area -> area.routeScope() != null)
+        .filter(area -> area.routeScope().allows(routeGroup))
+        .map(CraftovExtractionArea::pointId).forEach(matching::add);
+    if (matching.stream().noneMatch(reliable::contains)) {
+      Set<ExtractionPointId> safeFallbacks = reliable.stream().filter(pointId ->
+          game.extractionAreas().stream().filter(area -> area.pointId().equals(pointId))
+              .anyMatch(area -> area.routeScope() == null || area.routeScope().global()))
+          .collect(java.util.stream.Collectors.toSet());
+      TeamExtractionRoutePolicy.farthest(game.extractionAreas(),
+          safeFallbacks.isEmpty() ? reliable : safeFallbacks,
+          actualSpawnX, actualSpawnZ, game.id().value() + ':' + teamId)
+          .ifPresent(matching::add);
+    }
+    return freezeRoute(game, teamId, actualSpawnX, actualSpawnZ, matching);
   }
 
   /// Variant reserved for map-authored spawn-to-exit mappings. A valid
@@ -111,15 +149,10 @@ public final class TeamExtractionRoutes {
     RouteKey key = new RouteKey(game.id(), teamId);
     Set<ExtractionPointId> existing = routes.get(key);
     if (existing != null) return existing;
+    if (degradedFailOpen.contains(key)) return Set.of();
     Set<ExtractionPointId> enabledPointIds = new HashSet<>();
     game.extractionPoints().forEach(point -> enabledPointIds.add(point.id()));
-    Set<ExtractionPointId> areaPointIds = new HashSet<>();
-    game.extractionAreas().forEach(area -> areaPointIds.add(area.pointId()));
-    Set<ExtractionPointId> reliablePrimaryIds = new HashSet<>();
-    game.extractionPoints().stream()
-        .filter(point -> point.type() == ExtractionType.NORMAL && point.conditions().isEmpty())
-        .map(point -> point.id()).filter(areaPointIds::contains)
-        .forEach(reliablePrimaryIds::add);
+    Set<ExtractionPointId> reliablePrimaryIds = reliablePrimaryIds(game);
     Set<ExtractionPointId> validAuthoredPoints = new LinkedHashSet<>();
     game.extractionAreas().stream().map(CraftovExtractionArea::pointId).distinct()
         .filter(enabledPointIds::contains).filter(authoredPoints::contains)
@@ -136,16 +169,33 @@ public final class TeamExtractionRoutes {
     return selected;
   }
 
-  /// True when the point belongs to the player's team. If this room has no
-  /// valid spatial route for that team, returns true for legacy compatibility.
+  private static boolean hasAuthoredScopes(CraftovGame game) {
+    return game.extractionAreas().stream().anyMatch(area -> area.routeScope() != null);
+  }
+
+  private static Set<ExtractionPointId> reliablePrimaryIds(CraftovGame game) {
+    Set<ExtractionPointId> areaPointIds = new HashSet<>();
+    game.extractionAreas().forEach(area -> areaPointIds.add(area.pointId()));
+    Set<ExtractionPointId> reliable = new HashSet<>();
+    game.extractionPoints().stream()
+        .filter(point -> point.type() == ExtractionType.NORMAL && point.conditions().isEmpty())
+        .map(point -> point.id()).filter(areaPointIds::contains).forEach(reliable::add);
+    return reliable;
+  }
+
+  /// True when the point belongs to the player's team. Authored maps deny before
+  /// freeze; only legacy compatibility or explicit degraded state is fail-open.
   public boolean canUse(CraftovGame game, UUID playerId, ExtractionPointId pointId) {
     Preconditions.checkNotNull(game, "game");
     Preconditions.checkNotNull(playerId, "playerId");
     Preconditions.checkNotNull(pointId, "pointId");
     OptionalInt teamId = teamId(game, playerId);
-    if (teamId.isEmpty()) return true;
-    Set<ExtractionPointId> assigned = routes.get(new RouteKey(game.id(), teamId.getAsInt()));
-    return assigned == null || assigned.contains(pointId);
+    if (teamId.isEmpty()) return !hasAuthoredScopes(game);
+    RouteKey key = new RouteKey(game.id(), teamId.getAsInt());
+    Set<ExtractionPointId> assigned = routes.get(key);
+    if (assigned != null) return assigned.contains(pointId);
+    if (degradedFailOpen.contains(key)) return true;
+    return !hasAuthoredScopes(game);
   }
 
   /// Extraction areas visible to this player. Once a route exists this exposes
@@ -155,9 +205,13 @@ public final class TeamExtractionRoutes {
     Preconditions.checkNotNull(game, "game");
     Preconditions.checkNotNull(playerId, "playerId");
     OptionalInt teamId = teamId(game, playerId);
-    if (teamId.isEmpty()) return game.extractionAreas();
-    Set<ExtractionPointId> assigned = routes.get(new RouteKey(game.id(), teamId.getAsInt()));
-    if (assigned == null) return game.extractionAreas();
+    if (teamId.isEmpty()) return hasAuthoredScopes(game) ? List.of() : game.extractionAreas();
+    RouteKey key = new RouteKey(game.id(), teamId.getAsInt());
+    Set<ExtractionPointId> assigned = routes.get(key);
+    if (assigned == null) {
+      return degradedFailOpen.contains(key) || !hasAuthoredScopes(game)
+          ? game.extractionAreas() : List.of();
+    }
     return game.extractionAreas().stream()
         .filter(area -> assigned.contains(area.pointId())).toList();
   }
@@ -189,6 +243,8 @@ public final class TeamExtractionRoutes {
         && !activeTeams.contains(key.teamId()));
     routes.keySet().removeIf(key -> key.gameId().equals(game.id())
         && !activeTeams.contains(key.teamId()));
+    degradedFailOpen.removeIf(key -> key.gameId().equals(game.id())
+        && !activeTeams.contains(key.teamId()));
   }
 
   public void clear(CraftovGameId gameId) {
@@ -196,6 +252,7 @@ public final class TeamExtractionRoutes {
     spawns.keySet().removeIf(key -> key.gameId().equals(gameId));
     resolvedSpawns.keySet().removeIf(key -> key.gameId().equals(gameId));
     routes.keySet().removeIf(key -> key.gameId().equals(gameId));
+    degradedFailOpen.removeIf(key -> key.gameId().equals(gameId));
   }
 
   private static OptionalInt teamId(CraftovGame game, UUID playerId) {

@@ -12,13 +12,19 @@ public record CraftovExtractionArea(
     int minZ,
     int maxX,
     int maxY,
-    int maxZ) {
+    int maxZ,
+    @org.jspecify.annotations.Nullable CraftovExtractionRouteScope routeScope) {
 
   public CraftovExtractionArea {
     Preconditions.checkNotNull(pointId, "pointId");
     Preconditions.checkNotNull(displayName, "displayName");
     Preconditions.checkArgument(maxX >= minX && maxY >= minY && maxZ >= minZ,
         "invalid extraction bounds");
+  }
+
+  public CraftovExtractionArea(ExtractionPointId pointId, String displayName,
+      int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    this(pointId, displayName, minX, minY, minZ, maxX, maxY, maxZ, null);
   }
 
   public boolean contains(double x, double y, double z) {

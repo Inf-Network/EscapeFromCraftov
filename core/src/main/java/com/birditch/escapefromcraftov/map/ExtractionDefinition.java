@@ -13,7 +13,8 @@ public record ExtractionDefinition(
     int durationSeconds,
     @Nullable String conditionValue,
     boolean enabled,
-    List<ExtractionRuleDefinition> conditions) implements MapObject {
+    List<ExtractionRuleDefinition> conditions,
+    @Nullable ExtractionRouteScope routeScope) implements MapObject {
 
   public ExtractionDefinition {
     MapIds.requireValid(id, "extraction id");
@@ -34,7 +35,15 @@ public record ExtractionDefinition(
       ManualExtractionType extractionType, int durationSeconds, @Nullable String conditionValue,
       boolean enabled) {
     this(id, displayName, bounds, extractionType, durationSeconds, conditionValue, enabled,
-        List.of());
+        List.of(), null);
+  }
+
+  /** Source-compatible constructor for exits created before route scopes. */
+  public ExtractionDefinition(String id, String displayName, CuboidBounds bounds,
+      ManualExtractionType extractionType, int durationSeconds, @Nullable String conditionValue,
+      boolean enabled, List<ExtractionRuleDefinition> conditions) {
+    this(id, displayName, bounds, extractionType, durationSeconds, conditionValue, enabled,
+        conditions, null);
   }
 
   @Override public MapObjectType type() { return MapObjectType.EXTRACTION; }

@@ -14,6 +14,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionSession;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionState;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionType;
 import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
+import com.birditch.escapefromcraftov.api.game.CraftovExtractionRouteScope;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
@@ -104,6 +105,7 @@ class TeamExtractionRoutesTest {
 
     assertEquals(1.5, fallback.x());
     assertEquals("fallback_team_1", routes.spawn(GAME_ID, 1).orElseThrow().id());
+    assertEquals("fallback_team_1", routes.spawn(GAME_ID, 1).orElseThrow().routeGroup());
     assertEquals(fallback, routes.resolvedSpawn(GAME_ID, 1).orElseThrow());
     assertTrue(routes.reservedAuthoredSpawnIds(GAME_ID).isEmpty());
     assertEquals("fallback_team_1",
@@ -148,6 +150,100 @@ class TeamExtractionRoutesTest {
     TeamExtractionRoutes routes = new TeamExtractionRoutes();
 
     assertEquals(fixedId, routes.freezeRoute(game, 1, 0, 0).orElseThrow());
+  }
+
+  @Test
+  void authoredSpawnGroupReceivesMatchingAndGlobalExitsOnly() {
+    ExtractionPointId northId = ExtractionPointId.of("north_route");
+    ExtractionPointId southId = ExtractionPointId.of("south_route");
+    ExtractionPointId globalId = ExtractionPointId.of("global_route");
+    List<ExtractionPoint> points = List.of(point(northId), point(southId), point(globalId));
+    List<CraftovExtractionArea> areas = List.of(
+        new CraftovExtractionArea(northId, "North", 10, 60, 0, 12, 70, 2,
+            new CraftovExtractionRouteScope(false, java.util.Set.of("north"))),
+        new CraftovExtractionArea(southId, "South", -12, 60, 0, -10, 70, 2,
+            new CraftovExtractionRouteScope(false, java.util.Set.of("south"))),
+        new CraftovExtractionArea(globalId, "Global", 0, 60, 100, 2, 70, 102,
+            new CraftovExtractionRouteScope(true, java.util.Set.of())));
+    CraftovGameInstance game = new CraftovGameInstance(GAME_ID, CraftovMapId.of("test_flat"),
+        Instant.EPOCH, new CraftovMapRuntime(1, List.of(), List.of(), points, areas));
+    game.transitionTo(CraftovGameState.WAITING, Instant.EPOCH);
+    addTeam(game, 1, ALICE);
+    TeamExtractionRoutes routes = new TeamExtractionRoutes();
+    routes.rememberSpawn(GAME_ID, 1, new CraftovSpawnLocation("spawn_north", 0, 64, 0,
+        0, 0, "players", 1, null, "north"));
+
+    routes.freezeRoute(game, 1, 0, 0);
+
+    assertEquals(java.util.Set.of(northId, globalId), routes.assignedPoints(game, ALICE));
+    assertTrue(routes.canUse(game, ALICE, northId));
+    assertTrue(routes.canUse(game, ALICE, globalId));
+    assertFalse(routes.canUse(game, ALICE, southId));
+  }
+
+  @Test
+  void authoredRoutesDenyEveryExitUntilTheTeamRouteIsFrozen() {
+    ExtractionPointId northId = ExtractionPointId.of("north_locked");
+    List<ExtractionPoint> points = List.of(point(northId));
+    List<CraftovExtractionArea> areas = List.of(new CraftovExtractionArea(
+        northId, "North", 10, 60, 0, 12, 70, 2,
+        new CraftovExtractionRouteScope(false, java.util.Set.of("north"))));
+    CraftovGameInstance game = new CraftovGameInstance(GAME_ID, CraftovMapId.of("test_flat"),
+        Instant.EPOCH, new CraftovMapRuntime(1, List.of(), List.of(), points, areas));
+    game.transitionTo(CraftovGameState.WAITING, Instant.EPOCH);
+    addTeam(game, 1, ALICE);
+    TeamExtractionRoutes routes = new TeamExtractionRoutes();
+
+    assertFalse(routes.canUse(game, ALICE, northId));
+    assertTrue(routes.visibleAreas(game, ALICE).isEmpty());
+  }
+
+  @Test
+  void missingAuthoredGroupStillGetsReliableUnscopedFallback() {
+    ExtractionPointId northId = ExtractionPointId.of("north_only");
+    ExtractionPointId fallbackId = ExtractionPointId.of("safe_fallback");
+    List<ExtractionPoint> points = List.of(point(northId), point(fallbackId));
+    List<CraftovExtractionArea> areas = List.of(
+        new CraftovExtractionArea(northId, "North", 500, 60, 0, 502, 70, 2,
+            new CraftovExtractionRouteScope(false, java.util.Set.of("north"))),
+        new CraftovExtractionArea(fallbackId, "Safe", 10, 60, 0, 12, 70, 2));
+    CraftovGameInstance game = new CraftovGameInstance(GAME_ID, CraftovMapId.of("test_flat"),
+        Instant.EPOCH, new CraftovMapRuntime(1, List.of(), List.of(), points, areas));
+    game.transitionTo(CraftovGameState.WAITING, Instant.EPOCH);
+    addTeam(game, 1, ALICE);
+    TeamExtractionRoutes routes = new TeamExtractionRoutes();
+    routes.rememberSpawn(GAME_ID, 1, new CraftovSpawnLocation("spawn_south", 0, 64, 0,
+        0, 0, "players", 1, null, "south"));
+
+    assertEquals(fallbackId, routes.freezeRoute(game, 1, 0, 0).orElseThrow());
+    assertEquals(java.util.Set.of(fallbackId), routes.assignedPoints(game, ALICE));
+  }
+
+  @Test
+  void automaticRouteWithoutReliableExitDegradesToOriginalConditionChecks() {
+    ExtractionPointId conditionalId = ExtractionPointId.of("conditional_only");
+    ExtractionCondition condition = new ExtractionCondition() {
+      @Override public String describe() { return "测试条件"; }
+      @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+    };
+    List<ExtractionPoint> points = List.of(new ExtractionPoint(conditionalId, "Conditional",
+        ExtractionType.CONDITIONAL, Duration.ofSeconds(5), List.of(condition),
+        ExtractionState.AVAILABLE));
+    List<CraftovExtractionArea> areas = List.of(new CraftovExtractionArea(
+        conditionalId, "Conditional", 100, 60, 0, 102, 70, 2,
+        new CraftovExtractionRouteScope(false, java.util.Set.of("north"))));
+    CraftovGameInstance game = new CraftovGameInstance(GAME_ID, CraftovMapId.of("test_flat"),
+        Instant.EPOCH, new CraftovMapRuntime(1, List.of(), List.of(), points, areas));
+    game.transitionTo(CraftovGameState.WAITING, Instant.EPOCH);
+    addTeam(game, 1, ALICE);
+    TeamExtractionRoutes routes = new TeamExtractionRoutes();
+    routes.rememberSpawn(GAME_ID, 1, new CraftovSpawnLocation("spawn_north", 0, 64, 0,
+        0, 0, "players", 1, null, "north"));
+
+    assertTrue(routes.freezeRoute(game, 1, 0, 0).isEmpty());
+    assertTrue(routes.canUse(game, ALICE, conditionalId));
+    assertEquals(List.of(conditionalId), routes.visibleAreas(game, ALICE).stream()
+        .map(CraftovExtractionArea::pointId).toList());
   }
 
   @Test

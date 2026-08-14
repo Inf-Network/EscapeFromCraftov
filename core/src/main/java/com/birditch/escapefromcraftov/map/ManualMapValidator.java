@@ -31,6 +31,7 @@ public final class ManualMapValidator {
     validateBounds(map, bounds, issues);
     validateReferences(map, references, issues);
     validateSpawnTeams(map, issues);
+    validateExtractionRoutes(map, issues);
     validateDistances(map, settings, issues);
     validateOverlaps(map, issues);
 
@@ -40,6 +41,44 @@ public final class ManualMapValidator {
         issue.severity() == MapValidationSeverity.WARNING).count();
     int score = (int) Math.max(0, 100 - errors * 20 - warnings * 4);
     return new ManualMapValidationResult(issues, score);
+  }
+
+  private static void validateExtractionRoutes(
+      ManualCraftovMap map, List<MapValidationIssue> issues) {
+    Set<String> knownGroups = map.spawns().stream().map(SpawnDefinition::routeGroup)
+        .collect(java.util.stream.Collectors.toSet());
+    Set<String> enabledGroups = map.spawns().stream().filter(SpawnDefinition::enabled)
+        .map(SpawnDefinition::routeGroup).collect(java.util.stream.Collectors.toSet());
+    List<ExtractionDefinition> authored = map.extractions().stream()
+        .filter(value -> value.routeScope() != null).toList();
+    if (authored.isEmpty()) return;
+    for (ExtractionDefinition extraction : authored) {
+      ExtractionRouteScope scope = extraction.routeScope();
+      Set<String> unique = new HashSet<>();
+      for (String group : scope.eligibleSpawnGroups()) {
+        if (!unique.add(group)) {
+          error(issues, "route_group_duplicate", extraction.id(),
+              "撤离路线重复引用出生组: " + group);
+        }
+        if (!knownGroups.contains(group)) {
+          error(issues, "route_group_unknown", extraction.id(),
+              "撤离路线引用了未知出生组: " + group);
+        }
+      }
+    }
+    List<ExtractionDefinition> enabledAuthored = authored.stream()
+        .filter(ExtractionDefinition::enabled).toList();
+    for (String group : enabledGroups) {
+      boolean reliable = enabledAuthored.stream().anyMatch(extraction ->
+          (extraction.routeScope().global()
+              || extraction.routeScope().eligibleSpawnGroups().contains(group))
+              && extraction.extractionType() == ManualExtractionType.NORMAL
+              && extraction.conditions().isEmpty());
+      if (!reliable) {
+        error(issues, "route_group_without_reliable_exit", null,
+            "出生路线组没有可用的无条件普通或全局撤离点: " + group);
+      }
+    }
   }
 
   private static void validateSpawnTeams(ManualCraftovMap map, List<MapValidationIssue> issues) {

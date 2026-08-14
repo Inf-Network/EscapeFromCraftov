@@ -100,7 +100,9 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 
 同一个撤离点可以把这些规则按 AND 组合。撤离点是一个区域而不是单个方块。进入区域开始引导，移动离开区域会取消；重新进入可以再次开始。付费授权永远排在所有可逆条件和名额预占之后。
 
-每支队伍会冻结首名成员实际使用的安全出生位置，同队后续成员复用该位置；不同队在还有空余出生点时不会重叠出生。当前旧地图会从无条件普通出口中为每队选择与出生侧相对的主出口，HUD 只显示本队出口，任何代码路径尝试从其他出口开始撤离都会被服务端拒绝。多出口的运行时集合已经支持，但 `map.yml` 的出生组到出口集合显式映射仍是下一阶段；在它接通前，旧地图使用一个确定性的主出口回退。
+每支队伍会冻结首名成员实际使用的安全出生位置，同队后续成员复用该位置；不同队在还有空余出生点时不会重叠出生。地图作者可以给多个出生点设置同一个 `route-group`，再把普通或特殊撤离点设为全局出口，或绑定一个、多个出生组。队伍会同时获得所有匹配出口；HUD 只显示本队出口，任何代码路径尝试从其他出口开始撤离都会被服务端拒绝。
+
+只要地图开始使用显式路线，每个启用的出生组就必须至少拥有一个启用、无附加条件的普通出口，避免某支队伍被随机、付费或限额条件永久困住。全部未填写路线字段的旧地图仍从可靠普通出口中确定性选择一个与实际出生位置相对的主出口，不要求立刻迁移。
 
 ### 2.6 死亡、退出和超时
 
@@ -357,6 +359,7 @@ factory/
 | `/craftov editor spawn create` | 在当前位置创建出生点，并自动生成 ID。 | `/craftov editor spawn create` |
 | `/craftov editor spawn create <id>` | 在当前位置创建使用指定 ID 的出生点。 | `/craftov editor spawn create spawn_north` |
 | `/craftov editor spawn region create <id>` | 把当前选区创建成可随机落点的出生区域；每次进入行动最多检查 24 个候选，只会使用脚下可站且身体两格无阻挡的位置。 | `/craftov editor spawn region create spawn_west` |
+| `/craftov editor spawn route-group <id>` | 把选中的出生点归入一个路线组；同组出生点共享相同的队伍出口集合。 | `/craftov editor spawn route-group east` |
 | `/craftov editor loot create` | 在当前位置创建使用默认掉落表的虚拟物资点，并自动生成 ID。 | `/craftov editor loot create` |
 | `/craftov editor loot create <id>` | 在当前位置创建使用默认掉落表和指定 ID 的虚拟物资点。 | `/craftov editor loot create warehouse` |
 | `/craftov editor loot create <id> <loot-table>` | 在当前位置创建虚拟物资点并指定掉落表。 | `/craftov editor loot create warehouse debug_common` |
@@ -396,6 +399,9 @@ factory/
 | `/craftov editor extraction type <normal、item、paid 或 timed>` | 修改已有条件撤离点的类型；如果当前是普通撤离，请直接使用带 value 的下一条形式。 | `/craftov editor extraction type normal` |
 | `/craftov editor extraction type <type> <value>` | 一次性修改条件类型和条件值，适合把普通撤离点直接改成钥匙、付费或计时撤离。 | `/craftov editor extraction type paid 500` |
 | `/craftov editor extraction condition <value>` | 设置钥匙 ID、金币数量或开放秒数等条件值。 | `/craftov editor extraction condition extraction_key` |
+| `/craftov editor extraction route global` | 把选中的撤离点设为所有出生组都可见、可用的全局出口。 | `/craftov editor extraction route global` |
+| `/craftov editor extraction route groups <组...>` | 把选中的撤离点绑定到一个或多个出生路线组，组名可用空格或逗号分隔。 | `/craftov editor extraction route groups east north` |
+| `/craftov editor extraction route list` | 查看选中撤离点当前的全局/出生组路线配置；`clear` 可恢复未配置状态。 | `/craftov editor extraction route list` |
 | `/craftov editor extraction rule list` | 查看选中撤离点的全部组合条件。 | `/craftov editor extraction rule list` |
 | `/craftov editor extraction rule switch <id>` | 绑定准星 6 格内的拉杆。 | `/craftov editor extraction rule switch gate_power` |
 | `/craftov editor extraction rule random <0-1>` | 设置每局冻结一次的开放概率。 | `/craftov editor extraction rule random 0.75` |
@@ -626,4 +632,4 @@ git diff --check
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是把二维携行模型接入实际菜单与结算、为地图编辑器接入出生组到多出口集合的显式映射，以及基于现有 AI Zone 的巡逻与地图事件；仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是把二维携行模型接入实际菜单与结算，以及基于现有 AI Zone 的巡逻与地图事件；仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

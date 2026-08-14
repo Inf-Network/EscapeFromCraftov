@@ -137,7 +137,8 @@ public final class ManualMapEditor {
   private static MapObject withEnabled(MapObject object, boolean enabled) {
     return switch (object) {
       case SpawnDefinition value -> new SpawnDefinition(value.id(), value.position(), value.yaw(),
-          value.pitch(), value.team(), value.weight(), enabled, value.spawnRegion());
+          value.pitch(), value.team(), value.weight(), enabled, value.spawnRegion(),
+          value.routeGroup());
       case LootPointDefinition value -> new LootPointDefinition(value.id(), value.position(),
           value.containerType(), value.lootTable(), value.tier(), value.virtualContainer(), enabled);
       case LootZoneDefinition value -> new LootZoneDefinition(value.id(), value.bounds(),
@@ -147,7 +148,7 @@ public final class ManualMapEditor {
           value.difficulty(), value.team(), enabled);
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(),
           value.displayName(), value.bounds(), value.extractionType(), value.durationSeconds(),
-          value.conditionValue(), enabled, value.conditions());
+          value.conditionValue(), enabled, value.conditions(), value.routeScope());
       case PoiDefinition value -> new PoiDefinition(value.id(), value.displayName(),
           value.bounds(), value.tier(), enabled);
     };
@@ -193,7 +194,7 @@ public final class ManualMapEditor {
       case SpawnDefinition value -> new SpawnDefinition(newId,
           value.position().add(dx, dy, dz), value.yaw(), value.pitch(), value.team(),
           value.weight(), value.enabled(), value.spawnRegion() == null ? null
-              : value.spawnRegion().translate(dx, dy, dz));
+              : value.spawnRegion().translate(dx, dy, dz), value.routeGroup());
       case LootPointDefinition value -> new LootPointDefinition(newId,
           value.position().add(dx, dy, dz), value.containerType(), value.lootTable(),
           value.tier(), value.virtualContainer(), value.enabled());
@@ -207,7 +208,7 @@ public final class ManualMapEditor {
       case ExtractionDefinition value -> new ExtractionDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.extractionType(), value.durationSeconds(),
           value.conditionValue(), value.enabled(), value.conditions().stream()
-              .map(condition -> condition.translate(dx, dy, dz)).toList());
+              .map(condition -> condition.translate(dx, dy, dz)).toList(), value.routeScope());
       case PoiDefinition value -> new PoiDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.tier(), value.enabled());
     };

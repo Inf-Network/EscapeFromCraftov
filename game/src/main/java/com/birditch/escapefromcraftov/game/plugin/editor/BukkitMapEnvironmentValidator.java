@@ -44,7 +44,7 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
       if (!spawn.enabled()) continue;
       BlockPosition feet = spawn.position();
       if (!chunkLoaded(world, feet)) {
-        issues.add(error("spawn_environment_unloaded", spawn.id(),
+        issues.add(warning("spawn_environment_unloaded", spawn.id(),
             "出生点所在区块尚未加载，无法验证方块安全性: " + spawn.id()
                 + "。请进入该位置加载区块后重新验证"));
       } else if (!safe(world, feet)) {
@@ -70,7 +70,7 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
           });
       if (!safe) {
         if (unloadedChecks[0] > 0) {
-          issues.add(error("extraction_environment_unloaded", extraction.id(),
+          issues.add(warning("extraction_environment_unloaded", extraction.id(),
               "撤离区域含未加载区块，且已加载候选中没有安全脚部位置: " + extraction.id()
                   + "。请进入该区域加载区块后重新验证；区域 Y 必须覆盖玩家脚部，"
                   + "不能只圈地面方块"));
@@ -106,5 +106,9 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
 
   private static MapValidationIssue error(String code, String objectId, String message) {
     return new MapValidationIssue(MapValidationSeverity.ERROR, code, objectId, message);
+  }
+
+  private static MapValidationIssue warning(String code, String objectId, String message) {
+    return new MapValidationIssue(MapValidationSeverity.WARNING, code, objectId, message);
   }
 }

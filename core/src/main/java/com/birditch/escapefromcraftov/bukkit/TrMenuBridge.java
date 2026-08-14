@@ -395,6 +395,9 @@ public final class TrMenuBridge {
       Class<? extends Event> eventType = (Class<? extends Event>) rawEvent;
       owner.getServer().getPluginManager().registerEvent(eventType, listener,
           EventPriority.NORMAL, (_, event) -> {
+            // TrMenu custom events share a HandlerList, so Bukkit can dispatch other
+            // TrMenu event types to this executor as well.
+            if (!rawEvent.isInstance(event)) return;
             try {
               if (!expected.equals(String.valueOf(getName.invoke(event)))) return;
               Object session = getSession.invoke(event);

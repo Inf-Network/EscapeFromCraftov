@@ -89,12 +89,12 @@ class CraftovGameManagerTest {
         }
 
         @Test
-        void generatesUniqueSixCharacterHexIds() {
+        void generatesUniqueOneHundredTwentyEightBitHexIds() {
             CraftovGame first = createGame();
             CraftovGame second = createGame();
 
-            assertTrue(first.id().value().matches("[0-9a-f]{6}"));
-            assertTrue(second.id().value().matches("[0-9a-f]{6}"));
+            assertTrue(first.id().value().matches("[0-9a-f]{32}"));
+            assertTrue(second.id().value().matches("[0-9a-f]{32}"));
             assertEquals(2, manager.activeCount());
         }
 

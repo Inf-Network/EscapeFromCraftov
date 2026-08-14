@@ -359,8 +359,13 @@ public final class CraftovGameManager implements CraftovGameService {
 
     private CraftovGameId uniqueGameId() {
         while (true) {
-            StringBuilder value = new StringBuilder(6);
-            for (int i = 0; i < 6; i++) {
+            // Admission, settlement and raid-report rows retain this id after
+            // the in-memory room is destroyed. A six-hex-digit id could be
+            // reused after restart and replay another raid's durable state.
+            // Thirty-two independent hex digits give a 128-bit id while
+            // preserving deterministic tests through the injected generator.
+            StringBuilder value = new StringBuilder(32);
+            for (int i = 0; i < 32; i++) {
                 value.append(HEX_DIGITS.charAt(deps.random().nextInt(HEX_DIGITS.length())));
             }
             CraftovGameId id = CraftovGameId.of(value.toString());

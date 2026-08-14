@@ -114,7 +114,7 @@ schema（默认 `public`），共享下列全部表。
 |---|---|---|---|
 | `transaction_id` | uuid | PK，不可更新 | 交易 ID（幂等防重） |
 | `player_id` | uuid | NOT NULL，不可更新 | 玩家 UUID |
-| `transaction_type` | varchar(255) | NOT NULL，不可更新 | 枚举 `TransactionType`：`LOOT_SELL` / `SHOP_BUY` / `SHOP_SELL` / `MARKET_BUY` / `MARKET_SELL` / `CRAFTOV_REWARD` 等 |
+| `transaction_type` | varchar(255) | NOT NULL，不可更新 | 枚举 `TransactionType`：`LOOT_SELL` / `SHOP_BUY` / `SHOP_SELL` / `MARKET_BUY` / `MARKET_SELL` / `CRAFTOV_ENTRY_FEE` / `CRAFTOV_REWARD` 等 |
 | `direction` | varchar(255) | NOT NULL，不可更新 | 枚举 `EconomyDirection`：`CREDIT` / `DEBIT` |
 | `currency` | varchar(255) | NOT NULL，不可更新 | 枚举 `Currency`：`COINS`（金币） |
 | `amount` | bigint | NOT NULL，不可更新 | 变动金额 |
@@ -222,6 +222,9 @@ schema（默认 `public`），共享下列全部表。
 - 已有行动战报库升级 AI 击杀统计时，再执行
   `database/migrations/20260814_raid_results_pve_kills.sql`；脚本会把旧记录回填为 0，
   并添加 `pve_kills <= kills` 约束。
+- 启用行动档位入场费前执行
+  `database/migrations/20260814_craftov_entry_fee.sql`；脚本会扩展 PostgreSQL 已生成的
+  `transaction_type` 枚举 CHECK，使其接受幂等入场审计 `CRAFTOV_ENTRY_FEE`。
 - 运行时开启 Hibernate 的 named-index validation；`validate` 模式会在唯一实例
   索引缺失时拒绝启动，不能只添加两列而漏掉索引。
 - `craftov_player_items` 上的仓库/出战栏写路径使用 `pg_advisory_xact_lock`

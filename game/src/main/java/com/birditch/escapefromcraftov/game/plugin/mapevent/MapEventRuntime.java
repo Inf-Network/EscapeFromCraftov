@@ -13,6 +13,7 @@ import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.time.TimeSource;
+import com.birditch.escapefromcraftov.game.plugin.extraction.EventCompletionLookup;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -26,7 +27,7 @@ import java.util.logging.Logger;
 import org.jspecify.annotations.Nullable;
 
 /** Schedules map events and exposes their authoritative per-game state. */
-public final class MapEventRuntime implements AutoCloseable {
+public final class MapEventRuntime implements AutoCloseable, EventCompletionLookup {
 
   public static final Duration UNLOADED_RETRY_DELAY = Duration.ofSeconds(5);
 
@@ -130,6 +131,12 @@ public final class MapEventRuntime implements AutoCloseable {
 
   public MapEventTracker.State state(CraftovGameId gameId, String eventId) {
     return tracker.state(gameId, eventId);
+  }
+
+  /** Extraction gates are fail-closed for every state except exact per-game completion. */
+  @Override
+  public boolean completed(CraftovGameId gameId, String eventId) {
+    return !closed && tracker.state(gameId, eventId) == MapEventTracker.State.COMPLETED;
   }
 
   public int attempts(CraftovGameId gameId, String eventId) {

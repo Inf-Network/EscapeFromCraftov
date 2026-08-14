@@ -129,13 +129,11 @@ class TeamExtractionRoutesTest {
   }
 
   @Test
-  void legacyPrimaryPrefersNearFixedExitOverFarConditionalExit() {
+  void eventCompletedExitIsNotTreatedAsAReliablePrimary() {
     ExtractionPointId fixedId = ExtractionPointId.of("fixed_gate");
     ExtractionPointId conditionalId = ExtractionPointId.of("conditional_gate");
-    ExtractionCondition condition = new ExtractionCondition() {
-      @Override public String describe() { return "测试条件"; }
-      @Override public boolean isSatisfied(ExtractionContext context) { return true; }
-    };
+    ExtractionCondition condition = new EventCompletedExtractionCondition(
+        "overseer", "高价值目标", (_, _) -> true);
     List<ExtractionPoint> points = List.of(
         point(fixedId),
         new ExtractionPoint(conditionalId, "条件远门", ExtractionType.CONDITIONAL,

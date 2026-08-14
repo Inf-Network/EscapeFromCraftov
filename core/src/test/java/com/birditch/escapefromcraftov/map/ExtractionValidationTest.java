@@ -82,4 +82,46 @@ class ExtractionValidationTest {
         issue.code().equals("route_group_without_reliable_exit")
             && issue.message().contains("players")));
   }
+
+  @Test
+  void eventCompletedRuleRejectsBlankMissingAndDisabledEvents() {
+    ManualCraftovMap source = ManualMapFixtures.validMap();
+    ExtractionDefinition timed = source.extractions().get(1);
+    ManualMapEditor editor = new ManualMapEditor();
+
+    ManualCraftovMap blank = editor.replace(source, withEventRule(timed, ""));
+    ManualCraftovMap missing = editor.replace(source, withEventRule(timed, "ghost_event"));
+    MapEventDefinition event = source.events().getFirst();
+    ManualCraftovMap disabled = editor.replace(source.withEvents(List.of(
+        new MapEventDefinition(event.id(), event.displayName(), event.type(), event.aiZoneId(),
+            event.cacheLootPointId(), event.startDelaySeconds(), event.healthMultiplier(),
+            event.damageMultiplier(), event.protectionSeconds(), false))),
+        withEventRule(timed, event.id()));
+
+    ManualMapValidator validator = new ManualMapValidator();
+    ManualMapValidationResult blankResult = validator.validate(blank,
+        ManualMapFixtures.references(), ManualMapValidationSettings.defaults());
+    ManualMapValidationResult missingResult = validator.validate(missing,
+        ManualMapFixtures.references(), ManualMapValidationSettings.defaults());
+    ManualMapValidationResult disabledResult = validator.validate(disabled,
+        ManualMapFixtures.references(), ManualMapValidationSettings.defaults());
+
+    assertTrue(blankResult.issues().stream().anyMatch(issue ->
+        issue.code().equals("extraction_event_invalid")
+            && timed.id().equals(issue.objectId())));
+    assertTrue(missingResult.issues().stream().anyMatch(issue ->
+        issue.code().equals("extraction_event_missing")
+            && timed.id().equals(issue.objectId())));
+    assertTrue(disabledResult.issues().stream().anyMatch(issue ->
+        issue.code().equals("extraction_event_missing")
+            && timed.id().equals(issue.objectId())));
+  }
+
+  private static ExtractionDefinition withEventRule(
+      ExtractionDefinition source, String eventId) {
+    return new ExtractionDefinition(source.id(), source.displayName(), source.bounds(),
+        source.extractionType(), source.durationSeconds(), source.conditionValue(),
+        source.enabled(), List.of(new ExtractionRuleDefinition.EventCompleted(eventId)),
+        source.routeScope());
+  }
 }

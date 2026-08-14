@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.event.game.CraftovStartedEvent;
+import com.birditch.escapefromcraftov.api.event.game.CraftovEndedEvent;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionPoint;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
@@ -164,6 +165,39 @@ class MapEventRuntimeTest {
         tracker.cacheAccess(GAME_ID, EVENT.cacheLootPointId(), player, 0).kind());
   }
 
+  @Test
+  void completionLookupIsIsolatedByGameAndClearsFailClosed() {
+    CraftovGameId otherId = CraftovGameId.of("event-game-other");
+    EventGame first = new EventGame(GAME_ID, List.of(), List.of(EVENT));
+    EventGame second = new EventGame(otherId, List.of(), List.of(EVENT));
+    MapEventRuntime runtime = new MapEventRuntime(new MultiGameService(List.of(first, second)),
+        new ManualScheduler(), new MutableTimeSource(0),
+        Logger.getLogger(MapEventRuntimeTest.class.getName()));
+    runtime.onCraftovStarted(new CraftovStartedEvent(GAME_ID));
+    runtime.onCraftovStarted(new CraftovStartedEvent(otherId));
+    MapEventTracker.Activation firstActivation = runtime.claimNextActivation().orElseThrow();
+    MapEventTracker.Activation secondActivation = runtime.claimNextActivation().orElseThrow();
+    UUID firstBoss = UUID.randomUUID();
+    UUID secondBoss = UUID.randomUUID();
+    assertTrue(runtime.spawned(firstActivation, firstBoss));
+    assertTrue(runtime.spawned(secondActivation, secondBoss));
+
+    assertFalse(runtime.completed(GAME_ID, EVENT.id()));
+    assertFalse(runtime.completed(otherId, EVENT.id()));
+    assertTrue(runtime.complete(GAME_ID, EVENT.id(), firstBoss, null).isPresent());
+    assertTrue(runtime.completed(GAME_ID, EVENT.id()));
+    assertFalse(runtime.completed(otherId, EVENT.id()));
+    assertTrue(runtime.complete(otherId, EVENT.id(), secondBoss, null).isPresent());
+    assertTrue(runtime.completed(otherId, EVENT.id()));
+
+    runtime.onCraftovEnded(new CraftovEndedEvent(GAME_ID,
+        new CraftovResult(GAME_ID, Instant.EPOCH, Set.of(), Set.of())));
+    assertFalse(runtime.completed(GAME_ID, EVENT.id()));
+    assertTrue(runtime.completed(otherId, EVENT.id()));
+    runtime.close();
+    assertFalse(runtime.completed(otherId, EVENT.id()));
+  }
+
   private static MapEventRuntime runtime(EventGame game, ManualScheduler scheduler,
       MutableTimeSource time) {
     return new MapEventRuntime(new SingleGameService(game), scheduler, time,
@@ -176,9 +210,12 @@ class MapEventRuntimeTest {
     return player;
   }
 
-  private record EventGame(List<CraftovPlayer> players,
+  private record EventGame(CraftovGameId gameId, List<CraftovPlayer> players,
                            List<CraftovMapEvent> mapEvents) implements CraftovGame {
-    @Override public CraftovGameId id() { return GAME_ID; }
+    private EventGame(List<CraftovPlayer> players, List<CraftovMapEvent> mapEvents) {
+      this(GAME_ID, players, mapEvents);
+    }
+    @Override public CraftovGameId id() { return gameId; }
     @Override public CraftovMapId mapId() { return CraftovMapId.of("test-flat"); }
     @Override public CraftovGameState state() { return CraftovGameState.RUNNING; }
     @Override public Collection<CraftovTeam> teams() { return List.of(); }
@@ -211,5 +248,30 @@ class MapEventRuntimeTest {
     }
     @Override public void destroyAll() {}
     @Override public int activeCount() { return 1; }
+  }
+
+  private record MultiGameService(List<EventGame> games) implements CraftovGameService {
+    @Override public Result<CraftovGame> create(CraftovMapId mapId) {
+      return Result.fail("unsupported");
+    }
+    @Override public Optional<CraftovGame> find(CraftovGameId id) {
+      return games.stream().filter(game -> game.id().equals(id))
+          .map(CraftovGame.class::cast).findFirst();
+    }
+    @Override public Collection<CraftovGame> all() { return List.copyOf(games); }
+    @Override public Result<CraftovGame> join(CraftovGameId id, UUID playerId) {
+      return Result.fail("unsupported");
+    }
+    @Override public Result<CraftovGame> leave(UUID playerId) {
+      return Result.fail("unsupported");
+    }
+    @Override public Result<CraftovGame> start(CraftovGameId id) {
+      return Result.fail("unsupported");
+    }
+    @Override public Result<CraftovGame> stop(CraftovGameId id) {
+      return Result.fail("unsupported");
+    }
+    @Override public void destroyAll() {}
+    @Override public int activeCount() { return games.size(); }
   }
 }

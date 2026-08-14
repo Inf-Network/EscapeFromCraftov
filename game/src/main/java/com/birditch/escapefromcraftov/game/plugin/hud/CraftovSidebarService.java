@@ -19,6 +19,7 @@ import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapService;
 import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
+import com.birditch.escapefromcraftov.game.plugin.extraction.EventCompletedExtractionCondition;
 import com.birditch.escapefromcraftov.game.plugin.listener.GameCombatListener;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartStatus;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
@@ -31,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
@@ -234,8 +236,10 @@ public final class CraftovSidebarService implements AutoCloseable {
     String assignedExits = extractionRoutes.visibleAreas(game, player.getUniqueId()).stream()
         .map(area -> area.displayName()).distinct()
         .collect(java.util.stream.Collectors.joining(" / "));
+    String pendingEvents = pendingExtractionEvents(game, player.getUniqueId());
     String extraction = extractionSession == null
-        ? assignedExits.isBlank() ? "寻找撤离点" : "本队出口 · " + assignedExits
+        ? (assignedExits.isBlank() ? "寻找撤离点" : "本队出口 · " + assignedExits)
+            + (pendingEvents.isBlank() ? "" : " · " + pendingEvents)
         : extractionSession.state() == ExtractionState.SETTLING ? "物资结算中 · 请稍候"
         : "撤离中 · " + extractionSession.pointId().value() + " · "
             + extractionSeconds(game, extractionSession) + "s";
@@ -263,6 +267,23 @@ public final class CraftovSidebarService implements AutoCloseable {
     update(player, lines);
     player.sendActionBar(text(extraction, NamedTextColor.AQUA));
     updateBossBar(player, game);
+  }
+
+  private String pendingExtractionEvents(CraftovGame game, UUID playerId) {
+    Set<com.birditch.escapefromcraftov.api.extraction.ExtractionPointId> visible =
+        extractionRoutes.visibleAreas(game, playerId).stream()
+            .map(value -> value.pointId())
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    com.birditch.escapefromcraftov.api.extraction.ExtractionContext context =
+        new com.birditch.escapefromcraftov.api.extraction.ExtractionContext(playerId, game.id());
+    return game.extractionPoints().stream().filter(point -> visible.contains(point.id()))
+        .flatMap(point -> point.conditions().stream())
+        .filter(EventCompletedExtractionCondition.class::isInstance)
+        .map(EventCompletedExtractionCondition.class::cast)
+        .filter(condition -> !condition.isSatisfied(context))
+        .map(EventCompletedExtractionCondition::displayName).distinct()
+        .map(name -> "需完成 " + name)
+        .collect(java.util.stream.Collectors.joining(" / "));
   }
 
   private static String modeName(CraftovGame game) {

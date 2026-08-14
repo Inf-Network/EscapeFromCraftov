@@ -23,7 +23,8 @@ public sealed interface ExtractionRuleDefinition {
     RANDOM_OPEN,
     NO_BACKPACK,
     MAX_WEIGHT,
-    CAPACITY
+    CAPACITY,
+    EVENT_COMPLETED
   }
 
   /** A lever at the authored source-world coordinate must be pulled once per raid. */
@@ -77,5 +78,15 @@ public sealed interface ExtractionRuleDefinition {
     }
 
     @Override public RuleType type() { return RuleType.CAPACITY; }
+  }
+
+  /** One enabled map event must have reached COMPLETED in this exact raid. */
+  record EventCompleted(String eventId) implements ExtractionRuleDefinition {
+
+    public EventCompleted {
+      Preconditions.checkNotNull(eventId, "eventId");
+    }
+
+    @Override public RuleType type() { return RuleType.EVENT_COMPLETED; }
   }
 }

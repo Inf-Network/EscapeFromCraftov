@@ -3,12 +3,17 @@ package com.birditch.escapefromcraftov.game.plugin.command;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.birditch.escapefromcraftov.map.MapValidationIssue;
 import com.birditch.escapefromcraftov.map.MapValidationSeverity;
+import com.birditch.escapefromcraftov.map.ManualCraftovMap;
+import com.birditch.escapefromcraftov.map.MapEventDefinition;
+import com.birditch.escapefromcraftov.map.MapEventType;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** Guards command shortcuts that are intentionally executable before optional arguments. */
@@ -38,5 +43,24 @@ class EditorCommandBoundaryTest {
         "/craftov editor lootzone create <id> must execute with the default table");
     assertTrue(java.contains("table == null ? defaultLootTable(context) : table"),
         "the loot-zone factory must resolve the registered default LootTable");
+  }
+
+  @Test
+  void eventRuleAcceptsAndSuggestsOnlyEnabledEventsFromTheCurrentDraft() {
+    ManualCraftovMap map = ManualCraftovMap.create("test", "world").withEvents(List.of(
+        event("enabled_target", true), event("disabled_target", false)));
+
+    assertEquals(List.of("enabled_target"), EditorCommands.enabledEventIds(map));
+    assertEquals("enabled_target",
+        EditorCommands.enabledEventRule(map, "enabled_target").eventId());
+    assertThrows(IllegalArgumentException.class,
+        () -> EditorCommands.enabledEventRule(map, "disabled_target"));
+    assertThrows(IllegalArgumentException.class,
+        () -> EditorCommands.enabledEventRule(map, "missing_target"));
+  }
+
+  private static MapEventDefinition event(String id, boolean enabled) {
+    return new MapEventDefinition(id, id, MapEventType.HIGH_VALUE_TARGET,
+        "ai_zone", "loot_cache", 0, 1, 1, 0, enabled);
   }
 }

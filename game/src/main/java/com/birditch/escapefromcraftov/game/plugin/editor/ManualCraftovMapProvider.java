@@ -30,6 +30,7 @@ import com.birditch.escapefromcraftov.core.service.ServiceRegistry;
 import com.birditch.escapefromcraftov.game.CraftovMapProvider;
 import com.birditch.escapefromcraftov.game.CraftovMapRuntime;
 import com.birditch.escapefromcraftov.game.plugin.extraction.BukkitCarriedInventoryLookup;
+import com.birditch.escapefromcraftov.game.plugin.extraction.EventCompletionLookup;
 import com.birditch.escapefromcraftov.game.plugin.extraction.ExtractionConditionCompiler;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
@@ -38,6 +39,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
@@ -73,12 +75,14 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
     Preconditions.checkNotNull(services, "services");
     // The provider is constructed before ItemModule initializes. Resolve the
     // registry lazily when a live condition inspects a player, not at bootstrap.
+    EventCompletionLookup events = services.find(EventCompletionLookup.class)
+        .orElse(EventCompletionLookup.DENY_ALL);
     return new ExtractionConditionCompiler(new Random(), playerId -> {
       ItemRegistry items = services.require(ItemRegistry.class);
       return new BukkitCarriedInventoryLookup(new CraftovItemStacks(items), items,
           id -> services.find(SecureContainerController.class)
               .map(secure -> secure.contents(id)).orElse(List.of())).find(playerId);
-    });
+    }, events);
   }
 
   @Override
@@ -111,7 +115,12 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
         .toList();
     List<ExtractionDefinition> enabledExtractions = map.extractions().stream()
         .filter(ExtractionDefinition::enabled).toList();
-    List<ExtractionPoint> points = enabledExtractions.stream().map(this::point).toList();
+    Map<String, String> eventDisplayNames = map.events().stream()
+        .filter(value -> value.enabled())
+        .collect(java.util.stream.Collectors.toUnmodifiableMap(
+            value -> value.id(), value -> value.displayName()));
+    List<ExtractionPoint> points = enabledExtractions.stream()
+        .map(value -> point(value, eventDisplayNames)).toList();
     List<CraftovExtractionArea> areas = enabledExtractions.stream().map(value ->
         new CraftovExtractionArea(pointId(value), value.displayName(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
@@ -146,7 +155,8 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
     }
   }
 
-  private ExtractionPoint point(ExtractionDefinition value) {
+  private ExtractionPoint point(
+      ExtractionDefinition value, Map<String, String> eventDisplayNames) {
     ExtractionType legacyType = switch (value.extractionType()) {
       case NORMAL -> ExtractionType.NORMAL;
       case ITEM_REQUIRED -> ExtractionType.ITEM_REQUIRED;
@@ -156,7 +166,7 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
     ExtractionType runtimeType = value.conditions().isEmpty() ? legacyType
         : ExtractionType.CONDITIONAL;
     List<ExtractionCondition> conditions = conditionCompiler.compile(value,
-        legacyConditions(value));
+        legacyConditions(value), eventDisplayNames);
     return new ExtractionPoint(pointId(value), value.displayName(), runtimeType,
         Duration.ofSeconds(value.durationSeconds()), conditions, ExtractionState.AVAILABLE);
   }

@@ -328,7 +328,26 @@ events:
 
 Boss 被合法击杀后，事件以 first-wins 完成并解锁 `cache-loot-point-id` 指向的现有搜索缓存，不按普通刷新规则重生。服务器冻结击杀者当时的小队 UUID，在 `protection-seconds` 内只允许该队搜索；没有合法击杀者时立即向同局玩家公开。缓存会在交互、开始搜索、恢复、展示、打开、翻页、拿取和物资源提交时逐层复核；事件未完成、失败或状态缺失都按锁定处理。所有事件提示只发送给同一局玩家。
 
-当前没有创建或修改事件的游戏内编辑器命令/菜单，必须直接维护 `map.yml`。修改时不要同时保留未保存的编辑草稿，并在 Game 重新载入地图后执行验证再启用。撤离条件也尚不支持 `EVENT_COMPLETED`，因此现在不能要求玩家先完成事件才能使用某个撤离点。
+当前没有创建或修改事件本身的游戏内编辑器命令/菜单，事件仍须直接维护 `map.yml`。撤离点可以使用实时复核的 `EVENT_COMPLETED` 条件：
+
+```yaml
+extractions:
+  - id: warehouse_event_exit
+    enabled: true
+    display-name: 仓库事件撤离点
+    bounds: {min-x: 80, min-y: -60, min-z: 68, max-x: 83, max-y: -58, max-z: 71}
+    type: NORMAL
+    duration-seconds: 10
+    conditions:
+      - type: EVENT_COMPLETED
+        event-id: warehouse_boss
+    route-global: true
+    eligible-spawn-groups: []
+```
+
+也可选中撤离点后执行 `/craftov editor extraction rule event <事件ID>`；补全与执行都只接受当前草稿中已启用的事件。服务器会在开始撤离和倒计时结束时分别检查同一局的事件状态，只有 `COMPLETED` 才放行；事件缺失、失败、尚未完成、对局已结束或运行时已关闭都会拒绝。该实时条件先于名额占用和付费授权执行，因此倒计时期间条件失效不会扣费。Sidebar 会保留本队普通出口，同时追加未完成事件提示。事件条件出口不算出生路线的可靠保底，每个出生组仍须配置至少一个无条件 `NORMAL` 出口。
+
+直接修改事件 YAML 时不要同时保留未保存的编辑草稿，并在 Game 重新载入地图后执行验证再启用。
 
 ### 3.5 编辑器工具栏和预览
 
@@ -670,9 +689,9 @@ git diff --check
 ### 4.8 当前限制与下一阶段
 
 - 正式地图必须由管理员人工配置；运行时不提供自动扫描或自动生成点位命令。
-- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；`HIGH_VALUE_TARGET` Boss 事件已可通过 `map.yml` 使用，但事件编辑器命令、菜单和 `EVENT_COMPLETED` 撤离条件尚未实现。
+- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件已可使用，但事件对象本身仍需直接维护 `map.yml`。
 - 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、局内二维携行整理、撤离入库和死亡损失已形成闭环。二维网格、隔舱、占格和原子转移已经接入 Paper 运行时与 `/craftov carry`；格坐标/朝向当前只由单局内存权威维护，跨局结算仍按唯一 `ItemInstance`，不持久化菜单排列。
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是高价值目标事件的游戏内编辑器、`EVENT_COMPLETED` 撤离条件和基于现有 AI Zone 的复杂巡逻；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是高价值目标事件的游戏内创建/编辑界面和基于现有 AI Zone 的复杂巡逻；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

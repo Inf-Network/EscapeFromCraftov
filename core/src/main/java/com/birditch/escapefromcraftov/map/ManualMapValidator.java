@@ -222,6 +222,10 @@ public final class ManualMapValidator {
 
   private static void validateReferences(ManualCraftovMap map, ManualMapReferences references,
       List<MapValidationIssue> issues) {
+    Map<String, MapEventDefinition> enabledEvents = new HashMap<>();
+    for (MapEventDefinition event : map.events()) {
+      if (event.enabled()) enabledEvents.putIfAbsent(event.id(), event);
+    }
     for (LootPointDefinition loot : map.lootPoints()) {
       if (loot.enabled() && !references.lootTables().contains(loot.lootTable())) {
         error(issues, "loot_table_missing", loot.id(),
@@ -260,6 +264,16 @@ public final class ManualMapValidator {
                 "撤离点重复引用拉闸 ID: " + lever.switchId());
           }
           continue;
+        }
+        if (rule instanceof ExtractionRuleDefinition.EventCompleted event) {
+          if (event.eventId().isBlank()
+              || !event.eventId().matches("[a-z0-9_]+")) {
+            error(issues, "extraction_event_invalid", extraction.id(),
+                "撤离点引用的地图事件 ID 无效: " + event.eventId());
+          } else if (!enabledEvents.containsKey(event.eventId())) {
+            error(issues, "extraction_event_missing", extraction.id(),
+                "撤离点引用的启用地图事件不存在: " + event.eventId());
+          }
         }
         if (!unique.add(rule.type())) {
           error(issues, "extraction_condition_duplicate", extraction.id(),

@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -240,6 +241,44 @@ class DefaultExtractionServiceTest {
             assertTrue(published.isEmpty());
             assertEquals(1, authorizationFailed.size());
             assertEquals(0, service.activeCount());
+        }
+
+        @Test
+        void liveGateIsRecheckedBeforeCapacityAndPaidAuthorization() {
+            ExtractionPointId eventExit = ExtractionPointId.of("event_gate");
+            AtomicBoolean eventCompleted = new AtomicBoolean(true);
+            AtomicInteger charges = new AtomicInteger();
+            ExtractionCondition liveEvent = new ExtractionCondition() {
+                @Override public String describe() { return "需完成高价值目标"; }
+                @Override public boolean isSatisfied(ExtractionContext context) {
+                    return eventCompleted.get();
+                }
+            };
+            CapacityExtractionCondition capacity = new CapacityExtractionCondition(1);
+            ExtractionCondition paid = new ExtractionCondition() {
+                @Override public String describe() { return "付费撤离"; }
+                @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+                @Override public CompletableFuture<Boolean> authorize(ExtractionContext context) {
+                    charges.incrementAndGet();
+                    return CompletableFuture.completedFuture(true);
+                }
+            };
+            game.addExtractionPoint(point(eventExit, List.of(liveEvent, capacity, paid),
+                    ExtractionState.AVAILABLE));
+
+            ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, eventExit)
+                    .orElseThrow(IllegalStateException::new);
+            assertEquals(0, capacity.remainingSlots(GAME_ID));
+
+            // Models the authoritative event runtime being cleared/unbound before the timer.
+            eventCompleted.set(false);
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(ExtractionState.FAILED, session.state());
+            assertEquals(1, capacity.remainingSlots(GAME_ID));
+            assertEquals(0, charges.get());
+            assertEquals(1, authorizationFailed.size());
+            assertTrue(published.isEmpty());
         }
 
         @Test

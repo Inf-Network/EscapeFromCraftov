@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.extraction;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class ExtractionConditionCompilerTest {
@@ -67,6 +69,78 @@ class ExtractionConditionCompilerTest {
 
     assertFalse(weightPermit.authorize().join());
     assertFalse(backpackPermit.authorize().join());
+  }
+
+  @Test
+  void eventCompletionIsExactPerGameAndRecheckedByItsPermit() {
+    CraftovGameId otherGame = CraftovGameId.of("condition-other");
+    AtomicReference<com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State>
+        state = new AtomicReference<>(
+            com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.ABSENT);
+    EventCompletionLookup events = (gameId, eventId) -> gameId.equals(GAME)
+        && eventId.equals("overseer")
+        && state.get()
+            == com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.COMPLETED;
+    ExtractionDefinition definition = definition(ManualExtractionType.NORMAL,
+        List.of(new ExtractionRuleDefinition.EventCompleted("overseer")));
+    EventCompletedExtractionCondition condition = (EventCompletedExtractionCondition)
+        new ExtractionConditionCompiler(new java.util.Random(1), _ -> Optional.empty(), events)
+            .compile(definition, List.of(), java.util.Map.of("overseer", "工厂监工"))
+            .getFirst();
+
+    for (var incomplete : List.of(
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.ABSENT,
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.PENDING,
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.READY,
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.SPAWNING,
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.ACTIVE,
+        com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.FAILED)) {
+      state.set(incomplete);
+      assertFalse(condition.isSatisfied(CONTEXT));
+    }
+    state.set(com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.COMPLETED);
+    var permit = condition.acquire(CONTEXT).orElseThrow();
+    assertTrue(permit.authorize().join());
+    assertFalse(condition.isSatisfied(new ExtractionContext(PLAYER, otherGame)));
+    state.set(com.birditch.escapefromcraftov.game.plugin.mapevent.MapEventTracker.State.ABSENT);
+    assertFalse(permit.authorize().join());
+    assertTrue(condition.describe().contains("工厂监工"));
+  }
+
+  @Test
+  void eventGateCompilesBeforeCapacityAndPaidEvenWhenAuthoredAfterCapacity() {
+    AtomicInteger paidAuthorizations = new AtomicInteger();
+    ExtractionCondition paid = new ExtractionCondition() {
+      @Override public String describe() { return "paid"; }
+      @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+      @Override public java.util.concurrent.CompletableFuture<Boolean> authorize(
+          ExtractionContext context) {
+        paidAuthorizations.incrementAndGet();
+        return java.util.concurrent.CompletableFuture.completedFuture(true);
+      }
+    };
+    ExtractionDefinition definition = definition(ManualExtractionType.PAID, List.of(
+        new ExtractionRuleDefinition.Capacity(1),
+        new ExtractionRuleDefinition.EventCompleted("overseer")));
+
+    List<ExtractionCondition> compiled = new ExtractionConditionCompiler(
+        new java.util.Random(1), _ -> Optional.empty(), (_, _) -> false)
+        .compile(definition, List.of(paid), java.util.Map.of("overseer", "工厂监工"));
+
+    assertTrue(compiled.get(0) instanceof EventCompletedExtractionCondition);
+    CapacityExtractionCondition capacity =
+        (CapacityExtractionCondition) compiled.get(1);
+    assertSame(paid, compiled.get(2));
+    assertTrue(compiled.getFirst().acquire(CONTEXT).isEmpty());
+    assertEquals(1, capacity.remainingSlots(GAME));
+    assertEquals(0, paidAuthorizations.get());
+  }
+
+  private static ExtractionDefinition definition(
+      ManualExtractionType type, List<ExtractionRuleDefinition> rules) {
+    return new ExtractionDefinition("elevator", "Elevator",
+        new CuboidBounds(0, 60, 0, 5, 65, 5), type, 10,
+        type == ManualExtractionType.PAID ? "500" : null, true, rules);
   }
 
   private static ExtractionCondition condition(boolean allowed) {

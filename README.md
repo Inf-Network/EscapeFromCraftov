@@ -90,7 +90,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 | 虚拟 Loot 搜索与撤离结算 | 完成 | 共享一次性 Loot GUI，成功撤离后入仓 |
 | 局内二维携行与整理 | 完成 | 口袋/胸挂/背包分区、占格、隔舱、锁定格、原子移动和受限旋转；`/craftov carry` 打开 |
 | AI 战斗 | 完成（基础） | AI Zone 原生生物、安全生成、难度缩放、装备、奖励与有界行为 |
-| 高价值目标地图事件 | 完成（YAML） | 延迟生成 Boss、事件专属 AI Zone、击杀解锁现有搜索缓存和小队限时优先权；事件编辑器命令与 `EVENT_COMPLETED` 撤离条件尚未实现 |
+| 高价值目标地图事件 | 完成（YAML） | 延迟生成 Boss、事件专属 AI Zone、击杀解锁缓存、小队限时优先权及 `EVENT_COMPLETED` 撤离；事件对象编辑器尚未实现 |
 | Minecraft PvP 结算与队伍规则 | 完成 | 原生伤害边界、友伤配置、击杀归属和死亡结算 |
 | 动态 Sidebar / BossBar / Action Bar | 完成 | 编辑器和行动中使用个人稳定 HUD |
 | 剑/斧/弓/弩/盾牌物品分类 | 完成 | 默认领域物品与 LootTable 已使用 Minecraft 语义 |
@@ -663,7 +663,26 @@ events:
 
 事件关联的是现有搜索缓存，不会创建第二套容器。Boss 死亡采用 first-wins，只结算一次且不会普通重生；完成时冻结合法击杀者当时的小队 UUID，并在 `protection-seconds` 内只允许该队搜索，之后向同局玩家公开。没有合法击杀者时立即公开。交互、搜索、恢复、展示、打开、翻页、拿取和物资源提交都会重新检查事件状态；事件未完成、失败或状态缺失时缓存一律保持锁定。
 
-旧版本位于 `maps/<map-id>/revisions/`。普通地图对象仍应使用游戏内编辑器；高价值目标事件目前没有编辑器命令或菜单，必须直接维护 `map.yml`。撤离系统当前也没有 `EVENT_COMPLETED` 条件，不能把“完成指定事件”配置为撤离前置条件。
+撤离点可用 `EVENT_COMPLETED` 将指定事件设为前置条件：
+
+```yaml
+extractions:
+  - id: warehouse_event_exit
+    enabled: true
+    display-name: 仓库事件撤离点
+    bounds: {min-x: 80, min-y: -60, min-z: 68, max-x: 83, max-y: -58, max-z: 71}
+    type: NORMAL
+    duration-seconds: 10
+    conditions:
+      - type: EVENT_COMPLETED
+        event-id: warehouse_boss
+    route-global: true
+    eligible-spawn-groups: []
+```
+
+选中撤离点后也可执行 `/craftov editor extraction rule event <事件ID>`；补全和执行均只接受当前草稿内已启用的事件。条件会在撤离开始和倒计时结束时实时复核同一局状态，只有 `COMPLETED` 放行；缺失、失败、未完成、已清理或跨局状态全部拒绝。该条件先于名额和付费授权执行，失效时不会先扣款。Sidebar 保留本队普通出口并追加事件锁定提示。带事件条件的出口不是路线保底，地图仍需为每个出生组配置无条件 `NORMAL` 出口。
+
+旧版本位于 `maps/<map-id>/revisions/`。普通地图对象仍应使用游戏内编辑器；高价值目标事件对象目前没有创建/修改命令或菜单，仍须直接维护 `map.yml`。
 
 ## PostgreSQL、Hibernate 与 HikariCP
 
@@ -811,9 +830,9 @@ Domain 不 import Bukkit 或第三方插件。Paper 世界访问、PDC、粒子�
 - 只正式支持 Cuboid；WorldEdit Polygon 会变成包围盒。
 - DecentHolograms 会标出预览半径内的地图对象，但默认每位管理员最多同时显示 32 个；选中和错误对象优先，避免 200+ Loot 地图产生无上限实体压力。
 - 地图必须由管理员人工放置点位和划分区域；当前不提供自动扫描或自动生成正式地图配置。
-- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件已可通过 `map.yml` 使用，但事件编辑器命令、菜单和 `EVENT_COMPLETED` 撤离条件尚未实现。
+- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件已可使用，但事件对象本身仍须直接维护 `map.yml`。
 - Loot Point 已提供右键搜索与共享容器 UI。
 - 仓库、出战栏、局内二维携行整理、装备/物资损失和撤离结算已经闭环。二维位置当前是单局内存权威，跨局结算仍以唯一 `ItemInstance` 为单位。
 - 未在本仓库内运行五个硬依赖插件的完整 Paper 交互服，只验证了公开 API 编译与依赖解析；正式部署仍应检查每个插件的实际版本和启动日志。
 
-下一阶段最值得优先完成：**高价值目标事件的游戏内编辑器与 `EVENT_COMPLETED` 撤离条件**、基于现有 AI Zone 的复杂巡逻，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。
+下一阶段最值得优先完成：**高价值目标事件的游戏内创建/编辑界面**、基于现有 AI Zone 的复杂巡逻，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。

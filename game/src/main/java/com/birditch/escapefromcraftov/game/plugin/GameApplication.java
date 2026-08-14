@@ -73,6 +73,8 @@ import com.birditch.escapefromcraftov.game.plugin.editor.EditorWandListener;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorConfigMapper;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorSettings;
 import com.birditch.escapefromcraftov.game.plugin.extraction.ExtractionSwitchListener;
+import com.birditch.escapefromcraftov.game.plugin.extraction.BindableEventCompletionLookup;
+import com.birditch.escapefromcraftov.game.plugin.extraction.EventCompletionLookup;
 import com.birditch.escapefromcraftov.game.plugin.extraction.RouteAwareExtractionService;
 import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
 import com.birditch.escapefromcraftov.game.plugin.integration.IntegrationManager;
@@ -171,6 +173,7 @@ public final class GameApplication {
   private @Nullable RaidResultRuntime raidReports;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable MapEventRuntime mapEventRuntime;
+  private @Nullable BindableEventCompletionLookup eventCompletionLookup;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable RaidCarryController raidCarry;
   private @Nullable RaidCarryMenuController raidCarryMenus;
@@ -478,6 +481,9 @@ public final class GameApplication {
     PaperCraftovScheduler scheduler = new PaperCraftovScheduler(plugin);
     SimpleEventBus eventBus = new SimpleEventBus(logger);
     ServiceRegistry registry = new ServiceRegistry();
+    BindableEventCompletionLookup eventLookup = new BindableEventCompletionLookup();
+    registry.register(EventCompletionLookup.class, eventLookup);
+    eventCompletionLookup = eventLookup;
     ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     Database db = createDatabase(databaseConfig);
     services = registry;
@@ -683,6 +689,11 @@ public final class GameApplication {
     MapEventRuntime eventRuntime = new MapEventRuntime(
         games, scheduler, new SystemTimeSource(), logger);
     mapEventRuntime = eventRuntime;
+    BindableEventCompletionLookup eventLookup = eventCompletionLookup;
+    if (eventLookup == null) {
+      throw new IllegalStateException("地图事件撤离查询门面未初始化");
+    }
+    eventLookup.bind(eventRuntime);
     // Register before any start coordinator timer and before AI so zero-delay
     // event state exists when both consume the same CraftovStartedEvent.
     mapEventSubscription = context.eventBus().register(eventRuntime);
@@ -1001,6 +1012,8 @@ public final class GameApplication {
       mapEventSubscription = null;
     }
     if (mapEventRuntime != null) {
+      BindableEventCompletionLookup eventLookup = eventCompletionLookup;
+      if (eventLookup != null) eventLookup.unbind();
       mapEventRuntime.close();
       mapEventRuntime = null;
     }

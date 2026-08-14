@@ -48,6 +48,8 @@ class ManualMapStoreTest {
         Files.readString(temporaryDirectory.resolve("factory/map.yml")));
     assertTrue(yaml.contains("events:"));
     assertTrue(yaml.contains("cache-loot-point-id: loot_a"));
+    assertTrue(yaml.contains("type: EVENT_COMPLETED"));
+    assertTrue(yaml.contains("event-id: factory_overseer"));
   }
 
   @Test
@@ -235,7 +237,8 @@ class ManualMapStoreTest {
                 new ExtractionRuleDefinition.RandomOpen(0.5),
                 new ExtractionRuleDefinition.NoBackpack(),
                 new ExtractionRuleDefinition.MaxWeight(30_000),
-                new ExtractionRuleDefinition.Capacity(3)),
+                new ExtractionRuleDefinition.Capacity(3),
+                new ExtractionRuleDefinition.EventCompleted("factory_overseer")),
             new com.birditch.escapefromcraftov.map.ExtractionRouteScope(
                 false, List.of("north")))),
         List.of(new PoiDefinition("central_factory", "Central Factory",

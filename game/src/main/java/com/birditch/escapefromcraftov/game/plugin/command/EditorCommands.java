@@ -452,8 +452,8 @@ final class EditorCommands {
         .then(Commands.literal("clear").executes(ctx -> player(ctx.getSource().getSender(), value ->
             replaceExtractionRules(context, value, List.of()))))
         .then(Commands.literal("remove").then(Commands.argument("rule", StringArgumentType.word())
-            .suggests((_, builder) -> suggest(builder, "random", "no_backpack", "max_weight",
-                "capacity", "switch_id"))
+            .suggests((ctx, builder) -> suggestExtractionRules(
+                context, ctx.getSource().getSender(), builder))
             .executes(ctx -> player(ctx.getSource().getSender(), value -> removeExtractionRule(
                 context, value, StringArgumentType.getString(ctx, "rule"))))))
         .then(Commands.literal("switch").then(Commands.argument("switch-id",
@@ -476,6 +476,12 @@ final class EditorCommands {
             .executes(ctx -> player(ctx.getSource().getSender(), value -> upsertExtractionRule(
                 context, value, new ExtractionRuleDefinition.MaxWeight(
                     LongArgumentType.getLong(ctx, "grams")))))))
+        .then(Commands.literal("event").then(Commands.argument("event-id",
+            StringArgumentType.word()).suggests((ctx, builder) -> suggestEnabledEvents(
+                context, ctx.getSource().getSender(), builder))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> upsertExtractionRule(
+                context, value, enabledEventRule(session(context, value).draft(),
+                    StringArgumentType.getString(ctx, "event-id")))))))
         .then(Commands.literal("capacity").then(Commands.argument("slots",
             IntegerArgumentType.integer(1)).suggests((_, builder) -> suggest(builder,
                 "1", "2", "3", "4", "6"))
@@ -974,6 +980,9 @@ final class EditorCommands {
       case NO_BACKPACK -> requested.equals("no_backpack") || requested.equals("drop_backpack");
       case MAX_WEIGHT -> requested.equals("weight") || requested.equals("max_weight");
       case CAPACITY -> requested.equals("slots") || requested.equals("capacity");
+      case EVENT_COMPLETED -> rule instanceof ExtractionRuleDefinition.EventCompleted event
+          && (requested.equals("event") || requested.equals("event_completed")
+              || event.eventId().equalsIgnoreCase(requested));
       case SWITCH_ACTIVATED -> false;
     };
   }
@@ -1018,6 +1027,7 @@ final class EditorCommands {
       case ExtractionRuleDefinition.NoBackpack _ -> "必须丢弃背包";
       case ExtractionRuleDefinition.MaxWeight value -> "限重 " + value.maxWeightGrams() + "g";
       case ExtractionRuleDefinition.Capacity value -> "本局名额 " + value.slots();
+      case ExtractionRuleDefinition.EventCompleted value -> "完成地图事件 " + value.eventId();
     };
   }
 
@@ -1508,6 +1518,51 @@ final class EditorCommands {
               .forEach(builder::suggest));
     }
     return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestEnabledEvents(CommandContext context, CommandSender sender,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+          enabledEventIds(session.draft()).forEach(builder::suggest));
+    }
+    return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestExtractionRules(CommandContext context, CommandSender sender,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    for (String value : List.of("random", "no_backpack", "max_weight", "capacity",
+        "event", "switch_id")) {
+      builder.suggest(value);
+    }
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session -> {
+        session.draft().extractions().stream()
+            .flatMap(value -> value.conditions().stream())
+            .filter(ExtractionRuleDefinition.EventCompleted.class::isInstance)
+            .map(ExtractionRuleDefinition.EventCompleted.class::cast)
+            .map(ExtractionRuleDefinition.EventCompleted::eventId).distinct()
+            .forEach(builder::suggest);
+      });
+    }
+    return builder.buildFuture();
+  }
+
+  static List<String> enabledEventIds(ManualCraftovMap map) {
+    return map.events().stream().filter(value -> value.enabled())
+        .map(value -> value.id()).toList();
+  }
+
+  static ExtractionRuleDefinition.EventCompleted enabledEventRule(
+      ManualCraftovMap map, String eventId) {
+    boolean enabled = map.events().stream()
+        .anyMatch(value -> value.enabled() && value.id().equals(eventId));
+    if (!enabled) {
+      throw new IllegalArgumentException("启用的地图事件不存在: " + eventId);
+    }
+    return new ExtractionRuleDefinition.EventCompleted(eventId);
   }
 
   private static Component objectLink(MapObject object) {

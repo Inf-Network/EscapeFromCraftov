@@ -384,6 +384,8 @@ public final class ManualMapStore {
       case ExtractionRuleDefinition.MaxWeight rule ->
           result.put("max-weight-grams", rule.maxWeightGrams());
       case ExtractionRuleDefinition.Capacity rule -> result.put("slots", rule.slots());
+      case ExtractionRuleDefinition.EventCompleted rule ->
+          result.put("event-id", rule.eventId());
     }
     return result;
   }
@@ -469,6 +471,8 @@ public final class ManualMapStore {
           new ExtractionRuleDefinition.MaxWeight(number(map, "max-weight-grams").longValue());
       case "SLOTS", "CAPACITY" ->
           new ExtractionRuleDefinition.Capacity(number(map, "slots").intValue());
+      case "EVENT", "EVENT_COMPLETED" ->
+          new ExtractionRuleDefinition.EventCompleted(string(map, "event-id"));
       default -> throw new IllegalArgumentException("未知撤离条件类型: " + type);
     };
   }

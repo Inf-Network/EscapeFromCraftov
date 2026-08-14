@@ -200,6 +200,30 @@ death-crate:
   too-far: "<yellow>你离阵亡箱太远，界面已关闭。</yellow>"
   deposit-blocked: "<yellow>阵亡箱只能取出物品，不能存入、Shift 点击或拖入。</yellow>"
 
+# 组队行动倒地与救援。每名玩家每局最多触发一次倒地；无人可救时直接阵亡。
+downed:
+  entered-title: "<red><bold>重伤倒地</bold></red>"
+  entered-subtitle: "<gray>等待队友救援，流血结束后将阵亡</gray>"
+  entered: "<yellow>你已倒地。</yellow> <gray>队友需在 3 格内持续蹲下并右键救援 5 秒。</gray>"
+  bleed-bar: "<red>流血中</red> <dark_gray>·</dark_gray> <yellow><seconds> 秒</yellow>"
+  action-blocked: "<red>重伤状态下无法攻击、交互或操作物品。</red>"
+  teammate-downed: "<red>队友 <yellow><player></yellow> 已倒地！</red> <gray>靠近后持续蹲下并右键救援。</gray>"
+  rescue-not-allowed: "<red>你只能救援本局仍在行动的同队成员。</red>"
+  rescue-sneak: "<yellow>请先持续蹲下，再右键倒地队友开始救援。</yellow>"
+  rescue-too-far: "<yellow>请靠近到倒地队友 3 格以内。</yellow>"
+  rescue-already: "<yellow>已有其他队友正在救援该玩家。</yellow>"
+  rescue-in-progress: "<gray>救援正在进行，请保持蹲下并留在目标身边。</gray>"
+  rescue-bar: "<green>正在救援 <yellow><player></yellow></green>"
+  rescue-started: "<green>开始救援 <yellow><player></yellow>。</green> <gray>保持蹲下 5 秒；移动过远或受伤会中断。</gray>"
+  rescue-receiving: "<green>队友 <yellow><player></yellow> 正在救援你。</green>"
+  rescue-cancelled: "<red>救援已中断。</red>"
+  rescue-cancelled-target: "<yellow>队友的救援已中断。</yellow>"
+  revived-title: "<green><bold>救援成功</bold></green>"
+  revived-subtitle: "<gray><player> 已将你救起</gray>"
+  revived-target: "<green>你已被 <yellow><player></yellow> 救起，恢复了 40% 生命并获得短暂无敌。</green>"
+  revived-rescuer: "<green>你成功救起了 <yellow><player></yellow>。</green>"
+  teammate-revived: "<green>队友 <yellow><player></yellow> 已恢复行动能力。</green>"
+
 # 三格行动安全箱。物品存入后离开普通背包，阵亡、退出或超时仍会回仓。
 secure:
   not-in-craftov: "<red>你当前不在可操作安全箱的行动中。</red>"

@@ -38,6 +38,7 @@ import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
 import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
 import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
+import com.birditch.escapefromcraftov.game.plugin.downed.DownedPlayerListener;
 import com.birditch.escapefromcraftov.game.plugin.instance.BridgeDeps;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceProvisioner;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldBridge;
@@ -140,6 +141,7 @@ public final class GameApplication {
   private @Nullable EventSubscription aiSubscription;
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable DeathCrateListener deathCrates;
+  private @Nullable DownedPlayerListener downedPlayers;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable InstanceProvisioner provisioner;
@@ -193,6 +195,7 @@ public final class GameApplication {
       PendingJoinHandler pendingJoins,
       CraftovItemStacks itemStacks,
       GameCombatListener combat,
+      DownedPlayerListener downedPlayers,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
       DeathCrateListener deathCrates,
@@ -525,6 +528,13 @@ public final class GameApplication {
         context.services().require(CombatService.class), inventories,
         context.services().require(com.birditch.escapefromcraftov.api.profile.ProgressionService.class),
         index, scheduler, configs.messages(), configs.gameplay(), secure);
+    DownedPlayerListener downedPlayerController = new DownedPlayerListener(games,
+        context.services().require(CombatService.class),
+        context.services().require(com.birditch.escapefromcraftov.api.combat.DownedService.class),
+        context.services().require(
+            com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
+        index, scheduler, configs.messages());
+    downedPlayers = downedPlayerController;
     CraftovStartCoordinator starts = new CraftovStartCoordinator(games, index, scheduler,
         new BukkitCraftovStartNotifier(configs.messages()), logger,
         server.minimumPlayers(), server.startCountdownSeconds());
@@ -588,8 +598,8 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        sidebarService, lootMenuController, deathCrateController, secure, instanceBridge,
-        instanceAi);
+        downedPlayerController, sidebarService, lootMenuController, deathCrateController, secure,
+        instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -644,6 +654,7 @@ public final class GameApplication {
         context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
         wiring.index(), configs.messages()), plugin);
     pluginManager.registerEvents(wiring.combat(), plugin);
+    pluginManager.registerEvents(wiring.downedPlayers(), plugin);
     pluginManager.registerEvents(wiring.bridge(), plugin);
     pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
@@ -684,6 +695,12 @@ public final class GameApplication {
       if (deathCrates != null) {
         deathCrates.close();
         deathCrates = null;
+      }
+    });
+    steps.run("stop downed and rescue flow", () -> {
+      if (downedPlayers != null) {
+        downedPlayers.close();
+        downedPlayers = null;
       }
     });
     steps.run("close TrMenu Loot controller", () -> {

@@ -226,6 +226,25 @@ class CraftovGameManagerTest {
         }
 
         @Test
+        @DisplayName("ends a RUNNING room on the next scheduler turn after its final player leaves")
+        void finalLeaveEndsRunningRoom() {
+            CraftovGame game = createGame();
+            joinWithSession(game.id(), ALICE, "Alice");
+            assertTrue(manager.start(game.id()).isSuccess());
+
+            assertTrue(manager.leave(ALICE).isSuccess());
+            assertEquals(CraftovGameState.RUNNING, game.state());
+            assertEquals(1, manager.activeCount());
+
+            scheduler.advanceBy(Duration.ZERO);
+
+            assertEquals(CraftovGameState.DESTROYED, game.state());
+            assertEquals(0, manager.activeCount());
+            assertEquals(1, events.ended.size());
+            assertEquals(Set.of(), events.ended.getFirst().result().remainingPlayers());
+        }
+
+        @Test
         void failsWhenNotInAGame() {
             assertFailure(manager.leave(ALICE), GameFailures.NOT_IN_GAME);
             sessions.create(ALICE, "Alice");
@@ -355,6 +374,23 @@ class CraftovGameManagerTest {
             CraftovResult result = game.result().orElseThrow();
             assertEquals(Set.of(ALICE), result.extractedPlayers());
             assertEquals(Set.of(BOB), result.remainingPlayers());
+        }
+
+        @Test
+        @DisplayName("ends a RUNNING room after its final settled extraction")
+        void finalExtractionEndsRunningRoom() {
+            eventBus.register(manager);
+            CraftovGame game = createGame();
+            joinWithSession(game.id(), ALICE, "Alice");
+            assertTrue(manager.start(game.id()).isSuccess());
+
+            eventBus.publish(new PlayerExtractedEvent(game.id(), ALICE, NORTH_GATE));
+            scheduler.advanceBy(Duration.ZERO);
+
+            assertEquals(0, manager.activeCount());
+            CraftovResult result = events.ended.getFirst().result();
+            assertEquals(Set.of(ALICE), result.extractedPlayers());
+            assertEquals(Set.of(), result.remainingPlayers());
         }
 
         @Test

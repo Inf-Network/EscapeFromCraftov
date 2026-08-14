@@ -160,15 +160,25 @@ public final class GameConnectionListener implements Listener {
       finishQuit(playerId);
       return;
     }
-    // Remove the player from the room immediately. The bridge refreshes the
-    // remaining viewers' Tab/footer now; durable loss settlement may take a
-    // slow database round-trip and must not hold up visibility updates.
-    games.leave(playerId);
+    // Keep the room membership until the durable loss transaction completes.
+    // The game manager ends a vacated RUNNING room after the final leave, so
+    // removing first could unload its world while this settlement is in flight.
+    settleQuitLoss(playerId, gameId, 0);
+  }
+
+  private void settleQuitLoss(UUID playerId, CraftovGameId gameId, int attempt) {
     inventories.settleDeath(playerId, gameId).whenComplete((_, error) ->
         scheduler.runSync(() -> {
           if (error != null) {
-            logger.log(Level.SEVERE, "玩家退出时死亡损失结算失败:" + playerId, error);
+            logger.log(Level.WARNING,
+                "玩家退出时死亡损失结算失败，将在 5 秒后自动重试 (第 " + (attempt + 1)
+                    + " 次):" + playerId,
+                error);
+            scheduler.runLater(java.time.Duration.ofSeconds(5),
+                () -> settleQuitLoss(playerId, gameId, attempt + 1));
+            return;
           }
+          games.leave(playerId);
           finishQuit(playerId);
         }));
   }

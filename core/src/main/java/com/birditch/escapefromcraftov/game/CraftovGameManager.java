@@ -154,6 +154,7 @@ public final class CraftovGameManager implements CraftovGameService {
         game.removePlayer(playerId);
         found.get().leaveGame();
         deps.eventBus().publish(new PlayerLeftCraftovEvent(game.id(), playerId));
+        scheduleEmptyRunningGameStop(game);
         return Result.ok(game);
     }
 
@@ -227,6 +228,27 @@ public final class CraftovGameManager implements CraftovGameService {
         game.markExtracted(event.playerId());
         game.removePlayer(event.playerId());
         deps.sessions().find(event.playerId()).ifPresent(PlayerSession::leaveGame);
+        scheduleEmptyRunningGameStop(game);
+    }
+
+    /// Ends a vacated live room on the next scheduler turn. Deferring one turn
+    /// lets the current leave/extraction event finish dispatching before
+    /// [CraftovEndedEvent] tears down its Bukkit world. Every caller reaches
+    /// this point only after its durable inventory settlement has completed.
+    private void scheduleEmptyRunningGameStop(CraftovGameInstance game) {
+        if (game.state() != CraftovGameState.RUNNING || game.playerCount() != 0) {
+            return;
+        }
+        CraftovGameId id = game.id();
+        deps.scheduler().runLater(Duration.ZERO, () -> {
+            CraftovGameInstance current = games.get(id);
+            if (current == null || current.state() != CraftovGameState.RUNNING
+                    || current.playerCount() != 0) {
+                return;
+            }
+            stop(id).error().ifPresent(message -> deps.logger()
+                    .warning("Empty-game stop for " + id.value() + " skipped: " + message));
+        });
     }
 
     private void autoStop(CraftovGameId id) {

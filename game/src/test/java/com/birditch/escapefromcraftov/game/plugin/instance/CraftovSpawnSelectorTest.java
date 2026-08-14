@@ -23,14 +23,27 @@ class CraftovSpawnSelectorTest {
   }
 
   @Test
+  void equalSpawnsAreExhaustedBeforeTheSequenceWraps() {
+    List<CraftovSpawnLocation> spawns = List.of(
+        spawn("west", "players", 1),
+        spawn("east", "players", 1),
+        spawn("north", "players", 1));
+
+    assertEquals("west", CraftovSpawnSelector.select(spawns, 1, 0).orElseThrow().id());
+    assertEquals("east", CraftovSpawnSelector.select(spawns, 2, 1).orElseThrow().id());
+    assertEquals("north", CraftovSpawnSelector.select(spawns, 3, 2).orElseThrow().id());
+    assertEquals("west", CraftovSpawnSelector.select(spawns, 4, 3).orElseThrow().id());
+  }
+
+  @Test
   void selectionHonorsRelativeWeights() {
     List<CraftovSpawnLocation> spawns = List.of(
         spawn("light", "players", 1), spawn("heavy", "players", 4));
     int heavy = 0;
-    for (long ticket = 0; ticket < 10_000; ticket++) {
+    for (long ticket = 0; ticket < 1_000; ticket++) {
       if (CraftovSpawnSelector.select(spawns, 1, ticket).orElseThrow().id().equals("heavy")) heavy++;
     }
-    assertTrue(heavy > 7_500 && heavy < 8_500, "heavy selections=" + heavy);
+    assertEquals(800, heavy);
   }
 
   @Test

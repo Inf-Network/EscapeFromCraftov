@@ -9,6 +9,7 @@ import com.birditch.escapefromcraftov.lobby.LobbyDataGate;
 import com.birditch.escapefromcraftov.lobby.CraftovLobbyPlugin;
 import com.birditch.escapefromcraftov.lobby.menu.LobbyMenuController;
 import com.birditch.escapefromcraftov.lobby.menu.MarketMenuController;
+import com.birditch.escapefromcraftov.lobby.menu.RaidPreparationController;
 import com.birditch.escapefromcraftov.lobby.party.PartyService;
 import com.birditch.escapefromcraftov.lobby.report.LobbyRaidReports;
 
@@ -22,6 +23,7 @@ public record LobbyCommandContext(
     LobbyDataGate dataGate,
     LobbyMenuController menus,
     MarketMenuController marketMenus,
+    RaidPreparationController raidPreparation,
     LobbyRaidReports raidReports,
     PartyService parties) {
 
@@ -34,6 +36,7 @@ public record LobbyCommandContext(
     Preconditions.checkNotNull(dataGate, "dataGate");
     Preconditions.checkNotNull(menus, "menus");
     Preconditions.checkNotNull(marketMenus, "marketMenus");
+    Preconditions.checkNotNull(raidPreparation, "raidPreparation");
     Preconditions.checkNotNull(raidReports, "raidReports");
     Preconditions.checkNotNull(parties, "parties");
   }

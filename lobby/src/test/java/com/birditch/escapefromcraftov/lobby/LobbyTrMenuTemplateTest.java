@@ -23,6 +23,7 @@ class LobbyTrMenuTemplateTest {
       "trmenu/escapefromcraftov_lobby_settings.yml",
       "trmenu/escapefromcraftov_lobby_cosmetics.yml",
       "trmenu/escapefromcraftov_lobby_warehouse.yml",
+      "trmenu/escapefromcraftov_lobby_preparation.yml",
       "trmenu/escapefromcraftov_lobby_vendor.yml",
       "trmenu/escapefromcraftov_lobby_vendor_sell.yml",
       "trmenu/escapefromcraftov_lobby_market.yml",
@@ -123,8 +124,26 @@ class LobbyTrMenuTemplateTest {
   @Test
   void mainMenuExposesPlayerMarketAndRecentRaidReports() throws IOException {
     String main = read("trmenu/escapefromcraftov_lobby_main.yml");
+    assertTrue(main.contains("command: lobby raid"));
+    assertFalse(main.contains("command: play"));
     assertTrue(main.contains("command: lobby market"));
     assertTrue(main.contains("command: lobby reports"));
+  }
+
+  @Test
+  void preparationCyclesEveryChoiceAndRoutesStartThroughValidatedLobbyActions()
+      throws IOException {
+    String yaml = read("trmenu/escapefromcraftov_lobby_preparation.yml");
+
+    for (String source : List.of("map", "mode", "difficulty", "loadout", "start")) {
+      assertTrue(yaml.contains("source:CRAFTOVPREPARATION:" + source));
+    }
+    assertTrue(yaml.contains("command: lobby raid cycle map"));
+    assertTrue(yaml.contains("command: lobby raid cycle mode"));
+    assertTrue(yaml.contains("command: lobby raid cycle difficulty"));
+    assertTrue(yaml.contains("command: lobby raid start"));
+    assertTrue(yaml.contains("command: lobby warehouse"));
+    assertFalse(yaml.contains("command: play"));
   }
 
   @Test

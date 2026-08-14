@@ -10,6 +10,7 @@ import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.lobby.party.PartyView;
+import com.birditch.escapefromcraftov.lobby.menu.RaidPreparationController;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -109,6 +110,7 @@ public final class LobbyCommand {
         .executes(ctx -> menuAction(context, ctx, context.menus()::openSettings)));
     root.then(Commands.literal("cosmetics")
         .executes(ctx -> menuAction(context, ctx, context.menus()::openCosmetics)));
+    root.then(raidPreparationNode(context));
     root.then(Commands.literal("setting")
         .then(Commands.literal("toggle")
             .then(Commands.argument("setting", StringArgumentType.word())
@@ -176,6 +178,40 @@ public final class LobbyCommand {
     } catch (RuntimeException error) {
       player.sendMessage(Component.text(error.getMessage() == null
           ? "菜单操作失败" : error.getMessage(), NamedTextColor.RED));
+    }
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> raidPreparationNode(
+      LobbyCommandContext context) {
+    var raid = Commands.literal("raid")
+        .requires(source -> source.getSender().hasPermission(PLAY_PERMISSION))
+        .executes(ctx -> menuAction(context, ctx, context.raidPreparation()::open));
+    raid.then(Commands.literal("cycle")
+        .then(Commands.literal("map").executes(ctx -> menuAction(
+            context, ctx, context.raidPreparation()::cycleMap)))
+        .then(Commands.literal("mode").executes(ctx -> menuAction(
+            context, ctx, context.raidPreparation()::cycleMode)))
+        .then(Commands.literal("difficulty").executes(ctx -> menuAction(
+            context, ctx, context.raidPreparation()::cycleDifficulty))));
+    raid.then(Commands.literal("start").executes(ctx -> startPreparedRaid(context, ctx)));
+    return raid;
+  }
+
+  private static int startPreparedRaid(LobbyCommandContext context,
+      CommandContext<CommandSourceStack> ctx) {
+    Player player = playerOrNull(ctx, context.messages());
+    if (player == null || !requireDataReady(context, player)) return Command.SINGLE_SUCCESS;
+    try {
+      RaidPreparationController.Selection selection =
+          context.raidPreparation().confirmStart(player).orElse(null);
+      if (selection != null) {
+        return play(context, ctx, selection.mapId().value(),
+            selection.mode(), selection.difficulty());
+      }
+    } catch (RuntimeException error) {
+      player.sendMessage(Component.text(error.getMessage() == null
+          ? "行动准备失败" : error.getMessage(), NamedTextColor.RED));
     }
     return Command.SINGLE_SUCCESS;
   }

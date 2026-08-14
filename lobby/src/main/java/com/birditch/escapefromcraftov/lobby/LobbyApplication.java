@@ -28,6 +28,7 @@ import com.birditch.escapefromcraftov.lobby.menu.LobbyMenuController;
 import com.birditch.escapefromcraftov.lobby.menu.MenuDeps;
 import com.birditch.escapefromcraftov.lobby.menu.MarketMenuController;
 import com.birditch.escapefromcraftov.lobby.menu.MarketMenuDeps;
+import com.birditch.escapefromcraftov.lobby.menu.RaidPreparationController;
 import com.birditch.escapefromcraftov.lobby.hud.LobbySidebarService;
 import com.birditch.escapefromcraftov.lobby.party.InMemoryPartyService;
 import com.birditch.escapefromcraftov.lobby.party.PartyService;
@@ -97,6 +98,7 @@ public final class LobbyApplication {
   private @Nullable BungeeConnector bungeeConnector;
   private @Nullable LobbyMenuController menus;
   private @Nullable MarketMenuController marketMenus;
+  private @Nullable RaidPreparationController raidPreparation;
   private @Nullable ScheduledTask marketExpiryTask;
   private @Nullable LobbySidebarService sidebar;
 
@@ -123,6 +125,9 @@ public final class LobbyApplication {
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_lobby_warehouse.yml", "escapefromcraftov_lobby_warehouse.yml");
     installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_preparation.yml",
+        "escapefromcraftov_lobby_preparation.yml");
+    installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_lobby_vendor.yml", "escapefromcraftov_lobby_vendor.yml");
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_lobby_vendor_sell.yml",
@@ -141,6 +146,7 @@ public final class LobbyApplication {
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_lobby_main", "escapefromcraftov_lobby_settings",
         "escapefromcraftov_lobby_cosmetics", "escapefromcraftov_lobby_warehouse",
+        "escapefromcraftov_lobby_preparation",
         "escapefromcraftov_lobby_vendor", "escapefromcraftov_lobby_vendor_sell",
         "escapefromcraftov_lobby_market", "escapefromcraftov_lobby_market_mine",
         "escapefromcraftov_lobby_market_list", "escapefromcraftov_lobby_market_confirm");
@@ -199,6 +205,9 @@ public final class LobbyApplication {
             itemStacks, queue, scheduler, config, dataGate, messages, plugin, logger);
     LobbyMenuController menuController = new LobbyMenuController(menuDeps, trMenu);
     menus = menuController;
+    RaidPreparationController preparationController = new RaidPreparationController(
+        inventories, itemRegistry, scheduler, config, messages, trMenu, logger);
+    raidPreparation = preparationController;
     MarketMenuController marketMenuController = new MarketMenuController(new MarketMenuDeps(
         market, inventories, profiles, itemRegistry, itemStacks, scheduler, dataGate,
         messages, logger), trMenu);
@@ -206,7 +215,8 @@ public final class LobbyApplication {
     ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, profiles,
         starterKit, settings, cosmetics, inventories, queue, parties, dataGate,
         menuController::openMain, logger);
-    registerListeners(connectionDeps, menuController, marketMenuController, config);
+    registerListeners(connectionDeps, menuController, marketMenuController,
+        preparationController, config);
     LobbySidebarService sidebarService = new LobbySidebarService(plugin, profiles, inventories,
         queue, dataGate, scheduler, messages, config, logger);
     sidebarService.start();
@@ -214,7 +224,7 @@ public final class LobbyApplication {
     registerPermissions();
     registerCommands(new LobbyCommandContext(
         plugin, queue, directory, messages, config, dataGate,
-        menuController, marketMenuController, raidReports, parties));
+        menuController, marketMenuController, preparationController, raidReports, parties));
     logSummary(config, configs.database(), configs.redis(), directory);
   }
 
@@ -248,6 +258,12 @@ public final class LobbyApplication {
       if (marketMenus != null) {
         marketMenus.close();
         marketMenus = null;
+      }
+    });
+    steps.run("close TrMenu raid preparation controller", () -> {
+      if (raidPreparation != null) {
+        raidPreparation.close();
+        raidPreparation = null;
       }
     });
     steps.run("save profiles", this::saveAllProfiles);
@@ -315,12 +331,14 @@ public final class LobbyApplication {
   private void registerListeners(ConnectionDeps connectionDeps,
       LobbyMenuController menuController,
       MarketMenuController marketMenuController,
+      RaidPreparationController preparationController,
       LobbyConfig config) {
     PluginManager manager = plugin.getServer().getPluginManager();
     manager.registerEvents(new LobbyConnectionListener(connectionDeps), plugin);
     manager.registerEvents(new LobbyProtectionListener(config), plugin);
     manager.registerEvents(menuController, plugin);
     manager.registerEvents(marketMenuController, plugin);
+    manager.registerEvents(preparationController, plugin);
   }
 
   private void registerPermissions() {

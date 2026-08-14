@@ -1,0 +1,36 @@
+Title: '&8行动准备'
+Layout:
+  - '#########'
+  - '#M#R#D#S#'
+  - '#W##L##B#'
+Options:
+  Arguments: false
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 150
+Icons:
+  '#':
+    display: { material: black_stained_glass_pane, name: ' ' }
+  M:
+    display: { material: 'source:CRAFTOVPREPARATION:map' }
+    actions: { all: [ 'reset', 'command: lobby raid cycle map' ] }
+  R:
+    display: { material: 'source:CRAFTOVPREPARATION:mode' }
+    actions: { all: [ 'reset', 'command: lobby raid cycle mode' ] }
+  D:
+    display: { material: 'source:CRAFTOVPREPARATION:difficulty' }
+    actions: { all: [ 'reset', 'command: lobby raid cycle difficulty' ] }
+  S:
+    display: { material: 'source:CRAFTOVPREPARATION:start' }
+    actions: { all: [ 'command: lobby raid start' ] }
+  W:
+    display:
+      material: chest
+      name: '&6前往物资仓库'
+      lore: [ '&7整理下一局的出战装备', '', '&e点击打开' ]
+    actions: { all: [ 'reset', 'command: lobby warehouse' ] }
+  L:
+    display: { material: 'source:CRAFTOVPREPARATION:loadout' }
+    actions: { all: [ 'reset', 'command: lobby warehouse' ] }
+  B:
+    display: { material: arrow, name: '&e返回主菜单' }
+    actions: { all: [ 'reset', 'command: lobby' ] }

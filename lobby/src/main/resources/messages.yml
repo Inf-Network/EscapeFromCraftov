@@ -97,6 +97,33 @@ command:
 # ---------------------------------------------------------------------------
 menu:
   action-failed: "<red>操作没有完成，请稍后再试。</red>"
+  preparation:
+    load-failed: "<red>暂时无法读取出战栏，请稍后再试。</red>"
+    empty-confirm: "<yellow>当前出战栏为空。</yellow> <gray>再次点击“开始匹配”将以空装进入行动。</gray>"
+    map:
+      name: "<gold>行动地图</gold>"
+      lore: "<gray>当前：</gray><yellow><map></yellow>|<yellow>点击切换下一张启用地图</yellow>"
+    mode:
+      name: "<gold>行动模式</gold>"
+      lore: "<gray>当前：</gray><yellow><mode></yellow>|<yellow>点击循环切换模式</yellow>"
+      normal: "<green>普通行动</green>"
+      confidential: "<red>机密行动</red>"
+    difficulty:
+      name: "<gold>行动难度</gold>"
+      lore: "<gray>当前：</gray><yellow><difficulty></yellow>|<yellow>点击循环切换难度</yellow>"
+      easy: "<green>简单</green>"
+      normal: "<yellow>普通</yellow>"
+      hard: "<red>困难</red>"
+    loadout:
+      name: "<gold>出战栏摘要</gold>"
+      lore: "<gray>占用堆栈：</gray><yellow><stacks>/9</yellow>|<gray>物品数量：</gray><yellow><items></yellow>|<gray>基础总价值：</gray><gold><value> 金币</gold>|<state>|<yellow>点击前往仓库配装</yellow>"
+      ready: "<green>出战物资已准备</green>"
+      empty: "<red>出战栏为空，将空手入局</red>"
+    start:
+      name: "<green>开始匹配</green>"
+      ready: "<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<green>点击加入匹配队列</green>"
+      empty: "<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<red>出战栏为空</red>|<yellow>点击一次确认空装行动</yellow>"
+      empty-confirmed: "<red>空装行动已确认</red>|<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<yellow>再次点击加入匹配队列</yellow>"
   main:
     title: "大厅菜单"
     play:

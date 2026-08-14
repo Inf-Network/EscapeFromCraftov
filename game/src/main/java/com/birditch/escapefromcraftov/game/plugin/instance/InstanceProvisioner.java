@@ -5,12 +5,14 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /// Self-provisioning: keeps at least `min-ready-instances` WAITING craftov
@@ -47,7 +49,7 @@ public final class InstanceProvisioner {
     Preconditions.checkNotNull(request, "request");
     if (deps.config().serverId().equals(request.serverId())) {
       ensureAvailable(request.mapId(), request.mode(), request.difficulty(),
-          request.requiredSlots(), 1);
+          request.tierId(), request.requiredSlots(), 1);
     }
   }
 
@@ -61,7 +63,7 @@ public final class InstanceProvisioner {
 
   private void provisionDefaultCapacity() {
     ensureAvailable(deps.config().defaultMap(), RaidMode.NORMAL, RaidDifficulty.NORMAL,
-        1, deps.config().minReadyInstances());
+        null, 1, deps.config().minReadyInstances());
   }
 
   private void maintenancePass() {
@@ -76,7 +78,7 @@ public final class InstanceProvisioner {
     var cutoff = deps.timeSource().now().minus(EMPTY_WAITING_TTL);
     CraftovMapId defaultMap = deps.config().defaultMap();
     long defaultReady = availableWaitingCount(
-        defaultMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, 1);
+        defaultMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, null, 1);
     for (CraftovGame game : List.copyOf(deps.games().all())) {
       if (game.state() != CraftovGameState.WAITING || game.playerCount() != 0
           || game.createdAt().isAfter(cutoff)) {
@@ -84,7 +86,8 @@ public final class InstanceProvisioner {
       }
       boolean defaultPool = game.mapId().equals(defaultMap)
           && game.mode() == RaidMode.NORMAL
-          && game.difficulty() == RaidDifficulty.NORMAL;
+          && game.difficulty() == RaidDifficulty.NORMAL
+          && game.tierId() == null;
       if (defaultPool && defaultReady <= deps.config().minReadyInstances()) {
         continue;
       }
@@ -99,7 +102,7 @@ public final class InstanceProvisioner {
   }
 
   private void ensureAvailable(CraftovMapId mapId, RaidMode mode,
-      RaidDifficulty difficulty, int requiredSlots, int target) {
+      RaidDifficulty difficulty, @Nullable RaidTierId tierId, int requiredSlots, int target) {
     if (!deps.maps().isEnabled(mapId.value())) {
       return;
     }
@@ -108,9 +111,9 @@ public final class InstanceProvisioner {
           + " into max-players=" + deps.coreSettings().maxPlayers());
       return;
     }
-    while (availableWaitingCount(mapId, mode, difficulty, requiredSlots) < target
+    while (availableWaitingCount(mapId, mode, difficulty, tierId, requiredSlots) < target
         && deps.games().all().size() < deps.coreSettings().maxInstances()) {
-      if (deps.games().create(mapId, mode, difficulty)
+      if (deps.games().create(mapId, mode, difficulty, tierId)
           instanceof Result.Failure<CraftovGame>(String message)) {
         deps.logger().warning("Instance provisioning halted: " + message);
         return;
@@ -119,10 +122,11 @@ public final class InstanceProvisioner {
   }
 
   private long availableWaitingCount(CraftovMapId mapId, RaidMode mode,
-      RaidDifficulty difficulty, int requiredSlots) {
+      RaidDifficulty difficulty, @Nullable RaidTierId tierId, int requiredSlots) {
     return deps.games().all().stream()
         .filter(game -> game.mapId().equals(mapId))
         .filter(game -> game.mode() == mode && game.difficulty() == difficulty)
+        .filter(game -> Objects.equals(game.tierId(), tierId))
         .filter(game -> game.state() == CraftovGameState.WAITING)
         .filter(game -> game.playerCount() + requiredSlots <= deps.coreSettings().maxPlayers())
         .count();

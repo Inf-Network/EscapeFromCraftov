@@ -17,7 +17,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovResult;
 import com.birditch.escapefromcraftov.api.game.CraftovTeam;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.time.Instant;
@@ -42,6 +44,7 @@ public final class CraftovGameInstance implements CraftovGame {
     private final CraftovMapId mapId;
     private final RaidMode mode;
     private final RaidDifficulty difficulty;
+    private final @Nullable RaidActionProfile actionProfile;
     private final Instant createdAt;
     private final long mapRevision;
     private final List<CraftovSpawnLocation> spawnLocations;
@@ -74,10 +77,18 @@ public final class CraftovGameInstance implements CraftovGame {
     public CraftovGameInstance(CraftovGameId id, CraftovMapId mapId, RaidMode mode,
                             RaidDifficulty difficulty, Instant createdAt,
                             CraftovMapRuntime runtime) {
+        this(id, mapId, mode, difficulty, null, createdAt, runtime);
+    }
+
+    public CraftovGameInstance(CraftovGameId id, CraftovMapId mapId, RaidMode mode,
+                            RaidDifficulty difficulty,
+                            @Nullable RaidActionProfile actionProfile, Instant createdAt,
+                            CraftovMapRuntime runtime) {
         this.id = Preconditions.checkNotNull(id, "id");
         this.mapId = Preconditions.checkNotNull(mapId, "mapId");
         this.mode = Preconditions.checkNotNull(mode, "mode");
         this.difficulty = Preconditions.checkNotNull(difficulty, "difficulty");
+        this.actionProfile = actionProfile;
         this.createdAt = Preconditions.checkNotNull(createdAt, "createdAt");
         Preconditions.checkNotNull(runtime, "runtime");
         this.mapRevision = runtime.revision();
@@ -219,6 +230,16 @@ public final class CraftovGameInstance implements CraftovGame {
     @Override
     public RaidDifficulty difficulty() {
         return difficulty;
+    }
+
+    @Override
+    public @Nullable RaidTierId tierId() {
+        return actionProfile == null ? null : actionProfile.id();
+    }
+
+    @Override
+    public Optional<RaidActionProfile> actionProfile() {
+        return Optional.ofNullable(actionProfile);
     }
 
     @Override

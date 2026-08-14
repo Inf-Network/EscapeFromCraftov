@@ -3,6 +3,7 @@ package com.birditch.escapefromcraftov.lobby.matchmaking;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingFailures;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingService;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.SequencedMap;
 import java.util.Set;
 import java.util.UUID;
@@ -97,14 +99,27 @@ public final class QueueService implements MatchmakingService {
   @Override
   public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
       RaidDifficulty difficulty, UUID teamKey) {
+    return queue(playerId, mapId, mode, difficulty, teamKey, null);
+  }
+
+  @Override
+  public Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, UUID teamKey, @Nullable RaidTierId tierId) {
     Result<List<MatchTicket>> result = queueParty(
-        List.of(playerId), mapId, mode, difficulty, teamKey);
+        List.of(playerId), mapId, mode, difficulty, teamKey, tierId);
     return result.map(List::getFirst);
   }
 
   @Override
   public Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
       RaidMode mode, RaidDifficulty difficulty, UUID teamKey) {
+    return queueParty(playerIds, mapId, mode, difficulty, teamKey, null);
+  }
+
+  @Override
+  public Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
+      RaidMode mode, RaidDifficulty difficulty, UUID teamKey,
+      @Nullable RaidTierId tierId) {
     checkMainThread();
     Preconditions.checkNotNull(playerIds, "playerIds");
     Preconditions.checkNotNull(mapId, "mapId");
@@ -126,7 +141,7 @@ public final class QueueService implements MatchmakingService {
     var queuedAt = deps.timeSource().now();
     List<MatchTicket> created = members.stream()
         .map(playerId -> new MatchTicket(
-            playerId, mapId, queuedAt, teamKey, mode, difficulty))
+            playerId, mapId, queuedAt, teamKey, mode, difficulty, tierId))
         .toList();
     created.forEach(ticket -> tickets.put(ticket.playerId(), ticket));
     return Result.ok(created);
@@ -226,7 +241,7 @@ public final class QueueService implements MatchmakingService {
           deps.config().queueMinimumPlayers(),
           available.stream().mapToInt(TicketGroup::size).max().orElse(1));
       if (InstancePicker.pick(servers, pool.mapId(), pool.mode(), pool.difficulty(),
-          requiredSlots, reservationCounts()).isEmpty()) {
+          pool.tierId(), requiredSlots, reservationCounts()).isEmpty()) {
         starvingPools.merge(pool, requiredSlots, Math::max);
       }
       return;
@@ -254,14 +269,15 @@ public final class QueueService implements MatchmakingService {
       }
       Optional<InstancePicker.Candidate> picked = InstancePicker.pick(
           serversMeetingMinimum(servers, size), pool.mapId(), pool.mode(), pool.difficulty(),
-          size, reserved);
+          pool.tierId(), size, reserved);
       if (picked.isEmpty()) {
         continue;
       }
       InstancePicker.Candidate candidate = picked.get();
       int load = candidate.instance().playerCount() + reserved.getOrDefault(
           InstancePicker.reservationKey(
-              candidate.server().serverId(), candidate.instance().gameId()), 0);
+              candidate.server().serverId(), candidate.instance().gameId(),
+              candidate.instance().tierId()), 0);
       List<TicketGroup> cohortGroups = new ArrayList<>(seed);
       int remaining = candidate.instance().maxPlayers() - load - size;
       for (TicketGroup group : groups) {
@@ -333,7 +349,8 @@ public final class QueueService implements MatchmakingService {
 
   private void assign(TicketCohort cohort, InstancePicker.Candidate candidate) {
     String reservationKey = InstancePicker.reservationKey(
-        candidate.server().serverId(), candidate.instance().gameId());
+        candidate.server().serverId(), candidate.instance().gameId(),
+        candidate.instance().tierId());
     List<MatchAssignment> cohortAssignments = cohort.members().stream()
         .map(ticket -> new MatchAssignment(
             ticket.playerId(),
@@ -343,7 +360,8 @@ public final class QueueService implements MatchmakingService {
             candidate.instance().mapId(),
             ticket.teamKey(),
             ticket.mode(),
-            ticket.difficulty()))
+            ticket.difficulty(),
+            ticket.tierId()))
         .toList();
     long expiresAt = deps.timeSource().currentMillis()
         + Duration.ofSeconds(deps.config().reservationTtlSeconds()).toMillis();
@@ -433,12 +451,13 @@ public final class QueueService implements MatchmakingService {
     }
     ServerId serverId = target.get().serverId();
     String cooldownKey = serverId.value() + ":" + pool.mapId().value()
-        + ":" + pool.mode().id() + ":" + pool.difficulty().id();
+        + ":" + pool.mode().id() + ":" + pool.difficulty().id()
+        + (pool.tierId() == null ? ":tier=null" : ":tier=" + pool.tierId().value());
     if (!provisionHints.tryUse(cooldownKey)) {
       return;
     }
     String payload = deps.codec().toJson(new ProvisionRequest(
-        serverId, pool.mapId(), pool.mode(), pool.difficulty(), requiredSlots));
+        serverId, pool.mapId(), pool.mode(), pool.difficulty(), requiredSlots, pool.tierId()));
     deps.broker().publish(NetworkKeys.PROVISION_CHANNEL, payload)
         .whenComplete((_, publishError) -> {
           if (publishError != null) {
@@ -476,10 +495,11 @@ public final class QueueService implements MatchmakingService {
     }
   }
 
-  private record MatchPool(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty) {
+  private record MatchPool(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
+                           @Nullable RaidTierId tierId) {
 
     private static MatchPool of(MatchTicket ticket) {
-      return new MatchPool(ticket.mapId(), ticket.mode(), ticket.difficulty());
+      return new MatchPool(ticket.mapId(), ticket.mode(), ticket.difficulty(), ticket.tierId());
     }
   }
 
@@ -497,7 +517,8 @@ public final class QueueService implements MatchmakingService {
       Preconditions.checkArgument(groups.stream().map(TicketGroup::first).allMatch(ticket ->
               ticket.mapId().equals(first.mapId())
                   && ticket.mode() == first.mode()
-                  && ticket.difficulty() == first.difficulty()),
+                  && ticket.difficulty() == first.difficulty()
+                  && Objects.equals(ticket.tierId(), first.tierId())),
           "ticket cohort groups must share one matchmaking pool");
     }
 
@@ -526,7 +547,8 @@ public final class QueueService implements MatchmakingService {
               ticket.teamKey().equals(first.teamKey())
                   && ticket.mapId().equals(first.mapId())
                   && ticket.mode() == first.mode()
-                  && ticket.difficulty() == first.difficulty()),
+                  && ticket.difficulty() == first.difficulty()
+                  && Objects.equals(ticket.tierId(), first.tierId())),
           "ticket group members must share team key and matchmaking pool");
     }
 

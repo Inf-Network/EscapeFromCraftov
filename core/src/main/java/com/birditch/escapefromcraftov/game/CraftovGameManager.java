@@ -21,7 +21,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovResult;
 import com.birditch.escapefromcraftov.api.game.CraftovTeam;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.session.PlayerSession;
 import com.birditch.escapefromcraftov.api.session.ProfileLoadState;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
@@ -37,6 +39,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /// [CraftovGameService] implementation driving the full craftov lifecycle.
 ///
@@ -63,6 +66,13 @@ public final class CraftovGameManager implements CraftovGameService {
     @Override
     public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
                                       RaidDifficulty difficulty) {
+        return create(mapId, mode, difficulty, null);
+    }
+
+    @Override
+    public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
+                                      RaidDifficulty difficulty,
+                                      @Nullable RaidTierId tierId) {
         requireMainThread();
         Preconditions.checkNotNull(mapId, "mapId");
         Preconditions.checkNotNull(mode, "mode");
@@ -78,6 +88,16 @@ public final class CraftovGameManager implements CraftovGameService {
             return Result.fail(GameFailures.MAP_NOT_AVAILABLE);
         }
         CraftovMapRuntime runtime = runtimeResult.get();
+        RaidActionProfile actionProfile = null;
+        if (tierId != null) {
+            // ManualCraftovMapProvider copied these profiles from the exact
+            // immutable map revision, so this is the runtime equivalent of
+            // ManualCraftovMap.actionTier without a second mutable registry read.
+            actionProfile = runtime.actionTier(tierId).orElse(null);
+            if (actionProfile == null) {
+                return Result.fail(GameFailures.ACTION_TIER_NOT_AVAILABLE);
+            }
+        }
         List<ExtractionPoint> extractionPoints = runtime.extractionPoints();
         if (extractionPoints.isEmpty()) {
             extractionPoints = List.of(defaultExtractionPoint());
@@ -87,9 +107,10 @@ public final class CraftovGameManager implements CraftovGameService {
         // the legacy five-argument constructor here silently discarded them.
         CraftovMapRuntime captured = new CraftovMapRuntime(runtime.revision(), runtime.spawns(),
                 runtime.lootPoints(), runtime.lootZones(), extractionPoints,
-                runtime.extractionAreas(), runtime.aiZones(), runtime.pois());
+                runtime.extractionAreas(), runtime.aiZones(), runtime.pois(),
+                runtime.actionTiers());
         CraftovGameInstance game = new CraftovGameInstance(
-                gameId, mapId, mode, difficulty, now, captured);
+                gameId, mapId, mode, difficulty, actionProfile, now, captured);
         game.transitionTo(CraftovGameState.WAITING, now);
         games.put(gameId, game);
         deps.eventBus().publish(new CraftovCreatedEvent(gameId, mapId));
@@ -166,6 +187,39 @@ public final class CraftovGameManager implements CraftovGameService {
         found.get().leaveGame();
         deps.eventBus().publish(new PlayerLeftCraftovEvent(game.id(), playerId));
         scheduleEmptyRunningGameStop(game);
+        return Result.ok(game);
+    }
+
+    @Override
+    public Result<CraftovGame> cancelWaitingMember(CraftovGameId gameId, UUID playerId) {
+        requireMainThread();
+        Preconditions.checkNotNull(gameId, "gameId");
+        Preconditions.checkNotNull(playerId, "playerId");
+        CraftovGameInstance game = games.get(gameId);
+        if (game == null) {
+            return Result.fail(GameFailures.GAME_NOT_FOUND);
+        }
+        // A start event owns loadout claiming and loss semantics. Never let a
+        // late arrival timeout remove somebody after that boundary.
+        if (game.state() != CraftovGameState.WAITING) {
+            return Result.fail(GameFailures.NOT_ACCEPTING);
+        }
+        if (game.removePlayer(playerId).isEmpty()) {
+            return Result.fail(GameFailures.NOT_IN_GAME);
+        }
+        Optional<PlayerSession> session = deps.sessions().find(playerId);
+        Optional<CraftovGameId> currentGame = session.flatMap(PlayerSession::currentGame);
+        if (currentGame.isPresent() && !currentGame.get().equals(gameId)) {
+            // The player has already established a newer room membership.
+            // Remove only the old room's ghost: publishing PlayerLeft for the
+            // stale room would make InstanceWorldBridge pull a valid new-room
+            // player back to Lobby.
+            return Result.ok(game);
+        }
+        // A matching pointer, an empty pointer, or a missing session all mean
+        // this old membership still owns the world-side return flow.
+        session.ifPresent(PlayerSession::leaveGame);
+        deps.eventBus().publish(new PlayerLeftCraftovEvent(game.id(), playerId));
         return Result.ok(game);
     }
 

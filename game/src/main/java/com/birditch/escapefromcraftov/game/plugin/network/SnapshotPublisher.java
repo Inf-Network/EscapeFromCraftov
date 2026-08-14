@@ -84,7 +84,7 @@ public final class SnapshotPublisher {
   private InstanceSnapshot toInstanceSnapshot(CraftovGame game) {
     return new InstanceSnapshot(game.id(), game.mapId(), game.state(), game.playerCount(),
         deps.coreConfig().game().maxPlayers(), deps.index().isReady(game.id()),
-        game.mode(), game.difficulty());
+        game.mode(), game.difficulty(), game.tierId());
   }
 
   /// Runs on IO threads (the directory's async callback); a lock-free CAS on

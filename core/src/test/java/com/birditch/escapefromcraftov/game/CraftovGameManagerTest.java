@@ -226,6 +226,52 @@ class CraftovGameManagerTest {
         }
 
         @Test
+        void removesOnlyTheOldGhostWhenItsSessionPointsAtAnotherRoom() {
+            CraftovGame waiting = createGame();
+            CraftovGame staleTarget = createGame();
+            joinWithSession(waiting.id(), ALICE, "Alice");
+            var session = sessions.find(ALICE).orElseThrow();
+            session.leaveGame();
+            session.enterGame(staleTarget.id());
+
+            Result<CraftovGame> result = manager.cancelWaitingMember(waiting.id(), ALICE);
+
+            assertTrue(result.isSuccess());
+            assertEquals(0, waiting.playerCount());
+            assertEquals(Optional.of(staleTarget.id()), session.currentGame());
+            assertEquals(List.of(), events.left);
+        }
+
+        @Test
+        void cancelsAWaitingGhostWithAnEmptySessionAndPublishesItsLeave() {
+            CraftovGame waiting = createGame();
+            joinWithSession(waiting.id(), ALICE, "Alice");
+            var session = sessions.find(ALICE).orElseThrow();
+            session.leaveGame();
+
+            Result<CraftovGame> result = manager.cancelWaitingMember(waiting.id(), ALICE);
+
+            assertTrue(result.isSuccess());
+            assertEquals(0, waiting.playerCount());
+            assertEquals(Optional.empty(), session.currentGame());
+            assertEquals(List.of(new PlayerLeftCraftovEvent(waiting.id(), ALICE)), events.left);
+        }
+
+        @Test
+        void refusesWaitingCancellationAfterTheRoomStarts() {
+            CraftovGame game = createGame();
+            joinWithSession(game.id(), ALICE, "Alice");
+            assertTrue(manager.start(game.id()).isSuccess());
+
+            assertFailure(manager.cancelWaitingMember(game.id(), ALICE),
+                    GameFailures.NOT_ACCEPTING);
+            assertEquals(1, game.playerCount());
+            assertEquals(Optional.of(game.id()),
+                    sessions.find(ALICE).orElseThrow().currentGame());
+            assertEquals(List.of(), events.left);
+        }
+
+        @Test
         @DisplayName("ends a RUNNING room on the next scheduler turn after its final player leaves")
         void finalLeaveEndsRunningRoom() {
             CraftovGame game = createGame();

@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.CraftovException;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
@@ -93,7 +96,10 @@ class SnapshotPublisherTest {
     @Test
     @DisplayName("first tick publishes a snapshot with ttl of three intervals")
     void firstTickPublishesSnapshot() {
-      FakeCraftovGame ready = games.addGame(MAP);
+      RaidTierId tierId = RaidTierId.of("top_secret");
+      FakeCraftovGame ready = (FakeCraftovGame) games.create(
+          MAP, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, tierId)
+          .value().orElseThrow();
       ready.setPlayerCount(3);
       FakeCraftovGame notReady = games.addGame(MAP);
       index.register(ready.id(), "craftov_" + ready.id().value());
@@ -119,9 +125,11 @@ class SnapshotPublisherTest {
       assertEquals(3, first.playerCount());
       assertEquals(12, first.maxPlayers());
       assertTrue(first.worldReady());
+      assertEquals(tierId, first.tierId());
       InstanceSnapshot second = snapshot.instances().get(1);
       assertEquals(notReady.id(), second.gameId());
       assertFalse(second.worldReady());
+      assertEquals(null, second.tierId());
     }
 
     @Test

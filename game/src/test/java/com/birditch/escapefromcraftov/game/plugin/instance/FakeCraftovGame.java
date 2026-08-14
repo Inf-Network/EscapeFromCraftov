@@ -10,11 +10,13 @@ import com.birditch.escapefromcraftov.api.game.CraftovResult;
 import com.birditch.escapefromcraftov.api.game.CraftovTeam;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /// Minimal configurable [CraftovGame] double for game-plugin tests: mutable
 /// state and player count; no players, teams, extraction points, start time
@@ -25,6 +27,7 @@ public final class FakeCraftovGame implements CraftovGame {
   private final CraftovMapId mapId;
   private final RaidMode mode;
   private final RaidDifficulty difficulty;
+  private final @Nullable RaidTierId tierId;
   private CraftovGameState state = CraftovGameState.WAITING;
   private int playerCount;
 
@@ -34,10 +37,16 @@ public final class FakeCraftovGame implements CraftovGame {
 
   public FakeCraftovGame(CraftovGameId id, CraftovMapId mapId, RaidMode mode,
       RaidDifficulty difficulty) {
+    this(id, mapId, mode, difficulty, null);
+  }
+
+  public FakeCraftovGame(CraftovGameId id, CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, @Nullable RaidTierId tierId) {
     this.id = Preconditions.checkNotNull(id, "id");
     this.mapId = Preconditions.checkNotNull(mapId, "mapId");
     this.mode = Preconditions.checkNotNull(mode, "mode");
     this.difficulty = Preconditions.checkNotNull(difficulty, "difficulty");
+    this.tierId = tierId;
   }
 
   public void setState(CraftovGameState state) {
@@ -67,6 +76,11 @@ public final class FakeCraftovGame implements CraftovGame {
   @Override
   public RaidDifficulty difficulty() {
     return difficulty;
+  }
+
+  @Override
+  public @Nullable RaidTierId tierId() {
+    return tierId;
   }
 
   @Override

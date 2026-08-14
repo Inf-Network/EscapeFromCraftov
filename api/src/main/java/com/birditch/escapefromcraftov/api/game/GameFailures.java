@@ -12,7 +12,9 @@ public final class GameFailures {
     public static final String NOT_ACCEPTING = "对局当前不可加入";
     public static final String GAME_FULL = "对局已满员";
     public static final String NOT_IN_GAME = "玩家不在任何对局中";
+    public static final String WAITING_CANCELLATION_UNSUPPORTED = "当前对局服务不支持按房间取消等待成员";
     public static final String MAP_NOT_AVAILABLE = "地图不存在、未启用或验证未通过";
+    public static final String ACTION_TIER_NOT_AVAILABLE = "地图不支持所选行动档位";
 
     private GameFailures() {
     }

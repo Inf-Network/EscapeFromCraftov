@@ -17,11 +17,24 @@ public record GameServerConfig(
     CraftovMapId defaultMap,
     int minimumPlayers,
     int startCountdownSeconds,
+    int waitingArrivalTimeoutSeconds,
     int minReadyInstances,
     String mapTemplateDir,
     boolean allowFlatFallback,
     String lobbyServerName,
     int snapshotIntervalSeconds) {
+
+  public static final int DEFAULT_WAITING_ARRIVAL_TIMEOUT_SECONDS = 45;
+
+  /** Backward-compatible constructor for tests and integrations using the old shape. */
+  public GameServerConfig(ServerId serverId, String proxyName, CraftovMapId defaultMap,
+      int minimumPlayers, int startCountdownSeconds, int minReadyInstances,
+      String mapTemplateDir, boolean allowFlatFallback, String lobbyServerName,
+      int snapshotIntervalSeconds) {
+    this(serverId, proxyName, defaultMap, minimumPlayers, startCountdownSeconds,
+        DEFAULT_WAITING_ARRIVAL_TIMEOUT_SECONDS, minReadyInstances, mapTemplateDir,
+        allowFlatFallback, lobbyServerName, snapshotIntervalSeconds);
+  }
 
   public GameServerConfig {
     Preconditions.checkNotNull(serverId, "serverId");
@@ -49,6 +62,9 @@ public record GameServerConfig(
     }
     if (startCountdownSeconds < 3 || startCountdownSeconds > 300) {
       problems.add("game.start-countdown-seconds must be 3..300");
+    }
+    if (waitingArrivalTimeoutSeconds < 10 || waitingArrivalTimeoutSeconds > 300) {
+      problems.add("game.waiting-arrival-timeout-seconds must be 10..300");
     }
     if (mapTemplateDir.isBlank()) {
       problems.add("game.map-template-dir must not be blank");

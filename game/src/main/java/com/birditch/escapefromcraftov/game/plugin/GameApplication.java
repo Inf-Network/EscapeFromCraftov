@@ -75,6 +75,7 @@ import com.birditch.escapefromcraftov.game.plugin.report.RaidResultCollector;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartCoordinator;
+import com.birditch.escapefromcraftov.game.plugin.start.WaitingArrivalTimeout;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.game.plugin.world.WorldService;
 import com.birditch.escapefromcraftov.game.plugin.world.WorldServiceDeps;
@@ -145,6 +146,7 @@ public final class GameApplication {
   private @Nullable EventSubscription reportSubscription;
   private @Nullable EventSubscription aiSubscription;
   private @Nullable EventSubscription pendingJoinSubscription;
+  private @Nullable EventSubscription waitingArrivalSubscription;
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable DeathCrateListener deathCrates;
   private @Nullable DownedPlayerListener downedPlayers;
@@ -163,6 +165,7 @@ public final class GameApplication {
   private @Nullable CraftovSidebarService sidebar;
   private @Nullable VisibilityService visibility;
   private @Nullable PendingJoinHandler pendingJoins;
+  private @Nullable WaitingArrivalTimeout waitingArrivalTimeout;
 
   /// Everything loaded from the plugin's YAML resources, validated.
   private record Configs(
@@ -662,6 +665,10 @@ public final class GameApplication {
         scheduler, configs.messages(), logger));
     this.pendingJoins = pendingJoins;
     pendingJoinSubscription = context.eventBus().register(pendingJoins);
+    WaitingArrivalTimeout arrivalTimeout = new WaitingArrivalTimeout(
+        games, scheduler, pendingJoins, bungee, server, configs.messages(), logger);
+    waitingArrivalTimeout = arrivalTimeout;
+    waitingArrivalSubscription = context.eventBus().register(arrivalTimeout);
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
@@ -741,6 +748,16 @@ public final class GameApplication {
   /// Network teardown runs before module stop so the directory heartbeat
   /// fast-expires and no provision hint arrives mid-shutdown.
   private void stopNetwork(ShutdownSteps steps) {
+    steps.run("stop waiting-player arrival timeout", () -> {
+      if (waitingArrivalSubscription != null) {
+        waitingArrivalSubscription.unsubscribe();
+        waitingArrivalSubscription = null;
+      }
+      if (waitingArrivalTimeout != null) {
+        waitingArrivalTimeout.close();
+        waitingArrivalTimeout = null;
+      }
+    });
     steps.run("unsubscribe pending join lifecycle", () -> {
       if (pendingJoinSubscription != null) {
         pendingJoinSubscription.unsubscribe();

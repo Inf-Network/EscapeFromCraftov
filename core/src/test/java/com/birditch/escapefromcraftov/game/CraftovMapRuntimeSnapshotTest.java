@@ -17,6 +17,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
 import com.birditch.escapefromcraftov.api.testing.MutableTimeSource;
 import com.birditch.escapefromcraftov.common.random.SeededRandomProvider;
@@ -76,6 +77,23 @@ class CraftovMapRuntimeSnapshotTest {
 
     assertEquals(RaidMode.CONFIDENTIAL, game.mode());
     assertEquals(RaidDifficulty.HARD, game.difficulty());
+    assertEquals(null, game.tierId());
+    assertTrue(game.actionProfile().isEmpty());
+  }
+
+  @Test
+  void canonicalActionTierMustExistAndIsFrozenIntoTheRoom() {
+    CraftovGameManager manager = manager(_ -> Optional.of(runtime(7, 10)));
+    RaidTierId tierId = RaidTierId.of("top_secret");
+
+    CraftovGame game = manager.create(CraftovMapId.of("factory"),
+        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, tierId).value().orElseThrow();
+
+    assertEquals(tierId, game.tierId());
+    assertEquals(tierId, game.actionProfile().orElseThrow().id());
+    assertEquals(GameFailures.ACTION_TIER_NOT_AVAILABLE,
+        manager.create(CraftovMapId.of("factory"), RaidMode.NORMAL, RaidDifficulty.NORMAL,
+            RaidTierId.of("missing")).error().orElseThrow());
   }
 
   private static CraftovGameManager manager(CraftovMapProvider provider) {

@@ -5,12 +5,14 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -41,6 +43,21 @@ public final class InstancePicker {
       RaidDifficulty requestedDifficulty,
       int requiredSlots,
       Map<String, Integer> reservedByInstance) {
+    return pick(servers, requestedMap, requestedMode, requestedDifficulty, null,
+        requiredSlots, reservedByInstance);
+  }
+
+  /// Canonical action tiers form an additional exact pool dimension. A null
+  /// tier matches only legacy null-tier rooms; it never aliases a canonical
+  /// profile that happens to share the same mode+difficulty values.
+  public static Optional<Candidate> pick(
+      List<GameServerSnapshot> servers,
+      CraftovMapId requestedMap,
+      RaidMode requestedMode,
+      RaidDifficulty requestedDifficulty,
+      @Nullable RaidTierId requestedTierId,
+      int requiredSlots,
+      Map<String, Integer> reservedByInstance) {
     Preconditions.checkNotNull(servers, "servers");
     Preconditions.checkNotNull(requestedMap, "requestedMap");
     Preconditions.checkNotNull(requestedMode, "requestedMode");
@@ -54,12 +71,13 @@ public final class InstancePicker {
         if (!instance.mapId().equals(requestedMap)
             || instance.mode() != requestedMode
             || instance.difficulty() != requestedDifficulty
+            || !Objects.equals(instance.tierId(), requestedTierId)
             || instance.state() != CraftovGameState.WAITING
             || !instance.worldReady()) {
           continue;
         }
         int load = instance.playerCount() + reservedByInstance.getOrDefault(
-            reservationKey(server.serverId(), instance.gameId()), 0);
+            reservationKey(server.serverId(), instance.gameId(), instance.tierId()), 0);
         if (load + requiredSlots > instance.maxPlayers()) {
           continue;
         }
@@ -75,9 +93,17 @@ public final class InstancePicker {
   /// Key under which reservations for one instance are counted:
   /// `<serverId>:<gameId>`.
   public static String reservationKey(ServerId serverId, CraftovGameId gameId) {
+    return reservationKey(serverId, gameId, null);
+  }
+
+  /// Canonical rooms include their tier in the reservation namespace. Legacy
+  /// null-tier rooms retain the historical `<serverId>:<gameId>` key exactly.
+  public static String reservationKey(ServerId serverId, CraftovGameId gameId,
+      @Nullable RaidTierId tierId) {
     Preconditions.checkNotNull(serverId, "serverId");
     Preconditions.checkNotNull(gameId, "gameId");
-    return serverId.value() + ":" + gameId.value();
+    String base = serverId.value() + ":" + gameId.value();
+    return tierId == null ? base : base + ":" + tierId.value();
   }
 
   private static boolean beatsBest(

@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /// Read view of a craftov game. Main-thread only; returned collections are
 /// unmodifiable.
@@ -20,6 +21,19 @@ public interface CraftovGame {
 
     default RaidDifficulty difficulty() {
         return RaidDifficulty.NORMAL;
+    }
+
+    /// Canonical map-authored action tier captured when this room was created.
+    /// A null value identifies a legacy room that is still addressed solely by
+    /// its mode+difficulty pair.
+    default @Nullable RaidTierId tierId() {
+        return null;
+    }
+
+    /// Complete immutable action profile selected for this room. Legacy rooms
+    /// deliberately expose no profile so they retain their historical ruleset.
+    default Optional<RaidActionProfile> actionProfile() {
+        return Optional.empty();
     }
 
     /// Authored map revision captured at game creation. It never changes mid-craftov.

@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
@@ -50,6 +51,7 @@ class QueueServiceTest {
   private static final ServerId SERVER = ServerId.of("game-01");
   private static final String PROXY = "craftov-1";
   private static final Duration TICK = Duration.ofSeconds(1);
+  private static final RaidTierId TOP_SECRET = RaidTierId.of("top_secret");
 
   private final ManualScheduler scheduler = new ManualScheduler();
   private final MutableTimeSource timeSource = new MutableTimeSource(0);
@@ -107,6 +109,12 @@ class QueueServiceTest {
       RaidMode mode, RaidDifficulty difficulty) {
     return new InstanceSnapshot(CraftovGameId.of(gameId), MAP, CraftovGameState.WAITING,
         playerCount, maxPlayers, true, mode, difficulty);
+  }
+
+  private static InstanceSnapshot waitingInstance(String gameId, int playerCount, int maxPlayers,
+      RaidMode mode, RaidDifficulty difficulty, RaidTierId tierId) {
+    return new InstanceSnapshot(CraftovGameId.of(gameId), MAP, CraftovGameState.WAITING,
+        playerCount, maxPlayers, true, mode, difficulty, tierId);
   }
 
   private static Logger silentLogger() {
@@ -210,17 +218,19 @@ class QueueServiceTest {
     }
 
     @Test
-    @DisplayName("parties from different rule pools never satisfy each other's minimum")
+    @DisplayName("parties from different action tiers never satisfy each other's minimum")
     void differentPoolsNeverFormOneCohort() {
-      UUID normal = onlinePlayer();
       UUID confidential = onlinePlayer();
+      UUID topSecret = onlinePlayer();
       directory.respondWith(List.of(server(
-          waitingInstance("normal", 0, 12, RaidMode.NORMAL, RaidDifficulty.NORMAL),
-          waitingInstance("secret", 0, 12,
-              RaidMode.CONFIDENTIAL, RaidDifficulty.NORMAL))));
-      service.queue(normal, MAP, RaidMode.NORMAL, RaidDifficulty.NORMAL, normal);
+          waitingInstance("confidential", 0, 12, RaidMode.CONFIDENTIAL,
+              RaidDifficulty.NORMAL, RaidTierId.of("confidential")),
+          waitingInstance("top-secret", 0, 12, RaidMode.CONFIDENTIAL,
+              RaidDifficulty.NORMAL, TOP_SECRET))));
       service.queue(confidential, MAP, RaidMode.CONFIDENTIAL,
-          RaidDifficulty.NORMAL, confidential);
+          RaidDifficulty.NORMAL, confidential, RaidTierId.of("confidential"));
+      service.queue(topSecret, MAP, RaidMode.CONFIDENTIAL,
+          RaidDifficulty.NORMAL, topSecret, TOP_SECRET);
 
       tick();
 
@@ -258,10 +268,10 @@ class QueueServiceTest {
       UUID third = onlinePlayer();
       UUID teamKey = UUID.randomUUID();
       directory.respondWith(List.of(server(waitingInstance(
-          "secure", 0, 3, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD))));
+          "secure", 0, 3, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, TOP_SECRET))));
 
       var queued = service.queueParty(List.of(leader, second, third), MAP,
-          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, teamKey);
+          RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, teamKey, TOP_SECRET);
       assertTrue(queued.isSuccess());
       tick();
 
@@ -270,7 +280,8 @@ class QueueServiceTest {
           assignment.gameId().equals(CraftovGameId.of("secure"))
               && assignment.teamKey().equals(teamKey)
               && assignment.mode() == RaidMode.CONFIDENTIAL
-              && assignment.difficulty() == RaidDifficulty.HARD));
+              && assignment.difficulty() == RaidDifficulty.HARD
+              && assignment.tierId().equals(TOP_SECRET)));
       assignments.results.forEach(result -> result.complete(null));
       assertEquals(0, service.queueSize());
       assertEquals(3, players.connections.size());
@@ -493,13 +504,14 @@ class QueueServiceTest {
       UUID third = onlinePlayer();
       directory.respondWith(List.of(server(waitingInstance("small", 0, 2))));
       service.queueParty(List.of(first, second, third), MAP, RaidMode.NORMAL,
-          RaidDifficulty.NORMAL, UUID.randomUUID());
+          RaidDifficulty.NORMAL, UUID.randomUUID(), TOP_SECRET);
 
       tick();
 
       ProvisionRequest request = codec.fromJson(
           broker.published.getFirst().payload(), ProvisionRequest.class);
       assertEquals(3, request.requiredSlots());
+      assertEquals(TOP_SECRET, request.tierId());
       assertTrue(assignments.stored.isEmpty());
     }
 

@@ -7,6 +7,7 @@ public final class MatchmakingFailures {
   public static final String PLAYER_DATA_NOT_READY = "玩家数据尚未就绪";
   public static final String PARTY_QUEUE_UNSUPPORTED = "当前匹配器不支持队伍整体入队";
   public static final String PARTY_SIZE_INVALID = "队伍人数必须为 1 到 3 人";
+  public static final String ACTION_TIER_QUEUE_UNSUPPORTED = "当前匹配器不支持行动档位";
 
   private MatchmakingFailures() {}
 }

@@ -21,6 +21,8 @@ public final class GameConfigMapper {
         CraftovMapId.of(CoreConfigMapper.stringOr(yaml, "game.default-map", "debug_zone")),
         yaml.getInt("game.minimum-players", 2),
         yaml.getInt("game.start-countdown-seconds", 15),
+        yaml.getInt("game.waiting-arrival-timeout-seconds",
+            GameServerConfig.DEFAULT_WAITING_ARRIVAL_TIMEOUT_SECONDS),
         yaml.getInt("game.min-ready-instances", 1),
         CoreConfigMapper.stringOr(yaml, "game.map-template-dir", "maps"),
         yaml.getBoolean("game.allow-flat-fallback", false),

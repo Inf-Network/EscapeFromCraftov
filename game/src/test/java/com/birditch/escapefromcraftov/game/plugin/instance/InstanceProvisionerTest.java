@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
@@ -160,6 +161,22 @@ class InstanceProvisionerTest {
       assertEquals(2, games.all().size());
       assertEquals(RaidMode.CONFIDENTIAL, games.created().getLast().mode());
       assertEquals(RaidDifficulty.HARD, games.created().getLast().difficulty());
+    }
+
+    @Test
+    @DisplayName("a canonical tier is not satisfied by a legacy room with the same pair")
+    void provisionsCanonicalTierSeparatelyFromLegacyPool() {
+      InstanceProvisioner provisioner = provisioner(1, 4);
+      provisioner.start();
+      RaidTierId tierId = RaidTierId.of("normal");
+
+      provisioner.onProvisionRequest(new ProvisionRequest(
+          ServerId.of(OWN_SERVER_ID), CraftovMapId.of("debug_zone"),
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, 1, tierId));
+
+      assertEquals(2, games.all().size());
+      assertEquals(null, games.created().getFirst().tierId());
+      assertEquals(tierId, games.created().getLast().tierId());
     }
 
     @Test

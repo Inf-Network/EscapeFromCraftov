@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -218,8 +219,8 @@ public final class PendingJoinHandler {
       rejectAssignment(player, "game.assignment-invalid", "地图不匹配");
       return;
     }
-    if (game.mode() != assignment.mode() || game.difficulty() != assignment.difficulty()) {
-      rejectAssignment(player, "game.assignment-invalid", "模式或难度不匹配");
+    if (!matchesPool(game, assignment)) {
+      rejectAssignment(player, "game.assignment-invalid", "模式、难度或行动档位不匹配");
       return;
     }
     if (game.state() != CraftovGameState.WAITING || !deps.index().isReady(game.id())) {
@@ -261,6 +262,14 @@ public final class PendingJoinHandler {
     // start() publishes synchronously, but checking the durable domain view
     // also protects against a future subscriber/order change.
     if (game.startedAt().isPresent()) beginClaim(entry);
+  }
+
+  static boolean matchesPool(CraftovGame game, MatchAssignment assignment) {
+    Preconditions.checkNotNull(game, "game");
+    Preconditions.checkNotNull(assignment, "assignment");
+    return game.mode() == assignment.mode()
+        && game.difficulty() == assignment.difficulty()
+        && Objects.equals(game.tierId(), assignment.tierId());
   }
 
   private void beginClaim(PendingEntry entry) {

@@ -147,6 +147,7 @@ game:
   return-save-failed: "<red>你的个人资料还没同步完成，本次暂不跨服。请稍后重试或联系管理员。</red>"
   end-settlement-failed: "<red>对局已结束，但本局物资还在处理中。请不要离开此服务器并联系管理员。</red>"
   assignment-invalid: "<red>无法加入对局:<reason></red>"
+  waiting-arrival-timeout: "<red>队伍成员未能及时到齐，本次行动已无损取消。</red> <gray>出战装备未被领取，正在返回大厅。</gray>"
   start-countdown-title: "<gold><bold><seconds></bold></gold>"
   start-countdown-subtitle: "<gray>准备进入行动</gray>"
   start-countdown-actionbar: "<yellow><seconds></yellow> <gray>秒后开始</gray> <dark_gray>·</dark_gray> <aqua><players>/<minimum></aqua>"

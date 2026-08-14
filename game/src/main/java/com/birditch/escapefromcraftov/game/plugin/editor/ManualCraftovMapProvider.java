@@ -97,7 +97,7 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
             value.bounds().maxY(), value.bounds().maxZ())).toList();
     return new CraftovMapRuntime(map.revision(), spawns, lootPoints, lootZones, points, areas,
-        aiZones, pois);
+        aiZones, pois, map.actionTiers());
   }
 
   private static LootContainerType containerType(String value) {

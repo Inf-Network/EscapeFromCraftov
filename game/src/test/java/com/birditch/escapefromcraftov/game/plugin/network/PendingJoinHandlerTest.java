@@ -8,10 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
+import com.birditch.escapefromcraftov.game.plugin.instance.FakeCraftovGame;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -90,6 +94,22 @@ class PendingJoinHandlerTest {
 
     entry.complete(PendingJoinHandler.ClaimOutcome.CLAIMED);
     assertEquals(PendingJoinHandler.ClaimOutcome.CLAIMED, entry.completion().join());
+  }
+
+  @Test
+  void assignmentMustMatchTheRoomsExactNullableActionTier() {
+    RaidTierId tierId = RaidTierId.of("top_secret");
+    FakeCraftovGame canonical = new FakeCraftovGame(GAME, MAP,
+        RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, tierId);
+    MatchAssignment matching = new MatchAssignment(PLAYER, SERVER, "craftov-backend-01",
+        GAME, MAP, PLAYER, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, tierId);
+    MatchAssignment legacy = new MatchAssignment(PLAYER, SERVER, "craftov-backend-01",
+        GAME, MAP, PLAYER, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, null);
+
+    assertTrue(PendingJoinHandler.matchesPool(canonical, matching));
+    assertFalse(PendingJoinHandler.matchesPool(canonical, legacy));
+    assertFalse(PendingJoinHandler.matchesPool(
+        new FakeCraftovGame(GAME, MAP, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD), matching));
   }
 
   @Test

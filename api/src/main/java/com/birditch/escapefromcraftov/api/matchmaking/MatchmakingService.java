@@ -3,10 +3,12 @@ package com.birditch.escapefromcraftov.api.matchmaking;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.result.Result;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /// Queues players for craftov instances. Main-thread only.
 public interface MatchmakingService {
@@ -28,6 +30,18 @@ public interface MatchmakingService {
         return queue(playerId, mapId, teamKey);
     }
 
+    /// Tier-aware foundation used by future preparation UI. A null tier is
+    /// exactly the old ruleset call. Old matchmakers reject non-null tiers so
+    /// the field can never be lost during a rolling upgrade.
+    default Result<MatchTicket> queue(UUID playerId, CraftovMapId mapId, RaidMode mode,
+                                      RaidDifficulty difficulty, UUID teamKey,
+                                      @Nullable RaidTierId tierId) {
+        if (tierId != null) {
+            return Result.fail(MatchmakingFailures.ACTION_TIER_QUEUE_UNSUPPORTED);
+        }
+        return queue(playerId, mapId, mode, difficulty, teamKey);
+    }
+
     /// Atomically queues one complete party. Implementations must either add
     /// every member with the shared team key or add none of them.
     default Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
@@ -37,6 +51,18 @@ public interface MatchmakingService {
             return Result.fail(MatchmakingFailures.PARTY_QUEUE_UNSUPPORTED);
         }
         return queue(playerIds.getFirst(), mapId, mode, difficulty, teamKey).map(List::of);
+    }
+
+    /// Tier-aware atomic party queue. Compatibility implementations preserve
+    /// the null legacy path and fail closed for any canonical tier.
+    default Result<List<MatchTicket>> queueParty(List<UUID> playerIds, CraftovMapId mapId,
+                                                 RaidMode mode, RaidDifficulty difficulty,
+                                                 UUID teamKey,
+                                                 @Nullable RaidTierId tierId) {
+        if (tierId != null) {
+            return Result.fail(MatchmakingFailures.ACTION_TIER_QUEUE_UNSUPPORTED);
+        }
+        return queueParty(playerIds, mapId, mode, difficulty, teamKey);
     }
 
     /// Returns whether the player had a ticket to remove.

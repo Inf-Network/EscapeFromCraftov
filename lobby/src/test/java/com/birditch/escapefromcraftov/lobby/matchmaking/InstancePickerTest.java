@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.ServerId;
@@ -84,6 +85,22 @@ class InstancePickerTest {
           RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, 2, Map.of())
           .orElseThrow().instance().gameId().value());
     }
+
+    @Test
+    @DisplayName("canonical tier and legacy null never match each other")
+    void filtersExactNullableTier() {
+      RaidTierId tier = RaidTierId.of("normal");
+      InstanceSnapshot legacy = new InstanceSnapshot(CraftovGameId.of("legacy"), MAP,
+          CraftovGameState.WAITING, 5, 12, true, RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
+      InstanceSnapshot canonical = new InstanceSnapshot(CraftovGameId.of("canonical"), MAP,
+          CraftovGameState.WAITING, 0, 12, true, RaidMode.NORMAL, RaidDifficulty.NORMAL, tier);
+      List<GameServerSnapshot> servers = List.of(server(SERVER_A, legacy, canonical));
+
+      assertEquals("canonical", InstancePicker.pick(servers, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, tier, 1, Map.of()).orElseThrow().instance().gameId().value());
+      assertEquals("legacy", InstancePicker.pick(servers, MAP, RaidMode.NORMAL,
+          RaidDifficulty.NORMAL, 1, Map.of()).orElseThrow().instance().gameId().value());
+    }
   }
 
   @Nested
@@ -121,5 +138,7 @@ class InstancePickerTest {
   void reservationKeyFormat() {
     assertEquals("game-01:abc123",
         InstancePicker.reservationKey(SERVER_A, CraftovGameId.of("abc123")));
+    assertEquals("game-01:abc123:top_secret", InstancePicker.reservationKey(
+        SERVER_A, CraftovGameId.of("abc123"), RaidTierId.of("top_secret")));
   }
 }

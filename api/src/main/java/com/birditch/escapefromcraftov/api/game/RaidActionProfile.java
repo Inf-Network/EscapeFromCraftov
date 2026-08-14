@@ -4,8 +4,9 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.HashSet;
 import java.util.List;
 
-/// One map-authored action tier. Economic gates are descriptive in the first
-/// compatibility phase; matchmaking still uses the legacy mode/difficulty pair.
+/// One map-authored action tier. Economic gates remain descriptive in this
+/// phase; matchmaking can carry the canonical id while null-tier requests keep
+/// using the legacy mode/difficulty pair.
 public record RaidActionProfile(
     RaidTierId id,
     String displayName,

@@ -6,6 +6,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import java.util.Collection;
@@ -59,6 +60,12 @@ public final class FakeGameService implements CraftovGameService {
   @Override
   public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
       RaidDifficulty difficulty) {
+    return create(mapId, mode, difficulty, null);
+  }
+
+  @Override
+  public Result<CraftovGame> create(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, @Nullable RaidTierId tierId) {
     Preconditions.checkNotNull(mapId, "mapId");
     Preconditions.checkNotNull(mode, "mode");
     Preconditions.checkNotNull(difficulty, "difficulty");
@@ -66,7 +73,7 @@ public final class FakeGameService implements CraftovGameService {
     if (failCreateWith != null) {
       return Result.fail(failCreateWith);
     }
-    FakeCraftovGame game = newGame(mapId, mode, difficulty);
+    FakeCraftovGame game = newGame(mapId, mode, difficulty, tierId);
     games.put(game.id(), game);
     return Result.ok(game);
   }
@@ -116,7 +123,12 @@ public final class FakeGameService implements CraftovGameService {
 
   private FakeCraftovGame newGame(CraftovMapId mapId, RaidMode mode,
       RaidDifficulty difficulty) {
+    return newGame(mapId, mode, difficulty, null);
+  }
+
+  private FakeCraftovGame newGame(CraftovMapId mapId, RaidMode mode,
+      RaidDifficulty difficulty, @Nullable RaidTierId tierId) {
     return new FakeCraftovGame(
-        CraftovGameId.of("game-" + nextId++), mapId, mode, difficulty);
+        CraftovGameId.of("game-" + nextId++), mapId, mode, difficulty, tierId);
   }
 }

@@ -77,8 +77,9 @@ public final class ManualMapValidator {
         .noneMatch(value -> value.extractionType() == ManualExtractionType.NORMAL)) {
       error(issues, "normal_extraction_missing", null, "至少需要一个启用的普通撤离点");
     }
-    if (map.lootPoints().stream().noneMatch(LootPointDefinition::enabled)) {
-      warning(issues, "loot_missing", null, "地图没有启用的 Loot 点");
+    if (map.lootPoints().stream().noneMatch(LootPointDefinition::enabled)
+        && map.lootZones().stream().noneMatch(LootZoneDefinition::enabled)) {
+      warning(issues, "loot_missing", null, "地图没有启用的 Loot 点或物资区域");
     }
     warnWhenBelow(issues, "loot_zones_insufficient", "物资区域",
         map.lootZones().stream().filter(LootZoneDefinition::enabled).count(),

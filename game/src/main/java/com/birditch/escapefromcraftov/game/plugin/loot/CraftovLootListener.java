@@ -72,6 +72,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final CraftovScheduler scheduler;
   private final AutoCloseable itemSource;
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
+  private final Map<ContainerKey, CraftovLootPoint> resolvedPoints = new HashMap<>();
   private final Map<UUID, LootView> views = new HashMap<>();
   private final Map<UUID, SearchSession> searches = new HashMap<>();
   private final Map<PlayerContainerKey, LootRevealProgress> revealProgress = new HashMap<>();
@@ -106,10 +107,19 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       player.sendMessage(messages.raw("loot.not-running"));
       return;
     }
-    Location target = target(event, player);
+    Block targetBlock = targetBlock(event, player);
+    Location target = targetBlock == null ? null : targetBlock.getLocation().add(0.5, 0.5, 0.5);
     if (target == null) return;
-    CraftovLootPoint point = nearest(game, target).orElse(null);
-    if (point == null) return;
+    CraftovLootPoint point = resolve(game, targetBlock, target).orElse(null);
+    if (point == null) {
+      Optional<LootContainerType> type = containerType(targetBlock.getType());
+      if (type.isPresent() && LootZoneResolver.contains(game.lootZones(), targetBlock.getX(),
+          targetBlock.getY(), targetBlock.getZ())) {
+        event.setCancelled(true);
+        player.sendActionBar(messages.raw("loot.inactive"));
+      }
+      return;
+    }
     event.setCancelled(true);
     beginSearch(player, game, point);
   }
@@ -148,9 +158,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     LootView view = views.get(player.getUniqueId());
     if (view == null) return;
     CraftovGame game = games.find(view.key().gameId()).orElse(null);
-    CraftovLootPoint point = game == null ? null : game.lootPoints().stream()
-        .filter(candidate -> candidate.id().equals(view.key().lootPointId()))
-        .findFirst().orElse(null);
+    CraftovLootPoint point = game == null ? null : point(game, view.key());
     if (point == null || !validViewLocation(game, player, point, view.key(), event.getTo())) {
       stopView(player, true, true);
     }
@@ -213,6 +221,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       return true;
     });
     containers.keySet().removeIf(key -> key.gameId().equals(event.gameId()));
+    resolvedPoints.keySet().removeIf(key -> key.gameId().equals(event.gameId()));
     revealProgress.keySet().removeIf(key -> key.container().gameId().equals(event.gameId()));
     views.entrySet().removeIf(entry -> {
       if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
@@ -229,6 +238,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private void beginSearch(Player player, CraftovGame game, CraftovLootPoint point) {
     UUID playerId = player.getUniqueId();
     ContainerKey key = new ContainerKey(game.id(), point.id());
+    resolvedPoints.putIfAbsent(key, point);
     PlayerContainerKey progressKey = new PlayerContainerKey(playerId, key);
     LootRevealProgress previous = revealProgress.get(progressKey);
     LootContainerState existing = containers.get(key);
@@ -540,8 +550,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       throw new IllegalStateException("请先打开物资搜索界面");
     }
     CraftovGame game = games.find(view.key().gameId()).orElse(null);
-    CraftovLootPoint point = game == null ? null : game.lootPoints().stream()
-        .filter(value -> value.id().equals(view.key().lootPointId())).findFirst().orElse(null);
+    CraftovLootPoint point = game == null ? null : point(game, view.key());
     if (point == null || !validViewLocation(game, player, point, view.key())) {
       views.remove(player.getUniqueId());
       RevealSession reveal = reveals.remove(player.getUniqueId());
@@ -626,11 +635,39 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
             point.distanceSquared(target.getX(), target.getY(), target.getZ())));
   }
 
-  private static Location target(PlayerInteractEvent event, Player player) {
+  private static Optional<CraftovLootPoint> resolve(CraftovGame game, Block block,
+      Location target) {
+    Optional<CraftovLootPoint> authored = nearest(game, target);
+    if (authored.isPresent()) return authored;
+    Optional<LootContainerType> type = containerType(block.getType());
+    if (type.isEmpty()) return Optional.empty();
+    return LootZoneResolver.resolve(game.id(), game.lootZones(), block.getX(), block.getY(),
+        block.getZ(), type.get());
+  }
+
+  private CraftovLootPoint point(CraftovGame game, ContainerKey key) {
+    return game.lootPoints().stream()
+        .filter(value -> value.id().equals(key.lootPointId())).findFirst()
+        .orElseGet(() -> resolvedPoints.get(key));
+  }
+
+  private static Optional<LootContainerType> containerType(Material material) {
+    if (material.name().endsWith("_SHULKER_BOX")) {
+      return Optional.of(LootContainerType.HIDDEN_CACHE);
+    }
+    return Optional.ofNullable(switch (material) {
+      case BARREL -> LootContainerType.BARREL;
+      case CHEST, TRAPPED_CHEST -> LootContainerType.CHEST;
+      case ENDER_CHEST -> LootContainerType.VAULT;
+      case DISPENSER, DROPPER -> LootContainerType.DUNGEON_CHEST;
+      case HOPPER -> LootContainerType.HIDDEN_CACHE;
+      default -> null;
+    });
+  }
+
+  private static Block targetBlock(PlayerInteractEvent event, Player player) {
     Block clicked = event.getClickedBlock();
-    if (clicked != null) return clicked.getLocation().add(0.5, 0.5, 0.5);
-    Block lookedAt = player.getTargetBlockExact(5);
-    return lookedAt == null ? null : lookedAt.getLocation().add(0.5, 0.5, 0.5);
+    return clicked != null ? clicked : player.getTargetBlockExact(5);
   }
 
   private static ItemStack air() {
@@ -680,6 +717,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     reveals.clear();
     revealProgress.clear();
     containers.clear();
+    resolvedPoints.clear();
   }
 
   private record ContainerKey(CraftovGameId gameId, String lootPointId) {

@@ -14,6 +14,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
+import com.birditch.escapefromcraftov.api.game.CraftovLootZone;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnArea;
@@ -72,6 +73,13 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
             value.position().z(), containerType(value.containerType()),
             LootTableId.of(value.lootTable()), value.tier(), value.virtualContainer()))
         .toList();
+    List<CraftovLootZone> lootZones = map.lootZones().stream()
+        .filter(value -> value.enabled())
+        .map(value -> new CraftovLootZone(value.id(), LootTableId.of(value.lootTable()),
+            value.tier(), value.density(), value.danger(), value.bounds().minX(),
+            value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
+            value.bounds().maxY(), value.bounds().maxZ()))
+        .toList();
     List<ExtractionDefinition> enabledExtractions = map.extractions().stream()
         .filter(ExtractionDefinition::enabled).toList();
     List<ExtractionPoint> points = enabledExtractions.stream().map(this::point).toList();
@@ -88,7 +96,8 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
         new CraftovPoi(value.id(), value.displayName(), value.tier(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
             value.bounds().maxY(), value.bounds().maxZ())).toList();
-    return new CraftovMapRuntime(map.revision(), spawns, lootPoints, points, areas, aiZones, pois);
+    return new CraftovMapRuntime(map.revision(), spawns, lootPoints, lootZones, points, areas,
+        aiZones, pois);
   }
 
   private static LootContainerType containerType(String value) {

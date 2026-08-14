@@ -31,6 +31,10 @@ public interface CraftovGame {
         return List.of();
     }
 
+    default List<CraftovLootZone> lootZones() {
+        return List.of();
+    }
+
     default List<CraftovAiZone> aiZones() {
         return List.of();
     }

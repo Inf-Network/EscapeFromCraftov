@@ -10,6 +10,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
+import com.birditch.escapefromcraftov.api.game.CraftovLootZone;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovPoi;
 import com.birditch.escapefromcraftov.api.game.CraftovResult;
@@ -41,6 +42,7 @@ public final class CraftovGameInstance implements CraftovGame {
     private final long mapRevision;
     private final List<CraftovSpawnLocation> spawnLocations;
     private final List<CraftovLootPoint> lootPoints;
+    private final List<CraftovLootZone> lootZones;
     private final List<ExtractionPoint> extractionPoints;
     private final List<CraftovExtractionArea> extractionAreas;
     private final List<CraftovAiZone> aiZones;
@@ -69,6 +71,7 @@ public final class CraftovGameInstance implements CraftovGame {
         this.mapRevision = runtime.revision();
         this.spawnLocations = runtime.spawns();
         this.lootPoints = runtime.lootPoints();
+        this.lootZones = runtime.lootZones();
         this.extractionPoints = runtime.extractionPoints();
         this.extractionAreas = runtime.extractionAreas();
         this.aiZones = runtime.aiZones();
@@ -214,6 +217,11 @@ public final class CraftovGameInstance implements CraftovGame {
     @Override
     public List<CraftovLootPoint> lootPoints() {
         return lootPoints;
+    }
+
+    @Override
+    public List<CraftovLootZone> lootZones() {
+        return lootZones;
     }
 
     @Override

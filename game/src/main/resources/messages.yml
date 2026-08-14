@@ -181,6 +181,7 @@ loot:
   unidentified: "<yellow>这件物资尚未辨识，无法取出。</yellow>"
   teammate-searching: "<gray>队友 <yellow><player></yellow> 正在搜索 <gold><container></gold>。</gray>"
   not-running: "<red>当前还不能搜索物资。</red>"
+  inactive: "<dark_gray>这个物资容器本局是空的。</dark_gray>"
   deposit-blocked: "<yellow>这是公共物资箱，只能取出物品，不能存入物品。</yellow>"
   inventory-full: "<yellow>本局背包没有足够空间装下这件物资。</yellow>"
   taken: "<green>物资已放入本局背包。</green>"

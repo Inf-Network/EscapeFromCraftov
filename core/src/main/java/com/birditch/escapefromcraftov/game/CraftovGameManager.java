@@ -76,8 +76,8 @@ public final class CraftovGameManager implements CraftovGameService {
         // the immutable craftov contract just like spawns and extractions; using
         // the legacy five-argument constructor here silently discarded them.
         CraftovMapRuntime captured = new CraftovMapRuntime(runtime.revision(), runtime.spawns(),
-                runtime.lootPoints(), extractionPoints, runtime.extractionAreas(),
-                runtime.aiZones(), runtime.pois());
+                runtime.lootPoints(), runtime.lootZones(), extractionPoints,
+                runtime.extractionAreas(), runtime.aiZones(), runtime.pois());
         CraftovGameInstance game = new CraftovGameInstance(gameId, mapId, now, captured);
         game.transitionTo(CraftovGameState.WAITING, now);
         games.put(gameId, game);

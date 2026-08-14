@@ -33,4 +33,15 @@ class WorldServicePathTest {
     assertFalse(WorldService.isOwnedInstanceWorld(ordinary));
     assertTrue(WorldService.isOwnedInstanceWorld(owned));
   }
+
+  @Test
+  void templateCopyExcludesEntityRegionsInEveryDimension() {
+    assertFalse(WorldService.shouldCopyTemplatePath(Path.of("entities", "r.0.0.mca")));
+    assertFalse(WorldService.shouldCopyTemplatePath(
+        Path.of("DIM-1", "entities", "r.0.0.mca")));
+    assertFalse(WorldService.shouldCopyTemplatePath(
+        Path.of("dimensions", "minecraft", "the_end", "entities", "r.0.0.mca")));
+    assertTrue(WorldService.shouldCopyTemplatePath(Path.of("region", "r.0.0.mca")));
+    assertTrue(WorldService.shouldCopyTemplatePath(Path.of("data", "raids.dat")));
+  }
 }

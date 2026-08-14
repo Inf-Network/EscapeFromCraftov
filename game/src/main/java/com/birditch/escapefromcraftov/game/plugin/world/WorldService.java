@@ -229,24 +229,46 @@ public final class WorldService {
           @Override
           public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
               throws IOException {
-            Files.createDirectories(target.resolve(source.relativize(dir)));
+            Path relative = source.relativize(dir);
+            if (!shouldCopyTemplatePath(relative)) {
+              return FileVisitResult.SKIP_SUBTREE;
+            }
+            Files.createDirectories(target.resolve(relative));
             return FileVisitResult.CONTINUE;
           }
 
           @Override
           public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
               throws IOException {
+            Path relative = source.relativize(file);
+            if (!shouldCopyTemplatePath(relative)) {
+              return FileVisitResult.CONTINUE;
+            }
             if (file.getFileName().toString().equals(INSTANCE_MARKER_FILE)) {
               // A template can never replace the runtime ownership marker.
               return FileVisitResult.CONTINUE;
             }
             Files.copy(
                 file,
-                target.resolve(source.relativize(file)),
+                target.resolve(relative),
                 StandardCopyOption.REPLACE_EXISTING);
             return FileVisitResult.CONTINUE;
           }
         });
+  }
+
+  /**
+   * Entity region files contain persistent UUIDs. Copying them while the
+   * authored source world is loaded makes Paper reject the duplicate entity in
+   * a new instance. Skip every vanilla/custom-dimension {@code entities}
+   * subtree; AI and other runtime actors are created after the game starts.
+   */
+  static boolean shouldCopyTemplatePath(Path relative) {
+    if (relative == null) return false;
+    for (Path element : relative) {
+      if (element.toString().equals("entities")) return false;
+    }
+    return true;
   }
 
   /// Main thread only.

@@ -36,6 +36,7 @@ import com.birditch.escapefromcraftov.extraction.ExtractionModule;
 import com.birditch.escapefromcraftov.game.GameModule;
 import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
+import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
 import com.birditch.escapefromcraftov.game.plugin.instance.BridgeDeps;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceProvisioner;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldBridge;
@@ -132,7 +133,9 @@ public final class GameApplication {
   private @Nullable BungeeConnector bungeeConnector;
   private @Nullable EventSubscription bridgeSubscription;
   private @Nullable EventSubscription lootSubscription;
+  private @Nullable EventSubscription aiSubscription;
   private @Nullable CraftovLootListener lootMenus;
+  private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable InstanceProvisioner provisioner;
   private @Nullable SnapshotPublisher publisher;
   private @Nullable CraftovStartCoordinator startCoordinator;
@@ -186,7 +189,8 @@ public final class GameApplication {
       GameCombatListener combat,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
-      InstanceWorldBridge bridge) {}
+      InstanceWorldBridge bridge,
+      CraftovAiRuntime aiRuntime) {}
 
   public GameApplication(CraftovGamePlugin plugin) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
@@ -237,6 +241,7 @@ public final class GameApplication {
   public void stop() {
     ShutdownSteps steps = new ShutdownSteps(logger);
     steps.run("settle active craftov losses", this::settleActiveCraftovLosses);
+    steps.run("stop instance AI runtime", this::stopAiRuntime);
     steps.run("destroy games", () -> withServices(
         registry -> registry.find(CraftovGameService.class).ifPresent(CraftovGameService::destroyAll)));
     steps.run("destroy instance worlds", this::destroyInstanceWorlds);
@@ -521,6 +526,9 @@ public final class GameApplication {
             context.eventBus(), worlds, index, visibility, bungee, server, configs.messages(), trMenu,
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
+    CraftovAiRuntime instanceAi = new CraftovAiRuntime(plugin, games, index, scheduler, logger);
+    aiRuntime = instanceAi;
+    aiSubscription = context.eventBus().register(instanceAi);
     InstanceProvisioner instanceProvisioner = new InstanceProvisioner(
         new ProvisionerDeps(games, configs.core().game(), server, maps::isEnabled,
             scheduler, logger));
@@ -547,7 +555,7 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        sidebarService, lootMenuController, instanceBridge);
+        sidebarService, lootMenuController, instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -604,6 +612,7 @@ public final class GameApplication {
     pluginManager.registerEvents(wiring.combat(), plugin);
     pluginManager.registerEvents(wiring.bridge(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
+    pluginManager.registerEvents(wiring.aiRuntime(), plugin);
     pluginManager.registerEvents(maps.visualization(), plugin);
     pluginManager.registerEvents(maps.interaction(), plugin);
     pluginManager.registerEvents(maps.objectMenus(), plugin);
@@ -667,6 +676,17 @@ public final class GameApplication {
         bungeeConnector.unregister();
       }
     });
+  }
+
+  private void stopAiRuntime() {
+    if (aiSubscription != null) {
+      aiSubscription.unsubscribe();
+      aiSubscription = null;
+    }
+    if (aiRuntime != null) {
+      aiRuntime.close();
+      aiRuntime = null;
+    }
   }
 
   private void saveAllProfiles() throws Exception {

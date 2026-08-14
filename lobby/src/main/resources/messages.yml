@@ -156,6 +156,14 @@ menu:
     item-changed: "<yellow>该物品已移动或售出，列表已刷新。</yellow>"
     bought: "<green>已购买</green> <yellow><item> ×<quantity></yellow><gray>，支付 <price> 金币；余额 <balance>。</gray>"
     sold: "<green>已出售</green> <yellow><item> ×<quantity></yellow><gray>，获得 <price> 金币；余额 <balance>。</gray>"
+  market:
+    load-failed: "<red>玩家交易行暂时无法打开，请稍后再试。</red>"
+    insufficient: "<red>金币不足，无法购买这笔挂单。</red>"
+    own-listing: "<red>不能购买自己的挂单。</red>"
+    changed: "<yellow>该挂单或物品状态已改变，列表已刷新。</yellow>"
+    bought: "<green>交易成功。</green> <gray>支付 <price> 金币；余额 <balance>。</gray>"
+    listed: "<green>上架成功。</green> <gray>售价 <price> 金币，24 小时后未售出将原物退回。</gray>"
+    cancelled: "<gray>已撤回挂单，原物已退回长期仓库。</gray>"
 
 # ---------------------------------------------------------------------------
 # 地图显示名:键为 “map.<地图ID>”。/play 与队列消息中的 <map> 会优先取

@@ -3,6 +3,7 @@ package com.birditch.escapefromcraftov.lobby;
 import com.birditch.escapefromcraftov.api.CraftovPermissions;
 import com.birditch.escapefromcraftov.api.network.MessageBroker;
 import com.birditch.escapefromcraftov.api.profile.ProfileService;
+import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.bukkit.BungeeConnector;
 import com.birditch.escapefromcraftov.bukkit.CoreConfigMapper;
 import com.birditch.escapefromcraftov.bukkit.Messages;
@@ -25,6 +26,8 @@ import com.birditch.escapefromcraftov.lobby.matchmaking.QueueDeps;
 import com.birditch.escapefromcraftov.lobby.matchmaking.QueueService;
 import com.birditch.escapefromcraftov.lobby.menu.LobbyMenuController;
 import com.birditch.escapefromcraftov.lobby.menu.MenuDeps;
+import com.birditch.escapefromcraftov.lobby.menu.MarketMenuController;
+import com.birditch.escapefromcraftov.lobby.menu.MarketMenuDeps;
 import com.birditch.escapefromcraftov.lobby.hud.LobbySidebarService;
 import com.birditch.escapefromcraftov.lobby.party.InMemoryPartyService;
 import com.birditch.escapefromcraftov.lobby.party.PartyService;
@@ -47,6 +50,8 @@ import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.settings.HibernatePlayerSettingsService;
 import com.birditch.escapefromcraftov.vendor.HibernateMilitaryVendorService;
 import com.birditch.escapefromcraftov.vendor.MilitaryVendorService;
+import com.birditch.escapefromcraftov.market.HibernatePlayerMarketService;
+import com.birditch.escapefromcraftov.market.PlayerMarketService;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import com.mojang.brigadier.tree.LiteralCommandNode;
@@ -89,6 +94,8 @@ public final class LobbyApplication {
   private @Nullable QueueService queueService;
   private @Nullable BungeeConnector bungeeConnector;
   private @Nullable LobbyMenuController menus;
+  private @Nullable MarketMenuController marketMenus;
+  private @Nullable ScheduledTask marketExpiryTask;
   private @Nullable LobbySidebarService sidebar;
 
   public LobbyApplication(CraftovLobbyPlugin plugin) {
@@ -118,10 +125,23 @@ public final class LobbyApplication {
     installed |= trMenu.installDefault(
         "trmenu/escapefromcraftov_lobby_vendor_sell.yml",
         "escapefromcraftov_lobby_vendor_sell.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_market.yml", "escapefromcraftov_lobby_market.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_market_mine.yml",
+        "escapefromcraftov_lobby_market_mine.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_market_list.yml",
+        "escapefromcraftov_lobby_market_list.yml");
+    installed |= trMenu.installDefault(
+        "trmenu/escapefromcraftov_lobby_market_confirm.yml",
+        "escapefromcraftov_lobby_market_confirm.yml");
     if (installed) trMenu.reloadMenus();
     trMenu.requireMenusLoaded("escapefromcraftov_lobby_main", "escapefromcraftov_lobby_settings",
         "escapefromcraftov_lobby_cosmetics", "escapefromcraftov_lobby_warehouse",
-        "escapefromcraftov_lobby_vendor", "escapefromcraftov_lobby_vendor_sell");
+        "escapefromcraftov_lobby_vendor", "escapefromcraftov_lobby_vendor_sell",
+        "escapefromcraftov_lobby_market", "escapefromcraftov_lobby_market_mine",
+        "escapefromcraftov_lobby_market_list", "escapefromcraftov_lobby_market_confirm");
     logger.info("Menu provider: " + trMenu.status()
         + " (all EscapeFromCraftov inventory menus are rendered by TrMenu)");
     PaperCraftovScheduler scheduler = new PaperCraftovScheduler(plugin);
@@ -144,6 +164,12 @@ public final class LobbyApplication {
     PlayerInventoryService inventories = new HibernatePlayerInventoryService(db, executor);
     MilitaryVendorService vendor = new HibernateMilitaryVendorService(
         db, executor, itemRegistry, timeSource);
+    PlayerMarketService market = new HibernatePlayerMarketService(db, executor, timeSource);
+    marketExpiryTask = scheduler.runTimer(Duration.ofSeconds(10), Duration.ofMinutes(1), () ->
+        market.expireDue().exceptionally(error -> {
+          logger.log(Level.WARNING, "回收过期交易行挂单失败", error);
+          return 0;
+        }));
     HibernateStarterKitService starterKit = new HibernateStarterKitService(
         db, executor, itemRegistry, timeSource);
     LobbyDataGate dataGate = new LobbyDataGate();
@@ -169,23 +195,34 @@ public final class LobbyApplication {
             itemStacks, queue, scheduler, config, dataGate, messages, plugin, logger);
     LobbyMenuController menuController = new LobbyMenuController(menuDeps, trMenu);
     menus = menuController;
+    MarketMenuController marketMenuController = new MarketMenuController(new MarketMenuDeps(
+        market, inventories, profiles, itemRegistry, itemStacks, scheduler, dataGate,
+        messages, logger), trMenu);
+    marketMenus = marketMenuController;
     ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, profiles,
         starterKit, settings, cosmetics, inventories, queue, parties, dataGate,
         menuController::openMain, logger);
-    registerListeners(connectionDeps, menuController, config);
+    registerListeners(connectionDeps, menuController, marketMenuController, config);
     LobbySidebarService sidebarService = new LobbySidebarService(plugin, profiles, inventories,
         queue, dataGate, scheduler, messages, config, logger);
     sidebarService.start();
     sidebar = sidebarService;
     registerPermissions();
     registerCommands(new LobbyCommandContext(
-        plugin, queue, directory, messages, config, dataGate, menuController, parties));
+        plugin, queue, directory, messages, config, dataGate,
+        menuController, marketMenuController, parties));
     logSummary(config, configs.database(), configs.redis(), directory);
   }
 
   /// Guarded teardown; each step failure is logged and the remaining steps run.
   public void stop() {
     ShutdownSteps steps = new ShutdownSteps(logger);
+    steps.run("stop market expiry worker", () -> {
+      if (marketExpiryTask != null) {
+        marketExpiryTask.cancel();
+        marketExpiryTask = null;
+      }
+    });
     steps.run("stop queue", () -> {
       if (queueService != null) {
         queueService.stop();
@@ -201,6 +238,12 @@ public final class LobbyApplication {
       if (menus != null) {
         menus.close();
         menus = null;
+      }
+    });
+    steps.run("close TrMenu market controller", () -> {
+      if (marketMenus != null) {
+        marketMenus.close();
+        marketMenus = null;
       }
     });
     steps.run("save profiles", this::saveAllProfiles);
@@ -267,11 +310,13 @@ public final class LobbyApplication {
 
   private void registerListeners(ConnectionDeps connectionDeps,
       LobbyMenuController menuController,
+      MarketMenuController marketMenuController,
       LobbyConfig config) {
     PluginManager manager = plugin.getServer().getPluginManager();
     manager.registerEvents(new LobbyConnectionListener(connectionDeps), plugin);
     manager.registerEvents(new LobbyProtectionListener(config), plugin);
     manager.registerEvents(menuController, plugin);
+    manager.registerEvents(marketMenuController, plugin);
   }
 
   private void registerPermissions() {

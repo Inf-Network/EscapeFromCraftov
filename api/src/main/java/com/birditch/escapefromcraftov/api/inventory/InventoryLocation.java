@@ -4,5 +4,7 @@ package com.birditch.escapefromcraftov.api.inventory;
 public enum InventoryLocation {
   WAREHOUSE,
   LOADOUT,
-  CRAFTOV
+  CRAFTOV,
+  /// Reserved by an active player-market listing. It is not available to loadouts.
+  MARKET
 }

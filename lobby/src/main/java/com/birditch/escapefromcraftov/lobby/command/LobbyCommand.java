@@ -14,6 +14,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
@@ -159,6 +160,7 @@ public final class LobbyCommand {
                     context.menus().moveWarehouseItem(player,
                         IntegerArgumentType.getInteger(ctx, "slot")))))));
     root.then(vendorNode(context));
+    root.then(marketNode(context));
     if (includeParty) root.then(partyNode(context));
     return root.build();
   }
@@ -225,6 +227,110 @@ public final class LobbyCommand {
         .executes(ctx -> menuAction(context, ctx, context.menus()::openVendor))
         .then(Commands.literal("buy").then(offer))
         .then(sell);
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> marketNode(
+      LobbyCommandContext context) {
+    var market = Commands.literal("market")
+        .executes(ctx -> menuAction(context, ctx, player ->
+            context.marketMenus().openBrowse(player, 0)));
+    market.then(Commands.literal("page")
+        .then(Commands.argument("direction", StringArgumentType.word())
+            .suggests((_, builder) -> {
+              builder.suggest("previous");
+              builder.suggest("next");
+              return builder.buildFuture();
+            })
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().page(player, "browse", direction(ctx))))));
+    market.then(Commands.literal("buy")
+        .then(Commands.argument("slot", IntegerArgumentType.integer(0, 35))
+            .suggests(LobbyCommand::marketSlots)
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().buy(player,
+                    IntegerArgumentType.getInteger(ctx, "slot"))))));
+
+    var mine = Commands.literal("mine")
+        .executes(ctx -> menuAction(context, ctx, player ->
+            context.marketMenus().openMine(player, 0)));
+    mine.then(Commands.literal("page")
+        .then(Commands.argument("direction", StringArgumentType.word())
+            .suggests((_, builder) -> {
+              builder.suggest("previous");
+              builder.suggest("next");
+              return builder.buildFuture();
+            })
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().page(player, "mine", direction(ctx))))));
+    mine.then(Commands.literal("cancel")
+        .then(Commands.argument("slot", IntegerArgumentType.integer(0, 35))
+            .suggests(LobbyCommand::marketSlots)
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().cancel(player,
+                    IntegerArgumentType.getInteger(ctx, "slot"))))));
+    market.then(mine);
+
+    var list = Commands.literal("list")
+        .executes(ctx -> menuAction(context, ctx, player ->
+            context.marketMenus().openList(player, 0)));
+    list.then(Commands.literal("page")
+        .then(Commands.argument("direction", StringArgumentType.word())
+            .suggests((_, builder) -> {
+              builder.suggest("previous");
+              builder.suggest("next");
+              return builder.buildFuture();
+            })
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().page(player, "list", direction(ctx))))));
+    list.then(Commands.literal("select")
+        .then(Commands.argument("slot", IntegerArgumentType.integer(0, 35))
+            .suggests(LobbyCommand::marketSlots)
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().selectForListing(player,
+                    IntegerArgumentType.getInteger(ctx, "slot"))))));
+    list.then(Commands.literal("adjust")
+        .then(Commands.argument("delta", LongArgumentType.longArg(
+                -1_000_000_000L, 1_000_000_000L))
+            .suggests((_, builder) -> {
+              builder.suggest(-1000);
+              builder.suggest(-100);
+              builder.suggest(100);
+              builder.suggest(1000);
+              return builder.buildFuture();
+            })
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().adjustPrice(player,
+                    LongArgumentType.getLong(ctx, "delta"))))));
+    list.then(Commands.literal("price")
+        .then(Commands.argument("amount", LongArgumentType.longArg(1, 1_000_000_000L))
+            .suggests((_, builder) -> {
+              builder.suggest(1000);
+              builder.suggest(5000);
+              builder.suggest(10000);
+              return builder.buildFuture();
+            })
+            .executes(ctx -> menuAction(context, ctx, player ->
+                context.marketMenus().setPrice(player,
+                    LongArgumentType.getLong(ctx, "amount"))))));
+    list.then(Commands.literal("confirm").executes(ctx ->
+        menuAction(context, ctx, context.marketMenus()::confirmListing)));
+    market.then(list);
+    return market;
+  }
+
+  private static int direction(CommandContext<CommandSourceStack> ctx) {
+    String value = StringArgumentType.getString(ctx, "direction");
+    if (!value.equals("previous") && !value.equals("next")) {
+      throw new IllegalArgumentException("方向只能是 previous 或 next");
+    }
+    return value.equals("next") ? 1 : -1;
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      marketSlots(CommandContext<CommandSourceStack> ignored,
+          com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    for (int slot = 0; slot < 36; slot++) builder.suggest(slot);
+    return builder.buildFuture();
   }
 
   private static int play(LobbyCommandContext context, CommandContext<CommandSourceStack> ctx,

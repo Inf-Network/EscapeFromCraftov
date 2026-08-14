@@ -8,6 +8,8 @@ import com.birditch.escapefromcraftov.core.database.entity.PlayerItemEntity;
 import com.birditch.escapefromcraftov.core.database.entity.CraftovInventorySettlementEntity;
 import com.birditch.escapefromcraftov.core.database.entity.EconomyTransactionEntity;
 import com.birditch.escapefromcraftov.core.database.entity.ProgressionTransactionEntity;
+import com.birditch.escapefromcraftov.core.database.entity.MarketListingEntity;
+import com.birditch.escapefromcraftov.core.database.entity.MarketOperationEntity;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.function.Function;
@@ -65,6 +67,8 @@ public final class HibernateDatabase implements Database {
           .addAnnotatedClass(CraftovInventorySettlementEntity.class)
           .addAnnotatedClass(EconomyTransactionEntity.class)
           .addAnnotatedClass(ProgressionTransactionEntity.class)
+          .addAnnotatedClass(MarketListingEntity.class)
+          .addAnnotatedClass(MarketOperationEntity.class)
           .getMetadataBuilder()
           .applyPhysicalNamingStrategy(naming)
           .build();

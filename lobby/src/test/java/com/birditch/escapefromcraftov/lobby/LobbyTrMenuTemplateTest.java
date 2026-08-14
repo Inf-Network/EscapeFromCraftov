@@ -24,7 +24,11 @@ class LobbyTrMenuTemplateTest {
       "trmenu/escapefromcraftov_lobby_cosmetics.yml",
       "trmenu/escapefromcraftov_lobby_warehouse.yml",
       "trmenu/escapefromcraftov_lobby_vendor.yml",
-      "trmenu/escapefromcraftov_lobby_vendor_sell.yml");
+      "trmenu/escapefromcraftov_lobby_vendor_sell.yml",
+      "trmenu/escapefromcraftov_lobby_market.yml",
+      "trmenu/escapefromcraftov_lobby_market_mine.yml",
+      "trmenu/escapefromcraftov_lobby_market_list.yml",
+      "trmenu/escapefromcraftov_lobby_market_confirm.yml");
   private static final Pattern WAREHOUSE_SOURCE =
       Pattern.compile("source:CRAFTOVCORELOBBY:warehouse-(\\d+)");
 
@@ -97,6 +101,29 @@ class LobbyTrMenuTemplateTest {
 
     assertTrue(yaml.contains("    TrMenu:\n      load: BEFORE\n      required: true\n"
         + "      join-classpath: false"));
+  }
+
+  @Test
+  void marketMenusExposeBrowseMineListingAndSellerPriceConfirmation() throws IOException {
+    String browse = read("trmenu/escapefromcraftov_lobby_market.yml");
+    String mine = read("trmenu/escapefromcraftov_lobby_market_mine.yml");
+    String list = read("trmenu/escapefromcraftov_lobby_market_list.yml");
+    String confirm = read("trmenu/escapefromcraftov_lobby_market_confirm.yml");
+    for (int slot = 0; slot < 36; slot++) {
+      assertTrue(browse.contains("source:CRAFTOVMARKET:browse-" + slot));
+      assertTrue(browse.contains("command: lobby market buy " + slot));
+      assertTrue(mine.contains("command: lobby market mine cancel " + slot));
+      assertTrue(list.contains("command: lobby market list select " + slot));
+    }
+    assertTrue(confirm.contains("command: lobby market list adjust -1000"));
+    assertTrue(confirm.contains("command: lobby market list confirm"));
+    assertTrue(confirm.contains("挂单有效期 24 小时"));
+  }
+
+  @Test
+  void mainMenuExposesPlayerMarket() throws IOException {
+    String main = read("trmenu/escapefromcraftov_lobby_main.yml");
+    assertTrue(main.contains("command: lobby market"));
   }
 
   @Test

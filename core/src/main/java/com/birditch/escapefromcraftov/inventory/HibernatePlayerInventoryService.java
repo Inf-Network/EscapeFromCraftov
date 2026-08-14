@@ -59,8 +59,9 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
       if (item == null || !item.playerId().equals(playerId)) {
         throw new IllegalArgumentException("物品不存在或不属于该玩家: " + storageId);
       }
-      if (item.location() == InventoryLocation.CRAFTOV) {
-        throw new IllegalStateException("行动中的物品不能在大厅移动");
+      if (item.location() != InventoryLocation.WAREHOUSE
+          && item.location() != InventoryLocation.LOADOUT) {
+        throw new IllegalStateException("行动中或已上架的物品不能在大厅移动");
       }
       if (target == InventoryLocation.LOADOUT && item.location() != target) {
         long current = session.createSelectionQuery(

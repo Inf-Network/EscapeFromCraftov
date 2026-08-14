@@ -1,0 +1,43 @@
+Title: '&8确认上架'
+Layout:
+  - '#########'
+  - '#       #'
+  - '#   I P #'
+  - '#123 456#'
+  - '#   C   #'
+  - '####B####'
+Options:
+  Arguments: false
+  Hide-Player-Inventory: true
+  Min-Click-Delay: 150
+Icons:
+  '#':
+    display: { material: black_stained_glass_pane, name: ' ' }
+  I:
+    display: { material: 'source:CRAFTOVMARKET:confirm-item' }
+  P:
+    display: { material: 'source:CRAFTOVMARKET:confirm-price' }
+  '1':
+    display: { material: red_dye, name: '&c-10,000' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust -10000' ] }
+  '2':
+    display: { material: red_dye, name: '&c-1,000' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust -1000' ] }
+  '3':
+    display: { material: red_dye, name: '&c-100' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust -100' ] }
+  '4':
+    display: { material: lime_dye, name: '&a+100' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust 100' ] }
+  '5':
+    display: { material: lime_dye, name: '&a+1,000' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust 1000' ] }
+  '6':
+    display: { material: lime_dye, name: '&a+10,000' }
+    actions: { all: [ 'reset', 'command: lobby market list adjust 10000' ] }
+  C:
+    display: { material: emerald_block, name: '&a确认上架', lore: [ '&7挂单有效期 24 小时', '&7到期或撤单会原物退回仓库' ] }
+    actions: { all: [ 'reset', 'command: lobby market list confirm' ] }
+  B:
+    display: { material: barrier, name: '&c返回选择物品' }
+    actions: { all: [ 'reset', 'command: lobby market list' ] }

@@ -4,7 +4,7 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.List;
 import java.util.UUID;
 
-/// Immutable warehouse/loadout/craftov item view for one player.
+/// Immutable view of every durable item location for one player.
 public record PlayerInventorySnapshot(UUID playerId, List<StoredItem> items) {
 
   public PlayerInventorySnapshot {

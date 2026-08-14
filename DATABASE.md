@@ -36,6 +36,8 @@ schema（默认 `public`），共享下列全部表。
 | `craftov_inventory_settlements` | `CraftovInventorySettlementEntity` | 行动结算幂等标记 |
 | `craftov_economy_transactions` | `EconomyTransactionEntity` | 金币变动审计流水（不可变） |
 | `craftov_progression_transactions` | `ProgressionTransactionEntity` | 经验发放审计流水（不可变） |
+| `craftov_market_listings` | `MarketListingEntity` | 玩家交易行挂单与精确物品快照 |
+| `craftov_market_operations` | `MarketOperationEntity` | 交易行全局幂等操作记录（不可变） |
 
 ## craftov_profiles — 玩家档案
 
@@ -80,7 +82,7 @@ schema（默认 `public`），共享下列全部表。
 | `instance_id` | uuid | 可空，唯一 | 跨仓库、行动与撤离保持不变的物理实例 ID；旧行首次读取时回退为 `storage_id` |
 | `item_id` | varchar(255) | NOT NULL | 物品定义 ID |
 | `quantity` | integer | NOT NULL | 数量 |
-| `location` | varchar(255) | NOT NULL | 枚举 `InventoryLocation`：`WAREHOUSE` / `LOADOUT` / `CRAFTOV` |
+| `location` | varchar(255) | NOT NULL | 枚举 `InventoryLocation`：`WAREHOUSE` / `LOADOUT` / `CRAFTOV` / `MARKET` |
 | `craftov_id` | varchar(255) | 可空 | 处于行动中时所属的 craftov 实例 ID |
 | `item_data` | text | 可空 | Paper 版本化物品数据，保留耐久、附魔、Lore、药水与 PDC |
 | `updated_at` | timestamptz(6) | NOT NULL | 最近更新时间 |
@@ -135,6 +137,44 @@ schema（默认 `public`），共享下列全部表。
 
 索引：`idx_craftov_progression_player_time` on `(player_id, created_at)`。
 
+## craftov_market_listings — 玩家交易行挂单
+
+挂单期间原 `craftov_player_items` 行保留不变，仅把 `location` 设为 `MARKET`；
+成交时原地修改 `player_id` 并回到 `WAREHOUSE`，所以 `storage_id`、`instance_id`
+和 `item_data` 全程不重建。取消或到期也会把同一行退回卖家仓库。
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `listing_id` | uuid | PK | 挂单 ID |
+| `create_operation_id` | uuid | NOT NULL | 上架幂等键；全局唯一性由操作表主键保证 |
+| `seller_id` | uuid | NOT NULL | 卖家 UUID |
+| `storage_id` | uuid | NOT NULL | 被锁定的物品仓储行；撤单后允许同一原物再次上架 |
+| `instance_id` | uuid | NOT NULL | 物理物品实例 ID 快照 |
+| `item_id` | varchar(255) | NOT NULL | 物品定义 ID 快照 |
+| `quantity` | integer | NOT NULL | 整组数量 |
+| `item_data` | text | 可空 | 完整 Paper 物品数据快照 |
+| `price` | bigint | NOT NULL | 卖家定价，1..1,000,000,000 金币 |
+| `status` | varchar(255) | NOT NULL | `ACTIVE` / `SOLD` / `CANCELLED` / `EXPIRED` |
+| `buyer_id` | uuid | 可空 | 成交买家 |
+| `close_operation_id` | uuid | 可空 | 购买或撤单幂等键 |
+| `created_at` / `expires_at` | timestamptz(6) | NOT NULL | 创建与到期时间 |
+| `closed_at` | timestamptz(6) | 可空 | 成交、撤单或过期时间 |
+| `version` | bigint | | 乐观锁版本 |
+
+索引：`idx_craftov_market_active_expiry`、`idx_craftov_market_seller_status`。
+
+## craftov_market_operations — 交易行幂等操作
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `operation_id` | uuid | PK | 客户端操作幂等键 |
+| `operation_type` | varchar(255) | NOT NULL | `LIST` / `BUY` / `CANCEL` |
+| `player_id` | uuid | NOT NULL | 操作玩家 |
+| `listing_id` | uuid | NOT NULL | 目标挂单 |
+| `created_at` | timestamptz(6) | NOT NULL | 提交时间 |
+
+索引：`idx_craftov_market_operation_listing` on `(listing_id)`。
+
 ## 运维备注
 
 - 表之间没有外键约束，实体互不关联；`player_id` 的一致性由业务层保证。
@@ -144,6 +184,9 @@ schema（默认 `public`），共享下列全部表。
 - 旧库升级物品实例结构时，先执行
   `database/migrations/20260814_item_instance_payload.sql`。该脚本须由 psql
   以 autocommit 执行；使用 `table-prefix` 时先替换脚本中的表名与索引名。
+- 启用玩家交易行前执行 `database/migrations/20260814_player_market.sql`；脚本使用
+  普通事务，并会把 `craftov_player_items.location` 的枚举约束扩展为允许 `MARKET`；
+  执行成功后再以 `schema-action: validate` 启动 Lobby。
 - 运行时开启 Hibernate 的 named-index validation；`validate` 模式会在唯一实例
   索引缺失时拒绝启动，不能只添加两列而漏掉索引。
 - `craftov_player_items` 上的仓库/出战栏写路径使用 `pg_advisory_xact_lock`

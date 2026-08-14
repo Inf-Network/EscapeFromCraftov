@@ -1,7 +1,7 @@
 Title: '&8逃离块科夫'
 Layout:
   - '#########'
-  - '#PVW S C#'
+  - '#PVWMS C#'
   - '####X####'
 Options:
   Arguments: false
@@ -19,6 +19,9 @@ Icons:
   V:
     display: { material: emerald, name: '&a军需处', lore: [ '&7购买行动物资，出售仓库战利品' ] }
     actions: { all: [ 'reset', 'command: lobby vendor' ] }
+  M:
+    display: { material: gold_ingot, name: '&6玩家交易行', lore: [ '&7自由定价买卖长期仓库物资' ] }
+    actions: { all: [ 'reset', 'command: lobby market' ] }
   S:
     display: { material: comparator, name: '&e个人设置', lore: [ '&7调整大厅显示和匹配消息' ] }
     actions: { all: [ 'reset', 'command: lobby settings' ] }

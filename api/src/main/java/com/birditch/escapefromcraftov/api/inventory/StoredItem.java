@@ -7,7 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
-/// One durable owned stack. CRAFTOV rows are bound to exactly one craftov id.
+/// One durable owned stack. CRAFTOV rows are bound to exactly one craftov id;
+/// MARKET rows are reserved by an active player-market listing.
 public record StoredItem(
     UUID storageId,
     UUID instanceId,

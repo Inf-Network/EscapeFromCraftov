@@ -28,7 +28,7 @@ public class PlayerItemEntity {
   @Column(name = "storage_id", nullable = false, updatable = false)
   private UUID storageId;
 
-  @Column(name = "player_id", nullable = false, updatable = false)
+  @Column(name = "player_id", nullable = false)
   private UUID playerId;
 
   /// Durable physical-item identity. Nullable only for rows written before this column existed.
@@ -84,6 +84,12 @@ public class PlayerItemEntity {
     location = target;
     craftovId = newCraftovId;
     updatedAt = now;
+  }
+
+  /// Atomically changes durable ownership without rebuilding the physical item row.
+  public void transferTo(UUID newPlayerId, InventoryLocation target, Instant now) {
+    this.playerId = newPlayerId;
+    moveTo(target, null, now);
   }
 
   public UUID storageId() { return storageId; }

@@ -68,6 +68,7 @@ import com.birditch.escapefromcraftov.game.plugin.network.PendingDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingPlayerGuard;
 import com.birditch.escapefromcraftov.game.plugin.loot.CraftovLootListener;
+import com.birditch.escapefromcraftov.game.plugin.medical.MedicalConditionListener;
 import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
@@ -142,6 +143,7 @@ public final class GameApplication {
   private @Nullable CraftovLootListener lootMenus;
   private @Nullable DeathCrateListener deathCrates;
   private @Nullable DownedPlayerListener downedPlayers;
+  private @Nullable MedicalConditionListener medicalConditions;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable InstanceProvisioner provisioner;
@@ -196,6 +198,7 @@ public final class GameApplication {
       CraftovItemStacks itemStacks,
       GameCombatListener combat,
       DownedPlayerListener downedPlayers,
+      MedicalConditionListener medicalConditions,
       CraftovSidebarService sidebar,
       CraftovLootListener lootMenus,
       DeathCrateListener deathCrates,
@@ -535,6 +538,9 @@ public final class GameApplication {
             com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
         index, scheduler, configs.messages());
     downedPlayers = downedPlayerController;
+    MedicalConditionListener medicalConditionController = new MedicalConditionListener(
+        games, context.services().require(CombatService.class), index, itemStacks, scheduler);
+    medicalConditions = medicalConditionController;
     CraftovStartCoordinator starts = new CraftovStartCoordinator(games, index, scheduler,
         new BukkitCraftovStartNotifier(configs.messages()), logger,
         server.minimumPlayers(), server.startCountdownSeconds());
@@ -598,8 +604,8 @@ public final class GameApplication {
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
-        downedPlayerController, sidebarService, lootMenuController, deathCrateController, secure,
-        instanceBridge, instanceAi);
+        downedPlayerController, medicalConditionController, sidebarService, lootMenuController,
+        deathCrateController, secure, instanceBridge, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -655,6 +661,7 @@ public final class GameApplication {
         wiring.index(), configs.messages()), plugin);
     pluginManager.registerEvents(wiring.combat(), plugin);
     pluginManager.registerEvents(wiring.downedPlayers(), plugin);
+    pluginManager.registerEvents(wiring.medicalConditions(), plugin);
     pluginManager.registerEvents(wiring.bridge(), plugin);
     pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
@@ -701,6 +708,12 @@ public final class GameApplication {
       if (downedPlayers != null) {
         downedPlayers.close();
         downedPlayers = null;
+      }
+    });
+    steps.run("stop raid medical conditions", () -> {
+      if (medicalConditions != null) {
+        medicalConditions.close();
+        medicalConditions = null;
       }
     });
     steps.run("close TrMenu Loot controller", () -> {

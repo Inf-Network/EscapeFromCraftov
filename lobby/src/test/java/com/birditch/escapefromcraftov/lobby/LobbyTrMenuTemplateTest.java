@@ -85,7 +85,7 @@ class LobbyTrMenuTemplateTest {
     String vendor = read("trmenu/escapefromcraftov_lobby_vendor.yml");
     String sell = read("trmenu/escapefromcraftov_lobby_vendor_sell.yml");
 
-    for (int offer = 0; offer < 13; offer++) {
+    for (int offer = 0; offer < 15; offer++) {
       assertTrue(vendor.contains("source:CRAFTOVCORELOBBY:vendor-offer-" + offer));
       assertTrue(vendor.contains("command: lobby vendor buy " + offer + " 1"));
       assertTrue(vendor.contains("command: lobby vendor buy " + offer + " 8"));

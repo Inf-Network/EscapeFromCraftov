@@ -9,14 +9,18 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
+import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapService;
 import com.birditch.escapefromcraftov.game.plugin.listener.GameCombatListener;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartStatus;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.map.EditorSession;
 import com.birditch.escapefromcraftov.map.EditorSessionService;
 import com.birditch.escapefromcraftov.map.ManualMapValidationResult;
@@ -61,6 +65,9 @@ public final class CraftovSidebarService implements AutoCloseable {
   private final ExtractionService extractions;
   private final CombatService combat;
   private final CraftovItemStacks itemStacks;
+  private final ItemRegistry items;
+  private final RaidCarryController carry;
+  private final SecureContainerController secure;
   private final Messages messages;
   private final GameplaySettings settings;
   private final GameCombatListener combatListener;
@@ -76,7 +83,8 @@ public final class CraftovSidebarService implements AutoCloseable {
   public CraftovSidebarService(Plugin plugin, CraftovGameService games, EditorSessionService editors,
       ManualMapService maps, ExtractionService extractions,
       CombatService combat,
-      CraftovItemStacks itemStacks, Messages messages, GameplaySettings settings,
+      CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
+      SecureContainerController secure, Messages messages, GameplaySettings settings,
       GameCombatListener combatListener, CraftovStartStatus starts,
       int durationSeconds, int maxPlayers, int minimumPlayers) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
@@ -86,6 +94,9 @@ public final class CraftovSidebarService implements AutoCloseable {
     this.extractions = Preconditions.checkNotNull(extractions, "extractions");
     this.combat = Preconditions.checkNotNull(combat, "combat");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
+    this.items = Preconditions.checkNotNull(items, "items");
+    this.carry = Preconditions.checkNotNull(carry, "carry");
+    this.secure = Preconditions.checkNotNull(secure, "secure");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.combatListener = Preconditions.checkNotNull(combatListener, "combatListener");
@@ -190,8 +201,19 @@ public final class CraftovSidebarService implements AutoCloseable {
         .findFirst().orElse(0);
     PlayerCombatState combatState = combat.stateOf(player.getUniqueId());
     long alive = game.players().stream().filter(value -> !value.extracted()).count();
-    int backpack = itemStacks.usedSlots(player.getInventory().getContents());
-    long value = itemStacks.totalValue(player.getInventory().getContents());
+    var carrySnapshot = carry.snapshot(player);
+    int backpack = carrySnapshot.map(value -> value.usedCargoSlots())
+        .orElseGet(() -> itemStacks.usedSlots(player.getInventory().getStorageContents()));
+    int capacity = carrySnapshot.map(value -> value.capacity().cargoSlots()).orElse(36);
+    List<ItemInstance> protectedItems = secure.contents(game.id(), player.getUniqueId());
+    long physicalWeight = carrySnapshot.map(value -> value.totalWeightGrams())
+        .orElseGet(() -> physicalWeight(player));
+    long weight = saturatedAdd(physicalWeight, itemWeight(protectedItems));
+    long maximumWeight = carrySnapshot.map(value -> value.capacity().maximumWeightGrams()).orElse(0L);
+    long comfortableWeight = carrySnapshot.map(value -> value.capacity().comfortableWeightGrams())
+        .orElse(Long.MAX_VALUE);
+    long value = saturatedAdd(itemStacks.totalValue(player.getInventory().getContents()),
+        itemValue(protectedItems));
     ExtractionSession extractionSession = extractions.activeSession(player.getUniqueId()).orElse(null);
     String extraction = extractionSession == null ? "寻找撤离点"
         : extractionSession.state() == ExtractionState.SETTLING ? "物资结算中 · 请稍候"
@@ -200,9 +222,8 @@ public final class CraftovSidebarService implements AutoCloseable {
     List<Component> lines = List.of(
         text("地图  ", NamedTextColor.GOLD).append(mapName),
         text("版本  " + game.mapRevision(), NamedTextColor.GRAY),
-        text("规则  " + modeName(game) + " · " + difficultyName(game),
-            game.mode() == com.birditch.escapefromcraftov.api.game.RaidMode.CONFIDENTIAL
-                ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY),
+        text("规则  " + ruleName(game), game.actionProfile().isPresent()
+            ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY),
         text("状态  " + phase(game.state()), NamedTextColor.GREEN),
         text("时间  " + formatTime(seconds), seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE),
         text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA),
@@ -210,7 +231,11 @@ public final class CraftovSidebarService implements AutoCloseable {
             NamedTextColor.GREEN),
         text("状态  " + combatStateName(combatState),
             combatState == PlayerCombatState.ALIVE ? NamedTextColor.GREEN : NamedTextColor.RED),
-        text("背包  " + backpack + " / 36 格", NamedTextColor.GRAY),
+        text("携行  " + backpack + " / " + capacity + " 格", NamedTextColor.GRAY),
+        text("负重  " + formatWeight(weight)
+                + (maximumWeight > 0 ? " / " + formatWeight(maximumWeight) : ""),
+            maximumWeight > 0 && weight > maximumWeight ? NamedTextColor.RED
+                : weight > comfortableWeight ? NamedTextColor.YELLOW : NamedTextColor.GREEN),
         text("价值  " + String.format(java.util.Locale.ROOT, "%,d", value), NamedTextColor.GOLD),
         text("击杀  " + combatKills(player), NamedTextColor.RED),
         text(extraction, NamedTextColor.AQUA),
@@ -225,6 +250,68 @@ public final class CraftovSidebarService implements AutoCloseable {
       case NORMAL -> "常规";
       case CONFIDENTIAL -> "机密";
     };
+  }
+
+  private static String ruleName(CraftovGame game) {
+    return game.actionProfile().map(profile -> profile.displayName())
+        .orElseGet(() -> modeName(game) + " · " + difficultyName(game));
+  }
+
+  private long physicalWeight(Player player) {
+    long total = 0L;
+    for (org.bukkit.inventory.ItemStack stack : player.getInventory().getContents()) {
+      if (stack == null || stack.isEmpty()) continue;
+      var tagged = itemStacks.read(stack).orElse(null);
+      if (tagged == null) continue;
+      try {
+        total = Math.addExact(total, Math.multiplyExact(
+            (long) items.require(tagged.itemId()).weightGrams(), stack.getAmount()));
+      } catch (ArithmeticException overflow) {
+        return Long.MAX_VALUE;
+      }
+    }
+    return total;
+  }
+
+  private long itemWeight(List<ItemInstance> instances) {
+    long total = 0L;
+    for (ItemInstance item : instances) {
+      try {
+        total = Math.addExact(total, Math.multiplyExact(
+            (long) items.require(item.itemId()).weightGrams(), item.quantity()));
+      } catch (ArithmeticException overflow) {
+        return Long.MAX_VALUE;
+      }
+    }
+    return total;
+  }
+
+  private long itemValue(List<ItemInstance> instances) {
+    long total = 0L;
+    for (ItemInstance item : instances) {
+      try {
+        total = Math.addExact(total, Math.multiplyExact(
+            items.require(item.itemId()).basePrice().units(), item.quantity()));
+      } catch (ArithmeticException overflow) {
+        return Long.MAX_VALUE;
+      }
+    }
+    return total;
+  }
+
+  private static long saturatedAdd(long first, long second) {
+    if (first == Long.MAX_VALUE || second == Long.MAX_VALUE) return Long.MAX_VALUE;
+    try {
+      return Math.addExact(first, second);
+    } catch (ArithmeticException overflow) {
+      return Long.MAX_VALUE;
+    }
+  }
+
+  private static String formatWeight(long grams) {
+    if (grams == Long.MAX_VALUE) return "超出范围";
+    return grams < 1_000 ? grams + "g"
+        : String.format(java.util.Locale.ROOT, "%.1fkg", grams / 1_000.0);
   }
 
   private static String difficultyName(CraftovGame game) {

@@ -37,7 +37,7 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 1. 在 Lobby 打开“游戏菜单”，进入“物资仓库与出战”。
 2. 把想带走的物品点击放入上方的出战栏。物品移动成功后，下一局就会按这份出战清单准备。
 3. 点击“开始游戏”，选择地图并进入匹配队列。
-4. 传送到 Game 后，服务器原子领取出战栏。装备会进入你的 Minecraft 背包，右上角/右侧 HUD 会显示地图、队伍、时间和携带价值。
+4. 传送到 Game 并正式开局后，服务器原子领取出战栏。主手、护甲、胸挂、背包和快捷物品按具名位置发放；HUD 会显示地图、队伍、时间、携行格数、负重和携带价值。
 5. 在建筑、道路、房间和地下区域寻找 Loot Point。对准物资点右键就是“搜索 Loot”。
 6. 取走物品后决定继续探索，还是带着已有收获前往撤离点。
 7. 进入撤离区域后开始倒计时。保持在区域内，BossBar 会显示进度；离开区域会取消。
@@ -55,6 +55,8 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 - 返回按钮：回到主菜单。
 
 菜单中的物品不能拖动、不能 Shift 点击、不能用数字键换位，也不能放入玩家背包。点击一个物品后，EscapeFromCraftov 会先确认移动成功，再刷新界面；网络异常时不会假装移动成功。
+
+胸挂和背包决定本局可用容器格：当前基础胸挂为 6 格、巡逻背包为 12 格，另有 4 个固定口袋。未解锁的原版背包槽会被占位并阻止点击、拖拽、Shift、数字键、换手和拾取绕过。携带物超过舒适负重后会减速并禁止冲刺，达到硬上限后不能继续取物。内建 3 格安全箱可保护允许放入的物品，但胸挂、背包和箭矢不能放入，且安全箱内容计入限重撤离。
 
 ### 2.3 Minecraft 战斗
 
@@ -89,8 +91,12 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 - **计时开放**：行动开始经过指定秒数后才开放。
 - **付费撤离**：支付金币后进入引导；同一玩家同一局不会重复扣费。
 - **钥匙撤离**：背包里必须有指定物品，例如一把特殊钥匙。
+- **拉闸撤离**：先操作地图作者绑定的一个或多个拉杆。
+- **随机开放**：每个房间创建时冻结一次开放结果。
+- **丢包/限重撤离**：要求丢弃背包，或把实体携行栏与安全箱的总重量降到指定值。
+- **限额撤离**：倒计时开始时预占名额，取消归还，持久结算成功才消耗。
 
-撤离点是一个区域而不是单个方块。进入区域开始引导，移动离开区域会取消；重新进入可以再次开始。
+同一个撤离点可以把这些规则按 AND 组合。撤离点是一个区域而不是单个方块。进入区域开始引导，移动离开区域会取消；重新进入可以再次开始。付费授权永远排在所有可逆条件和名额预占之后。
 
 ### 2.6 死亡、退出和超时
 
@@ -100,7 +106,7 @@ EscapeFromCraftov 不改造成枪械游戏。可用的战斗方式是：
 
 ### 2.7 你在屏幕上会看到什么
 
-- **Sidebar**：地图、阶段、剩余时间、存活人数、队伍、背包槽位、携带价值、击杀和撤离提示。
+- **Sidebar**：地图、阶段、剩余时间、存活人数、队伍、携行格数、总负重、携带价值、击杀和撤离提示。
 - **BossBar**：正在撤离时显示引导进度。
 - **Action Bar**：当前工具、撤离状态等短信息。
 - **Title / Subtitle**：进入编辑器、进入行动、模式切换等阶段提示。
@@ -371,6 +377,13 @@ factory/
 | `/craftov editor extraction type <normal、item、paid 或 timed>` | 修改已有条件撤离点的类型；如果当前是普通撤离，请直接使用带 value 的下一条形式。 | `/craftov editor extraction type normal` |
 | `/craftov editor extraction type <type> <value>` | 一次性修改条件类型和条件值，适合把普通撤离点直接改成钥匙、付费或计时撤离。 | `/craftov editor extraction type paid 500` |
 | `/craftov editor extraction condition <value>` | 设置钥匙 ID、金币数量或开放秒数等条件值。 | `/craftov editor extraction condition extraction_key` |
+| `/craftov editor extraction rule list` | 查看选中撤离点的全部组合条件。 | `/craftov editor extraction rule list` |
+| `/craftov editor extraction rule switch <id>` | 绑定准星 6 格内的拉杆。 | `/craftov editor extraction rule switch gate_power` |
+| `/craftov editor extraction rule random <0-1>` | 设置每局冻结一次的开放概率。 | `/craftov editor extraction rule random 0.75` |
+| `/craftov editor extraction rule no_backpack` | 要求玩家先丢弃背包。 | `/craftov editor extraction rule no_backpack` |
+| `/craftov editor extraction rule max_weight <克>` | 设置实体携行栏与安全箱的总重量上限。 | `/craftov editor extraction rule max_weight 30000` |
+| `/craftov editor extraction rule capacity <人数>` | 设置本局可成功使用该撤离点的人数上限。 | `/craftov editor extraction rule capacity 2` |
+| `/craftov editor extraction rule remove <类型或拉闸ID>` | 删除一个组合条件；`clear` 清空全部条件。 | `/craftov editor extraction rule remove max_weight` |
 | `/craftov editor extraction enable` | 启用选中的撤离点。 | `/craftov editor extraction enable` |
 | `/craftov editor extraction disable` | 停用选中的撤离点。 | `/craftov editor extraction disable` |
 | `/craftov editor poi create <id>` | 把当前选区创建成默认 Tier 2 的兴趣点。 | `/craftov editor poi create central_factory` |

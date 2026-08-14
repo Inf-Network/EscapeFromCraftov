@@ -5,11 +5,13 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -32,16 +34,21 @@ public final class SecureContainerController implements AutoCloseable {
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
   private final CraftovItemStacks itemStacks;
+  private final ItemRegistry items;
+  private final RaidCarryController carry;
   private final Messages messages;
   private final TrMenuBridge menus;
   private final AutoCloseable itemSource;
   private final Map<SecureKey, SecureContainerState> states = new HashMap<>();
 
   public SecureContainerController(CraftovGameService games, InstanceWorldIndex worlds,
-      CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus) {
+      CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
+      Messages messages, TrMenuBridge menus) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
+    this.items = Preconditions.checkNotNull(items, "items");
+    this.carry = Preconditions.checkNotNull(carry, "carry");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.itemSource = menus.registerItemSource("CRAFTOVCORESECURE", this::menuItem);
@@ -83,6 +90,10 @@ public final class SecureContainerController implements AutoCloseable {
     // The half left in the physical inventory keeps the durable identity; the
     // protected half receives a new identity before it leaves Bukkit storage.
     var tagged = itemStacks.read(held).orElseThrow();
+    if (!items.require(tagged.itemId()).secureAllowed()) {
+      player.sendMessage(messages.raw("secure.not-allowed"));
+      return;
+    }
     if (hasOtherPhysicalHalf(player, tagged.instanceId())) {
       itemStacks.assignFreshIdentity(held).orElseThrow();
       player.getInventory().setItemInMainHand(held);
@@ -118,6 +129,10 @@ public final class SecureContainerController implements AutoCloseable {
       player.sendMessage(messages.raw("secure.invalid-stack"));
       return;
     }
+    if (!carry.canAccept(player, restored.getFirst())) {
+      player.sendMessage(messages.raw("secure.inventory-full"));
+      return;
+    }
     player.getInventory().setItem(inventorySlot, restored.getFirst());
     view.state().take(slot);
     player.sendActionBar(messages.raw("secure.taken"));
@@ -130,6 +145,23 @@ public final class SecureContainerController implements AutoCloseable {
     Player online = Bukkit.getPlayer(playerId);
     if (online != null && menus.isViewing(online, MENU_ID)) menus.close(online, MENU_ID);
     return states.computeIfAbsent(key, _ -> new SecureContainerState()).beginSettlement();
+  }
+
+  /** Current protected items for live HUD/weight calculations without sealing mutation. */
+  public List<ItemInstance> contents(CraftovGameId gameId, UUID playerId) {
+    Preconditions.checkNotNull(gameId, "gameId");
+    Preconditions.checkNotNull(playerId, "playerId");
+    SecureContainerState state = states.get(new SecureKey(gameId, playerId));
+    return state == null ? List.of() : state.contents();
+  }
+
+  /** Current protected items for the player's single active raid, if any. */
+  public List<ItemInstance> contents(UUID playerId) {
+    Preconditions.checkNotNull(playerId, "playerId");
+    return states.entrySet().stream()
+        .filter(entry -> entry.getKey().playerId().equals(playerId))
+        .flatMap(entry -> entry.getValue().contents().stream())
+        .toList();
   }
 
   /** Reopens mutation only when extraction authorization failed and the raid continues. */

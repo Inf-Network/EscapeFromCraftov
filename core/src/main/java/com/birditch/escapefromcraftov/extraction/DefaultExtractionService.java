@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionContext;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionFailures;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionPoint;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionPointId;
+import com.birditch.escapefromcraftov.api.extraction.ExtractionPermit;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionService;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionSession;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionState;
@@ -23,6 +24,7 @@ import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import com.birditch.escapefromcraftov.common.time.TimeSource;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -101,16 +103,30 @@ public final class DefaultExtractionService implements ExtractionService {
             return Result.fail(ExtractionFailures.ALREADY_EXTRACTING);
         }
         ExtractionContext context = new ExtractionContext(playerId, gameId);
-        for (ExtractionCondition condition : point.conditions()) {
-            if (!condition.isSatisfied(context)) {
-                return Result.fail(ExtractionFailures.blocked(condition.describe()));
+        List<ExtractionPermit> permits = new ArrayList<>(point.conditions().size());
+        try {
+            for (ExtractionCondition condition : point.conditions()) {
+                Optional<ExtractionPermit> permit = condition.acquire(context);
+                if (permit.isEmpty()) {
+                    releasePermits(permits);
+                    return Result.fail(ExtractionFailures.blocked(condition.describe()));
+                }
+                permits.add(permit.get());
             }
+        } catch (RuntimeException failure) {
+            releasePermits(permits);
+            throw failure;
         }
         ExtractionSession session =
                 new ExtractionSession(playerId, gameId, pointId, timeSource.now());
-        ScheduledTask task =
-                scheduler.runLater(point.duration(), () -> completeExtraction(session));
-        extractions.put(playerId, new ActiveExtraction(session, task, point.conditions()));
+        ScheduledTask task;
+        try {
+            task = scheduler.runLater(point.duration(), () -> completeExtraction(session));
+        } catch (RuntimeException failure) {
+            releasePermits(permits);
+            throw failure;
+        }
+        extractions.put(playerId, new ActiveExtraction(session, task, permits));
         return Result.ok(session);
     }
 
@@ -127,6 +143,7 @@ public final class DefaultExtractionService implements ExtractionService {
         }
         active.task().cancel();
         active.session().fail();
+        releasePermits(active.permits());
         extractions.remove(playerId);
         return true;
     }
@@ -172,6 +189,7 @@ public final class DefaultExtractionService implements ExtractionService {
             }
             active.task().cancel();
             active.session().fail();
+            releasePermits(active.permits());
             return true;
         });
     }
@@ -193,6 +211,7 @@ public final class DefaultExtractionService implements ExtractionService {
                 session.fail();
             }
             if (current) {
+                releasePermits(active.permits());
                 extractions.remove(session.playerId());
             }
             return;
@@ -200,13 +219,19 @@ public final class DefaultExtractionService implements ExtractionService {
         session.beginSettlement();
         eventBus.publish(new PlayerExtractionLockedEvent(session.gameId(), session.playerId(),
                 session.pointId()));
+        // Lock listeners may synchronously reject an invalid/offline inventory
+        // snapshot and remove this session. Never continue into an irreversible
+        // paid authorization after that failure path already won.
+        if (extractions.get(session.playerId()) != active
+                || session.state() != ExtractionState.SETTLING) {
+            return;
+        }
         authorize(active, 0);
     }
 
     private void authorize(ActiveExtraction active, int attempt) {
         ExtractionSession session = active.session();
-        ExtractionContext context = new ExtractionContext(session.playerId(), session.gameId());
-        authorizeAll(active.conditions(), context).whenComplete((authorized, failure) ->
+        authorizeAll(active.permits()).whenComplete((authorized, failure) ->
                 scheduler.runSync(() -> {
                     ActiveExtraction current = extractions.get(session.playerId());
                     if (current != active || session.state() != ExtractionState.SETTLING) {
@@ -222,6 +247,7 @@ public final class DefaultExtractionService implements ExtractionService {
                     }
                     if (!Boolean.TRUE.equals(authorized)) {
                         session.fail();
+                        releasePermits(active.permits());
                         extractions.remove(session.playerId());
                         eventBus.publish(new PlayerExtractionAuthorizationFailedEvent(
                                 session.gameId(), session.playerId(), session.pointId(),
@@ -233,13 +259,17 @@ public final class DefaultExtractionService implements ExtractionService {
                 }));
     }
 
-    private static CompletableFuture<Boolean> authorizeAll(
-            List<ExtractionCondition> conditions, ExtractionContext context) {
+    private static CompletableFuture<Boolean> authorizeAll(List<ExtractionPermit> permits) {
         CompletableFuture<Boolean> result = CompletableFuture.completedFuture(true);
-        for (ExtractionCondition condition : conditions) {
-            result = result.thenCompose(authorized -> authorized
-                    ? condition.authorize(context)
-                    : CompletableFuture.completedFuture(false));
+        for (ExtractionPermit permit : permits) {
+            result = result.thenCompose(authorized -> {
+                if (!authorized) return CompletableFuture.completedFuture(false);
+                try {
+                    return permit.authorize();
+                } catch (RuntimeException synchronousFailure) {
+                    return CompletableFuture.failedFuture(synchronousFailure);
+                }
+            });
         }
         return result;
     }
@@ -258,8 +288,10 @@ public final class DefaultExtractionService implements ExtractionService {
         }
         if (successful) {
             active.session().complete();
+            commitPermits(active.permits());
         } else {
             active.session().fail();
+            releasePermits(active.permits());
         }
         extractions.remove(playerId);
         return true;
@@ -272,11 +304,23 @@ public final class DefaultExtractionService implements ExtractionService {
         }
     }
 
+    private static void commitPermits(List<ExtractionPermit> permits) {
+        for (ExtractionPermit permit : permits) {
+            permit.commit();
+        }
+    }
+
+    private static void releasePermits(List<ExtractionPermit> permits) {
+        for (int index = permits.size() - 1; index >= 0; index--) {
+            permits.get(index).release();
+        }
+    }
+
     private record ActiveExtraction(ExtractionSession session, ScheduledTask task,
-                                    List<ExtractionCondition> conditions) {
+                                    List<ExtractionPermit> permits) {
 
         private ActiveExtraction {
-            conditions = List.copyOf(conditions);
+            permits = List.copyOf(permits);
         }
     }
 }

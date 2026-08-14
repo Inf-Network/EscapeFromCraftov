@@ -12,7 +12,13 @@ class HibernateStarterKitServiceTest {
   void starterKitContainsThePlayableBasicLoadout() {
     var items = HibernateStarterKitService.starterItems();
 
-    assertEquals(7, items.size());
+    assertEquals(9, items.size());
+    assertEquals(1, items.stream()
+        .filter(item -> item.itemId().value().equals("basic_rig"))
+        .findFirst().orElseThrow().quantity());
+    assertEquals(1, items.stream()
+        .filter(item -> item.itemId().value().equals("patrol_backpack"))
+        .findFirst().orElseThrow().quantity());
     assertEquals(16, items.stream()
         .filter(item -> item.itemId().value().equals("arrow"))
         .findFirst().orElseThrow().quantity());

@@ -395,13 +395,18 @@ public final class PendingJoinHandler {
       return;
     }
     try {
-      List<StoredItem> ordered = items.stream()
-          .sorted(java.util.Comparator.comparingInt(item -> item.loadoutSlot() == null ? 1 : 0))
-          .toList();
-      for (StoredItem item : ordered) {
+      List<StoredItem> named = items.stream()
+          .filter(item -> item.loadoutSlot() != null).toList();
+      List<StoredItem> legacyCargo = items.stream()
+          .filter(item -> item.loadoutSlot() == null).toList();
+      for (StoredItem item : named) {
         giveClaimedItem(player, item);
       }
+      deps.carry().install(player, assignment.gameId(), items);
+      for (StoredItem item : legacyCargo) giveClaimedItem(player, item);
+      deps.carry().refresh(player);
     } catch (RuntimeException mappingFailure) {
+      deps.carry().clear(player);
       clearInventory(player);
       List<ItemInstance> restore = items.stream().map(item ->
           new ItemInstance(item.instanceId(), item.itemId(), item.quantity(),
@@ -452,7 +457,9 @@ public final class PendingJoinHandler {
       case BODY_ARMOR -> putArmor(inventory, category, stack, EquipmentSlot.CHEST);
       case QUICK_USE_1 -> putHotbar(inventory, 1, stack);
       case QUICK_USE_2 -> putHotbar(inventory, 2, stack);
-      case CHEST_RIG, BACKPACK, SECURE_CONTAINER ->
+      case CHEST_RIG -> putHotbar(inventory, 7, stack);
+      case BACKPACK -> putHotbar(inventory, 8, stack);
+      case SECURE_CONTAINER ->
           throw new IllegalStateException("保留配装位不能包含物品: " + slot);
     }
     for (ItemStack overflow : plan.backpack()) putBackpack(inventory, overflow);
@@ -484,8 +491,13 @@ public final class PendingJoinHandler {
   }
 
   private static void putBackpack(PlayerInventory inventory, ItemStack stack) {
-    // Vanilla main-inventory cells 9..35 are the carried backpack area. Do not
-    // let a derived potion occupy another named hotbar position.
+    // Pockets are physical cargo too and exist even without a container. Do not
+    // let a derived potion occupy another named equipment position.
+    for (int index = 3; index <= 6; index++) {
+      if (!empty(inventory.getItem(index))) continue;
+      inventory.setItem(index, stack);
+      return;
+    }
     for (int index = 9; index < 36; index++) {
       if (!empty(inventory.getItem(index))) continue;
       inventory.setItem(index, stack);

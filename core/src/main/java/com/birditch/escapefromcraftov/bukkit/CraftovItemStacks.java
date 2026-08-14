@@ -50,6 +50,8 @@ public final class CraftovItemStacks {
       Map.entry("arrow", Material.ARROW),
       Map.entry("shield", Material.SHIELD),
       Map.entry("iron_chestplate", Material.IRON_CHESTPLATE),
+      Map.entry("basic_rig", Material.LEATHER_CHESTPLATE),
+      Map.entry("patrol_backpack", Material.BUNDLE),
       Map.entry("healing_potion", Material.POTION),
       Map.entry("golden_apple", Material.GOLDEN_APPLE),
       Map.entry("emerald", Material.EMERALD),
@@ -222,13 +224,18 @@ public final class CraftovItemStacks {
     stack.editMeta(meta -> {
       meta.itemName(Component.text(definition.displayName(), color(definition.rarity()))
           .decoration(TextDecoration.ITALIC, false));
-      meta.lore(List.of(
-          Component.text("稀有度: " + rarityName(definition.rarity()), NamedTextColor.GRAY)
-              .decoration(TextDecoration.ITALIC, false),
-          Component.text("价值: " + definition.basePrice().format() + " 金币",
-                  NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
-          Component.text("重量: " + definition.weightGrams() + "g", NamedTextColor.DARK_GRAY)
-              .decoration(TextDecoration.ITALIC, false)));
+      List<Component> lore = new ArrayList<>();
+      lore.add(Component.text("稀有度: " + rarityName(definition.rarity()), NamedTextColor.GRAY)
+          .decoration(TextDecoration.ITALIC, false));
+      lore.add(Component.text("价值: " + definition.basePrice().format() + " 金币",
+              NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+      lore.add(Component.text("重量: " + definition.weightGrams() + "g", NamedTextColor.DARK_GRAY)
+          .decoration(TextDecoration.ITALIC, false));
+      if (definition.containerSlots() > 0) {
+        lore.add(Component.text("容量: " + definition.containerSlots() + " 格",
+                NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+      }
+      meta.lore(lore);
       if (meta instanceof PotionMeta potion && definition.id().value().equals("healing_potion")) {
         potion.setBasePotionType(PotionType.HEALING);
       }

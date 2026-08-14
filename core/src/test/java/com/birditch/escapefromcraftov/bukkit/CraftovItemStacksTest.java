@@ -197,6 +197,25 @@ class CraftovItemStacksTest {
     assertEquals(storageId, repaired.storageId());
   }
 
+  @Test
+  void containersUseDistinctMaterialsAndShowTheirUnlockedCapacity() {
+    ItemStack rig = itemStacks.fromInstance(new ItemInstance(
+        UUID.randomUUID(), ItemId.of("basic_rig"), 1)).getFirst();
+    ItemStack backpack = itemStacks.fromInstance(new ItemInstance(
+        UUID.randomUUID(), ItemId.of("patrol_backpack"), 1)).getFirst();
+
+    assertEquals(Material.LEATHER_CHESTPLATE, rig.getType());
+    assertEquals(Material.BUNDLE, backpack.getType());
+    assertTrue(Objects.requireNonNull(rig.lore()).stream()
+        .anyMatch(line -> line.equals(Component.text("容量: 6 格",
+            net.kyori.adventure.text.format.NamedTextColor.AQUA)
+            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false))));
+    assertTrue(Objects.requireNonNull(backpack.lore()).stream()
+        .anyMatch(line -> line.equals(Component.text("容量: 12 格",
+            net.kyori.adventure.text.format.NamedTextColor.AQUA)
+            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false))));
+  }
+
   private static String payload(ItemStack stack) {
     return "paper-itemstack:1:" + Base64.getEncoder().encodeToString(stack.serializeAsBytes());
   }

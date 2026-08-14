@@ -57,8 +57,10 @@ class InventoryDomainTest {
     assertEquals(LoadoutSlot.MAIN_HAND, equipped.namedLoadoutSlot().orElseThrow());
     assertTrue(LoadoutSlot.MAIN_HAND.accepts(ItemCategory.MELEE_WEAPON));
     assertTrue(LoadoutSlot.QUICK_USE_1.accepts(ItemCategory.POTION));
+    assertTrue(LoadoutSlot.CHEST_RIG.accepts(ItemCategory.CHEST_RIG));
+    assertTrue(LoadoutSlot.BACKPACK.accepts(ItemCategory.BACKPACK));
     assertFalse(LoadoutSlot.CHEST_RIG.accepts(ItemCategory.MISC));
-    assertFalse(LoadoutSlot.BACKPACK.accepts(ItemCategory.BACKPACK));
+    assertFalse(LoadoutSlot.BACKPACK.accepts(ItemCategory.CHEST_RIG));
     assertFalse(LoadoutSlot.SECURE_CONTAINER.accepts(ItemCategory.VALUABLE));
     assertThrows(IllegalArgumentException.class, () -> new StoredItem(
         STORAGE, STORAGE, ItemId.of("iron_sword"), 1,

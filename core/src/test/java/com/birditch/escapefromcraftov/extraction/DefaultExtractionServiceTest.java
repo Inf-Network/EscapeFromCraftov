@@ -271,6 +271,54 @@ class DefaultExtractionServiceTest {
         }
 
         @Test
+        void doesNotAuthorizeAfterLockListenerAlreadyRejectedTheSnapshot() {
+            ExtractionPointId paid = ExtractionPointId.of("paid_gate");
+            AtomicInteger charges = new AtomicInteger();
+            ExtractionCondition charge = new ExtractionCondition() {
+                @Override public String describe() { return "付费撤离"; }
+                @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+                @Override public CompletableFuture<Boolean> authorize(ExtractionContext context) {
+                    charges.incrementAndGet();
+                    return CompletableFuture.completedFuture(true);
+                }
+            };
+            game.addExtractionPoint(point(paid, List.of(charge), ExtractionState.AVAILABLE));
+            eventBus.subscribe(PlayerExtractionLockedEvent.class, event ->
+                    service.failSettlement(event.playerId(), event.gameId(), event.pointId()));
+
+            service.begin(PLAYER_ID, GAME_ID, paid).orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+
+            assertEquals(0, charges.get());
+            assertEquals(0, service.activeCount());
+        }
+
+        @Test
+        void retriesAnAuthorizationThatThrowsBeforeReturningAFuture() {
+            ExtractionPointId paid = ExtractionPointId.of("paid_gate");
+            AtomicInteger attempts = new AtomicInteger();
+            ExtractionCondition synchronousFailure = new ExtractionCondition() {
+                @Override public String describe() { return "同步授权"; }
+                @Override public boolean isSatisfied(ExtractionContext context) { return true; }
+                @Override public CompletableFuture<Boolean> authorize(ExtractionContext context) {
+                    if (attempts.getAndIncrement() == 0) {
+                        throw new IllegalStateException("provider failed before returning future");
+                    }
+                    return CompletableFuture.completedFuture(true);
+                }
+            };
+            game.addExtractionPoint(point(
+                    paid, List.of(synchronousFailure), ExtractionState.AVAILABLE));
+
+            service.begin(PLAYER_ID, GAME_ID, paid).orElseThrow(IllegalStateException::new);
+            scheduler.advanceBy(POINT_DURATION);
+            scheduler.advanceBy(Duration.ofSeconds(5));
+
+            assertEquals(2, attempts.get());
+            assertEquals(1, published.size());
+        }
+
+        @Test
         void doesNotCompleteBeforeTheDurationElapses() {
             ExtractionSession session = service.begin(PLAYER_ID, GAME_ID, POINT_ID)
                     .orElseThrow(IllegalStateException::new);
@@ -468,6 +516,56 @@ class DefaultExtractionServiceTest {
         void throwsOffTheMainThread() {
             scheduler.setMainThread(false);
             assertThrows(IllegalStateException.class, () -> service.cancel(PLAYER_ID));
+        }
+    }
+
+    @Nested
+    @DisplayName("capacity permits")
+    class CapacityPermits {
+
+        @Test
+        void reservesTheLastSeatAndReturnsItWhenCountdownIsCancelled() {
+            game.addPlayer(new CraftovPlayer(OTHER_PLAYER_ID, "Bob"));
+            ExtractionPointId limited = ExtractionPointId.of("limited_gate");
+            CapacityExtractionCondition capacity = new CapacityExtractionCondition(1);
+            game.addExtractionPoint(point(limited, List.of(capacity), ExtractionState.AVAILABLE));
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, limited).isSuccess());
+            assertFailure(service.begin(OTHER_PLAYER_ID, GAME_ID, limited),
+                    ExtractionFailures.blocked(capacity.describe()));
+
+            assertTrue(service.cancel(PLAYER_ID));
+            assertTrue(service.begin(OTHER_PLAYER_ID, GAME_ID, limited).isSuccess());
+        }
+
+        @Test
+        void consumesSeatOnlyAfterDurableSettlementSucceeds() {
+            game.addPlayer(new CraftovPlayer(OTHER_PLAYER_ID, "Bob"));
+            ExtractionPointId limited = ExtractionPointId.of("limited_gate");
+            CapacityExtractionCondition capacity = new CapacityExtractionCondition(1);
+            game.addExtractionPoint(point(limited, List.of(capacity), ExtractionState.AVAILABLE));
+
+            assertTrue(service.begin(PLAYER_ID, GAME_ID, limited).isSuccess());
+            scheduler.advanceBy(POINT_DURATION);
+            assertTrue(service.completeSettlement(PLAYER_ID, GAME_ID, limited));
+
+            assertFailure(service.begin(OTHER_PLAYER_ID, GAME_ID, limited),
+                    ExtractionFailures.blocked(capacity.describe()));
+            assertEquals(0, capacity.remainingSlots(GAME_ID));
+        }
+
+        @Test
+        void releasesEarlierReservationsWhenALaterConditionRejectsAdmission() {
+            ExtractionPointId limited = ExtractionPointId.of("limited_gate");
+            CapacityExtractionCondition capacity = new CapacityExtractionCondition(1);
+            game.addExtractionPoint(point(limited,
+                    List.of(capacity, condition("最终条件拒绝", false)),
+                    ExtractionState.AVAILABLE));
+
+            assertFailure(service.begin(PLAYER_ID, GAME_ID, limited),
+                    ExtractionFailures.blocked("最终条件拒绝"));
+
+            assertEquals(1, capacity.remainingSlots(GAME_ID));
         }
     }
 

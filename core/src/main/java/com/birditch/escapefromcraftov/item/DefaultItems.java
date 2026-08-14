@@ -44,6 +44,7 @@ public final class DefaultItems {
         .basePrice(Money.of(40L))
         .weightGrams(30)
         .stackSize(64)
+        .secureAllowed(false)
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("shield"), "盾牌", ItemCategory.SHIELD, ItemRarity.UNCOMMON)
@@ -55,6 +56,22 @@ public final class DefaultItems {
             ItemRarity.UNCOMMON)
         .basePrice(Money.of(3200L))
         .weightGrams(3500)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("basic_rig"), "基础胸挂", ItemCategory.CHEST_RIG,
+            ItemRarity.COMMON)
+        .basePrice(Money.of(4500L))
+        .weightGrams(1200)
+        .containerSlots(6)
+        .secureAllowed(false)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("patrol_backpack"), "巡逻背包", ItemCategory.BACKPACK,
+            ItemRarity.UNCOMMON)
+        .basePrice(Money.of(6500L))
+        .weightGrams(1800)
+        .containerSlots(12)
+        .secureAllowed(false)
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("healing_potion"), "治疗药水", ItemCategory.POTION,

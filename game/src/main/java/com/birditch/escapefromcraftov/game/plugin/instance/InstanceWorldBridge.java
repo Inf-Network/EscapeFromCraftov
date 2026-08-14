@@ -603,20 +603,9 @@ public final class InstanceWorldBridge implements Listener {
     player.getInventory().setItemInOffHand(null);
   }
 
-  private List<ItemInstance> scanCarriedItems(Player player) {
-    List<ItemStack> contents = new ArrayList<>();
-    // PlayerInventory#getContents also includes equipment on Paper. Use storage
-    // explicitly, then add equipment once, so armor/off-hand instances cannot be
-    // duplicated in the extraction snapshot.
-    java.util.Collections.addAll(contents, player.getInventory().getStorageContents());
-    java.util.Collections.addAll(contents, player.getInventory().getArmorContents());
-    ItemStack offHand = player.getInventory().getItemInOffHand();
-    if (offHand != null) contents.add(offHand);
-    return deps.itemStacks().scan(contents.toArray(ItemStack[]::new));
-  }
-
   private List<ItemInstance> settlementItems(Player player, CraftovGameId gameId) {
-    return SecureSettlementItems.merge(scanCarriedItems(player),
+    return SecureSettlementItems.merge(
+        deps.carry().settlementSnapshot(player, gameId).settlementItems(),
         deps.secureContainers().beginSettlement(gameId, player.getUniqueId()));
   }
 

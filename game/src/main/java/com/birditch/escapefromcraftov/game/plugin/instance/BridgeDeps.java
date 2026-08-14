@@ -13,6 +13,7 @@ import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
@@ -28,6 +29,7 @@ public record BridgeDeps(
     PlayerInventoryService inventories,
     ExtractionService extractions,
     CraftovItemStacks itemStacks,
+    RaidCarryController carry,
     SecureContainerController secureContainers,
     RaidResultRuntime raidReports,
     EventBus eventBus,
@@ -49,6 +51,7 @@ public record BridgeDeps(
     Preconditions.checkNotNull(inventories, "inventories");
     Preconditions.checkNotNull(extractions, "extractions");
     Preconditions.checkNotNull(itemStacks, "itemStacks");
+    Preconditions.checkNotNull(carry, "carry");
     Preconditions.checkNotNull(secureContainers, "secureContainers");
     Preconditions.checkNotNull(raidReports, "raidReports");
     Preconditions.checkNotNull(eventBus, "eventBus");

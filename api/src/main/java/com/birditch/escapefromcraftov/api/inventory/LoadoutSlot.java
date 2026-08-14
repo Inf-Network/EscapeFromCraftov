@@ -7,17 +7,16 @@ import java.util.Set;
 /**
  * Named preparation positions carried with an item from LOADOUT into CRAFTOV.
  *
- * <p>Chest rigs, backpacks and secure containers are reserved positions in the first
- * named-loadout phase. They intentionally accept no catalog category yet, so
- * a generic warehouse item can never impersonate a container.</p>
+ * <p>Chest rigs and backpacks only accept their explicit container categories;
+ * the built-in secure container remains a reserved position.</p>
  */
 public enum LoadoutSlot {
   MAIN_HAND(Set.of(ItemCategory.MELEE_WEAPON, ItemCategory.RANGED_WEAPON)),
   OFF_HAND(Set.of(ItemCategory.SHIELD)),
   HEAD(Set.of(ItemCategory.HELMET)),
   BODY_ARMOR(Set.of(ItemCategory.ARMOR)),
-  CHEST_RIG(Set.of()),
-  BACKPACK(Set.of()),
+  CHEST_RIG(Set.of(ItemCategory.CHEST_RIG)),
+  BACKPACK(Set.of(ItemCategory.BACKPACK)),
   QUICK_USE_1(Set.of(ItemCategory.PROJECTILE, ItemCategory.HEALING,
       ItemCategory.FOOD, ItemCategory.POTION, ItemCategory.CONSUMABLE, ItemCategory.KEY)),
   QUICK_USE_2(Set.of(ItemCategory.PROJECTILE, ItemCategory.HEALING,

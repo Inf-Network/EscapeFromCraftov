@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.CuboidBounds;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
 import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
@@ -350,6 +351,28 @@ public final class ManualMapStore {
     result.put("type", value.extractionType().name());
     result.put("duration-seconds", value.durationSeconds());
     if (value.conditionValue() != null) result.put("condition", value.conditionValue());
+    if (!value.conditions().isEmpty()) {
+      result.put("conditions", value.conditions().stream()
+          .map(ManualMapStore::extractionConditionMap).toList());
+    }
+    return result;
+  }
+
+  private static Map<String, Object> extractionConditionMap(ExtractionRuleDefinition value) {
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("type", value.type().name());
+    switch (value) {
+      case ExtractionRuleDefinition.SwitchActivated rule -> {
+        result.put("switch-id", rule.switchId());
+        result.put("position", positionMap(rule.position()));
+      }
+      case ExtractionRuleDefinition.RandomOpen rule -> result.put("chance", rule.chance());
+      case ExtractionRuleDefinition.NoBackpack _ -> {
+      }
+      case ExtractionRuleDefinition.MaxWeight rule ->
+          result.put("max-weight-grams", rule.maxWeightGrams());
+      case ExtractionRuleDefinition.Capacity rule -> result.put("slots", rule.slots());
+    }
     return result;
   }
 
@@ -392,7 +415,27 @@ public final class ManualMapStore {
     return new ExtractionDefinition(string(map, "id"), string(map, "display-name"),
         readBounds(nested(map, "bounds")), ManualExtractionType.valueOf(string(map, "type")),
         number(map, "duration-seconds").intValue(), nullableString(map.get("condition")),
-        bool(map, "enabled"));
+        bool(map, "enabled"), map.containsKey("conditions")
+            ? nestedMapList(map, "conditions").stream()
+                .map(ManualMapStore::readExtractionCondition).toList()
+            : List.of());
+  }
+
+  private static ExtractionRuleDefinition readExtractionCondition(Map<?, ?> map) {
+    String type = string(map, "type").toUpperCase(java.util.Locale.ROOT);
+    return switch (type) {
+      case "SWITCH", "LEVER", "SWITCH_ACTIVATED" ->
+          new ExtractionRuleDefinition.SwitchActivated(string(map, "switch-id"),
+              readPosition(nested(map, "position")));
+      case "RANDOM", "RANDOM_OPEN" ->
+          new ExtractionRuleDefinition.RandomOpen(number(map, "chance").doubleValue());
+      case "DROP_BACKPACK", "NO_BACKPACK" -> new ExtractionRuleDefinition.NoBackpack();
+      case "WEIGHT", "MAX_WEIGHT" ->
+          new ExtractionRuleDefinition.MaxWeight(number(map, "max-weight-grams").longValue());
+      case "SLOTS", "CAPACITY" ->
+          new ExtractionRuleDefinition.Capacity(number(map, "slots").intValue());
+      default -> throw new IllegalArgumentException("未知撤离条件类型: " + type);
+    };
   }
 
   private static PoiDefinition readPoi(Map<?, ?> map) {

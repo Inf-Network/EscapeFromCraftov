@@ -13,6 +13,7 @@ import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
 import com.birditch.escapefromcraftov.game.plugin.editor.EditorSelectionService;
@@ -27,6 +28,7 @@ public record PendingDeps(AssignmentStore store, CraftovGameService games, GameS
                           ItemRegistry items, RaidAdmissionService admissions,
                           ProfileService profiles,
                           TrMenuBridge menus, VisibilityService visibility,
+                          RaidCarryController carry,
                           EditorSessionService editorSessions,
                           EditorSelectionService editorSelections,
                           CraftovScheduler scheduler, Messages messages,
@@ -45,6 +47,7 @@ public record PendingDeps(AssignmentStore store, CraftovGameService games, GameS
     Preconditions.checkNotNull(profiles, "profiles");
     Preconditions.checkNotNull(menus, "menus");
     Preconditions.checkNotNull(visibility, "visibility");
+    Preconditions.checkNotNull(carry, "carry");
     Preconditions.checkNotNull(editorSessions, "editorSessions");
     Preconditions.checkNotNull(editorSelections, "editorSelections");
     Preconditions.checkNotNull(scheduler, "scheduler");

@@ -147,7 +147,7 @@ public final class ManualMapEditor {
           value.difficulty(), value.team(), enabled);
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(),
           value.displayName(), value.bounds(), value.extractionType(), value.durationSeconds(),
-          value.conditionValue(), enabled);
+          value.conditionValue(), enabled, value.conditions());
       case PoiDefinition value -> new PoiDefinition(value.id(), value.displayName(),
           value.bounds(), value.tier(), enabled);
     };
@@ -206,7 +206,8 @@ public final class ManualMapEditor {
           value.enabled());
       case ExtractionDefinition value -> new ExtractionDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.extractionType(), value.durationSeconds(),
-          value.conditionValue(), value.enabled());
+          value.conditionValue(), value.enabled(), value.conditions().stream()
+              .map(condition -> condition.translate(dx, dy, dz)).toList());
       case PoiDefinition value -> new PoiDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.tier(), value.enabled());
     };

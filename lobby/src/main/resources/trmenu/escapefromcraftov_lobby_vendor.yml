@@ -92,6 +92,18 @@ Icons:
       left: [ 'reset', 'command: lobby vendor buy 12 1' ]
       right: [ 'reset', 'command: lobby vendor buy 12 8' ]
       shift_left: [ 'reset', 'command: lobby vendor buy 12 16' ]
+  O13:
+    display: { slots: [ 25 ], material: 'source:CRAFTOVCORELOBBY:vendor-offer-13' }
+    actions:
+      left: [ 'reset', 'command: lobby vendor buy 13 1' ]
+      right: [ 'reset', 'command: lobby vendor buy 13 8' ]
+      shift_left: [ 'reset', 'command: lobby vendor buy 13 16' ]
+  O14:
+    display: { slots: [ 26 ], material: 'source:CRAFTOVCORELOBBY:vendor-offer-14' }
+    actions:
+      left: [ 'reset', 'command: lobby vendor buy 14 1' ]
+      right: [ 'reset', 'command: lobby vendor buy 14 8' ]
+      shift_left: [ 'reset', 'command: lobby vendor buy 14 16' ]
   Sell:
     display:
       slots: [ 40 ]

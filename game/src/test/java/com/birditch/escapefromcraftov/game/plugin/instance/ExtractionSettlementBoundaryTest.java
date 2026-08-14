@@ -17,6 +17,8 @@ class ExtractionSettlementBoundaryTest {
 
     assertTrue(locked.contains("settlementItems(player, event.gameId())"),
         "locked snapshot must merge ordinary inventory with the secure container");
+    assertTrue(source.contains("deps.carry().settlementSnapshot(player, gameId).settlementItems()"),
+        "durable extraction must use the authoritative carry snapshot");
     assertTrue(locked.contains("pendingExtractions.put"));
     assertTrue(locked.contains("freeze(event.playerId())"));
     assertTrue(ready.indexOf("pendingExtractions.get(key)")

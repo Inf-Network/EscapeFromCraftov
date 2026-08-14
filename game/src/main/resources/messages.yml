@@ -233,6 +233,7 @@ secure:
   open-first: "<yellow>请先输入 <gold>/craftov secure</gold> 打开安全箱。</yellow>"
   empty-hand: "<yellow>请先把要保护的 EscapeFromCraftov 物资拿在主手。</yellow>"
   craftov-items-only: "<red>安全箱只能存放带物品身份的 EscapeFromCraftov 物资。</red>"
+  not-allowed: "<red>这种物资不能放入安全箱；弹药、胸挂和背包必须承担行动风险。</red>"
   invalid-stack: "<red>这个物品栈无法安全保存，请换一个物品或联系管理员。</red>"
   full: "<yellow>安全箱 3 个槽位都已占用，请先取回一件物资。</yellow>"
   inventory-full: "<yellow>普通背包没有空槽，无法取回安全箱物资。</yellow>"

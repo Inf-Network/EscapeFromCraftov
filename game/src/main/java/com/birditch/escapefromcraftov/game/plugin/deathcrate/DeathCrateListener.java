@@ -11,6 +11,7 @@ import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -67,19 +68,22 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
   private final Messages messages;
   private final TrMenuBridge menus;
   private final Logger logger;
+  private final RaidCarryController carry;
   private final AutoCloseable itemSource;
   private final Map<UUID, DeathCrate> crates = new HashMap<>();
   private final Map<MarkerKey, UUID> cratesByMarker = new HashMap<>();
   private final Map<UUID, CrateView> views = new HashMap<>();
 
   public DeathCrateListener(CraftovGameService games, InstanceWorldIndex worlds,
-      CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus, Logger logger) {
+      CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus, Logger logger,
+      RaidCarryController carry) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.logger = Preconditions.checkNotNull(logger, "logger");
+    this.carry = Preconditions.checkNotNull(carry, "carry");
     this.itemSource = menus.registerItemSource("CRAFTOVCOREDEATH", this::menuItem);
   }
 
@@ -153,7 +157,7 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     if (slot >= DeathCrateState.CAPACITY) return;
     ItemStack item = validated.crate().state().item(slot).orElse(null);
     if (item == null) return;
-    if (!fits(player, item)) {
+    if (!carry.canAccept(player, item)) {
       player.sendMessage(messages.raw("death-crate.inventory-full"));
       return;
     }
@@ -428,19 +432,6 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     double dy = location.getY() - y;
     double dz = location.getZ() - z;
     return dx * dx + dy * dy + dz * dz <= VIEW_DISTANCE_SQUARED;
-  }
-
-  private static boolean fits(Player player, ItemStack item) {
-    int remaining = item.getAmount();
-    for (ItemStack current : player.getInventory().getStorageContents()) {
-      if (current == null || current.isEmpty()) {
-        remaining -= item.getMaxStackSize();
-      } else if (current.isSimilar(item)) {
-        remaining -= Math.max(0, current.getMaxStackSize() - current.getAmount());
-      }
-      if (remaining <= 0) return true;
-    }
-    return false;
   }
 
   private static ItemStack emptySlot() {

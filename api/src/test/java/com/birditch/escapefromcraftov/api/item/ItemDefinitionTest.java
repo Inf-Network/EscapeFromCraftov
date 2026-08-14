@@ -36,6 +36,8 @@ class ItemDefinitionTest {
             assertTrue(definition.tradable());
             assertTrue(definition.sellable());
             assertTrue(definition.droppable());
+            assertEquals(0, definition.containerSlots());
+            assertTrue(definition.secureAllowed());
         }
 
         @Test
@@ -47,6 +49,7 @@ class ItemDefinitionTest {
                     .tradable(false)
                     .sellable(false)
                     .droppable(false)
+                    .secureAllowed(false)
                     .build();
             assertEquals(Money.of(2000), definition.basePrice());
             assertEquals(800, definition.weightGrams());
@@ -54,6 +57,26 @@ class ItemDefinitionTest {
             assertFalse(definition.tradable());
             assertFalse(definition.sellable());
             assertFalse(definition.droppable());
+            assertFalse(definition.secureAllowed());
+        }
+
+        @Test
+        void buildsContainerCapacityOnlyForContainerCategories() {
+            ItemDefinition rig = ItemDefinition.builder(ItemId.of("basic_rig"), "Basic Rig",
+                    ItemCategory.CHEST_RIG, ItemRarity.COMMON)
+                    .containerSlots(6)
+                    .build();
+
+            assertEquals(6, rig.containerSlots());
+            assertThrows(IllegalArgumentException.class,
+                    () -> builder().containerSlots(1).build());
+            assertThrows(IllegalArgumentException.class,
+                    () -> ItemDefinition.builder(ItemId.of("empty_pack"), "Empty Pack",
+                            ItemCategory.BACKPACK, ItemRarity.COMMON).build());
+            assertThrows(IllegalArgumentException.class,
+                    () -> ItemDefinition.builder(ItemId.of("huge_pack"), "Huge Pack",
+                            ItemCategory.BACKPACK, ItemRarity.COMMON)
+                            .containerSlots(28).build());
         }
 
         @Test

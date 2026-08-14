@@ -10,6 +10,7 @@ import com.birditch.escapefromcraftov.map.CuboidBounds;
 import com.birditch.escapefromcraftov.map.EditorSession;
 import com.birditch.escapefromcraftov.map.EditorTool;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
 import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
@@ -32,6 +33,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -42,6 +44,7 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.block.Block;
@@ -407,10 +410,51 @@ final class EditorCommands {
                 "extraction_key", "100", "300", "600")).executes(ctx -> player(ctx.getSource().getSender(), value ->
                 updateExtraction(context, value, null, null, null,
                     StringArgumentType.getString(ctx, "value"), null)))))
+        .then(extractionRuleBranch(context))
         .then(Commands.literal("enable").executes(ctx -> player(ctx.getSource().getSender(), value ->
             updateExtraction(context, value, null, null, null, null, true))))
         .then(Commands.literal("disable").executes(ctx -> player(ctx.getSource().getSender(), value ->
             updateExtraction(context, value, null, null, null, null, false))));
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> extractionRuleBranch(
+      CommandContext context) {
+    return Commands.literal("rule")
+        .then(Commands.literal("list").executes(ctx -> player(ctx.getSource().getSender(), value ->
+            listExtractionRules(context, value))))
+        .then(Commands.literal("clear").executes(ctx -> player(ctx.getSource().getSender(), value ->
+            replaceExtractionRules(context, value, List.of()))))
+        .then(Commands.literal("remove").then(Commands.argument("rule", StringArgumentType.word())
+            .suggests((_, builder) -> suggest(builder, "random", "no_backpack", "max_weight",
+                "capacity", "switch_id"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> removeExtractionRule(
+                context, value, StringArgumentType.getString(ctx, "rule"))))))
+        .then(Commands.literal("switch").then(Commands.argument("switch-id",
+            StringArgumentType.word()).suggests((_, builder) -> suggest(builder,
+                "north_power", "elevator_power", "gate_power"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> addExtractionSwitch(
+                context, value, StringArgumentType.getString(ctx, "switch-id"))))))
+        .then(Commands.literal("random").then(Commands.argument("chance",
+            DoubleArgumentType.doubleArg(0, 1)).suggests((_, builder) -> suggest(builder,
+                "0.25", "0.5", "0.75", "1.0"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> upsertExtractionRule(
+                context, value, new ExtractionRuleDefinition.RandomOpen(
+                    DoubleArgumentType.getDouble(ctx, "chance")))))))
+        .then(Commands.literal("no_backpack").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> upsertExtractionRule(context, value,
+                new ExtractionRuleDefinition.NoBackpack()))))
+        .then(Commands.literal("max_weight").then(Commands.argument("grams",
+            LongArgumentType.longArg(0)).suggests((_, builder) -> suggest(builder,
+                "10000", "20000", "30000", "50000"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> upsertExtractionRule(
+                context, value, new ExtractionRuleDefinition.MaxWeight(
+                    LongArgumentType.getLong(ctx, "grams")))))))
+        .then(Commands.literal("capacity").then(Commands.argument("slots",
+            IntegerArgumentType.integer(1)).suggests((_, builder) -> suggest(builder,
+                "1", "2", "3", "4", "6"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> upsertExtractionRule(
+                context, value, new ExtractionRuleDefinition.Capacity(
+                    IntegerArgumentType.getInteger(ctx, "slots")))))));
   }
 
   private static LiteralArgumentBuilder<CommandSourceStack> poiBranch(CommandContext context) {
@@ -624,7 +668,7 @@ final class EditorCommands {
     helpGroup(player, "出生", "/craftov editor spawn create|region|team|weight|enable|disable");
     helpGroup(player, "物资", "/craftov editor loot|lootzone create|table|tier|density|danger");
     helpGroup(player, "生物", "/craftov editor ai zone|type|minimum|maximum|respawn|difficulty");
-    helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition");
+    helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition|rule");
     helpGroup(player, "对象", "/craftov editor select|info [id]|tp [id]|move|clone|copy|paste|delete");
     helpGroup(player, "批量", "/craftov editor batch enable|disable|table|tier|delete");
     helpGroup(player, "显示", "/craftov editor show|hide|radius|nearby；左键选择，潜行右键属性");
@@ -813,8 +857,106 @@ final class EditorCommands {
       }
       return new ExtractionDefinition(value.id(), displayName == null ? value.displayName() : displayName,
           value.bounds(), type, durationSeconds == null ? value.durationSeconds() : durationSeconds,
-          condition, enabled == null ? value.enabled() : enabled);
+          condition, enabled == null ? value.enabled() : enabled, value.conditions());
     });
+  }
+
+  private static int addExtractionSwitch(CommandContext context, Player player, String switchId) {
+    EditorSession session = session(context, player);
+    sameWorld(player, session);
+    Block target = player.getTargetBlockExact(6);
+    if (target == null || target.getType() != Material.LEVER) {
+      throw new IllegalStateException("请看向 6 格内的拉杆方块");
+    }
+    return upsertExtractionRule(context, player,
+        new ExtractionRuleDefinition.SwitchActivated(switchId,
+            new BlockPosition(target.getX(), target.getY(), target.getZ())));
+  }
+
+  private static int upsertExtractionRule(CommandContext context, Player player,
+      ExtractionRuleDefinition rule) {
+    return replaceSelected(context, player, MapObjectType.EXTRACTION, "撤离组合条件", object -> {
+      ExtractionDefinition value = (ExtractionDefinition) object;
+      List<ExtractionRuleDefinition> rules = new ArrayList<>(value.conditions());
+      if (rule instanceof ExtractionRuleDefinition.SwitchActivated lever) {
+        rules.removeIf(existing -> existing instanceof ExtractionRuleDefinition.SwitchActivated old
+            && old.switchId().equals(lever.switchId()));
+      } else {
+        rules.removeIf(existing -> existing.type() == rule.type());
+      }
+      rules.add(rule);
+      return withExtractionRules(value, rules);
+    });
+  }
+
+  private static int removeExtractionRule(CommandContext context, Player player, String rawRule) {
+    String requested = rawRule.toLowerCase(Locale.ROOT);
+    return replaceSelected(context, player, MapObjectType.EXTRACTION, "撤离组合条件", object -> {
+      ExtractionDefinition value = (ExtractionDefinition) object;
+      List<ExtractionRuleDefinition> rules = value.conditions().stream()
+          .filter(rule -> !matchesRule(rule, requested)).toList();
+      if (rules.size() == value.conditions().size()) {
+        throw new IllegalStateException("撤离点没有组合条件: " + rawRule);
+      }
+      return withExtractionRules(value, rules);
+    });
+  }
+
+  private static boolean matchesRule(ExtractionRuleDefinition rule, String requested) {
+    if (rule instanceof ExtractionRuleDefinition.SwitchActivated lever) {
+      return requested.equals("switch") || requested.equals("lever")
+          || lever.switchId().equalsIgnoreCase(requested);
+    }
+    return switch (rule.type()) {
+      case RANDOM_OPEN -> requested.equals("random") || requested.equals("random_open");
+      case NO_BACKPACK -> requested.equals("no_backpack") || requested.equals("drop_backpack");
+      case MAX_WEIGHT -> requested.equals("weight") || requested.equals("max_weight");
+      case CAPACITY -> requested.equals("slots") || requested.equals("capacity");
+      case SWITCH_ACTIVATED -> false;
+    };
+  }
+
+  private static int replaceExtractionRules(CommandContext context, Player player,
+      List<ExtractionRuleDefinition> rules) {
+    return replaceSelected(context, player, MapObjectType.EXTRACTION, "撤离组合条件", object ->
+        withExtractionRules((ExtractionDefinition) object, rules));
+  }
+
+  private static ExtractionDefinition withExtractionRules(ExtractionDefinition value,
+      List<ExtractionRuleDefinition> rules) {
+    return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(),
+        value.extractionType(), value.durationSeconds(), value.conditionValue(), value.enabled(),
+        rules);
+  }
+
+  private static int listExtractionRules(CommandContext context, Player player) {
+    EditorSession session = session(context, player);
+    MapObject selected = session.draft().findObject(selected(session))
+        .orElseThrow(() -> new IllegalStateException("选中的对象不存在"));
+    if (!(selected instanceof ExtractionDefinition extraction)) {
+      throw new IllegalStateException("当前选择不是撤离点");
+    }
+    player.sendMessage(Component.text("撤离组合条件 " + extraction.id() + ":",
+        NamedTextColor.GOLD));
+    if (extraction.conditions().isEmpty()) {
+      player.sendMessage(Component.text("- 无（仅使用旧版 type 条件）", NamedTextColor.GRAY));
+    } else {
+      for (ExtractionRuleDefinition rule : extraction.conditions()) {
+        player.sendMessage(Component.text("- " + describeRule(rule), NamedTextColor.YELLOW));
+      }
+    }
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static String describeRule(ExtractionRuleDefinition rule) {
+    return switch (rule) {
+      case ExtractionRuleDefinition.SwitchActivated value -> "拉闸 " + value.switchId() + " @ "
+          + value.position().x() + "," + value.position().y() + "," + value.position().z();
+      case ExtractionRuleDefinition.RandomOpen value -> "随机开放 " + value.chance();
+      case ExtractionRuleDefinition.NoBackpack _ -> "必须丢弃背包";
+      case ExtractionRuleDefinition.MaxWeight value -> "限重 " + value.maxWeightGrams() + "g";
+      case ExtractionRuleDefinition.Capacity value -> "本局名额 " + value.slots();
+    };
   }
 
   private static int updatePoi(CommandContext context, Player player, String displayName,

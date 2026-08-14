@@ -6,6 +6,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.inventory.RaidCarryService;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
 import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
@@ -39,6 +40,7 @@ import com.birditch.escapefromcraftov.game.GameModule;
 import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
 import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
 import com.birditch.escapefromcraftov.game.plugin.downed.DownedPlayerListener;
 import com.birditch.escapefromcraftov.game.plugin.instance.BridgeDeps;
@@ -65,6 +67,7 @@ import com.birditch.escapefromcraftov.game.plugin.editor.EditorObjectMenuControl
 import com.birditch.escapefromcraftov.game.plugin.editor.EditorWandListener;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorConfigMapper;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorSettings;
+import com.birditch.escapefromcraftov.game.plugin.extraction.ExtractionSwitchListener;
 import com.birditch.escapefromcraftov.game.plugin.integration.IntegrationManager;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
@@ -156,6 +159,7 @@ public final class GameApplication {
   private @Nullable RaidResultRuntime raidReports;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable SecureContainerController secureContainers;
+  private @Nullable RaidCarryController raidCarry;
   private @Nullable InstanceProvisioner provisioner;
   private @Nullable SnapshotPublisher publisher;
   private @Nullable CraftovStartCoordinator startCoordinator;
@@ -208,6 +212,7 @@ public final class GameApplication {
       VisibilityService visibility,
       PendingJoinHandler pendingJoins,
       CraftovItemStacks itemStacks,
+      RaidCarryController carry,
       GameCombatListener combat,
       DownedPlayerListener downedPlayers,
       MedicalConditionListener medicalConditions,
@@ -280,6 +285,12 @@ public final class GameApplication {
     steps.run("destroy instance worlds", this::destroyInstanceWorlds);
     steps.run("save profiles", this::saveAllProfiles);
     stopNetwork(steps);
+    steps.run("stop raid carry controller", () -> {
+      if (raidCarry != null) {
+        raidCarry.close();
+        raidCarry = null;
+      }
+    });
     steps.run("stop modules", () -> {
       if (moduleManager != null) {
         moduleManager.stopAll();
@@ -575,6 +586,10 @@ public final class GameApplication {
     this.visibility = visibility;
     CraftovItemStacks itemStacks = new CraftovItemStacks(context.services().require(ItemRegistry.class));
     PlayerInventoryService inventories = context.services().require(PlayerInventoryService.class);
+    RaidCarryController carryController = new RaidCarryController(plugin, context.eventBus(),
+        scheduler, context.services().require(RaidCarryService.class), itemStacks,
+        context.services().require(ItemRegistry.class));
+    raidCarry = carryController;
     RaidResultCollector reportCollector = new RaidResultCollector(
         new HibernateRaidReportService(context.database(), executor),
         context.services().require(ItemRegistry.class), new SystemTimeSource());
@@ -583,7 +598,9 @@ public final class GameApplication {
     raidReports = reportRuntime;
     reportSubscription = context.eventBus().register(reportRuntime);
     SecureContainerController secure = new SecureContainerController(
-        games, index, itemStacks, configs.messages(), trMenu);
+        games, index, itemStacks, context.services().require(ItemRegistry.class),
+        carryController, configs.messages(), trMenu);
+    context.services().register(SecureContainerController.class, secure);
     secureContainers = secure;
     GameCombatListener combatListener = new GameCombatListener(plugin, games,
         context.services().require(CombatService.class), inventories,
@@ -606,7 +623,9 @@ public final class GameApplication {
     CraftovSidebarService sidebarService = new CraftovSidebarService(plugin, games,
         mapRuntime.sessions(), mapRuntime.service(),
         context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
-        context.services().require(CombatService.class), itemStacks, configs.messages(),
+        context.services().require(CombatService.class), itemStacks,
+        context.services().require(ItemRegistry.class), carryController, secure,
+        configs.messages(),
         configs.gameplay(),
         combatListener, starts,
         configs.core().game().durationSeconds(), configs.core().game().maxPlayers(),
@@ -617,7 +636,7 @@ public final class GameApplication {
     CraftovLootListener lootMenuController = new CraftovLootListener(games,
         context.services().require(LootService.class), itemStacks,
         context.services().require(ItemRegistry.class), index, configs.messages(),
-        configs.gameplay().lootContainerSize(), trMenu, scheduler);
+        configs.gameplay().lootContainerSize(), trMenu, scheduler, carryController);
     lootMenus = lootMenuController;
     lootSubscription = context.eventBus().register(lootMenuController);
     InstanceWorldBridge instanceBridge = new InstanceWorldBridge(
@@ -626,12 +645,13 @@ public final class GameApplication {
             inventories,
             context.services().require(
                 com.birditch.escapefromcraftov.api.extraction.ExtractionService.class), itemStacks,
-            secure, reportRuntime, context.eventBus(), worlds, index, visibility, bungee, server,
+            carryController, secure, reportRuntime, context.eventBus(), worlds, index, visibility,
+            bungee, server,
             configs.messages(), trMenu,
             scheduler, configs.gameplay().extractionExperience(), logger));
     bridgeSubscription = context.eventBus().register(instanceBridge);
     DeathCrateListener deathCrateController = new DeathCrateListener(
-        games, index, itemStacks, configs.messages(), trMenu, logger);
+        games, index, itemStacks, configs.messages(), trMenu, logger, carryController);
     deathCrates = deathCrateController;
     deathCrateSubscription = context.eventBus().register(deathCrateController);
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(
@@ -669,7 +689,7 @@ public final class GameApplication {
         context.services().require(ItemRegistry.class),
         context.services().require(
             com.birditch.escapefromcraftov.api.game.RaidAdmissionService.class),
-        context.services().require(ProfileService.class), trMenu, visibility,
+        context.services().require(ProfileService.class), trMenu, visibility, carryController,
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     this.pendingJoins = pendingJoins;
@@ -678,7 +698,8 @@ public final class GameApplication {
         games, scheduler, pendingJoins, bungee, server, configs.messages(), logger);
     waitingArrivalTimeout = arrivalTimeout;
     waitingArrivalSubscription = context.eventBus().register(arrivalTimeout);
-    return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
+    return new Wiring(directory, index, visibility, pendingJoins, itemStacks, carryController,
+        combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
   }
@@ -731,10 +752,13 @@ public final class GameApplication {
         wiring.visibility(), wiring.index(), wiring.secureContainers(), wiring.raidReports(),
         logger)), plugin);
     pluginManager.registerEvents(new PendingPlayerGuard(wiring.pendingJoins()), plugin);
+    pluginManager.registerEvents(wiring.carry(), plugin);
     pluginManager.registerEvents(new ExtractionRegionListener(
         context.services().require(CraftovGameService.class),
         context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
         wiring.index(), configs.messages()), plugin);
+    pluginManager.registerEvents(new ExtractionSwitchListener(
+        context.services().require(CraftovGameService.class), wiring.index()), plugin);
     pluginManager.registerEvents(wiring.combat(), plugin);
     pluginManager.registerEvents(wiring.downedPlayers(), plugin);
     pluginManager.registerEvents(wiring.medicalConditions(), plugin);

@@ -379,7 +379,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
         case EXTRACTION_DURATION -> new ExtractionDefinition(value.id(), value.displayName(),
             value.bounds(), value.extractionType(),
             Math.max(1, value.durationSeconds() + direction * 5), value.conditionValue(),
-            value.enabled());
+            value.enabled(), value.conditions());
         case EXTRACTION_CONDITION -> extractionCondition(value, direction);
         default -> value;
       };
@@ -399,7 +399,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
       case TIMED -> "600";
     };
     return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(), type,
-        value.durationSeconds(), condition, value.enabled());
+        value.durationSeconds(), condition, value.enabled(), value.conditions());
   }
 
   private ExtractionDefinition extractionCondition(ExtractionDefinition value, int direction) {
@@ -410,7 +410,8 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
       case TIMED -> Long.toString(Math.max(0, parseLong(value.conditionValue()) + direction * 60));
     };
     return new ExtractionDefinition(value.id(), value.displayName(), value.bounds(),
-        value.extractionType(), value.durationSeconds(), condition, value.enabled());
+        value.extractionType(), value.durationSeconds(), condition, value.enabled(),
+        value.conditions());
   }
 
   private static MapObject enabled(MapObject object, boolean enabled) {
@@ -426,7 +427,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
           value.difficulty(), value.team(), enabled);
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(), value.displayName(),
           value.bounds(), value.extractionType(), value.durationSeconds(), value.conditionValue(),
-          enabled);
+          enabled, value.conditions());
       case PoiDefinition value -> new PoiDefinition(value.id(), value.displayName(), value.bounds(),
           value.tier(), enabled);
     };

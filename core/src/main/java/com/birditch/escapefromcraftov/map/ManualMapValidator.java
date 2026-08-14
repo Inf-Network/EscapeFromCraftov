@@ -74,8 +74,9 @@ public final class ManualMapValidator {
               + extractionCount);
     }
     if (map.extractions().stream().filter(ExtractionDefinition::enabled)
-        .noneMatch(value -> value.extractionType() == ManualExtractionType.NORMAL)) {
-      error(issues, "normal_extraction_missing", null, "至少需要一个启用的普通撤离点");
+        .noneMatch(value -> value.extractionType() == ManualExtractionType.NORMAL
+            && value.conditions().isEmpty())) {
+      error(issues, "normal_extraction_missing", null, "至少需要一个启用且无附加条件的普通撤离点");
     }
     if (map.lootPoints().stream().noneMatch(LootPointDefinition::enabled)
         && map.lootZones().stream().noneMatch(LootZoneDefinition::enabled)) {
@@ -100,6 +101,16 @@ public final class ManualMapValidator {
           bounds.contains(object.anchor()));
       if (!inside) error(issues, "outside_bounds", object.id(),
           "对象超出地图边界: " + object.id());
+    }
+    for (ExtractionDefinition extraction : map.extractions()) {
+      if (!extraction.enabled()) continue;
+      for (ExtractionRuleDefinition rule : extraction.conditions()) {
+        if (rule instanceof ExtractionRuleDefinition.SwitchActivated lever
+            && !bounds.contains(lever.position())) {
+          error(issues, "extraction_switch_outside_bounds", extraction.id(),
+              "撤离拉闸位置超出地图边界: " + lever.switchId());
+        }
+      }
     }
   }
 
@@ -132,6 +143,26 @@ public final class ManualMapValidator {
         case PAID, TIMED -> {
           if (!isNonNegativeLong(condition)) error(issues, "condition_invalid", extraction.id(),
               "条件值必须是非负整数: " + condition);
+        }
+      }
+      Set<ExtractionRuleDefinition.RuleType> unique = new HashSet<>();
+      Set<String> switches = new HashSet<>();
+      for (ExtractionRuleDefinition rule : extraction.conditions()) {
+        if (rule instanceof ExtractionRuleDefinition.SwitchActivated lever) {
+          if (!switches.add(lever.switchId())) {
+            error(issues, "extraction_switch_duplicate", extraction.id(),
+                "撤离点重复引用拉闸 ID: " + lever.switchId());
+          }
+          continue;
+        }
+        if (!unique.add(rule.type())) {
+          error(issues, "extraction_condition_duplicate", extraction.id(),
+              "撤离点的组合条件重复: " + rule.type());
+        }
+        if (rule instanceof ExtractionRuleDefinition.RandomOpen random
+            && random.chance() == 0) {
+          warning(issues, "random_extraction_never_opens", extraction.id(),
+              "随机撤离点开放概率为 0，本局永远无法使用");
         }
       }
     }

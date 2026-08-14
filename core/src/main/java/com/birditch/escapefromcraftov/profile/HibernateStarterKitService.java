@@ -33,6 +33,8 @@ public final class HibernateStarterKitService implements StarterKitService {
       item("arrow", 16),
       item("shield", 1),
       item("iron_chestplate", 1),
+      item("basic_rig", 1),
+      item("patrol_backpack", 1),
       item("healing_potion", 2),
       item("golden_apple", 2));
 

@@ -369,9 +369,12 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
     if (slot == LoadoutSlot.SECURE_CONTAINER) {
       lore.add(Component.text("内建安全箱 · 3 格", NamedTextColor.LIGHT_PURPLE));
       lore.add(Component.text("局内使用 /craftov secure", NamedTextColor.GRAY));
-    } else if (slot == LoadoutSlot.CHEST_RIG || slot == LoadoutSlot.BACKPACK) {
-      lore.add(Component.text("第一阶段保留位置", NamedTextColor.DARK_GRAY));
-      lore.add(Component.text("当前物品目录暂无兼容容器", NamedTextColor.GRAY));
+    } else if (slot == LoadoutSlot.CHEST_RIG) {
+      lore.add(Component.text("从下方仓库点击胸挂即可装备", NamedTextColor.GRAY));
+      lore.add(Component.text("胸挂容量会增加局内可用格数", NamedTextColor.AQUA));
+    } else if (slot == LoadoutSlot.BACKPACK) {
+      lore.add(Component.text("从下方仓库点击背包即可装备", NamedTextColor.GRAY));
+      lore.add(Component.text("背包容量会增加局内可用格数", NamedTextColor.AQUA));
     } else {
       lore.add(Component.text("从下方仓库点击兼容物品即可装备", NamedTextColor.GRAY));
     }
@@ -671,7 +674,7 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
     // loot/market goods; offering them at a fixed price would erase the
     // extraction economy and make high-tier containers meaningless.
     return deps.itemRegistry().all().stream().filter(definition -> switch (definition.category()) {
-      case MELEE_WEAPON, RANGED_WEAPON, PROJECTILE, ARMOR, HELMET, SHIELD,
+      case MELEE_WEAPON, RANGED_WEAPON, PROJECTILE, ARMOR, HELMET, CHEST_RIG, SHIELD,
           BACKPACK, HEALING, FOOD, POTION, CONSUMABLE -> true;
       default -> false;
     }).toList();

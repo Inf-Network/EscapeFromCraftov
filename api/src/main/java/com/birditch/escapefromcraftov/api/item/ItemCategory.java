@@ -6,6 +6,7 @@ public enum ItemCategory {
     PROJECTILE,
     ARMOR,
     HELMET,
+    CHEST_RIG,
     SHIELD,
     BACKPACK,
     HEALING,

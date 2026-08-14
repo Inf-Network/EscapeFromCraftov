@@ -3,6 +3,7 @@ package com.birditch.escapefromcraftov.game.plugin.editor;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
 import com.birditch.escapefromcraftov.map.ManualCraftovMap;
 import com.birditch.escapefromcraftov.map.MapValidationIssue;
 import com.birditch.escapefromcraftov.map.MapValidationSeverity;
@@ -79,6 +80,19 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
               "撤离区域内没有可站立的玩家脚部位置: " + extraction.id()
                   + "。区域 Y 必须覆盖玩家脚部高度，而不是只圈地面方块；"
                   + "脚下 y-1 需为安全实体方块，脚部 y 与头部 y+1 需可通过"));
+        }
+      }
+      for (ExtractionRuleDefinition rule : extraction.conditions()) {
+        if (!(rule instanceof ExtractionRuleDefinition.SwitchActivated lever)) continue;
+        BlockPosition position = lever.position();
+        if (!chunkLoaded(world, position)) {
+          issues.add(warning("extraction_switch_unloaded", extraction.id(),
+              "拉闸所在区块尚未加载，无法验证方块: " + lever.switchId()));
+        } else if (world.getBlockAt(position.x(), position.y(), position.z()).getType()
+            != Material.LEVER) {
+          issues.add(error("extraction_switch_missing", extraction.id(),
+              "拉闸位置必须放置拉杆: " + lever.switchId() + " (" + position.x() + ", "
+                  + position.y() + ", " + position.z() + ")"));
         }
       }
     }

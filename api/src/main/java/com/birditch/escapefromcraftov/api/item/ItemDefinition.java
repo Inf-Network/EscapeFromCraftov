@@ -14,7 +14,9 @@ public record ItemDefinition(
         int stackSize,
         boolean tradable,
         boolean sellable,
-        boolean droppable) {
+        boolean droppable,
+        int containerSlots,
+        boolean secureAllowed) {
 
     public ItemDefinition {
         Preconditions.checkNotNull(id, "id");
@@ -25,10 +27,32 @@ public record ItemDefinition(
         Preconditions.checkNotNull(basePrice, "basePrice");
         Preconditions.checkArgument(weightGrams >= 0, "weightGrams must not be negative");
         Preconditions.checkArgument(stackSize >= 1, "stackSize must be at least 1");
+        boolean container = category == ItemCategory.CHEST_RIG
+                || category == ItemCategory.BACKPACK;
+        Preconditions.checkArgument(container
+                        ? containerSlots >= 1 && containerSlots <= 27
+                        : containerSlots == 0,
+                "chest rigs/backpacks require 1..27 container slots; other items require 0");
     }
 
-    /// Builder with defaults: basePrice [Money#ZERO], weightGrams 0, stackSize 1,
-    /// tradable/sellable/droppable all `true`.
+    /// Binary/source-compatible constructor retained for definitions without carry metadata.
+    public ItemDefinition(ItemId id, String displayName, ItemCategory category,
+            ItemRarity rarity, Money basePrice, int weightGrams, int stackSize,
+            boolean tradable, boolean sellable, boolean droppable) {
+        this(id, displayName, category, rarity, basePrice, weightGrams, stackSize,
+                tradable, sellable, droppable, 0, true);
+    }
+
+    /// Source-compatible constructor retained for definitions written before secure-box rules.
+    public ItemDefinition(ItemId id, String displayName, ItemCategory category,
+            ItemRarity rarity, Money basePrice, int weightGrams, int stackSize,
+            boolean tradable, boolean sellable, boolean droppable, int containerSlots) {
+        this(id, displayName, category, rarity, basePrice, weightGrams, stackSize,
+                tradable, sellable, droppable, containerSlots, true);
+    }
+
+    /// Builder with defaults: basePrice [Money#ZERO], weightGrams/containerSlots 0,
+    /// stackSize 1, tradable/sellable/droppable/secureAllowed all `true`.
     public static Builder builder(ItemId id, String displayName, ItemCategory category, ItemRarity rarity) {
         return new Builder(id, displayName, category, rarity);
     }
@@ -45,6 +69,8 @@ public record ItemDefinition(
         private boolean tradable = true;
         private boolean sellable = true;
         private boolean droppable = true;
+        private int containerSlots;
+        private boolean secureAllowed = true;
 
         private Builder(ItemId id, String displayName, ItemCategory category, ItemRarity rarity) {
             this.id = id;
@@ -83,9 +109,22 @@ public record ItemDefinition(
             return this;
         }
 
+        /// Physical cargo cells unlocked while this chest rig/backpack is equipped.
+        public Builder containerSlots(int containerSlots) {
+            this.containerSlots = containerSlots;
+            return this;
+        }
+
+        /// Whether this item type may be stored in the built-in secure container.
+        public Builder secureAllowed(boolean secureAllowed) {
+            this.secureAllowed = secureAllowed;
+            return this;
+        }
+
         public ItemDefinition build() {
             return new ItemDefinition(id, displayName, category, rarity, basePrice,
-                    weightGrams, stackSize, tradable, sellable, droppable);
+                    weightGrams, stackSize, tradable, sellable, droppable, containerSlots,
+                    secureAllowed);
         }
     }
 }

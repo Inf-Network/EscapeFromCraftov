@@ -15,6 +15,7 @@ import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.CuboidBounds;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
+import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
 import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
@@ -203,7 +204,15 @@ class ManualMapStoreTest {
             "scav", true)),
         List.of(new ExtractionDefinition("north_gate", "North Gate",
             new CuboidBounds(10, 60, 450, 18, 70, 458), ManualExtractionType.NORMAL, 10,
-            null, true)),
+            null, true, List.of(
+                new ExtractionRuleDefinition.SwitchActivated("north_power",
+                    new BlockPosition(30, 64, 430)),
+                new ExtractionRuleDefinition.SwitchActivated("backup_power",
+                    new BlockPosition(32, 64, 430)),
+                new ExtractionRuleDefinition.RandomOpen(0.5),
+                new ExtractionRuleDefinition.NoBackpack(),
+                new ExtractionRuleDefinition.MaxWeight(30_000),
+                new ExtractionRuleDefinition.Capacity(3)))),
         List.of(new PoiDefinition("central_factory", "Central Factory",
             new CuboidBounds(180, 40, 180, 320, 90, 320), 3, true)),
         List.of(new RaidActionProfile(RaidTierId.of("top_secret"), "绝密行动", 112_500,

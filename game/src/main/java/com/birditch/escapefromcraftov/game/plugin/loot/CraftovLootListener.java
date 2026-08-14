@@ -21,6 +21,7 @@ import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,6 +72,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final int inventorySize;
   private final TrMenuBridge menus;
   private final CraftovScheduler scheduler;
+  private final RaidCarryController carry;
   private final AutoCloseable itemSource;
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
   private final Map<ContainerKey, CraftovLootPoint> resolvedPoints = new HashMap<>();
@@ -81,7 +83,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
       ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
-      TrMenuBridge menus, CraftovScheduler scheduler) {
+      TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
@@ -93,6 +95,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     this.inventorySize = inventorySize;
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
+    this.carry = Preconditions.checkNotNull(carry, "carry");
     this.itemSource = menus.registerItemSource("CRAFTOVCORELOOT", this::menuItem);
   }
 
@@ -182,7 +185,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     synchronized (container) {
       taken = container.item(containerSlot);
       if (taken == null || taken.isEmpty()) return;
-      if (!fits(player, taken)) {
+      if (!carry.canAccept(player, taken)) {
         player.sendMessage(messages.raw("loot.inventory-full"));
         return;
       }
@@ -614,19 +617,6 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       contents.set(index, placed);
       remaining.setAmount(remaining.getAmount() - moved);
     }
-  }
-
-  private static boolean fits(Player player, ItemStack item) {
-    int remaining = item.getAmount();
-    for (ItemStack current : player.getInventory().getStorageContents()) {
-      if (current == null || current.isEmpty()) {
-        remaining -= item.getMaxStackSize();
-      } else if (current.isSimilar(item)) {
-        remaining -= Math.max(0, current.getMaxStackSize() - current.getAmount());
-      }
-      if (remaining <= 0) return true;
-    }
-    return false;
   }
 
   private static boolean activeMember(CraftovGame game, Player player) {

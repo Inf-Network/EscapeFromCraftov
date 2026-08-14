@@ -20,10 +20,15 @@ import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnArea;
 import com.birditch.escapefromcraftov.api.loot.LootContainerType;
 import com.birditch.escapefromcraftov.api.loot.LootTableId;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
+import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.core.service.ServiceRegistry;
 import com.birditch.escapefromcraftov.game.CraftovMapProvider;
 import com.birditch.escapefromcraftov.game.CraftovMapRuntime;
+import com.birditch.escapefromcraftov.game.plugin.extraction.BukkitCarriedInventoryLookup;
+import com.birditch.escapefromcraftov.game.plugin.extraction.ExtractionConditionCompiler;
+import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
 import com.birditch.escapefromcraftov.map.CraftovMapSnapshot;
 import java.time.Duration;
@@ -32,6 +37,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
@@ -47,10 +53,29 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
 
   private final ManualMapRegistry maps;
   private final ServiceRegistry services;
+  private final ExtractionConditionCompiler conditionCompiler;
 
   public ManualCraftovMapProvider(ManualMapRegistry maps, ServiceRegistry services) {
+    this(maps, services, defaultCompiler(services));
+  }
+
+  ManualCraftovMapProvider(ManualMapRegistry maps, ServiceRegistry services,
+      ExtractionConditionCompiler conditionCompiler) {
     this.maps = Preconditions.checkNotNull(maps, "maps");
     this.services = Preconditions.checkNotNull(services, "services");
+    this.conditionCompiler = Preconditions.checkNotNull(conditionCompiler, "conditionCompiler");
+  }
+
+  private static ExtractionConditionCompiler defaultCompiler(ServiceRegistry services) {
+    Preconditions.checkNotNull(services, "services");
+    // The provider is constructed before ItemModule initializes. Resolve the
+    // registry lazily when a live condition inspects a player, not at bootstrap.
+    return new ExtractionConditionCompiler(new Random(), playerId -> {
+      ItemRegistry items = services.require(ItemRegistry.class);
+      return new BukkitCarriedInventoryLookup(new CraftovItemStacks(items), items,
+          id -> services.find(SecureContainerController.class)
+              .map(secure -> secure.contents(id)).orElse(List.of())).find(playerId);
+    });
   }
 
   @Override
@@ -109,15 +134,21 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
   }
 
   private ExtractionPoint point(ExtractionDefinition value) {
-    return new ExtractionPoint(pointId(value), value.displayName(), switch (value.extractionType()) {
+    ExtractionType legacyType = switch (value.extractionType()) {
       case NORMAL -> ExtractionType.NORMAL;
       case ITEM_REQUIRED -> ExtractionType.ITEM_REQUIRED;
       case PAID -> ExtractionType.PAID;
       case TIMED -> ExtractionType.TIMED;
-    }, Duration.ofSeconds(value.durationSeconds()), conditions(value), ExtractionState.AVAILABLE);
+    };
+    ExtractionType runtimeType = value.conditions().isEmpty() ? legacyType
+        : ExtractionType.CONDITIONAL;
+    List<ExtractionCondition> conditions = conditionCompiler.compile(value,
+        legacyConditions(value));
+    return new ExtractionPoint(pointId(value), value.displayName(), runtimeType,
+        Duration.ofSeconds(value.durationSeconds()), conditions, ExtractionState.AVAILABLE);
   }
 
-  private List<ExtractionCondition> conditions(ExtractionDefinition value) {
+  private List<ExtractionCondition> legacyConditions(ExtractionDefinition value) {
     return switch (value.extractionType()) {
       case NORMAL -> List.of();
       case ITEM_REQUIRED -> List.of(itemCondition(value.conditionValue()));

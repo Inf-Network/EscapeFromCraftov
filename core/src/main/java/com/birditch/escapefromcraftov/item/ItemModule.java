@@ -1,9 +1,11 @@
 package com.birditch.escapefromcraftov.item;
 
+import com.birditch.escapefromcraftov.api.inventory.RaidCarryService;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.item.ItemService;
 import com.birditch.escapefromcraftov.core.CraftovContext;
 import com.birditch.escapefromcraftov.core.module.CraftovModule;
+import com.birditch.escapefromcraftov.inventory.DefaultRaidCarryService;
 
 /// Wires the item domain: registry seeded with the demo catalog plus the item
 /// service. All wiring happens during initialization; `start` and `stop` are
@@ -21,6 +23,7 @@ public final class ItemModule implements CraftovModule {
     DefaultItems.registerAll(registry);
     context.services().register(ItemRegistry.class, registry);
     context.services().register(ItemService.class, new DefaultItemService(registry));
+    context.services().register(RaidCarryService.class, new DefaultRaidCarryService(registry));
   }
 
   @Override

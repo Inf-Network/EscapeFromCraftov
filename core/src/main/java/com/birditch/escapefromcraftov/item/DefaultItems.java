@@ -77,6 +77,13 @@ public final class DefaultItems {
         .stackSize(64)
         .build());
     registry.register(ItemDefinition
+        .builder(ItemId.of("medical_sample"), "密封医疗样本", ItemCategory.VALUABLE,
+            ItemRarity.UNCOMMON)
+        .basePrice(Money.of(3_800L))
+        .weightGrams(180)
+        .stackSize(16)
+        .build());
+    registry.register(ItemDefinition
         .builder(ItemId.of("echo_shard"), "回响碎片", ItemCategory.VALUABLE,
             ItemRarity.RARE)
         .basePrice(Money.of(6500L))
@@ -84,11 +91,37 @@ public final class DefaultItems {
         .stackSize(16)
         .build());
     registry.register(ItemDefinition
+        .builder(ItemId.of("encrypted_drive"), "加密数据盘", ItemCategory.VALUABLE,
+            ItemRarity.RARE)
+        .basePrice(Money.of(12_500L))
+        .weightGrams(120)
+        .stackSize(8)
+        .build());
+    registry.register(ItemDefinition
         .builder(ItemId.of("ancient_debris"), "远古残骸", ItemCategory.MATERIAL,
             ItemRarity.EPIC)
         .basePrice(Money.of(30000L))
         .weightGrams(2000)
         .stackSize(16)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("military_processor"), "军用运算核心", ItemCategory.VALUABLE,
+            ItemRarity.EPIC)
+        .basePrice(Money.of(42_000L))
+        .weightGrams(600)
+        .stackSize(4)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("golden_lion"), "鎏金雄狮", ItemCategory.VALUABLE,
+            ItemRarity.LEGENDARY)
+        .basePrice(Money.of(120_000L))
+        .weightGrams(3_200)
+        .build());
+    registry.register(ItemDefinition
+        .builder(ItemId.of("classified_document"), "绝密行动档案", ItemCategory.VALUABLE,
+            ItemRarity.ARTIFACT)
+        .basePrice(Money.of(350_000L))
+        .weightGrams(300)
         .build());
     registry.register(ItemDefinition
         .builder(ItemId.of("extraction_key"), "撤离钥匙", ItemCategory.KEY,

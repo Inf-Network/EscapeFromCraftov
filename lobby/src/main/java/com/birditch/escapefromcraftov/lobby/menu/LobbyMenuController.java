@@ -550,7 +550,14 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
   }
 
   private List<ItemDefinition> vendorOffers() {
-    return List.copyOf(deps.itemRegistry().all());
+    // The military vendor sells combat supplies. Valuable raid finds remain
+    // loot/market goods; offering them at a fixed price would erase the
+    // extraction economy and make high-tier containers meaningless.
+    return deps.itemRegistry().all().stream().filter(definition -> switch (definition.category()) {
+      case MELEE_WEAPON, RANGED_WEAPON, PROJECTILE, ARMOR, HELMET, SHIELD,
+          BACKPACK, HEALING, FOOD, POTION, CONSUMABLE -> true;
+      default -> false;
+    }).toList();
   }
 
   private WarehouseView requireWarehouseView(Player player) {

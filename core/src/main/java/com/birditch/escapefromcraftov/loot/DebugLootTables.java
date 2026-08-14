@@ -21,29 +21,38 @@ public final class DebugLootTables {
     Preconditions.checkNotNull(registry, "registry");
     registry.register(new LootTable(LootTableId.of("craftov_tier_1"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("emerald"), 50, 1, 4),
+            new LootEntry(ItemId.of("emerald"), 48, 1, 4),
             new LootEntry(ItemId.of("arrow"), 35, 4, 12),
-            new LootEntry(ItemId.of("healing_potion"), 15, 1, 1))))));
+            new LootEntry(ItemId.of("healing_potion"), 12, 1, 1),
+            new LootEntry(ItemId.of("medical_sample"), 5, 1, 1))))));
     registry.register(new LootTable(LootTableId.of("craftov_tier_2"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("emerald"), 35, 2, 6),
+            new LootEntry(ItemId.of("emerald"), 28, 2, 6),
+            new LootEntry(ItemId.of("medical_sample"), 18, 1, 2),
             new LootEntry(ItemId.of("iron_sword"), 18, 1, 1),
             new LootEntry(ItemId.of("bow"), 15, 1, 1),
             new LootEntry(ItemId.of("shield"), 12, 1, 1),
-            new LootEntry(ItemId.of("healing_potion"), 20, 1, 2))))));
+            new LootEntry(ItemId.of("healing_potion"), 15, 1, 2),
+            new LootEntry(ItemId.of("encrypted_drive"), 4, 1, 1))))));
     registry.register(new LootTable(LootTableId.of("craftov_tier_3"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("crossbow"), 20, 1, 1),
-            new LootEntry(ItemId.of("iron_chestplate"), 18, 1, 1),
-            new LootEntry(ItemId.of("golden_apple"), 15, 1, 2),
-            new LootEntry(ItemId.of("echo_shard"), 32, 1, 3),
-            new LootEntry(ItemId.of("extraction_key"), 15, 1, 1))))));
+            new LootEntry(ItemId.of("crossbow"), 15, 1, 1),
+            new LootEntry(ItemId.of("iron_chestplate"), 14, 1, 1),
+            new LootEntry(ItemId.of("golden_apple"), 14, 1, 2),
+            new LootEntry(ItemId.of("echo_shard"), 25, 1, 3),
+            new LootEntry(ItemId.of("encrypted_drive"), 18, 1, 2),
+            new LootEntry(ItemId.of("military_processor"), 5, 1, 1),
+            new LootEntry(ItemId.of("extraction_key"), 9, 1, 1))))));
     registry.register(new LootTable(LootTableId.of("craftov_tier_4"), List.of(
         new LootPool(3, List.of(
-            new LootEntry(ItemId.of("ancient_debris"), 10, 1, 2),
-            new LootEntry(ItemId.of("echo_shard"), 35, 2, 5),
-            new LootEntry(ItemId.of("golden_apple"), 25, 1, 3),
-            new LootEntry(ItemId.of("extraction_key"), 30, 1, 1))))));
+            new LootEntry(ItemId.of("ancient_debris"), 18, 1, 2),
+            new LootEntry(ItemId.of("echo_shard"), 22, 2, 5),
+            new LootEntry(ItemId.of("encrypted_drive"), 20, 1, 3),
+            new LootEntry(ItemId.of("military_processor"), 17, 1, 2),
+            new LootEntry(ItemId.of("golden_lion"), 8, 1, 1),
+            new LootEntry(ItemId.of("classified_document"), 2, 1, 1),
+            new LootEntry(ItemId.of("golden_apple"), 8, 1, 3),
+            new LootEntry(ItemId.of("extraction_key"), 5, 1, 1))))));
     registry.register(new LootTable(LootTableId.of("debug_common"), List.of(
         new LootPool(3, List.of(
             new LootEntry(ItemId.of("emerald"), 50, 1, 4),

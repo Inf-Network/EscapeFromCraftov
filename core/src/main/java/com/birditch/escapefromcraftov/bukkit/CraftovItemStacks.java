@@ -53,8 +53,13 @@ public final class CraftovItemStacks {
       Map.entry("healing_potion", Material.POTION),
       Map.entry("golden_apple", Material.GOLDEN_APPLE),
       Map.entry("emerald", Material.EMERALD),
+      Map.entry("medical_sample", Material.FERMENTED_SPIDER_EYE),
       Map.entry("echo_shard", Material.ECHO_SHARD),
+      Map.entry("encrypted_drive", Material.AMETHYST_SHARD),
       Map.entry("ancient_debris", Material.ANCIENT_DEBRIS),
+      Map.entry("military_processor", Material.RECOVERY_COMPASS),
+      Map.entry("golden_lion", Material.GOLD_BLOCK),
+      Map.entry("classified_document", Material.NETHER_STAR),
       Map.entry("extraction_key", Material.TRIPWIRE_HOOK));
 
   private final ItemRegistry registry;

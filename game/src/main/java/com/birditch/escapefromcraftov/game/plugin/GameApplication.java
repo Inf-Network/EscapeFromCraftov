@@ -544,6 +544,7 @@ public final class GameApplication {
         payload -> handleProvisionRequest(codec, payload, scheduler, instanceProvisioner));
     PendingJoinHandler pendingJoins = new PendingJoinHandler(new PendingDeps(
         assignments, games, server, index, bungee, inventories, itemStacks, trMenu, visibility,
+        mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, combatListener,
         sidebarService, lootMenuController, instanceBridge);

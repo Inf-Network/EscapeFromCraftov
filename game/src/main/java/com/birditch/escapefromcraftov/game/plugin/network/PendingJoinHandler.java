@@ -14,6 +14,7 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
+import com.birditch.escapefromcraftov.map.EditorSession;
 import java.util.concurrent.CompletionException;
 import java.time.Duration;
 import java.util.List;
@@ -61,14 +62,10 @@ public final class PendingJoinHandler {
   /// Called only after the player's PostgreSQL profile is ready.
   public void handle(Player player) {
     Preconditions.checkNotNull(player, "player");
-    // Administrators enter the dedicated server as map editors. Do this before
-    // touching Redis so maintenance work remains available when matchmaking is
-    // unavailable or a pooled connection became stale after host sleep.
-    if (player.hasPermission(CraftovPermissions.ADMIN)
-        || player.hasPermission(CraftovPermissions.EDITOR)) {
-      authorizeEditor(player);
-      return;
-    }
+    // Always consume a real lobby assignment first. Administrators also play
+    // test matches, so bypassing Redis solely because of their permissions
+    // would strand them in the editor source world while ordinary players join
+    // the copied instance. Editor access is only the no-assignment fallback.
     deps.store().consumePending(player.getUniqueId()).whenComplete((assignment, error) -> {
       MatchAssignment match = assignment == null ? null : assignment.orElse(null);
       deps.scheduler().runSync(() -> completeConsume(player, match, error));
@@ -89,10 +86,18 @@ public final class PendingJoinHandler {
     }
     if (error != null) {
       logConsumeFailure(player, error);
+      if (canEdit(player)) {
+        authorizeEditor(player);
+        return;
+      }
       rejectAssignment(player, "game.assignment-unavailable", "Redis unavailable");
       return;
     }
     if (assignment == null) {
+      if (canEdit(player)) {
+        authorizeEditor(player);
+        return;
+      }
       rejectAssignment(player, "game.assignment-missing", "missing assignment");
       return;
     }
@@ -129,6 +134,14 @@ public final class PendingJoinHandler {
       rejectAssignment(player, "game.assignment-invalid", "对局实例尚未就绪");
       return;
     }
+    EditorSession editor = deps.editorSessions().find(player.getUniqueId()).orElse(null);
+    if (editor != null && editor.dirty()) {
+      rejectAssignment(player, "game.assignment-invalid",
+          "地图编辑器存在未保存修改，请先保存或放弃修改后再匹配");
+      return;
+    }
+    deps.editorSessions().exit(player.getUniqueId(), false);
+    deps.editorSelections().clear(player.getUniqueId());
     Result<CraftovGame> joined = deps.games().join(assignment.gameId(), player.getUniqueId());
     if (joined instanceof Result.Failure<CraftovGame>(String message)) {
       rejectAssignment(player,
@@ -244,6 +257,11 @@ public final class PendingJoinHandler {
     player.setInvulnerable(false);
     deps.visibility().refresh(player);
     player.sendMessage(deps.messages().raw("join.editor-ready"));
+  }
+
+  private static boolean canEdit(Player player) {
+    return player.hasPermission(CraftovPermissions.ADMIN)
+        || player.hasPermission(CraftovPermissions.EDITOR);
   }
 
   private static void clearInventory(Player player) {

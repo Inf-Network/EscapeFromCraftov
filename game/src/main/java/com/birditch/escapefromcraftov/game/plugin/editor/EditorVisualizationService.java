@@ -19,6 +19,7 @@ import com.birditch.escapefromcraftov.game.plugin.integration.SelectionProvider;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.UUID;
 import org.bukkit.Bukkit;
@@ -43,7 +44,8 @@ public final class EditorVisualizationService implements Listener {
       MapObjectType.AI_ZONE, Color.RED,
       MapObjectType.EXTRACTION, Color.AQUA,
       MapObjectType.POI, Color.PURPLE);
-  private static final int MAXIMUM_LINE_SAMPLES = 48;
+  private static final int MAXIMUM_LINE_SAMPLES = 256;
+  private static final double LINE_SAMPLE_SPACING = 0.85;
 
   private final EditorSessionService sessions;
   private final int maximumObjectsPerFrame;
@@ -138,11 +140,17 @@ public final class EditorVisualizationService implements Listener {
             label.validationIssues(), label.style()))
         .toList();
     holograms.render(player, labels);
+    Optional<CuboidBounds> currentSelection = selections.selection(player, map.worldName());
+    boolean selectionIsSavedMapBounds = session.boundsVisible()
+        && session.tool() == EditorTool.MAP
+        && currentSelection.filter(bounds -> bounds.equals(map.bounds())).isPresent();
     if (map.bounds() != null && session.boundsVisible()) {
-      drawBounds(player, map.bounds(), MAP_COLOR, false);
+      drawBounds(player, map.bounds(), MAP_COLOR, selectionIsSavedMapBounds);
     }
-    selections.selection(player, map.worldName()).ifPresent(bounds ->
-        drawBounds(player, bounds, color(session.tool()), true));
+    if (!selectionIsSavedMapBounds) {
+      currentSelection.ifPresent(bounds ->
+          drawBounds(player, bounds, color(session.tool()), true));
+    }
   }
 
   private static void draw(Player player, MapObject object, boolean selected,
@@ -197,13 +205,19 @@ public final class EditorVisualizationService implements Listener {
     // remains visible instead of being drawn hundreds of blocks above/below them.
     double displayY = clamp(player.getLocation().getY() + 0.2,
         bounds.minY() + 0.2, bounds.maxY() + 1.2);
-    line(player, minX, displayY, minZ, maxX, displayY, minZ, color, selected);
-    line(player, minX, displayY, maxZ, maxX, displayY, maxZ, color, selected);
-    line(player, minX, displayY, minZ, minX, displayY, maxZ, color, selected);
-    line(player, maxX, displayY, minZ, maxX, displayY, maxZ, color, selected);
+    int layers = selected ? 2 : 1;
+    for (int layer = 0; layer < layers; layer++) {
+      double y = displayY + layer * 0.45;
+      line(player, minX, y, minZ, maxX, y, minZ, color, selected);
+      line(player, minX, y, maxZ, maxX, y, maxZ, color, selected);
+      line(player, minX, y, minZ, minX, y, maxZ, color, selected);
+      line(player, maxX, y, minZ, maxX, y, maxZ, color, selected);
+    }
 
-    double minY = bounds.minY() + 0.2;
-    double maxY = bounds.maxY() + 1.2;
+    // Only draw a short pillar around the visible slice. Rendering the full
+    // build-height corners makes the useful particles too sparse on tall maps.
+    double minY = Math.max(bounds.minY() + 0.2, displayY - 2.0);
+    double maxY = Math.min(bounds.maxY() + 1.2, displayY + 2.9);
     line(player, minX, minY, minZ, minX, maxY, minZ, color, selected);
     line(player, maxX, minY, minZ, maxX, maxY, minZ, color, selected);
     line(player, minX, minY, maxZ, minX, maxY, maxZ, color, selected);
@@ -214,13 +228,24 @@ public final class EditorVisualizationService implements Listener {
       double toX, double toY, double toZ, Color color, boolean selected) {
     double length = Math.sqrt(square(toX - fromX) + square(toY - fromY)
         + square(toZ - fromZ));
-    int samples = Math.max(1, Math.min(MAXIMUM_LINE_SAMPLES, (int) Math.ceil(length / 2)));
+    int samples = Math.max(1, Math.min(MAXIMUM_LINE_SAMPLES,
+        (int) Math.ceil(length / LINE_SAMPLE_SPACING)));
     for (int index = 0; index <= samples; index++) {
       double progress = index / (double) samples;
-      dust(player, new Location(player.getWorld(),
+      boundaryDust(player, new Location(player.getWorld(),
           interpolate(fromX, toX, progress), interpolate(fromY, toY, progress),
-          interpolate(fromZ, toZ, progress)), color, selected ? 1.55f : 0.95f);
+          interpolate(fromZ, toZ, progress)), color, selected);
     }
+  }
+
+  private static void boundaryDust(Player player, Location location, Color color,
+      boolean selected) {
+    if (player.getLocation().distanceSquared(location) > 512.0 * 512.0) return;
+    // Keep the outline dense, but keep each sprite near vanilla redstone size.
+    // Large dust sprites turn into opaque squares when the editor walks close
+    // to an edge and can cover both the world and the HUD.
+    player.spawnParticle(Particle.DUST, location, 1, 0, 0, 0, 0,
+        new Particle.DustOptions(color, selected ? 1.4f : 1.0f));
   }
 
   static Color color(EditorTool tool) {

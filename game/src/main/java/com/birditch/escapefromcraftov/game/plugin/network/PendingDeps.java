@@ -12,6 +12,8 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.isolation.VisibilityService;
+import com.birditch.escapefromcraftov.game.plugin.editor.EditorSelectionService;
+import com.birditch.escapefromcraftov.map.EditorSessionService;
 import java.util.logging.Logger;
 
 /// Constructor dependencies of [PendingJoinHandler], bundled so the handler
@@ -20,6 +22,8 @@ public record PendingDeps(AssignmentStore store, CraftovGameService games, GameS
                           InstanceWorldIndex index, BungeeConnector bungee,
                           PlayerInventoryService inventories, CraftovItemStacks itemStacks,
                           TrMenuBridge menus, VisibilityService visibility,
+                          EditorSessionService editorSessions,
+                          EditorSelectionService editorSelections,
                           CraftovScheduler scheduler, Messages messages,
                           Logger logger) {
 
@@ -33,6 +37,8 @@ public record PendingDeps(AssignmentStore store, CraftovGameService games, GameS
     Preconditions.checkNotNull(itemStacks, "itemStacks");
     Preconditions.checkNotNull(menus, "menus");
     Preconditions.checkNotNull(visibility, "visibility");
+    Preconditions.checkNotNull(editorSessions, "editorSessions");
+    Preconditions.checkNotNull(editorSelections, "editorSelections");
     Preconditions.checkNotNull(scheduler, "scheduler");
     Preconditions.checkNotNull(messages, "messages");
     Preconditions.checkNotNull(logger, "logger");

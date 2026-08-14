@@ -7,12 +7,17 @@ import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.api.item.ItemRarity;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -20,10 +25,12 @@ import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionType;
+import org.jspecify.annotations.Nullable;
 
 /// Single Bukkit representation for every durable and in-craftov EscapeFromCraftov item.
 public final class CraftovItemStacks {
@@ -31,6 +38,9 @@ public final class CraftovItemStacks {
   public static final NamespacedKey ITEM_ID_KEY = key("escapefromcraftov:item_id");
   public static final NamespacedKey INSTANCE_ID_KEY = key("escapefromcraftov:instance_id");
   public static final NamespacedKey STORAGE_ID_KEY = key("escapefromcraftov:storage_id");
+
+  private static final String PAYLOAD_PREFIX = "paper-itemstack:1:";
+  private static final int MAX_PAYLOAD_CHARACTERS = 2_000_000;
 
   private static final Map<String, Material> MATERIALS = Map.ofEntries(
       Map.entry("iron_sword", Material.IRON_SWORD),
@@ -55,27 +65,71 @@ public final class CraftovItemStacks {
 
   public List<ItemStack> fromStored(StoredItem stored) {
     Preconditions.checkNotNull(stored, "stored");
-    return build(stored.itemId(), stored.quantity(), stored.storageId());
+    return build(stored.itemId(), stored.quantity(), stored.instanceId(),
+        stored.opaquePayload(), stored.storageId());
   }
 
   public List<ItemStack> fromInstance(ItemInstance instance) {
     Preconditions.checkNotNull(instance, "instance");
-    return build(instance.itemId(), instance.quantity(), null);
+    return build(instance.itemId(), instance.quantity(), instance.instanceId(),
+        instance.opaquePayload(), null);
   }
 
   public List<ItemInstance> scan(ItemStack[] contents) {
     Preconditions.checkNotNull(contents, "contents");
-    List<ItemInstance> result = new ArrayList<>();
+    Map<UUID, ScannedStack> grouped = new LinkedHashMap<>();
+    Set<UUID> identities = new HashSet<>();
     for (ItemStack stack : contents) {
-      read(stack).ifPresent(item -> result.add(new ItemInstance(
-          item.instanceId(), item.itemId(), stack.getAmount())));
+      Optional<TaggedItem> found = read(stack);
+      if (found.isEmpty()) continue;
+      TaggedItem tagged = found.get();
+      ScannedStack existing = grouped.get(tagged.instanceId());
+      if (existing != null && existing.itemId().equals(tagged.itemId())
+          && existing.comparison().isSimilar(stack)) {
+        existing.add(stack.getAmount());
+        continue;
+      }
+      UUID instanceId = tagged.instanceId();
+      if (!identities.add(instanceId)) {
+        // The same UUID with different concrete meta is not a normal vanilla split.
+        // Preserve both physical states, but immediately separate their identities.
+        instanceId = uniqueIdentity(UUID.randomUUID(), identities);
+        applyIdentity(stack, tagged.itemId(), instanceId, tagged.storageId());
+      }
+      ItemStack comparison = stack.clone();
+      comparison.setAmount(1);
+      ItemStack template = comparison.clone();
+      template.setAmount(1);
+      applyIdentity(template, tagged.itemId(), instanceId, null);
+      grouped.put(instanceId,
+          new ScannedStack(tagged.itemId(), stack.getAmount(), comparison, template));
+    }
+    List<ItemInstance> result = new ArrayList<>();
+    for (Map.Entry<UUID, ScannedStack> entry : grouped.entrySet()) {
+      UUID instanceId = entry.getKey();
+      ScannedStack scanned = entry.getValue();
+      ItemDefinition definition = registry.require(scanned.itemId());
+      int maximum = maximumStackSize(definition, scanned.template().getType());
+      int remaining = scanned.quantity();
+      int part = 0;
+      while (remaining > 0) {
+        int amount = Math.min(remaining, maximum);
+        UUID partId = part == 0 ? instanceId : uniqueIdentity(UUID.randomUUID(), identities);
+        ItemStack snapshot = scanned.template().clone();
+        snapshot.setAmount(amount);
+        applyIdentity(snapshot, scanned.itemId(), partId, null);
+        result.add(new ItemInstance(partId, scanned.itemId(), amount, encode(snapshot)));
+        remaining -= amount;
+        part++;
+      }
     }
     return List.copyOf(result);
   }
 
   public Optional<TaggedItem> read(ItemStack stack) {
     if (stack == null || stack.isEmpty() || !stack.hasItemMeta()) return Optional.empty();
-    PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
+    ItemMeta meta = stack.getItemMeta();
+    PersistentDataContainer data = meta.getPersistentDataContainer();
     String rawId = data.get(ITEM_ID_KEY, PersistentDataType.STRING);
     if (rawId == null) return Optional.empty();
     ItemId itemId;
@@ -84,15 +138,33 @@ public final class CraftovItemStacks {
     } catch (IllegalArgumentException ignored) {
       return Optional.empty();
     }
-    if (registry.find(itemId).isEmpty()) return Optional.empty();
+    ItemDefinition definition = registry.find(itemId).orElse(null);
+    if (definition == null || canonicalMaterial(definition) != stack.getType()) {
+      return Optional.empty();
+    }
     UUID instanceId = uuid(data.get(INSTANCE_ID_KEY, PersistentDataType.STRING));
     UUID storageId = uuid(data.get(STORAGE_ID_KEY, PersistentDataType.STRING));
-    return Optional.of(new TaggedItem(itemId,
-        instanceId == null ? UUID.randomUUID() : instanceId, storageId));
+    if (instanceId == null) {
+      // A pre-migration durable stack only knew its storage row id. Reuse it just
+      // like the database fallback instead of inventing a different identity in-game.
+      instanceId = storageId == null ? UUID.randomUUID() : storageId;
+      applyIdentity(stack, itemId, instanceId, storageId);
+    }
+    return Optional.of(new TaggedItem(itemId, instanceId, storageId));
   }
 
   public boolean isCraftovItem(ItemStack stack) {
     return read(stack).isPresent();
+  }
+
+  /** Gives a separated or dropped stack a new physical identity. */
+  public Optional<UUID> assignFreshIdentity(ItemStack stack) {
+    Optional<TaggedItem> found = read(stack);
+    if (found.isEmpty()) return Optional.empty();
+    TaggedItem tagged = found.get();
+    UUID fresh = UUID.randomUUID();
+    applyIdentity(stack, tagged.itemId(), fresh, null);
+    return Optional.of(fresh);
   }
 
   public int usedSlots(ItemStack[] contents) {
@@ -116,25 +188,32 @@ public final class CraftovItemStacks {
     return total;
   }
 
-  private List<ItemStack> build(ItemId itemId, int quantity, UUID storageId) {
+  private List<ItemStack> build(ItemId itemId, int quantity, UUID instanceId,
+      @Nullable String opaquePayload, @Nullable UUID storageId) {
     Preconditions.checkArgument(quantity >= 1, "quantity must be positive");
     ItemDefinition definition = registry.require(itemId);
-    Material material = MATERIALS.getOrDefault(itemId.value(), Material.PAPER);
-    int maximum = Math.max(1, Math.min(definition.stackSize(), material.getMaxStackSize()));
+    Material material = canonicalMaterial(definition);
+    int maximum = maximumStackSize(definition, material);
+    ItemStack template = decode(opaquePayload).filter(stack -> stack.getType() == material)
+        .orElseGet(() -> defaultStack(definition, material));
     List<ItemStack> result = new ArrayList<>();
     int remaining = quantity;
+    int part = 0;
     while (remaining > 0) {
       int amount = Math.min(remaining, maximum);
-      result.add(buildStack(definition, material, amount, storageId));
+      UUID partId = part == 0 ? instanceId : splitIdentity(instanceId, part);
+      ItemStack stack = template.clone();
+      stack.setAmount(amount);
+      applyIdentity(stack, itemId, partId, storageId);
+      result.add(stack);
       remaining -= amount;
+      part++;
     }
     return List.copyOf(result);
   }
 
-  private ItemStack buildStack(ItemDefinition definition, Material material, int amount,
-      UUID storageId) {
-    ItemStack stack = new ItemStack(material, amount);
-    UUID instanceId = UUID.randomUUID();
+  private ItemStack defaultStack(ItemDefinition definition, Material material) {
+    ItemStack stack = new ItemStack(material);
     stack.editMeta(meta -> {
       meta.itemName(Component.text(definition.displayName(), color(definition.rarity()))
           .decoration(TextDecoration.ITALIC, false));
@@ -145,12 +224,6 @@ public final class CraftovItemStacks {
                   NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
           Component.text("重量: " + definition.weightGrams() + "g", NamedTextColor.DARK_GRAY)
               .decoration(TextDecoration.ITALIC, false)));
-      PersistentDataContainer data = meta.getPersistentDataContainer();
-      data.set(ITEM_ID_KEY, PersistentDataType.STRING, definition.id().value());
-      data.set(INSTANCE_ID_KEY, PersistentDataType.STRING, instanceId.toString());
-      if (storageId != null) {
-        data.set(STORAGE_ID_KEY, PersistentDataType.STRING, storageId.toString());
-      }
       if (meta instanceof PotionMeta potion && definition.id().value().equals("healing_potion")) {
         potion.setBasePotionType(PotionType.HEALING);
       }
@@ -158,11 +231,68 @@ public final class CraftovItemStacks {
     return stack;
   }
 
+  private static void applyIdentity(ItemStack stack, ItemId itemId, UUID instanceId,
+      @Nullable UUID storageId) {
+    boolean edited = stack.editMeta(meta -> {
+      PersistentDataContainer data = meta.getPersistentDataContainer();
+      data.set(ITEM_ID_KEY, PersistentDataType.STRING, itemId.value());
+      data.set(INSTANCE_ID_KEY, PersistentDataType.STRING, instanceId.toString());
+      if (storageId == null) {
+        data.remove(STORAGE_ID_KEY);
+      } else {
+        data.set(STORAGE_ID_KEY, PersistentDataType.STRING, storageId.toString());
+      }
+    });
+    if (!edited) throw new IllegalArgumentException("物品类型不支持持久化 Meta: " + stack.getType());
+  }
+
+  private static String encode(ItemStack stack) {
+    String payload = PAYLOAD_PREFIX
+        + Base64.getEncoder().encodeToString(stack.serializeAsBytes());
+    if (payload.length() > MAX_PAYLOAD_CHARACTERS) {
+      throw new IllegalArgumentException("物品数据超过持久化安全上限: " + stack.getType());
+    }
+    return payload;
+  }
+
+  private static Optional<ItemStack> decode(@Nullable String payload) {
+    if (payload == null || payload.length() > MAX_PAYLOAD_CHARACTERS
+        || !payload.startsWith(PAYLOAD_PREFIX)) return Optional.empty();
+    try {
+      byte[] bytes = Base64.getDecoder().decode(payload.substring(PAYLOAD_PREFIX.length()));
+      ItemStack decoded = ItemStack.deserializeBytes(bytes);
+      return decoded.isEmpty() ? Optional.empty() : Optional.of(decoded);
+    } catch (RuntimeException ignored) {
+      // Old, damaged or foreign adapter data must never prevent the registered item
+      // definition from being restored as a safe canonical stack.
+      return Optional.empty();
+    }
+  }
+
+  private static UUID uniqueIdentity(UUID preferred, Set<UUID> used) {
+    UUID candidate = preferred;
+    while (!used.add(candidate)) candidate = UUID.randomUUID();
+    return candidate;
+  }
+
+  private static UUID splitIdentity(UUID parent, int part) {
+    return UUID.nameUUIDFromBytes(("escapefromcraftov:split:" + parent + ":" + part)
+        .getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static int maximumStackSize(ItemDefinition definition, Material material) {
+    return Math.max(1, Math.min(definition.stackSize(), material.getMaxStackSize()));
+  }
+
+  private static Material canonicalMaterial(ItemDefinition definition) {
+    return MATERIALS.getOrDefault(definition.id().value(), Material.PAPER);
+  }
+
   private static NamespacedKey key(String value) {
     return Objects.requireNonNull(NamespacedKey.fromString(value));
   }
 
-  private static UUID uuid(String value) {
+  private static @Nullable UUID uuid(@Nullable String value) {
     if (value == null) return null;
     try {
       return UUID.fromString(value);
@@ -193,5 +323,25 @@ public final class CraftovItemStacks {
     };
   }
 
-  public record TaggedItem(ItemId itemId, UUID instanceId, UUID storageId) {}
+  public record TaggedItem(ItemId itemId, UUID instanceId, @Nullable UUID storageId) {}
+
+  private static final class ScannedStack {
+    private final ItemId itemId;
+    private final ItemStack comparison;
+    private final ItemStack template;
+    private int quantity;
+
+    private ScannedStack(ItemId itemId, int quantity, ItemStack comparison, ItemStack template) {
+      this.itemId = itemId;
+      this.quantity = quantity;
+      this.comparison = comparison;
+      this.template = template;
+    }
+
+    private ItemId itemId() { return itemId; }
+    private int quantity() { return quantity; }
+    private ItemStack comparison() { return comparison; }
+    private ItemStack template() { return template; }
+    private void add(int amount) { quantity = Math.addExact(quantity, amount); }
+  }
 }

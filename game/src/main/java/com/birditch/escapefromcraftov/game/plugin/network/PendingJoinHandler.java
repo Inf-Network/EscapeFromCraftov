@@ -209,7 +209,8 @@ public final class PendingJoinHandler {
     } catch (RuntimeException mappingFailure) {
       clearInventory(player);
       List<ItemInstance> restore = items.stream().map(item ->
-          new ItemInstance(UUID.randomUUID(), item.itemId(), item.quantity())).toList();
+          new ItemInstance(item.instanceId(), item.itemId(), item.quantity(),
+              item.opaquePayload())).toList();
       restoreClaimedLoadout(player, assignment, restore, mappingFailure, 0);
       return;
     }

@@ -12,4 +12,6 @@ dependencies {
     compileOnly(libs.paper.api)
 
     testImplementation(testFixtures(project(":api")))
+    testImplementation(libs.mockbukkit)
+    testImplementation(libs.paper.api)
 }

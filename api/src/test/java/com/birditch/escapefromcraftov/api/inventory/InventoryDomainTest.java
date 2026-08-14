@@ -2,6 +2,7 @@ package com.birditch.escapefromcraftov.api.inventory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.item.ItemId;
@@ -34,5 +35,15 @@ class InventoryDomainTest {
     StoredItem row = new StoredItem(STORAGE, ItemId.of("emerald"), 1,
         InventoryLocation.CRAFTOV, CraftovGameId.of("craftov-1"));
     assertEquals("craftov-1", row.currentCraftov().orElseThrow().value());
+  }
+
+  @Test
+  void legacyStoredItemUsesStorageIdAsStableInstanceFallback() {
+    StoredItem row = new StoredItem(STORAGE, ItemId.of("emerald"), 1,
+        InventoryLocation.WAREHOUSE, null);
+
+    assertEquals(STORAGE, row.instanceId());
+    assertEquals(STORAGE, row.storageId());
+    assertTrue(row.payload().isEmpty());
   }
 }

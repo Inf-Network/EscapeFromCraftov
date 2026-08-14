@@ -77,10 +77,12 @@ schema（默认 `public`），共享下列全部表。
 |---|---|---|---|
 | `storage_id` | uuid | PK，不可更新 | 物品堆唯一 ID |
 | `player_id` | uuid | NOT NULL，不可更新 | 归属玩家 |
+| `instance_id` | uuid | 可空，唯一 | 跨仓库、行动与撤离保持不变的物理实例 ID；旧行首次读取时回退为 `storage_id` |
 | `item_id` | varchar(255) | NOT NULL | 物品定义 ID |
 | `quantity` | integer | NOT NULL | 数量 |
 | `location` | varchar(255) | NOT NULL | 枚举 `InventoryLocation`：`WAREHOUSE` / `LOADOUT` / `CRAFTOV` |
 | `craftov_id` | varchar(255) | 可空 | 处于行动中时所属的 craftov 实例 ID |
+| `item_data` | text | 可空 | Paper 版本化物品数据，保留耐久、附魔、Lore、药水与 PDC |
 | `updated_at` | timestamptz(6) | NOT NULL | 最近更新时间 |
 | `version` | bigint | | 乐观锁版本 |
 
@@ -88,6 +90,7 @@ schema（默认 `public`），共享下列全部表。
 
 - `idx_craftov_items_owner_location` on `(player_id, location)`
 - `idx_craftov_items_owner_craftov` on `(player_id, craftov_id)`
+- `uk_craftov_items_instance` UNIQUE on `(instance_id)`；PostgreSQL 允许多条旧行保持 `NULL`
 
 ## craftov_inventory_settlements — 行动结算幂等标记
 
@@ -138,5 +141,10 @@ schema（默认 `public`），共享下列全部表。
 - 时间列统一 UTC 写入（`hibernate.jdbc.time_zone = UTC`）。
 - 生产结构稳定后建议把 `database.orm.schema-action` 改为 `validate`，
   用受控迁移管理后续变更；`create` / `create-drop` 会破坏数据，严禁在生产使用。
+- 旧库升级物品实例结构时，先执行
+  `database/migrations/20260814_item_instance_payload.sql`。该脚本须由 psql
+  以 autocommit 执行；使用 `table-prefix` 时先替换脚本中的表名与索引名。
+- 运行时开启 Hibernate 的 named-index validation；`validate` 模式会在唯一实例
+  索引缺失时拒绝启动，不能只添加两列而漏掉索引。
 - `craftov_player_items` 上的仓库/出战栏写路径使用 `pg_advisory_xact_lock`
   事务级咨询锁做玩家级串行化，不依赖表结构。

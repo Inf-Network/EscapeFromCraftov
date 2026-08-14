@@ -41,6 +41,9 @@ public final class HibernateDatabase implements Database {
           .applySetting("hibernate.connection.datasource", dataSource)
           .applySetting("hibernate.connection.provider_disables_autocommit", true)
           .applySetting("hibernate.hbm2ddl.auto", config.orm().schemaAction())
+          // Hibernate otherwise skips named-index validation. The physical-item
+          // uniqueness index is a security boundary and must not be silently absent.
+          .applySetting("hibernate.tooling.schema.index_validation", "named")
           .applySetting("hibernate.jdbc.batch_size", config.orm().statementBatchSize())
           .applySetting("hibernate.default_batch_fetch_size", config.orm().defaultBatchFetchSize())
           .applySetting("hibernate.order_inserts", true)

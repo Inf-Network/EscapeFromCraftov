@@ -17,7 +17,10 @@ import org.jspecify.annotations.Nullable;
 @Entity
 @Table(name = "craftov_player_items", indexes = {
     @Index(name = "idx_craftov_items_owner_location", columnList = "player_id,location"),
-    @Index(name = "idx_craftov_items_owner_craftov", columnList = "player_id,craftov_id")
+    @Index(name = "idx_craftov_items_owner_craftov", columnList = "player_id,craftov_id"),
+    // PostgreSQL permits multiple NULLs in a unique index, so pre-migration rows can
+    // coexist while every newly persisted physical instance is protected from copying.
+    @Index(name = "uk_craftov_items_instance", columnList = "instance_id", unique = true)
 })
 public class PlayerItemEntity {
 
@@ -27,6 +30,10 @@ public class PlayerItemEntity {
 
   @Column(name = "player_id", nullable = false, updatable = false)
   private UUID playerId;
+
+  /// Durable physical-item identity. Nullable only for rows written before this column existed.
+  @Column(name = "instance_id")
+  private @Nullable UUID instanceId;
 
   @Column(name = "item_id", nullable = false)
   private String itemId;
@@ -41,6 +48,10 @@ public class PlayerItemEntity {
   @Column(name = "craftov_id")
   private @Nullable String craftovId;
 
+  /// Adapter-owned, versioned Base64 item data. PostgreSQL TEXT avoids truncating rich NBT/meta.
+  @Column(name = "item_data", columnDefinition = "text")
+  private @Nullable String itemData;
+
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
@@ -52,12 +63,20 @@ public class PlayerItemEntity {
 
   public PlayerItemEntity(UUID storageId, UUID playerId, String itemId, int quantity,
       InventoryLocation location, @Nullable String craftovId, Instant updatedAt) {
+    this(storageId, playerId, null, itemId, quantity, location, craftovId, null, updatedAt);
+  }
+
+  public PlayerItemEntity(UUID storageId, UUID playerId, @Nullable UUID instanceId,
+      String itemId, int quantity, InventoryLocation location, @Nullable String craftovId,
+      @Nullable String itemData, Instant updatedAt) {
     this.storageId = storageId;
     this.playerId = playerId;
+    this.instanceId = instanceId;
     this.itemId = itemId;
     this.quantity = quantity;
     this.location = location;
     this.craftovId = craftovId;
+    this.itemData = itemData;
     this.updatedAt = updatedAt;
   }
 
@@ -69,8 +88,11 @@ public class PlayerItemEntity {
 
   public UUID storageId() { return storageId; }
   public UUID playerId() { return playerId; }
+  public @Nullable UUID instanceId() { return instanceId; }
+  public UUID instanceIdOrStorageId() { return instanceId == null ? storageId : instanceId; }
   public String itemId() { return itemId; }
   public int quantity() { return quantity; }
   public InventoryLocation location() { return location; }
   public @Nullable String craftovId() { return craftovId; }
+  public @Nullable String itemData() { return itemData; }
 }

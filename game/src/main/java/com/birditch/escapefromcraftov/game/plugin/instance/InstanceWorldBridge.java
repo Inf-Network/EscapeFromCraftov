@@ -19,8 +19,10 @@ import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
@@ -41,6 +43,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -249,6 +252,25 @@ public final class InstanceWorldBridge implements Listener {
         || from.getZ() != to.getZ())) {
       event.setTo(new Location(from.getWorld(), from.getX(), from.getY(), from.getZ(),
           to.getYaw(), to.getPitch()));
+    }
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onCraftovItemDrop(PlayerDropItemEvent event) {
+    ItemStack dropped = event.getItemDrop().getItemStack();
+    var tagged = deps.itemStacks().read(dropped).orElse(null);
+    if (tagged == null || !containsInstance(event.getPlayer(), tagged.instanceId())) return;
+    deps.itemStacks().assignFreshIdentity(dropped)
+        .ifPresent(_ -> event.getItemDrop().setItemStack(dropped));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onCraftovDeathDrops(PlayerDeathEvent event) {
+    Set<UUID> identities = new HashSet<>();
+    for (ItemStack dropped : event.getDrops()) {
+      var tagged = deps.itemStacks().read(dropped).orElse(null);
+      if (tagged == null || identities.add(tagged.instanceId())) continue;
+      deps.itemStacks().assignFreshIdentity(dropped).ifPresent(identities::add);
     }
   }
 
@@ -529,11 +551,23 @@ public final class InstanceWorldBridge implements Listener {
 
   private List<ItemInstance> scanCarriedItems(Player player) {
     List<ItemStack> contents = new ArrayList<>();
-    java.util.Collections.addAll(contents, player.getInventory().getContents());
+    // PlayerInventory#getContents also includes equipment on Paper. Use storage
+    // explicitly, then add equipment once, so armor/off-hand instances cannot be
+    // duplicated in the extraction snapshot.
+    java.util.Collections.addAll(contents, player.getInventory().getStorageContents());
     java.util.Collections.addAll(contents, player.getInventory().getArmorContents());
     ItemStack offHand = player.getInventory().getItemInOffHand();
     if (offHand != null) contents.add(offHand);
     return deps.itemStacks().scan(contents.toArray(ItemStack[]::new));
+  }
+
+  private boolean containsInstance(Player player, UUID instanceId) {
+    List<ItemStack> contents = new ArrayList<>();
+    java.util.Collections.addAll(contents, player.getInventory().getStorageContents());
+    java.util.Collections.addAll(contents, player.getInventory().getArmorContents());
+    contents.add(player.getInventory().getItemInOffHand());
+    return contents.stream().anyMatch(stack -> deps.itemStacks().read(stack)
+        .map(tagged -> tagged.instanceId().equals(instanceId)).orElse(false));
   }
 
   private boolean settling(Player player) {

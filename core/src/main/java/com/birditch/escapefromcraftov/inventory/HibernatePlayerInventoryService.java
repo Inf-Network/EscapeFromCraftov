@@ -14,8 +14,14 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.core.database.Database;
 import com.birditch.escapefromcraftov.core.database.entity.PlayerItemEntity;
 import com.birditch.escapefromcraftov.core.database.entity.CraftovInventorySettlementEntity;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -136,18 +142,87 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
       CraftovInventorySettlementEntity existing =
           session.find(CraftovInventorySettlementEntity.class, settlementId);
       if (existing != null) return new CraftovSettlementResult(existing.outcome(), false);
-      craftovRows(session, playerId, gameId.value()).forEach(session::remove);
+      List<ItemInstance> orderedCarriedItems = carriedItems.stream()
+          .sorted(Comparator.comparing(ItemInstance::instanceId)).toList();
+      Map<UUID, ItemInstance> carriedInstances = carriedInstances(orderedCarriedItems);
+      List<PlayerItemEntity> lockedRows = lockSettlementRows(
+          session, playerId, gameId.value(), carriedInstances.keySet());
+      settlementRowsToRemove(playerId, gameId.value(), carriedInstances, lockedRows)
+          .forEach(session::remove);
+      // The same physical instances are re-homed into fresh warehouse rows below.
+      // Flush deletes first so the global unique instance index never observes the
+      // old CRAFTOV row and its replacement simultaneously in Hibernate's action queue.
+      session.flush();
       Instant now = Instant.now();
       if (outcome == CraftovInventoryOutcome.EXTRACTED) {
-        for (ItemInstance item : carriedItems) {
-          session.persist(new PlayerItemEntity(UUID.randomUUID(), playerId,
-              item.itemId().value(), item.quantity(), InventoryLocation.WAREHOUSE, null, now));
+        for (ItemInstance item : orderedCarriedItems) {
+          session.persist(new PlayerItemEntity(UUID.randomUUID(), playerId, item.instanceId(),
+              item.itemId().value(), item.quantity(), InventoryLocation.WAREHOUSE, null,
+              item.opaquePayload(), now));
         }
       }
       session.persist(new CraftovInventorySettlementEntity(
           settlementId, playerId, gameId.value(), outcome, now));
       return new CraftovSettlementResult(outcome, true);
     }), executor);
+  }
+
+  private static List<PlayerItemEntity> lockSettlementRows(org.hibernate.Session session,
+      UUID playerId, String craftovId, Set<UUID> carriedInstanceIds) {
+    String carriedClause = carriedInstanceIds.isEmpty() ? "" : " or item.instanceId in :ids"
+        + " or (item.instanceId is null and item.storageId in :ids)";
+    // Every transaction locks its complete overlap set in storage-id order. This prevents
+    // A-carries-B / B-carries-A extraction from acquiring the same two rows in reverse order.
+    var query = session.createSelectionQuery(
+        "from PlayerItemEntity item where "
+            + "(item.playerId = :playerId and item.location = :location "
+            + "and item.craftovId = :craftovId)" + carriedClause
+            + " order by item.storageId",
+        PlayerItemEntity.class).setParameter("playerId", playerId)
+        .setParameter("location", InventoryLocation.CRAFTOV)
+        .setParameter("craftovId", craftovId);
+    if (!carriedInstanceIds.isEmpty()) query.setParameterList("ids", carriedInstanceIds);
+    return query.setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+  }
+
+  static Map<UUID, ItemInstance> carriedInstances(List<ItemInstance> carriedItems) {
+    Map<UUID, ItemInstance> result = new LinkedHashMap<>();
+    for (ItemInstance item : carriedItems) {
+      if (result.putIfAbsent(item.instanceId(), item) != null) {
+        throw new IllegalArgumentException("撤离快照包含重复物品实例: " + item.instanceId());
+      }
+    }
+    return Map.copyOf(result);
+  }
+
+  static List<PlayerItemEntity> settlementRowsToRemove(UUID playerId, String craftovId,
+      Map<UUID, ItemInstance> carriedInstances, List<PlayerItemEntity> lockedRows) {
+    Map<UUID, PlayerItemEntity> existingInstances = new LinkedHashMap<>();
+    Set<PlayerItemEntity> removals = new LinkedHashSet<>();
+    for (PlayerItemEntity row : lockedRows) {
+      UUID instanceId = row.instanceIdOrStorageId();
+      ItemInstance carried = carriedInstances.get(instanceId);
+      boolean sameCraftov = row.location() == InventoryLocation.CRAFTOV
+          && craftovId.equals(row.craftovId());
+      if (carried != null) {
+        PlayerItemEntity duplicate = existingInstances.putIfAbsent(instanceId, row);
+        if (duplicate != null && duplicate != row) {
+          throw new IllegalStateException("数据库存在重复物品实例: " + instanceId);
+        }
+        if (!sameCraftov) {
+          throw new IllegalStateException("拒绝转移已在安全仓库、出战栏或其他行动中的物品实例: "
+              + instanceId);
+        }
+        if (!row.itemId().equals(carried.itemId().value())) {
+          throw new IllegalStateException("拒绝改变既有物品实例的注册定义: " + instanceId);
+        }
+        // Same-game CRAFTOV ownership is provisional. Removing the source row here
+        // atomically transfers a dropped/death-looted physical item to the extractor.
+        removals.add(row);
+      }
+      if (row.playerId().equals(playerId) && sameCraftov) removals.add(row);
+    }
+    return List.copyOf(removals);
   }
 
   private static List<PlayerItemEntity> craftovRows(
@@ -165,8 +240,9 @@ public final class HibernatePlayerInventoryService implements PlayerInventorySer
 
   private StoredItem toStored(PlayerItemEntity entity) {
     CraftovGameId craftovId = entity.craftovId() == null ? null : CraftovGameId.of(entity.craftovId());
-    return new StoredItem(entity.storageId(), ItemId.of(entity.itemId()), entity.quantity(),
-        entity.location(), craftovId);
+    return new StoredItem(entity.storageId(), entity.instanceIdOrStorageId(),
+        ItemId.of(entity.itemId()), entity.quantity(), entity.location(), craftovId,
+        entity.itemData());
   }
 
   private static String settlementId(UUID playerId, CraftovGameId gameId) {

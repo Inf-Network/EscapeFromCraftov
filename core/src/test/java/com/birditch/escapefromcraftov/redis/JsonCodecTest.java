@@ -11,18 +11,22 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.api.report.RaidOutcome;
 import com.birditch.escapefromcraftov.api.report.RaidResult;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -57,6 +61,24 @@ class JsonCodecTest {
     GameServerSnapshot snapshot =
         new GameServerSnapshot(ServerId.of("game-02"), "craftov-02", 42L, 1, List.of());
     assertEquals(snapshot, codec.fromJson(codec.toJson(snapshot), GameServerSnapshot.class));
+  }
+
+  @Test
+  void roundTripsActionTierCatalogAndDefaultsOldSnapshotFields() {
+    GameServerSnapshot advertised = new GameServerSnapshot(ServerId.of("game-02"),
+        "craftov-02", 42L, 1, List.of(),
+        Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1),
+        List.of(new MapActionTierCatalog(CraftovMapId.of("debug_zone"),
+            LegacyRaidTierResolver.defaultProfiles())));
+    assertEquals(advertised, codec.fromJson(codec.toJson(advertised), GameServerSnapshot.class));
+
+    String oldJson = """
+        {"serverId":{"value":"game-01"},"proxyName":"craftov-01",\
+        "updatedAtMillis":42,"maxInstances":4,"instances":[]}
+        """;
+    GameServerSnapshot old = codec.fromJson(oldJson, GameServerSnapshot.class);
+    assertTrue(old.capabilities().isEmpty());
+    assertTrue(old.actionTierCatalog().isEmpty());
   }
 
   @Test

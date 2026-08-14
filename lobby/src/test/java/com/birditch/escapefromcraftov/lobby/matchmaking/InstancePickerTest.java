@@ -6,15 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -94,12 +98,36 @@ class InstancePickerTest {
           CraftovGameState.WAITING, 5, 12, true, RaidMode.NORMAL, RaidDifficulty.NORMAL, null);
       InstanceSnapshot canonical = new InstanceSnapshot(CraftovGameId.of("canonical"), MAP,
           CraftovGameState.WAITING, 0, 12, true, RaidMode.NORMAL, RaidDifficulty.NORMAL, tier);
-      List<GameServerSnapshot> servers = List.of(server(SERVER_A, legacy, canonical));
+      List<GameServerSnapshot> servers = List.of(new GameServerSnapshot(
+          SERVER_A, SERVER_A.value(), 1L, 4, List.of(legacy, canonical),
+          Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1),
+          List.of(new MapActionTierCatalog(MAP,
+              LegacyRaidTierResolver.defaultProfiles()))));
 
       assertEquals("canonical", InstancePicker.pick(servers, MAP, RaidMode.NORMAL,
           RaidDifficulty.NORMAL, tier, 1, Map.of()).orElseThrow().instance().gameId().value());
       assertEquals("legacy", InstancePicker.pick(servers, MAP, RaidMode.NORMAL,
           RaidDifficulty.NORMAL, 1, Map.of()).orElseThrow().instance().gameId().value());
+    }
+
+    @Test
+    void rejectsCanonicalRoomFromServerWithoutMatchingCapabilityCatalog() {
+      RaidTierId tier = RaidTierId.of("normal");
+      InstanceSnapshot unsafe = new InstanceSnapshot(CraftovGameId.of("unsafe"), MAP,
+          CraftovGameState.WAITING, 8, 12, true,
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, tier);
+      InstanceSnapshot trusted = new InstanceSnapshot(CraftovGameId.of("trusted"), MAP,
+          CraftovGameState.WAITING, 0, 12, true,
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, tier);
+      GameServerSnapshot oldServer = server(SERVER_A, unsafe);
+      GameServerSnapshot capableServer = new GameServerSnapshot(SERVER_B, SERVER_B.value(), 1L,
+          4, List.of(trusted), Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1),
+          List.of(new MapActionTierCatalog(MAP,
+              LegacyRaidTierResolver.defaultProfiles())));
+
+      assertEquals("trusted", InstancePicker.pick(List.of(oldServer, capableServer), MAP,
+          RaidMode.NORMAL, RaidDifficulty.NORMAL, tier, 1, Map.of())
+          .orElseThrow().instance().gameId().value());
     }
   }
 

@@ -4,6 +4,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.lobby.LobbyConfig;
+import com.birditch.escapefromcraftov.lobby.LobbyActionCatalog;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,6 +25,9 @@ final class LobbyMapCatalog {
     servers.stream()
         .flatMap(server -> server.instances().stream())
         .map(instance -> instance.mapId())
+        .sorted(Comparator.comparing(CraftovMapId::value))
+        .forEach(maps::add);
+    LobbyActionCatalog.fromServers(servers).advertisedMaps().stream()
         .sorted(Comparator.comparing(CraftovMapId::value))
         .forEach(maps::add);
     return Set.copyOf(maps);

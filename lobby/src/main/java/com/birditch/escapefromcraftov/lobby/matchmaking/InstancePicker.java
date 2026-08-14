@@ -8,6 +8,7 @@ import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.List;
@@ -67,6 +68,10 @@ public final class InstancePicker {
     Candidate best = null;
     int bestLoad = -1;
     for (GameServerSnapshot server : servers) {
+      if (requestedTierId != null
+          && !advertisesTier(server, requestedMap, requestedTierId)) {
+        continue;
+      }
       for (InstanceSnapshot instance : server.instances()) {
         if (!instance.mapId().equals(requestedMap)
             || instance.mode() != requestedMode
@@ -88,6 +93,16 @@ public final class InstancePicker {
       }
     }
     return Optional.ofNullable(best);
+  }
+
+  /** Canonical rooms are trusted only on a server advertising the matching catalog. */
+  static boolean advertisesTier(GameServerSnapshot server, CraftovMapId mapId,
+      RaidTierId tierId) {
+    return server.supports(NetworkCapabilities.ACTION_TIER_CATALOG_V1)
+        && server.actionTierCatalog().stream()
+            .filter(catalog -> catalog.mapId().equals(mapId))
+            .flatMap(catalog -> catalog.tiers().stream())
+            .anyMatch(tier -> tier.id().equals(tierId));
   }
 
   /// Key under which reservations for one instance are counted:

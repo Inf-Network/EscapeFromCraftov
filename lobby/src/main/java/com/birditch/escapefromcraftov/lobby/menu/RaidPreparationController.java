@@ -4,28 +4,33 @@ import com.birditch.escapefromcraftov.api.economy.Money;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.inventory.InventoryLocation;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventorySnapshot;
 import com.birditch.escapefromcraftov.api.inventory.StoredItem;
 import com.birditch.escapefromcraftov.api.item.ItemDefinition;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
+import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.lobby.LobbyConfig;
+import com.birditch.escapefromcraftov.lobby.LobbyActionCatalog;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Material;
@@ -47,6 +52,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   private final PlayerInventoryService inventories;
   private final ItemRegistry itemRegistry;
+  private final InstanceDirectory directory;
   private final CraftovScheduler scheduler;
   private final LobbyConfig config;
   private final Messages messages;
@@ -57,10 +63,11 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   private final Map<UUID, Long> loadVersions = new HashMap<>();
 
   public RaidPreparationController(PlayerInventoryService inventories, ItemRegistry itemRegistry,
-      CraftovScheduler scheduler, LobbyConfig config, Messages messages,
+      InstanceDirectory directory, CraftovScheduler scheduler, LobbyConfig config, Messages messages,
       TrMenuBridge menus, Logger logger) {
     this.inventories = Preconditions.checkNotNull(inventories, "inventories");
     this.itemRegistry = Preconditions.checkNotNull(itemRegistry, "itemRegistry");
+    this.directory = Preconditions.checkNotNull(directory, "directory");
     this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
     this.config = Preconditions.checkNotNull(config, "config");
     this.messages = Preconditions.checkNotNull(messages, "messages");
@@ -76,20 +83,52 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     long version = loadVersions.merge(playerId, 1L, Long::sum);
     Selection selection = Optional.ofNullable(views.get(playerId))
         .map(PreparationView::selection).orElse(defaultSelection());
-    inventories.load(playerId).whenComplete((snapshot, error) -> scheduler.runSync(() ->
-        afterInventoryLoad(player, version, selection, snapshot, error)));
+    CompletableFuture<LobbyActionCatalog> catalog = loadCatalog();
+    inventories.load(playerId).thenCombine(catalog, LoadedPreparation::new)
+        .whenComplete((loaded, error) -> scheduler.runSync(() -> afterInventoryLoad(
+            player, version, selection, loaded == null ? null : loaded.inventory(),
+            loaded == null ? LobbyActionCatalog.empty() : loaded.catalog(), error)));
   }
 
   public void cycleMap(Player player) {
     PreparationView view = requireView(player);
-    List<CraftovMapId> maps = List.copyOf(config.enabledMaps());
-    replaceAndRefresh(player, view.withSelection(new Selection(
-        next(maps, view.selection().mapId()),
-        view.selection().mode(), view.selection().difficulty())));
+    List<CraftovMapId> maps = view.catalog().availableMaps(config);
+    CraftovMapId nextMap = next(maps, view.selection().mapId());
+    replaceAndRefresh(player, view.withSelection(
+        normalizeSelection(new Selection(nextMap, view.selection().mode(),
+            view.selection().difficulty()), view.catalog())));
+  }
+
+  /** Canonical catalog path; on old snapshots it retains the legacy mode cycle. */
+  public void cycleTier(Player player) {
+    PreparationView view = requireView(player);
+    List<RaidActionProfile> tiers = view.catalog().tiers(view.selection().mapId());
+    if (tiers.isEmpty()) {
+      if (view.catalog().requiresCanonical(view.selection().mapId())) {
+        player.sendMessage(messages.raw("menu.preparation.tier.unavailable"));
+        return;
+      }
+      cycleLegacyMode(player, view);
+      return;
+    }
+    RaidActionProfile current = view.selection().tierId() == null ? null
+        : view.catalog().find(view.selection().mapId(), view.selection().tierId()).orElse(null);
+    RaidActionProfile selected = next(tiers, current);
+    RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(selected);
+    replaceAndRefresh(player, view.withSelection(new Selection(view.selection().mapId(),
+        alias.mode(), alias.difficulty(), selected.id())));
   }
 
   public void cycleMode(Player player) {
     PreparationView view = requireView(player);
+    if (view.catalog().requiresCanonical(view.selection().mapId())) {
+      cycleTier(player);
+      return;
+    }
+    cycleLegacyMode(player, view);
+  }
+
+  private void cycleLegacyMode(Player player, PreparationView view) {
     replaceAndRefresh(player, view.withSelection(new Selection(
         view.selection().mapId(),
         next(List.of(RaidMode.values()), view.selection().mode()),
@@ -98,6 +137,12 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   public void cycleDifficulty(Player player) {
     PreparationView view = requireView(player);
+    if (view.catalog().requiresCanonical(view.selection().mapId())) {
+      player.sendMessage(messages.raw(view.catalog().tiers(view.selection().mapId()).isEmpty()
+          ? "menu.preparation.tier.unavailable"
+          : "menu.preparation.tier.merged-hint"));
+      return;
+    }
     replaceAndRefresh(player, view.withSelection(new Selection(
         view.selection().mapId(), view.selection().mode(),
         next(List.of(RaidDifficulty.values()), view.selection().difficulty()))));
@@ -110,6 +155,11 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
    */
   public Optional<Selection> confirmStart(Player player) {
     PreparationView view = requireView(player);
+    if (view.catalog().requiresCanonical(view.selection().mapId())
+        && selectedTier(view) == null) {
+      player.sendMessage(messages.raw("menu.preparation.tier.unavailable"));
+      return Optional.empty();
+    }
     if (view.itemCount() == 0 && !view.emptyLoadoutConfirmed()) {
       replaceAndRefresh(player, view.confirmEmptyLoadout());
       player.sendMessage(messages.raw("menu.preparation.empty-confirm"));
@@ -128,7 +178,8 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   }
 
   private void afterInventoryLoad(Player player, long version, Selection selection,
-      @Nullable PlayerInventorySnapshot snapshot, @Nullable Throwable error) {
+      @Nullable PlayerInventorySnapshot snapshot, LobbyActionCatalog catalog,
+      @Nullable Throwable error) {
     UUID playerId = player.getUniqueId();
     if (!player.isOnline() || loadVersions.getOrDefault(playerId, 0L) != version) return;
     if (error != null || snapshot == null) {
@@ -137,8 +188,9 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
       return;
     }
     List<StoredItem> loadout = snapshot.at(InventoryLocation.LOADOUT);
-    views.put(playerId, new PreparationView(selection, loadout.size(), totalQuantity(loadout),
-        totalValue(loadout), totalWeightGrams(loadout), false));
+    views.put(playerId, new PreparationView(normalizeSelection(selection, catalog), catalog,
+        loadout.size(), totalQuantity(loadout), totalValue(loadout),
+        totalWeightGrams(loadout), false));
     openMenu(player);
   }
 
@@ -147,7 +199,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
     if (view == null) return new ItemStack(Material.AIR);
     return switch (rawId.toLowerCase(Locale.ROOT)) {
       case "map" -> mapItem(view);
-      case "mode" -> modeItem(view);
+      case "mode", "tier" -> modeItem(view);
       case "difficulty" -> difficultyItem(view);
       case "loadout" -> loadoutItem(view);
       case "start" -> startItem(view);
@@ -162,6 +214,19 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   }
 
   private ItemStack modeItem(PreparationView view) {
+    RaidActionProfile profile = selectedTier(view);
+    if (profile != null) {
+      return item(profile.id().value().equals("top_secret")
+              ? Material.NETHERITE_SWORD : Material.DIAMOND_SWORD,
+          messages.raw("menu.preparation.tier.name"),
+          messages.lines("menu.preparation.tier.lore",
+              Placeholder.unparsed("tier", profile.displayName()),
+              Placeholder.unparsed("tier_id", profile.id().value())), true);
+    }
+    if (view.catalog().requiresCanonical(view.selection().mapId())) {
+      return item(Material.BARRIER, messages.raw("menu.preparation.tier.unavailable-name"),
+          messages.lines("menu.preparation.tier.unavailable-lore"), false);
+    }
     RaidMode mode = view.selection().mode();
     Component modeName = messages.raw("menu.preparation.mode." + mode.id());
     return item(mode == RaidMode.NORMAL ? Material.IRON_SWORD : Material.NETHERITE_SWORD,
@@ -171,6 +236,18 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   }
 
   private ItemStack difficultyItem(PreparationView view) {
+    RaidActionProfile profile = selectedTier(view);
+    if (profile != null) {
+      return item(Material.COMPASS, messages.raw("menu.preparation.tier.details-name"),
+          messages.lines("menu.preparation.tier.details-lore",
+              Placeholder.unparsed("tier", profile.displayName()),
+              Placeholder.unparsed("minimum", Money.of(profile.minimumLoadoutValue()).format()),
+              Placeholder.unparsed("fee", Money.of(profile.entryFee()).format())), false);
+    }
+    if (view.catalog().requiresCanonical(view.selection().mapId())) {
+      return item(Material.BARRIER, messages.raw("menu.preparation.tier.unavailable-name"),
+          messages.lines("menu.preparation.tier.unavailable-lore"), false);
+    }
     RaidDifficulty difficulty = view.selection().difficulty();
     Material material = switch (difficulty) {
       case EASY -> Material.LIME_DYE;
@@ -198,18 +275,35 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   private ItemStack startItem(PreparationView view) {
     boolean empty = view.itemCount() == 0;
-    String key = empty
+    RaidActionProfile profile = selectedTier(view);
+    boolean unavailable = view.catalog().requiresCanonical(view.selection().mapId())
+        && profile == null;
+    String key = unavailable ? "menu.preparation.start.tier-unavailable" : profile != null
+        ? (empty
+            ? (view.emptyLoadoutConfirmed()
+                ? "menu.preparation.start.tier-empty-confirmed"
+                : "menu.preparation.start.tier-empty")
+            : "menu.preparation.start.tier-ready")
+        : empty
         ? (view.emptyLoadoutConfirmed()
             ? "menu.preparation.start.empty-confirmed" : "menu.preparation.start.empty")
         : "menu.preparation.start.ready";
-    return item(empty ? Material.FIRE_CHARGE : Material.EMERALD,
+    return item(unavailable ? Material.BARRIER : empty ? Material.FIRE_CHARGE : Material.EMERALD,
         messages.raw("menu.preparation.start.name"),
         messages.lines(key,
             Placeholder.component("map", MapNames.display(messages, view.selection().mapId())),
             Placeholder.component("mode", messages.raw(
                 "menu.preparation.mode." + view.selection().mode().id())),
             Placeholder.component("difficulty", messages.raw(
-                "menu.preparation.difficulty." + view.selection().difficulty().id()))), !empty);
+                "menu.preparation.difficulty." + view.selection().difficulty().id())),
+            Placeholder.unparsed("tier", profile == null ? "" : profile.displayName())),
+        !empty && !unavailable);
+  }
+
+  private @Nullable RaidActionProfile selectedTier(PreparationView view) {
+    RaidTierId tierId = view.selection().tierId();
+    return tierId == null ? null
+        : view.catalog().find(view.selection().mapId(), tierId).orElse(null);
   }
 
   private PreparationView requireView(Player player) {
@@ -235,6 +329,28 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   private Selection defaultSelection() {
     return new Selection(config.defaultMap(), RaidMode.NORMAL, RaidDifficulty.NORMAL);
+  }
+
+  private CompletableFuture<LobbyActionCatalog> loadCatalog() {
+    try {
+      return directory.activeServers().orTimeout(750, TimeUnit.MILLISECONDS)
+          .thenApply(LobbyActionCatalog::fromServers);
+    } catch (RuntimeException error) {
+      return CompletableFuture.failedFuture(error);
+    }
+  }
+
+  private static Selection normalizeSelection(Selection selection,
+      LobbyActionCatalog catalog) {
+    List<RaidActionProfile> profiles = catalog.tiers(selection.mapId());
+    if (profiles.isEmpty()) {
+      return new Selection(selection.mapId(), selection.mode(), selection.difficulty());
+    }
+    RaidActionProfile selected = selection.tierId() == null ? null
+        : catalog.find(selection.mapId(), selection.tierId()).orElse(null);
+    if (selected == null) selected = profiles.getFirst();
+    RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(selected);
+    return new Selection(selection.mapId(), alias.mode(), alias.difficulty(), selected.id());
   }
 
   private Money totalValue(List<StoredItem> loadout) {
@@ -298,7 +414,12 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
   }
 
   public record Selection(
-      CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty) {
+      CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
+      @Nullable RaidTierId tierId) {
+
+    public Selection(CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty) {
+      this(mapId, mode, difficulty, null);
+    }
 
     public Selection {
       Preconditions.checkNotNull(mapId, "mapId");
@@ -309,6 +430,7 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
 
   private record PreparationView(
       Selection selection,
+      LobbyActionCatalog catalog,
       int stackCount,
       int itemCount,
       Money totalValue,
@@ -316,13 +438,16 @@ public final class RaidPreparationController implements Listener, AutoCloseable 
       boolean emptyLoadoutConfirmed) {
 
     private PreparationView withSelection(Selection replacement) {
-      return new PreparationView(replacement, stackCount, itemCount, totalValue,
+      return new PreparationView(replacement, catalog, stackCount, itemCount, totalValue,
           totalWeightGrams, false);
     }
 
     private PreparationView confirmEmptyLoadout() {
-      return new PreparationView(selection, stackCount, itemCount, totalValue,
+      return new PreparationView(selection, catalog, stackCount, itemCount, totalValue,
           totalWeightGrams, true);
     }
   }
+
+  private record LoadedPreparation(PlayerInventorySnapshot inventory,
+                                   LobbyActionCatalog catalog) {}
 }

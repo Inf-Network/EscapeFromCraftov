@@ -3,10 +3,12 @@ package com.birditch.escapefromcraftov.game.plugin.network;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
@@ -78,7 +80,8 @@ public final class SnapshotPublisher {
     List<InstanceSnapshot> instances =
         deps.games().all().stream().map(this::toInstanceSnapshot).toList();
     return new GameServerSnapshot(deps.config().serverId(), deps.config().proxyName(),
-        deps.timeSource().currentMillis(), deps.coreConfig().game().maxInstances(), instances);
+        deps.timeSource().currentMillis(), deps.coreConfig().game().maxInstances(), instances,
+        Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1), deps.actionTierCatalog().get());
   }
 
   private InstanceSnapshot toInstanceSnapshot(CraftovGame game) {

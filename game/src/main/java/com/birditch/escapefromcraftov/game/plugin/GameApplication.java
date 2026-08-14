@@ -3,10 +3,12 @@ package com.birditch.escapefromcraftov.game.plugin;
 import com.birditch.escapefromcraftov.api.event.EventSubscription;
 import com.birditch.escapefromcraftov.api.CraftovException;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
+import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
 import com.birditch.escapefromcraftov.api.network.ProvisionRequest;
 import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
@@ -643,7 +645,11 @@ public final class GameApplication {
     provisioner = instanceProvisioner;
     SnapshotPublisher snapshotPublisher = new SnapshotPublisher(new PublisherDeps(
         games, index, directory, server, configs.core(),
-        new SystemTimeSource(), scheduler, logger));
+        new SystemTimeSource(), scheduler, logger,
+        () -> maps.all().stream()
+            .filter(map -> maps.isEnabled(map.mapId()))
+            .map(map -> new MapActionTierCatalog(CraftovMapId.of(map.mapId()), map.actionTiers()))
+            .toList()));
     publisher = snapshotPublisher;
     // A hard stop can leave disposable craftov_<id> folders behind. Finish the
     // namespaced cleanup before provisioning new rooms so an old directory is
@@ -660,7 +666,10 @@ public final class GameApplication {
         payload -> handleProvisionRequest(codec, payload, scheduler, instanceProvisioner));
     PendingJoinHandler pendingJoins = new PendingJoinHandler(new PendingDeps(
         assignments, games, server, index, bungee, inventories, itemStacks,
-        context.services().require(ItemRegistry.class), trMenu, visibility,
+        context.services().require(ItemRegistry.class),
+        context.services().require(
+            com.birditch.escapefromcraftov.api.game.RaidAdmissionService.class),
+        context.services().require(ProfileService.class), trMenu, visibility,
         mapRuntime.sessions(), mapRuntime.selections(),
         scheduler, configs.messages(), logger));
     this.pendingJoins = pendingJoins;

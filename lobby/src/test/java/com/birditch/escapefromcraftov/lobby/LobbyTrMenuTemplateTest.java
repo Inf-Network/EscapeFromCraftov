@@ -138,11 +138,11 @@ class LobbyTrMenuTemplateTest {
       throws IOException {
     String yaml = read("trmenu/escapefromcraftov_lobby_preparation.yml");
 
-    for (String source : List.of("map", "mode", "difficulty", "loadout", "start")) {
+    for (String source : List.of("map", "tier", "difficulty", "loadout", "start")) {
       assertTrue(yaml.contains("source:CRAFTOVPREPARATION:" + source));
     }
     assertTrue(yaml.contains("command: lobby raid cycle map"));
-    assertTrue(yaml.contains("command: lobby raid cycle mode"));
+    assertTrue(yaml.contains("command: lobby raid cycle tier"));
     assertTrue(yaml.contains("command: lobby raid cycle difficulty"));
     assertTrue(yaml.contains("command: lobby raid start"));
     assertTrue(yaml.contains("command: lobby warehouse"));

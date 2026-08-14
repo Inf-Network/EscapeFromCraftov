@@ -242,6 +242,8 @@ secure:
 inventory:
   loadout-loading: "<gray>正在领取你的出战装备……</gray>"
   loadout-retrying: "<yellow>物资服务暂时没有响应，系统会自动重试。请留在当前服务器。</yellow>"
+  action-tier-admitted: "<green>行动等级 <yellow><tier></yellow> 已确认。</green> <gray>战备价值 <value> · 入场费 <fee> · 余额 <balance></gray>"
+  action-tier-rejected: "<red>无法进入本次行动：<reason>。</red> <gray>装备和金币均未变动，正在返回大厅。</gray>"
   loadout-restore-retrying: "<yellow>出战装备尚未安全退回，系统会自动重试。请不要离开当前服务器。</yellow>"
   loadout-restored: "<red>部分出战装备无法在游戏中生成，本局已取消；原有装备已安全退回物资仓库。</red>"
   loadout-closed: "<red>本局物资已经完成结算，无法再次进入；正在返回大厅。</red>"

@@ -7,12 +7,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.CraftovException;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.api.testing.ManualScheduler;
 import com.birditch.escapefromcraftov.api.testing.MutableTimeSource;
@@ -74,7 +77,9 @@ class SnapshotPublisherTest {
             new EscapeFromCraftovConfig.ExtractionSettings(10)),
         timeSource,
         scheduler,
-        logger));
+        logger,
+        () -> List.of(new MapActionTierCatalog(MAP,
+            LegacyRaidTierResolver.defaultProfiles()))));
   }
 
   @AfterEach
@@ -118,6 +123,10 @@ class SnapshotPublisherTest {
       assertEquals("craftov-01", snapshot.proxyName());
       assertEquals(1234L, snapshot.updatedAtMillis());
       assertEquals(4, snapshot.maxInstances());
+      assertTrue(snapshot.supports(NetworkCapabilities.ACTION_TIER_CATALOG_V1));
+      assertEquals(MAP, snapshot.actionTierCatalog().getFirst().mapId());
+      assertEquals(LegacyRaidTierResolver.defaultProfiles(),
+          snapshot.actionTierCatalog().getFirst().tiers());
       assertEquals(2, snapshot.instances().size());
       InstanceSnapshot first = snapshot.instances().get(0);
       assertEquals(ready.id(), first.gameId());

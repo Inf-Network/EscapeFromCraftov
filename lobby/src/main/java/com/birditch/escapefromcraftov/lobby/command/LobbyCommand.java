@@ -1,15 +1,19 @@
 package com.birditch.escapefromcraftov.lobby.command;
 
 import com.birditch.escapefromcraftov.api.CraftovPermissions;
+import com.birditch.escapefromcraftov.api.economy.Money;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
+import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.bukkit.MapNames;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.lobby.party.PartyView;
+import com.birditch.escapefromcraftov.lobby.LobbyActionCatalog;
 import com.birditch.escapefromcraftov.lobby.menu.RaidPreparationController;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -25,6 +29,7 @@ import io.papermc.paper.command.brigadier.Commands;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import net.kyori.adventure.text.Component;
@@ -53,7 +58,7 @@ public final class LobbyCommand {
   private static LiteralCommandNode<CommandSourceStack> playRoot(LobbyCommandContext context) {
     return Commands.literal("play")
         .requires(source -> source.getSender().hasPermission(PLAY_PERMISSION))
-        .executes(ctx -> play(context, ctx, null, RaidMode.NORMAL, RaidDifficulty.NORMAL))
+        .executes(ctx -> play(context, ctx, null, RaidMode.NORMAL, RaidDifficulty.NORMAL, null))
         .then(Commands.argument("map", StringArgumentType.word())
             .suggests((_, builder) -> context.directory().activeServers()
                 .completeOnTimeout(List.of(), 750, TimeUnit.MILLISECONDS)
@@ -65,7 +70,27 @@ public final class LobbyCommand {
                   return builder.build();
                 }))
             .executes(ctx -> play(context, ctx, StringArgumentType.getString(ctx, "map"),
-                RaidMode.NORMAL, RaidDifficulty.NORMAL))
+                RaidMode.NORMAL, RaidDifficulty.NORMAL, null))
+            .then(Commands.literal("tier")
+                .then(Commands.argument("tier_id", StringArgumentType.word())
+                    .suggests((suggestionContext, builder) -> context.directory().activeServers()
+                        .completeOnTimeout(List.of(), 750, TimeUnit.MILLISECONDS)
+                        .handle((servers, error) -> {
+                          if (error == null && servers != null) {
+                            try {
+                              CraftovMapId mapId = CraftovMapId.of(StringArgumentType.getString(
+                                  suggestionContext, "map"));
+                              LobbyActionCatalog.fromServers(servers).tierIds(mapId).stream()
+                                  .map(RaidTierId::value).forEach(builder::suggest);
+                            } catch (IllegalArgumentException ignored) {
+                              // Invalid map input has no tier suggestions.
+                            }
+                          }
+                          return builder.build();
+                        }))
+                    .executes(ctx -> playTier(context, ctx,
+                        StringArgumentType.getString(ctx, "map"),
+                        StringArgumentType.getString(ctx, "tier_id")))))
             .then(Commands.argument("mode", StringArgumentType.word())
                 .suggests((_, builder) -> {
                   for (RaidMode mode : RaidMode.values()) builder.suggest(mode.id());
@@ -73,7 +98,7 @@ public final class LobbyCommand {
                 })
                 .executes(ctx -> play(context, ctx,
                     StringArgumentType.getString(ctx, "map"),
-                    parseMode(ctx), RaidDifficulty.NORMAL))
+                    parseMode(ctx), RaidDifficulty.NORMAL, null))
                 .then(Commands.argument("difficulty", StringArgumentType.word())
                     .suggests((_, builder) -> {
                       for (RaidDifficulty difficulty : RaidDifficulty.values()) {
@@ -83,7 +108,7 @@ public final class LobbyCommand {
                     })
                     .executes(ctx -> play(context, ctx,
                         StringArgumentType.getString(ctx, "map"),
-                        parseMode(ctx), parseDifficulty(ctx))))))
+                        parseMode(ctx), parseDifficulty(ctx), null)))))
         .build();
   }
 
@@ -192,6 +217,8 @@ public final class LobbyCommand {
             context, ctx, context.raidPreparation()::cycleMap)))
         .then(Commands.literal("mode").executes(ctx -> menuAction(
             context, ctx, context.raidPreparation()::cycleMode)))
+        .then(Commands.literal("tier").executes(ctx -> menuAction(
+            context, ctx, context.raidPreparation()::cycleTier)))
         .then(Commands.literal("difficulty").executes(ctx -> menuAction(
             context, ctx, context.raidPreparation()::cycleDifficulty))));
     raid.then(Commands.literal("start").executes(ctx -> startPreparedRaid(context, ctx)));
@@ -207,7 +234,7 @@ public final class LobbyCommand {
           context.raidPreparation().confirmStart(player).orElse(null);
       if (selection != null) {
         return play(context, ctx, selection.mapId().value(),
-            selection.mode(), selection.difficulty());
+            selection.mode(), selection.difficulty(), selection.tierId());
       }
     } catch (RuntimeException error) {
       player.sendMessage(Component.text(error.getMessage() == null
@@ -372,7 +399,8 @@ public final class LobbyCommand {
   }
 
   private static int play(LobbyCommandContext context, CommandContext<CommandSourceStack> ctx,
-      @Nullable String rawMap, RaidMode mode, RaidDifficulty difficulty) {
+      @Nullable String rawMap, RaidMode mode, RaidDifficulty difficulty,
+      @Nullable RaidTierId tierId) {
     Player player = playerOrNull(ctx, context.messages());
     if (player == null) {
       return Command.SINGLE_SUCCESS;
@@ -392,17 +420,70 @@ public final class LobbyCommand {
         return Command.SINGLE_SUCCESS;
       }
     }
-    if (context.config().enabledMaps().contains(mapId)) {
-      queueMatch(context, player, mapId, mode, difficulty);
+    if (tierId != null) {
+      lookupTierAndQueue(context, player, mapId, tierId);
       return Command.SINGLE_SUCCESS;
     }
     lookupLiveMap(context, player, mapId, mode, difficulty);
     return Command.SINGLE_SUCCESS;
   }
 
-  /// A non-configured map is accepted only when at least one live Game server
-  /// advertises a room for it. The Redis read stays off-thread and the queue
-  /// mutation always hops back to the Paper main thread.
+  private static int playTier(LobbyCommandContext context,
+      CommandContext<CommandSourceStack> ctx, String rawMap, String rawTier) {
+    RaidTierId tierId;
+    try {
+      tierId = RaidTierId.of(rawTier);
+    } catch (IllegalArgumentException ignored) {
+      Player player = playerOrNull(ctx, context.messages());
+      if (player != null) {
+        player.sendMessage(context.messages().raw("command.invalid-tier",
+            Placeholder.unparsed("map", rawMap), Placeholder.unparsed("tier", rawTier)));
+      }
+      return Command.SINGLE_SUCCESS;
+    }
+    return play(context, ctx, rawMap, RaidMode.NORMAL, RaidDifficulty.NORMAL, tierId);
+  }
+
+  /** Validates a canonical tier against the live Game catalog before queue mutation. */
+  private static void lookupTierAndQueue(LobbyCommandContext context, Player player,
+      CraftovMapId mapId, RaidTierId tierId) {
+    player.sendMessage(context.messages().raw("command.checking-map",
+        Placeholder.unparsed("map", mapId.value())));
+    try {
+      context.directory().activeServers().orTimeout(2, TimeUnit.SECONDS)
+          .whenComplete((servers, error) -> {
+            if (!context.plugin().isEnabled()) return;
+            Bukkit.getScheduler().runTask(context.plugin(), () -> {
+              if (!player.isOnline()) return;
+              if (error != null || servers == null) {
+                context.plugin().getLogger().warning(
+                    "查询行动等级失败 " + mapId.value() + "/" + tierId.value() + ": " + error);
+                player.sendMessage(context.messages().raw("command.tier-catalog-failed"));
+                return;
+              }
+              RaidActionProfile profile = LobbyActionCatalog.fromServers(servers)
+                  .find(mapId, tierId).orElse(null);
+              if (profile == null) {
+                player.sendMessage(context.messages().raw("command.invalid-tier",
+                    Placeholder.unparsed("map", mapId.value()),
+                    Placeholder.unparsed("tier", tierId.value())));
+                return;
+              }
+              if (!requireDataReady(context, player)) return;
+              RaidActionProfile.LegacyAlias alias = LobbyActionCatalog.legacyAlias(profile);
+              queueMatch(context, player, mapId, alias.mode(), alias.difficulty(), profile);
+            });
+          });
+    } catch (RuntimeException error) {
+      context.plugin().getLogger().warning(
+          "查询行动等级失败 " + mapId.value() + "/" + tierId.value() + ": " + error);
+      player.sendMessage(context.messages().raw("command.tier-catalog-failed"));
+    }
+  }
+
+  /// Resolves legacy input against the live canonical catalog. Pure old Game
+  /// servers retain legacy mode+difficulty; once any capable Game advertises
+  /// this map, the matching authored alias is mandatory and cannot be bypassed.
   private static void lookupLiveMap(LobbyCommandContext context, Player player, CraftovMapId mapId,
       RaidMode mode, RaidDifficulty difficulty) {
     player.sendMessage(context.messages().raw("command.checking-map",
@@ -434,19 +515,40 @@ public final class LobbyCommand {
         player.sendMessage(context.messages().raw("command.map-check-failed"));
         return;
       }
+      if (servers.isEmpty()) {
+        player.sendMessage(context.messages().raw("command.map-check-failed"));
+        return;
+      }
+      LobbyActionCatalog actionCatalog = LobbyActionCatalog.fromServers(servers);
+      if (actionCatalog.requiresCanonical(mapId)) {
+        RaidActionProfile profile = actionCatalog.resolveLegacy(mapId, mode, difficulty)
+            .orElse(null);
+        if (profile == null) {
+          player.sendMessage(context.messages().raw("command.tier-selection-unavailable",
+              Placeholder.unparsed("map", mapId.value()),
+              Placeholder.unparsed("mode", mode.id()),
+              Placeholder.unparsed("difficulty", difficulty.id())));
+          return;
+        }
+        if (requireDataReady(context, player)) {
+          queueMatch(context, player, mapId, mode, difficulty, profile);
+        }
+        return;
+      }
       if (!LobbyMapCatalog.availableMaps(context.config(), servers).contains(mapId)) {
         player.sendMessage(context.messages().raw("command.invalid-map",
             Placeholder.unparsed("map", mapId.value())));
         return;
       }
       if (requireDataReady(context, player)) {
-        queueMatch(context, player, mapId, mode, difficulty);
+        queueMatch(context, player, mapId, mode, difficulty, null);
       }
     });
   }
 
   private static void queueMatch(LobbyCommandContext context, Player requester,
-      CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty) {
+      CraftovMapId mapId, RaidMode mode, RaidDifficulty difficulty,
+      @Nullable RaidActionProfile tier) {
     PartyView party = context.parties().party(requester.getUniqueId()).orElse(null);
     if (party != null && !party.isLeader(requester.getUniqueId())) {
       requester.sendMessage(Component.text("只有队长可以让全队开始匹配", NamedTextColor.RED));
@@ -468,8 +570,120 @@ public final class LobbyCommand {
         return;
       }
     }
-    var queued = context.matchmaking().queueParty(
-        members, mapId, mode, difficulty, teamKey);
+    QueuePartyRequest request = new QueuePartyRequest(members, teamKey, mapId, mode, difficulty,
+        tier);
+    if (tier != null) {
+      beginTierPreflight(context, requester, request);
+      return;
+    }
+    enqueueParty(context, requester, request);
+  }
+
+  private static void beginTierPreflight(LobbyCommandContext context, Player requester,
+      QueuePartyRequest request) {
+    RaidActionProfile tier = Preconditions.checkNotNull(request.tier(), "tier");
+    boolean mutationInFlight = request.members().stream().anyMatch(memberId ->
+        context.menus().hasPendingRaidMutation(memberId)
+            || context.marketMenus().hasPendingRaidMutation(memberId));
+    if (mutationInFlight || !context.dataGate().beginRaidPreparation(request.members())) {
+      requester.sendMessage(context.messages().raw("command.tier-precheck-busy"));
+      return;
+    }
+    List<CompletableFuture<ActionTierPreflight.Member>> loads = new java.util.ArrayList<>();
+    try {
+      for (UUID memberId : request.members()) {
+        Player member = Bukkit.getPlayer(memberId);
+        if (member == null || context.profiles().find(memberId).isEmpty()) {
+          context.dataGate().finishRaidPreparation(request.members());
+          requester.sendMessage(context.messages().raw("command.tier-precheck-failed"));
+          return;
+        }
+        String name = member.getName();
+        long balance = context.profiles().require(memberId).balance().units();
+        loads.add(context.inventories().load(memberId).orTimeout(2, TimeUnit.SECONDS)
+            .thenApply(inventory ->
+                new ActionTierPreflight.Member(memberId, name, inventory, balance)));
+      }
+    } catch (RuntimeException error) {
+      context.dataGate().finishRaidPreparation(request.members());
+      throw error;
+    }
+    CompletableFuture.allOf(loads.toArray(CompletableFuture[]::new))
+        .thenApply(_ -> loads.stream().map(CompletableFuture::join).toList())
+        .whenComplete((members, error) -> {
+          if (!context.plugin().isEnabled()) return;
+          Bukkit.getScheduler().runTask(context.plugin(), () -> afterTierPreflight(
+              context, requester, request, members, error, tier));
+        });
+  }
+
+  private static void afterTierPreflight(LobbyCommandContext context, Player requester,
+      QueuePartyRequest request, @Nullable List<ActionTierPreflight.Member> members,
+      @Nullable Throwable error, RaidActionProfile tier) {
+    try {
+      if (!requester.isOnline()) return;
+      if (error != null || members == null) {
+        context.plugin().getLogger().warning("全队行动等级预检失败: " + error);
+        requester.sendMessage(context.messages().raw("command.tier-precheck-failed"));
+        return;
+      }
+      if (!sameParty(context, requester, request)) {
+        requester.sendMessage(Component.text("队伍状态已变化，请重新开始匹配", NamedTextColor.RED));
+        return;
+      }
+      for (UUID memberId : request.members()) {
+        Player member = Bukkit.getPlayer(memberId);
+        if (member == null || !member.isOnline() || !context.dataGate().isReady(memberId)) {
+          requester.sendMessage(Component.text(
+              "队伍成员 " + playerName(memberId) + " 已离开或数据未就绪", NamedTextColor.RED));
+          return;
+        }
+      }
+      ActionTierPreflight.Failure failure;
+      try {
+        failure = ActionTierPreflight
+            .firstFailure(tier, members, context.itemRegistry()).orElse(null);
+      } catch (RuntimeException preflightError) {
+        context.plugin().getLogger().log(java.util.logging.Level.WARNING,
+            "计算全队行动等级预检失败", preflightError);
+        requester.sendMessage(context.messages().raw("command.tier-precheck-failed"));
+        return;
+      }
+      if (failure != null) {
+        String key = switch (failure.kind()) {
+          case UNKNOWN_ITEM -> "command.tier-unknown-item";
+          case LOADOUT_VALUE -> "command.tier-loadout-too-low";
+          case ENTRY_FEE -> "command.tier-fee-too-low";
+        };
+        requester.sendMessage(context.messages().raw(key,
+            Placeholder.unparsed("player", failure.playerName()),
+            Placeholder.unparsed("current", Money.of(failure.actual()).format()),
+            Placeholder.unparsed("required", Money.of(failure.required()).format()),
+            Placeholder.unparsed("tier", tier.displayName())));
+        return;
+      }
+      // Hand the freeze directly to QueueService in the same main-thread turn;
+      // no inventory/menu mutation can interleave between unlock and ticket creation.
+      enqueueParty(context, requester, request);
+    } finally {
+      context.dataGate().finishRaidPreparation(request.members());
+    }
+  }
+
+  private static boolean sameParty(LobbyCommandContext context, Player requester,
+      QueuePartyRequest request) {
+    PartyView current = context.parties().party(requester.getUniqueId()).orElse(null);
+    List<UUID> members = current == null ? List.of(requester.getUniqueId()) : current.members();
+    UUID teamKey = current == null ? requester.getUniqueId() : current.partyId();
+    return members.equals(request.members()) && teamKey.equals(request.teamKey())
+        && (current == null || current.isLeader(requester.getUniqueId()));
+  }
+
+  private static void enqueueParty(LobbyCommandContext context, Player requester,
+      QueuePartyRequest request) {
+    RaidActionProfile tier = request.tier();
+    var queued = context.matchmaking().queueParty(request.members(), request.mapId(),
+        request.mode(), request.difficulty(), request.teamKey(), tier == null ? null : tier.id());
     if (queued.error().isPresent()) {
       requester.sendMessage(Component.text(queued.error().orElseThrow(), NamedTextColor.RED));
       return;
@@ -478,9 +692,19 @@ public final class LobbyCommand {
       Player member = Bukkit.getPlayer(ticket.playerId());
       if (member == null) continue;
       member.sendMessage(context.messages().raw("queue.joined",
-          Placeholder.component("map", MapNames.display(context.messages(), mapId))));
-      member.sendMessage(Component.text("模式 " + mode.id() + " · 难度 " + difficulty.id(),
-          NamedTextColor.GRAY));
+          Placeholder.component("map", MapNames.display(context.messages(), request.mapId()))));
+      member.sendMessage(tier == null
+          ? Component.text("模式 " + request.mode().id() + " · 难度 "
+              + request.difficulty().id(), NamedTextColor.GRAY)
+          : Component.text("行动等级 " + tier.displayName(), NamedTextColor.GRAY));
+    }
+  }
+
+  private record QueuePartyRequest(List<UUID> members, UUID teamKey, CraftovMapId mapId,
+                                   RaidMode mode, RaidDifficulty difficulty,
+                                   @Nullable RaidActionProfile tier) {
+    private QueuePartyRequest {
+      members = List.copyOf(members);
     }
   }
 

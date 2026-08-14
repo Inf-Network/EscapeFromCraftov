@@ -1,9 +1,11 @@
 package com.birditch.escapefromcraftov.game.plugin.network;
 
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
+import com.birditch.escapefromcraftov.api.game.RaidAdmissionService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
+import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.BungeeConnector;
 import com.birditch.escapefromcraftov.bukkit.Messages;
@@ -22,7 +24,8 @@ import java.util.logging.Logger;
 public record PendingDeps(AssignmentStore store, CraftovGameService games, GameServerConfig config,
                           InstanceWorldIndex index, BungeeConnector bungee,
                           PlayerInventoryService inventories, CraftovItemStacks itemStacks,
-                          ItemRegistry items,
+                          ItemRegistry items, RaidAdmissionService admissions,
+                          ProfileService profiles,
                           TrMenuBridge menus, VisibilityService visibility,
                           EditorSessionService editorSessions,
                           EditorSelectionService editorSelections,
@@ -38,6 +41,8 @@ public record PendingDeps(AssignmentStore store, CraftovGameService games, GameS
     Preconditions.checkNotNull(inventories, "inventories");
     Preconditions.checkNotNull(itemStacks, "itemStacks");
     Preconditions.checkNotNull(items, "items");
+    Preconditions.checkNotNull(admissions, "admissions");
+    Preconditions.checkNotNull(profiles, "profiles");
     Preconditions.checkNotNull(menus, "menus");
     Preconditions.checkNotNull(visibility, "visibility");
     Preconditions.checkNotNull(editorSessions, "editorSessions");

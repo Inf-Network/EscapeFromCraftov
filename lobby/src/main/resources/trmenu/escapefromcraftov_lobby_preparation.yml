@@ -14,8 +14,8 @@ Icons:
     display: { material: 'source:CRAFTOVPREPARATION:map' }
     actions: { all: [ 'reset', 'command: lobby raid cycle map' ] }
   R:
-    display: { material: 'source:CRAFTOVPREPARATION:mode' }
-    actions: { all: [ 'reset', 'command: lobby raid cycle mode' ] }
+    display: { material: 'source:CRAFTOVPREPARATION:tier' }
+    actions: { all: [ 'reset', 'command: lobby raid cycle tier' ] }
   D:
     display: { material: 'source:CRAFTOVPREPARATION:difficulty' }
     actions: { all: [ 'reset', 'command: lobby raid cycle difficulty' ] }

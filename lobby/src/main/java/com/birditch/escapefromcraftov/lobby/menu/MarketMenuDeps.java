@@ -2,6 +2,7 @@ package com.birditch.escapefromcraftov.lobby.menu;
 
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
+import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingService;
 import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
@@ -13,6 +14,7 @@ import java.util.logging.Logger;
 
 public record MarketMenuDeps(
     PlayerMarketService market,
+    MatchmakingService matchmaking,
     PlayerInventoryService inventories,
     ProfileService profiles,
     ItemRegistry itemRegistry,
@@ -24,6 +26,7 @@ public record MarketMenuDeps(
 
   public MarketMenuDeps {
     Preconditions.checkNotNull(market, "market");
+    Preconditions.checkNotNull(matchmaking, "matchmaking");
     Preconditions.checkNotNull(inventories, "inventories");
     Preconditions.checkNotNull(profiles, "profiles");
     Preconditions.checkNotNull(itemRegistry, "itemRegistry");

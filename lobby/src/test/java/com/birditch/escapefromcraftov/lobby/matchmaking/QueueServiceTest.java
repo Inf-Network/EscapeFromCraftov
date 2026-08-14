@@ -9,12 +9,16 @@ import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.matchmaking.MatchTicket;
+import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingFailures;
 import com.birditch.escapefromcraftov.api.network.AssignmentStore;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
 import com.birditch.escapefromcraftov.api.network.MessageBroker;
 import com.birditch.escapefromcraftov.api.network.MessageSubscription;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
@@ -49,6 +53,7 @@ class QueueServiceTest {
 
   private static final CraftovMapId MAP = CraftovMapId.of("debug_zone");
   private static final ServerId SERVER = ServerId.of("game-01");
+  private static final ServerId TIER_SERVER = ServerId.of("game-tier");
   private static final String PROXY = "craftov-1";
   private static final Duration TICK = Duration.ofSeconds(1);
   private static final RaidTierId TOP_SECRET = RaidTierId.of("top_secret");
@@ -98,6 +103,12 @@ class QueueServiceTest {
 
   private static GameServerSnapshot server(InstanceSnapshot... instances) {
     return new GameServerSnapshot(SERVER, PROXY, 1L, 4, List.of(instances));
+  }
+
+  private static GameServerSnapshot tierServer(InstanceSnapshot... instances) {
+    return new GameServerSnapshot(TIER_SERVER, "craftov-tier", 1L, 4, List.of(instances),
+        Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1),
+        List.of(new MapActionTierCatalog(MAP, LegacyRaidTierResolver.defaultProfiles())));
   }
 
   private static InstanceSnapshot waitingInstance(String gameId, int playerCount, int maxPlayers) {
@@ -154,6 +165,9 @@ class QueueServiceTest {
           playerId, "queue.match-found", Map.of("server", PROXY))), players.sent);
       assertEquals(List.of(new FakePlayerGateway.Connection(playerId, PROXY)),
           players.connections);
+
+      assertEquals(Optional.of(MatchmakingFailures.ALREADY_QUEUED),
+          service.queue(playerId, MAP).error());
     }
 
     @Test
@@ -267,7 +281,7 @@ class QueueServiceTest {
       UUID second = onlinePlayer();
       UUID third = onlinePlayer();
       UUID teamKey = UUID.randomUUID();
-      directory.respondWith(List.of(server(waitingInstance(
+      directory.respondWith(List.of(tierServer(waitingInstance(
           "secure", 0, 3, RaidMode.CONFIDENTIAL, RaidDifficulty.HARD, TOP_SECRET))));
 
       var queued = service.queueParty(List.of(leader, second, third), MAP,
@@ -298,6 +312,22 @@ class QueueServiceTest {
 
       assertTrue(result.error().isPresent());
       assertEquals(0, service.queueSize());
+    }
+
+    @Test
+    @DisplayName("canonical preflight lock becomes a ticket, while transfer lock blocks requeue")
+    void preparationLockHandsOffAtomicallyButTransferLockBlocksQueue() {
+      UUID prepared = onlinePlayer();
+      assertTrue(dataGate.beginRaidPreparation(List.of(prepared)));
+      assertTrue(service.queue(prepared, MAP, RaidMode.CONFIDENTIAL,
+          RaidDifficulty.HARD, prepared, TOP_SECRET).isSuccess());
+      dataGate.finishRaidPreparation(List.of(prepared));
+      assertEquals(1, service.dequeueTeam(prepared));
+
+      UUID transferring = onlinePlayer();
+      dataGate.beginMatchTransfer(List.of(transferring));
+      assertEquals(Optional.of(MatchmakingFailures.ALREADY_QUEUED),
+          service.queue(transferring, MAP).error());
     }
 
     @Test
@@ -502,9 +532,9 @@ class QueueServiceTest {
       UUID first = onlinePlayer();
       UUID second = onlinePlayer();
       UUID third = onlinePlayer();
-      directory.respondWith(List.of(server(waitingInstance("small", 0, 2))));
-      service.queueParty(List.of(first, second, third), MAP, RaidMode.NORMAL,
-          RaidDifficulty.NORMAL, UUID.randomUUID(), TOP_SECRET);
+      directory.respondWith(List.of(tierServer(waitingInstance("small", 0, 2))));
+      service.queueParty(List.of(first, second, third), MAP, RaidMode.CONFIDENTIAL,
+          RaidDifficulty.HARD, UUID.randomUUID(), TOP_SECRET);
 
       tick();
 
@@ -513,6 +543,23 @@ class QueueServiceTest {
       assertEquals(3, request.requiredSlots());
       assertEquals(TOP_SECRET, request.tierId());
       assertTrue(assignments.stored.isEmpty());
+    }
+
+    @Test
+    @DisplayName("canonical provisioning ignores old servers without the exact tier catalog")
+    void canonicalProvisioningRequiresTierCapability() {
+      UUID first = onlinePlayer();
+      UUID second = onlinePlayer();
+      directory.respondWith(List.of(server(), tierServer()));
+      service.queueParty(List.of(first, second), MAP, RaidMode.CONFIDENTIAL,
+          RaidDifficulty.HARD, UUID.randomUUID(), TOP_SECRET);
+
+      tick();
+
+      ProvisionRequest request = codec.fromJson(
+          broker.published.getFirst().payload(), ProvisionRequest.class);
+      assertEquals(TIER_SERVER, request.serverId());
+      assertEquals(TOP_SECRET, request.tierId());
     }
 
     @Test

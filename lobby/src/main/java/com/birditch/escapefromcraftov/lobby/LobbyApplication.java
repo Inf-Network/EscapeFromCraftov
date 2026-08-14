@@ -207,10 +207,10 @@ public final class LobbyApplication {
     LobbyMenuController menuController = new LobbyMenuController(menuDeps, trMenu);
     menus = menuController;
     RaidPreparationController preparationController = new RaidPreparationController(
-        inventories, itemRegistry, scheduler, config, messages, trMenu, logger);
+        inventories, itemRegistry, directory, scheduler, config, messages, trMenu, logger);
     raidPreparation = preparationController;
     MarketMenuController marketMenuController = new MarketMenuController(new MarketMenuDeps(
-        market, inventories, profiles, itemRegistry, itemStacks, scheduler, dataGate,
+        market, queue, inventories, profiles, itemRegistry, itemStacks, scheduler, dataGate,
         messages, logger), trMenu);
     marketMenus = marketMenuController;
     ConnectionDeps connectionDeps = new ConnectionDeps(plugin, scheduler, messages, profiles,
@@ -225,7 +225,8 @@ public final class LobbyApplication {
     registerPermissions();
     registerCommands(new LobbyCommandContext(
         plugin, queue, directory, messages, config, dataGate,
-        menuController, marketMenuController, preparationController, raidReports, parties));
+        menuController, marketMenuController, preparationController, raidReports, parties,
+        inventories, profiles, itemRegistry));
     logSummary(config, configs.database(), configs.redis(), directory);
   }
 

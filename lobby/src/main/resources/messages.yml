@@ -85,6 +85,14 @@ command:
   no-permission: "<red>你没有权限这么做。</red>"
   player-only: "<red>该命令只能由玩家使用。</red>"
   invalid-map: "<red>未知的地图:<map></red>"
+  invalid-tier: "<red>地图 <yellow><map></yellow> 没有行动等级 <yellow><tier></yellow>。</red>"
+  tier-selection-unavailable: "<red>地图 <yellow><map></yellow> 没有与 <mode>/<difficulty> 一致且全服统一的行动等级，已禁止旧模式绕过。</red>"
+  tier-catalog-failed: "<red>暂时无法读取行动等级，请稍后再试。</red>"
+  tier-loadout-too-low: "<red>队员 <yellow><player></yellow> 的出战价值不足：当前 <current>，<tier> 至少需要 <required>。</red>"
+  tier-fee-too-low: "<red>队员 <yellow><player></yellow> 的余额不足：当前 <current>，<tier> 入场费需要 <required>。</red>"
+  tier-unknown-item: "<red>队员 <yellow><player></yellow> 的出战栏含未知物品，无法安全计算 <tier> 的准入价值。</red>"
+  tier-precheck-failed: "<red>暂时无法检查全队出战物资，未加入匹配。</red>"
+  tier-precheck-busy: "<yellow>全队仍有物资交易或行动预检正在处理，请稍后再试。</yellow>"
   checking-map: "<gray>正在查找地图 <yellow><map></yellow> 的可用房间……</gray>"
   map-check-failed: "<red>暂时无法读取可用地图，请稍后再试。</red>"
 
@@ -108,6 +116,15 @@ menu:
       lore: "<gray>当前：</gray><yellow><mode></yellow>|<yellow>点击循环切换模式</yellow>"
       normal: "<green>普通行动</green>"
       confidential: "<red>机密行动</red>"
+    tier:
+      name: "<gold>行动等级</gold>"
+      lore: "<gray>当前：</gray><yellow><tier></yellow>|<dark_gray>ID：<tier_id></dark_gray>|<yellow>点击切换下一档行动</yellow>"
+      details-name: "<gold>行动门槛</gold>"
+      details-lore: "<gray>等级：</gray><yellow><tier></yellow>|<gray>最低出战价值：</gray><gold><minimum></gold>|<gray>入场费：</gray><gold><fee></gold>|<dark_gray>Game 入场时会再次权威校验</dark_gray>"
+      merged-hint: "<gray>当前地图已使用行动等级，请点击左侧“行动等级”切换。</gray>"
+      unavailable: "<red>各 Game 服务器的行动等级配置不一致，已禁止降级为旧模式。请联系管理员。</red>"
+      unavailable-name: "<red>行动等级不可用</red>"
+      unavailable-lore: "<red>Game 服务器配置不一致</red>|<gray>为防止绕过门槛，本地图暂时不能匹配</gray>"
     difficulty:
       name: "<gold>行动难度</gold>"
       lore: "<gray>当前：</gray><yellow><difficulty></yellow>|<yellow>点击循环切换难度</yellow>"
@@ -124,6 +141,10 @@ menu:
       ready: "<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<green>点击加入匹配队列</green>"
       empty: "<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<red>出战栏为空</red>|<yellow>点击一次确认空装行动</yellow>"
       empty-confirmed: "<red>空装行动已确认</red>|<gray>地图：</gray><yellow><map></yellow>|<gray>模式：</gray><mode>|<gray>难度：</gray><difficulty>|<yellow>再次点击加入匹配队列</yellow>"
+      tier-ready: "<gray>地图：</gray><yellow><map></yellow>|<gray>行动等级：</gray><yellow><tier></yellow>|<green>点击加入匹配队列</green>"
+      tier-empty: "<gray>地图：</gray><yellow><map></yellow>|<gray>行动等级：</gray><yellow><tier></yellow>|<red>出战栏为空</red>|<yellow>点击一次确认空装行动</yellow>"
+      tier-empty-confirmed: "<red>空装行动已确认</red>|<gray>地图：</gray><yellow><map></yellow>|<gray>行动等级：</gray><yellow><tier></yellow>|<yellow>再次点击加入匹配队列</yellow>"
+      tier-unavailable: "<red>行动等级配置不一致</red>|<gray>匹配已安全禁用，请联系管理员</gray>"
   main:
     title: "大厅菜单"
     play:

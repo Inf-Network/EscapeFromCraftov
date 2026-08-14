@@ -104,6 +104,7 @@ public final class MarketMenuController implements Listener, AutoCloseable {
 
   public void buy(Player player, int visibleSlot) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, BROWSE_MENU);
     MarketListing listing = listingAt(requirePage(browseViews, player), visibleSlot).orElse(null);
     UUID playerId = player.getUniqueId();
@@ -115,6 +116,7 @@ public final class MarketMenuController implements Listener, AutoCloseable {
 
   public void cancel(Player player, int visibleSlot) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, MINE_MENU);
     MarketListing listing = listingAt(requirePage(mineViews, player), visibleSlot).orElse(null);
     UUID playerId = player.getUniqueId();
@@ -126,6 +128,7 @@ public final class MarketMenuController implements Listener, AutoCloseable {
 
   public void selectForListing(Player player, int visibleSlot) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, LIST_MENU);
     StoredItem item = warehouseAt(requireWarehouse(player), visibleSlot).orElse(null);
     if (item == null) return;
@@ -162,6 +165,7 @@ public final class MarketMenuController implements Listener, AutoCloseable {
 
   public void confirmListing(Player player) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, CONFIRM_MENU);
     PendingListing value = requirePending(player);
     UUID playerId = player.getUniqueId();
@@ -348,6 +352,20 @@ public final class MarketMenuController implements Listener, AutoCloseable {
       player.sendMessage(deps.messages().raw("queue.data-loading"));
       throw new IllegalStateException("玩家数据仍在加载");
     }
+  }
+
+  private void requireNotQueued(Player player) {
+    if (deps.dataGate().isRaidMutationLocked(player.getUniqueId())) {
+      throw new IllegalStateException("全队行动预检期间不能修改出战物资或余额，请稍候");
+    }
+    if (deps.matchmaking().ticket(player.getUniqueId()).isPresent()) {
+      throw new IllegalStateException("匹配期间不能修改出战物资或交易，请先输入 /leavequeue");
+    }
+  }
+
+  /** Main-thread signal used to avoid snapshotting an already-running market mutation. */
+  public boolean hasPendingRaidMutation(UUID playerId) {
+    return busy.contains(Preconditions.checkNotNull(playerId, "playerId"));
   }
 
   private void requireViewing(Player player, String menu) {

@@ -6,6 +6,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.network.GameServerSnapshot;
+import com.birditch.escapefromcraftov.api.network.MapActionTierCatalog;
+import com.birditch.escapefromcraftov.api.network.NetworkCapabilities;
+import com.birditch.escapefromcraftov.api.game.LegacyRaidTierResolver;
 import com.birditch.escapefromcraftov.api.network.InstanceSnapshot;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.lobby.LobbyConfig;
@@ -41,5 +44,19 @@ class LobbyMapCatalogTest {
         1L, 4, List.of(room));
 
     assertEquals(Set.of(map), LobbyMapCatalog.availableMaps(config, List.of(server)));
+  }
+
+  @Test
+  void discoversEnabledMapCatalogEvenBeforeItHasARoom() {
+    CraftovMapId configured = CraftovMapId.of("debug_zone");
+    CraftovMapId imported = CraftovMapId.of("factory");
+    LobbyConfig config = new LobbyConfig(
+        1, 2, 30, 30, true, true, 20, 5, configured, Set.of(configured));
+    GameServerSnapshot server = new GameServerSnapshot(ServerId.of("game-01"), "craftov-01",
+        1L, 4, List.of(), Set.of(NetworkCapabilities.ACTION_TIER_CATALOG_V1),
+        List.of(new MapActionTierCatalog(imported, LegacyRaidTierResolver.defaultProfiles())));
+
+    assertEquals(Set.of(configured, imported),
+        LobbyMapCatalog.availableMaps(config, List.of(server)));
   }
 }

@@ -1,7 +1,10 @@
 package com.birditch.escapefromcraftov.lobby.command;
 
 import com.birditch.escapefromcraftov.api.matchmaking.MatchmakingService;
+import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
+import com.birditch.escapefromcraftov.api.profile.ProfileService;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.lobby.LobbyConfig;
@@ -25,7 +28,10 @@ public record LobbyCommandContext(
     MarketMenuController marketMenus,
     RaidPreparationController raidPreparation,
     LobbyRaidReports raidReports,
-    PartyService parties) {
+    PartyService parties,
+    PlayerInventoryService inventories,
+    ProfileService profiles,
+    ItemRegistry itemRegistry) {
 
   public LobbyCommandContext {
     Preconditions.checkNotNull(plugin, "plugin");
@@ -39,5 +45,8 @@ public record LobbyCommandContext(
     Preconditions.checkNotNull(raidPreparation, "raidPreparation");
     Preconditions.checkNotNull(raidReports, "raidReports");
     Preconditions.checkNotNull(parties, "parties");
+    Preconditions.checkNotNull(inventories, "inventories");
+    Preconditions.checkNotNull(profiles, "profiles");
+    Preconditions.checkNotNull(itemRegistry, "itemRegistry");
   }
 }

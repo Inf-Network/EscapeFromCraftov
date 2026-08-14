@@ -7,6 +7,8 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.GameFailures;
+import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
+import com.birditch.escapefromcraftov.api.game.RaidAdmissionResult;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryClosedException;
 import com.birditch.escapefromcraftov.api.inventory.CraftovInventoryOutcome;
 import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
@@ -284,9 +286,84 @@ public final class PendingJoinHandler {
   private void claimLoadout(PendingEntry entry, int attempt) {
     MatchAssignment assignment = entry.assignment;
     if (retainedAssignments.get(assignment.playerId()) != entry) return;
+    CraftovGame game = deps.games().find(assignment.gameId()).orElse(null);
+    if (game == null) {
+      finishAdmissionRejection(entry, "对局已不存在");
+      return;
+    }
+    RaidActionProfile actionProfile = game.actionProfile().orElse(null);
+    if (assignment.tierId() != null && actionProfile == null) {
+      finishAdmissionRejection(entry, "行动档位配置未冻结，已拒绝不安全入场");
+      return;
+    }
+    if (actionProfile != null) {
+      deps.admissions().admit(assignment.playerId(), assignment.gameId(), actionProfile)
+          .whenComplete((result, error) -> deps.scheduler().runSync(() ->
+              finishAdmission(entry, actionProfile, result, error, attempt)));
+      return;
+    }
     deps.inventories().claimLoadout(assignment.playerId(), assignment.gameId())
         .whenComplete((items, error) -> deps.scheduler().runSync(() ->
             finishLoadout(entry, items, error, attempt)));
+  }
+
+  private void finishAdmission(PendingEntry entry, RaidActionProfile actionProfile,
+      RaidAdmissionResult result, Throwable error, int attempt) {
+    UUID playerId = entry.assignment.playerId();
+    if (retainedAssignments.get(playerId) != entry) return;
+    if (error != null || result == null) {
+      retryClaim(entry, error, attempt);
+      return;
+    }
+    if (result instanceof RaidAdmissionResult.Rejected rejected) {
+      deps.logger().info("行动入场被拒绝:" + playerId + "/" + rejected.reason()
+          + "/" + rejected.detail());
+      finishAdmissionRejection(entry, rejected.detail());
+      return;
+    }
+    RaidAdmissionResult.Admitted admitted = (RaidAdmissionResult.Admitted) result;
+    deps.profiles().find(playerId)
+        .ifPresent(profile -> profile.setBalance(admitted.balanceAfter()));
+    Player player = Bukkit.getPlayer(playerId);
+    if (player != null && player.isOnline() && !entry.quitRequested()) {
+      player.sendMessage(deps.messages().raw("inventory.action-tier-admitted",
+          Placeholder.unparsed("tier", actionProfile.displayName()),
+          Placeholder.unparsed("value", Long.toString(admitted.loadoutValue().units())),
+          Placeholder.unparsed("fee", Long.toString(actionProfile.entryFee())),
+          Placeholder.unparsed("balance", Long.toString(admitted.balanceAfter().units()))));
+    }
+    finishLoadout(entry, admitted.claimedItems(), null, attempt);
+  }
+
+  private void finishAdmissionRejection(PendingEntry entry, String reason) {
+    UUID playerId = entry.assignment.playerId();
+    if (retainedAssignments.get(playerId) != entry) return;
+    boolean quitRequested = entry.quitRequested();
+    Player player = Bukkit.getPlayer(playerId);
+    completeEntry(entry, ClaimOutcome.UNCLAIMED);
+    if (quitRequested) return;
+    if (player != null && player.isOnline()) {
+      player.sendMessage(deps.messages().raw("inventory.action-tier-rejected",
+          Placeholder.unparsed("reason", reason)));
+      leaveAndReturn(player);
+    } else {
+      deps.games().leave(playerId);
+    }
+  }
+
+  private void retryClaim(PendingEntry entry, Throwable error, int attempt) {
+    UUID playerId = entry.assignment.playerId();
+    Player player = Bukkit.getPlayer(playerId);
+    Throwable cause = error == null
+        ? new IllegalStateException("物资服务返回了空结果") : unwrap(error);
+    deps.logger().log(Level.WARNING,
+        "领取出战栏失败，将在 5 秒后自动重试 (第 " + (attempt + 1) + " 次):"
+            + playerId, cause);
+    if (player != null && player.isOnline() && !entry.quitRequested() && attempt == 0) {
+      player.sendMessage(deps.messages().raw("inventory.loadout-retrying"));
+    }
+    deps.scheduler().runLater(Duration.ofSeconds(5),
+        () -> claimLoadout(entry, attempt + 1));
   }
 
   private void finishLoadout(PendingEntry entry, List<StoredItem> items,
@@ -307,14 +384,7 @@ public final class PendingJoinHandler {
         }
         return;
       }
-      deps.logger().log(Level.WARNING,
-          "领取出战栏失败，将在 5 秒后自动重试 (第 " + (attempt + 1) + " 次):"
-              + playerId, cause);
-      if (player != null && player.isOnline() && !entry.quitRequested() && attempt == 0) {
-        player.sendMessage(deps.messages().raw("inventory.loadout-retrying"));
-      }
-      deps.scheduler().runLater(Duration.ofSeconds(5),
-          () -> claimLoadout(entry, attempt + 1));
+      retryClaim(entry, cause, attempt);
       return;
     }
     if (entry.quitRequested() || player == null || !player.isOnline()) {

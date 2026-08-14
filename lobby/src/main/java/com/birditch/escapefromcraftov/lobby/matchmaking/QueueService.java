@@ -133,6 +133,9 @@ public final class QueueService implements MatchmakingService {
     if (members.stream().anyMatch(playerId -> !deps.dataGate().isReady(playerId))) {
       return Result.fail(MatchmakingFailures.PLAYER_DATA_NOT_READY);
     }
+    if (members.stream().anyMatch(deps.dataGate()::isMatchTransferLocked)) {
+      return Result.fail(MatchmakingFailures.ALREADY_QUEUED);
+    }
     if (members.stream().anyMatch(tickets::containsKey)
         || members.stream().anyMatch(inFlight::contains)
         || tickets.values().stream().anyMatch(ticket -> ticket.teamKey().equals(teamKey))) {
@@ -299,7 +302,8 @@ public final class QueueService implements MatchmakingService {
     return servers.stream().map(server -> new GameServerSnapshot(
         server.serverId(), server.proxyName(), server.updatedAtMillis(), server.maxInstances(),
         server.instances().stream().filter(instance ->
-            instance.playerCount() + cohortSize >= deps.config().queueMinimumPlayers()).toList()))
+            instance.playerCount() + cohortSize >= deps.config().queueMinimumPlayers()).toList(),
+        server.capabilities(), server.actionTierCatalog()))
         .toList();
   }
 
@@ -405,6 +409,12 @@ public final class QueueService implements MatchmakingService {
       removeOfflineGroups(cohort);
       return;
     }
+    List<UUID> transferringPlayers = assignments.stream()
+        .map(MatchAssignment::playerId).toList();
+    long transferGeneration = deps.dataGate().beginMatchTransfer(transferringPlayers);
+    deps.scheduler().runLater(
+        Duration.ofSeconds(deps.config().assignmentTtlSeconds()),
+        () -> deps.dataGate().finishMatchTransfer(transferringPlayers, transferGeneration));
     assignments.forEach(assignment -> tickets.remove(assignment.playerId()));
     assignments.forEach(assignment -> {
       deps.players().sendMessage(assignment.playerId(), "queue.match-found",
@@ -444,6 +454,7 @@ public final class QueueService implements MatchmakingService {
       int requiredSlots) {
     Optional<GameServerSnapshot> target = servers.stream()
         .filter(server -> server.instances().size() < server.maxInstances())
+        .filter(server -> pool.tierId() == null || supportsTier(server, pool))
         .min(Comparator.comparingInt((GameServerSnapshot server) -> server.instances().size())
             .thenComparing(server -> server.serverId().value()));
     if (target.isEmpty()) {
@@ -464,6 +475,11 @@ public final class QueueService implements MatchmakingService {
             deps.logger().log(Level.FINE, "发布实例扩容提示失败。", publishError);
           }
         });
+  }
+
+  private static boolean supportsTier(GameServerSnapshot server, MatchPool pool) {
+    RaidTierId tierId = Preconditions.checkNotNull(pool.tierId(), "tierId");
+    return InstancePicker.advertisesTier(server, pool.mapId(), tierId);
   }
 
   private void releaseReservations(String reservationKey, long expiresAt, int count) {

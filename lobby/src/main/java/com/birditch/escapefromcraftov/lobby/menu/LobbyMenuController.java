@@ -119,6 +119,7 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
 
   public void buyVendorItem(Player player, int offerIndex, int quantity) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, VENDOR_MENU);
     VendorPrices.requirePurchaseQuantity(quantity);
     List<ItemDefinition> offers = vendorOffers();
@@ -150,6 +151,7 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
 
   public void sellVendorItem(Player player, int visibleSlot) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, VENDOR_SELL_MENU);
     if (visibleSlot < 0 || visibleSlot >= VENDOR_SELL_PAGE_SIZE) {
       throw new IllegalArgumentException("出售格子必须是 0..26");
@@ -231,6 +233,7 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
 
   public void moveWarehouseItem(Player player, int visibleSlot) {
     requireReady(player);
+    requireNotQueued(player);
     requireViewing(player, WAREHOUSE_MENU);
     if (visibleSlot < 0 || visibleSlot >= LOADOUT_SLOTS + WAREHOUSE_PAGE_SIZE) {
       throw new IllegalArgumentException("仓库格子必须是 0..35");
@@ -696,6 +699,21 @@ public final class LobbyMenuController implements Listener, AutoCloseable {
       player.sendMessage(deps.messages().raw("queue.data-loading"));
       throw new IllegalStateException("玩家数据仍在加载");
     }
+  }
+
+  private void requireNotQueued(Player player) {
+    if (deps.dataGate().isRaidMutationLocked(player.getUniqueId())) {
+      throw new IllegalStateException("全队行动预检期间不能修改出战物资或余额，请稍候");
+    }
+    if (deps.matchmaking().ticket(player.getUniqueId()).isPresent()) {
+      throw new IllegalStateException("匹配期间不能修改出战物资或交易，请先输入 /leavequeue");
+    }
+  }
+
+  /** Main-thread signal used to avoid snapshotting an already-running mutation. */
+  public boolean hasPendingRaidMutation(UUID playerId) {
+    UUID checked = Preconditions.checkNotNull(playerId, "playerId");
+    return warehouseBusy.contains(checked) || vendorBusy.contains(checked);
   }
 
   private void requireViewing(Player player, String menu) {

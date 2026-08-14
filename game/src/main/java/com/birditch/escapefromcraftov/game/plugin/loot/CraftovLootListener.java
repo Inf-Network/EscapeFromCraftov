@@ -581,9 +581,13 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   private LootContainerState createContainer(CraftovGame game, CraftovLootPoint point, Player player) {
     List<ItemStack> contents = new ArrayList<>(java.util.Collections.nCopies(inventorySize, null));
-    loot.roll(point.lootTableId(), new LootRollContext(player.getUniqueId(), game.id()))
-        .stream().flatMap(item -> itemStacks.fromInstance(item).stream())
-        .forEach(item -> add(contents, item));
+    int rolls = game.mode().lootRolls() + game.difficulty().lootBonusRolls();
+    LootRollContext context = new LootRollContext(player.getUniqueId(), game.id());
+    for (int roll = 0; roll < rolls; roll++) {
+      loot.roll(point.lootTableId(), context).stream()
+          .flatMap(item -> itemStacks.fromInstance(item).stream())
+          .forEach(item -> add(contents, item));
+    }
     return new LootContainerState(contents);
   }
 

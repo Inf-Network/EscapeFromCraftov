@@ -26,4 +26,9 @@ public enum RaidDifficulty {
             case HARD -> 1.5;
         };
     }
+
+    /** Extra reward roll paired with the highest PvE pressure. */
+    public int lootBonusRolls() {
+        return this == HARD ? 1 : 0;
+    }
 }

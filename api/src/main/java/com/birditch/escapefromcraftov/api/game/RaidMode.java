@@ -16,4 +16,20 @@ public enum RaidMode {
         Preconditions.checkNotNull(value, "value");
         return valueOf(value.trim().toUpperCase(Locale.ROOT));
     }
+
+    /** Intrinsic PvE pressure for this rule set, independent of chosen difficulty. */
+    public double aiMultiplier() {
+        return switch (this) {
+            case NORMAL -> 1.0;
+            case CONFIDENTIAL -> 1.25;
+        };
+    }
+
+    /** Number of complete loot-table rolls produced by one unopened container. */
+    public int lootRolls() {
+        return switch (this) {
+            case NORMAL -> 1;
+            case CONFIDENTIAL -> 2;
+        };
+    }
 }

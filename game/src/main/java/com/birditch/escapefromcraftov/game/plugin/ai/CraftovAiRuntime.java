@@ -137,7 +137,8 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     }
     cancelPendingStart(gameId);
     GameRuntime runtime = new GameRuntime(
-        gameId, worldName, game.difficulty().multiplier(), new LinkedHashMap<>());
+        gameId, worldName, game.difficulty().multiplier() * game.mode().aiMultiplier(),
+        new LinkedHashMap<>());
     runtimes.put(gameId, runtime);
     for (CraftovAiZone definition : game.aiZones()) {
       long seed = seed(gameId, definition.id());

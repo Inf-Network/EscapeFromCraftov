@@ -200,6 +200,9 @@ public final class CraftovSidebarService implements AutoCloseable {
     List<Component> lines = List.of(
         text("地图  ", NamedTextColor.GOLD).append(mapName),
         text("版本  " + game.mapRevision(), NamedTextColor.GRAY),
+        text("规则  " + modeName(game) + " · " + difficultyName(game),
+            game.mode() == com.birditch.escapefromcraftov.api.game.RaidMode.CONFIDENTIAL
+                ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY),
         text("状态  " + phase(game.state()), NamedTextColor.GREEN),
         text("时间  " + formatTime(seconds), seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE),
         text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA),
@@ -215,6 +218,21 @@ public final class CraftovSidebarService implements AutoCloseable {
     update(player, lines);
     player.sendActionBar(text(extraction, NamedTextColor.AQUA));
     updateBossBar(player, game);
+  }
+
+  private static String modeName(CraftovGame game) {
+    return switch (game.mode()) {
+      case NORMAL -> "常规";
+      case CONFIDENTIAL -> "机密";
+    };
+  }
+
+  private static String difficultyName(CraftovGame game) {
+    return switch (game.difficulty()) {
+      case EASY -> "简单";
+      case NORMAL -> "标准";
+      case HARD -> "困难";
+    };
   }
 
   private void renderWaiting(Player player, CraftovGame game) {

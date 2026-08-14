@@ -77,6 +77,16 @@ public final class SecureContainerController implements AutoCloseable {
       player.sendMessage(messages.raw("secure.craftov-items-only"));
       return;
     }
+    // Vanilla copies PDC when a stack is split. Keeping the same instance ID
+    // on the half that crosses into the virtual secure container would make a
+    // later loss/extraction settlement see two physical stacks as one item.
+    // The half left in the physical inventory keeps the durable identity; the
+    // protected half receives a new identity before it leaves Bukkit storage.
+    var tagged = itemStacks.read(held).orElseThrow();
+    if (hasOtherPhysicalHalf(player, tagged.instanceId())) {
+      itemStacks.assignFreshIdentity(held).orElseThrow();
+      player.getInventory().setItemInMainHand(held);
+    }
     List<ItemInstance> snapshot = itemStacks.scan(new ItemStack[] {held.clone()});
     if (snapshot.size() != 1) {
       player.sendMessage(messages.raw("secure.invalid-stack"));
@@ -209,6 +219,25 @@ public final class SecureContainerController implements AutoCloseable {
       if (contents[slot] == null || contents[slot].isEmpty()) return slot;
     }
     return -1;
+  }
+
+  private boolean hasOtherPhysicalHalf(Player player, UUID instanceId) {
+    ItemStack[] storage = player.getInventory().getStorageContents();
+    int heldSlot = player.getInventory().getHeldItemSlot();
+    for (int slot = 0; slot < storage.length; slot++) {
+      if (slot == heldSlot) continue;
+      if (sameIdentity(storage[slot], instanceId)) return true;
+    }
+    if (sameIdentity(player.getInventory().getItemInOffHand(), instanceId)) return true;
+    for (ItemStack armor : player.getInventory().getArmorContents()) {
+      if (sameIdentity(armor, instanceId)) return true;
+    }
+    return false;
+  }
+
+  private boolean sameIdentity(ItemStack stack, UUID instanceId) {
+    return itemStacks.read(stack).map(tagged -> tagged.instanceId().equals(instanceId))
+        .orElse(false);
   }
 
   private static ItemStack emptySlot() {

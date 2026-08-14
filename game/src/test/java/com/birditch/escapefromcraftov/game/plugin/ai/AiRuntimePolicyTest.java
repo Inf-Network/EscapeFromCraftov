@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
@@ -59,5 +60,25 @@ class AiRuntimePolicyTest {
         profile, 99);
     assertEquals("craftov_tier_3", loot.tableId().value());
     assertEquals(4, loot.rolls());
+  }
+
+  @Test
+  void extremeZoneAndGamePopulationsAreRejectedWithoutClampingOrOverflow() {
+    assertFalse(AiRuntimePolicy.capacity(List.of(
+        new AiRuntimePolicy.ZoneCapacity("ten_thousand", 10_000))).allowed());
+    assertFalse(AiRuntimePolicy.capacity(List.of(
+        new AiRuntimePolicy.ZoneCapacity("integer_max", Integer.MAX_VALUE))).allowed());
+    assertTrue(AiRuntimePolicy.capacity(List.of(
+        new AiRuntimePolicy.ZoneCapacity("a", 32),
+        new AiRuntimePolicy.ZoneCapacity("b", 32),
+        new AiRuntimePolicy.ZoneCapacity("c", 32),
+        new AiRuntimePolicy.ZoneCapacity("d", 32))).allowed());
+    assertFalse(AiRuntimePolicy.capacity(List.of(
+        new AiRuntimePolicy.ZoneCapacity("a", 32),
+        new AiRuntimePolicy.ZoneCapacity("b", 32),
+        new AiRuntimePolicy.ZoneCapacity("c", 32),
+        new AiRuntimePolicy.ZoneCapacity("d", 32),
+        new AiRuntimePolicy.ZoneCapacity("e", 1))).allowed());
+    assertEquals(4, AiRuntimePolicy.MAXIMUM_SPAWN_ATTEMPTS_PER_TICK);
   }
 }

@@ -3,9 +3,12 @@ package com.birditch.escapefromcraftov.game.plugin.ai;
 import com.birditch.escapefromcraftov.api.event.Subscribe;
 import com.birditch.escapefromcraftov.api.event.game.CraftovEndedEvent;
 import com.birditch.escapefromcraftov.api.event.game.CraftovStartedEvent;
+import com.birditch.escapefromcraftov.api.combat.CombatService;
+import com.birditch.escapefromcraftov.api.combat.PlayerCombatState;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
+import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
 import com.birditch.escapefromcraftov.api.game.RaidActionProfile;
@@ -24,20 +27,22 @@ import com.birditch.escapefromcraftov.game.plugin.ownership.LootClaim;
 import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -46,15 +51,21 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Pillager;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Skeleton;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -67,12 +78,20 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>All state and Bukkit access are main-thread confined. Each spawned mob is
  * persistent and carries its game/zone owner in PDC, so a death can only refill
- * the zone that owned it and cleanup never reaches another instance.</p>
+ * the zone that owned it and cleanup never reaches another instance. Tactical
+ * decisions and new paths use fixed per-tick budgets; all distances and delays
+ * below are Craftov server tuning, not official values from another game.</p>
  */
 public final class CraftovAiRuntime implements Listener, AutoCloseable {
 
   private static final Duration WORLD_READY_RETRY = Duration.ofSeconds(1);
   private static final Duration FAILED_SPAWN_RETRY = Duration.ofSeconds(5);
+  private static final Duration TACTICS_TICK = Duration.ofMillis(100);
+  private static final Duration PATROL_PAUSE = Duration.ofSeconds(4);
+  private static final int MAXIMUM_AGENT_DECISIONS_PER_TICK = 8;
+  private static final int MAXIMUM_PATHS_PER_TICK = 4;
+  private static final int MAXIMUM_PROJECTILE_PRUNE_CHECKS_PER_TICK = 16;
+  private static final double HOME_REACHED_DISTANCE_SQUARED = 2.5 * 2.5;
 
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
@@ -81,17 +100,45 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private final CraftovItemStacks itemStacks;
   private final RaidResultRuntime raidReports;
   private final LootOwnershipController lootOwnership;
+  private final Predicate<UUID> combatAlive;
   private final Logger logger;
   private final NamespacedKey gameKey;
   private final NamespacedKey zoneKey;
   private final NamespacedKey teamKey;
+  private final NamespacedKey projectileDamageMultiplierKey;
+  private final NamespacedKey projectileBaseDamageKey;
   private final Map<CraftovGameId, GameRuntime> runtimes = new HashMap<>();
   private final Map<CraftovGameId, ScheduledTask> pendingStarts = new HashMap<>();
+  private final Map<UUID, AgentHandle> agents = new LinkedHashMap<>();
+  private final ArrayDeque<RefillRequest> refillQueue = new ArrayDeque<>();
+  private final AiProjectileRegistry projectileRegistry = new AiProjectileRegistry();
+  private final ScheduledTask tacticsTask;
+  private int tacticsCursor;
   private boolean closed;
 
   public CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
       CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
       RaidResultRuntime raidReports, LootOwnershipController lootOwnership, Logger logger) {
+    this(plugin, games, worlds, scheduler, loot, itemStacks, raidReports, lootOwnership,
+        _ -> true, logger);
+  }
+
+  /**
+   * Runtime constructor used by production wiring. The legacy overload remains
+   * source-compatible, but only this overload can reject domain DOWNED/DEAD players.
+   */
+  public CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
+      CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
+      RaidResultRuntime raidReports, LootOwnershipController lootOwnership,
+      CombatService combat, Logger logger) {
+    this(plugin, games, worlds, scheduler, loot, itemStacks, raidReports, lootOwnership,
+        aliveLookup(combat), logger);
+  }
+
+  private CraftovAiRuntime(Plugin plugin, CraftovGameService games, InstanceWorldIndex worlds,
+      CraftovScheduler scheduler, LootService loot, CraftovItemStacks itemStacks,
+      RaidResultRuntime raidReports, LootOwnershipController lootOwnership,
+      Predicate<UUID> combatAlive, Logger logger) {
     Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
@@ -100,10 +147,19 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
     this.raidReports = Preconditions.checkNotNull(raidReports, "raidReports");
     this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
+    this.combatAlive = Preconditions.checkNotNull(combatAlive, "combatAlive");
     this.logger = Preconditions.checkNotNull(logger, "logger");
     gameKey = new NamespacedKey(plugin, "ai_game");
     zoneKey = new NamespacedKey(plugin, "ai_zone");
     teamKey = new NamespacedKey(plugin, "ai_team");
+    projectileDamageMultiplierKey = new NamespacedKey(plugin, "ai_projectile_damage_multiplier");
+    projectileBaseDamageKey = new NamespacedKey(plugin, "ai_projectile_base_damage");
+    tacticsTask = scheduler.runTimer(Duration.ZERO, TACTICS_TICK, this::tickTactics);
+  }
+
+  private static Predicate<UUID> aliveLookup(CombatService combat) {
+    CombatService checked = Preconditions.checkNotNull(combat, "combat");
+    return playerId -> checked.stateOf(playerId) == PlayerCombatState.ALIVE;
   }
 
   @Subscribe
@@ -117,6 +173,169 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     lootOwnership.clearGame(event.gameId());
   }
 
+  /** Vanilla target selection is never allowed to escape the owning room. */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onAiTarget(EntityTargetLivingEntityEvent event) {
+    if (!(event.getEntity() instanceof Mob mob)) return;
+    AgentHandle handle = ownedAgent(mob);
+    LivingEntity target = event.getTarget();
+    if (target == null) return;
+    if (handle == null) {
+      if (taggedAi(mob)) {
+        event.setTarget(null);
+        event.setCancelled(true);
+        mob.setTarget(null);
+      }
+      return;
+    }
+    if (!(target instanceof Player player) || !eligibleCombatTarget(handle, player)) {
+      event.setTarget(null);
+      event.setCancelled(true);
+      if (target.getUniqueId().equals(handle.agent().targetId)) {
+        handle.agent().targetId = null;
+      }
+      if (mob.getTarget() == target) mob.setTarget(null);
+      if (!insideLeash(handle.zone().definition(), mob.getLocation())) {
+        transition(handle.agent(), mob, AiTacticsPolicy.State.RETURN, System.nanoTime());
+      }
+      return;
+    }
+    alert(handle, player, System.nanoTime(), true);
+  }
+
+  /** Captures durable ownership before the shooter can die or unload. */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onAiProjectileLaunch(ProjectileLaunchEvent event) {
+    Projectile projectile = event.getEntity();
+    if (!(projectile.getShooter() instanceof Mob shooter)) return;
+    AgentHandle handle = ownedAgent(shooter);
+    if (handle == null) {
+      if (taggedAi(shooter)) event.setCancelled(true);
+      return;
+    }
+    CraftovGame game = games.find(handle.runtime().gameId())
+        .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).orElse(null);
+    if (game == null || runtimes.get(handle.runtime().gameId()) != handle.runtime()
+        || !insideLeash(handle.zone().definition(), shooter.getLocation())) {
+      event.setCancelled(true);
+      return;
+    }
+    double effectiveDifficulty = handle.zone().definition().difficulty()
+        * handle.runtime().difficultyMultiplier();
+    double damageMultiplier = AiRuntimePolicy.difficulty(effectiveDifficulty).damageMultiplier();
+    PersistentDataContainer data = projectile.getPersistentDataContainer();
+    data.set(gameKey, PersistentDataType.STRING, handle.runtime().gameId().value());
+    data.set(zoneKey, PersistentDataType.STRING, handle.zone().definition().id());
+    data.set(teamKey, PersistentDataType.STRING, handle.zone().definition().team());
+    data.set(projectileDamageMultiplierKey, PersistentDataType.DOUBLE, damageMultiplier);
+    data.remove(projectileBaseDamageKey);
+    projectileRegistry.track(handle.runtime().gameId().value(), projectile.getUniqueId());
+  }
+
+  /** A later cancellation must not leave a historical registry entry behind. */
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+  public void onAiProjectileLaunchFinal(ProjectileLaunchEvent event) {
+    if (!event.isCancelled()) return;
+    Projectile projectile = event.getEntity();
+    untrackProjectile(projectile);
+    clearProjectileOwnership(projectile);
+  }
+
+  /** Impact ends registry lifetime; PDC remains until damage routing has completed. */
+  @EventHandler(priority = EventPriority.MONITOR)
+  public void onAiProjectileHit(ProjectileHitEvent event) {
+    untrackProjectile(event.getEntity());
+  }
+
+  /** Projectiles and melee from owned AI are fail-closed for every invalid target. */
+  @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+  public void onAiDamage(EntityDamageByEntityEvent event) {
+    if (event.getDamager() instanceof Projectile projectile && taggedAi(projectile)) {
+      handleAiProjectileDamage(event, projectile);
+      return;
+    }
+    Mob source = sourceMob(event.getDamager());
+    if (source == null) return;
+    AgentHandle handle = ownedAgent(source);
+    if (handle == null) {
+      if (taggedAi(source)) event.setCancelled(true);
+      return;
+    }
+    if (event.getEntity() instanceof Player player
+        && eligibleCombatTarget(handle, player)) {
+      return;
+    }
+    event.setCancelled(true);
+    if (source.getTarget() != null && source.getTarget().getUniqueId()
+        .equals(event.getEntity().getUniqueId())) {
+      source.setTarget(null);
+      handle.agent().targetId = null;
+    }
+    if (!insideLeash(handle.zone().definition(), source.getLocation())) {
+      transition(handle.agent(), source, AiTacticsPolicy.State.RETURN, System.nanoTime());
+    }
+  }
+
+  private void handleAiProjectileDamage(EntityDamageByEntityEvent event, Projectile projectile) {
+    PersistentDataContainer data = projectile.getPersistentDataContainer();
+    AiProjectilePolicy.Ownership ownership = AiProjectilePolicy.ownership(
+        data.get(gameKey, PersistentDataType.STRING),
+        data.get(zoneKey, PersistentDataType.STRING),
+        data.get(projectileDamageMultiplierKey, PersistentDataType.DOUBLE)).orElse(null);
+    GameRuntime runtime = ownership == null ? null : runtimeByValue(ownership.gameId());
+    ZoneRuntime zone = runtime == null || ownership == null
+        ? null : runtime.zones().get(ownership.zoneId());
+    Player target = event.getEntity() instanceof Player player ? player : null;
+    boolean runtimeActive = runtime != null && runtimes.get(runtime.gameId()) == runtime
+        && games.find(runtime.gameId())
+            .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).isPresent();
+    boolean sameInstanceWorld = runtime != null && target != null
+        && runtime.worldName().equals(projectile.getWorld().getName())
+        && runtime.worldName().equals(target.getWorld().getName());
+    boolean targetEligible = runtimeActive && target != null && eligibleTarget(runtime, target);
+    boolean projectileInsideLeash = zone != null
+        && insideLeash(zone.definition(), projectile.getLocation());
+    boolean targetInsideLeash = zone != null && target != null
+        && insideLeash(zone.definition(), target.getLocation());
+    if (ownership == null || zone == null || !AiProjectilePolicy.eligible(
+        new AiProjectilePolicy.HitFacts(runtimeActive, sameInstanceWorld, targetEligible,
+            projectileInsideLeash, targetInsideLeash))) {
+      event.setCancelled(true);
+      return;
+    }
+    Double storedBaseDamage = data.get(projectileBaseDamageKey, PersistentDataType.DOUBLE);
+    AiProjectilePolicy.ScaledDamage scaled = AiProjectilePolicy.scale(
+        event.getDamage(), storedBaseDamage, ownership.damageMultiplier()).orElse(null);
+    if (scaled == null) {
+      event.setCancelled(true);
+      return;
+    }
+    if (storedBaseDamage == null) {
+      data.set(projectileBaseDamageKey, PersistentDataType.DOUBLE, scaled.baseDamage());
+    }
+    event.setDamage(scaled.damage());
+  }
+
+  /**
+   * Only an effective, uncancelled hit by an eligible participant raises an alert.
+   * MONITOR ordering prevents this plugin's isolation/friendly-fire cancellations
+   * from becoming tactical information.
+   */
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onAiDamaged(EntityDamageByEntityEvent event) {
+    if (event.getFinalDamage() <= 0) return;
+    AgentHandle handle = ownedAgent(event.getEntity());
+    if (handle == null) return;
+    Player attacker = playerAttacker(event.getDamager());
+    if (attacker == null || !eligibleTarget(handle.runtime(), attacker)) return;
+    long now = System.nanoTime();
+    if (eligibleCombatTarget(handle, attacker)) {
+      alert(handle, attacker, now, true);
+    } else {
+      retreatAfterBoundaryHit(handle, attacker, now);
+    }
+  }
+
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onAiDeath(EntityDeathEvent event) {
     PersistentDataContainer data = event.getEntity().getPersistentDataContainer();
@@ -128,14 +347,17 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     // by another compatible handler, then append this runtime's reward.
     event.getDrops().removeIf(stack -> !itemStacks.isCraftovItem(stack));
     event.setDroppedExp(0);
-    GameRuntime runtime = runtimes.values().stream()
-        .filter(candidate -> candidate.gameId().value().equals(rawGame))
-        .findFirst().orElse(null);
+    AgentHandle handle = agents.get(event.getEntity().getUniqueId());
+    GameRuntime runtime = handle == null ? null : handle.runtime();
     if (runtime == null || !runtime.worldName().equals(event.getEntity().getWorld().getName())) {
       return;
     }
-    ZoneRuntime zone = runtime.zones().get(rawZone);
-    if (zone == null || !zone.entities().remove(event.getEntity().getUniqueId())) return;
+    ZoneRuntime zone = handle.zone();
+    if (!runtime.gameId().value().equals(rawGame)
+        || !zone.definition().id().equals(rawZone)
+        || zone.agents().get(event.getEntity().getUniqueId()) != handle.agent()) return;
+    agents.remove(event.getEntity().getUniqueId());
+    zone.agents().remove(event.getEntity().getUniqueId());
     scheduleRefill(runtime, zone, Duration.ofSeconds(zone.definition().respawnSeconds()));
     reward(event, runtime, zone);
   }
@@ -184,6 +406,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   public void close() {
     if (closed) return;
     closed = true;
+    tacticsTask.cancel();
     for (ScheduledTask task : pendingStarts.values()) task.cancel();
     pendingStarts.clear();
     for (CraftovGameId gameId : List.copyOf(runtimes.keySet())) stop(gameId);
@@ -205,6 +428,14 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       return;
     }
     cancelPendingStart(gameId);
+    AiRuntimePolicy.CapacityCheck capacity = AiRuntimePolicy.capacity(game.aiZones().stream()
+        .map(zone -> new AiRuntimePolicy.ZoneCapacity(zone.id(), zone.maximum())).toList());
+    if (!capacity.allowed()) {
+      logger.severe("AI 运行时拒绝超限地图 " + gameId.value() + ": " + capacity.reason()
+          + "（每区上限 " + AiRuntimePolicy.MAXIMUM_ZONE_POPULATION + "，每局上限 "
+          + AiRuntimePolicy.MAXIMUM_GAME_POPULATION + "）");
+      return;
+    }
     RaidActionProfile actionProfile = game.actionProfile().orElse(null);
     GameRuntime runtime = new GameRuntime(
         gameId, worldName,
@@ -216,9 +447,9 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       long seed = seed(gameId, definition.id());
       int target = AiRuntimePolicy.targetPopulation(
           definition.minimum(), definition.maximum(), seed);
-      ZoneRuntime zone = new ZoneRuntime(definition, target, new LinkedHashSet<>());
+      ZoneRuntime zone = new ZoneRuntime(definition, target, new LinkedHashMap<>());
       runtime.zones().put(definition.id(), zone);
-      refill(runtime, zone);
+      enqueueRefill(runtime, zone);
     }
     logger.info("AI 区域运行时已启动: " + gameId.value() + "，区域 "
         + runtime.zones().size() + " 个，目标敌人 " + runtime.zones().values().stream()
@@ -239,23 +470,39 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     if (task != null) task.cancel();
   }
 
-  private void refill(GameRuntime runtime, ZoneRuntime zone) {
-    if (runtimes.get(runtime.gameId()) != runtime || closed) return;
-    World world = Bukkit.getWorld(runtime.worldName());
-    if (world == null) return;
-    int missing = zone.targetPopulation() - zone.entities().size();
-    int spawned = 0;
-    for (int index = 0; index < missing; index++) {
-      Mob mob = spawn(runtime, zone, world);
-      if (mob == null) break;
-      zone.entities().add(mob.getUniqueId());
-      spawned++;
-    }
-    if (spawned < missing) {
-      logger.warning("AI 区域没有足够的安全生成点，将稍后重试: "
-          + runtime.gameId().value() + "/" + zone.definition().id() + " ("
-          + zone.entities().size() + "/" + zone.targetPopulation() + ")");
-      scheduleRefill(runtime, zone, FAILED_SPAWN_RETRY);
+  private void enqueueRefill(GameRuntime runtime, ZoneRuntime zone) {
+    if (closed || runtimes.get(runtime.gameId()) != runtime || zone.refillQueued
+        || zone.targetPopulation() <= zone.agents().size()) return;
+    zone.refillQueued = true;
+    refillQueue.addLast(new RefillRequest(runtime, zone));
+  }
+
+  private void processRefillQueue() {
+    for (int attempt = 0;
+        attempt < AiRuntimePolicy.MAXIMUM_SPAWN_ATTEMPTS_PER_TICK
+            && !refillQueue.isEmpty(); attempt++) {
+      RefillRequest request = refillQueue.removeFirst();
+      GameRuntime runtime = request.runtime();
+      ZoneRuntime zone = request.zone();
+      zone.refillQueued = false;
+      CraftovGame game = games.find(runtime.gameId())
+          .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).orElse(null);
+      if (game == null || runtimes.get(runtime.gameId()) != runtime
+          || zone.targetPopulation() <= zone.agents().size()) continue;
+      World world = Bukkit.getWorld(runtime.worldName());
+      Mob mob = world == null ? null : spawn(runtime, zone, world);
+      if (mob == null) {
+        logger.warning("AI 区域没有已加载的安全生成点，将稍后重试: "
+            + runtime.gameId().value() + "/" + zone.definition().id() + " ("
+            + zone.agents().size() + "/" + zone.targetPopulation() + ")");
+        scheduleRefill(runtime, zone, FAILED_SPAWN_RETRY);
+        continue;
+      }
+      AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(),
+          System.nanoTime());
+      zone.agents().put(mob.getUniqueId(), agent);
+      agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent));
+      enqueueRefill(runtime, zone);
     }
   }
 
@@ -273,6 +520,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       }
       own(mob, runtime.gameId(), zone.definition());
       configure(mob, zone.definition(), runtime.difficultyMultiplier());
+      mob.setAware(false);
       return mob;
     } catch (RuntimeException exception) {
       logger.log(Level.WARNING, "生成 AI 失败: " + runtime.gameId().value() + "/"
@@ -362,13 +610,403 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     }
   }
 
+  private void tickTactics() {
+    if (closed) return;
+    processRefillQueue();
+    projectileRegistry.prune(MAXIMUM_PROJECTILE_PRUNE_CHECKS_PER_TICK, projectileId -> {
+      Entity entity = Bukkit.getEntity(projectileId);
+      return entity instanceof Projectile && entity.isValid();
+    });
+    if (agents.isEmpty()) return;
+    long now = System.nanoTime();
+    List<AgentHandle> snapshot = List.copyOf(agents.values());
+    Map<CraftovGameId, List<Player>> targetsByGame = new HashMap<>();
+    PathBudget paths = new PathBudget(MAXIMUM_PATHS_PER_TICK);
+    int decisions = Math.min(MAXIMUM_AGENT_DECISIONS_PER_TICK, snapshot.size());
+    for (int processed = 0; processed < decisions; processed++) {
+      int index = Math.floorMod(tacticsCursor++, snapshot.size());
+      AgentHandle handle = snapshot.get(index);
+      if (agents.get(handle.agent().entityId()) != handle) continue;
+      List<Player> targets = targetsByGame.computeIfAbsent(handle.runtime().gameId(),
+          _ -> eligibleTargets(handle.runtime()));
+      tickAgent(handle, targets, now, paths);
+    }
+    if (tacticsCursor > 1_000_000_000) tacticsCursor %= snapshot.size();
+  }
+
+  private void tickAgent(AgentHandle handle, List<Player> targets, long now, PathBudget paths) {
+    Entity entity = Bukkit.getEntity(handle.agent().entityId());
+    if (!(entity instanceof Mob mob)) {
+      World world = Bukkit.getWorld(handle.runtime().worldName());
+      // A persistent entity may simply be serialized with an unloaded chunk.
+      // Keep its slot reserved; replacing it would duplicate the AI on reload.
+      if (world != null && !chunkLoaded(world, handle.agent().lastPosition)) return;
+      detach(handle, true);
+      return;
+    }
+    handle.agent().lastPosition = Point.of(mob.getLocation());
+    if (!entity.isValid() || !handle.runtime().worldName().equals(entity.getWorld().getName())
+        || !ownedBy(entity, handle.runtime().gameId())) {
+      detach(handle, true);
+      return;
+    }
+    if (mob.isDead()) return;
+
+    AgentRuntime agent = handle.agent();
+    CraftovAiZone zone = handle.zone().definition();
+    Player current = target(agent.targetId, targets);
+    boolean targetInsideLeash = current != null && insideLeash(zone, current.getLocation());
+    boolean currentVisible = current != null && mob.hasLineOfSight(current);
+    if (currentVisible && targetInsideLeash) {
+      agent.lastKnown = Point.of(current.getLocation());
+      agent.lastSeenAtNanos = now;
+    }
+    Player detected = nearestVisible(mob, zone, targets,
+        AiTacticsPolicy.DEFAULT.detectionDistance());
+    boolean participantNearby = targets.stream().anyMatch(player ->
+        insideLeash(zone, player.getLocation())
+            && distanceSquared(mob.getLocation(), player.getLocation())
+                <= square(AiTacticsPolicy.DEFAULT.wakeDistance()));
+    boolean actorInsideLeash = insideLeash(zone, mob.getLocation());
+    boolean homeReached = agent.home.distanceSquared(mob.getLocation())
+        <= HOME_REACHED_DISTANCE_SQUARED;
+    Duration stateAge = elapsed(now, agent.stateSinceNanos);
+    Duration sinceLastSeen = elapsed(now, agent.lastSeenAtNanos);
+    AiTacticsPolicy.State next = AiTacticsPolicy.next(new AiTacticsPolicy.Input(
+        agent.state, participantNearby, detected != null, current != null, currentVisible,
+        targetInsideLeash, actorInsideLeash, homeReached, stateAge, sinceLastSeen),
+        AiTacticsPolicy.DEFAULT);
+
+    if (next == AiTacticsPolicy.State.ALERT) {
+      Player target = detected != null ? detected : current;
+      if (target != null) {
+        alert(handle, target, now, true);
+      } else {
+        transition(agent, mob, AiTacticsPolicy.State.SEARCH, now);
+      }
+    } else if (next != agent.state) {
+      transition(agent, mob, next, now);
+    }
+    applyBehavior(handle, mob, targets, now, paths);
+  }
+
+  private void applyBehavior(AgentHandle handle, Mob mob, List<Player> targets,
+      long now, PathBudget paths) {
+    AgentRuntime agent = handle.agent();
+    switch (agent.state) {
+      case DORMANT -> aware(mob, false);
+      case PATROL -> {
+        aware(mob, true);
+        patrol(handle, mob, now, paths);
+      }
+      case ALERT, CHASE -> {
+        aware(mob, true);
+        Player target = target(agent.targetId, targets);
+        if (target != null && mob.getTarget() != target) mob.setTarget(target);
+      }
+      case SEARCH -> {
+        aware(mob, true);
+        if (agent.lastKnown != null && !mob.getPathfinder().hasPath()) {
+          moveTo(handle, mob, agent.lastKnown, 1.0, now, paths);
+        }
+      }
+      case RETURN -> {
+        aware(mob, true);
+        if (!mob.getPathfinder().hasPath()) {
+          moveTo(handle, mob, agent.home, 1.1, now, paths);
+        }
+      }
+    }
+  }
+
+  private void patrol(AgentHandle handle, Mob mob, long now, PathBudget paths) {
+    AgentRuntime agent = handle.agent();
+    if (mob.getPathfinder().hasPath() || now < agent.nextPatrolAtNanos) return;
+    CraftovAiZone zone = handle.zone().definition();
+    long randomSeed = seed(handle.runtime().gameId(), zone.id())
+        ^ (++agent.patrolSequence * 0x9e3779b97f4a7c15L);
+    SplittableRandom random = new SplittableRandom(randomSeed);
+    Point destination = new Point(coordinate(random, zone.minX(), zone.maxX()) + 0.5,
+        agent.home.y(), coordinate(random, zone.minZ(), zone.maxZ()) + 0.5);
+    MoveAttempt result = moveTo(handle, mob, destination, 0.8, now, paths);
+    if (result != MoveAttempt.BUDGET_EXHAUSTED) {
+      agent.nextPatrolAtNanos = now + PATROL_PAUSE.toNanos();
+    }
+  }
+
+  private MoveAttempt moveTo(AgentHandle handle, Mob mob, Point destination,
+      double speed, long now, PathBudget paths) {
+    AgentRuntime agent = handle.agent();
+    if (now < agent.nextPathAttemptAtNanos) return MoveAttempt.DEFERRED;
+    World world = mob.getWorld();
+    if (!chunkLoaded(world, destination)) {
+      agent.nextPathAttemptAtNanos = now
+          + AiTacticsPolicy.DEFAULT.pathFailureBackoff().toNanos();
+      return MoveAttempt.UNLOADED;
+    }
+    if (!paths.acquire()) return MoveAttempt.BUDGET_EXHAUSTED;
+    boolean moved;
+    try {
+      moved = mob.getPathfinder().moveTo(destination.location(world), speed);
+    } catch (RuntimeException ignored) {
+      moved = false;
+    }
+    agent.nextPathAttemptAtNanos = now + (moved ? TACTICS_TICK.toNanos()
+        : AiTacticsPolicy.DEFAULT.pathFailureBackoff().toNanos());
+    return moved ? MoveAttempt.STARTED : MoveAttempt.FAILED;
+  }
+
+  private void transition(AgentRuntime agent, Mob mob, AiTacticsPolicy.State next, long now) {
+    agent.state = next;
+    agent.stateSinceNanos = now;
+    switch (next) {
+      case DORMANT -> {
+        clearTarget(agent, mob);
+        mob.getPathfinder().stopPathfinding();
+        aware(mob, false);
+      }
+      case PATROL -> {
+        clearTarget(agent, mob);
+        mob.getPathfinder().stopPathfinding();
+        agent.nextPatrolAtNanos = now;
+        aware(mob, true);
+      }
+      case ALERT, CHASE -> {
+        mob.getPathfinder().stopPathfinding();
+        aware(mob, true);
+      }
+      case SEARCH, RETURN -> {
+        clearTarget(agent, mob);
+        mob.getPathfinder().stopPathfinding();
+        agent.nextPathAttemptAtNanos = now;
+        aware(mob, true);
+      }
+    }
+  }
+
+  private void alert(AgentHandle handle, Player target, long now, boolean propagate) {
+    if (!eligibleTarget(handle.runtime(), target)) return;
+    AgentRuntime agent = handle.agent();
+    UUID targetId = target.getUniqueId();
+    boolean changed = !targetId.equals(agent.targetId)
+        || (agent.state != AiTacticsPolicy.State.ALERT
+            && agent.state != AiTacticsPolicy.State.CHASE);
+    agent.targetId = targetId;
+    agent.lastKnown = Point.of(target.getLocation());
+    agent.lastSeenAtNanos = now;
+    if (changed) {
+      agent.state = AiTacticsPolicy.State.ALERT;
+      agent.stateSinceNanos = now;
+    }
+    Entity entity = Bukkit.getEntity(agent.entityId());
+    if (entity instanceof Mob mob) aware(mob, true);
+    if (propagate && changed) propagateAlert(handle, target, now);
+  }
+
+  private void retreatAfterBoundaryHit(AgentHandle handle, Player attacker, long now) {
+    Entity entity = Bukkit.getEntity(handle.agent().entityId());
+    if (!(entity instanceof Mob mob)) return;
+    handle.agent().lastKnown = Point.of(attacker.getLocation());
+    handle.agent().lastSeenAtNanos = now;
+    transition(handle.agent(), mob, AiTacticsPolicy.State.RETURN, now);
+  }
+
+  private void propagateAlert(AgentHandle source, Player target, long now) {
+    Entity sourceEntity = Bukkit.getEntity(source.agent().entityId());
+    if (!(sourceEntity instanceof Mob sourceMob)) return;
+    String team = source.zone().definition().team();
+    double maximumDistance = square(AiTacticsPolicy.DEFAULT.alertRadius());
+    int remaining = AiTacticsPolicy.DEFAULT.maximumAlertPeers();
+    for (ZoneRuntime zone : source.runtime().zones().values()) {
+      if (!team.equals(zone.definition().team())) continue;
+      for (AgentRuntime peer : zone.agents().values()) {
+        if (remaining <= 0) return;
+        if (peer.entityId().equals(source.agent().entityId())) continue;
+        Entity entity = Bukkit.getEntity(peer.entityId());
+        if (!(entity instanceof Mob mob) || !entity.isValid()
+            || distanceSquared(sourceMob.getLocation(), mob.getLocation()) > maximumDistance) {
+          continue;
+        }
+        AgentHandle handle = agents.get(peer.entityId());
+        if (handle == null || !eligibleCombatTarget(handle, target)) continue;
+        alert(handle, target, now, false);
+        remaining--;
+      }
+    }
+  }
+
+  private List<Player> eligibleTargets(GameRuntime runtime) {
+    CraftovGame game = games.find(runtime.gameId()).orElse(null);
+    if (game == null || game.state() != CraftovGameState.RUNNING) return List.of();
+    List<Player> result = new ArrayList<>();
+    for (CraftovPlayer participant : game.players()) {
+      Player player = Bukkit.getPlayer(participant.playerId());
+      if (player != null && eligibleTarget(runtime, game, participant, player)) {
+        result.add(player);
+      }
+    }
+    return List.copyOf(result);
+  }
+
+  private boolean eligibleTarget(GameRuntime runtime, Player player) {
+    CraftovGame game = games.find(runtime.gameId()).orElse(null);
+    CraftovPlayer participant = game == null ? null : game.players().stream()
+        .filter(candidate -> candidate.playerId().equals(player.getUniqueId()))
+        .findFirst().orElse(null);
+    return eligibleTarget(runtime, game, participant, player);
+  }
+
+  private boolean eligibleCombatTarget(AgentHandle handle, Player player) {
+    if (!eligibleTarget(handle.runtime(), player)
+        || !insideLeash(handle.zone().definition(), player.getLocation())) return false;
+    Entity entity = Bukkit.getEntity(handle.agent().entityId());
+    return entity instanceof Mob mob && entity.isValid()
+        && insideLeash(handle.zone().definition(), mob.getLocation());
+  }
+
+  private boolean eligibleTarget(GameRuntime runtime, @Nullable CraftovGame game,
+      @Nullable CraftovPlayer participant, Player player) {
+    boolean sameInstanceWorld = runtime.worldName().equals(player.getWorld().getName())
+        && worlds.gameByWorld(player.getWorld().getName())
+            .filter(runtime.gameId()::equals).isPresent();
+    boolean combatStateAlive;
+    try {
+      combatStateAlive = combatAlive.test(player.getUniqueId());
+    } catch (RuntimeException ignored) {
+      combatStateAlive = false;
+    }
+    return AiTargetPolicy.eligible(new AiTargetPolicy.Facts(
+        game != null && game.state() == CraftovGameState.RUNNING,
+        participant != null,
+        participant != null && participant.extracted(),
+        sameInstanceWorld,
+        player.isOnline(),
+        player.isValid(),
+        player.isDead(),
+        !player.isDead() && player.getHealth() > 0,
+        player.getGameMode() == GameMode.SURVIVAL,
+        combatStateAlive));
+  }
+
+  private static @Nullable Player nearestVisible(Mob mob, CraftovAiZone zone,
+      List<Player> targets, double maximumDistance) {
+    Player nearest = null;
+    double nearestDistance = square(maximumDistance);
+    Location origin = mob.getLocation();
+    for (Player player : targets) {
+      if (!insideLeash(zone, player.getLocation())) continue;
+      double distance = distanceSquared(origin, player.getLocation());
+      if (distance > nearestDistance || !mob.hasLineOfSight(player)) continue;
+      nearest = player;
+      nearestDistance = distance;
+    }
+    return nearest;
+  }
+
+  private static boolean insideLeash(CraftovAiZone zone, Location location) {
+    return AiTacticsPolicy.insideLeash(location.getX(), location.getZ(),
+        zone.minX(), zone.maxX(), zone.minZ(), zone.maxZ(),
+        AiTacticsPolicy.DEFAULT.leashMargin());
+  }
+
+  private static double distanceSquared(Location first, Location second) {
+    double dx = first.getX() - second.getX();
+    double dy = first.getY() - second.getY();
+    double dz = first.getZ() - second.getZ();
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  private static double square(double value) {
+    return value * value;
+  }
+
+  private static int floor(double value) {
+    return (int) Math.floor(value);
+  }
+
+  private static boolean chunkLoaded(World world, Point point) {
+    return world.isChunkLoaded(floor(point.x()) >> 4, floor(point.z()) >> 4);
+  }
+
+  private static int coordinate(SplittableRandom random, int minimum, int maximum) {
+    return (int) random.nextLong(minimum, (long) maximum + 1L);
+  }
+
+  private static Duration elapsed(long now, long since) {
+    return Duration.ofNanos(Math.max(0, now - since));
+  }
+
+  private static @Nullable Player target(@Nullable UUID targetId, List<Player> targets) {
+    if (targetId == null) return null;
+    return targets.stream().filter(player -> player.getUniqueId().equals(targetId))
+        .findFirst().orElse(null);
+  }
+
+  private static void clearTarget(AgentRuntime agent, Mob mob) {
+    agent.targetId = null;
+    if (mob.getTarget() != null) mob.setTarget(null);
+  }
+
+  private static void aware(Mob mob, boolean value) {
+    if (mob.isAware() != value) mob.setAware(value);
+  }
+
+  private void detach(AgentHandle handle, boolean refill) {
+    if (agents.remove(handle.agent().entityId()) != handle) return;
+    handle.zone().agents().remove(handle.agent().entityId());
+    if (refill) scheduleRefill(handle.runtime(), handle.zone(), FAILED_SPAWN_RETRY);
+  }
+
+  private @Nullable AgentHandle ownedAgent(Entity entity) {
+    if (!(entity instanceof Mob mob)) return null;
+    AgentHandle handle = agents.get(mob.getUniqueId());
+    if (handle == null || !handle.runtime().worldName().equals(mob.getWorld().getName())
+        || !ownedBy(mob, handle.runtime().gameId())) return null;
+    return handle;
+  }
+
+  private boolean taggedAi(Entity entity) {
+    return entity.getPersistentDataContainer().has(gameKey, PersistentDataType.STRING);
+  }
+
+  private void untrackProjectile(Projectile projectile) {
+    String gameId = projectile.getPersistentDataContainer()
+        .get(gameKey, PersistentDataType.STRING);
+    if (gameId != null) projectileRegistry.untrack(gameId, projectile.getUniqueId());
+  }
+
+  private void clearProjectileOwnership(Projectile projectile) {
+    PersistentDataContainer data = projectile.getPersistentDataContainer();
+    data.remove(gameKey);
+    data.remove(zoneKey);
+    data.remove(teamKey);
+    data.remove(projectileDamageMultiplierKey);
+    data.remove(projectileBaseDamageKey);
+  }
+
+  private static @Nullable Mob sourceMob(Entity entity) {
+    if (entity instanceof Mob mob) return mob;
+    if (entity instanceof Projectile projectile && projectile.getShooter() instanceof Mob mob) {
+      return mob;
+    }
+    return null;
+  }
+
+  private static @Nullable Player playerAttacker(Entity entity) {
+    if (entity instanceof Player player) return player;
+    if (entity instanceof Projectile projectile
+        && projectile.getShooter() instanceof Player player) return player;
+    return null;
+  }
+
   private void scheduleRefill(GameRuntime runtime, ZoneRuntime zone, Duration delay) {
-    if (zone.refillTask != null || zone.targetPopulation() <= zone.entities().size()) return;
+    if (zone.refillTask != null || zone.refillQueued
+        || zone.targetPopulation() <= zone.agents().size()) return;
     zone.refillTask = scheduler.runLater(delay.isZero() ? Duration.ofMillis(50) : delay, () -> {
       zone.refillTask = null;
       CraftovGame game = games.find(runtime.gameId())
           .filter(candidate -> candidate.state() == CraftovGameState.RUNNING).orElse(null);
-      if (game != null && runtimes.get(runtime.gameId()) == runtime) refill(runtime, zone);
+      if (game != null && runtimes.get(runtime.gameId()) == runtime) enqueueRefill(runtime, zone);
     });
   }
 
@@ -376,13 +1014,21 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     cancelPendingStart(gameId);
     GameRuntime runtime = runtimes.remove(gameId);
     if (runtime == null) return;
+    refillQueue.removeIf(request -> request.runtime() == runtime);
+    for (UUID projectileId : projectileRegistry.drain(gameId.value())) {
+      Entity projectile = Bukkit.getEntity(projectileId);
+      if (ownedBy(projectile, gameId)) projectile.remove();
+    }
     for (ZoneRuntime zone : runtime.zones().values()) {
       if (zone.refillTask != null) zone.refillTask.cancel();
-      for (UUID entityId : zone.entities()) {
+      zone.refillTask = null;
+      zone.refillQueued = false;
+      for (UUID entityId : List.copyOf(zone.agents().keySet())) {
+        agents.remove(entityId);
         Entity entity = Bukkit.getEntity(entityId);
         if (ownedBy(entity, gameId)) entity.remove();
       }
-      zone.entities().clear();
+      zone.agents().clear();
     }
     World world = Bukkit.getWorld(runtime.worldName());
     if (world != null) {
@@ -400,6 +1046,13 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         .get(gameKey, PersistentDataType.STRING));
   }
 
+  private @Nullable GameRuntime runtimeByValue(String gameId) {
+    for (GameRuntime runtime : runtimes.values()) {
+      if (runtime.gameId().value().equals(gameId)) return runtime;
+    }
+    return null;
+  }
+
   private static long seed(CraftovGameId gameId, String zoneId) {
     long value = ((long) gameId.value().hashCode() << 32) ^ zoneId.hashCode();
     return value ^ 0x5deece66dL;
@@ -414,21 +1067,94 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       @Nullable RaidActionProfile actionProfile,
       Map<String, ZoneRuntime> zones) {}
 
+  private record AgentHandle(
+      GameRuntime runtime, ZoneRuntime zone, AgentRuntime agent) {}
+
+  private record RefillRequest(GameRuntime runtime, ZoneRuntime zone) {}
+
+  private static final class AgentRuntime {
+    private final UUID entityId;
+    private final Point home;
+    private Point lastPosition;
+    private AiTacticsPolicy.State state = AiTacticsPolicy.State.DORMANT;
+    private long stateSinceNanos;
+    private long lastSeenAtNanos;
+    private long nextPathAttemptAtNanos;
+    private long nextPatrolAtNanos;
+    private long patrolSequence;
+    private @Nullable UUID targetId;
+    private @Nullable Point lastKnown;
+
+    private AgentRuntime(UUID entityId, Location home, long now) {
+      this.entityId = entityId;
+      this.home = Point.of(home);
+      lastPosition = this.home;
+      stateSinceNanos = now;
+      lastSeenAtNanos = now;
+      nextPathAttemptAtNanos = now;
+      nextPatrolAtNanos = now;
+    }
+
+    UUID entityId() { return entityId; }
+  }
+
+  private record Point(double x, double y, double z) {
+
+    private static Point of(Location location) {
+      return new Point(location.getX(), location.getY(), location.getZ());
+    }
+
+    private Location location(World world) {
+      return new Location(world, x, y, z);
+    }
+
+    private double distanceSquared(Location location) {
+      double dx = x - location.getX();
+      double dy = y - location.getY();
+      double dz = z - location.getZ();
+      return dx * dx + dy * dy + dz * dz;
+    }
+  }
+
+  private static final class PathBudget {
+    private int remaining;
+
+    private PathBudget(int remaining) {
+      this.remaining = remaining;
+    }
+
+    private boolean acquire() {
+      if (remaining <= 0) return false;
+      remaining--;
+      return true;
+    }
+  }
+
+  private enum MoveAttempt {
+    STARTED,
+    FAILED,
+    UNLOADED,
+    DEFERRED,
+    BUDGET_EXHAUSTED
+  }
+
   private static final class ZoneRuntime {
     private final CraftovAiZone definition;
     private final int targetPopulation;
-    private final Set<UUID> entities;
+    private final Map<UUID, AgentRuntime> agents;
     private long nextSequence;
     private @Nullable ScheduledTask refillTask;
+    private boolean refillQueued;
 
-    private ZoneRuntime(CraftovAiZone definition, int targetPopulation, Set<UUID> entities) {
+    private ZoneRuntime(CraftovAiZone definition, int targetPopulation,
+        Map<UUID, AgentRuntime> agents) {
       this.definition = definition;
       this.targetPopulation = targetPopulation;
-      this.entities = entities;
+      this.agents = agents;
     }
 
     CraftovAiZone definition() { return definition; }
     int targetPopulation() { return targetPopulation; }
-    Set<UUID> entities() { return entities; }
+    Map<UUID, AgentRuntime> agents() { return agents; }
   }
 }

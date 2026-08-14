@@ -38,6 +38,9 @@ final class CraftovAiSpawnResolver {
     }
     columns.add(new Column(midpoint(zone.minX(), zone.maxX()), midpoint(zone.minZ(), zone.maxZ())));
     for (Column column : columns) {
+      // World#getBlockAt may synchronously load a chunk. Instance AI never does
+      // that: an unloaded authored column is unavailable until Paper loads it.
+      if (!world.isChunkLoaded(column.x() >> 4, column.z() >> 4)) continue;
       Optional<Location> location = resolveColumn(world, zone, column, random);
       if (location.isPresent()) return location;
     }

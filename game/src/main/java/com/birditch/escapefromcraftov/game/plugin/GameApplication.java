@@ -6,6 +6,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.extraction.ExtractionService;
 import com.birditch.escapefromcraftov.api.inventory.RaidCarryService;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
@@ -68,6 +69,8 @@ import com.birditch.escapefromcraftov.game.plugin.editor.EditorWandListener;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorConfigMapper;
 import com.birditch.escapefromcraftov.game.plugin.editor.MapEditorSettings;
 import com.birditch.escapefromcraftov.game.plugin.extraction.ExtractionSwitchListener;
+import com.birditch.escapefromcraftov.game.plugin.extraction.RouteAwareExtractionService;
+import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
 import com.birditch.escapefromcraftov.game.plugin.integration.IntegrationManager;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.PendingJoinHandler;
@@ -216,6 +219,7 @@ public final class GameApplication {
       PendingJoinHandler pendingJoins,
       CraftovItemStacks itemStacks,
       RaidCarryController carry,
+      TeamExtractionRoutes extractionRoutes,
       LootOwnershipController lootOwnership,
       GameCombatListener combat,
       DownedPlayerListener downedPlayers,
@@ -582,6 +586,10 @@ public final class GameApplication {
     BungeeConnector bungee = new BungeeConnector(plugin);
     bungeeConnector = bungee;
     CraftovGameService games = context.services().require(CraftovGameService.class);
+    TeamExtractionRoutes extractionRoutes = new TeamExtractionRoutes();
+    ExtractionService extractionService = new RouteAwareExtractionService(
+        context.services().require(ExtractionService.class), games, extractionRoutes);
+    context.services().replace(ExtractionService.class, extractionService);
     CraftovScheduler scheduler = context.scheduler();
     GameServerConfig server = configs.server();
     WorldService worlds = new WorldService(new WorldServiceDeps(
@@ -625,8 +633,7 @@ public final class GameApplication {
     DownedPlayerListener downedPlayerController = new DownedPlayerListener(games,
         context.services().require(CombatService.class),
         context.services().require(com.birditch.escapefromcraftov.api.combat.DownedService.class),
-        context.services().require(
-            com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
+        extractionService,
         index, scheduler, configs.messages());
     downedPlayers = downedPlayerController;
     MedicalConditionListener medicalConditionController = new MedicalConditionListener(
@@ -638,9 +645,9 @@ public final class GameApplication {
     startCoordinator = starts;
     CraftovSidebarService sidebarService = new CraftovSidebarService(plugin, games,
         mapRuntime.sessions(), mapRuntime.service(),
-        context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
+        extractionService,
         context.services().require(CombatService.class), itemStacks,
-        context.services().require(ItemRegistry.class), carryController, secure,
+        context.services().require(ItemRegistry.class), carryController, secure, extractionRoutes,
         configs.messages(),
         configs.gameplay(),
         combatListener, starts,
@@ -659,12 +666,11 @@ public final class GameApplication {
         new BridgeDeps(games, context.services().require(ProfileService.class),
             context.services().require(com.birditch.escapefromcraftov.api.profile.ProgressionService.class),
             inventories,
-            context.services().require(
-                com.birditch.escapefromcraftov.api.extraction.ExtractionService.class), itemStacks,
+            extractionService, itemStacks,
             carryController, secure, reportRuntime, context.eventBus(), worlds, index, visibility,
             bungee, server,
             configs.messages(), trMenu,
-            scheduler, configs.gameplay().extractionExperience(), logger));
+            scheduler, configs.gameplay().extractionExperience(), logger), extractionRoutes);
     bridgeSubscription = context.eventBus().register(instanceBridge);
     DeathCrateListener deathCrateController = new DeathCrateListener(
         games, context.services().require(CombatService.class), index, itemStacks,
@@ -716,7 +722,7 @@ public final class GameApplication {
     waitingArrivalTimeout = arrivalTimeout;
     waitingArrivalSubscription = context.eventBus().register(arrivalTimeout);
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, carryController,
-        ownership, combatListener,
+        extractionRoutes, ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
   }
@@ -773,7 +779,7 @@ public final class GameApplication {
     pluginManager.registerEvents(new ExtractionRegionListener(
         context.services().require(CraftovGameService.class),
         context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
-        wiring.index(), configs.messages()), plugin);
+        wiring.index(), wiring.extractionRoutes(), configs.messages()), plugin);
     pluginManager.registerEvents(new ExtractionSwitchListener(
         context.services().require(CraftovGameService.class), wiring.index()), plugin);
     pluginManager.registerEvents(wiring.combat(), plugin);

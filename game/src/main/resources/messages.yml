@@ -163,6 +163,7 @@ extraction:
   started: "<green>正在从 <yellow><name></yellow> 撤离，请留在区域内。</green>"
   cancelled: "<red>你离开了撤离区域，撤离已取消。</red>"
   blocked: "<red>当前无法撤离:<reason></red>"
+  wrong-route: "<red><name> 不属于本队本局的撤离路线。</red> <gray>请按 HUD 前往已分配出口。</gray>"
   completed: "<green><bold>撤离成功!</bold></green> <gray>本局战利品已安全带回物资仓库。</gray>"
   settlement-failed: "<yellow>物资暂时没有送回仓库，系统会自动重试。请留在当前服务器。</yellow>"
   settlement-conflict: "<red>本局已经按阵亡完成结算，无法再按撤离处理。请联系管理员检查服务器日志。</red>"

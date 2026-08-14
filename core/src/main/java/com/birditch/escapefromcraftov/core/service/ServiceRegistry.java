@@ -44,6 +44,21 @@ public final class ServiceRegistry {
     return Optional.ofNullable(services.get(type)).map(type::cast);
   }
 
+  /// Replaces an already registered implementation while preserving the
+  /// service type's registration order. Intended for bootstrap-time decorators.
+  ///
+  /// @return the previous implementation
+  /// @throws ServiceNotFoundException if `type` has not been registered
+  public <T> T replace(Class<T> type, T implementation) {
+    Preconditions.checkNotNull(type, "type");
+    Preconditions.checkNotNull(implementation, "implementation");
+    Object previous = services.replace(type, implementation);
+    if (previous == null) {
+      throw new ServiceNotFoundException("Service not found: " + type.getName());
+    }
+    return type.cast(previous);
+  }
+
   /// Returns an unmodifiable view of the registered types in registration order.
   public Set<Class<?>> registeredTypes() {
     return Collections.unmodifiableSet(services.keySet());

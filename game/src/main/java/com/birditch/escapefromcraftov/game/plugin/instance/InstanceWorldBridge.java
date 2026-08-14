@@ -18,6 +18,7 @@ import com.birditch.escapefromcraftov.api.inventory.CraftovSettlementResult;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.api.report.RaidOutcome;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureSettlementItems;
+import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
 import java.util.HashMap;
@@ -73,12 +74,19 @@ public final class InstanceWorldBridge implements Listener {
   private static final String LOBBY_GROUP = "lobby";
 
   private final BridgeDeps deps;
+  private final TeamExtractionRoutes extractionRoutes;
   private final Map<CraftovGameId, Integer> nextSpawnByGame = new HashMap<>();
   private final Map<CraftovGameId, Integer> pendingEndAttempts = new HashMap<>();
   private final Map<SettlementKey, PendingExtraction> pendingExtractions = new HashMap<>();
 
+  /// Compatibility constructor for integrations created before team routes.
   public InstanceWorldBridge(BridgeDeps deps) {
+    this(deps, new TeamExtractionRoutes());
+  }
+
+  public InstanceWorldBridge(BridgeDeps deps, TeamExtractionRoutes extractionRoutes) {
     this.deps = Preconditions.checkNotNull(deps, "deps");
+    this.extractionRoutes = Preconditions.checkNotNull(extractionRoutes, "extractionRoutes");
   }
 
   @Subscribe
@@ -109,6 +117,7 @@ public final class InstanceWorldBridge implements Listener {
   /// [PlayerExtractedEvent] fired.
   @Subscribe
   public void onCraftovEnded(CraftovEndedEvent event) {
+    extractionRoutes.clear(event.gameId());
     List<UUID> remaining = List.copyOf(event.result().remainingPlayers());
     if (pendingEndAttempts.putIfAbsent(event.gameId(), 0) != null) return;
     for (UUID playerId : remaining) freeze(playerId);
@@ -183,6 +192,7 @@ public final class InstanceWorldBridge implements Listener {
 
   @Subscribe
   public void onPlayerLeftCraftov(PlayerLeftCraftovEvent event) {
+    deps.games().find(event.gameId()).ifPresent(extractionRoutes::prune);
     returnToLobby(event.playerId());
   }
 
@@ -191,6 +201,7 @@ public final class InstanceWorldBridge implements Listener {
   /// remains.
   @Subscribe
   public void onPlayerExtracted(PlayerExtractedEvent event) {
+    deps.games().find(event.gameId()).ifPresent(extractionRoutes::prune);
     returnToLobby(event.playerId());
   }
 
@@ -506,21 +517,41 @@ public final class InstanceWorldBridge implements Listener {
   private void teleportToGeneratedSpawn(Player player, CraftovGameId gameId, World world) {
     var game = deps.games().find(gameId).orElse(null);
     List<CraftovSpawnLocation> spawns = game == null ? List.of() : game.spawnLocations();
-    if (spawns.isEmpty()) {
-      player.teleport(world.getSpawnLocation());
-      return;
-    }
     int next = nextSpawnByGame.getOrDefault(gameId, 0);
     nextSpawnByGame.put(gameId, next + 1);
-    int teamId = game.players().stream()
+    int teamId = game == null ? 0 : game.players().stream()
         .filter(candidate -> candidate.playerId().equals(player.getUniqueId()))
         .findFirst().flatMap(candidate -> candidate.teamId().isPresent()
             ? java.util.Optional.of(candidate.teamId().getAsInt()) : java.util.Optional.empty())
         .orElse(0);
-    CraftovSpawnLocation point = CraftovSpawnSelector.select(spawns, teamId, next)
-        .orElse(null);
+    if (game != null && teamId > 0) {
+      var resolved = extractionRoutes.resolvedSpawn(gameId, teamId).orElse(null);
+      if (resolved != null) {
+        Location location = new Location(world, resolved.x(), resolved.y(), resolved.z(),
+            resolved.yaw(), resolved.pitch());
+        player.teleport(location);
+        extractionRoutes.freezeRoute(game, teamId, location.getX(), location.getZ());
+        return;
+      }
+    }
+    if (spawns.isEmpty()) {
+      teleportToTeamFallback(player, game, teamId, world);
+      return;
+    }
+    // The team's first arrival freezes one authored spawn. Teammates reuse its
+    // anchor/region instead of consuming the room-wide spawn ticket and being
+    // scattered to another side of the map.
+    CraftovSpawnLocation point = teamId > 0
+        ? extractionRoutes.spawn(gameId, teamId).orElseGet(() -> {
+          CraftovSpawnLocation selected = CraftovSpawnSelector
+              .select(spawns, teamId, teamId - 1L,
+                  extractionRoutes.reservedAuthoredSpawnIds(gameId)).orElse(null);
+          return selected == null ? null
+              : extractionRoutes.rememberSpawn(gameId, teamId, selected);
+        })
+        : CraftovSpawnSelector.select(spawns, teamId, next).orElse(null);
     if (point == null) {
-      player.teleport(world.getSpawnLocation());
+      teleportToTeamFallback(player, game, teamId, world);
       return;
     }
     long seed = ((long) gameId.value().hashCode() << 32)
@@ -530,10 +561,32 @@ public final class InstanceWorldBridge implements Listener {
     if (safe == null) {
       deps.logger().warning("出生区域没有找到安全落脚点，已使用世界出生点: "
           + gameId.value() + "/" + point.id());
-      player.teleport(world.getSpawnLocation());
+      teleportToTeamFallback(player, game, teamId, world);
       return;
     }
+    if (game != null && teamId > 0) {
+      var resolved = extractionRoutes.rememberResolvedSpawn(game.id(), teamId,
+          safe.getX(), safe.getY(), safe.getZ(), safe.getYaw(), safe.getPitch(), false);
+      safe = new Location(world, resolved.x(), resolved.y(), resolved.z(),
+          resolved.yaw(), resolved.pitch());
+      extractionRoutes.freezeRoute(game, teamId, safe.getX(), safe.getZ());
+    }
     player.teleport(safe);
+  }
+
+  private void teleportToTeamFallback(
+      Player player, com.birditch.escapefromcraftov.api.game.CraftovGame game,
+      int teamId, World world) {
+    Location fallback = world.getSpawnLocation();
+    if (game != null && teamId > 0) {
+      var frozen = extractionRoutes.rememberResolvedSpawn(game.id(), teamId,
+          fallback.getX(), fallback.getY(), fallback.getZ(), fallback.getYaw(),
+          fallback.getPitch(), true);
+      fallback = new Location(world, frozen.x(), frozen.y(), frozen.z(),
+          frozen.yaw(), frozen.pitch());
+      extractionRoutes.freezeRoute(game, teamId, fallback.getX(), fallback.getZ());
+    }
+    player.teleport(fallback);
   }
 
   private void stopFailedGame(CraftovGameId gameId) {

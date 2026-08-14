@@ -11,6 +11,7 @@ public final class ExtractionFailures {
     public static final String POINT_NOT_FOUND = "撤离点不存在";
     public static final String POINT_LOCKED = "撤离点已锁定";
     public static final String ALREADY_EXTRACTING = "撤离正在进行中";
+    public static final String ROUTE_NOT_ASSIGNED = "该撤离点不属于本队路线";
 
     private ExtractionFailures() {
     }

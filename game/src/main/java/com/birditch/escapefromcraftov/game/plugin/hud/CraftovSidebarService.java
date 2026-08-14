@@ -18,6 +18,7 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.GameplaySettings;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapService;
+import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
 import com.birditch.escapefromcraftov.game.plugin.listener.GameCombatListener;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartStatus;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
@@ -68,6 +69,7 @@ public final class CraftovSidebarService implements AutoCloseable {
   private final ItemRegistry items;
   private final RaidCarryController carry;
   private final SecureContainerController secure;
+  private final TeamExtractionRoutes extractionRoutes;
   private final Messages messages;
   private final GameplaySettings settings;
   private final GameCombatListener combatListener;
@@ -80,11 +82,24 @@ public final class CraftovSidebarService implements AutoCloseable {
   private @Nullable BukkitTask task;
   private boolean closed;
 
+  /// Compatibility constructor for integrations created before team routes.
+  public CraftovSidebarService(Plugin plugin, CraftovGameService games,
+      EditorSessionService editors, ManualMapService maps, ExtractionService extractions,
+      CombatService combat, CraftovItemStacks itemStacks, ItemRegistry items,
+      RaidCarryController carry, SecureContainerController secure, Messages messages,
+      GameplaySettings settings, GameCombatListener combatListener, CraftovStartStatus starts,
+      int durationSeconds, int maxPlayers, int minimumPlayers) {
+    this(plugin, games, editors, maps, extractions, combat, itemStacks, items, carry, secure,
+        new TeamExtractionRoutes(), messages, settings, combatListener, starts, durationSeconds,
+        maxPlayers, minimumPlayers);
+  }
+
   public CraftovSidebarService(Plugin plugin, CraftovGameService games, EditorSessionService editors,
       ManualMapService maps, ExtractionService extractions,
       CombatService combat,
       CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
-      SecureContainerController secure, Messages messages, GameplaySettings settings,
+      SecureContainerController secure, TeamExtractionRoutes extractionRoutes,
+      Messages messages, GameplaySettings settings,
       GameCombatListener combatListener, CraftovStartStatus starts,
       int durationSeconds, int maxPlayers, int minimumPlayers) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
@@ -97,6 +112,7 @@ public final class CraftovSidebarService implements AutoCloseable {
     this.items = Preconditions.checkNotNull(items, "items");
     this.carry = Preconditions.checkNotNull(carry, "carry");
     this.secure = Preconditions.checkNotNull(secure, "secure");
+    this.extractionRoutes = Preconditions.checkNotNull(extractionRoutes, "extractionRoutes");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.combatListener = Preconditions.checkNotNull(combatListener, "combatListener");
@@ -215,7 +231,11 @@ public final class CraftovSidebarService implements AutoCloseable {
     long value = saturatedAdd(itemStacks.totalValue(player.getInventory().getContents()),
         itemValue(protectedItems));
     ExtractionSession extractionSession = extractions.activeSession(player.getUniqueId()).orElse(null);
-    String extraction = extractionSession == null ? "寻找撤离点"
+    String assignedExits = extractionRoutes.visibleAreas(game, player.getUniqueId()).stream()
+        .map(area -> area.displayName()).distinct()
+        .collect(java.util.stream.Collectors.joining(" / "));
+    String extraction = extractionSession == null
+        ? assignedExits.isBlank() ? "寻找撤离点" : "本队出口 · " + assignedExits
         : extractionSession.state() == ExtractionState.SETTLING ? "物资结算中 · 请稍候"
         : "撤离中 · " + extractionSession.pointId().value() + " · "
             + extractionSeconds(game, extractionSession) + "s";

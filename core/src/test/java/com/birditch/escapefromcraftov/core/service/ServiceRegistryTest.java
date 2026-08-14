@@ -34,6 +34,18 @@ class ServiceRegistryTest {
   }
 
   @Test
+  void replaceInstallsDecoratorAndReturnsPreviousInstance() {
+    Alpha original = new Alpha() {};
+    Alpha decorated = new Alpha() {};
+    registry.register(Alpha.class, original);
+
+    assertSame(original, registry.replace(Alpha.class, decorated));
+    assertSame(decorated, registry.require(Alpha.class));
+    assertThrows(ServiceNotFoundException.class,
+        () -> registry.replace(Beta.class, new Beta() {}));
+  }
+
+  @Test
   void registeringTheSameTypeTwiceThrowsDuplicateServiceException() {
     registry.register(Alpha.class, new Alpha() {});
     Alpha again = new Alpha() {};

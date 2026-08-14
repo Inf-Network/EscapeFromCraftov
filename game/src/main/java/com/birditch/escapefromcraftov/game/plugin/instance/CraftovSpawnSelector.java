@@ -5,6 +5,7 @@ import com.birditch.escapefromcraftov.api.game.CraftovSpawnTeamRules;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /// Pure deterministic team and smooth weighted round-robin selection for
 /// authored craftov spawns.
@@ -14,7 +15,17 @@ final class CraftovSpawnSelector {
 
   static Optional<CraftovSpawnLocation> select(
       List<CraftovSpawnLocation> spawns, int teamId, long ticket) {
+    return select(spawns, teamId, ticket, Set.of());
+  }
+
+  /// Reserves frozen authored spawns across opposing teams. When any eligible
+  /// point remains, selection is restricted to unused points; deterministic
+  /// weighted reuse begins only after the candidate pool is exhausted.
+  static Optional<CraftovSpawnLocation> select(
+      List<CraftovSpawnLocation> spawns, int teamId, long ticket,
+      Set<String> reservedSpawnIds) {
     Preconditions.checkNotNull(spawns, "spawns");
+    Preconditions.checkNotNull(reservedSpawnIds, "reservedSpawnIds");
     Preconditions.checkArgument(ticket >= 0, "ticket must not be negative");
     List<CraftovSpawnLocation> dedicated = spawns.stream()
         .filter(spawn -> !CraftovSpawnTeamRules.isGeneric(spawn.team()))
@@ -24,6 +35,9 @@ final class CraftovSpawnSelector {
     List<CraftovSpawnLocation> candidates = !dedicated.isEmpty() ? dedicated
         : !generic.isEmpty() ? generic : List.copyOf(spawns);
     if (candidates.isEmpty()) return Optional.empty();
+    List<CraftovSpawnLocation> unreserved = candidates.stream()
+        .filter(spawn -> !reservedSpawnIds.contains(spawn.id())).toList();
+    if (!unreserved.isEmpty()) candidates = unreserved;
 
     // Smooth weighted round-robin keeps the authored relative weights while
     // avoiding the clustering produced by hashing every ticket independently.

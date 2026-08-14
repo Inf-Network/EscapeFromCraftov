@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnArea;
 import com.birditch.escapefromcraftov.api.game.CraftovSpawnLocation;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class CraftovSpawnSelectorTest {
@@ -44,6 +45,20 @@ class CraftovSpawnSelectorTest {
       if (CraftovSpawnSelector.select(spawns, 1, ticket).orElseThrow().id().equals("heavy")) heavy++;
     }
     assertEquals(800, heavy);
+  }
+
+  @Test
+  void opposingTeamsReserveDistinctGenericSpawnsBeforeWeightedReuse() {
+    List<CraftovSpawnLocation> spawns = List.of(
+        spawn("heavy", "players", 4), spawn("light", "players", 1));
+
+    CraftovSpawnLocation first = CraftovSpawnSelector.select(
+        spawns, 1, 0, Set.of()).orElseThrow();
+    CraftovSpawnLocation second = CraftovSpawnSelector.select(
+        spawns, 2, 1, Set.of(first.id())).orElseThrow();
+
+    assertEquals("heavy", first.id());
+    assertEquals("light", second.id());
   }
 
   @Test

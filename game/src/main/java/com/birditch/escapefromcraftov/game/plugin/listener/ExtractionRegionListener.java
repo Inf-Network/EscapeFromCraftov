@@ -10,6 +10,8 @@ import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
+import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
+import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionStartGate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -29,14 +31,25 @@ public final class ExtractionRegionListener implements Listener {
   private final CraftovGameService games;
   private final ExtractionService extractions;
   private final InstanceWorldIndex worlds;
+  private final TeamExtractionStartGate startGate;
   private final Messages messages;
   private final Map<UUID, String> regionByPlayer = new HashMap<>();
 
+  /// Compatibility constructor for integrations created before team routes.
+  /// Its isolated route registry has no assignment and therefore preserves the
+  /// legacy fail-open extraction behaviour.
   public ExtractionRegionListener(CraftovGameService games, ExtractionService extractions,
       InstanceWorldIndex worlds, Messages messages) {
+    this(games, extractions, worlds, new TeamExtractionRoutes(), messages);
+  }
+
+  public ExtractionRegionListener(CraftovGameService games, ExtractionService extractions,
+      InstanceWorldIndex worlds, TeamExtractionRoutes routes, Messages messages) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.extractions = Preconditions.checkNotNull(extractions, "extractions");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
+    this.startGate = new TeamExtractionStartGate(this.extractions,
+        Preconditions.checkNotNull(routes, "routes"));
     this.messages = Preconditions.checkNotNull(messages, "messages");
   }
 
@@ -73,8 +86,17 @@ public final class ExtractionRegionListener implements Listener {
       return;
     }
     regionByPlayer.put(player.getUniqueId(), region.pointId().value());
-    Result<?> result = extractions.begin(player.getUniqueId(), game.id(),
-        region.pointId());
+    Optional<? extends Result<?>> attempt = startGate.beginIfAssigned(
+        game, player.getUniqueId(), region.pointId());
+    if (attempt.isEmpty()) {
+      // Keep the wrong-region edge latched to avoid per-block message spam.
+      // Crossing out reaches the region==null branch above, clears the latch,
+      // and permits a later re-entry attempt.
+      player.sendMessage(messages.raw("extraction.wrong-route",
+          Placeholder.unparsed("name", region.displayName())));
+      return;
+    }
+    Result<?> result = attempt.get();
     if (result.isSuccess()) {
       player.sendMessage(messages.raw("extraction.started",
           Placeholder.unparsed("name", region.displayName())));

@@ -21,6 +21,7 @@ import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.common.result.Result;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
 import com.birditch.escapefromcraftov.game.plugin.LobbyReturn;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryLayout;
 import com.birditch.escapefromcraftov.map.EditorSession;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -400,10 +401,24 @@ public final class PendingJoinHandler {
       List<StoredItem> legacyCargo = items.stream()
           .filter(item -> item.loadoutSlot() == null).toList();
       for (StoredItem item : named) {
-        giveClaimedItem(player, item);
+        giveNamedItem(player.getInventory(), item,
+            deps.items().require(item.itemId()).category());
+      }
+      List<ItemStack> legacyOverflow = new ArrayList<>();
+      for (StoredItem item : legacyCargo) {
+        ItemCategory category = deps.items().require(item.itemId()).category();
+        for (ItemStack stack : deps.itemStacks().fromStored(item)) {
+          if (!tryEquipLegacy(player.getInventory(), category, stack)) {
+            legacyOverflow.add(stack);
+          }
+        }
       }
       deps.carry().install(player, assignment.gameId(), items);
-      for (StoredItem item : legacyCargo) giveClaimedItem(player, item);
+      for (ItemStack stack : legacyOverflow) {
+        if (!deps.carry().admit(player, stack)) {
+          throw new IllegalStateException("旧版出战物品无法放入权威携行网格");
+        }
+      }
       deps.carry().refresh(player);
     } catch (RuntimeException mappingFailure) {
       deps.carry().clear(player);
@@ -420,22 +435,6 @@ public final class PendingJoinHandler {
     player.sendMessage(deps.messages().raw("game.sent-to-instance",
         Placeholder.unparsed("id", assignment.gameId().value()),
         Placeholder.component("map", MapNames.display(deps.messages(), assignment.mapId()))));
-  }
-
-  private void giveClaimedItem(Player player, StoredItem item) {
-    ItemCategory category = deps.items().require(item.itemId()).category();
-    if (item.loadoutSlot() != null) {
-      giveNamedItem(player.getInventory(), item, category);
-      return;
-    }
-    List<ItemStack> backpack = new ArrayList<>();
-    for (ItemStack stack : deps.itemStacks().fromStored(item)) {
-      if (!tryEquip(player.getInventory(), category, stack)) backpack.add(stack);
-    }
-    if (!backpack.isEmpty()
-        && !player.getInventory().addItem(backpack.toArray(ItemStack[]::new)).isEmpty()) {
-      throw new IllegalStateException("出战物品超过玩家背包容量");
-    }
   }
 
   private void giveNamedItem(PlayerInventory inventory, StoredItem item, ItemCategory category) {
@@ -538,6 +537,26 @@ public final class PendingJoinHandler {
     if (!empty(inventory.getItem(slot))) return false;
     inventory.setItem(slot, stack);
     return true;
+  }
+
+  /** Legacy rows had no named slots; preserve their playable hand/container projection. */
+  static boolean tryEquipLegacy(
+      PlayerInventory inventory, ItemCategory category, ItemStack stack) {
+    if (tryEquip(inventory, category, stack)) return true;
+    int slot = legacyPreferredSlot(category);
+    if (slot < 0 || !empty(inventory.getItem(slot))) return false;
+    inventory.setItem(slot, stack);
+    if (slot == RaidCarryLayout.MAIN_HAND_SLOT) inventory.setHeldItemSlot(slot);
+    return true;
+  }
+
+  static int legacyPreferredSlot(ItemCategory category) {
+    return switch (category) {
+      case MELEE_WEAPON, RANGED_WEAPON -> RaidCarryLayout.MAIN_HAND_SLOT;
+      case CHEST_RIG -> RaidCarryLayout.CHEST_RIG_SLOT;
+      case BACKPACK -> RaidCarryLayout.BACKPACK_SLOT;
+      default -> -1;
+    };
   }
 
   static Optional<EquipmentSlot> armorSlot(ItemCategory category, Material material) {

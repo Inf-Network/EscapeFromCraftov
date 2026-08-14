@@ -13,6 +13,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
@@ -47,8 +50,10 @@ public final class LootOwnershipController implements Listener, AutoCloseable {
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
   private final Messages messages;
+  private final Logger logger;
   private final TimeSource clock;
   private final long protectionMillis;
+  private final Predicate<UUID> manualCarry;
   private final NamespacedKey gameKey;
   private final NamespacedKey priorityKey;
   private final NamespacedKey unlockKey;
@@ -58,18 +63,26 @@ public final class LootOwnershipController implements Listener, AutoCloseable {
 
   public LootOwnershipController(Plugin plugin, CraftovGameService games,
       InstanceWorldIndex worlds, Messages messages, TimeSource clock, Duration protection) {
-    Preconditions.checkNotNull(plugin, "plugin");
+    this(plugin, games, worlds, messages, clock, protection, _ -> false);
+  }
+
+  public LootOwnershipController(Plugin plugin, CraftovGameService games,
+      InstanceWorldIndex worlds, Messages messages, TimeSource clock, Duration protection,
+      Predicate<UUID> manualCarry) {
+    Plugin checkedPlugin = Preconditions.checkNotNull(plugin, "plugin");
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.messages = Preconditions.checkNotNull(messages, "messages");
+    logger = checkedPlugin.getLogger();
     this.clock = Preconditions.checkNotNull(clock, "clock");
     Preconditions.checkNotNull(protection, "protection");
     Preconditions.checkArgument(!protection.isNegative() && !protection.isZero(),
         "protection must be positive");
+    this.manualCarry = Preconditions.checkNotNull(manualCarry, "manualCarry");
     protectionMillis = protection.toMillis();
-    gameKey = new NamespacedKey(plugin, "loot_owner_game");
-    priorityKey = new NamespacedKey(plugin, "loot_owner_priority");
-    unlockKey = new NamespacedKey(plugin, "loot_owner_unlock");
+    gameKey = new NamespacedKey(checkedPlugin, "loot_owner_game");
+    priorityKey = new NamespacedKey(checkedPlugin, "loot_owner_priority");
+    unlockKey = new NamespacedKey(checkedPlugin, "loot_owner_unlock");
   }
 
   /** Records the claim resolved by GameCombatListener's validated final attribution. */
@@ -102,6 +115,64 @@ public final class LootOwnershipController implements Listener, AutoCloseable {
     Preconditions.checkNotNull(playerId, "playerId");
     Preconditions.checkNotNull(claim, "claim");
     return LootClaimPolicy.access(game, playerId, claim, clock.currentMillis());
+  }
+
+  /**
+   * Rechecks ownership after the HIGHEST guard and prepares a claim-free clone only. The live
+   * entity, its PDC and the in-memory claim remain untouched until {@link #commitManualPickup}.
+   */
+  public Optional<ManualPickupPermit> prepareManualPickup(Item entity, Player player) {
+    Preconditions.checkNotNull(entity, "entity");
+    Preconditions.checkNotNull(player, "player");
+    ItemStack original = entity.getItemStack().clone();
+    LootClaim claim = physicalClaims.get(entity.getUniqueId());
+    if (claim == null) claim = claimOf(original).orElse(null);
+    CraftovGame game = worlds.gameByWorld(player.getWorld().getName())
+        .flatMap(games::find).orElse(null);
+    LootAccess access = claim == null
+        ? new LootAccess(LootAccess.Kind.PUBLIC, 0)
+        : game == null
+            ? new LootAccess(LootAccess.Kind.NOT_ACCESSIBLE, 0)
+            : access(game, player.getUniqueId(), claim);
+    if (!ManualLootPickupPolicy.mayTake(false, true, access)) return Optional.empty();
+    ItemStack admitted = original.clone();
+    clearProtection(admitted);
+    return Optional.of(new ManualPickupPermit(entity.getUniqueId(), claim, access,
+        original, admitted));
+  }
+
+  /**
+   * Main-thread no-fail source commit. Every comparison happens before claim/PDC/entity mutation.
+   */
+  public boolean commitManualPickup(Item entity, Player player, ManualPickupPermit permit) {
+    Preconditions.checkNotNull(entity, "entity");
+    Preconditions.checkNotNull(player, "player");
+    Preconditions.checkNotNull(permit, "permit");
+    if (!entity.getUniqueId().equals(permit.entityId()) || !entity.isValid()) return false;
+    ItemStack current = entity.getItemStack();
+    if (current.getAmount() != permit.original().getAmount()
+        || !current.isSimilar(permit.original())) return false;
+    LootClaim currentClaim = physicalClaims.get(entity.getUniqueId());
+    if (currentClaim == null) currentClaim = claimOf(current.clone()).orElse(null);
+    if (!java.util.Objects.equals(currentClaim, permit.claim())) return false;
+
+    releasePhysical(entity.getUniqueId(), current);
+    entity.setItemStack(current);
+    entity.remove();
+    if (permit.access().kind() == LootAccess.Kind.PRIORITY && permit.claim() != null) {
+      // Source removal is irreversible. Presentation must never make the surrounding target
+      // transaction believe this commit failed and roll its newly placed anchor back out.
+      try {
+        notifyPriority(player, permit.claim().gameId(), permit.access());
+      } catch (RuntimeException presentationFailure) {
+        try {
+          logger.log(Level.WARNING, "战利品拾取已提交，但优先权提示发送失败", presentationFailure);
+        } catch (RuntimeException ignored) {
+          // A broken logger is presentation too; commitManualPickup must remain true after remove.
+        }
+      }
+    }
+    return true;
   }
 
   /** Adds or replaces the claim on a physical drop. Public claims clear stale protection. */
@@ -170,6 +241,9 @@ public final class LootOwnershipController implements Listener, AutoCloseable {
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onPickupCommitted(EntityPickupItemEvent event) {
     if (!(event.getEntity() instanceof Player player)) return;
+    // Active carry performs the source release in its later MONITOR transaction. Releasing here
+    // would strip ownership before that target transaction has committed.
+    if (manualCarry.test(player.getUniqueId())) return;
     ItemStack stack = event.getItem().getItemStack();
     LootClaim claim = physicalClaims.get(event.getItem().getUniqueId());
     if (claim == null) claim = claimOf(stack).orElse(null);
@@ -321,4 +395,29 @@ public final class LootOwnershipController implements Listener, AutoCloseable {
   private record DeathKey(CraftovGameId gameId, UUID victimId) {}
 
   private record NoticeKey(CraftovGameId gameId, UUID playerId) {}
+
+  public record ManualPickupPermit(
+      UUID entityId,
+      @Nullable LootClaim claim,
+      LootAccess access,
+      ItemStack original,
+      ItemStack admitted) {
+
+    public ManualPickupPermit {
+      Preconditions.checkNotNull(entityId, "entityId");
+      Preconditions.checkNotNull(access, "access");
+      original = Preconditions.checkNotNull(original, "original").clone();
+      admitted = Preconditions.checkNotNull(admitted, "admitted").clone();
+    }
+
+    @Override
+    public ItemStack original() {
+      return original.clone();
+    }
+
+    @Override
+    public ItemStack admitted() {
+      return admitted.clone();
+    }
+  }
 }

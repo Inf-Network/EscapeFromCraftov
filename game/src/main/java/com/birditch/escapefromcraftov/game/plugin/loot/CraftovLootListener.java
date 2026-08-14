@@ -1,6 +1,8 @@
 package com.birditch.escapefromcraftov.game.plugin.loot;
 
 import com.birditch.escapefromcraftov.api.event.Subscribe;
+import com.birditch.escapefromcraftov.api.event.combat.PlayerDownedEvent;
+import com.birditch.escapefromcraftov.api.event.extraction.PlayerExtractionLockedEvent;
 import com.birditch.escapefromcraftov.api.event.game.CraftovEndedEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
@@ -20,6 +22,7 @@ import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
 import com.birditch.escapefromcraftov.game.plugin.RaidActionRuntimePolicy;
+import com.birditch.escapefromcraftov.game.plugin.RaidInventoryMutationGate;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import java.util.ArrayList;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.time.Duration;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
@@ -73,6 +77,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   private final TrMenuBridge menus;
   private final CraftovScheduler scheduler;
   private final RaidCarryController carry;
+  private final RaidInventoryMutationGate mutationGate;
+  private final Predicate<Block> deathCrateMarker;
   private final AutoCloseable itemSource;
   private final Map<ContainerKey, LootContainerState> containers = new HashMap<>();
   private final Map<ContainerKey, CraftovLootPoint> resolvedPoints = new HashMap<>();
@@ -84,6 +90,22 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
       ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
       TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry) {
+    this(games, loot, itemStacks, items, worlds, messages, inventorySize, menus, scheduler, carry,
+        RaidInventoryMutationGate.legacyAllowAll(), _ -> false);
+  }
+
+  public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
+      ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
+      TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry,
+      RaidInventoryMutationGate mutationGate) {
+    this(games, loot, itemStacks, items, worlds, messages, inventorySize, menus, scheduler, carry,
+        mutationGate, _ -> false);
+  }
+
+  public CraftovLootListener(CraftovGameService games, LootService loot, CraftovItemStacks itemStacks,
+      ItemRegistry items, InstanceWorldIndex worlds, Messages messages, int inventorySize,
+      TrMenuBridge menus, CraftovScheduler scheduler, RaidCarryController carry,
+      RaidInventoryMutationGate mutationGate, Predicate<Block> deathCrateMarker) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.loot = Preconditions.checkNotNull(loot, "loot");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
@@ -96,6 +118,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.scheduler = Preconditions.checkNotNull(scheduler, "scheduler");
     this.carry = Preconditions.checkNotNull(carry, "carry");
+    this.mutationGate = Preconditions.checkNotNull(mutationGate, "mutationGate");
+    this.deathCrateMarker = Preconditions.checkNotNull(deathCrateMarker, "deathCrateMarker");
     this.itemSource = menus.registerItemSource("CRAFTOVCORELOOT", this::menuItem);
   }
 
@@ -107,11 +131,12 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     Optional<CraftovGameId> foundGame = worlds.gameByWorld(player.getWorld().getName());
     if (foundGame.isEmpty()) return;
     CraftovGame game = games.find(foundGame.get()).orElse(null);
-    if (!activeMember(game, player)) {
+    Block targetBlock = targetBlock(event, player);
+    if (targetBlock != null && deathCrateMarker.test(targetBlock)) return;
+    if (!mutationGate.allows(player.getUniqueId()) || !activeMember(game, player)) {
       player.sendMessage(messages.raw("loot.not-running"));
       return;
     }
-    Block targetBlock = targetBlock(event, player);
     Location target = targetBlock == null ? null : targetBlock.getLocation().add(0.5, 0.5, 0.5);
     if (target == null) return;
     CraftovLootPoint point = resolve(game, targetBlock, target).orElse(null);
@@ -181,20 +206,17 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       player.sendActionBar(messages.raw("loot.unidentified"));
       return;
     }
-    ItemStack taken;
+    boolean transferred;
     synchronized (container) {
-      taken = container.item(containerSlot);
+      ItemStack taken = container.item(containerSlot);
       if (taken == null || taken.isEmpty()) return;
-      if (!carry.canAccept(player, taken)) {
-        player.sendMessage(messages.raw("loot.inventory-full"));
-        return;
-      }
-      container.remove(containerSlot);
-      Map<Integer, ItemStack> leftovers = player.getInventory().addItem(taken.clone());
-      if (!leftovers.isEmpty()) {
-        container.restore(containerSlot, taken);
-        throw new IllegalStateException("背包容量检查与实际写入不一致");
-      }
+      transferred = carry.transferIntoCargo(player, taken,
+          () -> mutationGate.allows(player.getUniqueId())
+              && container.removeIfSame(containerSlot, taken));
+    }
+    if (!transferred) {
+      player.sendMessage(messages.raw("loot.inventory-full"));
+      return;
     }
     player.sendActionBar(messages.raw("loot.taken"));
     refreshViewers(validated.view().key());
@@ -233,6 +255,16 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       if (player != null) menus.close(player, "escapefromcraftov_loot");
       return true;
     });
+  }
+
+  @Subscribe
+  public void onPlayerDowned(PlayerDownedEvent event) {
+    closeBlockedPlayer(event.playerId());
+  }
+
+  @Subscribe
+  public void onExtractionLocked(PlayerExtractionLockedEvent event) {
+    closeBlockedPlayer(event.playerId());
   }
 
   public int activeContainerCount() {
@@ -284,6 +316,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     if (expected == null || searches.get(playerId) != expected) return;
     Player player = org.bukkit.Bukkit.getPlayer(playerId);
     if (player == null || !player.isOnline()
+        || !mutationGate.allows(playerId)
         || !player.getWorld().getName().equals(expected.worldName())) {
       cancelSearch(playerId, false);
       return;
@@ -452,6 +485,16 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     views.remove(playerId);
   }
 
+  private void closeBlockedPlayer(UUID playerId) {
+    Player player = org.bukkit.Bukkit.getPlayer(playerId);
+    cancelSearch(playerId, false);
+    if (player == null) {
+      stopView(playerId);
+      return;
+    }
+    stopView(player, false, true);
+  }
+
   private void notifyTeammatesSearching(CraftovGame game, Player player,
       CraftovLootPoint point) {
     CraftovPlayer searching = game.players().stream()
@@ -505,6 +548,9 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private void open(Player player) {
+    if (!mutationGate.allows(player.getUniqueId())) {
+      throw new IllegalStateException("当前状态禁止打开 Loot 菜单");
+    }
     LootView view = views.get(player.getUniqueId());
     if (view == null || !menus.open(player, "escapefromcraftov_loot",
         Integer.toString(view.page() + 1),
@@ -515,6 +561,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private ItemStack menuItem(Player player, String id) {
+    if (!mutationGate.allows(player.getUniqueId())) return air();
     LootView view = views.get(player.getUniqueId());
     if (view == null) return air();
     LootContainerState container = containers.get(view.key());
@@ -547,6 +594,10 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   }
 
   private ValidatedView validateView(Player player) {
+    if (!mutationGate.allows(player.getUniqueId())) {
+      stopView(player, false, true);
+      throw new IllegalStateException("当前状态禁止操作 Loot 菜单");
+    }
     LootView view = views.get(player.getUniqueId());
     if (view == null) throw new IllegalStateException("Loot 搜索会话已结束");
     if (!menus.isViewing(player, "escapefromcraftov_loot")) {
@@ -574,7 +625,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
 
   private boolean validViewLocation(CraftovGame game, Player player, CraftovLootPoint point,
       ContainerKey key, Location location) {
-    if (location == null || !activeMember(game, player)
+    if (location == null || !mutationGate.allows(player.getUniqueId())
+        || !activeMember(game, player)
         || location.getWorld() == null
         || worlds.gameByWorld(location.getWorld().getName()).filter(key.gameId()::equals).isEmpty()) {
       return false;
@@ -796,12 +848,14 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       return List.copyOf(slots);
     }
 
-    private void remove(int slot) {
+    private synchronized boolean removeIfSame(int slot, ItemStack expected) {
+      if (slot < 0 || slot >= contents.size()) return false;
+      ItemStack current = contents.get(slot);
+      if (current == null || current.isEmpty()
+          || current.getAmount() != expected.getAmount()
+          || !current.isSimilar(expected)) return false;
       contents.set(slot, null);
-    }
-
-    private void restore(int slot, ItemStack item) {
-      contents.set(slot, item.clone());
+      return true;
     }
   }
 }

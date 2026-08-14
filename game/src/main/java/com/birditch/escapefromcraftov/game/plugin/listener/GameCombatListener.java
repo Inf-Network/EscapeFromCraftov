@@ -175,28 +175,35 @@ public final class GameCombatListener implements Listener {
     // Publish the authoritative loot claim before any presentation or reward
     // side effect can fail; DeathCrate's MONITOR handler consumes this record.
     lootOwnership.recordPlayerDeath(game, victimId, attributedKiller);
-    if (attributedKiller != null) {
-      int total = kills.merge(attributedKiller, 1, Integer::sum);
-      raidReports.recordKill(game.id(), attributedKiller);
-      Player killer = org.bukkit.Bukkit.getPlayer(attributedKiller);
-      if (killer != null) killer.sendMessage(messages.raw("combat.kill-confirmed",
-          Placeholder.unparsed("victim", victim.getName()),
-          Placeholder.unparsed("kills", Integer.toString(total))));
-      broadcast(game, messages.raw("combat.kill-feed",
-          Placeholder.unparsed("attacker", killer == null ? "玩家" : killer.getName()),
-          Placeholder.unparsed("victim", victim.getName())));
-      awardProgression("kill", attributedKiller, game.id(), victimId,
-          settings.killExperience(), "击败敌对玩家", 0);
-    } else {
-      broadcast(game, messages.raw("combat.death-feed",
-          Placeholder.unparsed("victim", victim.getName())));
-    }
-    awardProgression("death", victimId, game.id(), victimId,
-        settings.deathExperience(), "行动参与", 0);
-    raidReports.declareOutcome(game.id(), victimId, RaidOutcome.KILLED);
-    List<ItemInstance> protectedItems = secureContainers.beginSettlement(
-        game.id(), victimId);
+
+    // Start the durable loss transaction before kill counters, reports, progression or messages.
+    // None of those secondary effects may strand a dead participant with an unsettled loadout.
+    List<ItemInstance> protectedItems = secureContainers.beginSettlement(game.id(), victimId);
     settleDeath(victim, game.id(), protectedItems, 0);
+
+    if (attributedKiller != null) {
+      int[] total = {kills.getOrDefault(attributedKiller, 0)};
+      bestEffort("更新击杀计数", () ->
+          total[0] = kills.merge(attributedKiller, 1, Integer::sum));
+      bestEffort("记录击杀战报", () -> raidReports.recordKill(game.id(), attributedKiller));
+      Player[] killer = {null};
+      bestEffort("查找击杀玩家", () -> killer[0] = org.bukkit.Bukkit.getPlayer(attributedKiller));
+      if (killer[0] != null) present("击杀确认提示", () -> killer[0].sendMessage(messages.raw(
+          "combat.kill-confirmed", Placeholder.unparsed("victim", victim.getName()),
+          Placeholder.unparsed("kills", Integer.toString(total[0])))));
+      present("击杀播报", () -> broadcast(game, messages.raw("combat.kill-feed",
+          Placeholder.unparsed("attacker", killer[0] == null ? "玩家" : killer[0].getName()),
+          Placeholder.unparsed("victim", victim.getName()))));
+      bestEffort("写入击杀经验", () -> awardProgression("kill", attributedKiller,
+          game.id(), victimId, settings.killExperience(), "击败敌对玩家", 0));
+    } else {
+      present("死亡播报", () -> broadcast(game, messages.raw("combat.death-feed",
+          Placeholder.unparsed("victim", victim.getName()))));
+    }
+    bestEffort("写入死亡参与经验", () -> awardProgression("death", victimId, game.id(),
+        victimId, settings.deathExperience(), "行动参与", 0));
+    bestEffort("声明死亡战报", () ->
+        raidReports.declareOutcome(game.id(), victimId, RaidOutcome.KILLED));
   }
 
   @EventHandler
@@ -214,32 +221,76 @@ public final class GameCombatListener implements Listener {
   private void settleDeath(Player victim, CraftovGameId gameId,
       List<ItemInstance> protectedItems, int attempt) {
     UUID victimId = victim.getUniqueId();
-    inventories.settleLoss(victimId, gameId, protectedItems).whenComplete((result, failure) ->
+    try {
+      inventories.settleLoss(victimId, gameId, protectedItems).whenComplete((result, failure) ->
         scheduler.runSync(() -> {
           if (failure != null || result == null) {
-            org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.WARNING,
-                "死亡损失结算失败，将自动重试:" + victimId, failure);
-            if (attempt == 0 && victim.isOnline()) {
-              victim.sendMessage(messages.raw("combat.settlement-failed"));
-            }
             scheduler.runLater(Duration.ofSeconds(5),
                 () -> settleDeath(victim, gameId, protectedItems, attempt + 1));
+            safeLog(java.util.logging.Level.WARNING,
+                "死亡损失结算失败，将自动重试:" + victimId, failure);
+            if (attempt == 0 && victim.isOnline()) {
+              present("死亡结算失败提示", () ->
+                  victim.sendMessage(messages.raw("combat.settlement-failed")));
+            }
             return;
           }
-          secureContainers.completeSettlement(gameId, victimId);
-          if (result.outcome() == CraftovInventoryOutcome.LOST) {
-            raidReports.complete(gameId, victimId, RaidOutcome.KILLED, protectedItems);
-          }
-          if (victim.isOnline()) {
-            victim.setInvulnerable(true);
-            try {
+          try {
+            critical("关闭死亡安全箱结算", () ->
+                secureContainers.completeSettlement(gameId, victimId));
+            if (result.outcome() == CraftovInventoryOutcome.LOST) critical(
+                "写入死亡战报", () -> raidReports.complete(
+                    gameId, victimId, RaidOutcome.KILLED, protectedItems));
+            if (victim.isOnline()) present("死亡结算复活提示", () -> {
+              victim.setInvulnerable(true);
               victim.spigot().respawn();
-            } catch (RuntimeException ignored) {
-              // A proxy or another plugin may own the respawn screen.
-            }
+            });
+          } finally {
+            // Durable loss is already committed; presentation/report failures cannot freeze the
+            // participant inside a completed raid.
+            games.leave(victimId);
           }
-          games.leave(victimId);
         }));
+    } catch (RuntimeException synchronousFailure) {
+      scheduler.runLater(Duration.ofSeconds(5),
+          () -> settleDeath(victim, gameId, protectedItems, attempt + 1));
+      safeLog(java.util.logging.Level.WARNING,
+          "死亡损失结算启动失败，将自动重试:" + victimId, synchronousFailure);
+      if (attempt == 0 && victim.isOnline()) present("死亡结算失败提示", () ->
+          victim.sendMessage(messages.raw("combat.settlement-failed")));
+    }
+  }
+
+  private void present(String action, Runnable presentation) {
+    try {
+      presentation.run();
+    } catch (RuntimeException failure) {
+      safeLog(java.util.logging.Level.WARNING, action + "失败，但结算继续", failure);
+    }
+  }
+
+  private void bestEffort(String action, Runnable operation) {
+    try {
+      operation.run();
+    } catch (RuntimeException failure) {
+      safeLog(java.util.logging.Level.WARNING, action + "失败，但死亡结算已启动", failure);
+    }
+  }
+
+  private void critical(String action, Runnable operation) {
+    try {
+      operation.run();
+    } catch (RuntimeException failure) {
+      safeLog(java.util.logging.Level.SEVERE, action + "失败，但死亡结算继续", failure);
+    }
+  }
+
+  private void safeLog(java.util.logging.Level level, String message, Throwable failure) {
+    try {
+      plugin.getLogger().log(level, message, failure);
+    } catch (RuntimeException ignored) {
+      // Logging is presentation and must never block a durable settlement terminal state.
+    }
   }
 
   private Optional<CraftovGame> gameOf(Player player) {
@@ -254,18 +305,19 @@ public final class GameCombatListener implements Listener {
     progression.award(transactionId, playerId, experience, reason)
         .whenComplete((result, failure) -> scheduler.runSync(() -> {
           if (failure != null || result == null || !result.isSuccess()) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING,
-                "行动经验写入失败，将在 5 秒后重试 (第 " + (attempt + 1) + " 次):"
-                    + playerId, failure);
             scheduler.runLater(Duration.ofSeconds(5), () -> awardProgression(
                 kind, playerId, gameId, relatedPlayer, experience, reason, attempt + 1));
+            safeLog(java.util.logging.Level.WARNING,
+                "行动经验写入失败，将在 5 秒后重试 (第 " + (attempt + 1) + " 次):"
+                    + playerId, failure);
             return;
           }
           result.value().filter(update -> update.levelledUp()).ifPresent(update -> {
             Player online = org.bukkit.Bukkit.getPlayer(playerId);
             if (online != null) {
-              online.showTitle(Title.title(Component.text("等级提升", NamedTextColor.GOLD),
-                  Component.text("当前等级 " + update.levelAfter(), NamedTextColor.YELLOW)));
+              present("行动升级提示", () -> online.showTitle(Title.title(
+                  Component.text("等级提升", NamedTextColor.GOLD),
+                  Component.text("当前等级 " + update.levelAfter(), NamedTextColor.YELLOW))));
             }
           });
         }));

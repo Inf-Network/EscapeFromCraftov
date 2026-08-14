@@ -12,6 +12,7 @@ import com.birditch.escapefromcraftov.api.game.RaidDifficulty;
 import com.birditch.escapefromcraftov.api.game.RaidMode;
 import com.birditch.escapefromcraftov.api.game.RaidTierId;
 import com.birditch.escapefromcraftov.api.inventory.LoadoutSlot;
+import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.network.MatchAssignment;
 import com.birditch.escapefromcraftov.api.network.ServerId;
 import com.birditch.escapefromcraftov.game.plugin.GameServerConfig;
@@ -121,6 +122,16 @@ class PendingJoinHandlerTest {
     assertEquals(List.of("potion-2"), quick.backpack());
     assertThrows(IllegalStateException.class, () -> PendingJoinHandler.planNamedStacks(
         LoadoutSlot.MAIN_HAND, List.of("sword-1", "sword-2")));
+  }
+
+  @Test
+  void legacyWeaponsAndContainersKeepPlayableReservedSlotsBeforeGridInstall() {
+    assertEquals(0, PendingJoinHandler.legacyPreferredSlot(ItemCategory.MELEE_WEAPON));
+    assertEquals(0, PendingJoinHandler.legacyPreferredSlot(ItemCategory.RANGED_WEAPON));
+    assertEquals(7, PendingJoinHandler.legacyPreferredSlot(ItemCategory.CHEST_RIG));
+    assertEquals(8, PendingJoinHandler.legacyPreferredSlot(ItemCategory.BACKPACK));
+    // Shields and armor still use tryEquip's off-hand/armor projection instead of storage.
+    assertEquals(-1, PendingJoinHandler.legacyPreferredSlot(ItemCategory.SHIELD));
   }
 
   private static MatchAssignment assignment(UUID playerId, ServerId serverId, String proxyName) {

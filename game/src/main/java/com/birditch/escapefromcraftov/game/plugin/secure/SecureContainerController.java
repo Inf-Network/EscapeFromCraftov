@@ -4,12 +4,16 @@ import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovGameState;
+import com.birditch.escapefromcraftov.api.event.Subscribe;
+import com.birditch.escapefromcraftov.api.event.combat.PlayerDownedEvent;
+import com.birditch.escapefromcraftov.api.event.extraction.PlayerExtractionLockedEvent;
 import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.game.plugin.RaidInventoryMutationGate;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import java.util.HashMap;
@@ -18,6 +22,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -30,12 +36,14 @@ import org.bukkit.inventory.ItemStack;
 public final class SecureContainerController implements AutoCloseable {
 
   public static final String MENU_ID = "escapefromcraftov_secure";
+  private static final Logger LOGGER = Logger.getLogger(SecureContainerController.class.getName());
 
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
   private final CraftovItemStacks itemStacks;
   private final ItemRegistry items;
   private final RaidCarryController carry;
+  private final RaidInventoryMutationGate mutationGate;
   private final Messages messages;
   private final TrMenuBridge menus;
   private final AutoCloseable itemSource;
@@ -44,11 +52,19 @@ public final class SecureContainerController implements AutoCloseable {
   public SecureContainerController(CraftovGameService games, InstanceWorldIndex worlds,
       CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
       Messages messages, TrMenuBridge menus) {
+    this(games, worlds, itemStacks, items, carry, messages, menus,
+        RaidInventoryMutationGate.legacyAllowAll());
+  }
+
+  public SecureContainerController(CraftovGameService games, InstanceWorldIndex worlds,
+      CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
+      Messages messages, TrMenuBridge menus, RaidInventoryMutationGate mutationGate) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
     this.itemStacks = Preconditions.checkNotNull(itemStacks, "itemStacks");
     this.items = Preconditions.checkNotNull(items, "items");
     this.carry = Preconditions.checkNotNull(carry, "carry");
+    this.mutationGate = Preconditions.checkNotNull(mutationGate, "mutationGate");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.menus = Preconditions.checkNotNull(menus, "menus");
     this.itemSource = menus.registerItemSource("CRAFTOVCORESECURE", this::menuItem);
@@ -56,6 +72,11 @@ public final class SecureContainerController implements AutoCloseable {
 
   public void open(Player player) {
     Preconditions.checkNotNull(player, "player");
+    if (!mutationGate.allows(player.getUniqueId())) {
+      menus.close(player, MENU_ID);
+      player.sendMessage(messages.raw("secure.not-in-craftov"));
+      return;
+    }
     SecureKey key = activeKey(player).orElse(null);
     if (key == null) {
       player.sendMessage(messages.raw("secure.not-in-craftov"));
@@ -94,7 +115,13 @@ public final class SecureContainerController implements AutoCloseable {
       player.sendMessage(messages.raw("secure.not-allowed"));
       return;
     }
+    boolean activeCarry = carry.active(player.getUniqueId());
+    boolean cargoAnchor = carry.cargoAnchor(player, tagged.instanceId());
     if (hasOtherPhysicalHalf(player, tagged.instanceId())) {
+      if (activeCarry) {
+        player.sendMessage(messages.raw("secure.invalid-stack"));
+        return;
+      }
       itemStacks.assignFreshIdentity(held).orElseThrow();
       player.getInventory().setItemInMainHand(held);
     }
@@ -103,38 +130,89 @@ public final class SecureContainerController implements AutoCloseable {
       player.sendMessage(messages.raw("secure.invalid-stack"));
       return;
     }
-    int slot = view.state().store(snapshot.getFirst());
-    if (slot < 0) {
-      player.sendMessage(messages.raw("secure.full"));
+    ItemInstance storedItem = snapshot.getFirst();
+    if (cargoAnchor || activeCarry) {
+      int[] storedSlot = {-1};
+      java.util.function.BooleanSupplier destination = () -> {
+        if (!mutationGate.allows(player.getUniqueId())) return false;
+        storedSlot[0] = view.state().store(storedItem);
+        return storedSlot[0] >= 0;
+      };
+      RaidCarryController.CargoRemoval removal = cargoAnchor
+          ? carry.transferOutOfCargo(player, storedItem.instanceId(), destination)
+          : carry.transferOutOfEquipment(player, storedItem.instanceId(), destination);
+      if (removal != RaidCarryController.CargoRemoval.COMMITTED) {
+        player.sendMessage(messages.raw("secure.full"));
+        return;
+      }
+      player.sendActionBar(messages.raw("secure.stored"));
+      refresh(player);
       return;
     }
-    player.getInventory().setItemInMainHand(null);
+
+    int slot = -1;
+    boolean targetStored = false;
+    try {
+      if (!mutationGate.allows(player.getUniqueId())) return;
+      slot = view.state().store(storedItem);
+      if (slot < 0) {
+        player.sendMessage(messages.raw("secure.full"));
+        return;
+      }
+      targetStored = true;
+      player.getInventory().setItemInMainHand(null);
+    } catch (RuntimeException sourceFailure) {
+      rollbackManualStore(player, view.state(), slot, storedItem, held, targetStored,
+          sourceFailure);
+      player.sendMessage(messages.raw("secure.invalid-stack"));
+      return;
+    }
     player.sendActionBar(messages.raw("secure.stored"));
     refresh(player);
   }
 
-  /** Returns one complete stack into an empty physical storage slot. */
+  private void rollbackManualStore(Player player, SecureContainerState state, int slot,
+      ItemInstance storedItem, ItemStack original, boolean targetStored, RuntimeException failure) {
+    boolean targetRemoved = !targetStored;
+    if (targetStored) {
+      try {
+        targetRemoved = state.takeIfSame(slot, storedItem);
+      } catch (RuntimeException rollbackFailure) {
+        failure.addSuppressed(rollbackFailure);
+      }
+    }
+    try {
+      if (targetRemoved) {
+        if (player.getInventory().getItemInMainHand().isEmpty()) {
+          player.getInventory().setItemInMainHand(original);
+        }
+      } else if (sameIdentity(player.getInventory().getItemInMainHand(), storedItem.instanceId())) {
+        // The protected target is now authoritative; remove any uncertain source copy.
+        player.getInventory().setItemInMainHand(null);
+      }
+    } catch (RuntimeException rollbackFailure) {
+      failure.addSuppressed(rollbackFailure);
+    }
+    logBestEffort(Level.SEVERE, "安全箱存入失败；已按单一身份策略回滚", failure);
+  }
+
+  /** Returns one complete stack through the authoritative carry-grid transaction. */
   public void take(Player player, int slot) {
     ValidatedView view = validateView(player);
     if (view == null) return;
     ItemInstance item = view.state().item(slot).orElse(null);
     if (item == null) return;
-    int inventorySlot = firstEmptyStorageSlot(player);
-    if (inventorySlot < 0) {
-      player.sendMessage(messages.raw("secure.inventory-full"));
-      return;
-    }
     List<ItemStack> restored = itemStacks.fromInstance(item);
     if (restored.size() != 1) {
       player.sendMessage(messages.raw("secure.invalid-stack"));
       return;
     }
-    if (!carry.canAccept(player, restored.getFirst())) {
+    if (!carry.transferIntoCargo(player, restored.getFirst(),
+        () -> mutationGate.allows(player.getUniqueId())
+            && view.state().takeIfSame(slot, item))) {
       player.sendMessage(messages.raw("secure.inventory-full"));
       return;
     }
-    player.getInventory().setItem(inventorySlot, restored.getFirst());
-    view.state().take(slot);
     player.sendActionBar(messages.raw("secure.taken"));
     refresh(player);
   }
@@ -142,9 +220,11 @@ public final class SecureContainerController implements AutoCloseable {
   /** Seals and returns the retry-stable protected snapshot for a final settlement. */
   public List<ItemInstance> beginSettlement(CraftovGameId gameId, UUID playerId) {
     SecureKey key = new SecureKey(gameId, playerId);
+    List<ItemInstance> snapshot = states.computeIfAbsent(
+        key, _ -> new SecureContainerState()).beginSettlement();
     Player online = Bukkit.getPlayer(playerId);
-    if (online != null && menus.isViewing(online, MENU_ID)) menus.close(online, MENU_ID);
-    return states.computeIfAbsent(key, _ -> new SecureContainerState()).beginSettlement();
+    if (online != null) closeSettlementMenuBestEffort(online, "封存安全箱");
+    return snapshot;
   }
 
   /** Current protected items for live HUD/weight calculations without sealing mutation. */
@@ -175,10 +255,42 @@ public final class SecureContainerController implements AutoCloseable {
     SecureKey key = new SecureKey(gameId, playerId);
     states.remove(key);
     Player online = Bukkit.getPlayer(playerId);
-    if (online != null && menus.isViewing(online, MENU_ID)) menus.close(online, MENU_ID);
+    if (online != null) closeSettlementMenuBestEffort(online, "完成安全箱结算");
+  }
+
+  private void closeSettlementMenuBestEffort(Player player, String action) {
+    try {
+      if (menus.isViewing(player, MENU_ID)) menus.close(player, MENU_ID);
+    } catch (RuntimeException failure) {
+      logBestEffort(Level.WARNING, action + "后关闭菜单失败，但权威状态已提交", failure);
+    }
+  }
+
+  private static void logBestEffort(Level level, String message, Throwable failure) {
+    try {
+      LOGGER.log(level, message, failure);
+    } catch (RuntimeException ignored) {
+      // Logging and menu presentation are outside secure-container transactions.
+    }
+  }
+
+  @Subscribe
+  public void onPlayerDowned(PlayerDownedEvent event) {
+    closeBlockedPlayer(event.playerId());
+  }
+
+  @Subscribe
+  public void onExtractionLocked(PlayerExtractionLockedEvent event) {
+    closeBlockedPlayer(event.playerId());
+  }
+
+  private void closeBlockedPlayer(UUID playerId) {
+    Player player = Bukkit.getPlayer(playerId);
+    if (player != null && menus.isViewing(player, MENU_ID)) menus.close(player, MENU_ID);
   }
 
   private ItemStack menuItem(Player player, String rawId) {
+    if (!mutationGate.allows(player.getUniqueId())) return emptySlot();
     SecureKey key = activeKey(player).orElse(null);
     if (key == null) return emptySlot();
     SecureContainerState state = states.get(key);
@@ -208,6 +320,11 @@ public final class SecureContainerController implements AutoCloseable {
 
   private ValidatedView validateView(Player player) {
     Preconditions.checkNotNull(player, "player");
+    if (!mutationGate.allows(player.getUniqueId())) {
+      menus.close(player, MENU_ID);
+      player.sendMessage(messages.raw("secure.not-in-craftov"));
+      return null;
+    }
     if (!menus.isViewing(player, MENU_ID)) {
       player.sendMessage(messages.raw("secure.open-first"));
       return null;
@@ -242,15 +359,11 @@ public final class SecureContainerController implements AutoCloseable {
   }
 
   private void refresh(Player player) {
-    if (!menus.open(player, MENU_ID)) player.sendMessage(messages.raw("secure.open-failed"));
-  }
-
-  private static int firstEmptyStorageSlot(Player player) {
-    ItemStack[] contents = player.getInventory().getStorageContents();
-    for (int slot = 0; slot < contents.length; slot++) {
-      if (contents[slot] == null || contents[slot].isEmpty()) return slot;
+    if (!mutationGate.allows(player.getUniqueId())) {
+      menus.close(player, MENU_ID);
+      return;
     }
-    return -1;
+    if (!menus.open(player, MENU_ID)) player.sendMessage(messages.raw("secure.open-failed"));
   }
 
   private boolean hasOtherPhysicalHalf(Player player, UUID instanceId) {

@@ -12,16 +12,19 @@ class LootOwnershipWiringBoundaryTest {
   private static final Path REPOSITORY = Path.of("..").toAbsolutePath().normalize();
 
   @Test
-  void capacityGuardRunsBeforeOwnershipCanClearPhysicalDropTags() throws IOException {
+  void ownershipGuardRunsBeforeManualCarryPickupAndMonitorSeesItsCancellation() throws IOException {
     String application = read(
         "game/src/main/java/com/birditch/escapefromcraftov/game/plugin/GameApplication.java");
-    int carry = application.indexOf("registerEvents(wiring.carry(), plugin)");
+    int pending = application.indexOf("registerEvents(new PendingPlayerGuard(");
     int downed = application.indexOf("registerEvents(wiring.downedPlayers(), plugin)");
     int bridge = application.indexOf("registerEvents(wiring.bridge(), plugin)");
+    int carry = application.indexOf("registerEvents(wiring.carry(), plugin)");
     int ownership = application.indexOf("registerEvents(wiring.lootOwnership(), plugin)");
+    int manualCarry = application.indexOf("new RaidCarryPickupListener(");
 
-    assertTrue(carry >= 0 && downed > carry && bridge > downed && ownership > bridge,
-        "all same-priority pickup guards must run before ownership's final commit");
+    assertTrue(pending >= 0 && downed > pending && bridge > downed && carry > bridge
+            && ownership > carry && manualCarry > ownership,
+        "drop blockers precede carry mutations; ownership precedes the pickup takeover");
   }
 
   @Test

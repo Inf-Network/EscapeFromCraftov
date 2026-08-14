@@ -45,6 +45,16 @@ final class SecureContainerState {
     return item;
   }
 
+  /** Atomically removes only the item previously presented to a transfer planner. */
+  boolean takeIfSame(int slot, ItemInstance expected) {
+    checkSlot(slot);
+    Preconditions.checkNotNull(expected, "expected");
+    requireMutable();
+    if (!expected.equals(slots[slot])) return false;
+    slots[slot] = null;
+    return true;
+  }
+
   List<ItemInstance> contents() {
     List<ItemInstance> result = new ArrayList<>(CAPACITY);
     for (ItemInstance item : slots) if (item != null) result.add(item);

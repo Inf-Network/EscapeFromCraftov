@@ -2,6 +2,8 @@ package com.birditch.escapefromcraftov.game.plugin.deathcrate;
 
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.event.Subscribe;
+import com.birditch.escapefromcraftov.api.event.combat.PlayerDownedEvent;
+import com.birditch.escapefromcraftov.api.event.extraction.PlayerExtractionLockedEvent;
 import com.birditch.escapefromcraftov.api.event.game.CraftovEndedEvent;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
@@ -11,6 +13,7 @@ import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.bukkit.Messages;
 import com.birditch.escapefromcraftov.bukkit.TrMenuBridge;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.game.plugin.RaidInventoryMutationGate;
 import com.birditch.escapefromcraftov.game.plugin.instance.InstanceWorldIndex;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
 import com.birditch.escapefromcraftov.game.plugin.ownership.LootAccess;
@@ -40,6 +43,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
+import org.bukkit.event.Event;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -75,15 +79,26 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
   private final Logger logger;
   private final RaidCarryController carry;
   private final LootOwnershipController lootOwnership;
+  private final RaidInventoryMutationGate mutationGate;
   private final AutoCloseable itemSource;
   private final Map<UUID, DeathCrate> crates = new HashMap<>();
   private final Map<MarkerKey, UUID> cratesByMarker = new HashMap<>();
   private final Map<UUID, CrateView> views = new HashMap<>();
+  private final Map<PlayerInteractEvent, UUID> guardedOpens = new IdentityHashMap<>();
 
   public DeathCrateListener(CraftovGameService games, CombatService combat,
       InstanceWorldIndex worlds,
       CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus, Logger logger,
       RaidCarryController carry, LootOwnershipController lootOwnership) {
+    this(games, combat, worlds, itemStacks, messages, menus, logger, carry, lootOwnership,
+        RaidInventoryMutationGate.legacy(combat));
+  }
+
+  public DeathCrateListener(CraftovGameService games, CombatService combat,
+      InstanceWorldIndex worlds,
+      CraftovItemStacks itemStacks, Messages messages, TrMenuBridge menus, Logger logger,
+      RaidCarryController carry, LootOwnershipController lootOwnership,
+      RaidInventoryMutationGate mutationGate) {
     this.games = Preconditions.checkNotNull(games, "games");
     this.combat = Preconditions.checkNotNull(combat, "combat");
     this.worlds = Preconditions.checkNotNull(worlds, "worlds");
@@ -93,6 +108,7 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     this.logger = Preconditions.checkNotNull(logger, "logger");
     this.carry = Preconditions.checkNotNull(carry, "carry");
     this.lootOwnership = Preconditions.checkNotNull(lootOwnership, "lootOwnership");
+    this.mutationGate = Preconditions.checkNotNull(mutationGate, "mutationGate");
     this.itemSource = menus.registerItemSource("CRAFTOVCOREDEATH", this::menuItem);
   }
 
@@ -140,15 +156,27 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
         Placeholder.unparsed("crates", Integer.toString(crateCount))));
   }
 
-  /** Claims marker clicks before the NORMAL-priority Loot Zone listener sees a barrel. */
+  /** Freezes marker identity without cancelling, so later protection plugins retain veto power. */
   @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
-  public void onInteract(PlayerInteractEvent event) {
-    if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) return;
+  public void onInteractMarker(PlayerInteractEvent event) {
+    if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
+        || event.getHand() != EquipmentSlot.HAND) return;
     UUID crateId = cratesByMarker.get(MarkerKey.of(event.getClickedBlock()));
     if (crateId == null) return;
+    guardedOpens.put(event, crateId);
+  }
+
+  /** Opens only after every ordinary event guard has run; the final gate is authoritative. */
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+  public void onInteractCommit(PlayerInteractEvent event) {
+    UUID crateId = guardedOpens.remove(event);
+    if (crateId == null || event.useInteractedBlock() == Event.Result.DENY
+        || event.useItemInHand() == Event.Result.DENY) return;
+    // The interaction survived every LOW..HIGHEST veto. Claim vanilla opening now, including
+    // denied access, so protected contents can never open as an ordinary barrel.
     event.setCancelled(true);
-    if (event.getHand() != EquipmentSlot.HAND) return;
     Player player = event.getPlayer();
+    if (!mutationGate.allows(player.getUniqueId())) return;
     DeathCrate crate = crates.get(crateId);
     if (crate == null) return;
     LootAccess access = access(player, crate);
@@ -177,16 +205,14 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     if (slot >= DeathCrateState.CAPACITY) return;
     ItemStack item = validated.crate().state().item(slot).orElse(null);
     if (item == null) return;
-    if (!carry.canAccept(player, item)) {
+    boolean transferred = carry.transferIntoCargo(player, item,
+        () -> mutationGate.allows(player.getUniqueId())
+            && validated.crate().state().takeIfSame(slot, item,
+            (current, expected) -> current.getAmount() == expected.getAmount()
+                && current.isSimilar(expected)));
+    if (!transferred) {
       player.sendMessage(messages.raw("death-crate.inventory-full"));
       return;
-    }
-    ItemStack taken = validated.crate().state().take(slot).orElse(null);
-    if (taken == null) return;
-    Map<Integer, ItemStack> leftovers = player.getInventory().addItem(taken.clone());
-    if (!leftovers.isEmpty()) {
-      validated.crate().state().restore(slot, taken);
-      throw new IllegalStateException("阵亡箱容量检查与实际写入不一致");
     }
     player.sendActionBar(messages.raw("death-crate.taken"));
     if (validated.crate().state().isEmpty()) {
@@ -234,7 +260,8 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     CrateView view = views.get(event.getPlayer().getUniqueId());
     if (view == null) return;
     DeathCrate crate = crates.get(view.crateId());
-    if (crate != null && closeEnough(event.getTo(), crate.marker())) return;
+    if (crate != null && mutationGate.allows(event.getPlayer().getUniqueId())
+        && closeEnough(event.getTo(), crate.marker())) return;
     views.remove(event.getPlayer().getUniqueId());
     menus.close(event.getPlayer(), MENU_ID);
     event.getPlayer().sendActionBar(messages.raw("death-crate.too-far"));
@@ -281,11 +308,27 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
     lootOwnership.clearGame(event.gameId());
   }
 
+  @Subscribe
+  public void onPlayerDowned(PlayerDownedEvent event) {
+    closeBlockedPlayer(event.playerId());
+  }
+
+  @Subscribe
+  public void onExtractionLocked(PlayerExtractionLockedEvent event) {
+    closeBlockedPlayer(event.playerId());
+  }
+
   public int activeCrateCount() {
     return crates.size();
   }
 
+  /** Shared marker lookup used by ordinary authored-loot interaction routing. */
+  public boolean isMarker(Block block) {
+    return block != null && cratesByMarker.containsKey(MarkerKey.of(block));
+  }
+
   private ItemStack menuItem(Player player, String rawId) {
+    if (!mutationGate.allows(player.getUniqueId())) return emptySlot();
     CrateView view = views.get(player.getUniqueId());
     DeathCrate crate = view == null ? null : crates.get(view.crateId());
     if (crate == null) return emptySlot();
@@ -321,6 +364,10 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
   }
 
   private ValidatedView validateView(Player player) {
+    if (!mutationGate.allows(player.getUniqueId())) {
+      closeBlockedPlayer(player.getUniqueId());
+      return null;
+    }
     if (!menus.isViewing(player, MENU_ID)) {
       player.sendMessage(messages.raw("death-crate.open-first"));
       return null;
@@ -416,7 +463,8 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
         .filter(entry -> entry.getValue().crateId().equals(crate.id())).toList();
     for (Map.Entry<UUID, CrateView> entry : current) {
       Player player = Bukkit.getPlayer(entry.getKey());
-      if (player == null || !menus.isViewing(player, MENU_ID) || !canOpen(player, crate)) {
+      if (player == null || !mutationGate.allows(player.getUniqueId())
+          || !menus.isViewing(player, MENU_ID) || !canOpen(player, crate)) {
         views.remove(entry.getKey());
         continue;
       }
@@ -427,6 +475,7 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
   }
 
   private boolean openMenu(Player player, DeathCrate crate, int page) {
+    if (!mutationGate.allows(player.getUniqueId())) return false;
     int pages = crate.state().pageCount(PAGE_SIZE);
     return menus.open(player, MENU_ID, Integer.toString(page + 1), Integer.toString(pages),
         Integer.toString(crate.state().itemCount()));
@@ -445,6 +494,12 @@ public final class DeathCrateListener implements Listener, AutoCloseable {
       if (player != null && menus.isViewing(player, MENU_ID)) menus.close(player, MENU_ID);
     }
     restore(removed.marker());
+  }
+
+  private void closeBlockedPlayer(UUID playerId) {
+    views.remove(playerId);
+    Player player = Bukkit.getPlayer(playerId);
+    if (player != null && menus.isViewing(player, MENU_ID)) menus.close(player, MENU_ID);
   }
 
   private static void restore(Marker marker) {

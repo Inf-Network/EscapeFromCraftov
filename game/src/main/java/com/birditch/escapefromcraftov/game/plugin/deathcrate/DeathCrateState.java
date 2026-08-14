@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import java.util.function.BiPredicate;
 
 /** Main-thread-confined contents of one read-only, shared death crate. */
 final class DeathCrateState<T> {
@@ -41,6 +42,18 @@ final class DeathCrateState<T> {
     items[slot] = null;
     itemCount--;
     return Optional.of(copy(item));
+  }
+
+  /** Atomically removes only the exact value the caller previously projected. */
+  boolean takeIfSame(int slot, T expected, BiPredicate<T, T> same) {
+    checkSlot(slot);
+    Preconditions.checkNotNull(expected, "expected");
+    Preconditions.checkNotNull(same, "same");
+    T item = value(slot);
+    if (item == null || !same.test(copy(item), expected)) return false;
+    items[slot] = null;
+    itemCount--;
+    return true;
   }
 
   void restore(int slot, T item) {

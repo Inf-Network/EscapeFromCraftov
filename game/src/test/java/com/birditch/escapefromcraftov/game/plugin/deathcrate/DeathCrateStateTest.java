@@ -56,6 +56,17 @@ class DeathCrateStateTest {
     assertFalse(state.snapshot().iterator().hasNext());
   }
 
+  @Test
+  void conditionalTakeLeavesAChangedSourceUntouched() {
+    TestItem item = new TestItem(7, 2);
+    DeathCrateState<TestItem> state = new DeathCrateState<>(List.of(item), TestItem::copy);
+
+    assertFalse(state.takeIfSame(0, new TestItem(7, 1), TestItem::equals));
+    assertEquals(item, state.item(0).orElseThrow());
+    assertTrue(state.takeIfSame(0, item, TestItem::equals));
+    assertTrue(state.isEmpty());
+  }
+
   private record TestItem(int id, int amount) {
 
     private TestItem copy() {

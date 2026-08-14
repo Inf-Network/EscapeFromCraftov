@@ -46,6 +46,18 @@ class SecureContainerStateTest {
     assertTrue(state.contents().isEmpty());
   }
 
+  @Test
+  void conditionalTakeDoesNotDeleteAReplacedSource() {
+    SecureContainerState state = new SecureContainerState();
+    ItemInstance stored = item("emerald");
+    state.store(stored);
+
+    assertFalse(state.takeIfSame(0, item("emerald")));
+    assertEquals(stored, state.item(0).orElseThrow());
+    assertTrue(state.takeIfSame(0, stored));
+    assertTrue(state.contents().isEmpty());
+  }
+
   private static ItemInstance item(String id) {
     return new ItemInstance(UUID.randomUUID(), ItemId.of(id), 1, "payload:" + id);
   }

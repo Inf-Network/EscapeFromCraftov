@@ -6,7 +6,9 @@ import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.inventory.PlayerInventoryService;
+import com.birditch.escapefromcraftov.api.inventory.ItemGridService;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionService;
+import com.birditch.escapefromcraftov.api.extraction.ExtractionState;
 import com.birditch.escapefromcraftov.api.inventory.RaidCarryService;
 import com.birditch.escapefromcraftov.api.network.InstanceDirectory;
 import com.birditch.escapefromcraftov.api.network.NetworkKeys;
@@ -42,6 +44,7 @@ import com.birditch.escapefromcraftov.game.plugin.command.CommandContext;
 import com.birditch.escapefromcraftov.game.plugin.command.CraftovCommand;
 import com.birditch.escapefromcraftov.game.plugin.ai.CraftovAiRuntime;
 import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryController;
+import com.birditch.escapefromcraftov.game.plugin.carry.RaidCarryPickupListener;
 import com.birditch.escapefromcraftov.game.plugin.deathcrate.DeathCrateListener;
 import com.birditch.escapefromcraftov.game.plugin.downed.DownedPlayerListener;
 import com.birditch.escapefromcraftov.game.plugin.instance.BridgeDeps;
@@ -151,6 +154,7 @@ public final class GameApplication {
   private @Nullable BungeeConnector bungeeConnector;
   private @Nullable EventSubscription bridgeSubscription;
   private @Nullable EventSubscription lootSubscription;
+  private @Nullable EventSubscription secureSubscription;
   private @Nullable EventSubscription deathCrateSubscription;
   private @Nullable EventSubscription reportSubscription;
   private @Nullable EventSubscription combatSubscription;
@@ -219,6 +223,7 @@ public final class GameApplication {
       PendingJoinHandler pendingJoins,
       CraftovItemStacks itemStacks,
       RaidCarryController carry,
+      RaidInventoryMutationGate mutationGate,
       TeamExtractionRoutes extractionRoutes,
       LootOwnershipController lootOwnership,
       GameCombatListener combat,
@@ -586,10 +591,18 @@ public final class GameApplication {
     BungeeConnector bungee = new BungeeConnector(plugin);
     bungeeConnector = bungee;
     CraftovGameService games = context.services().require(CraftovGameService.class);
+    CombatService combat = context.services().require(CombatService.class);
     TeamExtractionRoutes extractionRoutes = new TeamExtractionRoutes();
     ExtractionService extractionService = new RouteAwareExtractionService(
         context.services().require(ExtractionService.class), games, extractionRoutes);
     context.services().replace(ExtractionService.class, extractionService);
+    RaidInventoryMutationGate mutationGate = new RaidInventoryMutationGate(combat,
+        playerId -> {
+          PendingJoinHandler pending = this.pendingJoins;
+          return pending != null && pending.isPending(playerId);
+        },
+        playerId -> extractionService.activeSession(playerId)
+            .map(session -> session.state() == ExtractionState.SETTLING).orElse(false));
     CraftovScheduler scheduler = context.scheduler();
     GameServerConfig server = configs.server();
     WorldService worlds = new WorldService(new WorldServiceDeps(
@@ -605,7 +618,8 @@ public final class GameApplication {
     CraftovItemStacks itemStacks = new CraftovItemStacks(context.services().require(ItemRegistry.class));
     PlayerInventoryService inventories = context.services().require(PlayerInventoryService.class);
     RaidCarryController carryController = new RaidCarryController(plugin, context.eventBus(),
-        scheduler, context.services().require(RaidCarryService.class), itemStacks,
+        scheduler, context.services().require(RaidCarryService.class),
+        context.services().require(ItemGridService.class), itemStacks,
         context.services().require(ItemRegistry.class));
     raidCarry = carryController;
     RaidResultCollector reportCollector = new RaidResultCollector(
@@ -617,12 +631,14 @@ public final class GameApplication {
     reportSubscription = context.eventBus().register(reportRuntime);
     SecureContainerController secure = new SecureContainerController(
         games, index, itemStacks, context.services().require(ItemRegistry.class),
-        carryController, configs.messages(), trMenu);
+        carryController, configs.messages(), trMenu, mutationGate);
     context.services().register(SecureContainerController.class, secure);
     secureContainers = secure;
+    secureSubscription = context.eventBus().register(secure);
     LootOwnershipController ownership = new LootOwnershipController(
         plugin, games, index, configs.messages(), new SystemTimeSource(),
-        java.time.Duration.ofSeconds(configs.gameplay().lootOwnershipSeconds()));
+        java.time.Duration.ofSeconds(configs.gameplay().lootOwnershipSeconds()),
+        carryController::active);
     lootOwnership = ownership;
     GameCombatListener combatListener = new GameCombatListener(plugin, games,
         context.services().require(CombatService.class), inventories,
@@ -659,7 +675,11 @@ public final class GameApplication {
     CraftovLootListener lootMenuController = new CraftovLootListener(games,
         context.services().require(LootService.class), itemStacks,
         context.services().require(ItemRegistry.class), index, configs.messages(),
-        configs.gameplay().lootContainerSize(), trMenu, scheduler, carryController);
+        configs.gameplay().lootContainerSize(), trMenu, scheduler, carryController, mutationGate,
+        block -> {
+          DeathCrateListener current = this.deathCrates;
+          return current != null && current.isMarker(block);
+        });
     lootMenus = lootMenuController;
     lootSubscription = context.eventBus().register(lootMenuController);
     InstanceWorldBridge instanceBridge = new InstanceWorldBridge(
@@ -673,8 +693,8 @@ public final class GameApplication {
             scheduler, configs.gameplay().extractionExperience(), logger), extractionRoutes);
     bridgeSubscription = context.eventBus().register(instanceBridge);
     DeathCrateListener deathCrateController = new DeathCrateListener(
-        games, context.services().require(CombatService.class), index, itemStacks,
-        configs.messages(), trMenu, logger, carryController, ownership);
+        games, combat, index, itemStacks,
+        configs.messages(), trMenu, logger, carryController, ownership, mutationGate);
     deathCrates = deathCrateController;
     deathCrateSubscription = context.eventBus().register(deathCrateController);
     CraftovAiRuntime instanceAi = new CraftovAiRuntime(
@@ -723,7 +743,7 @@ public final class GameApplication {
     waitingArrivalTimeout = arrivalTimeout;
     waitingArrivalSubscription = context.eventBus().register(arrivalTimeout);
     return new Wiring(directory, index, visibility, pendingJoins, itemStacks, carryController,
-        extractionRoutes, ownership, combatListener,
+        mutationGate, extractionRoutes, ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, instanceBridge, instanceAi);
   }
@@ -776,7 +796,6 @@ public final class GameApplication {
         wiring.visibility(), wiring.index(), wiring.secureContainers(), wiring.raidReports(),
         logger)), plugin);
     pluginManager.registerEvents(new PendingPlayerGuard(wiring.pendingJoins()), plugin);
-    pluginManager.registerEvents(wiring.carry(), plugin);
     pluginManager.registerEvents(new ExtractionRegionListener(
         context.services().require(CraftovGameService.class),
         context.services().require(com.birditch.escapefromcraftov.api.extraction.ExtractionService.class),
@@ -787,12 +806,18 @@ public final class GameApplication {
     pluginManager.registerEvents(wiring.downedPlayers(), plugin);
     pluginManager.registerEvents(wiring.medicalConditions(), plugin);
     pluginManager.registerEvents(wiring.bridge(), plugin);
+    // Carry's mutating drop commits must observe pending/downed/settlement blockers first.
+    pluginManager.registerEvents(wiring.carry(), plugin);
     pluginManager.registerEvents(wiring.deathCrates(), plugin);
     pluginManager.registerEvents(wiring.lootMenus(), plugin);
     pluginManager.registerEvents(wiring.aiRuntime(), plugin);
-    // Register last among runtime pickup listeners: its MONITOR commit must see
-    // cancellations from carry, downed, pending and settlement guards first.
+    // Register ownership after the ordinary blockers. The manual carry takeover below then runs
+    // after its HIGHEST guard, while ownership's MONITOR still sees the final cancellation.
     pluginManager.registerEvents(wiring.lootOwnership(), plugin);
+    // Same-priority registration is intentional: ownership decides first, then the carry
+    // authority replaces vanilla insertion with one atomic anchor transaction.
+    pluginManager.registerEvents(new RaidCarryPickupListener(
+        wiring.carry(), wiring.lootOwnership(), wiring.itemStacks(), wiring.mutationGate()), plugin);
     pluginManager.registerEvents(maps.visualization(), plugin);
     pluginManager.registerEvents(maps.interaction(), plugin);
     pluginManager.registerEvents(maps.objectMenus(), plugin);
@@ -838,6 +863,12 @@ public final class GameApplication {
       if (lootSubscription != null) {
         lootSubscription.unsubscribe();
         lootSubscription = null;
+      }
+    });
+    steps.run("unsubscribe secure container listener", () -> {
+      if (secureSubscription != null) {
+        secureSubscription.unsubscribe();
+        secureSubscription = null;
       }
     });
     steps.run("unsubscribe death crate listener", () -> {

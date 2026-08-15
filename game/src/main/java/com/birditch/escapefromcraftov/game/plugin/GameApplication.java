@@ -87,6 +87,7 @@ import com.birditch.escapefromcraftov.game.plugin.medical.MedicalConditionListen
 import com.birditch.escapefromcraftov.game.plugin.network.PublisherDeps;
 import com.birditch.escapefromcraftov.game.plugin.network.SnapshotPublisher;
 import com.birditch.escapefromcraftov.game.plugin.ownership.LootOwnershipController;
+import com.birditch.escapefromcraftov.game.plugin.poi.PoiReconRuntime;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultCollector;
 import com.birditch.escapefromcraftov.game.plugin.report.RaidResultRuntime;
 import com.birditch.escapefromcraftov.game.plugin.start.BukkitCraftovStartNotifier;
@@ -164,6 +165,7 @@ public final class GameApplication {
   private @Nullable EventSubscription combatSubscription;
   private @Nullable EventSubscription aiSubscription;
   private @Nullable EventSubscription mapEventSubscription;
+  private @Nullable EventSubscription poiReconSubscription;
   private @Nullable EventSubscription pendingJoinSubscription;
   private @Nullable EventSubscription waitingArrivalSubscription;
   private @Nullable CraftovLootListener lootMenus;
@@ -173,6 +175,7 @@ public final class GameApplication {
   private @Nullable RaidResultRuntime raidReports;
   private @Nullable CraftovAiRuntime aiRuntime;
   private @Nullable MapEventRuntime mapEventRuntime;
+  private @Nullable PoiReconRuntime poiReconRuntime;
   private @Nullable BindableEventCompletionLookup eventCompletionLookup;
   private @Nullable SecureContainerController secureContainers;
   private @Nullable RaidCarryController raidCarry;
@@ -245,6 +248,7 @@ public final class GameApplication {
       RaidCarryMenuController carryMenus,
       InstanceWorldBridge bridge,
       MapEventRuntime mapEvents,
+      PoiReconRuntime poiRecon,
       CraftovAiRuntime aiRuntime) {}
 
   public GameApplication(CraftovGamePlugin plugin) {
@@ -305,6 +309,7 @@ public final class GameApplication {
   public void stop() {
     ShutdownSteps steps = new ShutdownSteps(logger);
     steps.run("settle active craftov losses", this::settleActiveCraftovLosses);
+    steps.run("stop POI recon runtime", this::stopPoiReconRuntime);
     steps.run("stop instance AI runtime", this::stopAiRuntime);
     steps.run("destroy games", () -> withServices(
         registry -> registry.find(CraftovGameService.class).ifPresent(CraftovGameService::destroyAll)));
@@ -697,12 +702,17 @@ public final class GameApplication {
     // Register before any start coordinator timer and before AI so zero-delay
     // event state exists when both consume the same CraftovStartedEvent.
     mapEventSubscription = context.eventBus().register(eventRuntime);
+    PoiReconRuntime reconRuntime = new PoiReconRuntime(games, index, scheduler,
+        context.services().require(CombatService.class), configs.messages(), logger);
+    poiReconRuntime = reconRuntime;
+    poiReconSubscription = context.eventBus().register(reconRuntime);
+    reconRuntime.start();
     CraftovSidebarService sidebarService = new CraftovSidebarService(plugin, games,
         mapRuntime.sessions(), mapRuntime.service(),
         extractionService,
         context.services().require(CombatService.class), itemStacks,
         context.services().require(ItemRegistry.class), carryController, secure, extractionRoutes,
-        configs.messages(),
+        reconRuntime, configs.messages(),
         configs.gameplay(),
         combatListener, starts,
         configs.core().game().durationSeconds(), configs.core().game().maxPlayers(),
@@ -784,7 +794,7 @@ public final class GameApplication {
         mutationGate, extractionRoutes, ownership, combatListener,
         downedPlayerController, medicalConditionController, reportRuntime, sidebarService,
         lootMenuController, deathCrateController, secure, carryMenuController,
-        instanceBridge, eventRuntime, instanceAi);
+        instanceBridge, eventRuntime, reconRuntime, instanceAi);
   }
 
   private void handleProvisionRequest(JsonCodec codec, String payload, CraftovScheduler scheduler,
@@ -1016,6 +1026,17 @@ public final class GameApplication {
       if (eventLookup != null) eventLookup.unbind();
       mapEventRuntime.close();
       mapEventRuntime = null;
+    }
+  }
+
+  private void stopPoiReconRuntime() {
+    if (poiReconSubscription != null) {
+      poiReconSubscription.unsubscribe();
+      poiReconSubscription = null;
+    }
+    if (poiReconRuntime != null) {
+      poiReconRuntime.close();
+      poiReconRuntime = null;
     }
   }
 

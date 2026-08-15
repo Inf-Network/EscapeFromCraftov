@@ -21,6 +21,7 @@ import com.birditch.escapefromcraftov.game.plugin.editor.ManualMapService;
 import com.birditch.escapefromcraftov.game.plugin.extraction.TeamExtractionRoutes;
 import com.birditch.escapefromcraftov.game.plugin.extraction.EventCompletedExtractionCondition;
 import com.birditch.escapefromcraftov.game.plugin.listener.GameCombatListener;
+import com.birditch.escapefromcraftov.game.plugin.poi.PoiReconLookup;
 import com.birditch.escapefromcraftov.game.plugin.start.CraftovStartStatus;
 import com.birditch.escapefromcraftov.game.plugin.secure.SecureContainerController;
 import com.birditch.escapefromcraftov.map.EditorSession;
@@ -28,6 +29,7 @@ import com.birditch.escapefromcraftov.map.EditorSessionService;
 import com.birditch.escapefromcraftov.map.ManualMapValidationResult;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +74,7 @@ public final class CraftovSidebarService implements AutoCloseable {
   private final RaidCarryController carry;
   private final SecureContainerController secure;
   private final TeamExtractionRoutes extractionRoutes;
+  private final PoiReconLookup poiRecon;
   private final Messages messages;
   private final GameplaySettings settings;
   private final GameCombatListener combatListener;
@@ -92,8 +95,8 @@ public final class CraftovSidebarService implements AutoCloseable {
       GameplaySettings settings, GameCombatListener combatListener, CraftovStartStatus starts,
       int durationSeconds, int maxPlayers, int minimumPlayers) {
     this(plugin, games, editors, maps, extractions, combat, itemStacks, items, carry, secure,
-        new TeamExtractionRoutes(), messages, settings, combatListener, starts, durationSeconds,
-        maxPlayers, minimumPlayers);
+        new TeamExtractionRoutes(), PoiReconLookup.none(), messages, settings, combatListener,
+        starts, durationSeconds, maxPlayers, minimumPlayers);
   }
 
   public CraftovSidebarService(Plugin plugin, CraftovGameService games, EditorSessionService editors,
@@ -102,6 +105,19 @@ public final class CraftovSidebarService implements AutoCloseable {
       CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
       SecureContainerController secure, TeamExtractionRoutes extractionRoutes,
       Messages messages, GameplaySettings settings,
+      GameCombatListener combatListener, CraftovStartStatus starts,
+      int durationSeconds, int maxPlayers, int minimumPlayers) {
+    this(plugin, games, editors, maps, extractions, combat, itemStacks, items, carry, secure,
+        extractionRoutes, PoiReconLookup.none(), messages, settings, combatListener, starts,
+        durationSeconds, maxPlayers, minimumPlayers);
+  }
+
+  public CraftovSidebarService(Plugin plugin, CraftovGameService games, EditorSessionService editors,
+      ManualMapService maps, ExtractionService extractions,
+      CombatService combat,
+      CraftovItemStacks itemStacks, ItemRegistry items, RaidCarryController carry,
+      SecureContainerController secure, TeamExtractionRoutes extractionRoutes,
+      PoiReconLookup poiRecon, Messages messages, GameplaySettings settings,
       GameCombatListener combatListener, CraftovStartStatus starts,
       int durationSeconds, int maxPlayers, int minimumPlayers) {
     this.plugin = Preconditions.checkNotNull(plugin, "plugin");
@@ -115,6 +131,7 @@ public final class CraftovSidebarService implements AutoCloseable {
     this.carry = Preconditions.checkNotNull(carry, "carry");
     this.secure = Preconditions.checkNotNull(secure, "secure");
     this.extractionRoutes = Preconditions.checkNotNull(extractionRoutes, "extractionRoutes");
+    this.poiRecon = Preconditions.checkNotNull(poiRecon, "poiRecon");
     this.messages = Preconditions.checkNotNull(messages, "messages");
     this.settings = Preconditions.checkNotNull(settings, "settings");
     this.combatListener = Preconditions.checkNotNull(combatListener, "combatListener");
@@ -243,30 +260,58 @@ public final class CraftovSidebarService implements AutoCloseable {
         : extractionSession.state() == ExtractionState.SETTLING ? "物资结算中 · 请稍候"
         : "撤离中 · " + extractionSession.pointId().value() + " · "
             + extractionSeconds(game, extractionSession) + "s";
-    List<Component> lines = List.of(
-        text("地图  ", NamedTextColor.GOLD).append(mapName),
-        text("版本  " + game.mapRevision(), NamedTextColor.GRAY),
-        text("规则  " + ruleName(game), game.actionProfile().isPresent()
-            ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY),
-        text("状态  " + phase(game.state()), NamedTextColor.GREEN),
-        text("时间  " + formatTime(seconds), seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE),
-        text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA),
-        text("队伍  " + (team == 0 ? "无" : "第 " + team + " 队 · 队友 " + teammates),
-            NamedTextColor.GREEN),
-        text("状态  " + combatStateName(combatState),
-            combatState == PlayerCombatState.ALIVE ? NamedTextColor.GREEN : NamedTextColor.RED),
-        text("携行  " + backpack + " / " + capacity + " 格", NamedTextColor.GRAY),
-        text("负重  " + formatWeight(weight)
-                + (maximumWeight > 0 ? " / " + formatWeight(maximumWeight) : ""),
-            maximumWeight > 0 && weight > maximumWeight ? NamedTextColor.RED
-                : weight > comfortableWeight ? NamedTextColor.YELLOW : NamedTextColor.GREEN),
-        text("价值  " + String.format(java.util.Locale.ROOT, "%,d", value), NamedTextColor.GOLD),
-        text("击杀  " + combatKills(player), NamedTextColor.RED),
-        text(extraction, NamedTextColor.AQUA),
-        text("撤离成功才算带回物资", NamedTextColor.YELLOW));
+    List<Component> lines = new ArrayList<>(ENTRIES.length);
+    lines.add(text("地图  ", NamedTextColor.GOLD).append(mapName));
+    lines.add(text("版本  " + game.mapRevision(), NamedTextColor.GRAY));
+    lines.add(text("规则  " + ruleName(game), game.actionProfile().isPresent()
+        ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY));
+    lines.add(text("状态  " + phase(game.state()), NamedTextColor.GREEN));
+    lines.add(text("时间  " + formatTime(seconds),
+        seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE));
+    lines.add(text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA));
+    lines.add(text("队伍  " + (team == 0 ? "无" : "第 " + team + " 队 · 队友 " + teammates),
+        NamedTextColor.GREEN));
+    lines.add(text("状态  " + combatStateName(combatState),
+        combatState == PlayerCombatState.ALIVE ? NamedTextColor.GREEN : NamedTextColor.RED));
+    lines.add(text("携行  " + backpack + " / " + capacity + " 格", NamedTextColor.GRAY));
+    lines.add(text("负重  " + formatWeight(weight)
+            + (maximumWeight > 0 ? " / " + formatWeight(maximumWeight) : ""),
+        maximumWeight > 0 && weight > maximumWeight ? NamedTextColor.RED
+            : weight > comfortableWeight ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
+    lines.add(text("价值  " + String.format(java.util.Locale.ROOT, "%,d", value),
+        NamedTextColor.GOLD));
+    lines.add(text("击杀  " + combatKills(player), NamedTextColor.RED));
+    reconView(game, player.getUniqueId()).ifPresent(view -> lines.add(text(
+        reconnaissanceText(view), view.completed() ? NamedTextColor.GREEN
+            : NamedTextColor.LIGHT_PURPLE)));
+    lines.add(text(extraction, NamedTextColor.AQUA));
+    lines.add(text("撤离成功才算带回物资", NamedTextColor.YELLOW));
+    if (lines.size() > ENTRIES.length) {
+      throw new IllegalStateException("Sidebar line budget exceeded: " + lines.size());
+    }
     update(player, lines);
     player.sendActionBar(text(extraction, NamedTextColor.AQUA));
     updateBossBar(player, game);
+  }
+
+  private Optional<PoiReconLookup.View> reconView(CraftovGame game, UUID playerId) {
+    try {
+      Optional<PoiReconLookup.View> result = poiRecon.view(game.id(), playerId);
+      return result == null ? Optional.empty() : result;
+    } catch (RuntimeException ignored) {
+      return Optional.empty();
+    }
+  }
+
+  static String reconnaissanceText(PoiReconLookup.View view) {
+    Preconditions.checkNotNull(view, "view");
+    return view.completed() ? "侦察完成 · " + view.displayName()
+        : "侦察 " + view.displayName() + " · " + view.direction() + " "
+            + view.distanceLabel();
+  }
+
+  static int maximumLines() {
+    return ENTRIES.length;
   }
 
   private String pendingExtractionEvents(CraftovGame game, UUID playerId) {

@@ -872,12 +872,10 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       agent.lastKnown = Point.of(current.getLocation());
       agent.lastSeenAtNanos = now;
     }
-    Player detected = nearestVisible(mob, zone, targets,
-        AiTacticsPolicy.DEFAULT.detectionDistance());
+    Player detected = nearestVisible(mob, zone, targets, AiTacticsPolicy.DEFAULT);
     boolean participantNearby = targets.stream().anyMatch(player ->
-        insideLeash(zone, player.getLocation())
-            && distanceSquared(mob.getLocation(), player.getLocation())
-                <= square(AiTacticsPolicy.DEFAULT.wakeDistance()));
+        AiTacticsPolicy.canWake(distanceSquared(mob.getLocation(), player.getLocation()),
+            AiTacticsPolicy.DEFAULT));
     boolean actorInsideLeash = insideLeash(zone, mob.getLocation());
     boolean homeReached = agent.home.distanceSquared(mob.getLocation())
         <= HOME_REACHED_DISTANCE_SQUARED;
@@ -1139,14 +1137,19 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   }
 
   private static @Nullable Player nearestVisible(Mob mob, CraftovAiZone zone,
-      List<Player> targets, double maximumDistance) {
+      List<Player> targets, AiTacticsPolicy.Tuning tuning) {
     Player nearest = null;
-    double nearestDistance = square(maximumDistance);
+    double nearestDistance = Double.POSITIVE_INFINITY;
     Location origin = mob.getLocation();
     for (Player player : targets) {
-      if (!insideLeash(zone, player.getLocation())) continue;
-      double distance = distanceSquared(origin, player.getLocation());
-      if (distance > nearestDistance || !mob.hasLineOfSight(player)) continue;
+      // Leash and radius are cheap hard gates. LOS is intentionally last so a
+      // broad wake radius cannot multiply Paper ray checks outside acquisition.
+      Location candidate = player.getLocation();
+      if (!insideLeash(zone, candidate)) continue;
+      double distance = distanceSquared(origin, candidate);
+      if (distance >= nearestDistance
+          || !AiTacticsPolicy.canDetect(true, true, distance, tuning)) continue;
+      if (!mob.hasLineOfSight(player)) continue;
       nearest = player;
       nearestDistance = distance;
     }

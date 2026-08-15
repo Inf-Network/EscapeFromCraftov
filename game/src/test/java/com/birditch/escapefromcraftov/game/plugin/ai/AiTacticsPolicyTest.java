@@ -53,6 +53,34 @@ final class AiTacticsPolicyTest {
     assertFalse(AiTacticsPolicy.insideLeash(125.01, 50, 0, 100, 0, 100, 24));
   }
 
+  @Test
+  void participantOutsideZoneCanWakePatrolButCannotBeDetectedOrChased() {
+    double outsideLeashButInsideBothRadii = 20 * 20;
+
+    assertTrue(AiTacticsPolicy.canWake(outsideLeashButInsideBothRadii,
+        AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canDetect(false, true, outsideLeashButInsideBothRadii,
+        AiTacticsPolicy.DEFAULT));
+    assertEquals(AiTacticsPolicy.State.PATROL, next(
+        AiTacticsPolicy.State.DORMANT, true, false, false, false,
+        false, true, false, Duration.ZERO, Duration.ZERO));
+    assertTrue(AiTacticsPolicy.canWake(80 * 80, AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canWake(97 * 97, AiTacticsPolicy.DEFAULT));
+  }
+
+  @Test
+  void detectionStillRequiresLeashSightAndDetectionRadius() {
+    assertTrue(AiTacticsPolicy.canDetect(true, true, 40 * 40,
+        AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canDetect(false, true, 1,
+        AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canDetect(true, false, 1,
+        AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canDetect(true, true, 41 * 41,
+        AiTacticsPolicy.DEFAULT));
+    assertFalse(AiTacticsPolicy.canWake(Double.NaN, AiTacticsPolicy.DEFAULT));
+  }
+
   private static AiTacticsPolicy.State next(AiTacticsPolicy.State state,
       boolean participantNearby, boolean acquiredTarget, boolean targetValid,
       boolean targetVisible, boolean targetInsideLeash, boolean actorInsideLeash,

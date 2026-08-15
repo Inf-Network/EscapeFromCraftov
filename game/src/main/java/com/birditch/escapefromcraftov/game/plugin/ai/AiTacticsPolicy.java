@@ -53,6 +53,22 @@ final class AiTacticsPolicy {
     return xDistance * xDistance + zDistance * zDistance <= margin * margin;
   }
 
+  /** Wake is deliberately broader than target acquisition and ignores the zone leash. */
+  static boolean canWake(double distanceSquared, Tuning tuning) {
+    Preconditions.checkNotNull(tuning, "tuning");
+    return Double.isFinite(distanceSquared) && distanceSquared >= 0
+        && distanceSquared <= tuning.wakeDistance() * tuning.wakeDistance();
+  }
+
+  /** Detection remains fail-closed to the authored leash and line of sight. */
+  static boolean canDetect(boolean targetInsideLeash, boolean lineOfSight,
+      double distanceSquared, Tuning tuning) {
+    Preconditions.checkNotNull(tuning, "tuning");
+    return targetInsideLeash && lineOfSight
+        && Double.isFinite(distanceSquared) && distanceSquared >= 0
+        && distanceSquared <= tuning.detectionDistance() * tuning.detectionDistance();
+  }
+
   private static double outsideDistance(double value, double minimum, double maximum) {
     if (value < minimum) return minimum - value;
     if (value > maximum) return value - maximum;

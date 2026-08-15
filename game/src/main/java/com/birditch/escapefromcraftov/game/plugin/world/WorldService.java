@@ -300,8 +300,7 @@ public final class WorldService {
     if (world == null) {
       throw new CraftovException("World creation returned no world for " + worldName);
     }
-    world.setAutoSave(false);
-    world.setGameRule(GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
+    configureInstanceWorld(world);
     if (!templateCopied) {
       try {
         writeInstanceMarker(worldDirectory(worldName), gameId, mapId);
@@ -310,6 +309,42 @@ public final class WorldService {
       }
     }
     return world;
+  }
+
+  /**
+   * Applies raid-instance rules before the world is published as ready or any
+   * participant is teleported into it. Craftov owns hostile population through
+   * its AI runtime; vanilla natural spawning would otherwise fill a dark
+   * template during the arrival countdown and attack players the instant their
+   * pending invulnerability is released. Custom/plugin spawns remain available
+   * when {@link GameRules#SPAWN_MOBS} is disabled.
+   */
+  static void configureInstanceWorld(World world) {
+    applyInstanceWorldPolicy(world::setAutoSave,
+        (rule, value) -> world.setGameRule(switch (rule) {
+          case SHOW_ADVANCEMENTS -> GameRules.SHOW_ADVANCEMENT_MESSAGES;
+          case NATURAL_MOB_SPAWNING -> GameRules.SPAWN_MOBS;
+        }, value));
+  }
+
+  /** Pure policy seam: unit tests do not need a running Paper registry. */
+  static void applyInstanceWorldPolicy(
+      AutoSaveSetter autoSave, BooleanRuleSetter rules) {
+    autoSave.set(false);
+    rules.set(InstanceBooleanRule.SHOW_ADVANCEMENTS, false);
+    rules.set(InstanceBooleanRule.NATURAL_MOB_SPAWNING, false);
+  }
+
+  enum InstanceBooleanRule { SHOW_ADVANCEMENTS, NATURAL_MOB_SPAWNING }
+
+  @FunctionalInterface
+  interface AutoSaveSetter {
+    void set(boolean enabled);
+  }
+
+  @FunctionalInterface
+  interface BooleanRuleSetter {
+    void set(InstanceBooleanRule rule, boolean enabled);
   }
 
   private static void writeInstanceMarker(Path worldDir, CraftovGameId gameId, CraftovMapId mapId)

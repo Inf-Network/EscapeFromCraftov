@@ -1,10 +1,13 @@
 package com.birditch.escapefromcraftov.game.plugin.world;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,5 +46,18 @@ class WorldServicePathTest {
         Path.of("dimensions", "minecraft", "the_end", "entities", "r.0.0.mca")));
     assertTrue(WorldService.shouldCopyTemplatePath(Path.of("region", "r.0.0.mca")));
     assertTrue(WorldService.shouldCopyTemplatePath(Path.of("data", "raids.dat")));
+  }
+
+  @Test
+  void instanceWorldDisablesVanillaNaturalMobSpawningBeforePublication() {
+    Map<WorldService.InstanceBooleanRule, Boolean> rules =
+        new EnumMap<>(WorldService.InstanceBooleanRule.class);
+    boolean[] autoSave = {true};
+
+    WorldService.applyInstanceWorldPolicy(value -> autoSave[0] = value, rules::put);
+
+    assertFalse(autoSave[0]);
+    assertEquals(false, rules.get(WorldService.InstanceBooleanRule.SHOW_ADVANCEMENTS));
+    assertEquals(false, rules.get(WorldService.InstanceBooleanRule.NATURAL_MOB_SPAWNING));
   }
 }

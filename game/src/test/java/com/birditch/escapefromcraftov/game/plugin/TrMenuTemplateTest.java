@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 /** Regression checks for the TrMenu templates shipped with the Game plugin. */
@@ -111,6 +113,59 @@ class TrMenuTemplateTest {
     assertTrue(json.contains("\"type\": \"space\""));
     assertTrue(json.contains("\"\\uf807\": -8"),
         "CraftEngine <shift:-8> resolves to U+F807 and must not render as a missing glyph");
+  }
+
+  @Test
+  void basicRigUsesAnUntintedHighVisibilityItemModel() throws IOException {
+    Path craftEngine = Path.of("..").toAbsolutePath().normalize()
+        .resolve("craftengine/resources/escapefromcraftov");
+    String items = Files.readString(craftEngine.resolve("configuration/items.yml"));
+    String expected = """
+          escapefromcraftov:basic_rig:
+            material: leather_chestplate
+            item_model: escapefromcraftov:basic_rig
+            model:
+              type: minecraft:model
+              path: escapefromcraftov:item/basic_rig
+              generation:
+                parent: minecraft:item/generated
+                textures:
+                  layer0: escapefromcraftov:item/basic_rig
+        """;
+    assertTrue(items.contains(expected));
+    assertFalse(items.substring(items.indexOf("escapefromcraftov:basic_rig:"),
+        items.indexOf("escapefromcraftov:patrol_backpack:")).contains("tint"),
+        "leather dye tint must not make the tactical rig icon render black");
+
+    BufferedImage image = ImageIO.read(craftEngine.resolve(
+        "resourcepack/assets/escapefromcraftov/textures/item/basic_rig.png").toFile());
+    assertNotNull(image);
+    int visible = 0;
+    double luminance = 0;
+    int minX = image.getWidth();
+    int minY = image.getHeight();
+    int maxX = -1;
+    int maxY = -1;
+    for (int y = 0; y < image.getHeight(); y++) {
+      for (int x = 0; x < image.getWidth(); x++) {
+        int argb = image.getRGB(x, y);
+        if ((argb >>> 24) < 32) continue;
+        int red = (argb >>> 16) & 0xff;
+        int green = (argb >>> 8) & 0xff;
+        int blue = argb & 0xff;
+        luminance += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        visible++;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    assertTrue(visible > 0);
+    assertTrue(maxX - minX + 1 >= 44, "rig must remain legible in a 16px hotbar slot");
+    assertTrue(maxY - minY + 1 >= 54, "rig must fill the item frame vertically");
+    assertTrue(luminance / visible >= 75.0,
+        "night-time inventory shading must not hide the rig icon");
   }
 
   @Test

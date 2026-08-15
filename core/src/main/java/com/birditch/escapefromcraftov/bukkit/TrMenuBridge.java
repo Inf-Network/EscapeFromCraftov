@@ -116,6 +116,8 @@ public final class TrMenuBridge {
       command.append(' ').append(argument);
     }
     try {
+      // This path exists specifically for builds whose public reflection ABI is unavailable, so
+      // it must not require that same ABI again after TrMenu accepts the command.
       return Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command.toString());
     } catch (RuntimeException | LinkageError error) {
       logger.log(Level.WARNING, "TrMenu 打开菜单失败: " + menu, error);
@@ -196,6 +198,30 @@ public final class TrMenuBridge {
     }
   }
 
+  /** Clears stable-session item caches before TrMenu loads a newly opened menu. */
+  static void resetIconCachesForOpen(Object menu, Object session, Class<?> sessionType,
+      Class<?> iconType, String[] arguments)
+      throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    Preconditions.checkNotNull(menu, "menu");
+    Preconditions.checkNotNull(session, "session");
+    Preconditions.checkNotNull(sessionType, "sessionType");
+    Preconditions.checkNotNull(iconType, "iconType");
+    Preconditions.checkNotNull(arguments, "arguments");
+    if (!sessionType.isInstance(session)) {
+      throw new IllegalArgumentException("TrMenu session has an unexpected runtime type");
+    }
+    Method setArguments = sessionType.getMethod("setArguments", String[].class);
+    Method onReset = iconType.getMethod("onReset", sessionType);
+    List<?> menuIcons = iconSnapshot(
+        menu.getClass().getMethod("getIcons").invoke(menu), iconType, "menu");
+
+    // Validate the complete ABI and every icon before mutating either arguments or caches.
+    setArguments.invoke(session, (Object) arguments.clone());
+    for (Object icon : menuIcons) {
+      onReset.invoke(icon, session);
+    }
+  }
+
   private static List<?> iconSnapshot(Object rawIcons, Class<?> iconType, String source) {
     if (!(rawIcons instanceof Set<?> iconSet)) {
       throw new IllegalStateException("TrMenu " + source + " icons are not a set");
@@ -225,10 +251,17 @@ public final class TrMenuBridge {
       Object menuObject = getMenuById.invoke(api, menu);
       if (menuObject == null) return false;
 
-      // TrMenu skips the open callback when the same menu is already open and
-      // performs only a page refresh. Update that live session first so title
-      // arguments and dynamic pages cannot retain stale values.
-      setArgumentsIfViewing(loader, player, menuObject, arguments);
+      Class<?> sessionType = loadFirst(loader, MENU_SESSION_TYPES);
+      Class<?> iconType = loadFirst(loader, ICON_TYPES);
+      Object activeSession = session(loader, player);
+      if (activeSession != null) {
+        // Closing and reopening retains MenuSession.id, while TrMenu's Item cache is keyed by
+        // that id. Reset the target menu before loadIcon() so a different Loot container cannot
+        // inherit the previous container's rendered stacks. Continue through Menu.open even when
+        // this exact menu is active: TrMenu's same-menu branch owns page events and title/window
+        // refreshes used by paginated menus.
+        resetIconCachesForOpen(menuObject, activeSession, sessionType, iconType, arguments);
+      }
 
       Class<?> reasonType = loadFirst(loader, MENU_OPEN_REASON_TYPES);
       @SuppressWarnings({"unchecked", "rawtypes"})
@@ -257,8 +290,14 @@ public final class TrMenuBridge {
       };
       open.invoke(menuObject, player, null, reason, configure);
       Object openedSession = session(loader, player);
-      return openedSession != null
-          && openedSession.getClass().getMethod("getMenu").invoke(openedSession) == menuObject;
+      if (openedSession == null
+          || openedSession.getClass().getMethod("getMenu").invoke(openedSession) != menuObject) {
+        return false;
+      }
+      // Menu.open/page has now updated the window and title. Confirm the dynamic source redraw on
+      // the exact active session so a cancelled or partial icon refresh cannot expose stale items.
+      refreshIconCaches(menuObject, openedSession, sessionType, iconType, arguments);
+      return true;
     } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException error) {
       return null;
     } catch (InvocationTargetException | IllegalAccessException | RuntimeException | LinkageError error) {

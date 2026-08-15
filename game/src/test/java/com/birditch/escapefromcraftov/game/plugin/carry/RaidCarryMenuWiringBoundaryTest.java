@@ -91,6 +91,24 @@ class RaidCarryMenuWiringBoundaryTest {
   }
 
   @Test
+  void corruptedPhysicalPocketExplainsTheExactHotbarCellAndCreativeBypassesAreGuarded()
+      throws Exception {
+    assertEquals("携行栏异常（快捷栏第 4 格），请退出当前行动后重新进入",
+        RaidCarryMenuController.integrityHint(
+            new IllegalStateException("空网格单元出现未授权物品: 3")));
+    assertEquals("携行栏状态异常，请退出当前行动后重新进入",
+        RaidCarryMenuController.integrityHint(new IllegalStateException("身份被替换")));
+
+    String source = Files.readString(root().resolve(
+        "game/src/main/java/com/birditch/escapefromcraftov/game/plugin/carry/"
+            + "RaidCarryController.java"));
+    assertTrue(source.contains("void onCreativeInventory(InventoryCreativeEvent event)"));
+    assertTrue(source.contains("void onPickItem(PlayerPickItemEvent event)"));
+    assertTrue(source.contains("void onGameModeChange(PlayerGameModeChangeEvent event)"));
+    assertTrue(source.contains("event.getNewGameMode() == GameMode.SURVIVAL"));
+  }
+
+  @Test
   void coloredPlacementPreviewIsReadOnlyAndCommitStillUsesCarryAuthority() throws Exception {
     String source = Files.readString(root().resolve(
         "game/src/main/java/com/birditch/escapefromcraftov/game/plugin/carry/"

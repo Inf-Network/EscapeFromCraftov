@@ -25,6 +25,7 @@ import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.api.scheduler.ScheduledTask;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import io.papermc.paper.event.player.PlayerPickItemEvent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +45,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
@@ -57,8 +59,10 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -789,6 +793,35 @@ public final class RaidCarryController implements Listener, AutoCloseable {
         && containerOrPlaceholder(event.getItem())) event.setCancelled(true);
   }
 
+  /** Creative inventory packets bypass normal click semantics and must never mutate raid grids. */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  public void onCreativeInventory(InventoryCreativeEvent event) {
+    if (event.getWhoClicked() instanceof Player player
+        && states.containsKey(player.getUniqueId())) {
+      event.setCancelled(true);
+      player.sendActionBar(Component.text("行动中不能注入创造物品", NamedTextColor.RED));
+    }
+  }
+
+  /** Pick-block swaps/spawns directly into a hotbar slot after the event and bypasses clicks. */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  public void onPickItem(PlayerPickItemEvent event) {
+    if (!states.containsKey(event.getPlayer().getUniqueId())) return;
+    event.setCancelled(true);
+    event.getPlayer().sendActionBar(
+        Component.text("行动中不能用选取方块替换携行栏", NamedTextColor.RED));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  public void onGameModeChange(PlayerGameModeChangeEvent event) {
+    if (!states.containsKey(event.getPlayer().getUniqueId())
+        || event.getNewGameMode() == GameMode.SURVIVAL) return;
+    Component message = Component.text("请先离开行动再切换游戏模式", NamedTextColor.RED);
+    event.setCancelled(true);
+    event.cancelMessage(message);
+    event.getPlayer().sendActionBar(message);
+  }
+
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
   public void onInteractEntity(PlayerInteractEntityEvent event) {
     if (!states.containsKey(event.getPlayer().getUniqueId())) return;
@@ -1196,7 +1229,8 @@ public final class RaidCarryController implements Listener, AutoCloseable {
 
   private MenuView menuView(CarryState state) {
     return new MenuView(state.gameId, state.epoch, state.version, state.capacity,
-        state.snapshot, state.plan.regions(), state.plan.lockedPhysicalSlots(), state.layout);
+        state.snapshot, state.plan.regions(), state.plan.lockedPhysicalSlots(), state.layout,
+        state.expectedEquipment);
   }
 
   private void notifyDeactivated(Player player) {
@@ -1566,7 +1600,8 @@ public final class RaidCarryController implements Listener, AutoCloseable {
       RaidCarrySnapshot snapshot,
       List<RaidCarryGridPlanner.Region> regions,
       Set<Integer> lockedPhysicalSlots,
-      ItemGridLayout layout) {
+      ItemGridLayout layout,
+      Map<Integer, ItemInstance> equipment) {
 
     public MenuView {
       Preconditions.checkNotNull(gameId, "gameId");
@@ -1578,6 +1613,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
       lockedPhysicalSlots = Set.copyOf(
           Preconditions.checkNotNull(lockedPhysicalSlots, "lockedPhysicalSlots"));
       Preconditions.checkNotNull(layout, "layout");
+      equipment = Map.copyOf(Preconditions.checkNotNull(equipment, "equipment"));
     }
   }
 

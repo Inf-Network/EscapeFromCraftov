@@ -12,3 +12,9 @@ images:
     file: escapefromcraftov:font/hud_stats
     chars:
       - '\ue010\ue011\ue012\ue013\ue014\ue015\ue016\ue017\ue018'
+  escapefromcraftov:carry_gui:
+    height: 222
+    ascent: 13
+    font: escapefromcraftov:gui
+    file: escapefromcraftov:font/carry_gui
+    char: '\ue020'

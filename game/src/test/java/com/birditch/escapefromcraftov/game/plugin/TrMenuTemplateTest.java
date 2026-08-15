@@ -84,6 +84,7 @@ class TrMenuTemplateTest {
   void carryTemplateNonceBindsGridCellsAndExposesTheValidatedSecureEntry()
       throws IOException {
     String yaml = read("trmenu/escapefromcraftov_carry.yml");
+    assertTrue(yaml.contains("<shift:-8><image:escapefromcraftov:carry_gui>"));
     for (int slot = 0; slot < 51; slot++) {
       assertTrue(yaml.contains("source:CRAFTOVCORECARRY:cell-" + slot));
       assertTrue(yaml.contains("craftov ui carry left {0} " + slot));

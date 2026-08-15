@@ -45,6 +45,13 @@ class RaidCarryMenuProjectionTest {
         .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.HEADER).count());
     assertEquals(6, projection.cells().stream()
         .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.BORDER).count());
+    assertTrue(projection.equipmentStrip());
+    assertEquals(6, projection.cells().stream()
+        .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.EQUIPMENT).count());
+    assertEquals(RaidCarryLayout.MAIN_HAND_SLOT,
+        projection.cell(RaidCarryMenuProjection.FIRST_EQUIPMENT_SLOT).equipmentSlot());
+    assertEquals(RaidCarryLayout.BACKPACK_SLOT,
+        projection.cell(RaidCarryMenuProjection.LAST_EQUIPMENT_SLOT).equipmentSlot());
     assertEquals(RaidCarryMenuProjection.Kind.SECURE,
         projection.cell(RaidCarryMenuProjection.SECURE_SLOT).kind());
     assertEquals(RaidCarryMenuProjection.Kind.SUMMARY,
@@ -96,6 +103,14 @@ class RaidCarryMenuProjectionTest {
               projection.cell(RaidCarryMenuProjection.SUMMARY_SLOT).kind());
           assertEquals(RaidCarryMenuProjection.Kind.CLOSE,
               projection.cell(RaidCarryMenuProjection.CLOSE_SLOT).kind());
+          assertTrue(projection.equipmentStrip());
+          assertEquals(6, projection.cells().stream()
+              .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.EQUIPMENT).count());
+          assertEquals(pockets + rig + backpack, projection.cells().stream()
+              .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.REGION).count());
+          assertEquals(regions.size(), projection.cells().stream()
+              .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.HEADER).count());
+          regions.forEach(region -> assertRelativeGeometryPreserved(projection, region));
         }
       }
     }
@@ -138,5 +153,27 @@ class RaidCarryMenuProjectionTest {
       slots.add(new RaidCarryGridPlanner.CellSlot(cell.position(), physicalSlot++));
     }
     return new RaidCarryGridPlanner.Region(id, shape, slots);
+  }
+
+  private static void assertRelativeGeometryPreserved(
+      RaidCarryMenuProjection.Projection projection, RaidCarryGridPlanner.Region region) {
+    Integer originColumn = null;
+    Integer originRow = null;
+    for (int slot = 0; slot < projection.cells().size(); slot++) {
+      var cell = projection.cell(slot);
+      if (cell.kind() != RaidCarryMenuProjection.Kind.REGION
+          || !region.id().equals(cell.gridId())) continue;
+      int candidateColumn = slot % 9 - cell.position().column();
+      int candidateRow = slot / 9 - cell.position().row();
+      if (originColumn == null) {
+        originColumn = candidateColumn;
+        originRow = candidateRow;
+      } else {
+        assertEquals(originColumn, candidateColumn,
+            "display projection must preserve horizontal grid adjacency for " + region.id());
+        assertEquals(originRow, candidateRow,
+            "display projection must preserve vertical grid adjacency for " + region.id());
+      }
+    }
   }
 }

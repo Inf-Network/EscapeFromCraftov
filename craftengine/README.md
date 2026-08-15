@@ -45,7 +45,9 @@ client-reachable address before allowing remote players. Game disables automatic
 delivery; Lobby keeps self-hosting, automatic upload and `send-on-join: true`. Packet interceptors
 are not required: item models use Paper's native
 `item_model` component and the Sidebar uses fixed private-use glyphs in
-`escapefromcraftov:hud`.
+`escapefromcraftov:hud`. The Game server additionally enables
+`network.intercept-packets.container: true` so CraftEngine can render the carry menu's
+`<image>`/`<shift>` title tags; Lobby can keep that interceptor disabled.
 
 ## Stable identifiers
 
@@ -59,6 +61,7 @@ Font glyphs:
 
 - `U+E001`: Sidebar insignia
 - `U+E010..U+E018`: map, time, squad, combat, carry, weight, value, target and extraction
+- `U+E020`: 176x222 tactical carry GUI for the 9x6 chest screen
 
 Do not renumber these glyphs or model IDs after release. Existing serialized Bukkit stacks and
 runtime Components refer to them directly.
@@ -73,10 +76,26 @@ On a stopped or disposable server:
 /ce debug image escapefromcraftov:hud_insignia
 ```
 
-The log must report one enabled resource, two images and three items. With all `crash-tools`
+The log must report one enabled resource, three images and three items. With all `crash-tools`
 methods disabled, `unzip -t plugins/CraftEngine/generated/resource_pack.zip` must report no
 errors. The archive must contain the three `assets/escapefromcraftov/items/*.json` models,
-`assets/escapefromcraftov/font/hud.json`, and their PNG textures.
+`assets/escapefromcraftov/font/hud.json`, `assets/escapefromcraftov/font/gui.json`, and their PNG
+textures.
+
+## Carry GUI artwork
+
+`art/carry_gui.svg` is the editable 176x222 master for a 9x6 chest/title glyph. The registered
+`escapefromcraftov:carry_gui` image uses `U+E020` in `escapefromcraftov:gui`; render the menu title
+with that font and glyph as
+`<white><shift:-8><image:escapefromcraftov:carry_gui>`, applying the title's eight-pixel correction
+so the artwork begins at the vanilla container's left edge.
+
+The standard starter projection is drawn as a graphite shell with olive backpack and pocket
+frames, a cyan chest-rig frame, an amber equipment bar, four individually numbered pocket cells,
+and dedicated secure/status/close controls. Every 16x16 item interior in the 9x6 container,
+three-row player inventory and hotbar is alpha-punched, so the title artwork cannot cover item
+icons even if a client renders title glyphs late. Keep menu item coordinates on the vanilla
+8+18n / 18+18n grid when changing the projection.
 
 ## Artwork provenance
 

@@ -33,6 +33,43 @@ class TrMenuBridgeCacheResetTest {
   }
 
   @Test
+  void reopeningWithAStableSessionClearsEveryTargetMenuCacheBeforeLoad() throws Exception {
+    FakeIcon first = new FakeIcon(19);
+    FakeIcon second = new FakeIcon(19);
+    FakeSession session = new FakeSession(19, Set.of());
+    FakeMenu menu = new FakeMenu(new LinkedHashSet<>(Set.of(first, second)));
+
+    TrMenuBridge.resetIconCachesForOpen(
+        menu, session, FakeSession.class, FakeIcon.class, new String[] {"container-b"});
+
+    assertNull(first.cachedValue(session.id()));
+    assertNull(second.cachedValue(session.id()));
+    assertEquals(1, first.resetCount());
+    assertEquals(1, second.resetCount());
+    assertEquals(0, first.refreshCount());
+    assertEquals(0, second.refreshCount());
+    assertArrayEquals(new String[] {"container-b"}, session.arguments());
+
+    // TrMenu's subsequent load/onRefresh must now resolve the new source instead of returning A.
+    first.onRefresh(session);
+    assertEquals("fresh:container-b", first.cachedValue(session.id()));
+  }
+
+  @Test
+  void openResetValidatesEveryIconBeforeChangingArgumentsOrCaches() {
+    FakeIcon valid = new FakeIcon(20);
+    FakeSession session = new FakeSession(20, Set.of());
+    FakeMenu menu = new FakeMenu(new LinkedHashSet<>(Set.of(valid, "wrong")));
+
+    assertThrows(IllegalStateException.class,
+        () -> TrMenuBridge.resetIconCachesForOpen(
+            menu, session, FakeSession.class, FakeIcon.class, new String[] {"new"}));
+    assertEquals("stale", valid.cachedValue(session.id()));
+    assertEquals(0, valid.resetCount());
+    assertArrayEquals(new String[] {"old"}, session.arguments());
+  }
+
+  @Test
   void rejectsAnUnexpectedSessionTypeBeforeTouchingIcons() {
     FakeSession session = new FakeSession(21, Set.of());
     FakeIcon icon = new FakeIcon(session.id());

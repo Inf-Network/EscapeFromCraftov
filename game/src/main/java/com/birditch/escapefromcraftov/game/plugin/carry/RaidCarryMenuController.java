@@ -18,6 +18,7 @@ import com.birditch.escapefromcraftov.api.inventory.ItemGrid;
 import com.birditch.escapefromcraftov.api.inventory.ItemGridService;
 import com.birditch.escapefromcraftov.api.item.ItemCategory;
 import com.birditch.escapefromcraftov.api.item.ItemDefinition;
+import com.birditch.escapefromcraftov.api.item.ItemInstance;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.scheduler.CraftovScheduler;
 import com.birditch.escapefromcraftov.bukkit.CraftovItemStacks;
@@ -281,8 +282,25 @@ public final class RaidCarryMenuController implements Listener, AutoCloseable {
       return carry.menuView(player).filter(view -> view.gameId().equals(game.id())).orElse(null);
     } catch (RuntimeException invalid) {
       logger.log(Level.WARNING, "无法建立携行整理视图: " + player.getUniqueId(), invalid);
+      player.sendActionBar(Component.text(integrityHint(invalid), NamedTextColor.RED));
       return null;
     }
+  }
+
+  static String integrityHint(RuntimeException failure) {
+    String message = failure.getMessage();
+    String prefix = "空网格单元出现未授权物品: ";
+    if (message != null && message.startsWith(prefix)) {
+      try {
+        int slot = Integer.parseInt(message.substring(prefix.length()));
+        if (slot >= 0 && slot <= 8) {
+          return "携行栏异常（快捷栏第 " + (slot + 1) + " 格），请退出当前行动后重新进入";
+        }
+      } catch (NumberFormatException ignored) {
+        // Fall through to the generic fail-closed guidance.
+      }
+    }
+    return "携行栏状态异常，请退出当前行动后重新进入";
   }
 
   private boolean openMenu(Player player, MenuSession session) {
@@ -324,9 +342,43 @@ public final class RaidCarryMenuController implements Listener, AutoCloseable {
       case BORDER -> borderItem(session, cell.gridId());
       case LOCKED -> named(Material.BARRIER, "未解锁槽位", NamedTextColor.DARK_GRAY,
           List.of(Component.text("装备更大的胸挂或背包可解锁", NamedTextColor.GRAY)));
+      case EQUIPMENT -> equipmentItem(session, cell.equipmentSlot());
       case SECURE -> secureEntry();
       case SUMMARY -> summary(session);
       case CLOSE, DECORATION -> decoration();
+    };
+  }
+
+  private ItemStack equipmentItem(MenuSession session, int physicalSlot) {
+    String label = equipmentLabel(physicalSlot);
+    ItemInstance equipped = session.view.equipment().get(physicalSlot);
+    if (equipped == null) {
+      return named(Material.GRAY_DYE, label + " · 空", NamedTextColor.DARK_GRAY,
+          List.of(Component.text("行动装备栏（只读投影）", NamedTextColor.GRAY)));
+    }
+    ItemStack display = itemStacks.fromInstance(equipped).getFirst().clone();
+    display.editMeta(meta -> {
+      List<Component> lore = meta.lore() == null
+          ? new ArrayList<>() : new ArrayList<>(meta.lore());
+      lore.add(Component.empty());
+      lore.add(Component.text("已装备 · " + label, NamedTextColor.AQUA)
+          .decoration(TextDecoration.ITALIC, false));
+      lore.add(Component.text("此栏只显示权威装备，不在菜单内移动",
+          NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+      meta.lore(lore);
+    });
+    return display;
+  }
+
+  private static String equipmentLabel(int physicalSlot) {
+    return switch (physicalSlot) {
+      case RaidCarryLayout.MAIN_HAND_SLOT -> "主手";
+      case 40 -> "副手";
+      case 39 -> "头盔";
+      case 38 -> "护甲";
+      case RaidCarryLayout.CHEST_RIG_SLOT -> "胸挂";
+      case RaidCarryLayout.BACKPACK_SLOT -> "背包";
+      default -> "装备";
     };
   }
 

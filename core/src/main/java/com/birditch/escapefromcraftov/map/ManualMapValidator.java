@@ -29,6 +29,7 @@ public final class ManualMapValidator {
     validateIds(map, issues);
     validateCounts(map, settings, issues);
     validateBounds(map, bounds, issues);
+    validateAiPatrolRoutes(map, bounds, issues);
     validateReferences(map, references, issues);
     validateEvents(map, issues);
     validateSpawnTeams(map, issues);
@@ -215,6 +216,37 @@ public final class ManualMapValidator {
             && !bounds.contains(lever.position())) {
           error(issues, "extraction_switch_outside_bounds", extraction.id(),
               "撤离拉闸位置超出地图边界: " + lever.switchId());
+        }
+      }
+    }
+  }
+
+  private static void validateAiPatrolRoutes(ManualCraftovMap map,
+      CuboidBounds mapBounds, List<MapValidationIssue> issues) {
+    for (AiZoneDefinition zone : map.aiZones()) {
+      if (zone.patrolWaypoints().size()
+          > com.birditch.escapefromcraftov.api.game.CraftovAiZone.MAXIMUM_PATROL_WAYPOINTS) {
+        error(issues, "ai_patrol_too_many", zone.id(),
+            "AI 巡逻路线最多只能有 "
+                + com.birditch.escapefromcraftov.api.game.CraftovAiZone
+                    .MAXIMUM_PATROL_WAYPOINTS
+                + " 个点");
+      }
+      Set<BlockPosition> unique = new HashSet<>();
+      for (int index = 0; index < zone.patrolWaypoints().size(); index++) {
+        BlockPosition waypoint = zone.patrolWaypoints().get(index);
+        int displayIndex = index + 1;
+        if (!unique.add(waypoint)) {
+          error(issues, "ai_patrol_duplicate", zone.id(),
+              "AI 巡逻点重复: " + zone.id() + " #" + displayIndex);
+        }
+        if (!zone.bounds().contains(waypoint)) {
+          error(issues, "ai_patrol_outside_zone", zone.id(),
+              "AI 巡逻点不在所属区域内: " + zone.id() + " #" + displayIndex);
+        }
+        if (mapBounds != null && !mapBounds.contains(waypoint)) {
+          error(issues, "ai_patrol_outside_bounds", zone.id(),
+              "AI 巡逻点超出地图边界: " + zone.id() + " #" + displayIndex);
         }
       }
     }

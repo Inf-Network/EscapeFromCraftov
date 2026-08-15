@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.editor;
 
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.ExtractionDefinition;
 import com.birditch.escapefromcraftov.map.ExtractionRuleDefinition;
@@ -48,11 +49,28 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
         issues.add(warning("spawn_environment_unloaded", spawn.id(),
             "出生点所在区块尚未加载，无法验证方块安全性: " + spawn.id()
                 + "。请进入该位置加载区块后重新验证"));
-      } else if (!safe(world, feet)) {
+      } else if (!isSafeFootPosition(world, feet)) {
         issues.add(error("spawn_environment_unsafe", spawn.id(),
             "出生点脚部位置不可站立: " + spawn.id() + " (" + feet.x() + ", " + feet.y()
                 + ", " + feet.z() + ")。必须保证 y-1 是安全实体方块，y 与 y+1 可通过，"
                 + "并且三层均不是液体或危险方块"));
+      }
+    }
+    for (AiZoneDefinition zone : map.aiZones()) {
+      if (!zone.enabled()) continue;
+      for (int index = 0; index < zone.patrolWaypoints().size(); index++) {
+        BlockPosition waypoint = zone.patrolWaypoints().get(index);
+        String label = zone.id() + " #" + (index + 1);
+        if (!chunkLoaded(world, waypoint)) {
+          issues.add(warning("ai_patrol_environment_unloaded", zone.id(),
+              "AI 巡逻点所在区块尚未加载，无法验证方块安全性: " + label
+                  + "。请进入该位置加载区块后重新验证"));
+        } else if (!isSafeFootPosition(world, waypoint)) {
+          issues.add(error("ai_patrol_environment_unsafe", zone.id(),
+              "AI 巡逻点不可站立: " + label + " (" + waypoint.x() + ", "
+                  + waypoint.y() + ", " + waypoint.z()
+                  + ")。脚下必须是安全实体方块，脚部与头部必须可通过"));
+        }
       }
     }
     int minimumFeetY = world.getMinHeight() + 1;
@@ -67,7 +85,7 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
               unloadedChecks[0]++;
               return false;
             }
-            return safe(world, candidate);
+            return isSafeFootPosition(world, candidate);
           });
       if (!safe) {
         if (unloadedChecks[0] > 0) {
@@ -99,7 +117,11 @@ public final class BukkitMapEnvironmentValidator implements ManualMapEnvironment
     return List.copyOf(issues);
   }
 
-  private static boolean safe(World world, BlockPosition feetPosition) {
+  /** Checks one already-loaded block-foot position without loading its chunk. */
+  public static boolean isSafeFootPosition(World world, BlockPosition feetPosition) {
+    Preconditions.checkNotNull(world, "world");
+    Preconditions.checkNotNull(feetPosition, "feetPosition");
+    if (!chunkLoaded(world, feetPosition)) return false;
     int y = feetPosition.y();
     if (y <= world.getMinHeight() || y + 1 >= world.getMaxHeight()) return false;
     Block floor = world.getBlockAt(feetPosition.x(), y - 1, feetPosition.z());

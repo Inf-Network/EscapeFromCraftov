@@ -42,9 +42,9 @@ public final class ManualMapEditor {
   public ManualCraftovMap move(ManualCraftovMap map, String id, BlockPosition destination) {
     MapObject object = map.findObject(id)
         .orElseThrow(() -> new IllegalArgumentException("Unknown map object id: " + id));
-    int dx = destination.x() - object.anchor().x();
-    int dy = destination.y() - object.anchor().y();
-    int dz = destination.z() - object.anchor().z();
+    int dx = difference(destination.x(), object.anchor().x());
+    int dy = difference(destination.y(), object.anchor().y());
+    int dz = difference(destination.z(), object.anchor().z());
     return replace(map, translated(object, object.id(), dx, dy, dz));
   }
 
@@ -60,9 +60,9 @@ public final class ManualMapEditor {
       BlockPosition destination) {
     Preconditions.checkNotNull(source, "source");
     MapIds.requireValid(newId, "newId");
-    int dx = destination.x() - source.anchor().x();
-    int dy = destination.y() - source.anchor().y();
-    int dz = destination.z() - source.anchor().z();
+    int dx = difference(destination.x(), source.anchor().x());
+    int dy = difference(destination.y(), source.anchor().y());
+    int dz = difference(destination.z(), source.anchor().z());
     return add(map, translated(source, newId, dx, dy, dz));
   }
 
@@ -151,7 +151,7 @@ public final class ManualMapEditor {
           value.lootTable(), value.tier(), value.density(), value.danger(), enabled);
       case AiZoneDefinition value -> new AiZoneDefinition(value.id(), value.bounds(),
           value.aiType(), value.minimum(), value.maximum(), value.respawnSeconds(),
-          value.difficulty(), value.team(), enabled);
+          value.difficulty(), value.team(), enabled, value.patrolWaypoints());
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(),
           value.displayName(), value.bounds(), value.extractionType(), value.durationSeconds(),
           value.conditionValue(), enabled, value.conditions(), value.routeScope());
@@ -222,7 +222,8 @@ public final class ManualMapEditor {
       case AiZoneDefinition value -> new AiZoneDefinition(newId,
           value.bounds().translate(dx, dy, dz), value.aiType(), value.minimum(),
           value.maximum(), value.respawnSeconds(), value.difficulty(), value.team(),
-          value.enabled());
+          value.enabled(), value.patrolWaypoints().stream()
+              .map(point -> point.add(dx, dy, dz)).toList());
       case ExtractionDefinition value -> new ExtractionDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.extractionType(), value.durationSeconds(),
           value.conditionValue(), value.enabled(), value.conditions().stream()
@@ -230,5 +231,9 @@ public final class ManualMapEditor {
       case PoiDefinition value -> new PoiDefinition(newId, value.displayName(),
           value.bounds().translate(dx, dy, dz), value.tier(), value.enabled());
     };
+  }
+
+  private static int difference(int destination, int origin) {
+    return Math.toIntExact((long) destination - origin);
   }
 }

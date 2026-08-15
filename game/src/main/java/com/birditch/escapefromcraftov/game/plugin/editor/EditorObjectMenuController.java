@@ -358,20 +358,22 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
           int minimum = Math.max(0, value.minimum() + direction);
           yield new AiZoneDefinition(value.id(), value.bounds(), value.aiType(), minimum,
               Math.max(minimum, value.maximum()), value.respawnSeconds(), value.difficulty(),
-              value.team(), value.enabled());
+              value.team(), value.enabled(), value.patrolWaypoints());
         }
         case AI_MAXIMUM -> new AiZoneDefinition(value.id(), value.bounds(), value.aiType(),
             value.minimum(), Math.max(value.minimum(), value.maximum() + direction),
-            value.respawnSeconds(), value.difficulty(), value.team(), value.enabled());
+            value.respawnSeconds(), value.difficulty(), value.team(), value.enabled(),
+            value.patrolWaypoints());
         case AI_RESPAWN -> new AiZoneDefinition(value.id(), value.bounds(), value.aiType(),
             value.minimum(), value.maximum(), Math.max(0, value.respawnSeconds() + direction * 15),
-            value.difficulty(), value.team(), value.enabled());
+            value.difficulty(), value.team(), value.enabled(), value.patrolWaypoints());
         case AI_DIFFICULTY -> new AiZoneDefinition(value.id(), value.bounds(), value.aiType(),
             value.minimum(), value.maximum(), value.respawnSeconds(),
-            Math.max(0.25, value.difficulty() + direction * 0.25), value.team(), value.enabled());
+            Math.max(0.25, value.difficulty() + direction * 0.25), value.team(), value.enabled(),
+            value.patrolWaypoints());
         case AI_TEAM -> new AiZoneDefinition(value.id(), value.bounds(), value.aiType(),
             value.minimum(), value.maximum(), value.respawnSeconds(), value.difficulty(),
-            cycle(AI_TEAMS, value.team(), direction), value.enabled());
+            cycle(AI_TEAMS, value.team(), direction), value.enabled(), value.patrolWaypoints());
         default -> value;
       };
       case ExtractionDefinition value -> switch (action) {
@@ -426,7 +428,7 @@ public final class EditorObjectMenuController implements Listener, AutoCloseable
           value.lootTable(), value.tier(), value.density(), value.danger(), enabled);
       case AiZoneDefinition value -> new AiZoneDefinition(value.id(), value.bounds(),
           value.aiType(), value.minimum(), value.maximum(), value.respawnSeconds(),
-          value.difficulty(), value.team(), enabled);
+          value.difficulty(), value.team(), enabled, value.patrolWaypoints());
       case ExtractionDefinition value -> new ExtractionDefinition(value.id(), value.displayName(),
           value.bounds(), value.extractionType(), value.durationSeconds(), value.conditionValue(),
           enabled, value.conditions(), value.routeScope());

@@ -6,6 +6,7 @@ import com.birditch.escapefromcraftov.api.event.game.CraftovStartedEvent;
 import com.birditch.escapefromcraftov.api.combat.CombatService;
 import com.birditch.escapefromcraftov.api.combat.PlayerCombatState;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
+import com.birditch.escapefromcraftov.api.game.CraftovAiWaypoint;
 import com.birditch.escapefromcraftov.api.game.CraftovGame;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovPlayer;
@@ -98,6 +99,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private static final int MAXIMUM_PATHS_PER_TICK = 4;
   private static final int MAXIMUM_PROJECTILE_PRUNE_CHECKS_PER_TICK = 16;
   private static final double HOME_REACHED_DISTANCE_SQUARED = 2.5 * 2.5;
+  private static final double PATROL_WAYPOINT_REACHED_DISTANCE_SQUARED = 1.75 * 1.75;
 
   private final CraftovGameService games;
   private final InstanceWorldIndex worlds;
@@ -516,6 +518,10 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     cancelPendingStart(gameId);
     List<CraftovMapEvent> eventDefinitions = mapEvents == null ? List.of()
         : game.mapEvents().stream().filter(CraftovMapEvent::enabled).toList();
+    if (game.aiZones().stream().anyMatch(zone -> !AiPatrolPolicy.validRoute(zone))) {
+      logger.severe("AI 运行时拒绝无效巡逻路线地图: " + gameId.value());
+      return;
+    }
     java.util.Set<String> eventZoneIds = eventDefinitions.stream()
         .map(CraftovMapEvent::aiZoneId).collect(java.util.stream.Collectors.toUnmodifiableSet());
     List<AiRuntimePolicy.ZoneCapacity> capacities = new ArrayList<>();
@@ -603,8 +609,9 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
         scheduleRefill(runtime, zone, FAILED_SPAWN_RETRY);
         continue;
       }
+      long spawnOrdinal = zone.nextAgentOrdinal++;
       AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(),
-          System.nanoTime());
+          System.nanoTime(), zone.definition(), spawnOrdinal);
       zone.agents().put(mob.getUniqueId(), agent);
       agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent, null));
       enqueueRefill(runtime, zone);
@@ -655,7 +662,9 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       mob.remove();
       return;
     }
-    AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(), System.nanoTime());
+    long spawnOrdinal = zone.nextAgentOrdinal++;
+    AgentRuntime agent = new AgentRuntime(mob.getUniqueId(), mob.getLocation(), System.nanoTime(),
+        zone.definition(), spawnOrdinal);
     zone.agents().put(mob.getUniqueId(), agent);
     agents.put(mob.getUniqueId(), new AgentHandle(runtime, zone, agent, definition.id()));
     announce(runtime, "map-event.spawned", definition);
@@ -925,6 +934,10 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     AgentRuntime agent = handle.agent();
     if (mob.getPathfinder().hasPath() || now < agent.nextPatrolAtNanos) return;
     CraftovAiZone zone = handle.zone().definition();
+    if (!zone.patrolWaypoints().isEmpty()) {
+      patrolAuthoredRoute(handle, mob, now, paths);
+      return;
+    }
     long randomSeed = seed(handle.runtime().gameId(), zone.id())
         ^ (++agent.patrolSequence * 0x9e3779b97f4a7c15L);
     SplittableRandom random = new SplittableRandom(randomSeed);
@@ -934,6 +947,38 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     if (result != MoveAttempt.BUDGET_EXHAUSTED) {
       agent.nextPatrolAtNanos = now + PATROL_PAUSE.toNanos();
     }
+  }
+
+  private void patrolAuthoredRoute(AgentHandle handle, Mob mob, long now,
+      PathBudget paths) {
+    AgentRuntime agent = handle.agent();
+    List<CraftovAiWaypoint> route = handle.zone().definition().patrolWaypoints();
+    if (agent.patrolWaypointIndex < 0 || agent.patrolWaypointIndex >= route.size()) return;
+    CraftovAiWaypoint waypoint = route.get(agent.patrolWaypointIndex);
+    Point destination = new Point(waypoint.x() + 0.5, waypoint.y(), waypoint.z() + 0.5);
+    if (destination.distanceSquared(mob.getLocation())
+        <= PATROL_WAYPOINT_REACHED_DISTANCE_SQUARED) {
+      agent.patrolWaypointIndex = AiPatrolPolicy.cursorAfter(agent.patrolWaypointIndex,
+          route.size(), AiPatrolPolicy.Progress.ARRIVED);
+      agent.nextPatrolAtNanos = now + PATROL_PAUSE.toNanos();
+      return;
+    }
+    MoveAttempt result = moveTo(handle, mob, destination, 0.8, now, paths);
+    agent.patrolWaypointIndex = AiPatrolPolicy.cursorAfter(agent.patrolWaypointIndex,
+        route.size(), patrolProgress(result));
+    if (result != MoveAttempt.BUDGET_EXHAUSTED) {
+      agent.nextPatrolAtNanos = now + PATROL_PAUSE.toNanos();
+    }
+  }
+
+  private static AiPatrolPolicy.Progress patrolProgress(MoveAttempt result) {
+    return switch (result) {
+      case STARTED -> AiPatrolPolicy.Progress.PATH_STARTED;
+      case FAILED -> AiPatrolPolicy.Progress.PATH_FAILED;
+      case UNLOADED -> AiPatrolPolicy.Progress.UNLOADED;
+      case DEFERRED -> AiPatrolPolicy.Progress.DEFERRED;
+      case BUDGET_EXHAUSTED -> AiPatrolPolicy.Progress.BUDGET_EXHAUSTED;
+    };
   }
 
   private MoveAttempt moveTo(AgentHandle handle, Mob mob, Point destination,
@@ -1001,7 +1046,10 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
       agent.stateSinceNanos = now;
     }
     Entity entity = Bukkit.getEntity(agent.entityId());
-    if (entity instanceof Mob mob) aware(mob, true);
+    if (entity instanceof Mob mob) {
+      if (changed) mob.getPathfinder().stopPathfinding();
+      aware(mob, true);
+    }
     if (propagate && changed) propagateAlert(handle, target, now);
   }
 
@@ -1317,6 +1365,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
   private static final class AgentRuntime {
     private final UUID entityId;
     private final Point home;
+    private final long spawnOrdinal;
     private Point lastPosition;
     private AiTacticsPolicy.State state = AiTacticsPolicy.State.DORMANT;
     private long stateSinceNanos;
@@ -1324,17 +1373,21 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     private long nextPathAttemptAtNanos;
     private long nextPatrolAtNanos;
     private long patrolSequence;
+    private int patrolWaypointIndex;
     private @Nullable UUID targetId;
     private @Nullable Point lastKnown;
 
-    private AgentRuntime(UUID entityId, Location home, long now) {
+    private AgentRuntime(UUID entityId, Location home, long now, CraftovAiZone zone,
+        long spawnOrdinal) {
       this.entityId = entityId;
       this.home = Point.of(home);
+      this.spawnOrdinal = spawnOrdinal;
       lastPosition = this.home;
       stateSinceNanos = now;
       lastSeenAtNanos = now;
       nextPathAttemptAtNanos = now;
       nextPatrolAtNanos = now;
+      patrolWaypointIndex = AiPatrolPolicy.initialCursor(zone, spawnOrdinal);
     }
 
     UUID entityId() { return entityId; }
@@ -1386,6 +1439,7 @@ public final class CraftovAiRuntime implements Listener, AutoCloseable {
     private final boolean eventOnly;
     private final Map<UUID, AgentRuntime> agents;
     private long nextSequence;
+    private long nextAgentOrdinal;
     private @Nullable ScheduledTask refillTask;
     private boolean refillQueued;
 

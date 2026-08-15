@@ -256,6 +256,10 @@ Game/plugins/TrMenu/menus/escapefromcraftov_carry.yml
 # 选做，但完整 PvPvE 地图建议配置
 /craftov editor lootzone create warehouse craftov_tier_2
 /craftov editor ai zone create warehouse_guard
+
+# AI Zone 创建后保持选中；站到安全脚位依次添加巡逻点
+/craftov editor ai patrol add
+/craftov editor ai patrol list
 /craftov editor poi create warehouse 2
 ```
 
@@ -300,6 +304,41 @@ factory/
 ```
 
 有世界文件时，导入会生成名为 `craftov_source_<地图ID>` 的专用编辑源世界，并移除副本里的 `uid.dat` 与 `session.lock`，避免与原世界冲突。`/craftov editor enter` 会按需加载这个副本并传送管理员。每个正式房间再从编辑源复制自己的 `craftov_<房间ID>` 世界；房间结束后销毁实例副本，Builder 原图和导入来源始终不被修改。只有 `map.yml`、没有世界文件的配置包会继续引用其中写明的现有源世界。
+
+#### 为 AI Zone 配置巡逻路线
+
+AI Zone 可以选择配置一条按顺序循环的巡逻路线。先选中 AI Zone，再站到希望 AI 到达的方块脚位执行：
+
+```text
+/craftov editor ai patrol add
+/craftov editor ai patrol list
+/craftov editor ai patrol remove <index>
+/craftov editor ai patrol clear
+```
+
+`add` 把玩家当前脚位追加到路线末尾，`list` 按顺序列出路线，`remove` 使用列表中的序号删除单点，`clear` 清空整条路线。每个 AI Zone 最多 32 个巡逻点；点位必须唯一、同时位于该 AI Zone 与整张地图边界内，并通过安全落脚校验（脚下可站立、脚部和头部可通过，不能是液体或危险方块）。未加载区块不会为了校验或运行路线而被强制加载；编辑验证会提示待复核，运行时会保留当前目标并延迟重试。上述编辑都会进入当前草稿，可使用 `/craftov editor undo`、`redo`、`validate` 和 `save`，保存后随新地图 revision 一起冻结。
+
+也可以直接在 `map.yml` 的 AI Zone 中维护相同数据：
+
+```yaml
+ai-zones:
+  - id: warehouse_guard
+    enabled: true
+    bounds: {min-x: 200, min-y: 60, min-z: 200, max-x: 240, max-y: 80, max-z: 240}
+    ai-type: scav
+    minimum: 2
+    maximum: 4
+    respawn-seconds: 60
+    difficulty: 1.0
+    team: scav
+    patrol-waypoints:
+      - {x: 208, y: 64, z: 208}
+      - {x: 232, y: 64, z: 208}
+      - {x: 232, y: 64, z: 232}
+      - {x: 208, y: 64, z: 232}
+```
+
+`patrol-waypoints` 是可选字段；旧地图缺少该字段或列表为空时，仍使用原有随机巡逻行为。同一区域的 AI 会按稳定的生成 ordinal 分散到不同的路线起点，抵达当前点后才推进到下一点；区块未加载、寻路失败或预算不足时不会跳号。追击结束需要返回时仍优先回到安全 home，之后从保存的路线位置继续。`HIGH_VALUE_TARGET` 引用该 AI Zone 时，Boss 复用同一条路线。路线不会突破既有活动范围和每 100 ms 全局最多 8 次 AI 决策、4 次新寻路的预算。
 
 #### 在 `map.yml` 配置高价值目标事件
 
@@ -361,6 +400,8 @@ extractions:
 - 关闭：退出工具栏，不会自动丢弃草稿。
 
 编辑器右侧 Sidebar 会动态显示地图 revision、是否有未保存修改、当前工具、选中对象、设置进度、质量评分、ERROR/WARNING、各类对象数量和边界状态。粒子颜色约定：橙色 Map、绿色 Spawn、黄色 Loot、红色 AI、青色 Extraction、紫色 POI。FAWE 当前选区会按当前编辑工具显示对应颜色的加粗边框；已登记区域会持续显示同类颜色边框。边框会投影到管理员当前高度，因此全高度选区也不会只出现在世界底部和建筑上限。预览半径内的所有地图对象都由硬依赖 DecentHolograms 显示个人标签；选中对象显示完整属性，ERROR 对象显示原因，其余对象显示类型、ID 和关键属性。标签按选中、错误、普通的顺序排列并受独立数量上限保护。所有悬浮文字只由 DecentHolograms 创建，HUD 和粒子仍由 Paper 原生能力渲染。
+
+选中带巡逻路线的 AI Zone 时，起点显示绿色、路线点显示紫色、连线显示白色、方向箭头显示橙色，可直接看出点位顺序和循环方向。整条路线的预览按每名管理员、每帧最多 256 个粒子硬限裁剪，32 点路线也不会把预算按线段成倍放大。
 
 编辑器支持“看着地图点一下就改”：可视范围内的点位会创建仅当前管理员可见的隐形交互标记。左键标记会选择对象；潜行时右键会打开该对象的属性菜单。菜单中的按钮会修改启用状态、等级、物资组合、容器类型、密度、危险度、生物数量、撤离方式等常用属性；删除按钮只会创建限时确认请求，不会直接删除。菜单物品、快捷栏换位、Shift 点击、数字键和拖拽全部被保护，不能把编辑器按钮移动走。
 
@@ -453,6 +494,10 @@ extractions:
 | `/craftov editor ai team <team>` | 设置生物区域的阵营标签。 | `/craftov editor ai team neutral` |
 | `/craftov editor ai enable` | 启用选中的生物区域。 | `/craftov editor ai enable` |
 | `/craftov editor ai disable` | 停用选中的生物区域。 | `/craftov editor ai disable` |
+| `/craftov editor ai patrol add` | 把玩家当前安全脚位追加为选中 AI Zone 的巡逻点；最多 32 点。 | `/craftov editor ai patrol add` |
+| `/craftov editor ai patrol list` | 按路线顺序列出选中 AI Zone 的全部巡逻点。 | `/craftov editor ai patrol list` |
+| `/craftov editor ai patrol remove <index>` | 按列表序号删除选中 AI Zone 的一个巡逻点。 | `/craftov editor ai patrol remove 2` |
+| `/craftov editor ai patrol clear` | 清空选中 AI Zone 的巡逻路线，恢复随机巡逻。 | `/craftov editor ai patrol clear` |
 | `/craftov editor event list` | 列出当前草稿的事件，并提供重配、调参、启停和删除的可点击入口。 | `/craftov editor event list` |
 | `/craftov editor event create <id> <ai-zone-id> <loot-point-id>` | 创建并启用高价值目标事件；引用必须已启用且未被其他启用事件占用。 | `/craftov editor event create yard_boss yard_mobs yard_cache` |
 | `/craftov editor event name <id> <name>` | 修改事件显示名。 | `/craftov editor event name yard_boss 庭院首领` |
@@ -701,9 +746,9 @@ git diff --check
 ### 4.8 当前限制与下一阶段
 
 - 正式地图必须由管理员人工配置；运行时不提供自动扫描或自动生成点位命令。
-- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存。
+- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励、刷新和可选的最多 32 点 authored 巡逻路线；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存。
 - 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、局内二维携行整理、撤离入库和死亡损失已形成闭环。二维网格、隔舱、占格和原子转移已经接入 Paper 运行时与 `/craftov carry`；格坐标/朝向当前只由单局内存权威维护，跨局结算仍按唯一 `ItemInstance`，不持久化菜单排列。
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是基于现有 AI Zone 的复杂巡逻和更多可实际验收的地图事件；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是在 authored 巡逻路线之上增加更多可控 AI 战术和可实际验收的地图事件；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

@@ -54,6 +54,10 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 
 管理员可以配置 AI Zone、数量范围、刷新时间与难度。行动中会生成 Minecraft 原生生物，并应用安全落点、难度缩放、装备、奖励和有界行为。
 
+每个 AI Zone 还可以选择配置最多 32 个有序巡逻点。选中区域后使用 `/craftov editor ai patrol add|list|remove <index>|clear` 管理路线；新增点取管理员当前脚部方块，必须唯一、同时位于 AI Zone 与地图边界内，并满足脚下可站立、脚部和头部可通过的安全检查。缺少或清空路线的旧地图继续使用原有随机巡逻，不需要迁移。
+
+行动创建时会把巡逻路线随地图 revision 一起冻结。同一区域的 AI 使用稳定生成序号错开初始目标，并只在真正抵达后按作者顺序循环到下一点；目标区块未加载时保持当前点并延迟重试，不会主动加载区块。普通 AI 与 Boss 事件区域复用同一套路线和每 100 ms 最多 8 次决策、4 次新寻路的全局预算。
+
 地图还可以在 `map.yml` 中配置可选的 `HIGH_VALUE_TARGET` 事件。启用事件会独占其引用的 AI Zone，不再进行普通 AI 刷新；延迟结束后，系统只会在已加载区块中的安全落点生成 Boss。击杀 Boss 会解锁事件引用的现有 Loot Point，并按击杀瞬间冻结的小队 UUID 提供限时优先搜索权。
 
 ### 撤离点
@@ -306,6 +310,9 @@ plugins/EscapeFromCraftovGame/imports/factory/region/
 # 可选区域
 /craftov editor lootzone create warehouse craftov_tier_2
 /craftov editor ai zone create warehouse_guard
+# AI Zone 创建后保持选中；站到安全脚位依次添加巡逻点
+/craftov editor ai patrol add
+/craftov editor ai patrol list
 /craftov editor poi create warehouse 2
 ```
 
@@ -370,6 +377,8 @@ WorldEdit 是 Game 的硬依赖；EscapeFromCraftov 仍保留带 PDC 标记的 `
 HUD 显示地图、工具、选中对象和 `* UNSAVED`。附近对象通过 Chunk bucket 查询，默认每 10 ticks 刷新，单帧最多 160 个，不会每 tick 扫描全图。
 
 DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Zone、AI Zone、Extraction 和 POI 都会显示只对当前管理员可见的简洁标签；选中对象会升级为详细标签，执行验证后带 ERROR 的对象会显示具体原因。标签按“选中对象 → 最近的错误对象 → 最近的普通对象”排序，并受 `maximum-holograms-per-player` 独立限制。所有悬浮文字只通过 DecentHolograms 创建，没有 TextDisplay 或 ArmorStand 后备实现；编辑器的 HUD 和粒子仍由 Paper 原生能力渲染。
+
+选中带路线的 AI Zone 时，个人粒子会额外显示绿色起点、紫色巡逻点、白色连线和橙色方向箭头，闭环方向就是运行时顺序。整条巡逻路线每位管理员每帧共享最多 256 个粒子采样，不会把 32 个点各自扩展成无界粒子量。
 
 ### 编辑安全
 
@@ -460,6 +469,10 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 | `/craftov editor ai respawn <seconds>` | 修改生物区域重生间隔 |
 | `/craftov editor ai difficulty <value>` | 修改生物区域难度 |
 | `/craftov editor ai team <team>` | 修改生物区域阵营 |
+| `/craftov editor ai patrol add` | 把当前位置的安全脚部方块追加到选中 AI Zone 的巡逻路线 |
+| `/craftov editor ai patrol list` | 按运行顺序列出选中 AI Zone 的巡逻点 |
+| `/craftov editor ai patrol remove <index>` | 删除选中 AI Zone 的指定巡逻点；序号从 1 开始并支持补全 |
+| `/craftov editor ai patrol clear` | 清空选中 AI Zone 的巡逻路线并恢复随机巡逻 |
 | `/craftov editor ai enable` | 启用选中的生物区域 |
 | `/craftov editor ai disable` | 停用选中的生物区域 |
 | `/craftov editor extraction create <id> [normal]` | 创建普通撤离点 |
@@ -637,6 +650,28 @@ events（可选）
 extractions
 pois
 ```
+
+`ai-zones[].patrol-waypoints` 是可选的有序脚部坐标列表；缺失或为空时保留随机巡逻：
+
+```yaml
+ai-zones:
+  - id: warehouse_guard
+    enabled: true
+    bounds: {min-x: 200, min-y: 50, min-z: 200, max-x: 290, max-y: 80, max-z: 290}
+    ai-type: scav
+    minimum: 2
+    maximum: 4
+    respawn-seconds: 60
+    difficulty: 1.0
+    team: scav
+    patrol-waypoints:
+      - {x: 220, y: 64, z: 220}
+      - {x: 280, y: 64, z: 220}
+      - {x: 280, y: 64, z: 280}
+      - {x: 220, y: 64, z: 280}
+```
+
+每区最多 32 点，坐标必须唯一并同时落在该 AI Zone 和地图 Bounds 内。验证还会检查已加载区块中的脚部安全性；未加载区块只产生待复核提示，验证和运行时都不会为了巡逻强制加载区块。已冻结路线只在 AI 进入 `PATROL` 时使用；进入追击会停止旧巡逻路径，`RETURN` 仍先回安全出生位置，再从保存的巡逻序号继续。同区 AI 以共享区域基准和稳定生成序号分散到不同初始点，Boss 事件独占的 AI Zone 也使用同一路线。所有 AI 仍共享每 100 ms 最多 8 次决策和 4 次新寻路的预算；未加载、寻路失败或预算耗尽均不会跳过作者指定的当前点。
 
 `events` 是可选根字段；没有该字段的旧地图按空事件列表加载，原有行为不变。当前支持的事件类型是 `HIGH_VALUE_TARGET`：
 
@@ -838,9 +873,9 @@ Domain 不 import Bukkit 或第三方插件。Paper 世界访问、PDC、粒子�
 - 只正式支持 Cuboid；WorldEdit Polygon 会变成包围盒。
 - DecentHolograms 会标出预览半径内的地图对象，但默认每位管理员最多同时显示 32 个；选中和错误对象优先，避免 200+ Loot 地图产生无上限实体压力。
 - 地图必须由管理员人工放置点位和划分区域；当前不提供自动扫描或自动生成正式地图配置。
-- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存流程。
+- AI Zone 已生成原生 AI 实体并提供有界行为和可选的 32 点作者巡逻路线；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存流程。
 - Loot Point 已提供右键搜索与共享容器 UI。
 - 仓库、出战栏、局内二维携行整理、装备/物资损失和撤离结算已经闭环。二维位置当前是单局内存权威，跨局结算仍以唯一 `ItemInstance` 为单位。
 - 未在本仓库内运行五个硬依赖插件的完整 Paper 交互服，只验证了公开 API 编译与依赖解析；正式部署仍应检查每个插件的实际版本和启动日志。
 
-下一阶段最值得优先完成：基于现有 AI Zone 的复杂巡逻和更多可实际验收的地图事件，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。
+下一阶段最值得优先完成：在现有作者巡逻路线之上增加更多可控 AI 战术和可实际验收的地图事件，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。

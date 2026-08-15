@@ -99,6 +99,22 @@ class EditorCommandBoundaryTest {
     assertTrue(java.contains("live.apply(map -> EVENT_EDITOR.remove(map, eventId))"));
   }
 
+  @Test
+  void selectedAiZonePatrolCommandsUseSafeUndoableDraftMutations() throws IOException {
+    String java = Files.readString(Path.of(
+        "src/main/java/com/birditch/escapefromcraftov/game/plugin/command/EditorCommands.java"));
+
+    assertTrue(java.contains("Commands.literal(\"patrol\")"));
+    assertTrue(java.contains("Commands.literal(\"add\")"));
+    assertTrue(java.contains("Commands.literal(\"list\")"));
+    assertTrue(java.contains("Commands.literal(\"remove\")"));
+    assertTrue(java.contains("Commands.literal(\"clear\")"));
+    assertTrue(java.contains("selectedAiZone(session)"));
+    assertTrue(java.contains("BukkitMapEnvironmentValidator.isSafeFootPosition"));
+    assertTrue(java.contains("session.apply(map -> EDITOR.replace(map, updated))"));
+    assertTrue(java.contains("suggestPatrolWaypointIndexes"));
+  }
+
   private static ManualCraftovMap eventMap() {
     return new ManualCraftovMap(ManualCraftovMap.SCHEMA_VERSION, "test", "Test", "world",
         null, 0, false, Map.of(), List.of(),

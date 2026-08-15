@@ -12,6 +12,7 @@ import com.birditch.escapefromcraftov.api.extraction.ExtractionType;
 import com.birditch.escapefromcraftov.api.game.CraftovExtractionArea;
 import com.birditch.escapefromcraftov.api.game.CraftovExtractionRouteScope;
 import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
+import com.birditch.escapefromcraftov.api.game.CraftovAiWaypoint;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
 import com.birditch.escapefromcraftov.api.game.CraftovLootPoint;
@@ -132,7 +133,9 @@ public final class ManualCraftovMapProvider implements CraftovMapProvider {
         new CraftovAiZone(value.id(), value.aiType(), value.minimum(), value.maximum(),
             value.respawnSeconds(), value.difficulty(), value.team(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),
-            value.bounds().maxY(), value.bounds().maxZ())).toList();
+            value.bounds().maxY(), value.bounds().maxZ(), value.patrolWaypoints().stream()
+                .map(point -> new CraftovAiWaypoint(point.x(), point.y(), point.z()))
+                .toList())).toList();
     List<CraftovPoi> pois = map.pois().stream().filter(value -> value.enabled()).map(value ->
         new CraftovPoi(value.id(), value.displayName(), value.tier(), value.bounds().minX(),
             value.bounds().minY(), value.bounds().minZ(), value.bounds().maxX(),

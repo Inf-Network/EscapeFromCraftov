@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.birditch.escapefromcraftov.api.game.CraftovMapEventType;
+import com.birditch.escapefromcraftov.api.game.CraftovAiWaypoint;
 import com.birditch.escapefromcraftov.api.extraction.ExtractionContext;
 import com.birditch.escapefromcraftov.api.game.CraftovGameId;
 import com.birditch.escapefromcraftov.api.game.CraftovMapId;
@@ -51,6 +52,10 @@ class ManualCraftovMapProviderTest {
     assertEquals("loot_a", event.cacheLootPointId());
     assertTrue(event.enabled());
     assertThrows(UnsupportedOperationException.class, runtime.mapEvents()::clear);
+    assertEquals(List.of(new CraftovAiWaypoint(220, 64, 220),
+        new CraftovAiWaypoint(280, 64, 280)), runtime.aiZones().getFirst().patrolWaypoints());
+    assertThrows(UnsupportedOperationException.class,
+        () -> runtime.aiZones().getFirst().patrolWaypoints().clear());
     EventCompletedExtractionCondition condition = (EventCompletedExtractionCondition)
         runtime.extractionPoints().getFirst().conditions().stream()
             .filter(EventCompletedExtractionCondition.class::isInstance).findFirst()

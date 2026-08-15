@@ -50,6 +50,8 @@ class ManualMapStoreTest {
     assertTrue(yaml.contains("cache-loot-point-id: loot_a"));
     assertTrue(yaml.contains("type: EVENT_COMPLETED"));
     assertTrue(yaml.contains("event-id: factory_overseer"));
+    assertTrue(yaml.contains("patrol-waypoints:"));
+    assertTrue(yaml.contains("x: 220"));
   }
 
   @Test
@@ -74,7 +76,16 @@ class ManualMapStoreTest {
             weight: 1.0
         loot-points: []
         loot-zones: []
-        ai-zones: []
+        ai-zones:
+          - id: legacy_ai
+            enabled: true
+            bounds: {min-x: 20, min-y: 60, min-z: 20, max-x: 30, max-y: 70, max-z: 30}
+            ai-type: scav
+            minimum: 0
+            maximum: 1
+            respawn-seconds: 60
+            difficulty: 1.0
+            team: scav
         extractions:
           - id: legacy_exit
             enabled: true
@@ -92,6 +103,7 @@ class ManualMapStoreTest {
     assertEquals("legacy_spawn", loaded.spawns().getFirst().routeGroup());
     assertEquals(null, loaded.extractions().getFirst().routeScope());
     assertTrue(loaded.events().isEmpty());
+    assertTrue(loaded.aiZones().getFirst().patrolWaypoints().isEmpty());
   }
 
   @Test
@@ -226,7 +238,8 @@ class ManualMapStoreTest {
             new CuboidBounds(200, 50, 200, 300, 80, 300), "debug_common", 2, 1, 0.5, true)),
         List.of(new AiZoneDefinition("ai_zone_a",
             new CuboidBounds(210, 50, 210, 290, 80, 290), "scav", 2, 4, 60, 1,
-            "scav", true)),
+            "scav", true, List.of(new BlockPosition(220, 64, 220),
+                new BlockPosition(280, 64, 280)))),
         List.of(new ExtractionDefinition("north_gate", "North Gate",
             new CuboidBounds(10, 60, 450, 18, 70, 458), ManualExtractionType.NORMAL, 10,
             null, true, List.of(

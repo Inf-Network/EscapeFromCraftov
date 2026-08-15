@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.editor;
 
 import com.birditch.escapefromcraftov.common.check.Preconditions;
+import com.birditch.escapefromcraftov.map.AiZoneDefinition;
 import com.birditch.escapefromcraftov.map.BlockPosition;
 import com.birditch.escapefromcraftov.map.CuboidBounds;
 import com.birditch.escapefromcraftov.map.EditorSession;
@@ -133,6 +134,12 @@ public final class EditorVisualizationService implements Listener {
     nearby.forEach(object -> draw(player, object,
             session.selectedObjectId().filter(object.id()::equals).isPresent(),
             validation.getOrDefault(object.id(), List.of())));
+    if (session.visibleTypes().contains(MapObjectType.AI_ZONE)) {
+      session.selectedObjectId().flatMap(map::findObject)
+          .filter(AiZoneDefinition.class::isInstance)
+          .map(AiZoneDefinition.class::cast)
+          .ifPresent(zone -> drawPatrolRoute(player, zone));
+    }
     List<EditorHologramView> labels = EditorHologramPlanner.plan(map, nearby, validation,
             session.selectedObjectId().orElse(null), maximumHologramsPerPlayer).stream()
         .map(label -> new EditorHologramView(label.key(), label.object(),
@@ -183,6 +190,25 @@ public final class EditorVisualizationService implements Listener {
         Color.LIME, 0.9f);
     dust(player, tip.clone().add(-dx * 0.55 - dz * 0.4, 0, -dz * 0.55 + dx * 0.4),
         Color.LIME, 0.9f);
+  }
+
+  private static void drawPatrolRoute(Player player, AiZoneDefinition zone) {
+    for (PatrolRoutePreviewPlanner.Sample sample
+        : PatrolRoutePreviewPlanner.plan(zone.patrolWaypoints())) {
+      Color color = switch (sample.kind()) {
+        case START -> Color.LIME;
+        case WAYPOINT -> Color.PURPLE;
+        case PATH -> Color.WHITE;
+        case ARROW -> Color.ORANGE;
+      };
+      float size = switch (sample.kind()) {
+        case START, WAYPOINT -> 1.35f;
+        case PATH -> 0.75f;
+        case ARROW -> 1.0f;
+      };
+      dust(player, new Location(player.getWorld(), sample.x(), sample.y(), sample.z()),
+          color, size);
+    }
   }
 
   private static void drawError(Player player, BlockPosition position) {

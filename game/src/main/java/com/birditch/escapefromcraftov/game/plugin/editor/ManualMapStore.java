@@ -349,6 +349,10 @@ public final class ManualMapStore {
     result.put("respawn-seconds", value.respawnSeconds());
     result.put("difficulty", value.difficulty());
     result.put("team", value.team());
+    if (!value.patrolWaypoints().isEmpty()) {
+      result.put("patrol-waypoints", value.patrolWaypoints().stream()
+          .map(ManualMapStore::positionMap).toList());
+    }
     return result;
   }
 
@@ -436,7 +440,11 @@ public final class ManualMapStore {
     return new AiZoneDefinition(string(map, "id"), readBounds(nested(map, "bounds")),
         string(map, "ai-type"), number(map, "minimum").intValue(),
         number(map, "maximum").intValue(), number(map, "respawn-seconds").intValue(),
-        number(map, "difficulty").doubleValue(), string(map, "team"), bool(map, "enabled"));
+        number(map, "difficulty").doubleValue(), string(map, "team"), bool(map, "enabled"),
+        map.containsKey("patrol-waypoints")
+            ? nestedMapList(map, "patrol-waypoints").stream()
+                .map(ManualMapStore::readPosition).toList()
+            : List.of());
   }
 
   private static ExtractionDefinition readExtraction(Map<?, ?> map) {

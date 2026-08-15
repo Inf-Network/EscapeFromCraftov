@@ -1,6 +1,7 @@
 package com.birditch.escapefromcraftov.game.plugin.command;
 
 import com.birditch.escapefromcraftov.api.CraftovPermissions;
+import com.birditch.escapefromcraftov.api.game.CraftovAiZone;
 import com.birditch.escapefromcraftov.api.game.CraftovGameService;
 import com.birditch.escapefromcraftov.api.item.ItemRegistry;
 import com.birditch.escapefromcraftov.api.loot.LootTableRegistry;
@@ -29,6 +30,7 @@ import com.birditch.escapefromcraftov.map.MapValidationSeverity;
 import com.birditch.escapefromcraftov.map.PoiDefinition;
 import com.birditch.escapefromcraftov.map.SpawnDefinition;
 import com.birditch.escapefromcraftov.game.plugin.editor.SafeEditorTeleport;
+import com.birditch.escapefromcraftov.game.plugin.editor.BukkitMapEnvironmentValidator;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
@@ -364,8 +366,27 @@ final class EditorCommands {
             .executes(ctx -> player(ctx.getSource().getSender(), value -> updateAiZone(context,
                 value, null, null, null, null, null,
                 StringArgumentType.getString(ctx, "team"), null))))))
+        .then(aiPatrolBranch(context))
         .then(Commands.literal("enable").executes(ctx -> toggleAiZone(context, ctx, true)))
         .then(Commands.literal("disable").executes(ctx -> toggleAiZone(context, ctx, false)));
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> aiPatrolBranch(
+      CommandContext context) {
+    return Commands.literal("patrol")
+        .then(Commands.literal("add").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> addAiPatrolWaypoint(context, value))))
+        .then(Commands.literal("list").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> listAiPatrolWaypoints(context, value))))
+        .then(Commands.literal("remove")
+            .then(Commands.argument("index", IntegerArgumentType.integer(1))
+                .suggests((ctx, builder) -> suggestPatrolWaypointIndexes(context,
+                    ctx.getSource().getSender(), builder))
+                .executes(ctx -> player(ctx.getSource().getSender(), value ->
+                    removeAiPatrolWaypoint(context, value,
+                        IntegerArgumentType.getInteger(ctx, "index"))))))
+        .then(Commands.literal("clear").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> clearAiPatrolWaypoints(context, value))));
   }
 
   private static LiteralArgumentBuilder<CommandSourceStack> eventBranch(CommandContext context) {
@@ -785,7 +806,7 @@ final class EditorCommands {
     helpGroup(player, "地图", "/craftov editor enter|exit|status|map bounds|wand|menu");
     helpGroup(player, "出生", "/craftov editor spawn create|region|team|weight|route-group|enable|disable");
     helpGroup(player, "物资", "/craftov editor loot|lootzone create|table|tier|density|danger");
-    helpGroup(player, "生物", "/craftov editor ai zone|type|minimum|maximum|respawn|difficulty");
+    helpGroup(player, "生物", "/craftov editor ai zone|type|minimum|maximum|respawn|difficulty|patrol");
     helpGroup(player, "事件", "/craftov editor event list|create|name|delay|health|damage|protection|refs|enable|disable|delete");
     helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition|route|rule");
     helpGroup(player, "对象", "/craftov editor select|info [id]|tp [id]|move|clone|copy|paste|delete");
@@ -874,6 +895,100 @@ final class EditorCommands {
     session.setTool(EditorTool.AI_ZONE);
     return add(player, session, new AiZoneDefinition(id, selection(context, player, session),
         "scav", 2, 4, 60, 1, "scav", true));
+  }
+
+  private static int addAiPatrolWaypoint(CommandContext context, Player player) {
+    EditorSession session = session(context, player);
+    sameWorld(player, session);
+    AiZoneDefinition zone = selectedAiZone(session);
+    BlockPosition waypoint = position(player.getLocation());
+    CuboidBounds mapBounds = session.draft().bounds();
+    if (mapBounds == null || !mapBounds.contains(waypoint)) {
+      throw new IllegalStateException("当前位置不在地图边界内");
+    }
+    if (!zone.bounds().contains(waypoint)) {
+      throw new IllegalStateException("当前位置不在选中的 AI 区域内: " + zone.id());
+    }
+    if (zone.patrolWaypoints().contains(waypoint)) {
+      throw new IllegalStateException("该位置已经是巡逻点: " + coordinate(waypoint));
+    }
+    if (zone.patrolWaypoints().size() >= CraftovAiZone.MAXIMUM_PATROL_WAYPOINTS) {
+      throw new IllegalStateException("每个 AI 区域最多只能设置 "
+          + CraftovAiZone.MAXIMUM_PATROL_WAYPOINTS + " 个巡逻点");
+    }
+    if (!BukkitMapEnvironmentValidator.isSafeFootPosition(player.getWorld(), waypoint)) {
+      throw new IllegalStateException("当前位置不可作为巡逻点：脚下必须可站立，脚部与头部必须可通过");
+    }
+    List<BlockPosition> route = new ArrayList<>(zone.patrolWaypoints());
+    route.add(waypoint);
+    replaceAiPatrolRoute(session, zone, route);
+    player.sendMessage(Component.text("已添加巡逻点 #" + route.size() + " "
+        + coordinate(waypoint) + "，路线共 " + route.size() + "/"
+        + CraftovAiZone.MAXIMUM_PATROL_WAYPOINTS + " 点", NamedTextColor.GREEN));
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static int listAiPatrolWaypoints(CommandContext context, Player player) {
+    AiZoneDefinition zone = selectedAiZone(session(context, player));
+    if (zone.patrolWaypoints().isEmpty()) {
+      player.sendMessage(Component.text("AI 区域 " + zone.id() + " 尚未设置巡逻路线；"
+          + "AI 将保持随机巡逻", NamedTextColor.GRAY));
+      return Command.SINGLE_SUCCESS;
+    }
+    player.sendMessage(Component.text("AI 巡逻路线 " + zone.id() + " · "
+        + zone.patrolWaypoints().size() + " 点（按编号循环）", NamedTextColor.GOLD));
+    for (int index = 0; index < zone.patrolWaypoints().size(); index++) {
+      player.sendMessage(Component.text("#" + (index + 1) + " "
+          + coordinate(zone.patrolWaypoints().get(index)),
+          index == 0 ? NamedTextColor.GREEN : NamedTextColor.LIGHT_PURPLE));
+    }
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static int removeAiPatrolWaypoint(CommandContext context, Player player, int index) {
+    EditorSession session = session(context, player);
+    AiZoneDefinition zone = selectedAiZone(session);
+    if (index > zone.patrolWaypoints().size()) {
+      throw new IllegalArgumentException("巡逻点序号不存在: " + index);
+    }
+    List<BlockPosition> route = new ArrayList<>(zone.patrolWaypoints());
+    BlockPosition removed = route.remove(index - 1);
+    replaceAiPatrolRoute(session, zone, route);
+    player.sendMessage(Component.text("已删除巡逻点 #" + index + " "
+        + coordinate(removed) + "；剩余 " + route.size() + " 点", NamedTextColor.YELLOW));
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static int clearAiPatrolWaypoints(CommandContext context, Player player) {
+    EditorSession session = session(context, player);
+    AiZoneDefinition zone = selectedAiZone(session);
+    if (zone.patrolWaypoints().isEmpty()) {
+      throw new IllegalStateException("选中的 AI 区域没有巡逻点: " + zone.id());
+    }
+    int count = zone.patrolWaypoints().size();
+    replaceAiPatrolRoute(session, zone, List.of());
+    player.sendMessage(Component.text("已清空 AI 区域 " + zone.id() + " 的 " + count
+        + " 个巡逻点；将恢复随机巡逻", NamedTextColor.YELLOW));
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static void replaceAiPatrolRoute(EditorSession session, AiZoneDefinition zone,
+      List<BlockPosition> route) {
+    AiZoneDefinition updated = new AiZoneDefinition(zone.id(), zone.bounds(), zone.aiType(),
+        zone.minimum(), zone.maximum(), zone.respawnSeconds(), zone.difficulty(), zone.team(),
+        zone.enabled(), route);
+    if (!session.apply(map -> EDITOR.replace(map, updated))) {
+      throw new IllegalStateException("AI 巡逻路线没有发生变化: " + zone.id());
+    }
+  }
+
+  private static AiZoneDefinition selectedAiZone(EditorSession session) {
+    MapObject object = session.draft().findObject(selected(session))
+        .orElseThrow(() -> new IllegalStateException("选中的对象不存在"));
+    if (!(object instanceof AiZoneDefinition zone)) {
+      throw new IllegalStateException("当前选中对象不是 AI 区域");
+    }
+    return zone;
   }
 
   private static int createEvent(CommandContext context, Player player, String id,
@@ -1082,7 +1197,7 @@ final class EditorCommands {
           respawnSeconds == null ? value.respawnSeconds() : respawnSeconds,
           difficulty == null ? value.difficulty() : difficulty,
           team == null ? value.team() : team,
-          enabled == null ? value.enabled() : enabled);
+          enabled == null ? value.enabled() : enabled, value.patrolWaypoints());
     });
   }
 
@@ -1634,6 +1749,10 @@ final class EditorCommands {
     return new BlockPosition(location.getBlockX(), location.getBlockY(), location.getBlockZ());
   }
 
+  private static String coordinate(BlockPosition position) {
+    return "(" + position.x() + ", " + position.y() + ", " + position.z() + ")";
+  }
+
   private static EditorTool tool(MapObjectType type) {
     return switch (type) {
       case SPAWN -> EditorTool.SPAWN;
@@ -1758,6 +1877,23 @@ final class EditorCommands {
       context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
           session.draft().spawns().stream().map(SpawnDefinition::routeGroup).distinct()
               .forEach(builder::suggest));
+    }
+    return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestPatrolWaypointIndexes(CommandContext context, CommandSender sender,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+          session.selectedObjectId().flatMap(session.draft()::findObject)
+              .filter(AiZoneDefinition.class::isInstance)
+              .map(AiZoneDefinition.class::cast)
+              .ifPresent(zone -> {
+                for (int index = 1; index <= zone.patrolWaypoints().size(); index++) {
+                  builder.suggest(Integer.toString(index));
+                }
+              }));
     }
     return builder.buildFuture();
   }

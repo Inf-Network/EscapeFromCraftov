@@ -4,6 +4,7 @@ Layout:
   - '#MSLZAEP#'
   - '#WVHNRBT#'
   - '#UOQCGYX#'
+  - '#F      #'
   - '#########'
 Options:
   Arguments: false
@@ -39,6 +40,9 @@ Icons:
   P:
     display: { material: purple_wool, name: '&d兴趣点', lore: [ '&7切换到 POI 编辑工具' ] }
     actions: { all: [ 'close', 'command: craftov editor tool poi' ] }
+  F:
+    display: { material: nether_star, name: '&c高价值目标事件', lore: [ '&7列出、配置、启停或删除 Boss 事件', '&7事件没有空间选区，不会伪装成地图对象' ] }
+    actions: { all: [ 'close', 'command: craftov editor event list' ] }
   W:
     display: { material: wooden_axe, name: '&6选区工具', lore: [ '&7领取 EscapeFromCraftov 选区工具' ] }
     actions: { all: [ 'close', 'command: craftov editor wand' ] }

@@ -90,7 +90,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 | 虚拟 Loot 搜索与撤离结算 | 完成 | 共享一次性 Loot GUI，成功撤离后入仓 |
 | 局内二维携行与整理 | 完成 | 口袋/胸挂/背包分区、占格、隔舱、锁定格、原子移动和受限旋转；`/craftov carry` 打开 |
 | AI 战斗 | 完成（基础） | AI Zone 原生生物、安全生成、难度缩放、装备、奖励与有界行为 |
-| 高价值目标地图事件 | 完成（YAML） | 延迟生成 Boss、事件专属 AI Zone、击杀解锁缓存、小队限时优先权及 `EVENT_COMPLETED` 撤离；事件对象编辑器尚未实现 |
+| 高价值目标地图事件 | 完成 | 编辑器/YAML 配置、延迟 Boss、事件专属 AI Zone、缓存解锁、小队优先权及 `EVENT_COMPLETED` 撤离 |
 | Minecraft PvP 结算与队伍规则 | 完成 | 原生伤害边界、友伤配置、击杀归属和死亡结算 |
 | 动态 Sidebar / BossBar / Action Bar | 完成 | 编辑器和行动中使用个人稳定 HUD |
 | 剑/斧/弓/弩/盾牌物品分类 | 完成 | 默认领域物品与 LootTable 已使用 Minecraft 语义 |
@@ -682,7 +682,15 @@ extractions:
 
 选中撤离点后也可执行 `/craftov editor extraction rule event <事件ID>`；补全和执行均只接受当前草稿内已启用的事件。条件会在撤离开始和倒计时结束时实时复核同一局状态，只有 `COMPLETED` 放行；缺失、失败、未完成、已清理或跨局状态全部拒绝。该条件先于名额和付费授权执行，失效时不会先扣款。Sidebar 保留本队普通出口并追加事件锁定提示。带事件条件的出口不是路线保底，地图仍需为每个出生组配置无条件 `NORMAL` 出口。
 
-旧版本位于 `maps/<map-id>/revisions/`。普通地图对象仍应使用游戏内编辑器；高价值目标事件对象目前没有创建/修改命令或菜单，仍须直接维护 `map.yml`。
+事件不具备坐标或选区，因此不会伪装成普通 `MapObject`。进入地图编辑器后，可从 TrMenu 工具栏点击“高价值目标事件”，或使用 `/craftov editor event list` 查看事件及可点击的常用修改入口。完整命令包括：
+
+- `event create <id> <ai-zone-id> <loot-point-id>`：以安全默认倍率创建并启用事件。
+- `event name|delay|health|damage|protection <event-id> <value>`：修改显示名和数值。
+- `event refs <event-id> <ai-zone-id> <loot-point-id>`：重新绑定已启用、未被占用的 AI Zone 与 Loot Point。
+- `event enable|disable <event-id>`：启停事件。
+- `event delete <event-id>`：创建限时删除确认，随后执行 `/craftov editor confirm`。
+
+命令补全和执行都会重新读取当前草稿并验证引用；事件与普通对象共享 ID 命名空间。仍被事件使用的 AI Zone/Loot Point 不能被停用或删除，仍被任意 `EVENT_COMPLETED` 规则引用的事件也不能停用或删除，必须先显式解除引用。所有修改只进入个人草稿，支持现有 undo/redo，并在 `/craftov editor save` 验证成功后生成新 revision。旧版本仍保存在 `maps/<map-id>/revisions/`；YAML 可以用于审计和高级维护，但不再是事件配置的唯一入口。
 
 ## PostgreSQL、Hibernate 与 HikariCP
 
@@ -706,7 +714,7 @@ Hibernate 负责实体映射、事务 Session 和批处理；HikariCP 负责连�
 
 ### 一定要编辑 YAML 吗？
 
-普通地图对象不需要，游戏内编辑器仍是主要入口，YAML 用于存储、审计和备份。`HIGH_VALUE_TARGET` 事件是当前例外：事件编辑器命令和菜单尚未实现，需要直接编辑 `map.yml`。
+不一定。游戏内编辑器是主要入口，YAML 用于存储、审计和备份。`HIGH_VALUE_TARGET` 事件可从 TrMenu 工具栏进入列表，并通过 `/craftov editor event ...` 完成创建、调参、重配引用、启停和删除。
 
 ### 一定要安装这些扩展插件吗？
 
@@ -830,9 +838,9 @@ Domain 不 import Bukkit 或第三方插件。Paper 世界访问、PDC、粒子�
 - 只正式支持 Cuboid；WorldEdit Polygon 会变成包围盒。
 - DecentHolograms 会标出预览半径内的地图对象，但默认每位管理员最多同时显示 32 个；选中和错误对象优先，避免 200+ Loot 地图产生无上限实体压力。
 - 地图必须由管理员人工放置点位和划分区域；当前不提供自动扫描或自动生成正式地图配置。
-- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件已可使用，但事件对象本身仍须直接维护 `map.yml`。
+- AI Zone 已生成原生 AI 实体并提供基础有界行为；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存流程。
 - Loot Point 已提供右键搜索与共享容器 UI。
 - 仓库、出战栏、局内二维携行整理、装备/物资损失和撤离结算已经闭环。二维位置当前是单局内存权威，跨局结算仍以唯一 `ItemInstance` 为单位。
 - 未在本仓库内运行五个硬依赖插件的完整 Paper 交互服，只验证了公开 API 编译与依赖解析；正式部署仍应检查每个插件的实际版本和启动日志。
 
-下一阶段最值得优先完成：**高价值目标事件的游戏内创建/编辑界面**、基于现有 AI Zone 的复杂巡逻，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。
+下一阶段最值得优先完成：基于现有 AI Zone 的复杂巡逻和更多可实际验收的地图事件，以及需要时为仓库设计独立的跨局排列持久化；这不会改变结算以唯一 `ItemInstance` 为事实单位的边界。

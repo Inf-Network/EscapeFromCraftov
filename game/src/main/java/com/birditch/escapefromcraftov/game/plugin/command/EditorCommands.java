@@ -16,8 +16,11 @@ import com.birditch.escapefromcraftov.map.LootPointDefinition;
 import com.birditch.escapefromcraftov.map.LootZoneDefinition;
 import com.birditch.escapefromcraftov.map.ManualExtractionType;
 import com.birditch.escapefromcraftov.map.ManualMapEditor;
+import com.birditch.escapefromcraftov.map.ManualMapEventEditor;
 import com.birditch.escapefromcraftov.map.ManualMapValidationResult;
 import com.birditch.escapefromcraftov.map.ManualCraftovMap;
+import com.birditch.escapefromcraftov.map.MapEventDefinition;
+import com.birditch.escapefromcraftov.map.MapEventType;
 import com.birditch.escapefromcraftov.map.MapObject;
 import com.birditch.escapefromcraftov.map.MapObjectIndex;
 import com.birditch.escapefromcraftov.map.MapObjectType;
@@ -56,6 +59,7 @@ import org.bukkit.entity.Player;
 final class EditorCommands {
 
   private static final ManualMapEditor EDITOR = new ManualMapEditor();
+  private static final ManualMapEventEditor EVENT_EDITOR = new ManualMapEventEditor();
 
   private EditorCommands() {}
 
@@ -90,6 +94,7 @@ final class EditorCommands {
         .then(lootBranch(context))
         .then(lootZoneBranch(context))
         .then(aiBranch(context))
+        .then(eventBranch(context))
         .then(extractionBranch(context))
         .then(poiBranch(context))
         .then(selectBranch(context))
@@ -361,6 +366,83 @@ final class EditorCommands {
                 StringArgumentType.getString(ctx, "team"), null))))))
         .then(Commands.literal("enable").executes(ctx -> toggleAiZone(context, ctx, true)))
         .then(Commands.literal("disable").executes(ctx -> toggleAiZone(context, ctx, false)));
+  }
+
+  private static LiteralArgumentBuilder<CommandSourceStack> eventBranch(CommandContext context) {
+    LiteralArgumentBuilder<CommandSourceStack> result = Commands.literal("event")
+        .requires(source -> ManualMapCommands.allowed(context, source.getSender(),
+            CraftovPermissions.EDITOR_AI));
+    result.then(Commands.literal("list").executes(ctx -> player(
+        ctx.getSource().getSender(), value -> listEvents(context, value))));
+    result.then(Commands.literal("create").then(newEventIdArgument(context, "event-id")
+        .then(Commands.argument("ai-zone-id", StringArgumentType.word())
+            .suggests((ctx, builder) -> suggestAvailableEventAiZones(context,
+                ctx.getSource().getSender(), null, builder))
+            .then(Commands.argument("loot-point-id", StringArgumentType.word())
+                .suggests((ctx, builder) -> suggestAvailableEventLootPoints(context,
+                    ctx.getSource().getSender(), null, builder))
+                .executes(ctx -> player(ctx.getSource().getSender(), value -> createEvent(
+                    context, value, StringArgumentType.getString(ctx, "event-id"),
+                    StringArgumentType.getString(ctx, "ai-zone-id"),
+                    StringArgumentType.getString(ctx, "loot-point-id"))))))));
+    result.then(Commands.literal("name").then(eventArgument(context, "event-id")
+        .then(Commands.argument("display-name", StringArgumentType.greedyString())
+            .suggests((_, builder) -> suggest(builder, "高价值目标", "区域首领", "精英守卫"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                context, value, StringArgumentType.getString(ctx, "event-id"),
+                StringArgumentType.getString(ctx, "display-name"), null, null, null, null,
+                null, null))))));
+    result.then(Commands.literal("delay").then(eventArgument(context, "event-id")
+        .then(Commands.argument("seconds", IntegerArgumentType.integer(0, 3_600))
+            .suggests((_, builder) -> suggest(builder, "0", "15", "30", "60", "120"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                context, value, StringArgumentType.getString(ctx, "event-id"), null,
+                IntegerArgumentType.getInteger(ctx, "seconds"), null, null, null, null,
+                null))))));
+    result.then(Commands.literal("health").then(eventArgument(context, "event-id")
+        .then(Commands.argument("multiplier", DoubleArgumentType.doubleArg(Double.MIN_VALUE, 20))
+            .suggests((_, builder) -> suggest(builder, "2.0", "4.0", "6.0", "8.0"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                context, value, StringArgumentType.getString(ctx, "event-id"), null, null,
+                DoubleArgumentType.getDouble(ctx, "multiplier"), null, null, null, null))))));
+    result.then(Commands.literal("damage").then(eventArgument(context, "event-id")
+        .then(Commands.argument("multiplier", DoubleArgumentType.doubleArg(Double.MIN_VALUE, 8))
+            .suggests((_, builder) -> suggest(builder, "1.0", "1.5", "2.0", "3.0"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                context, value, StringArgumentType.getString(ctx, "event-id"), null, null, null,
+                DoubleArgumentType.getDouble(ctx, "multiplier"), null, null, null))))));
+    result.then(Commands.literal("protection").then(eventArgument(context, "event-id")
+        .then(Commands.argument("seconds", IntegerArgumentType.integer(0, 300))
+            .suggests((_, builder) -> suggest(builder, "0", "15", "30", "60", "120"))
+            .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                context, value, StringArgumentType.getString(ctx, "event-id"), null, null, null,
+                null, IntegerArgumentType.getInteger(ctx, "seconds"), null, null))))));
+    result.then(Commands.literal("refs").then(eventArgument(context, "event-id")
+        .then(Commands.argument("ai-zone-id", StringArgumentType.word())
+            .suggests((ctx, builder) -> suggestAvailableEventAiZones(context,
+                ctx.getSource().getSender(), StringArgumentType.getString(ctx, "event-id"),
+                builder))
+            .then(Commands.argument("loot-point-id", StringArgumentType.word())
+                .suggests((ctx, builder) -> suggestAvailableEventLootPoints(context,
+                    ctx.getSource().getSender(), StringArgumentType.getString(ctx, "event-id"),
+                    builder))
+                .executes(ctx -> player(ctx.getSource().getSender(), value -> updateEvent(
+                    context, value, StringArgumentType.getString(ctx, "event-id"), null, null,
+                    null, null, null, StringArgumentType.getString(ctx, "ai-zone-id"),
+                    StringArgumentType.getString(ctx, "loot-point-id"))))))));
+    result.then(Commands.literal("enable").then(eventArgument(context, "event-id")
+        .executes(ctx -> player(ctx.getSource().getSender(), value -> setEventEnabled(
+            context, value, StringArgumentType.getString(ctx, "event-id"), true)))));
+    result.then(Commands.literal("disable").then(eventArgument(context, "event-id")
+        .executes(ctx -> player(ctx.getSource().getSender(), value -> setEventEnabled(
+            context, value, StringArgumentType.getString(ctx, "event-id"), false)))));
+    result.then(Commands.literal("delete")
+        .requires(source -> ManualMapCommands.allowed(context, source.getSender(),
+            CraftovPermissions.EDITOR_DELETE))
+        .then(eventArgument(context, "event-id").executes(ctx -> player(
+            ctx.getSource().getSender(), value -> requestDeleteEvent(context, value,
+                StringArgumentType.getString(ctx, "event-id"))))));
+    return result;
   }
 
   private static LiteralArgumentBuilder<CommandSourceStack> extractionBranch(
@@ -693,6 +775,9 @@ final class EditorCommands {
     player.sendMessage(Component.text("Tool " + session.tool() + " | Selected "
         + session.selectedObjectId().orElse("-") + " | Radius " + session.visibilityRadius(),
         NamedTextColor.GRAY));
+    player.sendMessage(Component.text("Events " + session.draft().events().size()
+        + " | Enabled " + session.draft().events().stream()
+            .filter(MapEventDefinition::enabled).count(), NamedTextColor.GRAY));
     return Command.SINGLE_SUCCESS;
   }
 
@@ -701,6 +786,7 @@ final class EditorCommands {
     helpGroup(player, "出生", "/craftov editor spawn create|region|team|weight|route-group|enable|disable");
     helpGroup(player, "物资", "/craftov editor loot|lootzone create|table|tier|density|danger");
     helpGroup(player, "生物", "/craftov editor ai zone|type|minimum|maximum|respawn|difficulty");
+    helpGroup(player, "事件", "/craftov editor event list|create|name|delay|health|damage|protection|refs|enable|disable|delete");
     helpGroup(player, "撤离", "/craftov editor extraction create|name|duration|type|condition|route|rule");
     helpGroup(player, "对象", "/craftov editor select|info [id]|tp [id]|move|clone|copy|paste|delete");
     helpGroup(player, "批量", "/craftov editor batch enable|disable|table|tier|delete");
@@ -788,6 +874,136 @@ final class EditorCommands {
     session.setTool(EditorTool.AI_ZONE);
     return add(player, session, new AiZoneDefinition(id, selection(context, player, session),
         "scav", 2, 4, 60, 1, "scav", true));
+  }
+
+  private static int createEvent(CommandContext context, Player player, String id,
+      String aiZoneId, String lootPointId) {
+    EditorSession session = session(context, player);
+    if (!id.matches("[a-z0-9_]+")) {
+      throw new IllegalArgumentException("地图事件 ID 只能包含小写字母、数字和下划线");
+    }
+    MapEventDefinition event = new MapEventDefinition(id, readableName(id),
+        MapEventType.HIGH_VALUE_TARGET, aiZoneId, lootPointId, 15, 4, 1.5, 30, true);
+    session.apply(map -> EVENT_EDITOR.add(map, event));
+    return changed(player, "已创建高价值目标事件", id);
+  }
+
+  private static int updateEvent(CommandContext context, Player player, String eventId,
+      String displayName, Integer startDelaySeconds, Double healthMultiplier,
+      Double damageMultiplier, Integer protectionSeconds, String aiZoneId,
+      String lootPointId) {
+    EditorSession session = session(context, player);
+    MapEventDefinition current = EVENT_EDITOR.require(session.draft(), eventId);
+    String name = displayName == null ? current.displayName() : displayName.trim();
+    if (name.isBlank()) throw new IllegalArgumentException("地图事件显示名不能为空");
+    MapEventDefinition updated = new MapEventDefinition(current.id(), name, current.type(),
+        aiZoneId == null ? current.aiZoneId() : aiZoneId,
+        lootPointId == null ? current.cacheLootPointId() : lootPointId,
+        startDelaySeconds == null ? current.startDelaySeconds() : startDelaySeconds,
+        healthMultiplier == null ? current.healthMultiplier() : healthMultiplier,
+        damageMultiplier == null ? current.damageMultiplier() : damageMultiplier,
+        protectionSeconds == null ? current.protectionSeconds() : protectionSeconds,
+        current.enabled());
+    if (!session.apply(map -> EVENT_EDITOR.replace(map, updated))) {
+      throw new IllegalStateException("地图事件没有发生变化: " + eventId);
+    }
+    return changed(player, "已更新地图事件", eventId);
+  }
+
+  private static int setEventEnabled(CommandContext context, Player player, String eventId,
+      boolean enabled) {
+    EditorSession session = session(context, player);
+    if (!session.apply(map -> EVENT_EDITOR.setEnabled(map, eventId, enabled))) {
+      throw new IllegalStateException("地图事件已经" + (enabled ? "启用" : "停用") + ": "
+          + eventId);
+    }
+    return changed(player, enabled ? "已启用地图事件" : "已停用地图事件", eventId);
+  }
+
+  private static int requestDeleteEvent(CommandContext context, Player player, String eventId) {
+    EditorSession expectedSession = session(context, player);
+    ManualCraftovMap expectedDraft = expectedSession.draft();
+    MapEventDefinition expectedEvent = EVENT_EDITOR.require(expectedDraft, eventId);
+    // Reject an impossible request now; the same checks run again at confirmation time.
+    EVENT_EDITOR.remove(expectedDraft, eventId);
+    context.confirmations().request(player.getUniqueId(), "删除地图事件 " + eventId, () -> {
+      if (!player.isOnline()) throw new IllegalStateException("删除确认已失效：玩家已离线");
+      EditorSession live = context.editorSessions().find(player.getUniqueId()).orElseThrow(() ->
+          new IllegalStateException("删除确认已失效：编辑会话已结束"));
+      if (live != expectedSession || live.draft() != expectedDraft) {
+        throw new IllegalStateException("删除确认已失效：编辑稿在请求后已发生变化");
+      }
+      MapEventDefinition current = EVENT_EDITOR.require(live.draft(), eventId);
+      if (current != expectedEvent) {
+        throw new IllegalStateException("删除确认已失效：目标事件已被替换");
+      }
+      if (!ManualMapCommands.allowed(context, player, CraftovPermissions.EDITOR_AI)
+          || !ManualMapCommands.allowed(context, player, CraftovPermissions.EDITOR_DELETE)) {
+        throw new IllegalStateException("删除确认已失效：权限已变化");
+      }
+      live.apply(map -> EVENT_EDITOR.remove(map, eventId));
+      player.sendMessage(Component.text("已删除地图事件 " + eventId + "，尚未保存。",
+          NamedTextColor.YELLOW));
+    });
+    player.sendMessage(Component.text("危险操作待确认: 将删除地图事件 " + eventId + "。"
+        + context.editorSettings().confirmationSeconds()
+        + " 秒内执行 /craftov editor confirm", NamedTextColor.RED));
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static int listEvents(CommandContext context, Player player) {
+    EditorSession session = session(context, player);
+    List<MapEventDefinition> events = session.draft().events();
+    player.sendMessage(Component.text("高价值目标事件 (" + events.size() + ")",
+        NamedTextColor.GOLD));
+    if (events.isEmpty()) {
+      player.sendMessage(Component.text(
+          "尚未创建。使用 /craftov editor event create <id> <ai-zone-id> <loot-point-id>",
+          NamedTextColor.GRAY));
+      return Command.SINGLE_SUCCESS;
+    }
+    for (MapEventDefinition event : events) {
+      NamedTextColor color = event.enabled() ? NamedTextColor.GREEN : NamedTextColor.GRAY;
+      player.sendMessage(Component.text("- " + event.id() + " · " + event.displayName()
+          + " · " + (event.enabled() ? "已启用" : "已停用") + " · AI " + event.aiZoneId()
+          + " · Loot " + event.cacheLootPointId(), color)
+          .hoverEvent(HoverEvent.showText(Component.text("延迟 " + event.startDelaySeconds()
+              + "s · 生命 " + event.healthMultiplier() + "x · 伤害 "
+              + event.damageMultiplier() + "x · 保护 " + event.protectionSeconds() + "s",
+              NamedTextColor.AQUA))));
+      Component actions = Component.text("  ")
+          .append(eventAction("[重配引用]", "/craftov editor event refs " + event.id() + " "
+              + event.aiZoneId() + " " + event.cacheLootPointId(), false))
+          .append(Component.space())
+          .append(eventAction("[改名]", "/craftov editor event name " + event.id() + " "
+              + event.displayName(), false))
+          .append(Component.space())
+          .append(eventAction("[延迟]", "/craftov editor event delay " + event.id() + " "
+              + event.startDelaySeconds(), false))
+          .append(Component.space())
+          .append(eventAction("[生命]", "/craftov editor event health " + event.id() + " "
+              + event.healthMultiplier(), false))
+          .append(Component.space())
+          .append(eventAction("[伤害]", "/craftov editor event damage " + event.id() + " "
+              + event.damageMultiplier(), false))
+          .append(Component.space())
+          .append(eventAction("[保护]", "/craftov editor event protection " + event.id() + " "
+              + event.protectionSeconds(), false))
+          .append(Component.space())
+          .append(eventAction(event.enabled() ? "[停用]" : "[启用]", "/craftov editor event "
+              + (event.enabled() ? "disable " : "enable ") + event.id(), true))
+          .append(Component.space())
+          .append(eventAction("[删除]", "/craftov editor event delete " + event.id(), true));
+      player.sendMessage(actions);
+    }
+    return Command.SINGLE_SUCCESS;
+  }
+
+  private static Component eventAction(String label, String command, boolean execute) {
+    return Component.text(label, execute ? NamedTextColor.YELLOW : NamedTextColor.AQUA)
+        .clickEvent(execute ? ClickEvent.runCommand(command) : ClickEvent.suggestCommand(command))
+        .hoverEvent(HoverEvent.showText(Component.text(
+            (execute ? "点击执行: " : "点击填入: ") + command, NamedTextColor.GRAY)));
   }
 
   private static int createExtraction(CommandContext context, Player player, String id,
@@ -1392,9 +1608,10 @@ final class EditorCommands {
   private static String nextId(ManualCraftovMap map, String prefix) {
     for (int index = 1; index < 100_000; index++) {
       String id = "%s_%03d".formatted(prefix, index);
-      if (map.findObject(id).isEmpty()) return id;
+      if (map.findObject(id).isEmpty()
+          && map.events().stream().noneMatch(event -> event.id().equals(id))) return id;
     }
-    throw new IllegalStateException("无法分配对象 ID");
+    throw new IllegalStateException("无法分配地图对象或事件 ID");
   }
 
   private static String defaultLootTable(CommandContext context) {
@@ -1402,14 +1619,15 @@ final class EditorCommands {
         .orElseThrow(() -> new IllegalStateException("没有可用 LootTable")).id().value();
   }
 
-  private static String readableName(String id) {
+  static String readableName(String id) {
     String[] words = id.split("_");
     StringBuilder result = new StringBuilder();
     for (String word : words) {
+      if (word.isEmpty()) continue;
       if (!result.isEmpty()) result.append(' ');
       result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
     }
-    return result.toString();
+    return result.isEmpty() ? id : result.toString();
   }
 
   private static BlockPosition position(Location location) {
@@ -1492,6 +1710,30 @@ final class EditorCommands {
   }
 
   private static com.mojang.brigadier.builder.RequiredArgumentBuilder<CommandSourceStack, String>
+      eventArgument(CommandContext context, String name) {
+    return Commands.argument(name, StringArgumentType.word()).suggests((ctx, builder) -> {
+      CommandSender sender = ctx.getSource().getSender();
+      if (sender instanceof Player player) {
+        context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+            eventIds(session.draft()).forEach(builder::suggest));
+      }
+      return builder.buildFuture();
+    });
+  }
+
+  private static com.mojang.brigadier.builder.RequiredArgumentBuilder<CommandSourceStack, String>
+      newEventIdArgument(CommandContext context, String name) {
+    return Commands.argument(name, StringArgumentType.word()).suggests((ctx, builder) -> {
+      CommandSender sender = ctx.getSource().getSender();
+      if (sender instanceof Player player) {
+        context.editorSessions().find(player.getUniqueId())
+            .ifPresent(session -> builder.suggest(nextId(session.draft(), "event")));
+      }
+      return builder.buildFuture();
+    });
+  }
+
+  private static com.mojang.brigadier.builder.RequiredArgumentBuilder<CommandSourceStack, String>
       newObjectIdArgument(CommandContext context, String name, String prefix) {
     return Commands.argument(name, StringArgumentType.word()).suggests((ctx, builder) -> {
       CommandSender sender = ctx.getSource().getSender();
@@ -1531,6 +1773,29 @@ final class EditorCommands {
   }
 
   private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestAvailableEventAiZones(CommandContext context, CommandSender sender,
+      String excludedEventId,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+          availableEventAiZoneIds(session.draft(), excludedEventId).forEach(builder::suggest));
+    }
+    return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
+      suggestAvailableEventLootPoints(CommandContext context, CommandSender sender,
+      String excludedEventId,
+      com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    if (sender instanceof Player player) {
+      context.editorSessions().find(player.getUniqueId()).ifPresent(session ->
+          availableEventLootPointIds(session.draft(), excludedEventId)
+              .forEach(builder::suggest));
+    }
+    return builder.buildFuture();
+  }
+
+  private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions>
       suggestExtractionRules(CommandContext context, CommandSender sender,
       com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
     for (String value : List.of("random", "no_backpack", "max_weight", "capacity",
@@ -1553,6 +1818,18 @@ final class EditorCommands {
   static List<String> enabledEventIds(ManualCraftovMap map) {
     return map.events().stream().filter(value -> value.enabled())
         .map(value -> value.id()).toList();
+  }
+
+  static List<String> eventIds(ManualCraftovMap map) {
+    return map.events().stream().map(MapEventDefinition::id).toList();
+  }
+
+  static List<String> availableEventAiZoneIds(ManualCraftovMap map, String excludedEventId) {
+    return EVENT_EDITOR.availableAiZoneIds(map, excludedEventId);
+  }
+
+  static List<String> availableEventLootPointIds(ManualCraftovMap map, String excludedEventId) {
+    return EVENT_EDITOR.availableLootPointIds(map, excludedEventId);
   }
 
   static ExtractionRuleDefinition.EventCompleted enabledEventRule(
@@ -1580,9 +1857,12 @@ final class EditorCommands {
     Component component = Component.text("[" + issue.severity() + "] " + issue.message(), color);
     if (issue.affectedObjectId().isPresent()) {
       String id = issue.affectedObjectId().get();
+      boolean eventIssue = issue.code().startsWith("event_");
       component = component.append(Component.text(" [" + id + "]", NamedTextColor.AQUA)
-          .clickEvent(ClickEvent.runCommand("/craftov editor tp " + id))
-          .hoverEvent(HoverEvent.showText(Component.text("点击安全传送到该对象"))));
+          .clickEvent(ClickEvent.runCommand(eventIssue
+              ? "/craftov editor event list" : "/craftov editor tp " + id))
+          .hoverEvent(HoverEvent.showText(Component.text(eventIssue
+              ? "点击查看地图事件" : "点击安全传送到该对象"))));
     }
     return component;
   }

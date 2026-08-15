@@ -13,6 +13,9 @@ public final class ManualMapEditor {
     Preconditions.checkNotNull(object, "object");
     Preconditions.checkArgument(map.findObject(object.id()).isEmpty(),
         "Duplicate map object id: " + object.id());
+    Preconditions.checkArgument(map.events().stream().noneMatch(event ->
+            event.id().equals(object.id())),
+        "地图对象 ID 不能与地图事件 ID 相同: " + object.id());
     return mutate(map, object, false);
   }
 
@@ -21,13 +24,16 @@ public final class ManualMapEditor {
     Preconditions.checkNotNull(object, "object");
     Preconditions.checkArgument(map.findObject(object.id()).isPresent(),
         "Unknown map object id: " + object.id());
+    if (!object.enabled()) requireNotClaimedByEnabledEvent(map, object);
     return mutate(map, object, true);
   }
 
   public ManualCraftovMap remove(ManualCraftovMap map, String id) {
     Preconditions.checkNotNull(map, "map");
     Preconditions.checkNotNull(id, "id");
-    Preconditions.checkArgument(map.findObject(id).isPresent(), "Unknown map object id: " + id);
+    MapObject object = map.findObject(id)
+        .orElseThrow(() -> new IllegalArgumentException("Unknown map object id: " + id));
+    requireNotClaimedByEnabledEvent(map, object);
     return map.withObjects(without(map.spawns(), id), without(map.lootPoints(), id),
         without(map.lootZones(), id), without(map.aiZones(), id),
         without(map.extractions(), id), without(map.pois(), id));
@@ -187,6 +193,18 @@ public final class ManualMapEditor {
 
   private static <T extends MapObject> List<T> without(List<T> source, String id) {
     return source.stream().filter(object -> !object.id().equals(id)).toList();
+  }
+
+  private static void requireNotClaimedByEnabledEvent(ManualCraftovMap map, MapObject object) {
+    if (!(object instanceof AiZoneDefinition) && !(object instanceof LootPointDefinition)) return;
+    MapEventDefinition owner = map.events().stream().filter(MapEventDefinition::enabled)
+        .filter(event -> object instanceof AiZoneDefinition
+            ? event.aiZoneId().equals(object.id())
+            : event.cacheLootPointId().equals(object.id()))
+        .findFirst().orElse(null);
+    Preconditions.checkArgument(owner == null,
+        "启用的地图事件 " + (owner == null ? "" : owner.id())
+            + " 仍引用对象 " + object.id() + "；请先停用或重配事件");
   }
 
   private static MapObject translated(MapObject object, String newId, int dx, int dy, int dz) {

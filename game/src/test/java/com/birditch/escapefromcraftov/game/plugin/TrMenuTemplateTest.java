@@ -117,6 +117,15 @@ class TrMenuTemplateTest {
     assertFalse(yaml.contains("[ 'close', 'command: craftov editor property delete"));
   }
 
+  @Test
+  void editorToolbarExposesEventsThroughThePublicValidatedCommand() throws IOException {
+    String yaml = read("trmenu/escapefromcraftov_editor_toolbar.yml");
+
+    assertTrue(yaml.contains("command: craftov editor event list"));
+    assertFalse(yaml.contains("editor property event"),
+        "non-spatial events must not masquerade as selected map objects");
+  }
+
   private static String read(String resource) throws IOException {
     try (InputStream stream = TrMenuTemplateTest.class.getClassLoader()
         .getResourceAsStream(resource)) {

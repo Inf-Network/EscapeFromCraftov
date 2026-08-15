@@ -328,7 +328,9 @@ events:
 
 Boss 被合法击杀后，事件以 first-wins 完成并解锁 `cache-loot-point-id` 指向的现有搜索缓存，不按普通刷新规则重生。服务器冻结击杀者当时的小队 UUID，在 `protection-seconds` 内只允许该队搜索；没有合法击杀者时立即向同局玩家公开。缓存会在交互、开始搜索、恢复、展示、打开、翻页、拿取和物资源提交时逐层复核；事件未完成、失败或状态缺失都按锁定处理。所有事件提示只发送给同一局玩家。
 
-当前没有创建或修改事件本身的游戏内编辑器命令/菜单，事件仍须直接维护 `map.yml`。撤离点可以使用实时复核的 `EVENT_COMPLETED` 条件：
+事件没有空间坐标，不属于普通地图对象。进入编辑器后，可在 TrMenu 工具栏点击“高价值目标事件”，或输入 `/craftov editor event list` 查看事件和可点击的常用操作。`event create` 会从当前草稿选择已启用且未被其他启用事件占用的 AI Zone/Loot Point；`name`、`delay`、`health`、`damage`、`protection`、`refs`、`enable`、`disable` 和 `delete` 分别完成调参、重配、启停和限时确认删除。事件与地图对象共享 ID 命名空间，引用完整性会在每次操作时重新验证。所有变更进入现有草稿，支持 undo/redo，保存后生成新 revision。
+
+撤离点可以使用实时复核的 `EVENT_COMPLETED` 条件：
 
 ```yaml
 extractions:
@@ -347,13 +349,13 @@ extractions:
 
 也可选中撤离点后执行 `/craftov editor extraction rule event <事件ID>`；补全与执行都只接受当前草稿中已启用的事件。服务器会在开始撤离和倒计时结束时分别检查同一局的事件状态，只有 `COMPLETED` 才放行；事件缺失、失败、尚未完成、对局已结束或运行时已关闭都会拒绝。该实时条件先于名额占用和付费授权执行，因此倒计时期间条件失效不会扣费。Sidebar 会保留本队普通出口，同时追加未完成事件提示。事件条件出口不算出生路线的可靠保底，每个出生组仍须配置至少一个无条件 `NORMAL` 出口。
 
-直接修改事件 YAML 时不要同时保留未保存的编辑草稿，并在 Game 重新载入地图后执行验证再启用。
+仍可直接维护事件 YAML 进行高级审计；此时不要同时保留未保存的编辑草稿，并在 Game 重新载入地图后执行验证再启用。
 
 ### 3.5 编辑器工具栏和预览
 
 `/craftov editor menu` 使用 TrMenu 打开受保护的虚拟物品栏工具栏：
 
-- 地图边界、出生点、Loot、Loot 区域、AI 区域、撤离区域、POI：切换当前工具。
+- 地图边界、出生点、Loot、Loot 区域、AI 区域、撤离区域、POI：切换当前工具；“高价值目标事件”打开非空间事件列表。
 - 撤销、重做：操作当前编辑草稿。
 - 保存地图：原子保存一个新 revision。
 - 关闭：退出工具栏，不会自动丢弃草稿。
@@ -451,6 +453,16 @@ extractions:
 | `/craftov editor ai team <team>` | 设置生物区域的阵营标签。 | `/craftov editor ai team neutral` |
 | `/craftov editor ai enable` | 启用选中的生物区域。 | `/craftov editor ai enable` |
 | `/craftov editor ai disable` | 停用选中的生物区域。 | `/craftov editor ai disable` |
+| `/craftov editor event list` | 列出当前草稿的事件，并提供重配、调参、启停和删除的可点击入口。 | `/craftov editor event list` |
+| `/craftov editor event create <id> <ai-zone-id> <loot-point-id>` | 创建并启用高价值目标事件；引用必须已启用且未被其他启用事件占用。 | `/craftov editor event create yard_boss yard_mobs yard_cache` |
+| `/craftov editor event name <id> <name>` | 修改事件显示名。 | `/craftov editor event name yard_boss 庭院首领` |
+| `/craftov editor event delay <id> <seconds>` | 设置行动开始后等待多久生成 Boss。 | `/craftov editor event delay yard_boss 30` |
+| `/craftov editor event health <id> <multiplier>` | 设置 Boss 生命倍率。 | `/craftov editor event health yard_boss 4.0` |
+| `/craftov editor event damage <id> <multiplier>` | 设置 Boss 伤害倍率。 | `/craftov editor event damage yard_boss 1.5` |
+| `/craftov editor event protection <id> <seconds>` | 设置击杀小队的缓存优先保护时间。 | `/craftov editor event protection yard_boss 30` |
+| `/craftov editor event refs <id> <ai-zone-id> <loot-point-id>` | 原子重配事件的 AI Zone 和缓存引用。 | `/craftov editor event refs yard_boss yard_elites yard_cache` |
+| `/craftov editor event enable\|disable <id>` | 启停事件；仍被撤离规则引用时禁止停用。 | `/craftov editor event disable yard_boss` |
+| `/craftov editor event delete <id>` | 请求删除事件，必须再执行 `confirm`；任何草稿变化都会让旧确认失效。 | `/craftov editor event delete yard_boss` |
 | `/craftov editor extraction create <id>` | 把当前选区创建成普通撤离点。 | `/craftov editor extraction create north_gate` |
 | `/craftov editor extraction create <id> normal` | 明确创建无需额外条件的普通撤离点。 | `/craftov editor extraction create north_gate normal` |
 | `/craftov editor extraction create <id> item <item-id>` | 创建需要携带指定钥匙或物品的条件撤离点。 | `/craftov editor extraction create bunker item extraction_key` |
@@ -689,9 +701,9 @@ git diff --check
 ### 4.8 当前限制与下一阶段
 
 - 正式地图必须由管理员人工配置；运行时不提供自动扫描或自动生成点位命令。
-- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件已可使用，但事件对象本身仍需直接维护 `map.yml`。
+- AI Zone 已接入原生生物生成、安全落点、难度缩放、装备、击杀奖励和刷新；`HIGH_VALUE_TARGET` Boss 事件和 `EVENT_COMPLETED` 撤离条件均已接入游戏内编辑草稿、撤销/重做与 revision 保存。
 - 仓库、具名出战位、军需处、交易行、Loot、内建安全箱、局内二维携行整理、撤离入库和死亡损失已形成闭环。二维网格、隔舱、占格和原子转移已经接入 Paper 运行时与 `/craftov carry`；格坐标/朝向当前只由单局内存权威维护，跨局结算仍按唯一 `ItemInstance`，不持久化菜单排列。
 - `PlayerExtractionReadyEvent` 之后如果数据库不可用，玩家会留在 Game，不会被错误送回大厅；恢复数据库后应重新触发结算，而不是清理玩家背包。
 - 代理 backend 是否真实注册无法通过标准 BungeeCord Connect 消息查询，必须由部署配置和代理日志共同验证。
 
-最值得继续开发的实际玩法是高价值目标事件的游戏内创建/编辑界面和基于现有 AI Zone 的复杂巡逻；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。
+最值得继续开发的实际玩法是基于现有 AI Zone 的复杂巡逻和更多可实际验收的地图事件；如果未来需要跨局保留仓库排列，再单独设计坐标持久化和迁移。仍然复用 Minecraft 原生战斗，不引入枪械或外部 AI API。

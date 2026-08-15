@@ -1,0 +1,13 @@
+items:
+  escapefromcraftov:basic_rig:
+    material: leather_chestplate
+    item_model: escapefromcraftov:basic_rig
+    texture: escapefromcraftov:item/basic_rig
+  escapefromcraftov:patrol_backpack:
+    material: bundle
+    item_model: escapefromcraftov:patrol_backpack
+    texture: escapefromcraftov:item/patrol_backpack
+  escapefromcraftov:secure_case:
+    material: ender_chest
+    item_model: escapefromcraftov:secure_case
+    texture: escapefromcraftov:item/secure_case

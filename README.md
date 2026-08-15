@@ -39,7 +39,7 @@ EscapeFromCraftov 是一个运行在 Minecraft Paper 上的「搜打撤」游戏
 
 ### 物资仓库与局内携行
 
-物资仓库保存成功带回的长期物品，出战栏决定下一局带入的物品。进入行动后，服务器以局内内存中的二维布局管理口袋、胸挂和背包，并把它投影到 Minecraft 玩家物品栏；`/craftov carry` 打开 TrMenu 整理界面。格坐标和朝向当前只在本局内存中生效，撤离与死亡结算仍按每件物品唯一的 `ItemInstance` 身份处理，不按菜单图标或覆盖格结算。
+物资仓库保存成功带回的长期物品，出战栏决定下一局带入的物品。进入行动后，服务器以局内内存中的二维布局管理口袋、胸挂和背包，并把它投影到 Minecraft 玩家物品栏；`/craftov carry` 打开 TrMenu 整理界面，手持已装备的胸挂或背包右键也会打开并突出对应区域。菜单用分区标题和边界区分口袋、胸挂、背包，选择大件后逐格显示能否放下及越界、重叠、独立口袋格等具体原因。固定的“行动安全箱 · 3 格”入口打开死亡/超时保留界面。格坐标和朝向当前只在本局内存中生效，撤离与死亡结算仍按每件物品唯一的 `ItemInstance` 身份处理，不按菜单图标或覆盖格结算。
 
 ### Loot 与物资
 
@@ -209,6 +209,7 @@ Game/plugins/TrMenu/menus/escapefromcraftov_carry.yml
 | Citizens | 暂不作为硬依赖 | 适合托管 Bukkit NPC，但会与 MythicMobs 的生物定义重叠；AI Zone 目前只有地图定义，尚未消费 Citizens API。 |
 | MythicMobs | 暂不作为硬依赖 | 适合复杂技能和生物脚本，但属于独立内容系统，且部分发行形态受许可影响；确定 PvE 内容方案后只能在 Citizens/MythicMobs 中选择一个适配器。 |
 | ItemsAdder | 暂不作为硬依赖 | 可提供资源包和自定义物品外观，但不能成为 EscapeFromCraftov 仓库和结算的事实源；强制它会让纯原版服务器无法部署。 |
+| CraftEngine | 可选展示依赖，当前部署启用 | 同一资源包为胸挂、背包、安全箱提供原生 `item_model`，为行动 Sidebar 提供固定 PUA 图标；完整文字始终保留。它不参与 UUID、PDC、网格、数据库和结算事实。 |
 | Oraxen | 暂不作为硬依赖 | 与 ItemsAdder 属于同类外观方案，不能同时硬依赖；未来若选择 Oraxen，只增加物品外观适配器，不改变 PDC + Hibernate 结算。 |
 | FAWE | 暂不作为硬依赖 | FAWE 是 WorldEdit 的高性能操作实现；EscapeFromCraftov 当前只读取选区、不批量改方块，强制安装反而增加与 WorldEdit 的版本耦合。 |
 | Vault | 暂不作为硬依赖 | Vault 适合统一外部经济，但 EscapeFromCraftov 的金币必须和 PostgreSQL 物资结算在同一事务内，不能让另一个经济插件成为权威余额。未来可做只读展示适配器。 |
@@ -537,6 +538,7 @@ DecentHolograms 是 Game 的硬依赖。预览范围内的 Spawn、Loot、Loot Z
 | 命令 | 作用 |
 |---|---|
 | `/craftov carry` | 仅在进行中的行动里打开二维携行整理菜单；左键选择物品后再点空格移动，右键只旋转服务端物品定义允许旋转的物品 |
+| `/craftov secure` | 打开本局 3 格行动安全箱；主手物品可存入，阵亡或行动超时仍保留 |
 | `/craftov ui carry left <nonce> <0-51>` | **仅供携行 TrMenu 内部调用，不要手工使用**；随机会话令牌、当前菜单、本局状态和布局版本不匹配时不会执行 |
 | `/craftov ui carry right <nonce> <0-51>` | **仅供携行 TrMenu 内部调用，不要手工使用**；服务端会重新定位物品并校验是否允许旋转 |
 | `/craftov game create [map]` | 创建 WAITING 对局 |

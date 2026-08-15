@@ -60,7 +60,7 @@ EscapeFromCraftov 是 Paper 1.21.11 上的 Minecraft 搜打撤玩法框架，游
 
 胸挂和背包决定本局可用容器格；口袋、容器容量、物品尺寸和可否旋转都属于本服物品定义与平衡配置，不代表其他游戏的官方数值。未解锁的原版背包槽会被占位并阻止点击、拖拽、Shift、数字键、换手和拾取绕过。携带物超过舒适负重后会减速并禁止冲刺，达到硬上限后不能继续取物。内建安全箱可保护允许放入的物品，且安全箱内容计入限重撤离。
 
-行动处于 `RUNNING` 且角色仍可操作时，执行 `/craftov carry` 会打开 6 行 TrMenu：口袋为绿色、胸挂为橙色、背包为蓝色，未解锁位置显示为锁定格。左键一个物品或它覆盖的格可选择该物品，再左键目标空格执行移动；右键只会尝试旋转服务端物品定义允许旋转的物品。所有移动都由服务端重新定位唯一物品实例、检查隔舱/碰撞/负重和布局版本，并以一次原子转移提交；失败时不会留下半次移动。
+行动处于 `RUNNING` 且角色仍可操作时，执行 `/craftov carry` 会打开 6 行 TrMenu；手持热栏中已装备的胸挂或背包右键，也会打开同一整理菜单并突出对应分区。口袋为绿色、胸挂为橙色、背包为蓝色，各区有标题和边界，未解锁位置显示为锁定格。左键一个物品或它覆盖的格可选择该物品，再左键目标空格执行移动；右键只会尝试旋转服务端物品定义允许旋转的物品。选择物品后，目标格会用绿色/红色预演是否容得下完整 footprint，并说明越界、占用、隔舱或状态过期等失败原因。“行动安全箱 · 3 格”固定入口会打开安全箱菜单；主手物品可存入，死亡和超时仍保留。所有移动都由服务端重新定位唯一物品实例、检查隔舱/碰撞/负重和布局版本，并以一次原子转移提交；失败时不会留下半次移动。
 
 二维布局中的格坐标和朝向当前是**本局 Game 进程内存的权威状态**，Minecraft 玩家物品栏只是它的实体投影。每件物品只有一个 `ItemInstance` 和一个锚点；其他占用格是不带物品身份的显示占位，不会复制 UUID/NBT。当前不会把二维位置当作跨局持久字段；撤离、死亡和重试结算仍按唯一 `ItemInstance` 身份收集物品，而不是按 TrMenu 图标或覆盖格结算。
 
@@ -136,7 +136,7 @@ Boss 死亡只结算一次，也不会按普通 AI 规则重生。存在合法�
 
 ### 2.9 你在屏幕上会看到什么
 
-- **Sidebar**：地图、阶段、剩余时间、存活人数、队伍、携行格数、总负重、携带价值、击杀、POI 侦察方向/距离/完成状态和撤离提示；最多 15 行。
+- **Sidebar**：地图、阶段、剩余时间、存活人数、队伍、携行格数、总负重、携带价值、击杀、POI 侦察方向/距离/完成状态和撤离提示；最多 15 行。安装本项目 CraftEngine 资源包后，会在不移除文字的前提下增加战术图标与标题标识。
 - **BossBar**：正在撤离时显示引导进度。
 - **Action Bar**：当前工具、撤离状态、战利品优先权与剩余时间等短信息。
 - **Title / Subtitle**：进入编辑器、进入行动、模式切换等阶段提示。
@@ -452,6 +452,7 @@ extractions:
 | `/craftov info` | 查看服务端版本、已加载模块和当前运行计数。 | `/craftov info` |
 | `/craftov profile` | 查看自己的等级、余额和资料状态。 | `/craftov profile` |
 | `/craftov carry` | 仅在进行中的行动里打开二维携行整理菜单；左键选择物品后再点空格移动，右键只处理物品定义允许的旋转。 | `/craftov carry` |
+| `/craftov secure` | 打开本局 3 格行动安全箱；也可从携行整理右下角的安全箱入口进入。 | `/craftov secure` |
 | `/craftov map import <source>` | 后台导入普通 Minecraft 世界或完整地图包，地图 ID 默认使用来源文件夹名。Tab 会列出可导入目录。 | `/craftov map import factory` |
 | `/craftov map import <source> <target>` | 后台导入地图并指定新的地图 ID，适合同一地形的不同玩法版本。 | `/craftov map import factory factory_night` |
 | `/craftov map create <id> <world>` | 高级兼容命令：登记已加载世界并从零制作地图；普通流程不需要它。 | `/craftov map create prototype world` |
@@ -750,6 +751,8 @@ ExtractionService 完成引导
 不要在玩家可见文案中输出类名、数据库表名或 `PostgreSQL` 等实现细节；技术细节只写在日志和本文开发者章节。
 
 硬依赖集成遵循适配器边界：LuckPerms 用于权限，WorldEdit 用于读取选区，DecentHolograms 是唯一全息图实现，PlaceholderAPI 用于对外占位符，TrMenu 负责全部 Inventory GUI。动态物品由 EscapeFromCraftov 注入 TrMenu，点击后仍由 EscapeFromCraftov 执行权限、会话和事务校验。缺失、版本不匹配或适配器初始化失败会阻止加载；ProtocolLib、Citizens、MythicMobs、ItemsAdder、Oraxen、FAWE 与 Vault 的评估和暂不硬依赖原因见 README。
+
+CraftEngine 是可选展示层：Paper 原生 `item_model` 显示胸挂、背包和安全箱材质，固定私有区字形装饰行动 Sidebar。PDC、唯一物品身份、二维网格、Hibernate 和结算仍完全由 EscapeFromCraftov 权威维护；资源包或 CraftEngine 不会获得物品所有权。
 
 PlaceholderAPI 当前注册的占位符包括 `map`、`game_id`、`game_state`、`player_state`、`team`、`money`、
 `level`、`experience`、`experience_to_next_level`、`alive_players`、`loot_value`、`remaining_time` 和 `extracted`。`loot_value` 读取本局携行内物资的真实估值，

@@ -100,11 +100,24 @@ class UiIntegrationBoundaryTest {
 
     assertTrue(java.contains("getMethod(\"close\", boolean.class, boolean.class)"));
     assertTrue(java.contains("getMethod(\"shut\")"));
+    assertTrue(java.contains("getMethod(\"getIcons\")"));
+    assertTrue(java.contains("getMethod(\"getActiveIcons\")"));
+    assertTrue(java.contains("getMethod(\"setArguments\", String[].class)"));
+    assertTrue(java.contains("getMethod(\"onReset\", sessionType)"));
+    assertTrue(java.contains("getMethod(\"onRefresh\", sessionType)"));
     assertTrue(java.contains("SUPPORTED_VERSION = \"3.12.5\""));
     assertTrue(java.contains("trplugins.menu.api.TrMenuAPI"));
     assertTrue(java.contains("trplugins.menu.api.event.CustomItemSourceEvent"));
     assertTrue(java.contains("trplugins.menu.module.display.MenuSession"));
     assertFalse(java.contains("player.closeInventory()"));
+
+    int refreshStart = java.indexOf("public boolean refresh(Player player");
+    int refreshEnd = java.indexOf("static void refreshIconCaches", refreshStart);
+    String refresh = java.substring(refreshStart, refreshEnd);
+    assertTrue(refresh.contains("refreshIconCaches("));
+    assertTrue(refresh.contains("return true"));
+    assertFalse(refresh.contains("return open("));
+    assertFalse(refresh.contains("dispatchCommand"));
   }
 
   @Test

@@ -2,11 +2,15 @@ name: EscapeFromCraftovGame
 version: '${version}'
 main: com.birditch.escapefromcraftov.game.plugin.CraftovGamePlugin
 loader: com.birditch.escapefromcraftov.game.plugin.CraftovGamePluginLoader
-api-version: '1.21'
+api-version: '1.21.11'
 description: "Escape from Craftov · 逃离块科夫 — 游戏服务端:单服多对局实例、独立世界、聊天/Tab 隔离的搜打撤核心。"
 authors: [birditch]
 dependencies:
   server:
+    CraftEngine:
+      load: BEFORE
+      required: false
+      join-classpath: false
     LuckPerms:
       load: BEFORE
       required: true

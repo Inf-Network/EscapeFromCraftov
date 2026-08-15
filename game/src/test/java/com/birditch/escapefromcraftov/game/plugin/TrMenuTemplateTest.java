@@ -81,14 +81,18 @@ class TrMenuTemplateTest {
   }
 
   @Test
-  void carryTemplateMapsEveryClickableCellThroughTheNonceBoundHiddenEndpoint()
+  void carryTemplateNonceBindsGridCellsAndExposesTheValidatedSecureEntry()
       throws IOException {
     String yaml = read("trmenu/escapefromcraftov_carry.yml");
-    for (int slot = 0; slot < 52; slot++) {
+    for (int slot = 0; slot < 51; slot++) {
       assertTrue(yaml.contains("source:CRAFTOVCORECARRY:cell-" + slot));
       assertTrue(yaml.contains("craftov ui carry left {0} " + slot));
       assertTrue(yaml.contains("craftov ui carry right {0} " + slot));
     }
+    assertTrue(yaml.contains("source:CRAFTOVCORECARRY:cell-51"));
+    assertTrue(yaml.contains("actions: { all: 'command: craftov secure' }"));
+    assertFalse(yaml.contains("craftov ui carry left {0} 51"));
+    assertFalse(yaml.contains("craftov ui carry right {0} 51"));
     assertTrue(yaml.contains("source:CRAFTOVCORECARRY:summary"));
     assertTrue(yaml.contains("Default-Arguments: [ 'invalid' ]"));
     assertFalse(yaml.contains("{1}"), "formatted weight must not become an unsafe TrMenu arg");

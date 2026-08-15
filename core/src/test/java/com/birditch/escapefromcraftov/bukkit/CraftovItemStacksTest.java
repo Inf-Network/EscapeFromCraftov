@@ -216,6 +216,15 @@ class CraftovItemStacksTest {
             .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false))));
   }
 
+  @Test
+  void resourceModelsAreCanonicalForTheTwoContainerItemsOnly() {
+    assertEquals(NamespacedKey.fromString("escapefromcraftov:basic_rig"),
+        CraftovItemStacks.itemModel(ItemId.of("basic_rig")).orElseThrow());
+    assertEquals(NamespacedKey.fromString("escapefromcraftov:patrol_backpack"),
+        CraftovItemStacks.itemModel(ItemId.of("patrol_backpack")).orElseThrow());
+    assertTrue(CraftovItemStacks.itemModel(ItemId.of("iron_sword")).isEmpty());
+  }
+
   private static String payload(ItemStack stack) {
     return "paper-itemstack:1:" + Base64.getEncoder().encodeToString(stack.serializeAsBytes());
   }

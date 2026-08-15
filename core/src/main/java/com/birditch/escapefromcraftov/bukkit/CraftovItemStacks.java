@@ -41,6 +41,8 @@ public final class CraftovItemStacks {
 
   private static final String PAYLOAD_PREFIX = "paper-itemstack:1:";
   private static final int MAX_PAYLOAD_CHARACTERS = 2_000_000;
+  private static final String MODEL_NAMESPACE = "escapefromcraftov";
+  private static final Set<String> MODELLED_ITEMS = Set.of("basic_rig", "patrol_backpack");
 
   private static final Map<String, Material> MATERIALS = Map.ofEntries(
       Map.entry("iron_sword", Material.IRON_SWORD),
@@ -246,6 +248,7 @@ public final class CraftovItemStacks {
   private static void applyIdentity(ItemStack stack, ItemId itemId, UUID instanceId,
       @Nullable UUID storageId) {
     boolean edited = stack.editMeta(meta -> {
+      itemModel(itemId).ifPresent(meta::setItemModel);
       PersistentDataContainer data = meta.getPersistentDataContainer();
       data.set(ITEM_ID_KEY, PersistentDataType.STRING, itemId.value());
       data.set(INSTANCE_ID_KEY, PersistentDataType.STRING, instanceId.toString());
@@ -294,6 +297,13 @@ public final class CraftovItemStacks {
 
   private static int maximumStackSize(ItemDefinition definition, Material material) {
     return Math.max(1, Math.min(definition.stackSize(), material.getMaxStackSize()));
+  }
+
+  static Optional<NamespacedKey> itemModel(ItemId itemId) {
+    Preconditions.checkNotNull(itemId, "itemId");
+    return MODELLED_ITEMS.contains(itemId.value())
+        ? Optional.of(new NamespacedKey(MODEL_NAMESPACE, itemId.value()))
+        : Optional.empty();
   }
 
   private static Material canonicalMaterial(ItemDefinition definition) {

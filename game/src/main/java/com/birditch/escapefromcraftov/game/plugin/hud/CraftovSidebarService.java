@@ -222,7 +222,8 @@ public final class CraftovSidebarService implements AutoCloseable {
       return;
     }
     Component mapName = MapNames.display(messages, game.mapId());
-    ensure(player, "game-running", "行动中", mapName);
+    boolean tacticalAssets = CraftovHudTheme.available();
+    ensure(player, "game-running", CraftovHudTheme.title(tacticalAssets, "战术行动"), mapName);
     long seconds = game.startedAt().map(start -> Math.max(0,
         Duration.ofSeconds(durationSeconds).minus(Duration.between(start, Instant.now())).toSeconds()))
         .orElse(0L);
@@ -261,31 +262,45 @@ public final class CraftovSidebarService implements AutoCloseable {
         : "撤离中 · " + extractionSession.pointId().value() + " · "
             + extractionSeconds(game, extractionSession) + "s";
     List<Component> lines = new ArrayList<>(ENTRIES.length);
-    lines.add(text("地图  ", NamedTextColor.GOLD).append(mapName));
-    lines.add(text("版本  " + game.mapRevision(), NamedTextColor.GRAY));
-    lines.add(text("规则  " + ruleName(game), game.actionProfile().isPresent()
-        ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY));
-    lines.add(text("状态  " + phase(game.state()), NamedTextColor.GREEN));
-    lines.add(text("时间  " + formatTime(seconds),
-        seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE));
-    lines.add(text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA));
-    lines.add(text("队伍  " + (team == 0 ? "无" : "第 " + team + " 队 · 队友 " + teammates),
-        NamedTextColor.GREEN));
-    lines.add(text("状态  " + combatStateName(combatState),
-        combatState == PlayerCombatState.ALIVE ? NamedTextColor.GREEN : NamedTextColor.RED));
-    lines.add(text("携行  " + backpack + " / " + capacity + " 格", NamedTextColor.GRAY));
-    lines.add(text("负重  " + formatWeight(weight)
-            + (maximumWeight > 0 ? " / " + formatWeight(maximumWeight) : ""),
-        maximumWeight > 0 && weight > maximumWeight ? NamedTextColor.RED
-            : weight > comfortableWeight ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
-    lines.add(text("价值  " + String.format(java.util.Locale.ROOT, "%,d", value),
-        NamedTextColor.GOLD));
-    lines.add(text("击杀  " + combatKills(player), NamedTextColor.RED));
-    reconView(game, player.getUniqueId()).ifPresent(view -> lines.add(text(
-        reconnaissanceText(view), view.completed() ? NamedTextColor.GREEN
-            : NamedTextColor.LIGHT_PURPLE)));
-    lines.add(text(extraction, NamedTextColor.AQUA));
-    lines.add(text("撤离成功才算带回物资", NamedTextColor.YELLOW));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.MAP,
+        text("地图  ", NamedTextColor.GOLD).append(mapName)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.MAP,
+        text("版本  " + game.mapRevision(), NamedTextColor.GRAY)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.MAP,
+        text("规则  " + ruleName(game), game.actionProfile().isPresent()
+            ? NamedTextColor.LIGHT_PURPLE : NamedTextColor.GRAY)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.TIME,
+        text("状态  " + phase(game.state()), NamedTextColor.GREEN)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.TIME,
+        text("时间  " + formatTime(seconds),
+            seconds < 120 ? NamedTextColor.RED : NamedTextColor.WHITE)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.SQUAD,
+        text("玩家  " + alive + " / " + maxPlayers, NamedTextColor.AQUA)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.SQUAD,
+        text("队伍  " + (team == 0 ? "无" : "第 " + team + " 队 · 队友 " + teammates),
+            NamedTextColor.GREEN)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.COMBAT,
+        text("状态  " + combatStateName(combatState),
+            combatState == PlayerCombatState.ALIVE ? NamedTextColor.GREEN : NamedTextColor.RED)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.CARRY,
+        text("携行  " + backpack + " / " + capacity + " 格", NamedTextColor.GRAY)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.WEIGHT,
+        text("负重  " + formatWeight(weight)
+                + (maximumWeight > 0 ? " / " + formatWeight(maximumWeight) : ""),
+            maximumWeight > 0 && weight > maximumWeight ? NamedTextColor.RED
+                : weight > comfortableWeight ? NamedTextColor.YELLOW : NamedTextColor.GREEN)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.VALUE,
+        text("价值  " + String.format(java.util.Locale.ROOT, "%,d", value),
+            NamedTextColor.GOLD)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.TARGET,
+        text("击杀  " + combatKills(player), NamedTextColor.RED)));
+    reconView(game, player.getUniqueId()).ifPresent(view -> lines.add(hud(tacticalAssets,
+        CraftovHudTheme.Icon.TARGET, text(reconnaissanceText(view),
+            view.completed() ? NamedTextColor.GREEN : NamedTextColor.LIGHT_PURPLE))));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.EXTRACTION,
+        text(extraction, NamedTextColor.AQUA)));
+    lines.add(hud(tacticalAssets, CraftovHudTheme.Icon.EXTRACTION,
+        text("撤离成功才算带回物资", NamedTextColor.YELLOW)));
     if (lines.size() > ENTRIES.length) {
       throw new IllegalStateException("Sidebar line budget exceeded: " + lines.size());
     }
@@ -442,13 +457,18 @@ public final class CraftovSidebarService implements AutoCloseable {
   }
 
   private void ensure(Player player, String mode, String title, Component subtitle) {
+    ensure(player, mode, Component.text(title, NamedTextColor.GOLD)
+        .decorate(TextDecoration.BOLD), subtitle);
+  }
+
+  private void ensure(Player player, String mode, Component title, Component subtitle) {
     View view = views.get(player.getUniqueId());
     if (view == null) {
       ScoreboardManager manager = Bukkit.getScoreboardManager();
       Scoreboard previous = player.getScoreboard();
       Scoreboard board = manager.getNewScoreboard();
       Objective objective = board.registerNewObjective("escapefromcraftov_sidebar", Criteria.DUMMY,
-          Component.text(title, NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+          title);
       objective.setDisplaySlot(DisplaySlot.SIDEBAR);
       Map<Integer, Team> teams = new HashMap<>();
       for (int index = 0; index < ENTRIES.length; index++) {
@@ -464,10 +484,9 @@ public final class CraftovSidebarService implements AutoCloseable {
     if (!mode.equals(modes.put(player.getUniqueId(), mode))) {
       View active = views.get(player.getUniqueId());
       if (active != null) {
-        active.objective().displayName(Component.text(title, NamedTextColor.GOLD)
-            .decorate(TextDecoration.BOLD));
+        active.objective().displayName(title);
       }
-        player.showTitle(Title.title(Component.text(title), subtitle,
+      player.showTitle(Title.title(title, subtitle,
           Title.Times.times(Duration.ofMillis(250), Duration.ofMillis(1500),
               Duration.ofMillis(500))));
     }
@@ -569,6 +588,10 @@ public final class CraftovSidebarService implements AutoCloseable {
 
   private static Component text(String value, NamedTextColor color) {
     return Component.text(value, color).decoration(TextDecoration.ITALIC, false);
+  }
+
+  private static Component hud(boolean available, CraftovHudTheme.Icon icon, Component line) {
+    return CraftovHudTheme.line(available, icon, line);
   }
 
   private record View(Scoreboard previous, Scoreboard board, Objective objective,

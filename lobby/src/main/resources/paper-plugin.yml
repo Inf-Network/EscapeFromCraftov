@@ -2,11 +2,15 @@ name: EscapeFromCraftovLobby
 version: '${version}'
 main: com.birditch.escapefromcraftov.lobby.CraftovLobbyPlugin
 loader: com.birditch.escapefromcraftov.lobby.CraftovLobbyPluginLoader
-api-version: '1.21'
+api-version: '1.21.11'
 description: "Escape from Craftov · 逃离块科夫 — PostgreSQL 玩家数据、物资仓库与 Redis 匹配大厅。"
 authors: [birditch]
 dependencies:
   server:
+    CraftEngine:
+      load: BEFORE
+      required: false
+      join-classpath: false
     TrMenu:
       load: BEFORE
       required: true

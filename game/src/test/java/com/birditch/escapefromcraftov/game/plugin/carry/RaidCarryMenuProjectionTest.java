@@ -18,6 +18,7 @@ import com.birditch.escapefromcraftov.api.item.ItemRarity;
 import com.birditch.escapefromcraftov.inventory.DeterministicItemGridService;
 import com.birditch.escapefromcraftov.item.DefaultItems;
 import com.birditch.escapefromcraftov.item.SimpleItemRegistry;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,12 @@ class RaidCarryMenuProjectionTest {
         .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.REGION).count());
     assertEquals(9, projection.cells().stream()
         .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.LOCKED).count());
+    assertEquals(3, projection.cells().stream()
+        .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.HEADER).count());
+    assertEquals(6, projection.cells().stream()
+        .filter(cell -> cell.kind() == RaidCarryMenuProjection.Kind.BORDER).count());
+    assertEquals(RaidCarryMenuProjection.Kind.SECURE,
+        projection.cell(RaidCarryMenuProjection.SECURE_SLOT).kind());
     assertEquals(RaidCarryMenuProjection.Kind.SUMMARY,
         projection.cell(RaidCarryMenuProjection.SUMMARY_SLOT).kind());
     assertEquals(RaidCarryMenuProjection.Kind.CLOSE,
@@ -50,6 +57,46 @@ class RaidCarryMenuProjectionTest {
             cell.kind() == RaidCarryMenuProjection.Kind.REGION
                 && region.id().equals(cell.gridId())
                 && shapeCell.position().equals(cell.position())).count());
+      }
+      assertEquals(1, projection.cells().stream().filter(cell ->
+          cell.kind() == RaidCarryMenuProjection.Kind.HEADER
+              && region.id().equals(cell.gridId())).count());
+    }
+  }
+
+  @Test
+  void everyLegalRegionSplitStillFitsWithHeadersAndThreeFixedControls() {
+    for (int pockets = 0; pockets <= 4; pockets++) {
+      for (int rig = 0; rig <= 27; rig++) {
+        for (int backpack = 0; backpack <= 27 - rig; backpack++) {
+          List<RaidCarryGridPlanner.Region> regions = new ArrayList<>();
+          int nextSlot = 3;
+          if (pockets > 0) {
+            regions.add(region(RaidCarryGridPlanner.POCKETS, pockets, nextSlot));
+            nextSlot += pockets;
+          }
+          if (rig > 0) {
+            regions.add(region(RaidCarryGridPlanner.CHEST_RIG, rig, nextSlot));
+            nextSlot += rig;
+          }
+          if (backpack > 0) {
+            regions.add(region(RaidCarryGridPlanner.BACKPACK, backpack, nextSlot));
+          }
+          int locked = 31 - pockets - rig - backpack;
+          RaidCarryMenuProjection.Projection projection;
+          try {
+            projection = RaidCarryMenuProjection.project(regions, locked);
+          } catch (RuntimeException failure) {
+            throw new AssertionError("pockets=" + pockets + ", rig=" + rig
+                + ", backpack=" + backpack, failure);
+          }
+          assertEquals(RaidCarryMenuProjection.Kind.SECURE,
+              projection.cell(RaidCarryMenuProjection.SECURE_SLOT).kind());
+          assertEquals(RaidCarryMenuProjection.Kind.SUMMARY,
+              projection.cell(RaidCarryMenuProjection.SUMMARY_SLOT).kind());
+          assertEquals(RaidCarryMenuProjection.Kind.CLOSE,
+              projection.cell(RaidCarryMenuProjection.CLOSE_SLOT).kind());
+        }
       }
     }
   }
@@ -81,5 +128,15 @@ class RaidCarryMenuProjectionTest {
   private static StoredItem stored(String itemId, LoadoutSlot slot) {
     return new StoredItem(UUID.randomUUID(), UUID.randomUUID(), ItemId.of(itemId), 1,
         InventoryLocation.LOADOUT, null, null, slot);
+  }
+
+  private static RaidCarryGridPlanner.Region region(String id, int cells, int firstSlot) {
+    var shape = RaidCarryGridPlanner.tunedShape(cells);
+    List<RaidCarryGridPlanner.CellSlot> slots = new ArrayList<>();
+    int physicalSlot = firstSlot;
+    for (var cell : shape.cells()) {
+      slots.add(new RaidCarryGridPlanner.CellSlot(cell.position(), physicalSlot++));
+    }
+    return new RaidCarryGridPlanner.Region(id, shape, slots);
   }
 }

@@ -1047,6 +1047,7 @@ public final class RaidCarryController implements Listener, AutoCloseable {
     PlayerInventory inventory = player.getInventory();
     Map<UUID, ItemInstance> updated = new LinkedHashMap<>();
     Set<UUID> consumed = new LinkedHashSet<>();
+    Set<Integer> consumedRemainderSlots = new LinkedHashSet<>();
 
     for (RaidCarryGridPlanner.Region region : state.plan.regions()) {
       ItemGrid grid = state.layout.find(region.id()).orElseThrow();
@@ -1062,6 +1063,14 @@ public final class RaidCarryController implements Listener, AutoCloseable {
         }
         if (placeholder(physical)) {
           throw new IllegalStateException("携行锚点被投影物覆盖: " + slot);
+        }
+        if (acceptedConsumableRemainder(placement.item(), physical)) {
+          // Drinking the final tracked potion leaves one vanilla, identity-free bottle in its
+          // anchor. Stage it as consumed, but do not clear anything until the whole old
+          // projection has passed validation.
+          consumed.add(placement.item().instanceId());
+          consumedRemainderSlots.add(slot);
+          continue;
         }
         ItemInstance actual = scanSingle(physical);
         if (!actual.instanceId().equals(placement.item().instanceId())
@@ -1090,7 +1099,13 @@ public final class RaidCarryController implements Listener, AutoCloseable {
         }
         if (placement.anchor().equals(cell.position())) {
           if (consumed.contains(placement.item().instanceId())) {
-            if (!empty(physical)) throw new IllegalStateException("已消耗锚点并非空槽");
+            if (consumedRemainderSlots.contains(cell.physicalSlot())) {
+              if (!acceptedConsumableRemainder(placement.item(), physical)) {
+                throw new IllegalStateException("已消耗锚点的容器残留未经授权");
+              }
+            } else if (!empty(physical)) {
+              throw new IllegalStateException("已消耗锚点并非空槽");
+            }
           } else if (empty(physical) || placeholder(physical)) {
             throw new IllegalStateException("携行锚点缺少真实物品: " + cell.physicalSlot());
           }
@@ -1268,7 +1283,15 @@ public final class RaidCarryController implements Listener, AutoCloseable {
         if (real) throw new IllegalStateException("保留装备位出现未授权物品: " + slot);
         continue;
       }
-      ItemInstance actual = real ? scanSingle(stack) : null;
+      ItemInstance actual;
+      if (real && acceptedConsumableRemainder(expected, stack)) {
+        // Vanilla replaces a consumed potion with an untagged glass bottle. It is not raid loot
+        // and must not poison the authoritative equipment projection or enter settlement.
+        inventory.setItem(slot, null);
+        actual = null;
+      } else {
+        actual = real ? scanSingle(stack) : null;
+      }
       RaidEquipmentAuthority.Outcome outcome = RaidEquipmentAuthority.reconcile(
           expected, actual, consumable(expected));
       switch (outcome) {
@@ -1343,6 +1366,12 @@ public final class RaidCarryController implements Listener, AutoCloseable {
       case PROJECTILE, HEALING, FOOD, POTION, CONSUMABLE -> true;
       default -> false;
     };
+  }
+
+  private boolean acceptedConsumableRemainder(ItemInstance expected, ItemStack stack) {
+    return !empty(stack) && !placeholder(stack) && consumable(expected)
+        && RaidConsumableRemainderPolicy.accepted(expected,
+            itemStacks.read(stack).isEmpty(), stack.getType(), stack.getAmount());
   }
 
   private boolean expectedInstance(ItemStack stack, UUID expected) {

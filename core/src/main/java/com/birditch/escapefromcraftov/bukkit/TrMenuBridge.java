@@ -8,8 +8,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -61,6 +63,10 @@ public final class TrMenuBridge {
   private static final String[] MENU_SESSION_TYPES = {
       "trplugins.menu.module.display.MenuSession",
       "me.arasple.mc.trmenu.module.display.MenuSession"
+  };
+  private static final String[] ICON_TYPES = {
+      "trplugins.menu.module.display.icon.Icon",
+      "me.arasple.mc.trmenu.module.display.icon.Icon"
   };
   private static final Pattern SAFE_TOKEN = Pattern.compile("[a-zA-Z0-9_-]+");
   private final Plugin owner;
@@ -115,6 +121,92 @@ public final class TrMenuBridge {
       logger.log(Level.WARNING, "TrMenu 打开菜单失败: " + menu, error);
       return false;
     }
+  }
+
+  /**
+   * Invalidates TrMenu's per-session dynamic item cache and redraws the exact menu currently
+   * viewed by the player.
+   *
+   * <p>TrMenu 3.12.5 keeps generated {@code ItemStack}s under the stable
+   * {@code MenuSession.id}. Closing and reopening a window therefore does not invalidate a
+   * dynamic source. Mirror its built-in reset and refresh actions on the exact live session:
+   * update arguments, invoke {@code Icon.onReset} for every menu icon, then invoke
+   * {@code Icon.onRefresh} for every active icon. This deliberately avoids Menu.page/open events,
+   * whose cancellation does not report whether dynamic icons were redrawn.</p>
+   *
+   * @return {@code true} only when the player was viewing this exact menu and every reflective
+   *     cache reset and active-icon redraw completed
+   */
+  public boolean refresh(Player player, String menu, String... arguments) {
+    Preconditions.checkNotNull(player, "player");
+    Preconditions.checkArgument(validToken(menu), "invalid TrMenu menu name");
+    Preconditions.checkNotNull(arguments, "arguments");
+    for (String argument : arguments) {
+      Preconditions.checkArgument(validToken(argument), "invalid TrMenu argument");
+    }
+    if (!available()) return false;
+    Plugin trMenu = owner.getServer().getPluginManager().getPlugin("TrMenu");
+    if (trMenu == null) return false;
+    try {
+      ClassLoader loader = trMenu.getClass().getClassLoader();
+      Class<?> apiType = loadFirst(loader, API_TYPES);
+      Object api = apiType.getField("INSTANCE").get(null);
+      Object menuObject = apiType.getMethod("getMenuById", String.class).invoke(api, menu);
+      if (menuObject == null) return false;
+      Object activeSession = session(loader, player);
+      if (activeSession == null
+          || activeSession.getClass().getMethod("getMenu").invoke(activeSession) != menuObject) {
+        return false;
+      }
+      refreshIconCaches(menuObject, activeSession, loadFirst(loader, MENU_SESSION_TYPES),
+          loadFirst(loader, ICON_TYPES), arguments);
+    } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException
+        | InvocationTargetException | IllegalAccessException | RuntimeException | LinkageError error) {
+      logger.log(Level.SEVERE, "无法刷新 TrMenu 动态物品缓存: " + menu, error);
+      return false;
+    }
+    return true;
+  }
+
+  static void refreshIconCaches(Object menu, Object session, Class<?> sessionType,
+      Class<?> iconType, String[] arguments)
+      throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    Preconditions.checkNotNull(menu, "menu");
+    Preconditions.checkNotNull(session, "session");
+    Preconditions.checkNotNull(sessionType, "sessionType");
+    Preconditions.checkNotNull(iconType, "iconType");
+    Preconditions.checkNotNull(arguments, "arguments");
+    if (!sessionType.isInstance(session)) {
+      throw new IllegalArgumentException("TrMenu session has an unexpected runtime type");
+    }
+    Method setArguments = sessionType.getMethod("setArguments", String[].class);
+    Method getActiveIcons = sessionType.getMethod("getActiveIcons");
+    Method onReset = iconType.getMethod("onReset", sessionType);
+    Method onRefresh = iconType.getMethod("onRefresh", sessionType);
+    List<?> menuIcons = iconSnapshot(
+        menu.getClass().getMethod("getIcons").invoke(menu), iconType, "menu");
+    List<?> activeIcons = iconSnapshot(getActiveIcons.invoke(session), iconType, "active");
+
+    setArguments.invoke(session, (Object) arguments.clone());
+    for (Object icon : menuIcons) {
+      onReset.invoke(icon, session);
+    }
+    for (Object icon : activeIcons) {
+      onRefresh.invoke(icon, session);
+    }
+  }
+
+  private static List<?> iconSnapshot(Object rawIcons, Class<?> iconType, String source) {
+    if (!(rawIcons instanceof Set<?> iconSet)) {
+      throw new IllegalStateException("TrMenu " + source + " icons are not a set");
+    }
+    List<?> icons = List.copyOf(iconSet);
+    for (Object icon : icons) {
+      if (!iconType.isInstance(icon)) {
+        throw new IllegalStateException("TrMenu " + source + " contains an unexpected icon type");
+      }
+    }
+    return icons;
   }
 
   /**

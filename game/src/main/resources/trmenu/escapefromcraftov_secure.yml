@@ -1,4 +1,4 @@
-Title: '&8行动安全箱 &7· &a3 格'
+Title: '&5行动安全箱 &7· &a死亡保留 3 格'
 Layout:
   - '#ABC#D#Q#'
 Options:
@@ -22,10 +22,12 @@ Icons:
       material: hopper
       name: '&a存入主手物资'
       lore:
-        - '&7只能存放 EscapeFromCraftov 物品'
-        - '&7阵亡或行动超时仍会带回仓库'
+        - '&f先把要保护的物品拿在主手'
+        - '&7背包里的物品可先在携行整理中移到口袋'
+        - '&7只能存放允许保护的 EscapeFromCraftov 物品'
+        - '&e存入后即使阵亡或行动超时也会带回仓库'
         - ''
-        - '&e点击存入完整物品栈'
+        - '&a点击存入完整物品栈'
     actions: { all: [ 'reset', 'command: craftov ui secure store' ] }
   Q:
     display: { material: barrier, name: '&c关闭', lore: [ '&7安全箱内容仍会留在本局' ] }

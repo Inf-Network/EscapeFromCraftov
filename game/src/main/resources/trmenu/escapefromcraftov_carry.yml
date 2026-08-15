@@ -373,9 +373,7 @@ Icons:
     display:
       slots: [ 51 ]
       material: 'source:CRAFTOVCORECARRY:cell-51'
-    actions:
-      left: 'command: craftov ui carry left {0} 51'
-      right: 'command: craftov ui carry right {0} 51'
+    actions: { all: 'command: craftov secure' }
   S:
     display:
       slots: [ 52 ]

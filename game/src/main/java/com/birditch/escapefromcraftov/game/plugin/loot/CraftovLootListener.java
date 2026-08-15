@@ -67,6 +67,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CraftovLootListener implements Listener, AutoCloseable {
 
+  private static final String MENU_ID = "escapefromcraftov_loot";
   private static final double INTERACTION_DISTANCE_SQUARED = 3.25 * 3.25;
   private static final int PAGE_SIZE = 45;
 
@@ -171,7 +172,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   public void onQuit(PlayerQuitEvent event) {
     cancelSearch(event.getPlayer(), false);
     stopView(event.getPlayer(), false, false);
-    menus.close(event.getPlayer(), "escapefromcraftov_loot");
+    menus.close(event.getPlayer(), MENU_ID);
   }
 
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -185,11 +186,12 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
   public void onInventoryClose(InventoryCloseEvent event) {
     if (!(event.getPlayer() instanceof Player player)
         || !views.containsKey(player.getUniqueId())) return;
-    // TrMenu may close and reopen its packet window while refreshing a dynamic
-    // page. Recheck on the next tick so only a real close ends the live task.
+    // Let TrMenu finish its own close lifecycle before deciding whether this was a real player
+    // close. Dynamic refreshes no longer close the window, but page transitions may still settle
+    // after the Bukkit close callback.
     scheduler.runLater(Duration.ZERO, () -> {
       if (views.containsKey(player.getUniqueId())
-          && !menus.isViewing(player, "escapefromcraftov_loot")) {
+          && !menus.isViewing(player, MENU_ID)) {
         stopView(player, false, false);
       }
     });
@@ -244,7 +246,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     int totalPages = Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE);
     int page = Math.max(0, Math.min(totalPages - 1, validated.view().page() + direction));
     views.put(player.getUniqueId(), validated.view().withPage(page));
-    openOrStop(player);
+    refreshOpenViewOrStop(player);
   }
 
   @Subscribe
@@ -267,7 +269,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     views.entrySet().removeIf(entry -> {
       if (!entry.getValue().key().gameId().equals(event.gameId())) return false;
       Player player = org.bukkit.Bukkit.getPlayer(entry.getKey());
-      if (player != null) menus.close(player, "escapefromcraftov_loot");
+      if (player != null) menus.close(player, MENU_ID);
       return true;
     });
   }
@@ -421,7 +423,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     LootView view = views.get(playerId);
     if (view == null || !view.key().equals(expected.key())
-        || !menus.isViewing(player, "escapefromcraftov_loot")) {
+        || !menus.isViewing(player, MENU_ID)) {
       stopView(playerId);
       return;
     }
@@ -444,7 +446,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     expected.progress().reveal(slot);
     ItemRarity rarity = rarity(item);
-    if (!openOrStop(player)) {
+    if (!refreshOpenViewOrStop(player)) {
       expected.progress().rollbackReveal(slot);
       return;
     }
@@ -495,7 +497,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     RevealSession removed = reveals.remove(playerId);
     if (removed != null) removed.task().cancel();
     views.remove(playerId);
-    if (closeMenu) menus.close(player, "escapefromcraftov_loot");
+    if (closeMenu) menus.close(player, MENU_ID);
     if (notify) player.sendActionBar(messages.raw(
         removed == null ? "loot.view-closed" : "loot.reveal-cancelled"));
   }
@@ -568,21 +570,45 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
   }
 
+  /** Invalidates TrMenu's stable-session item cache before redrawing the live Loot page. */
+  private boolean refreshOpenViewOrStop(Player player) {
+    try {
+      open(player, true);
+      return true;
+    } catch (RuntimeException failure) {
+      stopView(player, false, true);
+      player.sendMessage(messages.raw("loot.open-failed"));
+      return false;
+    }
+  }
+
   private void open(Player player) {
+    open(player, false);
+  }
+
+  private void open(Player player, boolean refresh) {
     if (!mutationGate.allows(player.getUniqueId())) {
       throw new IllegalStateException("当前状态禁止打开 Loot 菜单");
     }
     LootView view = views.get(player.getUniqueId());
-    CraftovGame game = view == null ? null : games.find(view.key().gameId()).orElse(null);
-    CraftovLootPoint point = game == null || view == null ? null : point(game, view.key());
+    if (view == null) throw new IllegalStateException("Loot 搜索会话已结束");
+    CraftovGame game = games.find(view.key().gameId()).orElse(null);
+    CraftovLootPoint point = game == null ? null : point(game, view.key());
     if (point == null || !cacheAllowed(game, point, player, false)) {
       throw new IllegalStateException("事件物资尚未解锁");
     }
-    if (view == null || !menus.open(player, "escapefromcraftov_loot",
+    String[] arguments = {
         Integer.toString(view.page() + 1),
         Integer.toString(Math.max(1, (inventorySize + PAGE_SIZE - 1) / PAGE_SIZE)),
-        containerToken(view.containerType()), Integer.toString(view.tier()))) {
-      throw new IllegalStateException("TrMenu 无法打开 Loot 搜索菜单");
+        containerToken(view.containerType()),
+        Integer.toString(view.tier())
+    };
+    boolean displayed = refresh
+        ? menus.refresh(player, MENU_ID, arguments)
+        : menus.open(player, MENU_ID, arguments);
+    if (!displayed) {
+      throw new IllegalStateException(refresh
+          ? "TrMenu 无法刷新 Loot 搜索菜单" : "TrMenu 无法打开 Loot 搜索菜单");
     }
   }
 
@@ -617,8 +643,8 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       if (!entry.getValue().key().equals(key)) continue;
       Player viewer = org.bukkit.Bukkit.getPlayer(entry.getKey());
       if (viewer == null || !viewer.isOnline()
-          || !menus.isViewing(viewer, "escapefromcraftov_loot")) continue;
-      openOrStop(viewer);
+          || !menus.isViewing(viewer, MENU_ID)) continue;
+      refreshOpenViewOrStop(viewer);
     }
   }
 
@@ -629,7 +655,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     LootView view = views.get(player.getUniqueId());
     if (view == null) throw new IllegalStateException("Loot 搜索会话已结束");
-    if (!menus.isViewing(player, "escapefromcraftov_loot")) {
+    if (!menus.isViewing(player, MENU_ID)) {
       stopView(player, false, false);
       throw new IllegalStateException("请先打开物资搜索界面");
     }
@@ -639,7 +665,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
       views.remove(player.getUniqueId());
       RevealSession reveal = reveals.remove(player.getUniqueId());
       if (reveal != null) reveal.task().cancel();
-      menus.close(player, "escapefromcraftov_loot");
+      menus.close(player, MENU_ID);
       throw new IllegalStateException("你已离开物资容器或当前行动");
     }
     LootContainerState container = containers.get(view.key());
@@ -812,7 +838,7 @@ public final class CraftovLootListener implements Listener, AutoCloseable {
     }
     for (RevealSession reveal : List.copyOf(reveals.values())) reveal.task().cancel();
     for (Player player : List.copyOf(org.bukkit.Bukkit.getOnlinePlayers())) {
-      menus.close(player, "escapefromcraftov_loot");
+      menus.close(player, MENU_ID);
     }
     itemSource.close();
     views.clear();

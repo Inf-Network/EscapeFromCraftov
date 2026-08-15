@@ -1,0 +1,5 @@
+enable: true
+author: EscapeFromCraftov
+version: "1.0.0"
+description: Original tactical item and HUD assets for EscapeFromCraftov
+namespace: escapefromcraftov

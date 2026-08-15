@@ -87,8 +87,11 @@ textures.
 `art/carry_gui.svg` is the editable 176x222 master for a 9x6 chest/title glyph. The registered
 `escapefromcraftov:carry_gui` image uses `U+E020` in `escapefromcraftov:gui`; render the menu title
 with that font and glyph as
-`<white><shift:-8><image:escapefromcraftov:carry_gui>`, applying the title's eight-pixel correction
+`&f<shift:-8><image:escapefromcraftov:carry_gui>`, applying the title's eight-pixel correction
 so the artwork begins at the vanilla container's left edge.
+The pack-owned `assets/minecraft/font/default.json` defines CraftEngine's U+F807 shift character
+as a native space provider with an advance of `-8`; keep it with this title or the client will
+render a missing-glyph box and offset the artwork.
 
 The standard starter projection is drawn as a graphite shell with olive backpack and pocket
 frames, a cyan chest-rig frame, an amber equipment bar, four individually numbered pocket cells,

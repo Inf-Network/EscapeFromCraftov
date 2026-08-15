@@ -84,7 +84,9 @@ class TrMenuTemplateTest {
   void carryTemplateNonceBindsGridCellsAndExposesTheValidatedSecureEntry()
       throws IOException {
     String yaml = read("trmenu/escapefromcraftov_carry.yml");
-    assertTrue(yaml.contains("<shift:-8><image:escapefromcraftov:carry_gui>"));
+    assertTrue(yaml.contains("Title: '&f<shift:-8><image:escapefromcraftov:carry_gui>'"));
+    assertFalse(yaml.contains("<white>"),
+        "TrMenu treats MiniMessage color tags as literal title text and offsets the GUI image");
     for (int slot = 0; slot < 51; slot++) {
       assertTrue(yaml.contains("source:CRAFTOVCORECARRY:cell-" + slot));
       assertTrue(yaml.contains("craftov ui carry left {0} " + slot));
@@ -98,6 +100,17 @@ class TrMenuTemplateTest {
     assertTrue(yaml.contains("Default-Arguments: [ 'invalid' ]"));
     assertFalse(yaml.contains("{1}"), "formatted weight must not become an unsafe TrMenu arg");
     assertTrue(yaml.contains("Hide-Player-Inventory: true"));
+  }
+
+  @Test
+  void carryBackgroundShipsItsExactNegativeEightPixelShiftGlyph() throws IOException {
+    Path shiftFont = Path.of("..").toAbsolutePath().normalize()
+        .resolve("craftengine/resources/escapefromcraftov/resourcepack/assets/minecraft/font/default.json");
+    String json = Files.readString(shiftFont);
+
+    assertTrue(json.contains("\"type\": \"space\""));
+    assertTrue(json.contains("\"\\uf807\": -8"),
+        "CraftEngine <shift:-8> resolves to U+F807 and must not render as a missing glyph");
   }
 
   @Test

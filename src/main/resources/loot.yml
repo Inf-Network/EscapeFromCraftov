@@ -1,0 +1,112 @@
+# Searchable container types. Rarity weights shift upward with map difficulty and hot zones.
+containers:
+  crate:
+    name: "杂物箱"
+    rows: 3
+    items: [2, 4]
+    hitbox-width: 0.9
+    hitbox-height: 0.8
+    categories: { VALUABLE: 55, AMMO: 12, MEDICAL: 10, THROWABLE: 4, KEY: 1.5, RIG: 3, BACKPACK: 3, HELMET: 3, ARMOR: 3, WEAPON: 2, COLLECTIBLE: 0.3 }
+    rarity: { WHITE: 46, GREEN: 30, BLUE: 15, PURPLE: 6.5, GOLD: 2.2, RED: 0.3 }
+  parcel:
+    name: "快递箱"
+    rows: 2
+    items: [1, 3]
+    hitbox-width: 0.7
+    hitbox-height: 0.55
+    categories: { VALUABLE: 70, MEDICAL: 10, AMMO: 8, KEY: 2, COLLECTIBLE: 0.6 }
+    rarity: { WHITE: 40, GREEN: 32, BLUE: 17, PURPLE: 8, GOLD: 2.6, RED: 0.4 }
+  weapon_case:
+    name: "武器箱"
+    rows: 3
+    items: [1, 3]
+    hitbox-width: 1.2
+    hitbox-height: 0.5
+    search-speed: 0.9
+    categories: { WEAPON: 60, AMMO: 30, THROWABLE: 10 }
+    rarity: { WHITE: 20, GREEN: 38, BLUE: 26, PURPLE: 12, GOLD: 3.5, RED: 0.5 }
+  ammo_box:
+    name: "弹药箱"
+    rows: 2
+    items: [2, 4]
+    hitbox-width: 0.8
+    hitbox-height: 0.5
+    categories: { AMMO: 80, THROWABLE: 20 }
+    rarity: { WHITE: 30, GREEN: 36, BLUE: 22, PURPLE: 9, GOLD: 3 }
+  med_box:
+    name: "医疗箱"
+    rows: 2
+    items: [2, 3]
+    hitbox-width: 0.8
+    hitbox-height: 0.6
+    categories: { MEDICAL: 85, VALUABLE: 15 }
+    rarity: { WHITE: 38, GREEN: 34, BLUE: 18, PURPLE: 8, GOLD: 2 }
+  toolbox:
+    name: "工具箱"
+    rows: 2
+    items: [2, 4]
+    hitbox-width: 0.8
+    hitbox-height: 0.5
+    categories: { VALUABLE: 90, KEY: 4, THROWABLE: 6 }
+    rarity: { WHITE: 45, GREEN: 33, BLUE: 15, PURPLE: 5.5, GOLD: 1.5 }
+  computer:
+    name: "电脑机箱"
+    rows: 2
+    items: [1, 3]
+    hitbox-width: 0.6
+    hitbox-height: 0.9
+    search-speed: 0.85
+    categories: { VALUABLE: 95, COLLECTIBLE: 1.2, KEY: 3 }
+    rarity: { WHITE: 18, GREEN: 34, BLUE: 28, PURPLE: 14, GOLD: 5, RED: 1 }
+  filing_cabinet:
+    name: "文件柜"
+    rows: 3
+    items: [1, 4]
+    hitbox-width: 0.8
+    hitbox-height: 1.4
+    categories: { VALUABLE: 80, KEY: 10, MEDICAL: 6, COLLECTIBLE: 0.8 }
+    rarity: { WHITE: 36, GREEN: 32, BLUE: 18, PURPLE: 9, GOLD: 4, RED: 1 }
+  locker:
+    name: "储物柜"
+    rows: 3
+    items: [2, 4]
+    hitbox-width: 0.8
+    hitbox-height: 1.9
+    categories: { HELMET: 15, ARMOR: 15, RIG: 15, BACKPACK: 15, MEDICAL: 12, VALUABLE: 20, AMMO: 8 }
+    rarity: { WHITE: 36, GREEN: 34, BLUE: 19, PURPLE: 8, GOLD: 2.6, RED: 0.4 }
+  safe:
+    name: "保险箱"
+    rows: 2
+    items: [1, 3]
+    hitbox-width: 0.8
+    hitbox-height: 0.9
+    search-speed: 0.75
+    categories: { VALUABLE: 82, COLLECTIBLE: 10, KEY: 8 }
+    rarity: { GREEN: 18, BLUE: 32, PURPLE: 28, GOLD: 16, RED: 6 }
+  vault:
+    name: "高级保险箱"
+    rows: 3
+    items: [2, 4]
+    hitbox-width: 1.0
+    hitbox-height: 1.2
+    search-speed: 0.65
+    categories: { VALUABLE: 60, COLLECTIBLE: 35, KEY: 5 }
+    rarity: { BLUE: 18, PURPLE: 34, GOLD: 32, RED: 16 }
+  airdrop:
+    name: "空投补给箱"
+    rows: 4
+    items: [4, 7]
+    hitbox-width: 1.4
+    hitbox-height: 1.2
+    search-speed: 0.8
+    categories: { WEAPON: 20, AMMO: 18, MEDICAL: 16, ARMOR: 10, HELMET: 10, VALUABLE: 20, COLLECTIBLE: 4, THROWABLE: 6 }
+    rarity: { GREEN: 20, BLUE: 34, PURPLE: 28, GOLD: 14, RED: 4 }
+  body_bag:
+    name: "遗落背包"
+    rows: 4
+    items: [0, 0]
+    hitbox-width: 1.0
+    hitbox-height: 0.5
+    search-speed: 1.6
+    categories: { VALUABLE: 1 }
+    rarity: { WHITE: 1 }

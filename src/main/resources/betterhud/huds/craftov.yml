@@ -1,0 +1,97 @@
+craftov_hud:
+  layouts:
+    '1':
+      name: craftov_vitals
+      gui:
+        x: 0
+        y: 100
+      pixel:
+        x: 6
+        y: -62
+      conditions:
+        '1':
+          first: craftov_in_raid
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_weapon
+      gui:
+        x: 100
+        y: 100
+      pixel:
+        x: -156
+        y: -62
+      conditions:
+        '1':
+          first: craftov_in_raid
+          second: 'true'
+          operation: ==
+        '2':
+          first: craftov_has_gun
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_skill
+      gui:
+        x: 100
+        y: 100
+      pixel:
+        x: -156
+        y: -72
+      conditions:
+        '1':
+          first: craftov_in_raid
+          second: 'true'
+          operation: ==
+    '4':
+      name: craftov_info
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 6
+        y: 6
+      conditions:
+        '1':
+          first: craftov_in_raid
+          second: 'true'
+          operation: ==
+    '5':
+      name: craftov_extract
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 26
+      conditions:
+        '1':
+          first: craftov_extracting
+          second: 'true'
+          operation: ==
+    '6':
+      name: craftov_downed
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 40
+      conditions:
+        '1':
+          first: craftov_is_downed
+          second: 'true'
+          operation: ==
+    '7':
+      name: craftov_lobby
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 6
+        y: 6
+      conditions:
+        '1':
+          first: craftov_in_lobby
+          second: 'true'
+          operation: ==

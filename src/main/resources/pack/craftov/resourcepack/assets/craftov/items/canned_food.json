@@ -1,0 +1,21 @@
+{
+ "model": {
+  "type": "minecraft:select",
+  "property": "minecraft:display_context",
+  "cases": [
+   {
+    "when": [
+     "gui"
+    ],
+    "model": {
+     "type": "minecraft:model",
+     "model": "craftov:item/gui/canned_food"
+    }
+   }
+  ],
+  "fallback": {
+   "type": "minecraft:model",
+   "model": "craftov:item/canned_food"
+  }
+ }
+}

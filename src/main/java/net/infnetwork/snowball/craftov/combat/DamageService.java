@@ -1,0 +1,217 @@
+package net.infnetwork.snowball.craftov.combat;
+
+import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.weapon.AmmoSpec;
+import net.infnetwork.snowball.craftov.weapon.GunSpec;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import io.papermc.paper.event.entity.EntityKnockbackEvent;
+import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+
+/** Ballistic damage: falloff, hit zones, armor penetration, durability and injuries. */
+public final class DamageService implements Listener {
+
+    /** Who last hurt an entity, for kill credit and kill feed. */
+    public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, long tick) {
+    }
+
+    private final CraftovPlugin plugin;
+    private final Map<UUID, LastHit> lastHits = new HashMap<>();
+    private boolean applying;
+
+    public DamageService(CraftovPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    public @Nullable LastHit lastHit(UUID victim) {
+        LastHit hit = lastHits.get(victim);
+        if (hit == null || Bukkit.getCurrentTick() - hit.tick() > 20 * 30) {
+            return null;
+        }
+        return hit;
+    }
+
+    public void forget(UUID victim) {
+        lastHits.remove(victim);
+    }
+
+    public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, HitZone zone) {
+        lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
+                attacker == null ? "未知" : displayName(attacker), weapon, zone, Bukkit.getCurrentTick()));
+    }
+
+    public static String displayName(Entity entity) {
+        if (entity instanceof Player player) {
+            return player.getName();
+        }
+        String ai = CraftovPlugin.get().ai().nameOf(entity);
+        if (ai != null) {
+            return ai;
+        }
+        Component custom = entity.customName();
+        return custom == null ? entity.getName() : net.infnetwork.snowball.craftov.util.Text.plain(custom);
+    }
+
+    /**
+     * Applies one bullet. Returns the damage dealt (after armor), or -1 when the hit was ignored.
+     */
+    public double bullet(@Nullable LivingEntity shooter, LivingEntity victim, HitZone zone, GunSpec gun,
+                         @Nullable AmmoSpec ammo, double distance, String weaponName) {
+        double falloff = 1.0;
+        if (distance > gun.range()) {
+            double over = (distance - gun.range()) / Math.max(1.0, gun.maxRange() - gun.range());
+            falloff = Math.max(0.5, 1.0 - over * 0.5);
+        }
+        double base = gun.damage() * (ammo == null ? 1.0 : ammo.damageMult()) * falloff;
+        double zoneMult = switch (zone) {
+            case HEAD -> gun.headMultiplier();
+            case TORSO -> 1.0;
+            case LEGS -> 0.7;
+        };
+        int pen = ammo == null ? 1 : ammo.penetration();
+        double armorMult = 1.0;
+        boolean penetrated = true;
+        EntityEquipment equipment = victim.getEquipment();
+        if (equipment != null && zone != HitZone.LEGS) {
+            ItemStack armorStack = zone == HitZone.HEAD ? equipment.getHelmet() : equipment.getChestplate();
+            ItemDef armor = plugin.items().defOf(armorStack);
+            if (armor != null && armor.isArmor()) {
+                double dura = ItemFactory.dura(armorStack, armor.durability());
+                if (dura > 0) {
+                    int diff = pen - armor.armorClass();
+                    armorMult = diff >= 1 ? 1.0 : diff == 0 ? 0.8 : diff == -1 ? 0.5 : diff == -2 ? 0.3 : 0.18;
+                    penetrated = diff >= 0;
+                    double loss = base * (ammo == null ? 1.0 : ammo.armorDamage()) * (penetrated ? 0.3 : 0.2);
+                    if (victim instanceof Player p) {
+                        loss *= plugin.operators().armorWearMultiplier(p);
+                    }
+                    double newDura = Math.max(0, dura - loss);
+                    ItemStack updated = armorStack.clone();
+                    plugin.items().setDura(updated, newDura);
+                    if (zone == HitZone.HEAD) {
+                        equipment.setHelmet(updated);
+                    } else {
+                        equipment.setChestplate(updated);
+                    }
+                    if (newDura <= 0 && victim instanceof Player p) {
+                        p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);
+                    }
+                    victim.getWorld().playSound(victim.getLocation(), "craftov:hit.armor", SoundCategory.PLAYERS, 1.2f,
+                            penetrated ? 1.0f : 1.25f);
+                }
+            }
+        }
+        double damage = base * zoneMult * armorMult;
+        if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {
+            plugin.health().rollInjuries(target, zone, damage);
+        }
+        recordHit(victim, shooter, weaponName, zone);
+        deal(victim, shooter, damage);
+        plugin.ai().onBotHurt(victim, shooter);
+        if (shooter instanceof Player player) {
+            feedback(player, victim, damage, zone);
+        }
+        return damage;
+    }
+
+    /** Deals raw damage without knockback or invulnerability frames. */
+    public void deal(LivingEntity victim, @Nullable LivingEntity attacker, double amount) {
+        if (amount <= 0 || victim.isDead()) {
+            return;
+        }
+        victim.setNoDamageTicks(0);
+        DamageSource.Builder builder = DamageSource.builder(attacker instanceof Player ? DamageType.PLAYER_ATTACK
+                : attacker != null ? DamageType.MOB_ATTACK : DamageType.GENERIC);
+        if (attacker != null) {
+            builder.withCausingEntity(attacker).withDirectEntity(attacker);
+        }
+        applying = true;
+        try {
+            victim.damage(amount, builder.build());
+        } finally {
+            applying = false;
+        }
+        victim.setNoDamageTicks(0);
+    }
+
+    public boolean isApplying() {
+        return applying;
+    }
+
+    private void feedback(Player shooter, LivingEntity victim, double damage, HitZone zone) {
+        boolean lethal = victim.isDead() || victim.getHealth() <= 0
+                || (victim instanceof Player p && plugin.downed().isDowned(p));
+        String sound = lethal ? "craftov:hit.kill" : zone == HitZone.HEAD ? "craftov:hit.head" : "craftov:hit.body";
+        shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
+        plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, lethal);
+        if (!plugin.getConfig().getBoolean("combat.damage-numbers", true)) {
+            return;
+        }
+        Location at = victim.getEyeLocation().add((ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6, 0.35,
+                (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6);
+        String color = zone == HitZone.HEAD ? "#FF4D4D" : "#FFFFFF";
+        TextDisplay text = victim.getWorld().spawn(at, TextDisplay.class, d -> {
+            d.text(net.infnetwork.snowball.craftov.util.Text.mm("<" + color + "><b>" + Math.round(damage)));
+            d.setBillboard(Display.Billboard.CENTER);
+            d.setSeeThrough(true);
+            d.setShadowed(true);
+            d.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0));
+            d.setPersistent(false);
+            d.setVisibleByDefault(false);
+            d.setTeleportDuration(10);
+        });
+        shooter.showEntity(plugin, text);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (text.isValid()) {
+                text.teleport(text.getLocation().add(0, 0.5, 0));
+            }
+        }, 2L);
+        Bukkit.getScheduler().runTaskLater(plugin, text::remove, 14L);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onKnockback(EntityKnockbackEvent event) {
+        if (applying) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Guns and tactical items are not melee weapons; punches do token damage only. */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onMelee(EntityDamageByEntityEvent event) {
+        if (applying) {
+            return;
+        }
+        if (event.getDamager() instanceof Player player && event.getEntity() instanceof LivingEntity) {
+            ItemDef def = plugin.items().defOf(player.getInventory().getItemInMainHand());
+            if (def != null && def.isGun()) {
+                event.setCancelled(true);
+                return;
+            }
+            event.setDamage(Math.min(event.getDamage(), 4.0));
+        }
+    }
+}

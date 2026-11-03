@@ -1,0 +1,410 @@
+{
+ "gun.pistol": {
+  "sounds": [
+   {
+    "name": "craftov:gun/pistol",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.pistol_heavy": {
+  "sounds": [
+   {
+    "name": "craftov:gun/pistol_heavy",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.smg": {
+  "sounds": [
+   {
+    "name": "craftov:gun/smg",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.rifle": {
+  "sounds": [
+   {
+    "name": "craftov:gun/rifle",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.rifle_heavy": {
+  "sounds": [
+   {
+    "name": "craftov:gun/rifle_heavy",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.shotgun": {
+  "sounds": [
+   {
+    "name": "craftov:gun/shotgun",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.dmr": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dmr",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.sniper": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sniper",
+    "attenuation_distance": 24
+   }
+  ]
+ },
+ "gun.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dry"
+   }
+  ]
+ },
+ "gun.empty": {
+  "sounds": [
+   {
+    "name": "craftov:gun/empty"
+   }
+  ]
+ },
+ "gun.reload_out": {
+  "sounds": [
+   {
+    "name": "craftov:gun/reload_out"
+   }
+  ]
+ },
+ "gun.reload_in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/reload_in"
+   }
+  ]
+ },
+ "gun.reload_done": {
+  "sounds": [
+   {
+    "name": "craftov:gun/reload_done"
+   }
+  ]
+ },
+ "gun.mode": {
+  "sounds": [
+   {
+    "name": "craftov:gun/mode"
+   }
+  ]
+ },
+ "gun.ads": {
+  "sounds": [
+   {
+    "name": "craftov:gun/ads"
+   }
+  ]
+ },
+ "gun.bolt": {
+  "sounds": [
+   {
+    "name": "craftov:gun/bolt"
+   }
+  ]
+ },
+ "gun.pump": {
+  "sounds": [
+   {
+    "name": "craftov:gun/pump"
+   }
+  ]
+ },
+ "hit.body": {
+  "sounds": [
+   {
+    "name": "craftov:hit/body"
+   }
+  ]
+ },
+ "hit.head": {
+  "sounds": [
+   {
+    "name": "craftov:hit/head"
+   }
+  ]
+ },
+ "hit.kill": {
+  "sounds": [
+   {
+    "name": "craftov:hit/kill"
+   }
+  ]
+ },
+ "hit.armor": {
+  "sounds": [
+   {
+    "name": "craftov:hit/armor"
+   }
+  ]
+ },
+ "bullet.impact": {
+  "sounds": [
+   {
+    "name": "craftov:bullet/impact"
+   }
+  ]
+ },
+ "loot.open": {
+  "sounds": [
+   {
+    "name": "craftov:loot/open"
+   }
+  ]
+ },
+ "loot.search_tick": {
+  "sounds": [
+   {
+    "name": "craftov:loot/search_tick"
+   }
+  ]
+ },
+ "loot.reveal": {
+  "sounds": [
+   {
+    "name": "craftov:loot/reveal"
+   }
+  ]
+ },
+ "loot.reveal_purple": {
+  "sounds": [
+   {
+    "name": "craftov:loot/reveal_purple"
+   }
+  ]
+ },
+ "loot.reveal_gold": {
+  "sounds": [
+   {
+    "name": "craftov:loot/reveal_gold"
+   }
+  ]
+ },
+ "loot.reveal_red": {
+  "sounds": [
+   {
+    "name": "craftov:loot/reveal_red"
+   }
+  ]
+ },
+ "loot.pickup": {
+  "sounds": [
+   {
+    "name": "craftov:loot/pickup"
+   }
+  ]
+ },
+ "extract.start": {
+  "sounds": [
+   {
+    "name": "craftov:extract/start"
+   }
+  ]
+ },
+ "extract.beep": {
+  "sounds": [
+   {
+    "name": "craftov:extract/beep"
+   }
+  ]
+ },
+ "extract.success": {
+  "sounds": [
+   {
+    "name": "craftov:extract/success"
+   }
+  ]
+ },
+ "ui.cinematic": {
+  "sounds": [
+   {
+    "name": "craftov:ui/cinematic"
+   }
+  ]
+ },
+ "ui.deploy": {
+  "sounds": [
+   {
+    "name": "craftov:ui/deploy"
+   }
+  ]
+ },
+ "ui.match_found": {
+  "sounds": [
+   {
+    "name": "craftov:ui/match_found"
+   }
+  ]
+ },
+ "ui.death": {
+  "sounds": [
+   {
+    "name": "craftov:ui/death"
+   }
+  ]
+ },
+ "ui.queue": {
+  "sounds": [
+   {
+    "name": "craftov:ui/queue"
+   }
+  ]
+ },
+ "ui.invite": {
+  "sounds": [
+   {
+    "name": "craftov:ui/invite"
+   }
+  ]
+ },
+ "ui.buy": {
+  "sounds": [
+   {
+    "name": "craftov:ui/buy"
+   }
+  ]
+ },
+ "ui.sell": {
+  "sounds": [
+   {
+    "name": "craftov:ui/sell"
+   }
+  ]
+ },
+ "ui.levelup": {
+  "sounds": [
+   {
+    "name": "craftov:ui/levelup"
+   }
+  ]
+ },
+ "status.injury": {
+  "sounds": [
+   {
+    "name": "craftov:status/injury"
+   }
+  ]
+ },
+ "status.downed": {
+  "sounds": [
+   {
+    "name": "craftov:status/downed"
+   }
+  ]
+ },
+ "status.mate_down": {
+  "sounds": [
+   {
+    "name": "craftov:status/mate_down"
+   }
+  ]
+ },
+ "status.heartbeat": {
+  "sounds": [
+   {
+    "name": "craftov:status/heartbeat"
+   }
+  ]
+ },
+ "status.revived": {
+  "sounds": [
+   {
+    "name": "craftov:status/revived"
+   }
+  ]
+ },
+ "med.finish": {
+  "sounds": [
+   {
+    "name": "craftov:med/finish"
+   }
+  ]
+ },
+ "world.switch": {
+  "sounds": [
+   {
+    "name": "craftov:world/switch"
+   }
+  ]
+ },
+ "skill.sprint": {
+  "sounds": [
+   {
+    "name": "craftov:skill/sprint"
+   }
+  ]
+ },
+ "skill.heal": {
+  "sounds": [
+   {
+    "name": "craftov:skill/heal"
+   }
+  ]
+ },
+ "skill.sonar": {
+  "sounds": [
+   {
+    "name": "craftov:skill/sonar"
+   }
+  ]
+ },
+ "skill.shield": {
+  "sounds": [
+   {
+    "name": "craftov:skill/shield"
+   }
+  ]
+ },
+ "ai.spotted": {
+  "sounds": [
+   {
+    "name": "craftov:ai/spotted"
+   }
+  ]
+ },
+ "throw.pin": {
+  "sounds": [
+   {
+    "name": "craftov:throw/pin"
+   }
+  ]
+ },
+ "throw.explode": {
+  "sounds": [
+   {
+    "name": "craftov:throw/explode",
+    "attenuation_distance": 32
+   }
+  ]
+ },
+ "throw.smoke": {
+  "sounds": [
+   {
+    "name": "craftov:throw/smoke"
+   }
+  ]
+ },
+ "throw.flash": {
+  "sounds": [
+   {
+    "name": "craftov:throw/flash"
+   }
+  ]
+ }
+}

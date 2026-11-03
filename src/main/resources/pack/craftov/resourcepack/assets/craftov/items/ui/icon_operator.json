@@ -1,0 +1,6 @@
+{
+ "model": {
+  "type": "minecraft:model",
+  "model": "craftov:item/ui/icon_operator"
+ }
+}

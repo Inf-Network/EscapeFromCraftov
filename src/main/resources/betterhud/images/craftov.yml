@@ -1,0 +1,87 @@
+craftov_panel_left:
+  type: single
+  file: craftov/panel_left.png
+craftov_panel_right:
+  type: single
+  file: craftov/panel_right.png
+craftov_panel_info:
+  type: single
+  file: craftov/panel_info.png
+craftov_hp_empty:
+  type: single
+  file: craftov/hp_empty.png
+craftov_armor_empty:
+  type: single
+  file: craftov/armor_empty.png
+craftov_progress_empty:
+  type: single
+  file: craftov/progress_empty.png
+craftov_hit:
+  type: single
+  file: craftov/hit.png
+craftov_hit_head:
+  type: single
+  file: craftov/hit_head.png
+craftov_hit_kill:
+  type: single
+  file: craftov/hit_kill.png
+craftov_hp_bar:
+  type: listener
+  file: craftov/hp_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_hp
+      max: '100'
+craftov_armor_bar:
+  type: listener
+  file: craftov/armor_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_armor
+      max: '100'
+craftov_helmet_bar:
+  type: listener
+  file: craftov/helmet_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_helmet
+      max: '100'
+craftov_reload_bar:
+  type: listener
+  file: craftov/reload_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_reload
+      max: '100'
+craftov_extract_bar:
+  type: listener
+  file: craftov/extract_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_extract
+      max: '100'
+craftov_downed_bar:
+  type: listener
+  file: craftov/downed_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_downed
+      max: '100'

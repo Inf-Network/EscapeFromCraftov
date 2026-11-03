@@ -11,10 +11,13 @@ build/
 .project
 .settings/
 
-# Runtime / dev server
-run/
-logs/
-*.db
+# Local test server (created by server/setup.sh)
+server/run/
+server/cache/
+
+# Python caches from asset generation
+__pycache__/
+*.pyc
 
 # Environment & secrets
 .env
@@ -22,5 +25,7 @@ logs/
 # macOS
 .DS_Store
 
-# OMC operational state
+# Tooling state
 .omc/
+.github/modernize/
+tools/bot/node_modules/

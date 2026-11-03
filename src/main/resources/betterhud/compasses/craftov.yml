@@ -1,0 +1,46 @@
+craftov_compass:
+  type: circle
+  default: false
+  file:
+    n:
+      name: craftov/compass/n.png
+    s:
+      name: craftov/compass/s.png
+    e:
+      name: craftov/compass/e.png
+    w:
+      name: craftov/compass/w.png
+    ne:
+      name: craftov/compass/ne.png
+    nw:
+      name: craftov/compass/nw.png
+    se:
+      name: craftov/compass/se.png
+    sw:
+      name: craftov/compass/sw.png
+    chain:
+      name: craftov/compass/chain.png
+    point:
+      name: craftov/compass/point.png
+      y: -6
+  scale: 1.0
+  scale-equation: 1 - t/30
+  length: 20
+  space: 2
+  gui:
+    x: 50
+    y: 0
+  pixel:
+    x: 0
+    y: 6
+  apply-opacity: true
+  custom-icon:
+    extract_open:
+      name: craftov/compass/extract_open.png
+    extract_closed:
+      name: craftov/compass/extract_closed.png
+  conditions:
+    '1':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==

@@ -1,0 +1,8 @@
+{
+  "name": "craftov-bot",
+  "private": true,
+  "description": "Headless test client for exercising Craftov flows",
+  "dependencies": {
+    "mineflayer": "^4.39.0"
+  }
+}

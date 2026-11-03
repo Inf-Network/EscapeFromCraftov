@@ -1,0 +1,39 @@
+craftov_hit:
+  duration: 4
+  unique: true
+  group: craftov_hits
+  layouts:
+    '1':
+      name: craftov_hit_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -7
+        y: -7
+craftov_hit_head:
+  duration: 4
+  unique: true
+  group: craftov_hits
+  layouts:
+    '1':
+      name: craftov_hit_head_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -7
+        y: -7
+craftov_hit_kill:
+  duration: 4
+  unique: true
+  group: craftov_hits
+  layouts:
+    '1':
+      name: craftov_hit_kill_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -8
+        y: -8

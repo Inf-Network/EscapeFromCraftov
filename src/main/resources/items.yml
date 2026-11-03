@@ -1,0 +1,208 @@
+# Craftov item definitions.
+# value: trader reference price in 块币 (per round for ammo).
+# model: item_model key; defaults to craftov:<id>, rendered by the CraftEngine resource pack.
+items:
+  # ------------------------------------------------------------------ handguns
+  p18:
+    name: "P18 手枪"
+    category: WEAPON
+    rarity: WHITE
+    value: 4500
+    lore: "可靠的 9mm 副武器，弹匣容量大。"
+    gun: { caliber: "9x19", slot: SECONDARY, mag: 17, rpm: 450, modes: [SEMI], damage: 22, range: 25, max-range: 90,
+           hip-spread: 2.2, ads-spread: 0.6, recoil: 1.2, recoil-h: 0.5, reload: 34, zoom: 0, sound: "craftov:gun.pistol", volume: 3.5, move-speed: 1.0 }
+  d50:
+    name: "D50 战术手枪"
+    category: WEAPON
+    rarity: BLUE
+    value: 18000
+    lore: ".50AE 大口径手枪，一枪就让人清醒。"
+    gun: { caliber: ".50AE", slot: SECONDARY, mag: 7, rpm: 200, modes: [SEMI], damage: 50, range: 30, max-range: 100,
+           hip-spread: 2.8, ads-spread: 0.7, recoil: 4.2, recoil-h: 1.2, reload: 40, zoom: 0, sound: "craftov:gun.pistol_heavy", volume: 4.5, move-speed: 1.0 }
+  # ------------------------------------------------------------------ SMGs
+  sv9:
+    name: "SV9 冲锋枪"
+    category: WEAPON
+    rarity: GREEN
+    value: 14000
+    lore: "射速极高的 9mm 冲锋枪，近距离压制利器。"
+    gun: { caliber: "9x19", slot: PRIMARY, mag: 30, rpm: 900, modes: [AUTO, SEMI], damage: 21, range: 22, max-range: 90,
+           hip-spread: 2.4, ads-spread: 0.7, recoil: 0.65, recoil-h: 0.45, reload: 44, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
+  v57:
+    name: "V57 个人防卫武器"
+    category: WEAPON
+    rarity: PURPLE
+    value: 42000
+    lore: "50 发大弹匣与 5.7mm 穿甲弹的组合。"
+    gun: { caliber: "5.7x28", slot: PRIMARY, mag: 50, rpm: 950, modes: [AUTO, SEMI], damage: 22, range: 28, max-range: 100,
+           hip-spread: 2.2, ads-spread: 0.55, recoil: 0.55, recoil-h: 0.4, reload: 56, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
+  # ------------------------------------------------------------------ rifles
+  k47:
+    name: "K47 突击步枪"
+    category: WEAPON
+    rarity: GREEN
+    value: 22000
+    lore: "7.62mm 突击步枪，威力足，后坐力也足。"
+    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 30, rpm: 600, modes: [AUTO, SEMI], damage: 36, range: 45, max-range: 150,
+           hip-spread: 3.0, ads-spread: 0.45, recoil: 1.55, recoil-h: 0.8, reload: 52, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.0, move-speed: 0.9 }
+  m4c:
+    name: "M4C 卡宾枪"
+    category: WEAPON
+    rarity: BLUE
+    value: 34000
+    lore: "操控性出色的 5.56mm 卡宾枪，支持三连发。"
+    gun: { caliber: "5.56x45", slot: PRIMARY, mag: 30, rpm: 800, modes: [AUTO, BURST, SEMI], damage: 30, range: 50, max-range: 150,
+           hip-spread: 2.6, ads-spread: 0.35, recoil: 1.0, recoil-h: 0.5, reload: 48, zoom: 1, sound: "craftov:gun.rifle", volume: 5.0, move-speed: 0.92 }
+  scr:
+    name: "SCR 战斗步枪"
+    category: WEAPON
+    rarity: PURPLE
+    value: 68000
+    lore: "7.62x51 战斗步枪，中远距离一锤定音。"
+    gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 580, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
+           hip-spread: 3.2, ads-spread: 0.35, recoil: 2.0, recoil-h: 0.9, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88 }
+  kl7:
+    name: "KL7 轻机枪"
+    category: WEAPON
+    rarity: PURPLE
+    value: 75000
+    lore: "75 发弹鼓，持续火力压制。很重。"
+    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 34, range: 45, max-range: 150,
+           hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72 }
+  r12:
+    name: "R12 泵动霰弹枪"
+    category: WEAPON
+    rarity: GREEN
+    value: 12000
+    lore: "近距离一枪 8 颗弹丸，室内战王者。"
+    gun: { caliber: "12ga", slot: PRIMARY, mag: 6, rpm: 70, modes: [PUMP], damage: 14, pellets: 8, range: 10, max-range: 40,
+           hip-spread: 4.5, ads-spread: 3.2, recoil: 4.0, recoil-h: 1.2, reload: 70, zoom: 0, head: 1.6, sound: "craftov:gun.shotgun", volume: 5.0, move-speed: 0.92 }
+  dm14:
+    name: "DM14 射手步枪"
+    category: WEAPON
+    rarity: PURPLE
+    value: 56000
+    lore: "半自动精确射手步枪，自带 4 倍镜。"
+    gun: { caliber: "7.62x51", slot: PRIMARY, mag: 10, rpm: 280, modes: [SEMI], damage: 58, range: 90, max-range: 200,
+           hip-spread: 3.6, ads-spread: 0.12, recoil: 2.6, recoil-h: 0.8, reload: 58, zoom: 2, head: 2.2, sound: "craftov:gun.dmr", volume: 6.0, move-speed: 0.88 }
+  awr:
+    name: "AWR 栓动狙击步枪"
+    category: WEAPON
+    rarity: GOLD
+    value: 120000
+    lore: ".338 栓动狙击步枪，爆头即撤离。"
+    gun: { caliber: ".338", slot: PRIMARY, mag: 5, rpm: 42, modes: [BOLT], damage: 115, range: 120, max-range: 240,
+           hip-spread: 5.0, ads-spread: 0.03, recoil: 5.0, recoil-h: 1.0, reload: 80, zoom: 3, head: 2.6, sound: "craftov:gun.sniper", volume: 7.0, move-speed: 0.85 }
+
+  # ------------------------------------------------------------------ ammo (value per round)
+  ammo_9_fmj:   { name: "9x19 FMJ", category: AMMO, rarity: WHITE, value: 6, ammo: { caliber: "9x19", pen: 1, damage: 1.0, armor-damage: 0.8 } }
+  ammo_9_ap:    { name: "9x19 AP6.3", category: AMMO, rarity: BLUE, value: 38, ammo: { caliber: "9x19", pen: 3, damage: 0.92, armor-damage: 1.0 } }
+  ammo_57_sb:   { name: "5.7x28 SB193", category: AMMO, rarity: GREEN, value: 24, ammo: { caliber: "5.7x28", pen: 2, damage: 1.0, armor-damage: 0.9 } }
+  ammo_57_ss:   { name: "5.7x28 SS190", category: AMMO, rarity: BLUE, value: 62, ammo: { caliber: "5.7x28", pen: 4, damage: 0.95, armor-damage: 1.1 } }
+  ammo_556_m855: { name: "5.56x45 M855", category: AMMO, rarity: GREEN, value: 32, ammo: { caliber: "5.56x45", pen: 3, damage: 1.0, armor-damage: 1.0 } }
+  ammo_556_a1:  { name: "5.56x45 M855A1", category: AMMO, rarity: BLUE, value: 85, ammo: { caliber: "5.56x45", pen: 4, damage: 1.0, armor-damage: 1.15 } }
+  ammo_556_m995: { name: "5.56x45 M995", category: AMMO, rarity: PURPLE, value: 220, ammo: { caliber: "5.56x45", pen: 5, damage: 0.95, armor-damage: 1.3 } }
+  ammo_762_ps:  { name: "7.62x39 PS", category: AMMO, rarity: GREEN, value: 30, ammo: { caliber: "7.62x39", pen: 3, damage: 1.0, armor-damage: 1.1 } }
+  ammo_762_bp:  { name: "7.62x39 BP", category: AMMO, rarity: BLUE, value: 92, ammo: { caliber: "7.62x39", pen: 4, damage: 0.98, armor-damage: 1.25 } }
+  ammo_762_ap:  { name: "7.62x39 AP", category: AMMO, rarity: PURPLE, value: 210, ammo: { caliber: "7.62x39", pen: 5, damage: 0.95, armor-damage: 1.35 } }
+  ammo_308_m80: { name: "7.62x51 M80", category: AMMO, rarity: GREEN, value: 58, ammo: { caliber: "7.62x51", pen: 3, damage: 1.0, armor-damage: 1.2 } }
+  ammo_308_m61: { name: "7.62x51 M61", category: AMMO, rarity: PURPLE, value: 260, ammo: { caliber: "7.62x51", pen: 5, damage: 1.0, armor-damage: 1.45 } }
+  ammo_338_fmj: { name: ".338 FMJ", category: AMMO, rarity: BLUE, value: 320, stack: 30, ammo: { caliber: ".338", pen: 4, damage: 1.0, armor-damage: 1.5 } }
+  ammo_338_ap:  { name: ".338 AP", category: AMMO, rarity: GOLD, value: 950, stack: 30, ammo: { caliber: ".338", pen: 6, damage: 1.0, armor-damage: 1.8 } }
+  ammo_12_buck: { name: "12号 00 鹿弹", category: AMMO, rarity: WHITE, value: 22, stack: 30, ammo: { caliber: "12ga", pen: 1, damage: 1.0, armor-damage: 0.6 } }
+  ammo_12_ap:   { name: "12号 穿甲鹿弹", category: AMMO, rarity: GREEN, value: 65, stack: 30, ammo: { caliber: "12ga", pen: 3, damage: 0.9, armor-damage: 0.9 } }
+  ammo_50_fmj:  { name: ".50AE FMJ", category: AMMO, rarity: GREEN, value: 70, stack: 40, ammo: { caliber: ".50AE", pen: 3, damage: 1.0, armor-damage: 1.0 } }
+  ammo_50_ap:   { name: ".50AE AP", category: AMMO, rarity: BLUE, value: 165, stack: 40, ammo: { caliber: ".50AE", pen: 4, damage: 0.95, armor-damage: 1.2 } }
+
+  # ------------------------------------------------------------------ helmets
+  helmet_1: { name: "防暴软帽", category: HELMET, rarity: WHITE, value: 1800, class: 1, durability: 20, equipment: "craftov:helmet_soft", lore: "聊胜于无。" }
+  helmet_2: { name: "轻型战术头盔", category: HELMET, rarity: GREEN, value: 6000, class: 2, durability: 30, equipment: "craftov:helmet_light" }
+  helmet_3: { name: "复合战术头盔", category: HELMET, rarity: BLUE, value: 18000, class: 3, durability: 40, equipment: "craftov:helmet_light" }
+  helmet_4: { name: "重型防弹头盔", category: HELMET, rarity: PURPLE, value: 42000, class: 4, durability: 45, speed-penalty: 0.02, equipment: "craftov:helmet_heavy" }
+  helmet_5: { name: "钛合金突击头盔", category: HELMET, rarity: GOLD, value: 95000, class: 5, durability: 50, speed-penalty: 0.03, equipment: "craftov:helmet_heavy" }
+  helmet_6: { name: "堡垒全覆式头盔", category: HELMET, rarity: RED, value: 220000, class: 6, durability: 60, speed-penalty: 0.05, equipment: "craftov:helmet_full" }
+
+  # ------------------------------------------------------------------ body armor
+  armor_1: { name: "软质防刺背心", category: ARMOR, rarity: WHITE, value: 2500, class: 1, durability: 40, equipment: "craftov:vest_soft" }
+  armor_2: { name: "警用防弹背心", category: ARMOR, rarity: GREEN, value: 8000, class: 2, durability: 60, equipment: "craftov:vest_soft" }
+  armor_3: { name: "战术防弹衣", category: ARMOR, rarity: BLUE, value: 24000, class: 3, durability: 80, speed-penalty: 0.02, equipment: "craftov:vest_tactical" }
+  armor_4: { name: "陶瓷插板背心", category: ARMOR, rarity: PURPLE, value: 60000, class: 4, durability: 90, speed-penalty: 0.04, equipment: "craftov:vest_tactical" }
+  armor_5: { name: "重型突击护甲", category: ARMOR, rarity: GOLD, value: 130000, class: 5, durability: 100, speed-penalty: 0.06, equipment: "craftov:vest_heavy" }
+  armor_6: { name: "堡垒重甲", category: ARMOR, rarity: RED, value: 280000, class: 6, durability: 120, speed-penalty: 0.09, equipment: "craftov:vest_heavy" }
+
+  # ------------------------------------------------------------------ rigs & backpacks
+  rig_1: { name: "简易胸挂", category: RIG, rarity: WHITE, value: 2000, slots: 4 }
+  rig_2: { name: "战术胸挂", category: RIG, rarity: GREEN, value: 9000, slots: 6 }
+  rig_3: { name: "突击胸挂", category: RIG, rarity: BLUE, value: 26000, slots: 9 }
+  pack_1: { name: "小型挎包", category: BACKPACK, rarity: WHITE, value: 3000, slots: 6 }
+  pack_2: { name: "战术背包", category: BACKPACK, rarity: GREEN, value: 14000, slots: 12 }
+  pack_3: { name: "大型登山包", category: BACKPACK, rarity: BLUE, value: 38000, slots: 18, speed-penalty: 0.03 }
+
+  # ------------------------------------------------------------------ medical
+  bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住轻度出血。", med: { use: 2.0, cures: [LIGHT_BLEED] } }
+  hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住重度与轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED] } }
+  splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定骨折的肢体。", med: { use: 4.0, cures: [FRACTURE] } }
+  medkit_s:   { name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次最多回复 60 点生命，可多次使用。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED] } }
+  medkit_l:   { name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱，可止住所有出血。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED] } }
+  surgery:    { name: "手术包", category: MEDICAL, rarity: PURPLE, value: 18000, stack: 1, lore: "治疗骨折与所有出血，并回复少量生命。", med: { use: 8.0, pool: 40, per-use: 40, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED] } }
+  painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120 } }
+  adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20 } }
+  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE } }
+
+  # ------------------------------------------------------------------ throwables
+  frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "右键投掷，3.5 秒后爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }
+  smoke: { name: "烟雾弹", category: THROWABLE, rarity: GREEN, value: 2500, stack: 2, lore: "右键投掷，释放浓密烟幕。", throwable: { type: SMOKE, fuse: 30, radius: 6, damage: 0 } }
+  flash: { name: "震撼弹", category: THROWABLE, rarity: GREEN, value: 3000, stack: 2, lore: "右键投掷，致盲附近的敌人。", throwable: { type: FLASH, fuse: 40, radius: 10, damage: 0 } }
+
+  # ------------------------------------------------------------------ keys
+  key_dorm: { name: "宿舍顶层房间钥匙", category: KEY, rarity: BLUE, value: 15000, durability: 3, lock: dorm_201, lore: "锈港 · 宿舍楼二层尽头的房间。" }
+  key_wh:   { name: "一号仓库办公室钥匙", category: KEY, rarity: BLUE, value: 22000, durability: 3, lock: wh_office, lore: "锈港 · 一号仓库东侧办公室。" }
+  key_hq:   { name: "指挥中心机房门禁卡", category: KEY, rarity: GOLD, value: 90000, durability: 2, lock: hq_server, lore: "锈港 · 指挥中心三层机房。" }
+
+  # ------------------------------------------------------------------ valuables: white
+  screws:      { name: "螺丝钉盒", category: VALUABLE, rarity: WHITE, value: 300, stack: 5 }
+  tape:        { name: "绝缘胶带", category: VALUABLE, rarity: WHITE, value: 450, stack: 5 }
+  battery:     { name: "一号电池", category: VALUABLE, rarity: WHITE, value: 380, stack: 5 }
+  lighter:     { name: "旧打火机", category: VALUABLE, rarity: WHITE, value: 260, stack: 5 }
+  canned_food: { name: "午餐肉罐头", category: VALUABLE, rarity: WHITE, value: 520, stack: 5 }
+  copper_coil: { name: "铜线圈", category: VALUABLE, rarity: WHITE, value: 700, stack: 5 }
+  water_tabs:  { name: "净水片", category: VALUABLE, rarity: WHITE, value: 420, stack: 5 }
+  # green
+  circuit:     { name: "电路板", category: VALUABLE, rarity: GREEN, value: 1800, stack: 3 }
+  toolset:     { name: "维修工具组", category: VALUABLE, rarity: GREEN, value: 2600, stack: 2 }
+  cigarettes:  { name: "整条香烟", category: VALUABLE, rarity: GREEN, value: 1500, stack: 3 }
+  coffee:      { name: "速溶咖啡", category: VALUABLE, rarity: GREEN, value: 1200, stack: 3 }
+  energy_drink: { name: "能量饮料", category: VALUABLE, rarity: GREEN, value: 1100, stack: 3 }
+  multimeter:  { name: "数字万用表", category: VALUABLE, rarity: GREEN, value: 3200, stack: 2 }
+  ration:      { name: "军用口粮", category: VALUABLE, rarity: GREEN, value: 2000, stack: 3 }
+  # blue
+  ssd:         { name: "固态硬盘", category: VALUABLE, rarity: BLUE, value: 6500, stack: 2 }
+  radio:       { name: "军用电台", category: VALUABLE, rarity: BLUE, value: 9800 }
+  reagent:     { name: "化学试剂", category: VALUABLE, rarity: BLUE, value: 5200, stack: 2 }
+  battery_pack: { name: "军用电池组", category: VALUABLE, rarity: BLUE, value: 7400, stack: 2 }
+  nv_module:   { name: "夜视仪模块", category: VALUABLE, rarity: BLUE, value: 11800 }
+  terminal:    { name: "手持数据终端", category: VALUABLE, rarity: BLUE, value: 8800 }
+  # purple
+  laptop:      { name: "加密笔记本电脑", category: VALUABLE, rarity: PURPLE, value: 26000 }
+  sat_phone:   { name: "卫星电话", category: VALUABLE, rarity: PURPLE, value: 21000 }
+  sample_case: { name: "实验样本箱", category: VALUABLE, rarity: PURPLE, value: 34000 }
+  gpu:         { name: "高性能显卡", category: VALUABLE, rarity: PURPLE, value: 38000 }
+  drone:       { name: "侦察无人机", category: VALUABLE, rarity: PURPLE, value: 30000 }
+  optics:      { name: "精密光学镜组", category: VALUABLE, rarity: PURPLE, value: 18000 }
+  # gold
+  gold_bar:    { name: "金条", category: VALUABLE, rarity: GOLD, value: 68000, stack: 2 }
+  server_drive: { name: "加密服务器硬盘", category: VALUABLE, rarity: GOLD, value: 92000 }
+  dossier:     { name: "机密文件袋", category: VALUABLE, rarity: GOLD, value: 56000 }
+  reactor_cell: { name: "便携式反应堆电池", category: VALUABLE, rarity: GOLD, value: 120000 }
+
+  # ------------------------------------------------------------------ collectibles (tracked in the collection book)
+  pocket_watch: { name: "古董怀表", category: COLLECTIBLE, rarity: GOLD, value: 75000, lore: "表盖内刻着一行褪色的字。" }
+  gilded_teaset: { name: "鎏金茶具", category: COLLECTIBLE, rarity: GOLD, value: 110000, lore: "某位指挥官的私人收藏。" }
+  star_crystal: { name: "星核水晶", category: COLLECTIBLE, rarity: RED, value: 680000, lore: "在黑暗中会发出微弱的蓝光。" }
+  gold_crown:   { name: "铸金王冠", category: COLLECTIBLE, rarity: RED, value: 1200000, lore: "一顶来历不明的黄金王冠。" }
+  quantum_cpu:  { name: "量子处理器", category: COLLECTIBLE, rarity: RED, value: 420000, lore: "实验室流出的原型芯片。" }
+  meteor_knife: { name: "陨铁短刀", category: COLLECTIBLE, rarity: RED, value: 260000, lore: "刀身布满维德曼花纹。" }
+  lion_statue:  { name: "黄金狮像", category: COLLECTIBLE, rarity: RED, value: 880000, lore: "沉甸甸的纯金雕像。" }
+  gramophone:   { name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
+  pearl_necklace: { name: "深海珍珠项链", category: COLLECTIBLE, rarity: RED, value: 540000, lore: "每一颗都完美无瑕。" }
+  master_chip:  { name: "机密主控芯片", category: COLLECTIBLE, rarity: RED, value: 1800000, lore: "整座港口防御系统的心脏。" }

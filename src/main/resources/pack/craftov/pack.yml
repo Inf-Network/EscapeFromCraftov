@@ -1,0 +1,5 @@
+enable: true
+namespace: craftov
+author: Snowball_233
+version: "1.0.0"
+description: "Craftov extraction shooter: original weapons, gear, loot, UI and sounds"

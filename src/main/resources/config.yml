@@ -1,0 +1,127 @@
+# Craftov configuration. Values marked (s) are seconds.
+
+# New players receive this once. Loadout keys are inventory slots:
+# 0-7 hotbar, 9-17 chest rig cells, 18-35 backpack cells, 36 backpack, 37 rig, 38 body armor, 39 helmet.
+# Format: item[:amount[:ammo for guns]]
+starter:
+  money: 150000
+  loadout:
+    '0': "k47:1:ammo_762_ps"
+    '1': "p18:1:ammo_9_fmj"
+    '2': "medkit_s"
+    '3': "bandage:2"
+    '9': "ammo_762_ps:60"
+    '10': "ammo_9_fmj:34"
+    '36': "pack_1"
+    '37': "rig_1"
+    '38': "armor_2"
+    '39': "helmet_2"
+  stash:
+    - "sv9"
+    - "ammo_9_fmj:60"
+    - "ammo_9_fmj:60"
+    - "splint"
+    - "hemostat"
+    - "frag"
+    - "smoke"
+    - "helmet_1"
+    - "armor_1"
+
+# Difficulty tiers shown in the deploy menu (first entry is the default).
+tiers:
+  NORMAL:
+    name: "常规"
+    color: "#5BD16B"
+    min-value: 0
+    loot-shift: 0
+    ai-count: 0.8
+    ai-accuracy: 0.55
+    ai-gear: 0
+    boss: false
+    xp: 1.0
+  CONFIDENTIAL:
+    name: "机密"
+    color: "#4FA3FF"
+    min-value: 60000
+    loot-shift: 1
+    ai-count: 1.0
+    ai-accuracy: 0.75
+    ai-gear: 1
+    boss: true
+    xp: 1.5
+  SECRET:
+    name: "绝密"
+    color: "#FF4D4D"
+    min-value: 250000
+    loot-shift: 2
+    ai-count: 1.25
+    ai-accuracy: 0.95
+    ai-gear: 2
+    boss: true
+    xp: 2.2
+
+match:
+  # Wait at most this long (s) for more players before launching with whoever is queued.
+  wait-seconds: 15
+  max-squads: 4
+  max-solo-players: 8
+
+raid:
+  # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
+  reconnect-seconds: 120
+
+downed:
+  # Bleed-out time (s) of the first and second knock-down. A third lethal hit kills.
+  first-seconds: 60
+  second-seconds: 30
+  revive-seconds: 5
+  max-downs: 2
+  # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
+  solo: false
+
+combat:
+  friendly-fire: false
+  damage-numbers: true
+
+ai:
+  count-multiplier: 1.0
+  # Soldiers ignore freshly inserted players for this many ticks (20 ticks = 1 s).
+  insertion-grace-ticks: 240
+  damage-multiplier: 0.65
+  reaction-ticks: 14
+
+trader:
+  buy-multiplier: 1.15
+  sell-multiplier: 0.55
+  # Rarest tier the trader sells (GOLD and RED only come from raids and the market).
+  max-rarity: PURPLE
+
+market:
+  listing-hours: 48
+  listing-fee: 0.02
+  sale-tax: 0.05
+  max-listings: 12
+  # Simulated buyers purchase listings priced near the reference price, so the market works on small servers.
+  virtual-buyers: true
+  virtual-min-age-seconds: 45
+  reference-multiplier: 0.85
+
+rank:
+  min-level: 3
+
+escort:
+  # Share of the reward paid to escorts when the client dies.
+  failure-share: 0.3
+
+cinematic:
+  enabled: true
+
+hud:
+  # Use BetterHud when installed (HUD layout is installed automatically).
+  betterhud: true
+  # Keep the boss-bar HUD even when BetterHud is active.
+  vanilla-bars-with-betterhud: false
+
+pack:
+  # Rebuild the CraftEngine pack automatically after Craftov updates its resources.
+  auto-reload: true

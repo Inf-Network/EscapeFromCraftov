@@ -1,0 +1,20 @@
+name: Craftov
+version: '${version}'
+main: net.infnetwork.snowball.craftov.CraftovPlugin
+api-version: '1.21.11'
+author: Snowball_233
+description: Extraction shooter game mode - search, fight, extract.
+softdepend: [CraftEngine, BetterHud]
+commands:
+  craftov:
+    description: Craftov main command
+    aliases: [cv, sdz]
+    usage: /cv
+  party:
+    description: Squad management
+    aliases: [squad]
+    usage: /party invite <player>
+permissions:
+  craftov.admin:
+    description: Craftov administration
+    default: op

@@ -117,41 +117,46 @@ GUNS = {'k47': rifle_k47, 'm4c': rifle_m4c, 'sv9': smg_sv9, 'v57': pdw_v57, 'scr
 PISTOLS = {'p18', 'd50'}
 
 
+def _to_x_axis(box, shift):
+    """Re-orients a box authored muzzle-along-+Z so the barrel runs along +X.
+
+    Vanilla handheld items (swords) point their sprite's +X forward in first person with a
+    [0, -90, 25] display rotation; building guns along +X lets them reuse that proven transform.
+    """
+    x0, y0, z0, x1, y1, z1, col = box[:7]
+    out = [z0 + shift, y0, 16 - x1, z1 + shift, y1, 16 - x0, col]
+    if len(box) > 7 and box[7]:
+        axis, angle, origin = box[7]
+        out.append(('z', -angle, [origin[2] + shift, origin[1], 16 - origin[0]]))
+    return out
+
+
 def gun_model(gid):
-    boxes = GUNS[gid]()
-    # Center the weapon so the grip sits near the model pivot.
-    shift_z = -4 if gid not in PISTOLS else 0
-    shifted = []
-    for b in boxes:
-        nb = list(b)
-        nb[2] += shift_z
-        nb[5] += shift_z
-        if len(nb) > 7 and nb[7]:
-            axis, angle, origin = nb[7]
-            nb[7] = (axis, angle, [origin[0], origin[1], origin[2] + shift_z])
-        shifted.append(nb)
     pistol = gid in PISTOLS
-    s = 0.95 if pistol else 0.78
+    shift = 0 if pistol else -4
+    elements = [element(_to_x_axis(b, shift)) for b in GUNS[gid]()]
+    fp = 0.8 if pistol else 0.55
+    tp = 0.75 if pistol else 0.6
     return {
         'textures': {'p': 'craftov:item/gun_palette', 'particle': 'craftov:item/gun_palette'},
-        'elements': [element(b) for b in shifted],
+        'elements': elements,
         'display': {
-            'firstperson_righthand': {'rotation': [0, -4, 0], 'translation': [-1.5, 1.5 if pistol else 2.5, -1], 'scale': [s, s, s]},
-            'firstperson_lefthand': {'rotation': [0, 4, 0], 'translation': [-1.5, 1.5 if pistol else 2.5, -1], 'scale': [s, s, s]},
-            'thirdperson_righthand': {'rotation': [0, 0, 0], 'translation': [0, 1 if pistol else -0.5, 1], 'scale': [0.7, 0.7, 0.7]},
-            'thirdperson_lefthand': {'rotation': [0, 0, 0], 'translation': [0, 1 if pistol else -0.5, 1], 'scale': [0.7, 0.7, 0.7]},
-            'ground': {'rotation': [0, 0, 0], 'translation': [0, 2, 0], 'scale': [0.45, 0.45, 0.45]},
-            'fixed': {'rotation': [0, 90, 0], 'scale': [0.6, 0.6, 0.6]},
-            'head': {'rotation': [0, 0, 0], 'scale': [0.6, 0.6, 0.6]},
+            'firstperson_righthand': {'rotation': [0, -90, 4], 'translation': [1.13, 2.6 if pistol else 2.2, 1.13], 'scale': [fp, fp, fp]},
+            'firstperson_lefthand': {'rotation': [0, 90, -4], 'translation': [1.13, 2.6 if pistol else 2.2, 1.13], 'scale': [fp, fp, fp]},
+            'thirdperson_righthand': {'rotation': [0, -90, 0], 'translation': [0, 3, 1], 'scale': [tp, tp, tp]},
+            'thirdperson_lefthand': {'rotation': [0, 90, 0], 'translation': [0, 3, 1], 'scale': [tp, tp, tp]},
+            'ground': {'rotation': [0, 0, 0], 'translation': [0, 2, 0], 'scale': [0.4, 0.4, 0.4]},
+            'fixed': {'rotation': [0, 180, 0], 'scale': [0.55, 0.55, 0.55]},
+            'head': {'rotation': [0, -90, 0], 'scale': [0.55, 0.55, 0.55]},
         },
     }
 
 
 def gun_ai_model(gid):
-    """Variant for zombie soldiers, whose arms are raised forward: counter-rotate so the muzzle points ahead."""
+    """Variant for zombie soldiers: their arms are raised ~80 degrees, so pre-tilt the gun to point ahead."""
     return {'parent': 'craftov:item/gun/' + gid, 'display': {
-        'thirdperson_righthand': {'rotation': [-80, 0, 0], 'translation': [0, -1, -3], 'scale': [0.75, 0.75, 0.75]},
-        'thirdperson_lefthand': {'rotation': [-80, 0, 0], 'translation': [0, -1, -3], 'scale': [0.75, 0.75, 0.75]}}}
+        'thirdperson_righthand': {'rotation': [80, -90, 0], 'translation': [0, 0, 1], 'scale': [0.65, 0.65, 0.65]},
+        'thirdperson_lefthand': {'rotation': [80, 90, 0], 'translation': [0, 0, 1], 'scale': [0.65, 0.65, 0.65]}}}
 
 
 def gun_icon(gid):

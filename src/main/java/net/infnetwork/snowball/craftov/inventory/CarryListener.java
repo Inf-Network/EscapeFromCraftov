@@ -197,6 +197,14 @@ public final class CarryListener implements Listener {
     }
 
     @EventHandler(ignoreCancelled = true)
+    public void onRecipeBook(com.destroystokyo.paper.event.player.PlayerRecipeBookClickEvent event) {
+        // Craftov items are paper underneath; never let the recipe book move them into a crafting grid.
+        if (managed(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
         if (ItemFactory.isUi(event.getItemDrop().getItemStack())) {
             event.setCancelled(true);

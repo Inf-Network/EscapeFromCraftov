@@ -74,6 +74,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private EscortService escorts;
     private HudService hud;
     private MenuService menus;
+    private net.infnetwork.snowball.craftov.map.editor.EditorService editor;
     private BetterHudHook betterHud = BetterHudHook.NONE;
     private final Map<String, Tier> tiers = new LinkedHashMap<>();
 
@@ -121,9 +122,10 @@ public final class CraftovPlugin extends JavaPlugin {
         escorts = new EscortService(this);
         hud = new HudService(this);
         menus = new MenuService(this);
+        editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, downed, raids, ai,
+        register(editor, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, downed, raids, ai,
                 lobby, operators, new ThrowableService(this));
 
         PluginCommand command = getCommand("craftov");
@@ -155,6 +157,9 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (editor != null) {
+            editor.shutdown();
+        }
         if (raids != null) {
             raids.shutdown();
         }
@@ -260,5 +265,6 @@ public final class CraftovPlugin extends JavaPlugin {
     public EscortService escorts() { return escorts; }
     public HudService hud() { return hud; }
     public MenuService menus() { return menus; }
+    public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }
     public BetterHudHook betterHud() { return betterHud; }
 }

@@ -119,6 +119,62 @@ public final class TraderService {
         return price;
     }
 
+    // ------------------------------------------------------------------ free kit
+
+    /** A basic kit for players who lost everything, so nobody is ever stuck in the lobby. */
+    public void claimFreeKit(Player player) {
+        Profile profile = plugin.profiles().get(player);
+        long value = plugin.carry().carriedValue(player);
+        long max = plugin.getConfig().getLong("free-kit.max-value", 15000);
+        if (value > max) {
+            Text.send(player, "<#FF8A80>你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");
+            return;
+        }
+        long last = profile.stat("free_kit_at");
+        long cooldown = plugin.getConfig().getInt("free-kit.cooldown-minutes", 20) * 60_000L;
+        long wait = last + cooldown - System.currentTimeMillis();
+        if (wait > 0) {
+            Text.send(player, "<#FF8A80>免费补给冷却中，还需 " + net.infnetwork.snowball.craftov.util.Text.duration(wait / 1000) + "。");
+            return;
+        }
+        profile.stats.put("free_kit_at", System.currentTimeMillis());
+        for (String raw : plugin.getConfig().getStringList("free-kit.items")) {
+            String[] parts = raw.split(":");
+            ItemDef def = plugin.registry().get(parts[0]);
+            if (def == null) {
+                continue;
+            }
+            ItemStack stack = def.isGun() && parts.length > 2 ? plugin.items().loadedGun(def, parts[2])
+                    : plugin.items().create(def, parts.length > 1 ? Integer.parseInt(parts[1]) : 1);
+            if (def.isContainer()) {
+                ItemStack equipped = player.getInventory().getItem(net.infnetwork.snowball.craftov.inventory.CarryService.containerSlot(def.category()));
+                if (equipped == null || equipped.isEmpty()) {
+                    plugin.carry().equip(player, stack);
+                    continue;
+                }
+            }
+            if (def.isArmor()) {
+                int slot = def.category() == Category.HELMET ? net.infnetwork.snowball.craftov.inventory.CarryService.HEAD
+                        : net.infnetwork.snowball.craftov.inventory.CarryService.CHEST;
+                ItemStack worn = player.getInventory().getItem(slot);
+                if (worn == null || worn.isEmpty()) {
+                    player.getInventory().setItem(slot, stack);
+                    continue;
+                }
+            }
+            ItemStack left = plugin.carry().give(player, stack, false);
+            if (left != null) {
+                ItemRecord record = plugin.items().toRecord(left);
+                if (record != null) {
+                    profile.stash.add(record);
+                }
+            }
+        }
+        plugin.lobby().captureLoadout(player);
+        plugin.profiles().markDirty(player.getUniqueId());
+        Text.send(player, "<#5BD16B>已领取免费补给，祝你好运。");
+    }
+
     // ------------------------------------------------------------------ services
 
     public static final int[] SECURE_SLOTS = {0, 3, 5, 7, 9};

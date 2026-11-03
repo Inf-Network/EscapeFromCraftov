@@ -52,6 +52,16 @@ public final class MatchService {
         return party == null ? List.of(player.getUniqueId()) : List.copyOf(party.members);
     }
 
+    /** The player's party, creating a one-person party led by them if needed. */
+    public Party ensureParty(Player leader) {
+        Party party = parties.get(leader.getUniqueId());
+        if (party == null) {
+            party = new Party(leader.getUniqueId());
+            parties.put(leader.getUniqueId(), party);
+        }
+        return party;
+    }
+
     public void invite(Player leader, Player target) {
         if (leader == target) {
             Text.send(leader, "<#FF8A80>不能邀请自己。");

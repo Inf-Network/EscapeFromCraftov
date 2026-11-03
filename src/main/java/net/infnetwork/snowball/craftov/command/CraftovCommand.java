@@ -21,7 +21,7 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor");
 
     private final CraftovPlugin plugin;
 
@@ -207,6 +207,34 @@ public final class CraftovCommand implements TabExecutor {
                     plugin.lobby().enterLobby(p);
                 }
             }
+            case "editor" -> {
+                if (!(sender instanceof Player p)) {
+                    return;
+                }
+                String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "help";
+                switch (action) {
+                    case "world" -> {
+                        if (args.length > 2) plugin.editor().createWorld(p, args[2]);
+                    }
+                    case "start" -> {
+                        if (args.length > 2) plugin.editor().start(p, args[2]);
+                    }
+                    case "save" -> plugin.editor().save(p);
+                    case "exit" -> plugin.editor().exit(p, true);
+                    case "discard" -> plugin.editor().exit(p, false);
+                    case "info" -> plugin.editor().info(p);
+                    case "set" -> {
+                        if (args.length > 3) plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT), String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
+                    }
+                    default -> {
+                        Text.send(p, "<#F2E6C8>地图编辑器");
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|camera <值>"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard"));
+                    }
+                }
+            }
             case "reload" -> {
                 plugin.reloadConfig();
                 plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -248,6 +276,12 @@ public final class CraftovCommand implements TabExecutor {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
             out.addAll(plugin.registry().ids());
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("editor")) {
+            out.addAll(List.of("world", "start", "set", "info", "save", "exit", "discard"));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("start")) {
+            plugin.maps().all().forEach(m -> out.add(m.id()));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
+            out.addAll(List.of("name", "description", "minutes", "time", "camera"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         }

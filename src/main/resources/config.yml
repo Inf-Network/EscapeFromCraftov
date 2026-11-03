@@ -27,6 +27,21 @@ starter:
     - "helmet_1"
     - "armor_1"
 
+# Free basic kit for players whose loadout is nearly worthless (claimed from the main menu).
+free-kit:
+  max-value: 15000
+  cooldown-minutes: 20
+  items:
+    - "p18:1:ammo_9_fmj"
+    - "ammo_9_fmj:51"
+    - "sv9:1:ammo_9_fmj"
+    - "ammo_9_fmj:60"
+    - "armor_1"
+    - "helmet_1"
+    - "rig_1"
+    - "bandage:2"
+    - "medkit_s"
+
 # Difficulty tiers shown in the deploy menu (first entry is the default).
 tiers:
   NORMAL:

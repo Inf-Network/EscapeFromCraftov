@@ -196,11 +196,16 @@ public final class RaidManager implements Listener {
         int maxCX = (int) Math.floor(map.maxX() + 16) >> 4;
         int minCZ = (int) Math.floor(map.minZ() - 16) >> 4;
         int maxCZ = (int) Math.floor(map.maxZ() + 16) >> 4;
-        if (maxCX - minCX > 40 || maxCZ - minCZ > 40) {
-            minCX = -2;
-            maxCX = 14;
-            minCZ = -2;
-            maxCZ = 14;
+        // Huge or unbounded maps: pin at most 40x40 chunks around the map centre.
+        if (maxCX - minCX > 40) {
+            int mid = (minCX + maxCX) / 2;
+            minCX = mid - 20;
+            maxCX = mid + 20;
+        }
+        if (maxCZ - minCZ > 40) {
+            int mid = (minCZ + maxCZ) / 2;
+            minCZ = mid - 20;
+            maxCZ = mid + 20;
         }
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {

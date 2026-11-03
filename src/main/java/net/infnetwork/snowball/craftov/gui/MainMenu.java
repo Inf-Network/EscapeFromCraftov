@@ -45,6 +45,13 @@ final class MainMenu extends Menu {
                 e -> new CollectionMenu(plugin, viewer).open());
         button(21, UiItems.button("craftov:ui/icon_rank", "<#FFC23D><b>排位 · 战绩", List.of("<#9AA0A6>排行榜与最近行动报告")),
                 e -> new RankMenu(plugin, viewer).open());
+        button(19, UiItems.button("craftov:ui/icon_stash", "<#4FA3FF><b>配装方案", List.of("<#9AA0A6>保存当前配装，下次一键补齐")),
+                e -> new PresetMenu(plugin, viewer).open());
+        button(25, UiItems.button("craftov:ui/icon_upgrade", "<#5BD16B><b>免费补给", List.of("<#9AA0A6>战备值低于 ◈" + Text.money(plugin.getConfig().getLong("free-kit.max-value", 15000))
+                + " 时可领取", "<#9AA0A6>冷却 " + plugin.getConfig().getInt("free-kit.cooldown-minutes", 20) + " 分钟")), e -> {
+            plugin.traders().claimFreeKit(viewer);
+            redraw();
+        });
         button(22, UiItems.button("craftov:ui/icon_party", "<#9AA0A6><b>小队", List.of("<#9AA0A6>/cv party invite <玩家>", "<#9AA0A6>/cv party leave")),
                 e -> {
                     viewer.closeInventory();

@@ -121,13 +121,7 @@ public final class EscortService {
             Text.send(escort, "<#FF8A80>委托人不在线。");
             return;
         }
-        Party party = plugin.match().partyOf(c.client);
-        if (party == null) {
-            party = new Party(c.client);
-            plugin.match().join(client, party);
-            party.members.remove(c.client);
-            party.members.add(0, c.client);
-        }
+        Party party = plugin.match().ensureParty(client);
         plugin.match().join(escort, party);
         if (!party.members.contains(escort.getUniqueId())) {
             return;

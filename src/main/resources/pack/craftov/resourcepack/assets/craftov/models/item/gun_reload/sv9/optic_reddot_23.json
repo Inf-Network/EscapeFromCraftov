@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/sv9__optic_reddot",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    170.693,
+    86.097,
+    -167.436
+   ],
+   "translation": [
+    -1.274,
+    2.122,
+    0.319
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -9.307,
+    -86.097,
+    -12.564
+   ],
+   "translation": [
+    -1.274,
+    2.122,
+    0.319
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

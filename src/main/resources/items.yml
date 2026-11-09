@@ -4,6 +4,7 @@
 items:
   # ------------------------------------------------------------------ handguns
   p18:
+    weight: 0.9
     name: "P18 手枪"
     category: WEAPON
     rarity: WHITE
@@ -12,6 +13,7 @@ items:
     gun: { caliber: "9x19", slot: SECONDARY, mag: 17, rpm: 450, modes: [SEMI], damage: 22, range: 25, max-range: 90,
            hip-spread: 2.2, ads-spread: 0.6, recoil: 1.2, recoil-h: 0.5, reload: 34, zoom: 0, sound: "craftov:gun.pistol", volume: 3.5, move-speed: 1.0 }
   d50:
+    weight: 1.4
     name: "D50 战术手枪"
     category: WEAPON
     rarity: BLUE
@@ -21,6 +23,7 @@ items:
            hip-spread: 2.8, ads-spread: 0.7, recoil: 4.2, recoil-h: 1.2, reload: 40, zoom: 0, sound: "craftov:gun.pistol_heavy", volume: 4.5, move-speed: 1.0 }
   # ------------------------------------------------------------------ SMGs
   sv9:
+    weight: 2.6
     name: "SV9 冲锋枪"
     category: WEAPON
     rarity: GREEN
@@ -29,6 +32,7 @@ items:
     gun: { caliber: "9x19", slot: PRIMARY, mag: 30, rpm: 900, modes: [AUTO, SEMI], damage: 21, range: 22, max-range: 90,
            hip-spread: 2.4, ads-spread: 0.7, recoil: 0.65, recoil-h: 0.45, reload: 44, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
   v57:
+    weight: 2.9
     name: "V57 个人防卫武器"
     category: WEAPON
     rarity: PURPLE
@@ -38,6 +42,7 @@ items:
            hip-spread: 2.2, ads-spread: 0.55, recoil: 0.55, recoil-h: 0.4, reload: 56, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
   # ------------------------------------------------------------------ rifles
   k47:
+    weight: 3.8
     name: "K47 突击步枪"
     category: WEAPON
     rarity: GREEN
@@ -46,6 +51,7 @@ items:
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 30, rpm: 600, modes: [AUTO, SEMI], damage: 36, range: 45, max-range: 150,
            hip-spread: 3.0, ads-spread: 0.45, recoil: 1.55, recoil-h: 0.8, reload: 52, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.0, move-speed: 0.9 }
   m4c:
+    weight: 3.4
     name: "M4C 卡宾枪"
     category: WEAPON
     rarity: BLUE
@@ -54,6 +60,7 @@ items:
     gun: { caliber: "5.56x45", slot: PRIMARY, mag: 30, rpm: 800, modes: [AUTO, BURST, SEMI], damage: 30, range: 50, max-range: 150,
            hip-spread: 2.6, ads-spread: 0.35, recoil: 1.0, recoil-h: 0.5, reload: 48, zoom: 1, sound: "craftov:gun.rifle", volume: 5.0, move-speed: 0.92 }
   scr:
+    weight: 3.6
     name: "SCR 战斗步枪"
     category: WEAPON
     rarity: PURPLE
@@ -62,6 +69,7 @@ items:
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 580, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
            hip-spread: 3.2, ads-spread: 0.35, recoil: 2.0, recoil-h: 0.9, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88 }
   kl7:
+    weight: 6.5
     name: "KL7 轻机枪"
     category: WEAPON
     rarity: PURPLE
@@ -70,6 +78,7 @@ items:
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 34, range: 45, max-range: 150,
            hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72 }
   r12:
+    weight: 3.4
     name: "R12 泵动霰弹枪"
     category: WEAPON
     rarity: GREEN
@@ -78,21 +87,23 @@ items:
     gun: { caliber: "12ga", slot: PRIMARY, mag: 6, rpm: 70, modes: [PUMP], damage: 14, pellets: 8, range: 10, max-range: 40,
            hip-spread: 4.5, ads-spread: 3.2, recoil: 4.0, recoil-h: 1.2, reload: 70, zoom: 0, head: 1.6, sound: "craftov:gun.shotgun", volume: 5.0, move-speed: 0.92 }
   dm14:
+    weight: 4.6
     name: "DM14 射手步枪"
     category: WEAPON
     rarity: PURPLE
     value: 56000
     lore: "半自动精确射手步枪，自带 4 倍镜。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 10, rpm: 280, modes: [SEMI], damage: 58, range: 90, max-range: 200,
-           hip-spread: 3.6, ads-spread: 0.12, recoil: 2.6, recoil-h: 0.8, reload: 58, zoom: 2, head: 2.2, sound: "craftov:gun.dmr", volume: 6.0, move-speed: 0.88 }
+           hip-spread: 3.6, ads-spread: 0.12, recoil: 2.6, recoil-h: 0.8, reload: 58, zoom: 2, mount: none, scope: optic_4x, head: 2.2, sound: "craftov:gun.dmr", volume: 6.0, move-speed: 0.88 }
   awr:
+    weight: 6.8
     name: "AWR 栓动狙击步枪"
     category: WEAPON
     rarity: GOLD
     value: 120000
     lore: ".338 栓动狙击步枪，爆头即撤离。"
     gun: { caliber: ".338", slot: PRIMARY, mag: 5, rpm: 42, modes: [BOLT], damage: 115, range: 120, max-range: 240,
-           hip-spread: 5.0, ads-spread: 0.03, recoil: 5.0, recoil-h: 1.0, reload: 80, zoom: 3, head: 2.6, sound: "craftov:gun.sniper", volume: 7.0, move-speed: 0.85 }
+           hip-spread: 5.0, ads-spread: 0.03, recoil: 5.0, recoil-h: 1.0, reload: 80, zoom: 3, mount: none, scope: optic_8x, head: 2.6, sound: "craftov:gun.sniper", volume: 7.0, move-speed: 0.85 }
 
   # ------------------------------------------------------------------ ammo (value per round)
   ammo_9_fmj:   { name: "9x19 FMJ", category: AMMO, rarity: WHITE, value: 6, ammo: { caliber: "9x19", pen: 1, damage: 1.0, armor-damage: 0.8 } }
@@ -139,15 +150,15 @@ items:
   pack_3: { name: "大型登山包", category: BACKPACK, rarity: BLUE, value: 38000, slots: 18, speed-penalty: 0.03 }
 
   # ------------------------------------------------------------------ medical
-  bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住轻度出血。", med: { use: 2.0, cures: [LIGHT_BLEED] } }
-  hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住重度与轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED] } }
-  splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定骨折的肢体。", med: { use: 4.0, cures: [FRACTURE] } }
-  medkit_s:   { name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次最多回复 60 点生命，可多次使用。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED] } }
-  medkit_l:   { name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱，可止住所有出血。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED] } }
-  surgery:    { name: "手术包", category: MEDICAL, rarity: PURPLE, value: 18000, stack: 1, lore: "治疗骨折与所有出血，并回复少量生命。", med: { use: 8.0, pool: 40, per-use: 40, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED] } }
-  painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120 } }
-  adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20 } }
-  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE } }
+  bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住一处轻度出血。", med: { use: 2.5, cures: [LIGHT_BLEED], anim: brush, sound: med.bandage } }
+  hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住一处重度或轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED], anim: brush, sound: med.bandage } }
+  splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定一处骨折的肢体。", med: { use: 4.0, cures: [FRACTURE], anim: crossbow, sound: med.splint } }
+  medkit_s:   { weight: 0.5, name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次最多回复 60 点生命，可多次使用。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED], anim: bundle, sound: med.kit } }
+  medkit_l:   { weight: 1.2, name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱，每次最多处理 3 处出血。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED], count: 3, anim: bundle, sound: med.kit } }
+  surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 18000, stack: 1, lore: "处理全身所有骨折与出血，并回复少量生命。", med: { use: 8.0, pool: 40, per-use: 40, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, anim: brush, sound: med.kit } }
+  painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, sound: med.pills } }
+  adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: trident, sound: med.inject } }
+  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
 
   # ------------------------------------------------------------------ throwables
   frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "右键投掷，3.5 秒后爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }
@@ -158,6 +169,14 @@ items:
   key_dorm: { name: "宿舍顶层房间钥匙", category: KEY, rarity: BLUE, value: 15000, durability: 3, lock: dorm_201, lore: "锈港 · 宿舍楼二层尽头的房间。" }
   key_wh:   { name: "一号仓库办公室钥匙", category: KEY, rarity: BLUE, value: 22000, durability: 3, lock: wh_office, lore: "锈港 · 一号仓库东侧办公室。" }
   key_hq:   { name: "指挥中心机房门禁卡", category: KEY, rarity: GOLD, value: 90000, durability: 2, lock: hq_server, lore: "锈港 · 指挥中心三层机房。" }
+
+  # ------------------------------------------------------------------ attachments: optics
+  # fov: field of view while aiming (0.25 = 4x). overlay: scope picture for magnified optics.
+  optic_reddot: { name: "红点瞄准镜", category: ATTACHMENT, rarity: GREEN, value: 6000, weight: 0.3, lore: "1 倍。开镜时红点正对准星，步枪、冲锋枪、霰弹枪和手枪都能装。", optic: { fov: 0.74, mount: [rifle, pistol] } }
+  optic_holo:   { name: "全息瞄准镜", category: ATTACHMENT, rarity: BLUE, value: 11000, weight: 0.4, lore: "1.5 倍圆环分划，近中距离快速瞄准。", optic: { fov: 0.66, mount: [rifle] } }
+  optic_3x:     { name: "3倍棱镜瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 18000, weight: 0.5, lore: "3 倍照明箭头分划，中距离。", optic: { fov: 0.33, overlay: scope_3x, mount: [rifle] } }
+  optic_4x:     { name: "4倍瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 26000, weight: 0.6, lore: "4 倍粗细十字分划。", optic: { fov: 0.25, overlay: scope_4x, mount: [rifle] } }
+  optic_8x:     { name: "8倍狙击镜", category: ATTACHMENT, rarity: GOLD, value: 42000, weight: 0.8, lore: "8 倍密位点分划，远距离狙击。", optic: { fov: 0.125, overlay: scope_8x, mount: [rifle] } }
 
   # ------------------------------------------------------------------ valuables: white
   screws:      { name: "螺丝钉盒", category: VALUABLE, rarity: WHITE, value: 300, stack: 5 }

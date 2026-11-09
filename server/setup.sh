@@ -103,6 +103,9 @@ s = open(path, encoding='utf-8').read()
 s = re.sub(r'(\n  self-host:\n    ip: )"[^"]*"', r'\g<1>"%s"' % ip, s)
 s = re.sub(r'(\n    prompt: )"[^"]*"', r'\1"<gold>Craftov 需要加载专用资源包（武器、物资、界面与音效）</gold>"', s)
 s = s.replace('forced-locale: \'\'', "forced-locale: 'zh_cn'")
+# Several players behind one router share an IP; the default 10 requests/minute makes them queue for the pack.
+s = re.sub(r'max_bandwidth_per_second: [0-9_]+', 'max_bandwidth_per_second: 100_000_000', s)
+s = re.sub(r'qps_per_ip: [0-9]+/[0-9]+', 'qps_per_ip: 120/60', s)
 if local:
     s = s.replace('strict-player-uuid-validation: true', 'strict-player-uuid-validation: false')
 open(path, 'w', encoding='utf-8').write(s)
@@ -112,6 +115,17 @@ cat > "$RUN/start.sh" <<'START'
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
 JAVA="${JAVA:-java}"
+# LAN servers advertise the resource pack at this machine's LAN address. DHCP can hand out a new one,
+# and a stale address makes every join wait for the download to time out and then run without the
+# pack, so a private address in the CraftEngine config is refreshed on every start.
+CE=plugins/CraftEngine/config.yml
+if [ -f "$CE" ] && grep -qE '^ *ip: "(192\.168|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)' "$CE"; then
+  LAN=$( (ipconfig getifaddr en0 || ipconfig getifaddr en1 || hostname -I | awk '{print $1}') 2>/dev/null | head -1)
+  if [ -n "$LAN" ]; then
+    sed -i.bak -E "s/^( *ip: )\"(192\.168|10\.|172\.)[0-9.]*\"/\1\"$LAN\"/" "$CE" && rm -f "$CE.bak"
+    echo "Resource pack host: $LAN"
+  fi
+fi
 exec "$JAVA" -Xms2G -Xmx${MEMORY:-4G} -XX:+UseG1GC -jar paper.jar --nogui
 START
 chmod +x "$RUN/start.sh"

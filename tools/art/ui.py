@@ -133,23 +133,106 @@ def medical_tab():
 
 UI['tab_medical'] = medical_tab
 
+def attachment_tab():
+    c = Canvas()
+    plate(c)
+    c.box(7, 13, 25, 17, rgb('#3A3E44'))
+    c.box(5, 12, 9, 18, rgb('#1E2023'))
+    c.box(23, 11, 27, 19, rgb('#1E2023'))
+    c.rect(12, 17, 13, 21, rgb('#3A3E44'))
+    c.rect(19, 17, 20, 21, rgb('#3A3E44'))
+    c.rect(26, 13, 26, 17, rgb('#7FB8E0'))
+    return c.img
 
-def scope_overlay(w=960, h=540):
+
+UI['tab_attachment'] = attachment_tab
+
+
+def scope_overlay(style='4x', w=960, h=540):
+    """Full-screen camera overlay seen while aiming through a magnified optic.
+
+    3x: compact prism sight, wide eyebox, illuminated chevron. 4x: duplex crosshair.
+    8x: thin crosshair with mil-dots and a tighter eyebox.
+    """
     img = Image.new('RGBA', (w, h), (0, 0, 0, 255))
     d = ImageDraw.Draw(img)
-    r = int(h * 0.46)
+    r = int(h * {'3x': 0.47, '4x': 0.45, '8x': 0.43}[style])
     cx, cy = w // 2, h // 2
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(0, 0, 0, 0))
-    for k in range(10):
+    for k in range(14):
         rr = r - k
-        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(0, 0, 0, 230 - k * 22))
-    d.line([(cx - r, cy), (cx - 8, cy)], fill=(10, 10, 10, 255), width=2)
-    d.line([(cx + 8, cy), (cx + r, cy)], fill=(10, 10, 10, 255), width=2)
-    d.line([(cx, cy - r), (cx, cy - 8)], fill=(10, 10, 10, 255), width=2)
-    d.line([(cx, cy + 8), (cx, cy + r)], fill=(10, 10, 10, 255), width=2)
-    for i in range(1, 6):
-        d.line([(cx - 4, cy + i * 18), (cx + 4, cy + i * 18)], fill=(10, 10, 10, 255), width=2)
-        d.line([(cx + i * 22, cy - 3), (cx + i * 22, cy + 3)], fill=(10, 10, 10, 255), width=2)
-        d.line([(cx - i * 22, cy - 3), (cx - i * 22, cy + 3)], fill=(10, 10, 10, 255), width=2)
-    d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(220, 40, 40, 255))
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(0, 0, 0, max(0, 235 - k * 17)))
+    ink = (12, 12, 12, 255)
+    if style == '3x':
+        for x in (cx - r, cx + int(r * 0.35)):
+            d.line([(x, cy), (x + int(r * 0.65), cy)], fill=ink, width=2)
+        d.line([(cx, cy + 14), (cx, cy + r)], fill=ink, width=2)
+        d.polygon([(cx, cy - 2), (cx - 9, cy + 12), (cx - 5, cy + 12), (cx, cy + 5), (cx + 5, cy + 12), (cx + 9, cy + 12)],
+                  fill=(235, 70, 45, 255))
+        for i in range(1, 5):
+            d.line([(cx - 5 + i, cy + 18 + i * 16), (cx + 5 - i, cy + 18 + i * 16)], fill=ink, width=2)
+    elif style == '4x':
+        thick = 6
+        d.line([(cx - r, cy), (cx - 70, cy)], fill=ink, width=thick)
+        d.line([(cx + 70, cy), (cx + r, cy)], fill=ink, width=thick)
+        d.line([(cx, cy + 70), (cx, cy + r)], fill=ink, width=thick)
+        d.line([(cx, cy - r), (cx, cy - 70)], fill=ink, width=thick)
+        d.line([(cx - 70, cy), (cx + 70, cy)], fill=ink, width=2)
+        d.line([(cx, cy - 70), (cx, cy + 70)], fill=ink, width=2)
+        d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(220, 40, 40, 255))
+    else:
+        d.line([(cx - r, cy), (cx + r, cy)], fill=ink, width=1)
+        d.line([(cx, cy - r), (cx, cy + r)], fill=ink, width=1)
+        for i in range(1, 9):
+            for sx, sy in ((cx + i * 20, cy), (cx - i * 20, cy), (cx, cy + i * 20), (cx, cy - i * 20)):
+                d.ellipse([sx - 2, sy - 2, sx + 2, sy + 2], fill=ink)
+        for x0, y0, x1, y1 in ((cx - r, cy, cx - 180, cy), (cx + 180, cy, cx + r, cy), (cx, cy + 180, cx, cy + r)):
+            d.line([(x0, y0), (x1, y1)], fill=ink, width=5)
+        d.ellipse([cx - 1, cy - 1, cx + 1, cy + 1], fill=(220, 40, 40, 255))
     return img
+
+
+def search_spinner(frames=12):
+    """Animated search indicator: a dot chasing round a ring, with a fading trail and a lens in the middle."""
+    out = []
+    for f in range(frames):
+        c = Canvas()
+        plate(c)
+        for i in range(frames):
+            a = 2 * math.pi * i / frames - math.pi / 2
+            x, y = 16 + 9.5 * math.cos(a), 16 + 9.5 * math.sin(a)
+            age = (f - i) % frames
+            if age == 0:
+                col, r = Y, 2.2
+            elif age < 5:
+                col, r = shade(Y, 1.0 - 0.16 * age), 1.8 - 0.2 * age
+            else:
+                col, r = rgb('#4A4F57'), 1.0
+            c.ellipse(x - r, y - r, x + r, y + r, col)
+        c.ellipse(12, 11, 19, 18, W)
+        c.ellipse(13.5, 12.5, 17.5, 16.5, rgb('#2A2E35'))
+        c.line([(18, 17), (21, 20)], W, 2)
+        out.append(c.img)
+    return out
+
+
+# Body-part silhouettes for the health screen. Layer 0 is the plate, layer 1 the part (tinted by dye colour).
+BODY_SHAPES = {
+    'head': lambda c: c.ellipse(10, 6, 21, 17, W),
+    'chest': lambda c: (c.rect(8, 6, 23, 18, W), c.rect(10, 19, 21, 21, W)),
+    'stomach': lambda c: (c.rect(9, 8, 22, 20, W), c.rect(11, 21, 20, 23, W)),
+    'arm': lambda c: (c.rect(12, 4, 19, 26, W), c.ellipse(11, 23, 20, 29, W)),
+    'leg': lambda c: (c.rect(11, 3, 20, 25, W), c.rect(11, 25, 23, 28, W)),
+}
+
+
+def body_plate():
+    c = Canvas()
+    plate(c, rgb('#22262C'))
+    return c.img
+
+
+def body_shape(name):
+    c = Canvas()
+    BODY_SHAPES[name](c)
+    return c.img

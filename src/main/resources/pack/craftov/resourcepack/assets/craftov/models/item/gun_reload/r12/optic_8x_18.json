@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/r12__optic_8x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    98.675,
+    68.874,
+    -89.651
+   ],
+   "translation": [
+    -2.85,
+    4.198,
+    -1.36
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -81.325,
+    -68.874,
+    -90.349
+   ],
+   "translation": [
+    -2.85,
+    4.198,
+    -1.36
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

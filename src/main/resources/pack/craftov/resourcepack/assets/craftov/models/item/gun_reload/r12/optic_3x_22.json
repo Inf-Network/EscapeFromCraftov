@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/r12__optic_3x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    102.845,
+    77.566,
+    -95.88
+   ],
+   "translation": [
+    -2.157,
+    3.844,
+    -1.623
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -77.155,
+    -77.566,
+    -84.12
+   ],
+   "translation": [
+    -2.157,
+    3.844,
+    -1.623
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

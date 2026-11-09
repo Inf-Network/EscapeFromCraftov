@@ -13,7 +13,8 @@ public enum Category {
     KEY("钥匙"),
     VALUABLE("物资"),
     COLLECTIBLE("收藏品"),
-    SPECIAL("特殊");
+    SPECIAL("特殊"),
+    ATTACHMENT("配件");
 
     private final String displayName;
 

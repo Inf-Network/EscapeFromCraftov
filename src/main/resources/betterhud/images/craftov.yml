@@ -85,3 +85,131 @@ craftov_downed_bar:
       class: placeholder
       value: craftov_downed
       max: '100'
+craftov_med_bar:
+  type: listener
+  file: craftov/med_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_med_pct
+      max: '100'
+craftov_stamina_empty:
+  type: single
+  file: craftov/stamina_empty.png
+craftov_stamina_bar:
+  type: listener
+  file: craftov/stamina_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_stamina
+      max: '100'
+craftov_bp_head_0:
+  type: single
+  file: craftov/body/head_0.png
+craftov_bp_head_1:
+  type: single
+  file: craftov/body/head_1.png
+craftov_bp_head_2:
+  type: single
+  file: craftov/body/head_2.png
+craftov_bp_head_3:
+  type: single
+  file: craftov/body/head_3.png
+craftov_bp_head_4:
+  type: single
+  file: craftov/body/head_4.png
+craftov_bp_chest_0:
+  type: single
+  file: craftov/body/chest_0.png
+craftov_bp_chest_1:
+  type: single
+  file: craftov/body/chest_1.png
+craftov_bp_chest_2:
+  type: single
+  file: craftov/body/chest_2.png
+craftov_bp_chest_3:
+  type: single
+  file: craftov/body/chest_3.png
+craftov_bp_chest_4:
+  type: single
+  file: craftov/body/chest_4.png
+craftov_bp_stomach_0:
+  type: single
+  file: craftov/body/stomach_0.png
+craftov_bp_stomach_1:
+  type: single
+  file: craftov/body/stomach_1.png
+craftov_bp_stomach_2:
+  type: single
+  file: craftov/body/stomach_2.png
+craftov_bp_stomach_3:
+  type: single
+  file: craftov/body/stomach_3.png
+craftov_bp_stomach_4:
+  type: single
+  file: craftov/body/stomach_4.png
+craftov_bp_right_arm_0:
+  type: single
+  file: craftov/body/right_arm_0.png
+craftov_bp_right_arm_1:
+  type: single
+  file: craftov/body/right_arm_1.png
+craftov_bp_right_arm_2:
+  type: single
+  file: craftov/body/right_arm_2.png
+craftov_bp_right_arm_3:
+  type: single
+  file: craftov/body/right_arm_3.png
+craftov_bp_right_arm_4:
+  type: single
+  file: craftov/body/right_arm_4.png
+craftov_bp_left_arm_0:
+  type: single
+  file: craftov/body/left_arm_0.png
+craftov_bp_left_arm_1:
+  type: single
+  file: craftov/body/left_arm_1.png
+craftov_bp_left_arm_2:
+  type: single
+  file: craftov/body/left_arm_2.png
+craftov_bp_left_arm_3:
+  type: single
+  file: craftov/body/left_arm_3.png
+craftov_bp_left_arm_4:
+  type: single
+  file: craftov/body/left_arm_4.png
+craftov_bp_right_leg_0:
+  type: single
+  file: craftov/body/right_leg_0.png
+craftov_bp_right_leg_1:
+  type: single
+  file: craftov/body/right_leg_1.png
+craftov_bp_right_leg_2:
+  type: single
+  file: craftov/body/right_leg_2.png
+craftov_bp_right_leg_3:
+  type: single
+  file: craftov/body/right_leg_3.png
+craftov_bp_right_leg_4:
+  type: single
+  file: craftov/body/right_leg_4.png
+craftov_bp_left_leg_0:
+  type: single
+  file: craftov/body/left_leg_0.png
+craftov_bp_left_leg_1:
+  type: single
+  file: craftov/body/left_leg_1.png
+craftov_bp_left_leg_2:
+  type: single
+  file: craftov/body/left_leg_2.png
+craftov_bp_left_leg_3:
+  type: single
+  file: craftov/body/left_leg_3.png
+craftov_bp_left_leg_4:
+  type: single
+  file: craftov/body/left_leg_4.png

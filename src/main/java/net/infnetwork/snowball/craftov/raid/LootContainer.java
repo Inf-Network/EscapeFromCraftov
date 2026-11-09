@@ -98,7 +98,7 @@ public final class LootContainer {
     }
 
     public void generate(List<ItemStack> items) {
-        fill(items, true);
+        fill(items, type.allOf().isEmpty());
     }
 
     public int hiddenCount() {
@@ -133,7 +133,7 @@ public final class LootContainer {
             progressMs = 0;
             return -1;
         }
-        progressMs += 50.0 * speed * type.searchSpeed();
+        progressMs += 50.0 * speed;
         double need = revealTimeMs(next);
         if (progressMs >= need) {
             progressMs = 0;
@@ -148,11 +148,25 @@ public final class LootContainer {
         return next < 0 ? 1.0 : Math.min(1.0, progressMs / revealTimeMs(next));
     }
 
+    /** Seconds left on the item being searched right now (at normal search speed). */
+    public double secondsLeft(double speed) {
+        int next = nextHidden();
+        return next < 0 ? 0 : Math.max(0, (revealTimeMs(next) - progressMs) / 1000.0 / Math.max(0.1, speed));
+    }
+
+    /** Search time depends only on the item's rarity (config search.seconds), never on the container. */
     private double revealTimeMs(int slot) {
-        ItemStack stack = slots[slot];
-        net.infnetwork.snowball.craftov.item.ItemDef def = net.infnetwork.snowball.craftov.CraftovPlugin.get().items().defOf(stack);
-        double seconds = def == null ? 0.6 : def.rarity().searchSeconds();
-        return seconds * 1000.0;
+        net.infnetwork.snowball.craftov.CraftovPlugin plugin = net.infnetwork.snowball.craftov.CraftovPlugin.get();
+        net.infnetwork.snowball.craftov.item.ItemDef def = plugin.items().defOf(slots[slot]);
+        net.infnetwork.snowball.craftov.item.Rarity rarity = def == null ? net.infnetwork.snowball.craftov.item.Rarity.WHITE : def.rarity();
+        return plugin.getConfig().getDouble("search.seconds." + rarity.name(), rarity.searchSeconds()) * 1000.0;
+    }
+
+    /** Dims the container model once nothing is left inside, so looted containers read at a glance. */
+    public void refreshLook() {
+        if (display != null && display.isValid()) {
+            display.setBrightness(isEmpty() ? new Display.Brightness(3, 3) : null);
+        }
     }
 
     public boolean isEmpty() {
@@ -198,8 +212,6 @@ public final class LootContainer {
                 d.setPersistent(false);
                 d.setBrightness(null);
                 d.setViewRange(1.2f);
-                d.setShadowRadius(0.4f);
-                d.setShadowStrength(0.6f);
                 float s = type.scale();
                 d.setTransformation(new Transformation(new Vector3f(),
                         new Quaternionf(new AxisAngle4f((float) Math.toRadians(-yaw), 0, 1, 0)),

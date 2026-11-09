@@ -101,7 +101,7 @@ public final class HudService {
         if (s != null) {
             player.hideBossBar(s);
         }
-        scopeOverlay(player, false);
+        scopeOverlay(player, null);
         if (vanilla()) {
             player.showBossBar(bar(info, player));
         }
@@ -209,11 +209,12 @@ public final class HudService {
     }
 
     /** Sniper scope: a client-side helmet with a camera overlay, never placed in the real inventory. */
-    public void scopeOverlay(Player player, boolean on) {
-        if (on) {
+    /** Shows a scope picture (craftov:misc/&lt;overlay&gt;) through a client-only helmet, or removes it when null. */
+    public void scopeOverlay(Player player, @org.jspecify.annotations.Nullable String overlay) {
+        if (overlay != null) {
             ItemStack scope = ItemStack.of(Material.PAPER);
             scope.setData(DataComponentTypes.EQUIPPABLE, Equippable.equippable(EquipmentSlot.HEAD)
-                    .cameraOverlay(Key.key("craftov", "misc/scope")).build());
+                    .cameraOverlay(Key.key("craftov", "misc/" + overlay)).build());
             player.sendEquipmentChange(player, EquipmentSlot.HEAD, scope);
         } else {
             ItemStack real = player.getInventory().getHelmet();

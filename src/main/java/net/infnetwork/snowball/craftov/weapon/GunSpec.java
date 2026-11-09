@@ -34,8 +34,15 @@ public record GunSpec(
         double headMultiplier,
         String sound,
         float soundVolume,
-        double moveSpeed
+        double moveSpeed,
+        String mount,
+        @org.jspecify.annotations.Nullable String scope
 ) {
+    /** Rail type for attachments: "rifle", "pistol" or "none" (fixed built-in scope). */
+    public boolean accepts(OpticSpec optic) {
+        return optic.mounts().contains(mount);
+    }
+
     public int ticksBetweenShots() {
         return Math.max(1, (int) Math.round(1200.0 / rpm));
     }

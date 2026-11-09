@@ -23,6 +23,8 @@ public final class ItemRecord {
     public @Nullable Double dura;
     /** Items stored inside a rig or backpack. */
     public @Nullable List<ItemRecord> contents;
+    /** Optic item id mounted on a gun. */
+    public @Nullable String optic;
 
     public ItemRecord() {
     }
@@ -38,6 +40,7 @@ public final class ItemRecord {
         copy.ammo = ammo;
         copy.ammoType = ammoType;
         copy.dura = dura;
+        copy.optic = optic;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {

@@ -34,6 +34,8 @@ public final class Raid {
     public final List<ExtractPoint> extracts = new ArrayList<>();
     public final Map<String, Long> switchUntil = new HashMap<>();
     public final Map<String, String> lockedDoors = new HashMap<>();
+    /** Locked doors someone has opened with a key: they stay unlocked for the rest of the raid. */
+    public final java.util.Set<String> unlockedDoors = new java.util.HashSet<>();
     public final Map<String, MapDef.SwitchDef> switchBlocks = new HashMap<>();
     public boolean bossSpawned;
     public boolean warned5;

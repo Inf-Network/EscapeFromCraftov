@@ -20,8 +20,8 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
-            "leave", "help");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor");
+            "leave", "help", "mod");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure");
 
     private final CraftovPlugin plugin;
 
@@ -75,6 +75,12 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "party" -> party(player, args);
             case "help" -> help(sender);
+            case "items" -> {
+                if (player != null) plugin.menus().openCatalog(player);
+            }
+            case "mod" -> {
+                if (player != null) plugin.menus().openGunsmith(player);
+            }
             case "queue" -> {
                 if (player != null && args.length >= 3) {
                     RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
@@ -139,6 +145,9 @@ public final class CraftovCommand implements TabExecutor {
         sender.sendMessage(Text.mm("<#9AA0A6>/cv stash | trader | market | secure"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv leave <#8A8F98>取消匹配"));
+        if (sender instanceof Player p && plugin.canUseCatalog(p)) {
+            sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
+        }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"));
         }
@@ -161,6 +170,28 @@ public final class CraftovCommand implements TabExecutor {
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
                 plugin.carry().give(target, stack, true);
                 Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + amount);
+            }
+            case "injure" -> {
+                // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture>
+                if (args.length < 4) {
+                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture>");
+                    return;
+                }
+                Player target = Bukkit.getPlayerExact(args[1]);
+                net.infnetwork.snowball.craftov.combat.BodyPart part = java.util.Arrays.stream(net.infnetwork.snowball.craftov.combat.BodyPart.values())
+                        .filter(b -> b.key().equalsIgnoreCase(args[2]) || b.name().equalsIgnoreCase(args[2])).findFirst().orElse(null);
+                net.infnetwork.snowball.craftov.combat.Injury injury = switch (args[3].toLowerCase(Locale.ROOT)) {
+                    case "light" -> net.infnetwork.snowball.craftov.combat.Injury.LIGHT_BLEED;
+                    case "heavy" -> net.infnetwork.snowball.craftov.combat.Injury.HEAVY_BLEED;
+                    case "fracture" -> net.infnetwork.snowball.craftov.combat.Injury.FRACTURE;
+                    default -> null;
+                };
+                if (target == null || part == null || injury == null) {
+                    Text.send(sender, "<#FF8A80>玩家、部位或伤势无效。");
+                    return;
+                }
+                plugin.health().addInjury(target, part, injury);
+                Text.send(sender, "<#5BD16B>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
             }
             case "money" -> {
                 if (args.length < 3) {
@@ -265,6 +296,9 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (args.length == 1) {
             out.addAll(PLAYER_SUBS);
+            if (sender instanceof Player p && plugin.canUseCatalog(p)) {
+                out.add("items");
+            }
             if (sender.hasPermission("craftov.admin")) {
                 out.addAll(ADMIN_SUBS);
             }

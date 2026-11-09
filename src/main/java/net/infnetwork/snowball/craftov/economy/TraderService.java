@@ -24,6 +24,7 @@ public final class TraderService {
         CARRY("胸挂/背包", null),
         MEDICAL("医疗", Category.MEDICAL),
         THROWABLE("投掷物", Category.THROWABLE),
+        ATTACHMENT("配件", Category.ATTACHMENT),
         SERVICE("服务", null);
 
         public final String label;

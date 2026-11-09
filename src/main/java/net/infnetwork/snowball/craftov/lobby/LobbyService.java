@@ -28,8 +28,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -83,6 +85,14 @@ public final class LobbyService implements Listener {
         WorldService.applyRules(world, false);
         world.setTime(6000);
         world.setSpawnLocation(0, LobbyBuilder.Y + 1, 0);
+        // Stations, the rack and range targets are non-persistent entities, which the server discards when
+        // their chunk unloads (an empty server); keep the whole hangar loaded so they always exist.
+        int r = LobbyBuilder.R + 2;
+        for (int cx = Math.floorDiv(-r, 16); cx <= Math.floorDiv(r, 16); cx++) {
+            for (int cz = Math.floorDiv(-r, 16); cz <= Math.floorDiv(r, 16); cz++) {
+                world.getChunkAt(cx, cz).addPluginChunkTicket(plugin);
+            }
+        }
         if (fresh || !new File(folder, "craftov_lobby.built").exists()) {
             LobbyBuilder.build(world);
             try {
@@ -93,6 +103,7 @@ public final class LobbyService implements Listener {
         spawnStations();
         Bukkit.getScheduler().runTaskTimer(plugin, this::refreshLeaderboard, 40L, 20L * 30);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickPlayers, 40L, 40L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickRange, 10L, 10L);
     }
 
     public @Nullable World world() {
@@ -160,6 +171,27 @@ public final class LobbyService implements Listener {
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(140, 10, 12, 16));
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "rank_board");
+        });
+        // Weapon rack at the back of the firing line: loaner guns and optics for the range.
+        Location rack = new Location(world, 9.5, LobbyBuilder.Y + 1, -4.4);
+        world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
+            d.setItemStack(UiItems.button("craftov:ui/tab_weapon", "靶场武器架", List.of(), "station"));
+            d.setBillboard(Display.Billboard.VERTICAL);
+            d.setPersistent(false);
+            d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
+        });
+        world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
+            d.text(Text.mm("<b><#F2E6C8>靶场武器架</b>\n<#9AA0A6>免费试用 · 子弹无限 · 可装瞄准镜\n<#6B7079>离开靶场自动收回"));
+            d.setBillboard(Display.Billboard.CENTER);
+            d.setPersistent(false);
+            d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
+            d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
+        });
+        world.spawn(rack, Interaction.class, it -> {
+            it.setInteractionWidth(1.2f);
+            it.setInteractionHeight(2.2f);
+            it.setPersistent(false);
+            it.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         });
         // Shooting range dummies.
         int[][] targets = {{11, -13}, {15, -16}, {19, -20}};
@@ -249,6 +281,35 @@ public final class LobbyService implements Listener {
         }
     }
 
+    /** Range loaners never leave the firing line: they are taken back as soon as the player steps out. */
+    private void tickRange() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!inRange(player) && stripRangeItems(player) > 0) {
+                player.sendActionBar(Text.mm("<#FFB74D>已离开靶场，靶场武器已收回"));
+            }
+        }
+    }
+
+    /** Removes every shooting-range loaner from the player's inventory and cursor. Returns how many. */
+    public int stripRangeItems(Player player) {
+        org.bukkit.inventory.PlayerInventory inv = player.getInventory();
+        int removed = 0;
+        for (int i = 0; i < inv.getSize(); i++) {
+            if (ItemFactory.isRange(inv.getItem(i))) {
+                if (i == inv.getHeldItemSlot()) {
+                    plugin.weapons().reset(player);
+                }
+                inv.setItem(i, null);
+                removed++;
+            }
+        }
+        if (ItemFactory.isRange(player.getItemOnCursor())) {
+            player.setItemOnCursor(null);
+            removed++;
+        }
+        return removed;
+    }
+
     private void giveStarter(Player player, Profile profile) {
         ConfigurationSection starter = plugin.getConfig().getConfigurationSection("starter");
         profile.receivedStarter = true;
@@ -308,6 +369,8 @@ public final class LobbyService implements Listener {
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
         }
         plugin.health().setupPlayer(player, false);
+        stripRangeItems(player);
+        upgradeItems(player);
         if (plugin.raids().tryRejoin(player)) {
             return;
         }
@@ -317,6 +380,17 @@ public final class LobbyService implements Listener {
                 plugin.hud().onJoin(player);
             }
         });
+    }
+
+    /** Rebuilds stacks made by an older Craftov build so they pick up new item components. */
+    private void upgradeItems(Player player) {
+        org.bukkit.inventory.PlayerInventory inv = player.getInventory();
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack upgraded = plugin.items().upgrade(inv.getItem(i));
+            if (upgraded != null) {
+                inv.setItem(i, upgraded);
+            }
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -407,6 +481,21 @@ public final class LobbyService implements Listener {
         if (event.getEntity() instanceof LivingEntity living && isTarget(living)) {
             event.setCancelled(true);
             living.setHealth(living.getAttribute(Attribute.MAX_HEALTH).getValue());
+        }
+    }
+
+    /** Explosions never break blocks in the lobby or on raid maps. */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        if (isLobby(event.getLocation().getWorld()) || plugin.raids().isRaidWorld(event.getLocation().getWorld())) {
+            event.blockList().clear();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onBlockExplode(BlockExplodeEvent event) {
+        if (isLobby(event.getBlock().getWorld()) || plugin.raids().isRaidWorld(event.getBlock().getWorld())) {
+            event.blockList().clear();
         }
     }
 }

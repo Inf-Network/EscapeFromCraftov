@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/m4c__optic_reddot",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    95.257,
+    59.728,
+    -82.057
+   ],
+   "translation": [
+    -3.824,
+    3.278,
+    -0.85
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -84.743,
+    -59.728,
+    -97.943
+   ],
+   "translation": [
+    -3.824,
+    3.278,
+    -0.85
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

@@ -4,9 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Consumable;
+import io.papermc.paper.block.BlockPredicate;
 import io.papermc.paper.datacomponent.item.Equippable;
+import io.papermc.paper.datacomponent.item.ItemAdventurePredicate;
+import io.papermc.paper.datacomponent.item.ItemAttributeModifiers;
+import io.papermc.paper.datacomponent.item.SwingAnimation;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import io.papermc.paper.datacomponent.item.TooltipDisplay;
+import io.papermc.paper.datacomponent.item.UseCooldown;
 import io.papermc.paper.datacomponent.item.UseEffects;
 import io.papermc.paper.datacomponent.item.consumable.ItemUseAnimation;
 import net.infnetwork.snowball.craftov.combat.MedSpec;
@@ -16,6 +21,10 @@ import net.infnetwork.snowball.craftov.weapon.GunSpec;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import io.papermc.paper.persistence.PersistentDataContainerView;
@@ -33,6 +42,12 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
+    /** Bump when item components change; older stacks are rebuilt from their records on join. */
+    public static final int VERSION = 3;
+    /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
+    public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
+    private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
+    private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
     private final ItemRegistry registry;
 
@@ -72,6 +87,66 @@ public final class ItemFactory {
         return build(gun, record);
     }
 
+    // ------------------------------------------------------------------ optics and range loaners
+
+    public static boolean isRange(@Nullable ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.RANGE);
+    }
+
+    /** Marks a stack as a shooting-range loaner (lore says so; it can never be stored or sold). */
+    public ItemStack markRange(ItemStack stack) {
+        stack.editPersistentDataContainer(pdc -> pdc.set(Keys.RANGE, PersistentDataType.BYTE, (byte) 1));
+        refreshLore(stack, defOf(stack));
+        return stack;
+    }
+
+    public static @Nullable String opticId(@Nullable ItemStack stack) {
+        return stack == null || stack.isEmpty() ? null : stack.getPersistentDataContainer().get(Keys.OPTIC, PersistentDataType.STRING);
+    }
+
+    /** The gun with a different optic mounted (null removes it); magazine, mode and loaner flag are kept. */
+    public ItemStack withOptic(ItemStack gun, @Nullable String opticId) {
+        ItemRecord record = recordOf(gun);
+        if (record == null) {
+            return gun;
+        }
+        record.optic = opticId;
+        int mode = mode(gun);
+        boolean range = isRange(gun);
+        ItemStack rebuilt = fromRecord(record);
+        if (rebuilt == null) {
+            return gun;
+        }
+        setMode(rebuilt, mode);
+        return range ? markRange(rebuilt) : rebuilt;
+    }
+
+    /** Rebuilds a stack made by an older plugin version (components changed); null if it is current. */
+    public @Nullable ItemStack upgrade(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty() || idOf(stack) == null || isUi(stack)) {
+            return null;
+        }
+        Integer version = stack.getPersistentDataContainer().get(Keys.VERSION, PersistentDataType.INTEGER);
+        if (version != null && version >= VERSION) {
+            return null;
+        }
+        int mode = mode(stack);
+        ItemStack rebuilt = fromRecord(toRecord(stack));
+        if (rebuilt != null) {
+            setMode(rebuilt, mode);
+        }
+        return rebuilt;
+    }
+
+    /** A ready-to-use sample of an item: guns come loaded, ammo as a full stack, everything else single. */
+    public ItemStack sample(ItemDef def) {
+        if (def.isGun()) {
+            List<ItemDef> ammo = registry.ammoFor(def.gun().caliber());
+            return loadedGun(def, ammo.isEmpty() ? null : ammo.get(0).id());
+        }
+        return create(def, def.category() == Category.AMMO ? def.maxStack() : 1);
+    }
+
     public @Nullable ItemStack fromRecord(@Nullable ItemRecord record) {
         if (record == null) {
             return null;
@@ -89,28 +164,38 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(def.model()));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(def.coloredName()));
         stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay()
-                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE)
+                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK)
                 .build());
         GunSpec gun = def.gun();
         MedSpec med = def.med();
         if (gun != null) {
-            // An endless "use" lets us see exactly when the trigger is held and released.
-            stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
-                    .consumeSeconds(100_000f)
-                    .animation(ItemUseAnimation.NONE)
-                    .sound(SILENT)
-                    .hasConsumeParticles(false)
-                    .build());
-            stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()
-                    .canSprint(false)
-                    .speedMultiplier((float) Math.max(0.2, Math.min(1.0, gun.moveSpeed())))
-                    .interactVibrations(false)
+            // Left mouse fires by "mining" an invisible capture block in front of the crosshair (see
+            // TriggerService): guns may dig in adventure mode, but never break anything, never swing
+            // and never show the attack-cooldown indicator.
+            stack.setData(DataComponentTypes.CAN_BREAK, ItemAdventurePredicate.itemAdventurePredicate(
+                    List.of(BlockPredicate.predicate().build())));
+            // Never triggered by use (guns have no use action); only the reload sets this cooldown, and the
+            // client plays the reload frames of the item model while it counts down.
+            stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
+            stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
+                    .type(SwingAnimation.Animation.NONE).duration(1).build());
+            stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
+                    .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
+                            AttributeModifier.Operation.MULTIPLY_SCALAR_1), EquipmentSlotGroup.MAINHAND)
+                    .addModifier(Attribute.ATTACK_SPEED, new AttributeModifier(GUN_ATTACK, 100.0,
+                            AttributeModifier.Operation.ADD_NUMBER), EquipmentSlotGroup.MAINHAND)
                     .build());
         } else if (med != null) {
+            ItemUseAnimation animation;
+            try {
+                animation = ItemUseAnimation.valueOf(med.animation().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                animation = ItemUseAnimation.BRUSH;
+            }
             stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
                     .consumeSeconds((float) med.useSeconds())
-                    .animation(med.effect() == MedSpec.Effect.NONE ? ItemUseAnimation.BRUSH : ItemUseAnimation.BOW)
-                    .sound(Key.key("craftov", "med.finish"))
+                    .animation(animation)
+                    .sound(Key.key("craftov", "med.loop"))
                     .hasConsumeParticles(false)
                     .build());
             stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()
@@ -129,6 +214,7 @@ public final class ItemFactory {
         }
         stack.editPersistentDataContainer(pdc -> {
             pdc.set(Keys.ITEM_ID, PersistentDataType.STRING, def.id());
+            pdc.set(Keys.VERSION, PersistentDataType.INTEGER, VERSION);
             String uid = record.uid;
             if (uid == null && def.isGun()) {
                 uid = java.util.UUID.randomUUID().toString();
@@ -148,7 +234,15 @@ public final class ItemFactory {
             if (record.hasContents()) {
                 pdc.set(Keys.CONTENTS, PersistentDataType.STRING, GSON.toJson(record.contents, RECORD_LIST));
             }
+            if (record.optic != null && def.isGun()) {
+                pdc.set(Keys.OPTIC, PersistentDataType.STRING, record.optic);
+            }
         });
+        if (record.optic != null && def.isGun()) {
+            // The item model picks the gun+optic model from custom_model_data string 0.
+            stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, io.papermc.paper.datacomponent.item.CustomModelData
+                    .customModelData().addString(record.optic).build());
+        }
         refreshLore(stack, def);
         return stack;
     }
@@ -189,7 +283,12 @@ public final class ItemFactory {
         return stack.getPersistentDataContainer().get(Keys.UI, PersistentDataType.STRING);
     }
 
+    /** Storable form of a stack, or null for non-Craftov stacks and shooting-range loaners (never persisted). */
     public @Nullable ItemRecord toRecord(@Nullable ItemStack stack) {
+        return isRange(stack) ? null : recordOf(stack);
+    }
+
+    private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
         ItemDef def = defOf(stack);
         if (def == null) {
             return null;
@@ -204,6 +303,7 @@ public final class ItemFactory {
         if (contents != null && !contents.isEmpty()) {
             record.contents = GSON.fromJson(contents, RECORD_LIST);
         }
+        record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
         return record;
     }
 
@@ -310,6 +410,10 @@ public final class ItemFactory {
                 total += value(child);
             }
         }
+        ItemDef optic = registry.get(record.optic);
+        if (optic != null) {
+            total += optic.value();
+        }
         return total;
     }
 
@@ -345,6 +449,19 @@ public final class ItemFactory {
             }
             lore.add(Text.mm("<#8A8F98>伤害 <white>" + fmt(gun.damage()) + (gun.pellets() > 1 ? "×" + gun.pellets() : "")
                     + "  <#8A8F98>射速 <white>" + gun.rpm() + "  <#8A8F98>模式 <white>" + modes));
+            ItemDef optic = registry.get(opticId(stack));
+            ItemDef builtIn = registry.get(gun.scope());
+            if (optic != null) {
+                lore.add(Text.mm("<#8A8F98>瞄准镜 " + optic.coloredName() + " <#8A8F98>(" + optic.optic().magnification() + " 倍)"));
+            } else if (builtIn != null) {
+                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>自带 " + builtIn.optic().magnification() + " 倍"));
+            } else if (!"none".equals(gun.mount())) {
+                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>机械瞄具 <#6B7079>(可在改枪台安装瞄准镜)"));
+            }
+        }
+        if (def.optic() != null) {
+            lore.add(Text.mm("<#8A8F98>放大倍率 <white>" + def.optic().magnification() + " 倍  <#8A8F98>适用 <white>"
+                    + (def.optic().mounts().contains("pistol") ? "步枪 / 冲锋枪 / 霰弹枪 / 手枪" : "步枪 / 冲锋枪 / 霰弹枪")));
         }
         if (def.ammo() != null) {
             lore.add(Text.mm("<#8A8F98>口径 <white>" + def.ammo().caliber() + "  <#8A8F98>穿透等级 <white>" + def.ammo().penetration()));
@@ -368,8 +485,13 @@ public final class ItemFactory {
         if (def.category() == Category.KEY) {
             lore.add(Text.mm("<#8A8F98>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
         }
-        long value = value(stack);
-        lore.add(Text.mm("<#8A8F98>价值 <#F2C94C>◈ " + Text.money(value)));
+        lore.add(Text.mm("<#8A8F98>重量 <white>" + fmt(def.weight() * stack.getAmount()) + "kg"));
+        if (isRange(stack)) {
+            lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
+        } else {
+            long value = value(stack);
+            lore.add(Text.mm("<#8A8F98>价值 <#F2C94C>◈ " + Text.money(value)));
+        }
         stack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
     }
 

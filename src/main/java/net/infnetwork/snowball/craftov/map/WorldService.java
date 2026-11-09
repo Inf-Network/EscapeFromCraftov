@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.map;
 
+import net.infnetwork.snowball.craftov.map.gen.MapGenerator;
+import net.infnetwork.snowball.craftov.map.gen.ProvingGroundGenerator;
 import net.infnetwork.snowball.craftov.map.gen.RustPortGenerator;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
@@ -17,8 +19,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 /** Creates template worlds, clones them for raids and disposes of finished raid worlds. */
 public final class WorldService {
@@ -65,25 +69,39 @@ public final class WorldService {
         world.setAutoSave(!raid);
     }
 
+    private record Builtin(String id, String name, Function<World, MapGenerator> factory, int spawnX, int spawnY,
+                           int spawnZ) {
+    }
+
+    private static final List<Builtin> BUILTINS = List.of(
+            new Builtin(RustPortGenerator.ID, "锈港", RustPortGenerator::new, 104, 66, 104),
+            new Builtin(ProvingGroundGenerator.ID, "试验场", ProvingGroundGenerator::new, 60, 65, 92));
+
     /** Generates every built-in map whose template or definition is missing. */
     public void ensureBuiltins() {
-        String template = "craftov_tpl_" + RustPortGenerator.ID;
+        for (Builtin builtin : BUILTINS) {
+            ensure(builtin);
+        }
+    }
+
+    private void ensure(Builtin builtin) {
+        String template = "craftov_tpl_" + builtin.id();
         File folder = new File(Bukkit.getWorldContainer(), template);
-        boolean haveDef = maps.get(RustPortGenerator.ID) != null;
+        boolean haveDef = maps.get(builtin.id()) != null;
         if (folder.exists() && haveDef) {
             return;
         }
         long start = System.currentTimeMillis();
-        plugin.getLogger().info("Generating built-in raid map '锈港' (first start only, this takes a little while)...");
+        plugin.getLogger().info("Generating built-in raid map '" + builtin.name() + "' (first start only, this takes a little while)...");
         World world = creator(template).createWorld();
         if (world == null) {
             plugin.getLogger().severe("Could not create template world " + template);
             return;
         }
         applyRules(world, false);
-        RustPortGenerator generator = new RustPortGenerator(world);
+        MapGenerator generator = builtin.factory().apply(world);
         MapDef def = generator.generate();
-        world.setSpawnLocation(104, 66, 104);
+        world.setSpawnLocation(builtin.spawnX(), builtin.spawnY(), builtin.spawnZ());
         world.save();
         try {
             maps.save(def);
@@ -91,7 +109,7 @@ public final class WorldService {
             plugin.getLogger().severe("Could not save map definition: " + ex.getMessage());
         }
         Bukkit.unloadWorld(world, true);
-        plugin.getLogger().info("Built '锈港' with " + generator.blocksPlaced() + " blocks in "
+        plugin.getLogger().info("Built '" + builtin.name() + "' with " + generator.blocksPlaced() + " blocks in "
                 + (System.currentTimeMillis() - start) + " ms (" + def.containers().size() + " containers, "
                 + def.extracts().size() + " extracts)");
     }

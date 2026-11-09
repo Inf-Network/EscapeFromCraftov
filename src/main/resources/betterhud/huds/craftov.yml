@@ -7,12 +7,7 @@ craftov_hud:
         y: 100
       pixel:
         x: 6
-        y: -62
-      conditions:
-        '1':
-          first: craftov_in_raid
-          second: 'true'
-          operation: ==
+        y: -66
     '2':
       name: craftov_weapon
       gui:
@@ -20,16 +15,7 @@ craftov_hud:
         y: 100
       pixel:
         x: -156
-        y: -62
-      conditions:
-        '1':
-          first: craftov_in_raid
-          second: 'true'
-          operation: ==
-        '2':
-          first: craftov_has_gun
-          second: 'true'
-          operation: ==
+        y: -69
     '3':
       name: craftov_skill
       gui:
@@ -37,12 +23,7 @@ craftov_hud:
         y: 100
       pixel:
         x: -156
-        y: -72
-      conditions:
-        '1':
-          first: craftov_in_raid
-          second: 'true'
-          operation: ==
+        y: -79
     '4':
       name: craftov_info
       gui:
@@ -51,11 +32,6 @@ craftov_hud:
       pixel:
         x: 6
         y: 6
-      conditions:
-        '1':
-          first: craftov_in_raid
-          second: 'true'
-          operation: ==
     '5':
       name: craftov_extract
       gui:
@@ -64,11 +40,6 @@ craftov_hud:
       pixel:
         x: -60
         y: 26
-      conditions:
-        '1':
-          first: craftov_extracting
-          second: 'true'
-          operation: ==
     '6':
       name: craftov_downed
       gui:
@@ -77,12 +48,15 @@ craftov_hud:
       pixel:
         x: -60
         y: 40
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'true'
-          operation: ==
     '7':
+      name: craftov_med
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 54
+    '8':
       name: craftov_lobby
       gui:
         x: 0
@@ -90,8 +64,3 @@ craftov_hud:
       pixel:
         x: 6
         y: 6
-      conditions:
-        '1':
-          first: craftov_in_lobby
-          second: 'true'
-          operation: ==

@@ -71,6 +71,15 @@ public final class BetterHudBridge implements BetterHudHook {
         bool(pm, "craftov_reloading", HudSnapshot::reloading);
         bool(pm, "craftov_extracting", HudSnapshot::extracting);
         bool(pm, "craftov_has_status", s -> !s.status().isEmpty());
+        for (net.infnetwork.snowball.craftov.combat.BodyPart part : net.infnetwork.snowball.craftov.combat.BodyPart.values()) {
+            number(pm, "craftov_part_" + part.key(), s -> s.part(part));
+        }
+        number(pm, "craftov_stamina", HudSnapshot::stamina);
+        bool(pm, "craftov_using_med", HudSnapshot::usingMed);
+        string(pm, "craftov_med_name", HudSnapshot::medName);
+        string(pm, "craftov_med_left", HudSnapshot::medLeft);
+        number(pm, "craftov_med_pct", HudSnapshot::medPct);
+        string(pm, "craftov_weapon_hint", HudSnapshot::weaponHint);
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

@@ -1,7 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
-import net.infnetwork.snowball.craftov.combat.HitZone;
+import net.infnetwork.snowball.craftov.combat.BodyPart;
 import net.infnetwork.snowball.craftov.item.Keys;
 import org.bukkit.Color;
 import org.bukkit.FluidCollisionMode;
@@ -73,9 +73,9 @@ public final class Ballistics {
             end = result.getHitPosition().toLocation(world);
             if (result.getHitEntity() instanceof LivingEntity living) {
                 hitEntity = living;
-                HitZone zone = HitZone.of(living, result.getHitPosition());
+                BodyPart part = BodyPart.of(living, result.getHitPosition());
                 double distance = eye.toVector().distance(result.getHitPosition());
-                plugin.damage().bullet(shooter, living, zone, gun, ammo, distance, weaponName);
+                plugin.damage().bullet(shooter, living, part, gun, ammo, distance, weaponName);
                 world.spawnParticle(Particle.BLOCK, end, 8, 0.1, 0.1, 0.1, Material.REDSTONE_BLOCK.createBlockData());
             } else if (result.getHitBlock() != null) {
                 impact(result.getHitBlock(), end, result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection());

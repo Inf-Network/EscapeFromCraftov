@@ -292,6 +292,9 @@ public final class RaidManager implements Listener {
     /** Takes the lobby loadout into the raid. */
     private void prepare(Raid raid, Player player, RaidPlayer rp) {
         plugin.weapons().reset(player);
+        plugin.damage().forget(player.getUniqueId());
+        plugin.stamina().refill(player);
+        plugin.lobby().stripRangeItems(player);
         plugin.lobby().captureLoadout(player);
         Profile profile = plugin.profiles().get(player);
         profile.activeRaid = raid.id;
@@ -661,6 +664,7 @@ public final class RaidManager implements Listener {
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(600))));
         player.playSound(player.getLocation(), "craftov:ui.death", SoundCategory.MASTER, 1f, 1f);
         UUID uuid = player.getUniqueId();
+        List<DamageService.HitRecord> hits = plugin.damage().hitsTaken(uuid);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
@@ -668,6 +672,7 @@ public final class RaidManager implements Listener {
                 plugin.match().leaveTeam(p);
                 plugin.lobby().enterLobby(p);
                 sendReport(p, report, List.of());
+                sendDamageLog(p, hit, hits);
             }
         }, 20L * 5);
     }
@@ -716,7 +721,7 @@ public final class RaidManager implements Listener {
         Location ground = at.clone();
         ground.setPitch(0);
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
-                1f, 1.4, 0.6, type.rows(), 0, 0, type.searchSpeed(), type.categories(), type.rarities()),
+                1f, 1.4, 0.6, type.rows(), 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
                 ground, 0, name + " 的遗体");
         container.fill(items, false);
         container.spawn(0);
@@ -798,6 +803,32 @@ public final class RaidManager implements Listener {
             player.sendMessage(Text.mm("<#FF4D4D>★ 新收藏品入册：<white>" + Text.escape(c)));
         }
         player.sendMessage(Text.mm("<#3A3F47>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"));
+    }
+
+    /** Who hurt the player, where and how badly: one line per attacker and weapon. */
+    private void sendDamageLog(Player player, DamageService.@Nullable LastHit killing, List<DamageService.HitRecord> hits) {
+        if (hits.isEmpty()) {
+            return;
+        }
+        if (killing != null && killing.attacker() != null) {
+            DamageService.HitRecord last = hits.get(hits.size() - 1);
+            player.sendMessage(Text.mm("<#FF4D4D>致命一击 <white>" + Text.escape(killing.attackerName()) + " <#8A8F98>· "
+                    + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m"));
+        }
+        java.util.Map<String, java.util.Map<net.infnetwork.snowball.craftov.combat.BodyPart, double[]>> byAttacker = new java.util.LinkedHashMap<>();
+        for (DamageService.HitRecord h : hits) {
+            double[] acc = byAttacker.computeIfAbsent(h.attacker() + " · " + h.weapon(), k -> new java.util.EnumMap<>(net.infnetwork.snowball.craftov.combat.BodyPart.class))
+                    .computeIfAbsent(h.part(), k -> new double[2]);
+            acc[0] += 1;
+            acc[1] += h.damage();
+        }
+        player.sendMessage(Text.mm("<#8A8F98>受到的伤害"));
+        byAttacker.forEach((who, parts) -> {
+            StringBuilder sb = new StringBuilder("<white>" + Text.escape(who) + " <#8A8F98>→ ");
+            parts.forEach((part, acc) -> sb.append("<#C8CCD2>").append(part.displayName()).append(" ×").append((int) acc[0])
+                    .append(" <#FF8A80>").append(Math.round(acc[1])).append("  "));
+            player.sendMessage(Text.mm(sb.toString().trim()));
+        });
     }
 
     public long secureValue(List<ItemRecord> records) {
@@ -1044,10 +1075,19 @@ public final class RaidManager implements Listener {
         if (block.getBlockData() instanceof Bisected bisected && bisected.getHalf() == Bisected.Half.TOP) {
             lower = block.getRelative(org.bukkit.block.BlockFace.DOWN);
         }
-        String lock = raid.lockedDoors.get(Raid.blockKey(lower.getLocation()));
+        String doorKey = Raid.blockKey(lower.getLocation());
+        String lock = raid.lockedDoors.get(doorKey);
         if (lock != null) {
             event.setCancelled(true);
-            useKey(player, lower, lock);
+            useKey(player, raid, doorKey, lower, lock);
+            return;
+        }
+        if (raid.unlockedDoors.contains(doorKey)) {
+            // Iron doors cannot be opened by hand; unlocked ones open and close like any other door.
+            event.setCancelled(true);
+            boolean open = lower.getBlockData() instanceof Openable o && o.isOpen();
+            setDoor(lower, !open);
+            lower.getWorld().playSound(lower.getLocation(), open ? "minecraft:block.iron_door.close" : "minecraft:block.iron_door.open", 1f, 1f);
             return;
         }
         MapDef.SwitchDef sw = raid.switchBlocks.get(Raid.blockKey(block.getLocation()));
@@ -1073,7 +1113,7 @@ public final class RaidManager implements Listener {
         }
     }
 
-    private void useKey(Player player, Block door, String lock) {
+    private void useKey(Player player, Raid raid, String doorKey, Block door, String lock) {
         ItemStack key = null;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
@@ -1083,7 +1123,10 @@ public final class RaidManager implements Listener {
             }
         }
         if (key == null) {
-            player.sendActionBar(Text.mm("<#FF8A80>门被锁住了，需要对应的钥匙"));
+            String needed = plugin.registry().all().stream()
+                    .filter(d -> d.category() == Category.KEY && lock.equals(d.lockId()))
+                    .map(ItemDef::name).findFirst().orElse("对应的钥匙");
+            player.sendActionBar(Text.mm("<#FF8A80>门被锁住了，需要 <white>" + Text.escape(needed)));
             player.playSound(player.getLocation(), "minecraft:block.iron_door.close", 0.6f, 1.6f);
             return;
         }
@@ -1091,13 +1134,15 @@ public final class RaidManager implements Listener {
         double uses = ItemFactory.dura(key, def.durability()) - 1;
         if (uses <= 0) {
             key.setAmount(key.getAmount() - 1);
-            player.sendActionBar(Text.mm("<#FFC23D>" + Text.escape(def.name()) + " 已用尽"));
+            player.sendActionBar(Text.mm("<#FFC23D>已解锁 · " + Text.escape(def.name()) + " 已用尽"));
         } else {
             plugin.items().setDura(key, uses);
+            player.sendActionBar(Text.mm("<#5BD16B>已解锁 · " + Text.escape(def.name()) + " <#8A8F98>剩余 " + (int) Math.round(uses) + " 次"));
         }
+        raid.lockedDoors.remove(doorKey);
+        raid.unlockedDoors.add(doorKey);
         setDoor(door, true);
         door.getWorld().playSound(door.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> setDoor(door, false), 20L * 8);
     }
 
     private static void setDoor(Block lower, boolean open) {

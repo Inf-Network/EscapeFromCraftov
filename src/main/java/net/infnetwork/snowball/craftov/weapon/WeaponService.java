@@ -1,10 +1,10 @@
 package net.infnetwork.snowball.craftov.weapon;
 
-import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -14,7 +14,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -60,14 +59,29 @@ public final class WeaponService implements Listener {
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
+        /** Mounted optic, or the gun's built-in scope; null = iron sights. */
+        final @Nullable OpticSpec optic;
+        final @Nullable String opticName;
+        final boolean range;
 
-        GunState(String uid, int slot, ItemDef def, ItemStack stack) {
+        GunState(String uid, int slot, ItemDef def, ItemStack stack, net.infnetwork.snowball.craftov.item.ItemRegistry registry) {
             this.uid = uid;
             this.slot = slot;
             this.def = def;
             this.ammo = ItemFactory.ammo(stack);
             this.ammoType = ItemFactory.ammoType(stack);
             this.mode = Math.floorMod(ItemFactory.mode(stack), def.gun().modes().size());
+            ItemDef mounted = registry.get(ItemFactory.opticId(stack));
+            if (mounted == null) {
+                mounted = registry.get(def.gun().scope());
+            }
+            this.optic = mounted == null ? null : mounted.optic();
+            this.opticName = mounted == null ? null : mounted.name();
+            this.range = ItemFactory.isRange(stack);
+        }
+
+        public @Nullable String opticName() {
+            return opticName;
         }
 
         public FireMode fireMode() {
@@ -90,6 +104,10 @@ public final class WeaponService implements Listener {
             return reloadEnd > 0;
         }
 
+        public double reloadSecondsLeft() {
+            return reloading() ? Math.max(0, (reloadEnd - Bukkit.getCurrentTick()) / 20.0) : 0;
+        }
+
         public double reloadProgress() {
             if (!reloading()) {
                 return 0;
@@ -103,6 +121,12 @@ public final class WeaponService implements Listener {
     private final Ballistics ballistics;
     private final Map<UUID, GunState> states = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
+    /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
+    private final Map<UUID, Long> adsUntil = new HashMap<>();
+    /** FOV zoom last sent to each aiming player (see {@link Nms#zoom}). */
+    private final Map<UUID, Double> sentZoom = new HashMap<>();
+    private final Map<UUID, Long> lastHint = new HashMap<>();
+    private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
 
     public WeaponService(CraftovPlugin plugin) {
@@ -151,14 +175,20 @@ public final class WeaponService implements Listener {
         }
         if (current != null) {
             flush(player);
-            states.remove(player.getUniqueId());
+            stopReloadAnimation(player, states.remove(player.getUniqueId()));
             setAds(player, false);
         }
         if (def == null || !def.isGun() || uid == null) {
             return null;
         }
-        GunState state = new GunState(uid, slot, def, held);
+        GunState state = new GunState(uid, slot, def, held, plugin.registry());
         states.put(player.getUniqueId(), state);
+        int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
+        if (tips < 3) {
+            controlTips.put(player.getUniqueId(), tips + 1);
+            player.sendActionBar(Text.mm("<white>左键<#9AA0A6> 开火  <white>右键<#9AA0A6> 瞄准  <white>Q<#9AA0A6> 换弹  "
+                    + "<white>潜行+Q<#9AA0A6> 换弹种  <white>F<#9AA0A6> 射击模式"));
+        }
         return state;
     }
 
@@ -193,7 +223,7 @@ public final class WeaponService implements Listener {
     /** Drops cached state entirely (raid transitions, death). */
     public void reset(Player player) {
         flush(player);
-        states.remove(player.getUniqueId());
+        stopReloadAnimation(player, states.remove(player.getUniqueId()));
         setAds(player, false);
     }
 
@@ -212,14 +242,23 @@ public final class WeaponService implements Listener {
                 }
                 continue;
             }
-            boolean using = player.hasActiveItem() && state.uid.equals(ItemFactory.uid(player.getActiveItem()));
+            boolean held = plugin.triggers().held(player);
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
-                plugin.getLogger().info("[debug] " + player.getName() + " held=" + state.triggerHeld + " active=" + player.hasActiveItem()
-                        + " activeUid=" + ItemFactory.uid(player.getActiveItem()) + " uid=" + state.uid + " ammo=" + state.ammo
+                plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
                         + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
                         + " interval=" + state.def.gun().millisBetweenShots());
             }
-            if (!using && state.triggerHeld) {
+            if (isAiming(player)) {
+                if (held) {
+                    adsUntil.put(player.getUniqueId(), now + 6);
+                } else if (now > adsUntil.getOrDefault(player.getUniqueId(), 0L)) {
+                    setAds(player, false);
+                }
+                if (isAiming(player) && now % 4 == 0) {
+                    applyZoom(player, state);
+                }
+            }
+            if (!held && state.triggerHeld) {
                 release(state);
             }
             state.bloom = Math.max(0, state.bloom - 0.08);
@@ -246,6 +285,31 @@ public final class WeaponService implements Listener {
                     break;
                 }
             }
+        }
+    }
+
+    /** Left mouse went down (see {@link TriggerService}). */
+    public void triggerDown(Player player) {
+        GunState state = bind(player);
+        if (state == null) {
+            return;
+        }
+        String blocker = fireBlocker(player);
+        if (blocker != null) {
+            hint(player, blocker);
+            return;
+        }
+        if (state.reloading()) {
+            hint(player, "<#FFB74D>换弹中…");
+            return;
+        }
+        press(player, state);
+    }
+
+    public void triggerUp(Player player) {
+        GunState state = states.get(player.getUniqueId());
+        if (state != null) {
+            release(state);
         }
     }
 
@@ -284,7 +348,11 @@ public final class WeaponService implements Listener {
             player.playSound(player.getLocation(), "craftov:gun.dry", SoundCategory.PLAYERS, 0.8f, 1f);
             state.triggerHeld = false;
             state.needsRelease = true;
-            startReload(player, state, false);
+            if (reserve(player, gun, null) > 0) {
+                startReload(player, state, false);
+            } else {
+                hint(player, "<#FF8A80>没有 " + gun.caliber() + " 弹药 <#9AA0A6>· 去商人买或在物资箱里找");
+            }
             return false;
         }
         state.ammo--;
@@ -316,7 +384,7 @@ public final class WeaponService implements Listener {
 
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.def.gun();
-        double spread = isAiming(player) ? gun.adsSpread() : gun.hipSpread();
+        double spread = isAiming(player) ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
         Vector velocity = player.getVelocity();
         boolean moving = velocity.getX() * velocity.getX() + velocity.getZ() * velocity.getZ() > 0.003;
         if (moving) {
@@ -331,15 +399,17 @@ public final class WeaponService implements Listener {
         if (state.fireMode() != FireMode.BOLT) {
             spread += state.bloom * (isAiming(player) ? 0.25 : 0.6);
         }
-        if (plugin.health().hasInjury(player, net.infnetwork.snowball.craftov.combat.Injury.FRACTURE)) {
-            spread *= 1.2;
+        int arms = plugin.health().activeFractures(player, true);
+        if (arms > 0) {
+            spread *= 1.0 + 0.35 * arms;
         }
         return spread;
     }
 
     private void recoil(Player player, GunState state) {
         GunSpec gun = state.def.gun();
-        double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0);
+        double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
+                * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         float pitchKick = (float) (gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3));
         float yawKick = (float) ((ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale);
         Recoil.kick(player, yawKick, -pitchKick);
@@ -349,6 +419,9 @@ public final class WeaponService implements Listener {
 
     /** Reserve ammo of the gun's caliber in the player's carry cells. */
     public int reserve(Player player, GunSpec gun, @Nullable String preferType) {
+        if (plugin.lobby().inRange(player)) {
+            return RANGE_RESERVE;
+        }
         int total = 0;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
@@ -371,12 +444,23 @@ public final class WeaponService implements Listener {
         return out;
     }
 
+    /** Reserve shown (and never used up) on the shooting range. */
+    public static final int RANGE_RESERVE = 999;
+
     public void startReload(Player player, GunState state, boolean cycleType) {
         if (state.reloading()) {
             return;
         }
         GunSpec gun = state.def.gun();
         List<String> types = ammoTypesCarried(player, gun);
+        if (plugin.lobby().inRange(player)) {
+            types = new ArrayList<>(types);
+            for (ItemDef ammo : plugin.registry().ammoFor(gun.caliber())) {
+                if (!types.contains(ammo.id())) {
+                    types.add(ammo.id());
+                }
+            }
+        }
         if (types.isEmpty()) {
             player.sendActionBar(Text.mm("<#FF8A80>没有 " + gun.caliber() + " 口径的弹药"));
             return;
@@ -394,9 +478,12 @@ public final class WeaponService implements Listener {
         }
         setAds(player, false);
         long now = Bukkit.getCurrentTick();
-        double duration = gun.reloadTicks() * (state.ammo == 0 ? 1.2 : 1.0) * plugin.operators().reloadMultiplier(player);
+        double duration = gun.reloadTicks() * (state.ammo == 0 ? 1.2 : 1.0) * plugin.operators().reloadMultiplier(player)
+                * (1.0 + 0.2 * plugin.health().activeFractures(player, true));
         state.reloadStart = now;
         state.reloadEnd = now + Math.max(5, Math.round(duration));
+        // The client animates the reload from this cooldown on its own (see tools/art/reload.py).
+        player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
         state.reloadType = type;
         state.triggerHeld = false;
         player.getWorld().playSound(player.getLocation(), "craftov:gun.reload_out", SoundCategory.PLAYERS, 0.9f, 1f);
@@ -422,6 +509,13 @@ public final class WeaponService implements Listener {
         return best;
     }
 
+    /** Ends the client-side reload animation if the dropped state was mid-reload. */
+    private static void stopReloadAnimation(Player player, @Nullable GunState state) {
+        if (state != null && state.reloading()) {
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
+    }
+
     private void finishReload(Player player, GunState state) {
         GunSpec gun = state.def.gun();
         String type = state.reloadType;
@@ -432,6 +526,14 @@ public final class WeaponService implements Listener {
             return;
         }
         CarryService carry = plugin.carry();
+        if (plugin.lobby().inRange(player)) {
+            // Free, unlimited ammo on the range; nothing is taken from the inventory.
+            state.ammo = gun.magazine();
+            state.ammoType = type;
+            flush(player);
+            player.playSound(player.getLocation(), "craftov:gun.reload_done", SoundCategory.PLAYERS, 0.8f, 1f);
+            return;
+        }
         if (!type.equals(state.ammoType) && state.ammo > 0 && state.ammoType != null) {
             ItemStack back = plugin.items().create(state.ammoType, state.ammo);
             if (back != null) {
@@ -460,22 +562,73 @@ public final class WeaponService implements Listener {
         ads.put(player.getUniqueId(), on);
         plugin.health().forceSpeedUpdate(player);
         GunState state = state(player);
-        if (state != null && state.def.gun().zoom() >= 3) {
-            plugin.hud().scopeOverlay(player, on);
+        boolean scoped = state != null && state.optic != null && state.optic.magnified();
+        if (on && scoped) {
+            plugin.hud().scopeOverlay(player, state.optic.overlay());
         } else if (!on) {
-            plugin.hud().scopeOverlay(player, false);
+            plugin.hud().scopeOverlay(player, null);
         }
-        if (on) {
+        if (on && state != null) {
+            applyZoom(player, state);
             player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
+        } else if (!on && sentZoom.remove(player.getUniqueId()) != null) {
+            Nms.unzoom(player);
         }
+    }
+
+    /** Zoom level at which ADS looks through a scope (overlay + strong magnification) instead of iron sights. */
+    public static final int SCOPE_ZOOM = 2;
+
+    /** Field-of-view multiplier while aiming: the optic's magnification, or a slight zoom on iron sights. */
+    private static double fovFor(GunState state) {
+        if (state.optic != null) {
+            return state.optic.fov();
+        }
+        return state.def.gun().zoom() <= 0 ? 0.86 : 0.8;
+    }
+
+    private void applyZoom(Player player, GunState state) {
+        org.bukkit.attribute.AttributeInstance speed = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        double move = speed == null ? 0.1 : speed.getValue();
+        Double previous = sentZoom.get(player.getUniqueId());
+        if (previous != null && Math.abs(previous - move) < 0.0005) {
+            return;
+        }
+        if (Nms.zoom(player, fovFor(state), move)) {
+            sentZoom.put(player.getUniqueId(), move);
+        }
+    }
+
+    /** Explains, at most once a second, why a trigger pull did nothing. */
+    private void hint(Player player, String text) {
+        long now = Bukkit.getCurrentTick();
+        if (now - lastHint.getOrDefault(player.getUniqueId(), -100L) >= 20) {
+            lastHint.put(player.getUniqueId(), now);
+            player.sendActionBar(Text.mm(text));
+        }
+    }
+
+    /** Why this player cannot fire right now, or null if they can. */
+    private @Nullable String fireBlocker(Player player) {
+        if (plugin.raids().canFire(player)) {
+            return null;
+        }
+        if (plugin.lobby().isLobby(player.getWorld())) {
+            return "<#9AA0A6>大厅里只能在靶场开火";
+        }
+        if (plugin.raids().isInRaid(player)) {
+            return "<#9AA0A6>现在不能开火";
+        }
+        return "<#9AA0A6>只能在行动或靶场中开火";
     }
 
     // ------------------------------------------------------------------ input events
 
+    /** Right mouse aims down sights while held. Left mouse (the trigger) is handled by {@link TriggerService}. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
-        if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) {
+        if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND || !event.getAction().isRightClick()) {
             return;
         }
         ItemDef def = plugin.items().defOf(event.getItem());
@@ -486,45 +639,27 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
-        Action action = event.getAction();
-        if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
-            event.setCancelled(true);
-            if (!state.reloading() && plugin.raids().canFire(player)) {
-                setAds(player, !isAiming(player));
-            }
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
+                && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()
+                && event.getClickedBlock().getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
+            return; // let doors, levers and buttons work while holding a gun
+        }
+        // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
+        // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.
+        if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
             return;
         }
-        if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-            if (action == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
-                    && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()) {
-                return; // let doors, levers and buttons work while holding a gun
-            }
-            if (!plugin.raids().canFire(player)) {
-                event.setCancelled(true);
-                return;
-            }
-            press(player, state);
-        }
+        adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
+        setAds(player, true);
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onLeftClickEntity(EntityDamageByEntityEvent event) {
-        if (event.getDamager() instanceof Player player && !plugin.damage().isApplying()) {
-            GunState state = bind(player);
-            if (state != null) {
-                event.setCancelled(true);
-                if (!state.reloading() && plugin.raids().canFire(player)) {
-                    setAds(player, !isAiming(player));
-                }
-            }
-        }
-    }
-
-    @EventHandler
-    public void onStopUsing(PlayerStopUsingItemEvent event) {
-        GunState state = states.get(event.getPlayer().getUniqueId());
-        if (state != null && state.uid.equals(ItemFactory.uid(event.getItem()))) {
-            release(state);
+    /** Clicking straight at a close entity sends an attack, not a dig; it still pulls the trigger. */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onLeftClickEntity(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
+        Player player = event.getPlayer();
+        if (bind(player) != null) {
+            event.setCancelled(true);
+            plugin.triggers().tap(player);
         }
     }
 
@@ -562,7 +697,7 @@ public final class WeaponService implements Listener {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
                 event.getItemDrop().setItemStack(dropped);
-                states.remove(player.getUniqueId());
+                stopReloadAnimation(player, states.remove(player.getUniqueId()));
             }
             return;
         }
@@ -592,6 +727,7 @@ public final class WeaponService implements Listener {
     public void onHeld(PlayerItemHeldEvent event) {
         flush(event.getPlayer());
         GunState state = states.remove(event.getPlayer().getUniqueId());
+        stopReloadAnimation(event.getPlayer(), state);
         if (state != null && state.reloading()) {
             event.getPlayer().sendActionBar(Text.mm("<#9AA0A6>换弹已中断"));
         }
@@ -609,6 +745,9 @@ public final class WeaponService implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         reset(event.getPlayer());
         ads.remove(event.getPlayer().getUniqueId());
+        adsUntil.remove(event.getPlayer().getUniqueId());
+        sentZoom.remove(event.getPlayer().getUniqueId());
+        lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
     }
 }

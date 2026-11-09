@@ -1,0 +1,11 @@
+{
+ "block.cobweb.hit": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ }
+}

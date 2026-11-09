@@ -62,12 +62,19 @@ final class MainMenu extends Menu {
                     plugin.traders().repairAll(viewer);
                     redraw();
                 });
+        button(30, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>给身上的枪安装 / 拆下瞄准镜")),
+                e -> plugin.menus().openGunsmith(viewer));
+        if (plugin.canUseCatalog(viewer)) {
+            button(31, UiItems.button("craftov:ui/tab_weapon", "<#FF9F43><b>测试军械库", List.of("<#9AA0A6>免费领取任意物品（测试模式）",
+                    "<#9AA0A6>也可以输入 <white>/cv items")), e -> plugin.menus().openCatalog(viewer));
+        }
         button(24, UiItems.button("craftov:ui/icon_help", "<#C8CCD2><b>操作说明", List.of(
-                "<white>右键 <#9AA0A6>开火（按住连发）",
-                "<white>左键 <#9AA0A6>开镜 / 关镜",
+                "<white>左键 <#9AA0A6>开火（按住连发）",
+                "<white>右键 <#9AA0A6>按住开镜瞄准，松开即腰射",
                 "<white>Q <#9AA0A6>换弹  <white>潜行+Q <#9AA0A6>切换弹种",
                 "<white>F <#9AA0A6>切换射击模式  <white>潜行+F <#9AA0A6>干员技能",
                 "<white>右键物资箱 <#9AA0A6>搜索  <white>潜行靠近倒地队友 <#9AA0A6>救援",
+                "<white>医疗品 <#9AA0A6>拿在手上按住右键使用，终端里可查看伤势",
                 "<#9AA0A6>物品栏第 2 行是胸挂格，第 3、4 行是背包格")), e -> {
         });
     }

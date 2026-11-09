@@ -41,13 +41,22 @@ public final class LootMenu extends Menu {
             if (container.isRevealed(slot)) {
                 set(slot, stack);
             } else if (slot == next) {
-                int percent = (int) Math.round(container.progress() * 100);
-                set(slot, UiItems.button("craftov:ui/search_active", "<#F2C94C>搜索中… " + percent + "%",
-                        List.of("<#8A8F98>保持界面打开以继续搜索"), "search"));
+                set(slot, searching());
             } else {
                 set(slot, UiItems.button("craftov:ui/search_hidden", "<#6B7079>未搜索", List.of(), "search"));
             }
         }
+    }
+
+    private ItemStack searching() {
+        double speed = plugin.operators().searchMultiplier(viewer);
+        return UiItems.button("craftov:ui/search_active", "<#F2C94C>搜索中… <white>" + String.format("%.1f", container.secondsLeft(speed)) + "s",
+                List.of("<#8A8F98>品质越高搜索越久，保持界面打开以继续"), "search");
+    }
+
+    @Override
+    public void onClose() {
+        container.refreshLook();
     }
 
     @Override
@@ -85,14 +94,12 @@ public final class LootMenu extends Menu {
             lastProgressStep = -1;
             return;
         }
-        int step = (int) (container.progress() * 10);
+        int step = (int) (Bukkit.getCurrentTick() / 4);
         if (step != lastProgressStep) {
             lastProgressStep = step;
             int next = container.nextHidden();
             if (next >= 0) {
-                int percent = (int) Math.round(container.progress() * 100);
-                set(next, UiItems.button("craftov:ui/search_active", "<#F2C94C>搜索中… " + percent + "%",
-                        List.of("<#8A8F98>保持界面打开以继续搜索"), "search"));
+                set(next, searching());
             }
             if (Bukkit.getCurrentTick() % 4 == 0) {
                 viewer.playSound(viewer.getLocation(), "craftov:loot.search_tick", SoundCategory.PLAYERS, 0.25f, 1f);

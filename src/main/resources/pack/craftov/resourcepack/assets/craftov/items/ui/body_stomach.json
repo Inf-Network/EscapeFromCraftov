@@ -1,0 +1,16 @@
+{
+ "model": {
+  "type": "minecraft:model",
+  "model": "craftov:item/ui/body_stomach",
+  "tints": [
+   {
+    "type": "minecraft:constant",
+    "value": -1
+   },
+   {
+    "type": "minecraft:dye",
+    "default": -8486772
+   }
+  ]
+ }
+}

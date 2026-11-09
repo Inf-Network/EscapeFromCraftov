@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/k47__optic_4x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    96.426,
+    58.208,
+    -82.402
+   ],
+   "translation": [
+    -4.0,
+    3.898,
+    -1.11
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -83.574,
+    -58.208,
+    -97.598
+   ],
+   "translation": [
+    -4.0,
+    3.898,
+    -1.11
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/p18_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    95.111,
+    59.915,
+    -82.012
+   ],
+   "translation": [
+    -4.007,
+    7.903,
+    0.071
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -84.889,
+    -59.915,
+    -97.988
+   ],
+   "translation": [
+    -4.007,
+    7.903,
+    0.071
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  }
+ }
+}

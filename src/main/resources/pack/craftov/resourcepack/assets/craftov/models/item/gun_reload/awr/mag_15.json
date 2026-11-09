@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/awr_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    99.734,
+    63.98,
+    -80.985
+   ],
+   "translation": [
+    -3.892,
+    5.153,
+    -2.64
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -80.266,
+    -63.98,
+    -99.015
+   ],
+   "translation": [
+    -3.892,
+    5.153,
+    -2.64
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

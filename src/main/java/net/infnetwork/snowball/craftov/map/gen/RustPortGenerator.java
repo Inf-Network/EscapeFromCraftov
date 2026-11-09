@@ -15,7 +15,7 @@ import java.util.List;
  * command centre, warehouses, a container yard, docks, dormitories, a clinic, a garage and a
  * radio tower. Gameplay markers are collected into a {@link Blueprint} as the map is built.
  */
-public final class RustPortGenerator {
+public final class RustPortGenerator implements MapGenerator {
 
     public static final String ID = "rustport";
     static final int S = 208;
@@ -44,6 +44,7 @@ public final class RustPortGenerator {
         this.b = new Builder(world, 0xC0FFEEL);
     }
 
+    @Override
     public MapDef generate() {
         ground();
         roads();
@@ -67,6 +68,7 @@ public final class RustPortGenerator {
                 List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, S - 1, S - 1, "dusk");
     }
 
+    @Override
     public long blocksPlaced() {
         return b.placed();
     }

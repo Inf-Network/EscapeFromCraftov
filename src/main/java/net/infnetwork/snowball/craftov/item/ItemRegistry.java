@@ -89,7 +89,9 @@ public final class ItemRegistry {
                     g.getDouble("head", 2.0),
                     g.getString("sound", "craftov:gun.rifle"),
                     (float) g.getDouble("volume", 4.0),
-                    g.getDouble("move-speed", 0.95));
+                    g.getDouble("move-speed", 0.95),
+                    g.getString("mount", "PRIMARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "rifle" : "pistol"),
+                    g.getString("scope"));
         }
         AmmoSpec ammo = null;
         ConfigurationSection a = s.getConfigurationSection("ammo");
@@ -105,9 +107,15 @@ public final class ItemRegistry {
                 cures.add(Injury.valueOf(c.toUpperCase(Locale.ROOT)));
             }
             med = new MedSpec(m.getDouble("use", 2.0), m.getDouble("pool", 0), m.getDouble("per-use", 0),
-                    Collections.unmodifiableSet(cures),
+                    Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)),
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
-                    m.getInt("effect-seconds", 0));
+                    m.getInt("effect-seconds", 0), m.getString("anim", "brush"), m.getString("sound", "med.bandage"));
+        }
+        net.infnetwork.snowball.craftov.weapon.OpticSpec optic = null;
+        ConfigurationSection o = s.getConfigurationSection("optic");
+        if (o != null) {
+            optic = new net.infnetwork.snowball.craftov.weapon.OpticSpec(o.getDouble("fov", 0.75), o.getString("overlay"),
+                    Set.copyOf(o.getStringList("mount").isEmpty() ? List.of("rifle") : o.getStringList("mount")));
         }
         ThrowableSpec throwable = null;
         ConfigurationSection t = s.getConfigurationSection("throwable");
@@ -122,6 +130,21 @@ public final class ItemRegistry {
             default -> 1;
         };
         double durability = s.getDouble("durability", med != null ? med.pool() : 0);
+        int armorClass = s.getInt("class", 0);
+        double defaultWeight = switch (category) {
+            case WEAPON -> 3.5;
+            case AMMO -> 0.012;
+            case HELMET -> 0.8 + 0.35 * armorClass;
+            case ARMOR -> 2.0 + 1.5 * armorClass;
+            case RIG -> 0.8;
+            case BACKPACK -> 1.2;
+            case MEDICAL -> 0.25;
+            case THROWABLE -> 0.5;
+            case KEY -> 0.05;
+            case COLLECTIBLE -> 1.0;
+            case ATTACHMENT -> 0.5;
+            default -> 0.6;
+        };
         return new ItemDef(
                 id,
                 s.getString("name", id),
@@ -133,13 +156,15 @@ public final class ItemRegistry {
                 List.copyOf(lore),
                 gun, ammo, med, throwable,
                 s.getInt("slots", 0),
-                s.getInt("class", 0),
+                armorClass,
                 durability,
                 s.getDouble("speed-penalty", 0),
                 s.getString("equipment"),
                 s.getString("lock"),
                 s.getBoolean("tradeable", true),
-                s.getBoolean("lootable", true));
+                s.getBoolean("lootable", true),
+                s.getDouble("weight", defaultWeight),
+                optic);
     }
 
     public @Nullable ItemDef get(@Nullable String id) {

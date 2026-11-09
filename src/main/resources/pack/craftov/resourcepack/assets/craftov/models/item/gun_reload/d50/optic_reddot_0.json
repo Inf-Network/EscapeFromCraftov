@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/d50__optic_reddot",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    154.139,
+    85.965,
+    -150.656
+   ],
+   "translation": [
+    -1.368,
+    3.143,
+    -0.926
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -25.861,
+    -85.965,
+    -29.344
+   ],
+   "translation": [
+    -1.368,
+    3.143,
+    -0.926
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  }
+ }
+}

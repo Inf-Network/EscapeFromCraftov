@@ -156,6 +156,10 @@ final class TraderMenu extends Menu {
             return;
         }
         plugin.weapons().flush(viewer);
+        if (ItemFactory.isRange(event.getClickedInventory().getItem(event.getSlot()))) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能出售"));
+            return;
+        }
         ItemRecord record = plugin.items().toRecord(event.getClickedInventory().getItem(event.getSlot()));
         if (record == null) {
             return;

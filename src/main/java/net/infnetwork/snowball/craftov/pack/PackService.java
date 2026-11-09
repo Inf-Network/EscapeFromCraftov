@@ -126,6 +126,11 @@ public final class PackService {
             yaml.set("default-compass", List.of("craftov_compass"));
             changed = true;
         }
+        // Every HUD refresh is a multi-kilobyte boss-bar packet; 10 per second is plenty for ammo and timers.
+        if (yaml.getInt("tick-speed", 1) < 2) {
+            yaml.set("tick-speed", 2);
+            changed = true;
+        }
         if (!yaml.getBoolean("merge-with-external-resources", false)) {
             yaml.set("merge-with-external-resources", true);
             changed = true;

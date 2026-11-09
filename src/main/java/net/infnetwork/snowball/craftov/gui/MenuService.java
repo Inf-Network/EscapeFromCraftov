@@ -44,6 +44,7 @@ public final class MenuService {
             case "escort" -> new EscortMenu(plugin, player).open();
             case "collection" -> new CollectionMenu(plugin, player).open();
             case "rank", "rank_board" -> new RankMenu(plugin, player).open();
+            case "range_rack" -> new RangeMenu(plugin, player).open();
             default -> openMain(player);
         }
     }
@@ -70,6 +71,18 @@ public final class MenuService {
         if (lobbyOnly(player)) {
             new MarketMenu(plugin, player).open();
         }
+    }
+
+    public void openCatalog(Player player) {
+        if (plugin.canUseCatalog(player)) {
+            new CatalogMenu(plugin, player).open();
+        } else {
+            Text.send(player, "<#FF8A80>测试军械库只在测试模式下开放。");
+        }
+    }
+
+    public void openGunsmith(Player player) {
+        new GunsmithMenu(plugin, player).open();
     }
 
     public void openSecure(Player player) {

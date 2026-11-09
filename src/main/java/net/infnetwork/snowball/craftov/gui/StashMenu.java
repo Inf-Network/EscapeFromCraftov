@@ -199,6 +199,10 @@ final class StashMenu extends Menu {
         }
         for (int slot : slots) {
             ItemStack current = event.getClickedInventory().getItem(slot);
+            if (ItemFactory.isRange(current)) {
+                viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能存入仓库"));
+                continue;
+            }
             ItemRecord record = plugin.items().toRecord(current);
             if (record == null) {
                 continue;

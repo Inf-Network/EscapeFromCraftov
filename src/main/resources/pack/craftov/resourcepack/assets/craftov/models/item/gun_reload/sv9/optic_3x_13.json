@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/sv9__optic_3x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    96.33,
+    58.984,
+    -82.23
+   ],
+   "translation": [
+    -3.899,
+    3.379,
+    0.71
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -83.67,
+    -58.984,
+    -97.77
+   ],
+   "translation": [
+    -3.899,
+    3.379,
+    0.71
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

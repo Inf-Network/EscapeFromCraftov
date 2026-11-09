@@ -16,6 +16,8 @@ java {
 dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.betterhud) { isTransitive = false }
+    // Bundled with Paper; used to keep trigger capture cells from being overwritten (see Nms).
+    compileOnly(libs.netty.transport)
 
     testImplementation(libs.paper.api)
     testImplementation(platform(libs.junit.bom))

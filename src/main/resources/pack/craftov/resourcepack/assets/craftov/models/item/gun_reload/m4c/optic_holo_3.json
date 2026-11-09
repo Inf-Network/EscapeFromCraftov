@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/m4c__optic_holo",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    95.111,
+    59.915,
+    -82.012
+   ],
+   "translation": [
+    -4.0,
+    3.435,
+    -0.85
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -84.889,
+    -59.915,
+    -97.988
+   ],
+   "translation": [
+    -4.0,
+    3.435,
+    -0.85
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

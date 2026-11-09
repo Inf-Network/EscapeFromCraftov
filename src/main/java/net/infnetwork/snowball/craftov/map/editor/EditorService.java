@@ -283,7 +283,7 @@ public final class EditorService implements Listener {
     private List<ContainerType> containerTypes() {
         List<ContainerType> out = new ArrayList<>();
         for (ContainerType type : plugin.loot().types()) {
-            if (!type.id().equals("body_bag")) {
+            if (!type.id().equals("body_bag") && type.allOf().isEmpty()) {
                 out.add(type);
             }
         }

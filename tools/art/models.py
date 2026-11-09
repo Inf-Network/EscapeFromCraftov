@@ -1,6 +1,11 @@
 """Box-built 3D models (guns, containers) with flat palette textures, plus 2D icon renders."""
 import json
-from PIL import Image
+import math
+import os
+from PIL import Image, ImageDraw
+
+import gunvox
+import reload
 from px import Canvas, rgb, shade
 
 # Shared 16-color palette laid out as 4x4 cells on a 16x16 texture.
@@ -14,9 +19,10 @@ def palette_texture(colors):
     img = Image.new('RGBA', (16, 16))
     for i, c in enumerate(colors):
         x, y = (i % 4) * 4, (i // 4) * 4
+        col = rgb(c[:7], int(c[7:9], 16)) if len(c) == 9 else rgb(c)
         for dx in range(4):
             for dy in range(4):
-                img.putpixel((x + dx, y + dy), rgb(c))
+                img.putpixel((x + dx, y + dy), col)
     return img
 
 
@@ -131,20 +137,96 @@ def _to_x_axis(box, shift):
     return out
 
 
-def gun_model(gid):
+SMGS = {'sv9', 'v57'}
+
+
+def voxel_gun(gid):
+    """Painted, textured box model built by gunvox.py from a CC0 mesh, or None to fall back to the hand-built one."""
+    if not os.path.exists(os.path.join(gunvox.VOXGUNS, gid + '.json')):
+        return None
+    return gunvox.build(gid)
+
+
+def gun_texture(gid):
+    return 'craftov:item/gun/' + gid + '_skin' if voxel_gun(gid) else 'craftov:item/gun_palette'
+
+
+def gun_skin_image(gid):
+    data = voxel_gun(gid)
+    return data['texture'] if data else None
+
+
+def gun_parts(gid):
+    """Model elements per part ('body', and 'mag' or 'pump' when the gun has a moving part)."""
+    data = voxel_gun(gid)
+    if data:
+        return data['parts']
+    shift = 0 if gid in PISTOLS else -4
+    return {'body': [element(_to_x_axis(b, shift)) for b in GUNS[gid]()]}
+
+
+def gun_elements(gid):
+    """Model elements, barrel along +X, top +Y, centred on (8, 8, 8)."""
+    return [e for part in gun_parts(gid).values() for e in part]
+
+
+def _bounds(elements):
+    return [(min(e['from'][i] for e in elements), max(e['to'][i] for e in elements)) for i in range(3)]
+
+
+def _gun_class(gid):
+    return 'pistol' if gid in PISTOLS else 'smg' if gid in SMGS else 'rifle'
+
+
+def first_person(gid, elements, ads, sight_y=None):
+    """Display transforms tuned with tools/art/fpview.py (the client's own first-person maths).
+
+    Guns are built barrel-along-+X, so a +90 degree yaw points the barrel away from the camera. ADS
+    centres the gun with its top surface just under the crosshair and the stock near the cheek; hip
+    fire sits lower right with a slight inward yaw. The left hand mirrors the right one: the client
+    negates the left-hand yaw/roll and X offset, so the JSON uses (yaw-180) for a mirrored barrel.
+    """
+    (x0, _), (_, y1), _ = _bounds(elements)
+    kind = _gun_class(gid)
+    s = {'rifle': 0.6, 'smg': 0.66, 'pistol': 0.72}[kind]
+    rear = {'rifle': -0.30, 'smg': -0.33, 'pistol': -0.52}[kind]
+    if ads:
+        # Iron sights: the gun's top edge sits just under the crosshair. Optics: the reticle sits on it.
+        ty = 16 * (0.505 - (y1 - 8) / 16 * s) if sight_y is None else 16 * (0.52 - (sight_y - 8) / 16 * s)
+        tz = 16 * (rear + 0.72 + (x0 - 8) / 16 * s)
+        right = {'rotation': [0, 90, 0], 'translation': [-8.96, round(ty, 2), round(tz, 2)], 'scale': [s] * 3}
+        left = {'rotation': [0, -90, 0], 'translation': [-8.96, round(ty, 2), round(tz, 2)], 'scale': [s] * 3}
+        return right, left
+    hs = round(s * 0.85, 3)
+    ty = 16 * (0.505 - (y1 - 8) / 16 * hs) - 3.4
+    tz = 16 * (rear - 0.02 + 0.72 + (x0 - 8) / 16 * hs)
+    t = [-1.2, round(ty, 2), round(tz, 2)]
+    return ({'rotation': [0, 94, 3], 'translation': t, 'scale': [hs] * 3},
+            {'rotation': [0, -86, -3], 'translation': t, 'scale': [hs] * 3})
+
+
+def third_person(gid, arm_raise):
+    """Barrel forward from the hand: [arm, 90, 90] cancels the holder's arm pitch (player ~18, zombie ~80)."""
     pistol = gid in PISTOLS
-    shift = 0 if pistol else -4
-    elements = [element(_to_x_axis(b, shift)) for b in GUNS[gid]()]
-    fp = 0.8 if pistol else 0.55
-    tp = 0.75 if pistol else 0.6
+    t = [0, 1, 1] if pistol else [0, -3.5, 1]
+    s = [0.75] * 3 if pistol else [0.6] * 3
+    return ({'rotation': [-arm_raise, 90, 90], 'translation': t, 'scale': s},
+            {'rotation': [-arm_raise, -90, -90], 'translation': t, 'scale': s})
+
+
+def gun_model(gid):
+    elements = gun_elements(gid)
+    fp_r, fp_l = first_person(gid, elements, False)
+    tp_r, tp_l = third_person(gid, 18)
+    texture = gun_texture(gid)
     return {
-        'textures': {'p': 'craftov:item/gun_palette', 'particle': 'craftov:item/gun_palette'},
+        'textures': {'p': texture, 'particle': texture},
         'elements': elements,
         'display': {
-            'firstperson_righthand': {'rotation': [0, -90, 4], 'translation': [1.13, 2.6 if pistol else 2.2, 1.13], 'scale': [fp, fp, fp]},
-            'firstperson_lefthand': {'rotation': [0, 90, -4], 'translation': [1.13, 2.6 if pistol else 2.2, 1.13], 'scale': [fp, fp, fp]},
-            'thirdperson_righthand': {'rotation': [0, -90, 0], 'translation': [0, 3, 1], 'scale': [tp, tp, tp]},
-            'thirdperson_lefthand': {'rotation': [0, 90, 0], 'translation': [0, 3, 1], 'scale': [tp, tp, tp]},
+            'firstperson_righthand': fp_r,
+            'firstperson_lefthand': fp_l,
+            'thirdperson_righthand': tp_r,
+            'thirdperson_lefthand': tp_l,
             'ground': {'rotation': [0, 0, 0], 'translation': [0, 2, 0], 'scale': [0.4, 0.4, 0.4]},
             'fixed': {'rotation': [0, 180, 0], 'scale': [0.55, 0.55, 0.55]},
             'head': {'rotation': [0, -90, 0], 'scale': [0.55, 0.55, 0.55]},
@@ -152,15 +234,65 @@ def gun_model(gid):
     }
 
 
+def gun_ads_model(gid, zoom=0):
+    """Aim-down-sights pose, selected client-side while the use key (right mouse) is held.
+
+    Scoped guns (zoom 2+) look through the scope overlay instead, so the gun itself is hidden.
+    """
+    if zoom >= 2:
+        hidden = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
+        return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': hidden, 'firstperson_lefthand': hidden}}
+    fp_r, fp_l = first_person(gid, gun_elements(gid), True)
+    return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': fp_r, 'firstperson_lefthand': fp_l}}
+
+
+def gun_part_model(gid, part):
+    """One moving part of the gun (body, mag or pump) with the gun's textures and display."""
+    return {'parent': 'craftov:item/gun/' + gid, 'elements': gun_parts(gid)[part]}
+
+
+def shell_model():
+    boxes = [(lo[0], lo[1], lo[2], hi[0], hi[1], hi[2], RD if mat == 'shell' else BR) for lo, hi, mat in reload.SHELL]
+    return {'textures': {'p': 'craftov:item/gun_palette', 'particle': 'craftov:item/gun_palette'},
+            'elements': [element(b) for b in boxes]}
+
+
+def _frames(gid):
+    base = gun_model(gid)['display']['firstperson_righthand']
+    return reload.frames(gid, base, lift=4.0 if gid in PISTOLS else 0.0)
+
+
+def reload_frames(gid):
+    """[(frame index, part, model parent, display)] for the reload animation of one gun (optics separate)."""
+    out = []
+    for k, frame in enumerate(_frames(gid)):
+        for part, right in frame.items():
+            if part == 'optic':
+                continue
+            parent = 'craftov:item/gun_part/shell' if part == 'shell' else 'craftov:item/gun_part/%s_%s' % (gid, part)
+            out.append((k, part, parent, right))
+    return out
+
+
+def reload_frames_optic(gid):
+    """Right-hand display of a mounted optic per reload frame (it moves with the body)."""
+    return [frame['optic'] for frame in _frames(gid)]
+
+
+def frame_model(parent, right):
+    return {'parent': parent, 'display': {'firstperson_righthand': right, 'firstperson_lefthand': reload.mirrored(right)}}
+
+
 def gun_ai_model(gid):
-    """Variant for zombie soldiers: their arms are raised ~80 degrees, so pre-tilt the gun to point ahead."""
-    return {'parent': 'craftov:item/gun/' + gid, 'display': {
-        'thirdperson_righthand': {'rotation': [80, -90, 0], 'translation': [0, 0, 1], 'scale': [0.65, 0.65, 0.65]},
-        'thirdperson_lefthand': {'rotation': [80, 90, 0], 'translation': [0, 0, 1], 'scale': [0.65, 0.65, 0.65]}}}
+    """Variant for zombie soldiers, whose arms are raised about 80 degrees."""
+    tp_r, tp_l = third_person(gid, 80)
+    return {'parent': 'craftov:item/gun/' + gid, 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
 
 
 def gun_icon(gid):
     """Side-view 2D icon rendered from the box geometry (z horizontal, y vertical)."""
+    if voxel_gun(gid):
+        return side_icon(gunvox.side_image(gid, 4))
     boxes = GUNS[gid]()
     zs = [b[2] for b in boxes] + [b[5] for b in boxes]
     ys = [b[1] for b in boxes] + [b[4] for b in boxes]
@@ -182,6 +314,57 @@ def gun_icon(gid):
         else:
             c.box(int(round(x0)), int(round(y0)), max(int(round(x0)), int(round(x1)) - 1),
                   max(int(round(y0)), int(round(y1)) - 1), col)
+    return c.outline().img
+
+
+def voxel_icon(data, size=32, margin=1, tilt=30):
+    """Inventory icon of a converted gun: side view (x right, y up) tilted so long guns fill the slot."""
+    els = data['elements']
+    x0 = min(e['from'][0] for e in els); x1 = max(e['to'][0] for e in els)
+    y0 = min(e['from'][1] for e in els); y1 = max(e['to'][1] for e in els)
+    big = 16
+    px_per_unit = 12
+    w = int((x1 - x0) * px_per_unit) + 4
+    h = int((y1 - y0) * px_per_unit) + 4
+    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for e in sorted(els, key=lambda e: e['to'][2]):
+        col = shade(rgb(data['palette'][e['c']]), 1.35)
+        a = (2 + (e['from'][0] - x0) * px_per_unit, 2 + (y1 - e['to'][1]) * px_per_unit)
+        b = (2 + (e['to'][0] - x0) * px_per_unit - 1, 2 + (y1 - e['from'][1]) * px_per_unit - 1)
+        if b[0] >= a[0] and b[1] >= a[1]:
+            d.rectangle([a, b], fill=col)
+    angle = tilt if (x1 - x0) / max(1e-6, y1 - y0) > 1.8 else 0
+    img = img.rotate(angle, resample=Image.BICUBIC, expand=True)
+    bbox = img.getbbox()
+    img = img.crop(bbox)
+    fit = (size - 2 * margin) / max(img.size)
+    small = img.resize((max(1, round(img.size[0] * fit)), max(1, round(img.size[1] * fit))), Image.LANCZOS)
+    px = small.load()
+    for yy in range(small.size[1]):
+        for xx in range(small.size[0]):
+            r, g, b_, a = px[xx, yy]
+            px[xx, yy] = (r, g, b_, 255) if a > 100 else (0, 0, 0, 0)
+    c = Canvas()
+    c.img.alpha_composite(small, ((size - small.size[0]) // 2, (size - small.size[1]) // 2))
+    return c.outline().img
+
+
+def side_icon(img, size=32, margin=1, tilt=30):
+    """Inventory icon from a painted side view, tilted so long guns fill the slot."""
+    w, h = img.size
+    angle = tilt if w / max(1, h) > 1.8 else 0
+    img = img.rotate(angle, resample=Image.BICUBIC, expand=True)
+    img = img.crop(img.getbbox())
+    fit = (size - 2 * margin) / max(img.size)
+    small = img.resize((max(1, round(img.size[0] * fit)), max(1, round(img.size[1] * fit))), Image.LANCZOS)
+    px = small.load()
+    for yy in range(small.size[1]):
+        for xx in range(small.size[0]):
+            r, g, b_, a = px[xx, yy]
+            px[xx, yy] = (min(255, int(r * 1.15) + 8), min(255, int(g * 1.15) + 8), min(255, int(b_ * 1.15) + 8), 255) if a > 100 else (0, 0, 0, 0)
+    c = Canvas()
+    c.img.alpha_composite(small, ((size - small.size[0]) // 2, (size - small.size[1]) // 2))
     return c.outline().img
 
 
@@ -221,3 +404,182 @@ def container_model(cid):
 
 def dump(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(',', ':'))
+
+
+# ---------------------------------------------------------------- optics (attachments)
+# Procedural sights are authored with the base at y=0, centred on x=0 and z=0, in model units.
+# Palette for procedural optics: black, dark metal, tinted glass (translucent), emissive red.
+OPTIC_PALETTE = ['#1E2023', '#3A3E44', '#5A88B033', '#FF3B30']
+
+
+def _optic_box(x0, y0, z0, x1, y1, z1, c, glow=False):
+    e = {'from': [x0, y0, z0], 'to': [x1, y1, z1], 'c': c}
+    if glow:
+        e['glow'] = True
+    return e
+
+
+def _reddot():
+    return [_optic_box(-1.3, 0, -0.6, 1.3, 0.5, 0.6, 1),
+            _optic_box(-0.9, 0.5, -0.8, 0.9, 2.0, -0.6, 0), _optic_box(-0.9, 0.5, 0.6, 0.9, 2.0, 0.8, 0),
+            _optic_box(-0.9, 1.9, -0.8, 0.9, 2.2, 0.8, 0), _optic_box(-1.2, 0.5, -0.4, -0.9, 0.9, 0.4, 1),
+            _optic_box(0.8, 0.5, -0.6, 0.86, 1.9, 0.6, 2),
+            _optic_box(0.3, 1.14, -0.05, 0.36, 1.24, 0.05, 3, True)]
+
+
+def _holo():
+    return [_optic_box(-1.7, 0, -0.8, 1.7, 0.6, 0.8, 1), _optic_box(-1.7, 0.6, -0.75, -0.6, 1.4, 0.75, 0),
+            _optic_box(-0.6, 0.6, -0.95, 1.4, 2.4, -0.75, 0), _optic_box(-0.6, 0.6, 0.75, 1.4, 2.4, 0.95, 0),
+            _optic_box(-0.6, 2.3, -0.95, 1.4, 2.6, 0.95, 0), _optic_box(1.2, 0.6, -0.75, 1.26, 2.3, 0.75, 2),
+            _optic_box(0.9, 1.47, -0.04, 0.95, 1.53, 0.04, 3, True),
+            _optic_box(0.9, 1.78, -0.12, 0.95, 1.84, 0.12, 3, True), _optic_box(0.9, 1.16, -0.12, 0.95, 1.22, 0.12, 3, True),
+            _optic_box(0.9, 1.38, -0.34, 0.95, 1.62, -0.28, 3, True), _optic_box(0.9, 1.38, 0.28, 0.95, 1.62, 0.34, 3, True)]
+
+
+def _prism3x():
+    return [_optic_box(-1.6, 0, -0.6, 1.6, 0.5, 0.6, 1), _optic_box(-1.8, 0.5, -0.75, 1.8, 2.0, 0.75, 0),
+            _optic_box(1.8, 0.7, -0.85, 2.6, 2.05, 0.85, 1), _optic_box(2.55, 0.8, -0.7, 2.62, 1.95, 0.7, 2),
+            _optic_box(-2.6, 0.8, -0.65, -1.8, 1.9, 0.65, 0), _optic_box(-1.0, 2.0, -0.4, 1.0, 2.3, 0.4, 1),
+            _optic_box(0.2, 2.3, -0.15, 0.5, 2.45, 0.15, 3, True)]
+
+
+def _shift(elements, dx, dy, dz):
+    out = []
+    for e in elements:
+        moved = dict(e)
+        moved['from'] = [round(e['from'][0] + dx, 4), round(e['from'][1] + dy, 4), round(e['from'][2] + dz, 4)]
+        moved['to'] = [round(e['to'][0] + dx, 4), round(e['to'][1] + dy, 4), round(e['to'][2] + dz, 4)]
+        out.append(moved)
+    return out
+
+
+# id -> (textured elements on '#o' with the base at y=0 centred on x=z=0, texture image,
+#        sight height above the base for 1x sights or None for overlay scopes)
+def optic_data(oid):
+    procedural = {'optic_reddot': (_reddot, 1.19), 'optic_holo': (_holo, 1.5), 'optic_3x': (_prism3x, None)}
+    if oid in procedural:
+        build, sight = procedural[oid]
+        return _textured(build(), '#o'), palette_texture(OPTIC_PALETTE), sight
+    if not os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
+        return None
+    data = gunvox.build(oid, '#o')
+    els = data['parts']['body']
+    x0 = min(e['from'][0] for e in els); x1 = max(e['to'][0] for e in els)
+    y0 = min(e['from'][1] for e in els)
+    cz = (min(e['from'][2] for e in els) + max(e['to'][2] for e in els)) / 2
+    return _shift(els, -(x0 + x1) / 2, -y0, -cz), data['texture'], None
+
+
+OPTICS = ['optic_reddot', 'optic_holo', 'optic_3x', 'optic_4x', 'optic_8x']
+PISTOL_OPTICS = ['optic_reddot']
+BUILTIN_SCOPES = {'dm14', 'awr'}
+
+
+def optics_for(gid):
+    if gid in BUILTIN_SCOPES:
+        return []
+    return PISTOL_OPTICS if gid in PISTOLS else OPTICS
+
+
+def rail_mount(elements):
+    """Top of the receiver: the most common top height over the middle of the gun, and the middle of that run."""
+    x0 = min(e['from'][0] for e in elements); x1 = max(e['to'][0] for e in elements)
+    length = x1 - x0
+    tops = {}
+    step = 0.25
+    x = x0 + length * 0.25
+    while x <= x0 + length * 0.62:
+        top = None
+        for e in elements:
+            if e['from'][0] <= x < e['to'][0] and e['from'][2] <= 8.0 <= e['to'][2]:
+                top = e['to'][1] if top is None else max(top, e['to'][1])
+        if top is not None:
+            tops[round(x, 2)] = round(top, 2)
+        x += step
+    if not tops:
+        return (x0 + x1) / 2, 12.0
+    counts = {}
+    for t in tops.values():
+        counts[t] = counts.get(t, 0) + 1
+    best = max(counts, key=lambda t: (counts[t], -t))
+    xs = sorted(k for k, t in tops.items() if t == best)
+    runs, run = [], [xs[0]]
+    for a, b in zip(xs, xs[1:]):
+        if b - a <= step + 1e-6:
+            run.append(b)
+        else:
+            runs.append(run)
+            run = [b]
+    runs.append(run)
+    longest = max(runs, key=len)
+    return (longest[0] + longest[-1]) / 2, best
+
+
+def _textured(elements, tex):
+    out = []
+    for e in elements:
+        el = {'from': [round(v, 3) for v in e['from']], 'to': [round(v, 3) for v in e['to']],
+              'faces': {f: {'uv': uv(e['c']), 'texture': tex} for f in ('north', 'south', 'east', 'west', 'up', 'down')}}
+        if e.get('glow'):
+            el['light_emission'] = 15
+        out.append(el)
+    return out
+
+
+def optic_texture(oid):
+    return 'craftov:item/optic/' + oid + '_skin'
+
+
+def optic_skin_image(oid):
+    return optic_data(oid)[1]
+
+
+def placed_optic(gid, oid):
+    """The optic's elements sitting on the gun's top rail, plus its sight line height (None for scopes)."""
+    optic, _, sight = optic_data(oid)
+    mx, my = rail_mount(gun_elements(gid))
+    return _shift(optic, mx, my, 8), (None if sight is None else my + sight)
+
+
+def gun_with_optic(gid, oid, ads):
+    """Gun plus mounted optic. Hip pose uses the bare gun's bounds so the gun stays put; ADS lines up the sight."""
+    gun = gun_elements(gid)
+    placed, sight_y = placed_optic(gid, oid)
+    texture = gun_texture(gid)
+    model = {'textures': {'p': texture, 'o': optic_texture(oid), 'particle': texture}, 'elements': gun + placed}
+    display = dict(gun_model(gid)['display'])
+    if ads:
+        if sight_y is None:
+            hidden = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
+            display['firstperson_righthand'] = hidden
+            display['firstperson_lefthand'] = hidden
+        else:
+            r, l = first_person(gid, gun, True, sight_y=sight_y)
+            display['firstperson_righthand'] = r
+            display['firstperson_lefthand'] = l
+    model['display'] = display
+    return model
+
+
+def optic_on_gun_model(gid, oid):
+    """Just the mounted optic, posed like the gun; drawn alongside the moving gun parts while reloading."""
+    placed, _ = placed_optic(gid, oid)
+    return {'textures': {'o': optic_texture(oid), 'particle': optic_texture(oid)}, 'elements': placed,
+            'display': gun_model(gid)['display']}
+
+
+def optic_item_model(oid):
+    """The optic as a loose item (held or on the ground)."""
+    optic, _, _ = optic_data(oid)
+    return {'textures': {'o': optic_texture(oid), 'particle': optic_texture(oid)}, 'elements': _shift(optic, 8, 6, 8),
+            'display': {'firstperson_righthand': {'rotation': [0, 90, 0], 'translation': [0, 2, 0], 'scale': [1.4, 1.4, 1.4]},
+                        'thirdperson_righthand': {'rotation': [0, 90, 90], 'translation': [0, 2, 1], 'scale': [1.2, 1.2, 1.2]},
+                        'ground': {'translation': [0, 2, 0], 'scale': [1, 1, 1]},
+                        'fixed': {'rotation': [0, 180, 0], 'scale': [1.5, 1.5, 1.5]}}}
+
+
+def optic_icon(oid):
+    if os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
+        return side_icon(gunvox.side_image(oid, 4), tilt=0)
+    procedural = {'optic_reddot': _reddot, 'optic_holo': _holo, 'optic_3x': _prism3x}[oid]()
+    return voxel_icon({'elements': procedural, 'palette': [p[:7] for p in OPTIC_PALETTE]}, tilt=0)

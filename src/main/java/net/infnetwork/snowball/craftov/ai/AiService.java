@@ -183,6 +183,7 @@ public final class AiService implements Listener {
         ItemDef finalAmmo = ammo;
         double accuracy = raid.tier.aiAccuracy() * (boss ? 1.15 : "sniper".equals(kind) ? 1.1 : 1.0);
         Zombie mob = raid.world.spawn(at, Zombie.class, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+            z.setLeftHanded(false); // the gun model's third-person pose is tuned for the right hand
             z.setAdult();
             z.setShouldBurnInDay(false);
             z.setCanPickupItems(false);
@@ -459,7 +460,7 @@ public final class AiService implements Listener {
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
                 gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
-                gun.pellets(), gun.headMultiplier() * 0.75, gun.sound(), gun.soundVolume(), gun.moveSpeed());
+                gun.pellets(), gun.headMultiplier() * 0.75, gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope());
     }
 
     // ------------------------------------------------------------------ events

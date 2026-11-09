@@ -1,7 +1,9 @@
 package net.infnetwork.snowball.craftov.hud;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.combat.BodyPart;
 import net.infnetwork.snowball.craftov.combat.DownedService;
+import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.Injury;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -15,6 +17,9 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
+
+import java.util.Map;
+import java.util.Set;
 
 /** Read-only view of everything the HUD shows, shared by the vanilla HUD and BetterHud. */
 public final class HudData {
@@ -41,7 +46,7 @@ public final class HudData {
     public String weaponName(Player p) {
         WeaponService.GunState s = gun(p);
         if (s != null) {
-            return s.def().name();
+            return s.opticName() == null ? s.def().name() : s.def().name() + " · " + s.opticName();
         }
         ItemDef def = plugin.items().defOf(p.getInventory().getItemInMainHand());
         return def == null ? "" : def.name();
@@ -92,18 +97,86 @@ public final class HudData {
         return def == null || !def.isArmor() ? 0 : def.armorClass();
     }
 
+    /** Short wound list for the vitals panel, e.g. "左腿骨折 胸部出血 止痛52s". */
     public String injuries(Player p) {
         StringBuilder sb = new StringBuilder();
-        for (Injury injury : plugin.health().injuries(p)) {
-            if (!sb.isEmpty()) {
-                sb.append(' ');
+        for (Map.Entry<BodyPart, Set<Injury>> e : plugin.health().wounds(p).entrySet()) {
+            for (Injury injury : e.getValue()) {
+                if (!sb.isEmpty()) {
+                    sb.append(' ');
+                }
+                sb.append(e.getKey().displayName()).append(injury == Injury.FRACTURE ? "骨折" : injury == Injury.HEAVY_BLEED ? "大出血" : "出血");
             }
-            sb.append(injury.displayName());
         }
         if (plugin.health().painkilled(p)) {
-            sb.append(sb.isEmpty() ? "" : " ").append("止痛");
+            sb.append(sb.isEmpty() ? "" : " ").append("止痛").append(plugin.health().painkillerSeconds(p)).append('s');
+        }
+        if (plugin.stamina().exhausted(p)) {
+            sb.append(sb.isEmpty() ? "" : " ").append("力竭");
+        }
+        if (plugin.stamina().overweightPenalty(p) > 0) {
+            sb.append(sb.isEmpty() ? "" : " ").append("超重");
         }
         return sb.toString();
+    }
+
+    public int[] parts(Player p) {
+        BodyPart[] all = BodyPart.values();
+        int[] out = new int[all.length];
+        for (BodyPart part : all) {
+            out[part.ordinal()] = plugin.health().partState(p, part);
+        }
+        return out;
+    }
+
+    /** One short line under the ammo counter: reload progress, what to press, or why it is empty. */
+    public String weaponHint(Player p) {
+        WeaponService.GunState s = gun(p);
+        if (s == null) {
+            return "";
+        }
+        if (s.reloading()) {
+            double left = s.reloadSecondsLeft();
+            return "<#FFB74D>换弹中 " + String.format("%.1f", left) + "s";
+        }
+        int reserve = reserve(p);
+        int mag = s.def().gun().magazine();
+        if (s.ammo() == 0 && reserve == 0) {
+            return "<#FF8A80>无弹药";
+        }
+        if (s.ammo() == 0) {
+            return "<#FF8A80>弹匣空 <white>[Q]<#FF8A80> 换弹";
+        }
+        if (s.ammo() <= Math.max(1, mag * 0.3) && reserve > 0) {
+            return "<#FFB74D>弹药不足 <white>[Q]<#FFB74D> 换弹";
+        }
+        if (plugin.weapons().isAiming(p)) {
+            return "<#7FE0D0>瞄准中";
+        }
+        return "";
+    }
+
+    public int stamina(Player p) {
+        return (int) Math.round(plugin.stamina().stamina(p));
+    }
+
+    public boolean usingMed(Player p) {
+        return plugin.health().medUse(p) != null;
+    }
+
+    public String medName(Player p) {
+        HealthService.MedUse use = plugin.health().medUse(p);
+        return use == null ? "" : "正在使用 " + use.def().name();
+    }
+
+    public String medLeft(Player p) {
+        HealthService.MedUse use = plugin.health().medUse(p);
+        return use == null ? "" : String.format("%.1f", use.secondsLeft(org.bukkit.Bukkit.getCurrentTick()));
+    }
+
+    public int medPercent(Player p) {
+        HealthService.MedUse use = plugin.health().medUse(p);
+        return use == null ? 0 : (int) Math.round(use.progress(org.bukkit.Bukkit.getCurrentTick()) * 100);
     }
 
     public String time(Player p) {

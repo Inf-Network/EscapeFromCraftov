@@ -329,6 +329,55 @@
    }
   ]
  },
+ "med.bandage": {
+  "sounds": [
+   {
+    "name": "craftov:med/bandage"
+   }
+  ]
+ },
+ "med.pills": {
+  "sounds": [
+   {
+    "name": "craftov:med/pills"
+   }
+  ]
+ },
+ "med.inject": {
+  "sounds": [
+   {
+    "name": "craftov:med/inject"
+   }
+  ]
+ },
+ "med.splint": {
+  "sounds": [
+   {
+    "name": "craftov:med/splint"
+   }
+  ]
+ },
+ "med.kit": {
+  "sounds": [
+   {
+    "name": "craftov:med/kit"
+   }
+  ]
+ },
+ "med.loop": {
+  "sounds": [
+   {
+    "name": "craftov:med/loop"
+   }
+  ]
+ },
+ "misc.silence": {
+  "sounds": [
+   {
+    "name": "craftov:misc/silence"
+   }
+  ]
+ },
  "med.finish": {
   "sounds": [
    {

@@ -14,8 +14,3500 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:model",
-   "model": "craftov:item/gun/r12"
+   "type": "minecraft:select",
+   "property": "minecraft:custom_model_data",
+   "index": 0,
+   "cases": [
+    {
+     "when": "optic_reddot",
+     "model": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "entries": [
+       {
+        "threshold": 0.95833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_0"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.91667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_1"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.875,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_2"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.83333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_3"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.79167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_4"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.75,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_5"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.70833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_6"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.66667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_7"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.625,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_8"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.58333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_9"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.54167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_10"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.5,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_11"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.45833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_12"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.41667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_13"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.375,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_14"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.33333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_15"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.29167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_16"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.25,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_17"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.20833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_18"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.16667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_19"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.125,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_20"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.08333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_21"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.04167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_22"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.0001,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_reddot_23"
+          }
+         ]
+        }
+       }
+      ],
+      "fallback": {
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.use",
+       "on_true": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt_ads/r12__optic_reddot"
+       },
+       "on_false": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt/r12__optic_reddot"
+       }
+      }
+     }
+    },
+    {
+     "when": "optic_holo",
+     "model": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "entries": [
+       {
+        "threshold": 0.95833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_0"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.91667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_1"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.875,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_2"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.83333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_3"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.79167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_4"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.75,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_5"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.70833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_6"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.66667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_7"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.625,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_8"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.58333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_9"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.54167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_10"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.5,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_11"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.45833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_12"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.41667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_13"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.375,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_14"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.33333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_15"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.29167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_16"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.25,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_17"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.20833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_18"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.16667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_19"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.125,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_20"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.08333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_21"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.04167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_22"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.0001,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_holo_23"
+          }
+         ]
+        }
+       }
+      ],
+      "fallback": {
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.use",
+       "on_true": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt_ads/r12__optic_holo"
+       },
+       "on_false": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt/r12__optic_holo"
+       }
+      }
+     }
+    },
+    {
+     "when": "optic_3x",
+     "model": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "entries": [
+       {
+        "threshold": 0.95833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_0"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.91667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_1"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.875,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_2"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.83333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_3"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.79167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_4"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.75,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_5"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.70833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_6"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.66667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_7"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.625,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_8"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.58333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_9"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.54167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_10"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.5,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_11"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.45833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_12"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.41667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_13"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.375,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_14"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.33333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_15"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.29167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_16"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.25,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_17"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.20833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_18"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.16667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_19"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.125,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_20"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.08333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_21"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.04167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_22"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.0001,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_3x_23"
+          }
+         ]
+        }
+       }
+      ],
+      "fallback": {
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.use",
+       "on_true": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt_ads/r12__optic_3x"
+       },
+       "on_false": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt/r12__optic_3x"
+       }
+      }
+     }
+    },
+    {
+     "when": "optic_4x",
+     "model": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "entries": [
+       {
+        "threshold": 0.95833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_0"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.91667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_1"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.875,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_2"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.83333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_3"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.79167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_4"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.75,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_5"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.70833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_6"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.66667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_7"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.625,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_8"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.58333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_9"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.54167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_10"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.5,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_11"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.45833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_12"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.41667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_13"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.375,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_14"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.33333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_15"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.29167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_16"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.25,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_17"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.20833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_18"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.16667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_19"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.125,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_20"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.08333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_21"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.04167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_22"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.0001,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_4x_23"
+          }
+         ]
+        }
+       }
+      ],
+      "fallback": {
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.use",
+       "on_true": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt_ads/r12__optic_4x"
+       },
+       "on_false": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt/r12__optic_4x"
+       }
+      }
+     }
+    },
+    {
+     "when": "optic_8x",
+     "model": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "entries": [
+       {
+        "threshold": 0.95833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_0"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_0"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.91667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_1"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_1"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.875,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_2"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_2"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.83333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_3"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_3"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.79167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_4"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_4"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.75,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_5"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_5"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.70833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_6"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_6"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.66667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_7"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_7"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.625,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_8"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_8"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.58333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_9"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_9"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.54167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_10"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_10"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.5,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_11"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_11"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.45833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_12"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_12"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.41667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_13"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_13"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.375,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_14"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_14"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.33333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_15"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_15"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.29167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_16"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_16"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.25,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_17"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_17"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.20833,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_18"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_18"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.16667,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_19"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_19"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.125,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_20"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_20"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.08333,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_21"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_21"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.04167,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_22"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_22"
+          }
+         ]
+        }
+       },
+       {
+        "threshold": 0.0001,
+        "model": {
+         "type": "minecraft:composite",
+         "models": [
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/body_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/pump_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/shell_23"
+          },
+          {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_reload/r12/optic_8x_23"
+          }
+         ]
+        }
+       }
+      ],
+      "fallback": {
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.use",
+       "on_true": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt_ads/r12__optic_8x"
+       },
+       "on_false": {
+        "type": "minecraft:model",
+        "model": "craftov:item/gun_opt/r12__optic_8x"
+       }
+      }
+     }
+    }
+   ],
+   "fallback": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:cooldown",
+    "entries": [
+     {
+      "threshold": 0.95833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_0"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_0"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_0"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.91667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_1"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_1"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_1"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.875,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_2"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_2"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_2"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.83333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_3"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_3"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_3"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.79167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_4"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_4"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_4"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.75,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_5"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_5"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_5"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.70833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_6"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_6"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_6"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.66667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_7"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_7"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_7"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.625,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_8"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_8"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_8"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.58333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_9"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_9"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_9"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.54167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_10"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_10"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_10"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.5,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_11"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_11"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_11"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.45833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_12"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_12"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_12"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.41667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_13"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_13"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_13"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.375,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_14"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_14"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_14"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.33333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_15"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_15"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_15"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.29167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_16"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_16"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_16"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.25,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_17"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_17"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_17"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.20833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_18"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_18"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_18"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.16667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_19"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_19"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_19"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.125,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_20"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_20"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_20"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.08333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_21"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_21"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_21"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.04167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_22"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_22"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_22"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.0001,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/body_23"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/pump_23"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/r12/shell_23"
+        }
+       ]
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:condition",
+     "property": "minecraft:keybind_down",
+     "keybind": "key.use",
+     "on_true": {
+      "type": "minecraft:model",
+      "model": "craftov:item/gun_ads/r12"
+     },
+     "on_false": {
+      "type": "minecraft:model",
+      "model": "craftov:item/gun/r12"
+     }
+    }
+   }
   }
  }
 }

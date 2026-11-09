@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/k47__optic_8x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    95.697,
+    59.48,
+    -82.116
+   ],
+   "translation": [
+    -3.849,
+    3.569,
+    -1.11
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -84.303,
+    -59.48,
+    -97.884
+   ],
+   "translation": [
+    -3.849,
+    3.569,
+    -1.11
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

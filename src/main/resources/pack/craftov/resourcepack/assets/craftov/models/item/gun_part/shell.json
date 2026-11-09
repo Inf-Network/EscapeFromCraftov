@@ -1,0 +1,144 @@
+{
+ "textures": {
+  "p": "craftov:item/gun_palette",
+  "particle": "craftov:item/gun_palette"
+ },
+ "elements": [
+  {
+   "from": [
+    3.6,
+    6.6,
+    7.55
+   ],
+   "to": [
+    5.4,
+    7.4,
+    8.45
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    },
+    "south": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    },
+    "east": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    },
+    "west": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    },
+    "up": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    },
+    "down": {
+     "uv": [
+      1,
+      9,
+      3,
+      11
+     ],
+     "texture": "#p"
+    }
+   }
+  },
+  {
+   "from": [
+    3.0,
+    6.55,
+    7.5
+   ],
+   "to": [
+    3.6,
+    7.45,
+    8.5
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    },
+    "south": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    },
+    "east": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    },
+    "west": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    },
+    "up": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    },
+    "down": {
+     "uv": [
+      5,
+      9,
+      7,
+      11
+     ],
+     "texture": "#p"
+    }
+   }
+  }
+ ]
+}

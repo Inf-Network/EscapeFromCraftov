@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,12 +64,16 @@ public final class LootService {
                     rarities.put(Rarity.parse(key), r.getDouble(key));
                 }
             }
+            List<Category> allOf = new ArrayList<>();
+            for (String key : s.getStringList("all-of")) {
+                allOf.add(Category.valueOf(key.toUpperCase(Locale.ROOT)));
+            }
             List<Integer> range = s.getIntegerList("items");
             types.put(id, new ContainerType(id, s.getString("name", id), s.getString("model", "craftov:container/" + id),
                     (float) s.getDouble("scale", 1.0), s.getDouble("hitbox-width", 0.9), s.getDouble("hitbox-height", 0.9),
                     Math.max(1, Math.min(6, s.getInt("rows", 3))),
                     range.isEmpty() ? 2 : range.get(0), range.size() < 2 ? 4 : range.get(1),
-                    s.getDouble("search-speed", 1.0), categories, rarities));
+                    s.getDouble("search-speed", 1.0), categories, rarities, List.copyOf(allOf)));
         }
         logger.info("Loaded " + types.size() + " container types");
     }
@@ -87,6 +92,17 @@ public final class LootService {
      * @param shift quality shift: map difficulty plus container hotness (0 = baseline)
      */
     public List<ItemStack> roll(ContainerType type, int shift) {
+        if (!type.allOf().isEmpty()) {
+            List<ItemStack> out = new ArrayList<>();
+            for (Category category : type.allOf()) {
+                List<ItemDef> defs = new ArrayList<>(registry.byCategory(category));
+                defs.sort(Comparator.comparing(ItemDef::rarity).thenComparingLong(ItemDef::value));
+                for (ItemDef def : defs) {
+                    out.add(items.sample(def));
+                }
+            }
+            return out;
+        }
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int count = type.minItems() + rng.nextInt(Math.max(1, type.maxItems() - type.minItems() + 1));
         count += shift > 1 ? rng.nextInt(2) : 0;

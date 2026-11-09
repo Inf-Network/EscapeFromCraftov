@@ -37,7 +37,9 @@ public record ItemDef(
         @Nullable String equipmentAsset,
         @Nullable String lockId,
         boolean tradeable,
-        boolean lootable
+        boolean lootable,
+        double weight,
+        net.infnetwork.snowball.craftov.weapon.@Nullable OpticSpec optic
 ) {
 
     public boolean isGun() {

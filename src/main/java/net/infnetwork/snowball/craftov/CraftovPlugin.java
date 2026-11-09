@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.ai.AiService;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.combat.DownedService;
 import net.infnetwork.snowball.craftov.combat.HealthService;
+import net.infnetwork.snowball.craftov.combat.StaminaService;
 import net.infnetwork.snowball.craftov.command.CraftovCommand;
 import net.infnetwork.snowball.craftov.economy.MarketService;
 import net.infnetwork.snowball.craftov.economy.TraderService;
@@ -30,6 +31,7 @@ import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
+import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
@@ -60,6 +62,8 @@ public final class CraftovPlugin extends JavaPlugin {
     private WorldService worlds;
     private DamageService damage;
     private HealthService health;
+    private StaminaService stamina;
+    private TriggerService triggers;
     private DownedService downed;
     private WeaponService weapons;
     private RaidManager raids;
@@ -85,6 +89,7 @@ public final class CraftovPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         instance = this;
+        net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
         saveDefaultConfig();
         saveResourceIfMissing("items.yml");
         saveResourceIfMissing("loot.yml");
@@ -108,8 +113,10 @@ public final class CraftovPlugin extends JavaPlugin {
         cleanupTeams();
         damage = new DamageService(this);
         health = new HealthService(this);
+        stamina = new StaminaService(this);
         downed = new DownedService(this);
         weapons = new WeaponService(this);
+        triggers = new TriggerService(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -125,8 +132,8 @@ public final class CraftovPlugin extends JavaPlugin {
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(editor, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, downed, raids, ai,
-                lobby, operators, new ThrowableService(this));
+        register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
+                raids, ai, lobby, operators, new ThrowableService(this));
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -251,6 +258,13 @@ public final class CraftovPlugin extends JavaPlugin {
     public WorldService worlds() { return worlds; }
     public DamageService damage() { return damage; }
     public HealthService health() { return health; }
+    public StaminaService stamina() { return stamina; }
+    public TriggerService triggers() { return triggers; }
+
+    /** Whether the given player may use the free item catalog (test mode or admin). */
+    public boolean canUseCatalog(Player player) {
+        return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
+    }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
     public RaidManager raids() { return raids; }

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/sv9__optic_holo",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    96.07,
+    58.677,
+    -82.299
+   ],
+   "translation": [
+    -3.93,
+    3.541,
+    0.71
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -83.93,
+    -58.677,
+    -97.701
+   ],
+   "translation": [
+    -3.93,
+    3.541,
+    0.71
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

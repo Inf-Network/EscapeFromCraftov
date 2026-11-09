@@ -30,6 +30,10 @@ final class TerminalMenu extends Menu {
             set(13, UiItems.button("craftov:ui/icon_help", "<#9AA0A6>不在行动中", List.of()));
             return;
         }
+        String wounds = plugin.hud().data().injuries(viewer);
+        button(4, UiItems.button("craftov:ui/body_chest", "<#FF8A80><b>伤势", List.of(
+                wounds.isEmpty() ? "<#5BD16B>身体状况良好" : "<#FFB74D>" + Text.escape(wounds),
+                "<#9AA0A6>查看每个部位的伤口与治疗方法")), e -> new HealthMenu(plugin, viewer).open());
         button(10, UiItems.button("craftov:ui/icon_secure", "<#B66BFF><b>安全箱", List.of("<#9AA0A6>阵亡也不会丢失的物品")),
                 e -> plugin.menus().openSecure(viewer));
         List<String> extracts = new ArrayList<>();
@@ -67,6 +71,12 @@ final class TerminalMenu extends Menu {
             viewer.closeInventory();
             plugin.operators().activate(viewer);
         });
+        button(20, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>安装 / 拆下瞄准镜")),
+                e -> plugin.menus().openGunsmith(viewer));
+        if (plugin.canUseCatalog(viewer)) {
+            button(26, UiItems.button("craftov:ui/tab_weapon", "<#FF9F43><b>测试军械库", List.of("<#9AA0A6>免费领取任意物品（测试模式）")),
+                    e -> plugin.menus().openCatalog(viewer));
+        }
         button(22, UiItems.button("craftov:ui/icon_cancel", confirmSurrender ? "<#FF4D4D><b>再次点击确认放弃" : "<#FF8A80>放弃行动",
                 List.of("<#9AA0A6>视为阵亡，丢失除安全箱外的全部物品")), e -> {
             if (confirmSurrender) {

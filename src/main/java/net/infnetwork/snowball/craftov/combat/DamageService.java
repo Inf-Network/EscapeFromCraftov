@@ -35,11 +35,16 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class DamageService implements Listener {
 
     /** Who last hurt an entity, for kill credit and kill feed. */
-    public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, long tick) {
+    public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick) {
+    }
+
+    /** One hit taken, kept for the death report. */
+    public record HitRecord(String attacker, String weapon, BodyPart part, double damage, int distance) {
     }
 
     private final CraftovPlugin plugin;
     private final Map<UUID, LastHit> lastHits = new HashMap<>();
+    private final Map<UUID, java.util.List<HitRecord>> hitsTaken = new HashMap<>();
     private boolean applying;
 
     public DamageService(CraftovPlugin plugin) {
@@ -56,11 +61,21 @@ public final class DamageService implements Listener {
 
     public void forget(UUID victim) {
         lastHits.remove(victim);
+        hitsTaken.remove(victim);
+    }
+
+    /** Hits a player took since their last {@link #forget}, oldest first. */
+    public java.util.List<HitRecord> hitsTaken(UUID victim) {
+        return java.util.List.copyOf(hitsTaken.getOrDefault(victim, java.util.List.of()));
     }
 
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, HitZone zone) {
+        recordHit(victim, attacker, weapon, BodyPart.defaultFor(zone));
+    }
+
+    public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
         lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, zone, Bukkit.getCurrentTick()));
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick()));
     }
 
     public static String displayName(Entity entity) {
@@ -78,24 +93,27 @@ public final class DamageService implements Listener {
     /**
      * Applies one bullet. Returns the damage dealt (after armor), or -1 when the hit was ignored.
      */
-    public double bullet(@Nullable LivingEntity shooter, LivingEntity victim, HitZone zone, GunSpec gun,
+    public double bullet(@Nullable LivingEntity shooter, LivingEntity victim, BodyPart part, GunSpec gun,
                          @Nullable AmmoSpec ammo, double distance, String weaponName) {
+        HitZone zone = part.zone();
         double falloff = 1.0;
         if (distance > gun.range()) {
             double over = (distance - gun.range()) / Math.max(1.0, gun.maxRange() - gun.range());
             falloff = Math.max(0.5, 1.0 - over * 0.5);
         }
         double base = gun.damage() * (ammo == null ? 1.0 : ammo.damageMult()) * falloff;
-        double zoneMult = switch (zone) {
+        double zoneMult = switch (part) {
             case HEAD -> gun.headMultiplier();
-            case TORSO -> 1.0;
-            case LEGS -> 0.7;
+            case CHEST -> 1.0;
+            case STOMACH -> 0.95;
+            case LEFT_ARM, RIGHT_ARM -> 0.65;
+            case LEFT_LEG, RIGHT_LEG -> 0.7;
         };
         int pen = ammo == null ? 1 : ammo.penetration();
         double armorMult = 1.0;
         boolean penetrated = true;
         EntityEquipment equipment = victim.getEquipment();
-        if (equipment != null && zone != HitZone.LEGS) {
+        if (equipment != null && (zone == HitZone.HEAD || part.armored())) {
             ItemStack armorStack = zone == HitZone.HEAD ? equipment.getHelmet() : equipment.getChestplate();
             ItemDef armor = plugin.items().defOf(armorStack);
             if (armor != null && armor.isArmor()) {
@@ -126,9 +144,13 @@ public final class DamageService implements Listener {
         }
         double damage = base * zoneMult * armorMult;
         if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {
-            plugin.health().rollInjuries(target, zone, damage);
+            plugin.health().rollInjuries(target, part, damage);
         }
-        recordHit(victim, shooter, weaponName, zone);
+        recordHit(victim, shooter, weaponName, part);
+        if (victim instanceof Player) {
+            hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
+                    .add(new HitRecord(shooter == null ? "未知" : displayName(shooter), weaponName, part, damage, (int) Math.round(distance)));
+        }
         deal(victim, shooter, damage);
         plugin.ai().onBotHurt(victim, shooter);
         if (shooter instanceof Player player) {

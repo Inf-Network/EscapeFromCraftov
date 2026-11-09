@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/kl7__optic_holo",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    99.707,
+    74.587,
+    -90.0
+   ],
+   "translation": [
+    -2.941,
+    3.041,
+    -0.689
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -80.293,
+    -74.587,
+    -90.0
+   ],
+   "translation": [
+    -2.941,
+    3.041,
+    -0.689
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

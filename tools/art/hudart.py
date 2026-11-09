@@ -85,3 +85,31 @@ def pointer(color=ACCENT):
     d = ImageDraw.Draw(img)
     d.polygon([(0, 0), (6, 0), (3, 4)], fill=color)
     return img
+
+
+# Front-view body figure for the vitals panel: each part is its own full-size layer so BetterHud can
+# colour them independently. The character's right side is drawn on the viewer's left.
+BODY_W, BODY_H = 22, 40
+BODY_PARTS = {
+    'head': ('ellipse', 8, 0, 13, 5),
+    'chest': ('rect', 7, 7, 14, 13),
+    'stomach': ('rect', 7, 14, 14, 19),
+    'right_arm': ('rect', 3, 7, 5, 19),
+    'left_arm': ('rect', 16, 7, 18, 19),
+    'right_leg': ('rect', 7, 21, 10, 37),
+    'left_leg': ('rect', 11, 21, 14, 37),
+}
+BODY_STATES = ['#7E848C', '#FF8A80', '#FF2D2D', '#FFB74D', '#FF6B3D']
+
+
+def body_part(part, state):
+    img = Image.new('RGBA', (BODY_W, BODY_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    kind, x0, y0, x1, y1 = BODY_PARTS[part]
+    fill = rgb(BODY_STATES[state], 210 if state == 0 else 255)
+    edge = shade(fill, 0.55)
+    if kind == 'ellipse':
+        d.ellipse([x0, y0, x1, y1], fill=fill, outline=edge)
+    else:
+        d.rectangle([x0, y0, x1, y1], fill=fill, outline=edge)
+    return img

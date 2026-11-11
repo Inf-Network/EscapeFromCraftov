@@ -388,6 +388,46 @@ def combat_knife(c):
     c.rect(3, 28, 5, 30, ST)
 
 
+def seawater_filter(c):
+    # Brass-capped cartridge with layered filter media behind a glass window.
+    c.box(10, 4, 22, 28, rgb('#3B5C6E'))
+    c.rect(12, 8, 20, 24, rgb('#9FD4E6'))
+    for y, col in ((10, rgb('#E8E1C8')), (14, rgb('#7A5230')), (18, rgb('#2E3236')), (22, rgb('#E8E1C8'))):
+        c.rect(12, y, 20, y + 1, col)
+    c.box(9, 2, 23, 5, BR)
+    c.box(9, 27, 23, 30, BR)
+    c.rect(15, 0, 17, 2, ST)
+    c.rect(15, 30, 17, 31, ST)
+
+
+def urine_purifier(c):
+    # Hand-cranked still: a dented tank, a coiled condenser and a clear water flask.
+    c.box(3, 10, 15, 28, rgb('#B5A642'))
+    c.rect(5, 12, 13, 14, rgb('#D9CC6A'))
+    c.ellipse(5, 6, 13, 12, ST)
+    for i in range(4):
+        c.ellipse(16, 8 + i * 4, 24, 12 + i * 4, CU)
+    c.line([(14, 8), (18, 8)], CU, 2)
+    c.box(21, 20, 29, 30, rgb('#9FD4E6'))
+    c.rect(23, 24, 27, 28, rgb('#D6F1FA'))
+    c.line([(11, 28), (11, 31)], K)
+    c.line([(7, 28), (7, 31)], K)
+
+
+def eel_generator(c):
+    # A glass tank with a coiled electric eel wired to a battery terminal.
+    c.box(3, 6, 23, 28, rgb('#22313F'))
+    c.rect(5, 8, 21, 26, rgb('#2F7F86'))
+    pts = [(7, 22), (10, 12), (14, 20), (18, 11), (20, 16)]
+    c.line(pts, rgb('#3E4A2E'), 3)
+    c.line(pts, rgb('#7D8C3A'))
+    c.rect(19, 15, 20, 16, YL)
+    c.box(24, 12, 30, 22, M)
+    c.rect(26, 10, 28, 12, RD)
+    c.line([(22, 9), (26, 9), (26, 11)], CU)
+    c.line([(28, 4), (25, 7), (29, 7), (26, 10)], YL)
+
+
 def screws(c):
     c.box(6, 12, 26, 26, rgb('#A0522D'))
     c.rect(6, 12, 26, 14, shade(rgb('#A0522D'), 1.3))
@@ -578,6 +618,7 @@ ICONS = {
     'pocket_watch': watch, 'gilded_teaset': teaset, 'star_crystal': star_crystal, 'gold_crown': crown,
     'quantum_cpu': chip(rgb('#1B4F72'), CY), 'meteor_knife': knife, 'lion_statue': lion, 'gramophone': gramophone,
     'pearl_necklace': necklace, 'master_chip': master_chip,
+    'seawater_filter': seawater_filter, 'urine_purifier': urine_purifier, 'eel_generator': eel_generator,
     # melee
     'knife_starter': combat_knife,
 }

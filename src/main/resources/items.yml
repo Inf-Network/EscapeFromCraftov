@@ -225,6 +225,9 @@ items:
   gramophone:   { name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
   pearl_necklace: { name: "深海珍珠项链", category: COLLECTIBLE, rarity: RED, value: 540000, lore: "每一颗都完美无瑕。" }
   master_chip:  { name: "机密主控芯片", category: COLLECTIBLE, rarity: RED, value: 1800000, lore: "整座港口防御系统的心脏。" }
+  seawater_filter: { name: "海水过滤器", category: COLLECTIBLE, rarity: GOLD, value: 95000, lore: "多层滤芯，一桶海水能滤出半桶淡水。" }
+  urine_purifier:  { name: "尿液净水机", category: COLLECTIBLE, rarity: PURPLE, value: 48000, lore: "别问水是从哪来的，能喝就行。" }
+  eel_generator:   { name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
 
   # ------------------------------------------------------------------ melee (always kept, hotbar key 3)
   knife_starter:

@@ -136,6 +136,12 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+backup:
+  # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups (also on shutdown).
+  enabled: true
+  interval-hours: 24
+  keep: 7
+
 insurance:
   # Share of the insured gear's value charged on deploy.
   rate: 0.08

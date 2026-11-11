@@ -71,6 +71,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.ai.DroneService drones;
     private net.infnetwork.snowball.craftov.economy.InsuranceService insurance;
     private net.infnetwork.snowball.craftov.economy.HideoutService hideout;
+    private net.infnetwork.snowball.craftov.util.Backups backups;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
@@ -171,6 +172,8 @@ public final class CraftovPlugin extends JavaPlugin {
         range.start();
         stance.start();
         lights.start();
+        backups = new net.infnetwork.snowball.craftov.util.Backups(this);
+        backups.start();
         market.start();
         new PackService(this).install();
         hookBetterHud();
@@ -215,6 +218,9 @@ public final class CraftovPlugin extends JavaPlugin {
         }
         if (profiles != null) {
             profiles.shutdown();
+        }
+        if (backups != null) {
+            backups.run("shutdown");
         }
         cleanupTeams();
     }

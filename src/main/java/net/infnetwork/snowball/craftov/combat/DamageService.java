@@ -96,6 +96,16 @@ public final class DamageService implements Listener {
     public double bullet(@Nullable LivingEntity shooter, LivingEntity victim, BodyPart part, GunSpec gun,
                          @Nullable AmmoSpec ammo, double distance, String weaponName) {
         HitZone zone = part.zone();
+        if (plugin.ai().shieldBlocks(victim, shooter, part)) {
+            // A ballistic shield takes it: sparks and a ring of steel, nothing gets through.
+            org.bukkit.Location face = victim.getEyeLocation().subtract(0, 0.5, 0)
+                    .add(victim.getLocation().getDirection().setY(0).normalize().multiply(0.45));
+            victim.getWorld().spawnParticle(org.bukkit.Particle.ELECTRIC_SPARK, face, 8, 0.15, 0.2, 0.15, 0.3);
+            victim.getWorld().playSound(face, "craftov:impact.metal", org.bukkit.SoundCategory.PLAYERS, 1f,
+                    0.9f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.2f);
+            plugin.ai().onBotHurt(victim, shooter);
+            return 0;
+        }
         double falloff = 1.0;
         if (distance > gun.range()) {
             double over = (distance - gun.range()) / Math.max(1.0, gun.maxRange() - gun.range());

@@ -33,7 +33,8 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class RaidEvents {
 
-    public enum Kind { BLACKOUT, BARRAGE, REINFORCEMENTS, SUPPLY_DROP, BOSS_PATROL }
+    /** OPERATORS and SHIELDS are only started by hand (/cv event), for testing. */
+    public enum Kind { BLACKOUT, BARRAGE, REINFORCEMENTS, SUPPLY_DROP, BOSS_PATROL, OPERATORS, SHIELDS }
 
     private record Planned(Kind kind, long at) {
     }
@@ -130,6 +131,17 @@ public final class RaidEvents {
             case REINFORCEMENTS -> reinforcements(raid);
             case SUPPLY_DROP -> supplyDrop(raid);
             case BOSS_PATROL -> bossPatrol(raid);
+            case OPERATORS -> {
+                Location at = nearPlayers(raid, 25, 40);
+                if (at != null) {
+                    plugin.ai().operatorSquad(raid, at);
+                }
+                yield at != null;
+            }
+            case SHIELDS -> {
+                Location at = nearPlayers(raid, 12, 18);
+                yield at != null && plugin.ai().shieldTeam(raid, at, nearPlayers(raid, 0, 2)) > 0;
+            }
         };
     }
 

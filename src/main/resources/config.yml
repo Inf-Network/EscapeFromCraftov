@@ -99,6 +99,9 @@ combat:
   damage-numbers: true
 
 ai:
+  # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
+  operator-chance: [0.15, 0.35, 0.5]
+  operator-delay-seconds: 60
   count-multiplier: 1.0
   # Soldiers ignore freshly inserted players for this many ticks (20 ticks = 1 s).
   insertion-grace-ticks: 240

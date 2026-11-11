@@ -79,6 +79,12 @@ public final class AiService implements Listener {
         long alertUntil;
         long nextWanderTick;
         long stunnedUntil;
+        /** Rival operators: what they have looted (dropped on death), the container they are on, squad leader. */
+        final List<ItemStack> carried = new ArrayList<>();
+        final java.util.Set<String> visited = new java.util.HashSet<>();
+        @Nullable LootContainer looting;
+        long lootUntil;
+        @Nullable UUID leader;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -146,6 +152,20 @@ public final class AiService implements Listener {
         return spawned;
     }
 
+    /** Two shield soldiers at {@code at}, heading for {@code toward} (testing and future events). */
+    public int shieldTeam(Raid raid, Location at, @Nullable Location toward) {
+        int spawned = 0;
+        for (int i = 0; i < 2; i++) {
+            Bot bot = spawn(raid, at.clone().add(i * 1.5, 0, 0), 10, "shield", Math.max(1, raid.tier.aiGear()), false, "持盾突击手");
+            if (bot != null && toward != null) {
+                bot.alertPos = toward.clone();
+                bot.alertUntil = Bukkit.getCurrentTick() + 20L * 60;
+            }
+            spawned += bot == null ? 0 : 1;
+        }
+        return spawned;
+    }
+
     /** Living soldiers of a raid, for the kill replay recorder. */
     public List<Zombie> mobsIn(Raid raid) {
         List<Zombie> out = new ArrayList<>();
@@ -170,6 +190,21 @@ public final class AiService implements Listener {
             return null;
         }
         return bot.boss ? "boss" : "patrol".equals(bot.kind) ? "normal" : "special";
+    }
+
+    /** True if a shield soldier stops this round: it comes from the front and hits the head, torso or arms. */
+    public boolean shieldBlocks(LivingEntity victim, @Nullable LivingEntity shooter, net.infnetwork.snowball.craftov.combat.BodyPart part) {
+        Bot bot = bots.get(victim.getUniqueId());
+        if (bot == null || !"shield".equals(bot.kind) || shooter == null || part == net.infnetwork.snowball.craftov.combat.BodyPart.LEFT_LEG
+                || part == net.infnetwork.snowball.craftov.combat.BodyPart.RIGHT_LEG) {
+            return false;
+        }
+        Vector facing = victim.getLocation().getDirection().setY(0);
+        Vector toShooter = shooter.getLocation().toVector().subtract(victim.getLocation().toVector()).setY(0);
+        if (facing.lengthSquared() < 1e-4 || toShooter.lengthSquared() < 1e-4) {
+            return false;
+        }
+        return facing.normalize().dot(toShooter.normalize()) > 0.34;
     }
 
     public boolean isAi(@Nullable Entity entity) {
@@ -202,7 +237,117 @@ public final class AiService implements Listener {
                         at = def.pos().at(raid.world);
                     }
                 }
-                spawn(raid, at, def.radius(), def.kind(), raid.tier.aiGear(), false, NAMES[rng.nextInt(NAMES.length)]);
+                // From 机密 up some guards carry a ballistic shield.
+                String kind = "guard".equals(def.kind()) && raid.tier.aiGear() >= 1 && rng.nextDouble() < 0.3 ? "shield" : def.kind();
+                spawn(raid, at, def.radius(), kind, raid.tier.aiGear(), false, "shield".equals(kind) ? "持盾突击手" : NAMES[rng.nextInt(NAMES.length)]);
+            }
+        }
+        List<Double> chances = plugin.getConfig().getDoubleList("ai.operator-chance");
+        double chance = chances.isEmpty() ? 0.3 : chances.get(Math.min(chances.size() - 1, raid.tier.aiGear()));
+        if (!raid.map.spawns().isEmpty() && rng.nextDouble() < chance) {
+            Location at = raid.map.spawns().get(rng.nextInt(raid.map.spawns().size())).pos().at(raid.world);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (raid.state == Raid.State.RUNNING) {
+                    operatorSquad(raid, at);
+                }
+            }, 20L * plugin.getConfig().getInt("ai.operator-delay-seconds", 60));
+        }
+    }
+
+    /** Idle rival operator: follow the squad leader, or walk to the next container and loot it. */
+    private void operate(Bot bot, long now) {
+        Zombie mob = bot.mob;
+        if (bot.leader != null) {
+            Bot leader = bots.get(bot.leader);
+            if (leader != null && leader.mob.isValid()) {
+                if (mob.getLocation().distanceSquared(leader.mob.getLocation()) > 9 && !mob.getPathfinder().hasPath()) {
+                    mob.getPathfinder().moveTo(leader.mob.getLocation(), 1.0);
+                }
+                bot.home = leader.mob.getLocation();
+                return;
+            }
+            bot.leader = null; // the leader fell: this one carries on alone
+        }
+        if (bot.looting == null) {
+            LootContainer next = null;
+            double best = 96 * 96;
+            for (LootContainer container : bot.raid.containers.values()) {
+                if (bot.visited.contains(container.id) || "body_bag".equals(container.type.id())
+                        || (container.generated() && container.isEmpty())) {
+                    continue;
+                }
+                double d = container.location.distanceSquared(mob.getLocation());
+                if (d < best) {
+                    best = d;
+                    next = container;
+                }
+            }
+            if (next == null) {
+                return;
+            }
+            bot.looting = next;
+            bot.lootUntil = 0;
+            bot.home = next.location.clone();
+        }
+        LootContainer target = bot.looting;
+        if (mob.getLocation().distanceSquared(target.location) > 2.8 * 2.8) {
+            if (!mob.getPathfinder().hasPath()) {
+                if (!mob.getPathfinder().moveTo(target.location, 1.0)) {
+                    bot.visited.add(target.id); // unreachable
+                    bot.looting = null;
+                }
+            }
+            return;
+        }
+        mob.getPathfinder().stopPathfinding();
+        if (bot.lootUntil == 0) {
+            bot.lootUntil = now + 20L * 4;
+            mob.lookAt(target.location);
+            return;
+        }
+        if (now < bot.lootUntil) {
+            return;
+        }
+        // Takes the three most valuable things in it.
+        if (!target.generated()) {
+            target.generate(plugin.loot().roll(target.type, target.shift));
+        }
+        List<Integer> slots = new ArrayList<>();
+        for (int slot = 0; slot < target.size(); slot++) {
+            if (target.get(slot) != null) {
+                slots.add(slot);
+            }
+        }
+        slots.sort((a, b) -> Long.compare(plugin.items().value(target.get(b)), plugin.items().value(target.get(a))));
+        for (int i = 0; i < Math.min(3, slots.size()); i++) {
+            bot.carried.add(target.get(slots.get(i)).clone());
+            target.set(slots.get(i), null);
+        }
+        target.refreshLook();
+        bot.visited.add(target.id);
+        bot.looting = null;
+    }
+
+    private static final String[] CALLSIGNS = {"夜枭", "灰狼", "蝮蛇", "渡鸦", "铁砧", "猎隼", "幽灵", "黑曜"};
+
+    /** A rival operator squad: better gear and aim, they move from container to container taking the best loot. */
+    public void operatorSquad(Raid raid, Location at) {
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        String team = CALLSIGNS[rng.nextInt(CALLSIGNS.length)];
+        Bot leader = null;
+        for (int i = 0; i < 3; i++) {
+            Location spot = at.clone().add(rng.nextDouble(-2, 2), 0, rng.nextDouble(-2, 2));
+            if (!spot.getBlock().isPassable()) {
+                spot = at.clone();
+            }
+            Bot bot = spawn(raid, spot, 6, "operator", Math.min(3, raid.tier.aiGear() + 1), false, "敌对干员 · " + team + "-" + (i + 1));
+            if (bot == null) {
+                continue;
+            }
+            if (leader == null) {
+                leader = bot;
+            } else {
+                bot.leader = leader.mob.getUniqueId();
             }
         }
     }
@@ -233,6 +378,9 @@ public final class AiService implements Listener {
         if ("sniper".equals(kind)) {
             guns = gear >= 2 ? new String[]{"dm14", "awr"} : new String[]{"dm14"};
         }
+        if ("shield".equals(kind)) {
+            guns = gear >= 2 ? new String[]{"d50", "p18"} : new String[]{"p18"};
+        }
         if (boss) {
             guns = new String[]{"kl7", "scr"};
         }
@@ -247,13 +395,14 @@ public final class AiService implements Listener {
             int index = Math.min(ammoOptions.size() - 1, boss ? ammoOptions.size() - 1 : Math.max(0, gear - 1 + rng.nextInt(2)));
             ammo = ammoOptions.get(index);
         }
-        int armorLevel = Math.min(6, Math.max(0, (boss ? 5 : gear + 1) + rng.nextInt(-1, 2)));
+        int armorLevel = Math.min(6, Math.max(0, (boss ? 5 : "operator".equals(kind) ? gear + 2 : gear + 1) + rng.nextInt(-1, 2)));
         ItemDef finalAmmo = ammo;
-        double accuracy = raid.tier.aiAccuracy() * (boss ? 1.15 : "sniper".equals(kind) ? 1.1 : 1.0);
+        double accuracy = raid.tier.aiAccuracy() * (boss ? 1.15 : "sniper".equals(kind) ? 1.1 : "operator".equals(kind) ? 1.2 : 1.0);
         // Patrols are zombies and elite units (guards, snipers, bosses) husks: the resource pack dresses
         // the two as different soldiers (tools/art/soldiers.py) and gives them human sounds.
         @SuppressWarnings("unchecked")
-        Class<Zombie> type = (Class<Zombie>) (Class<?>) ("patrol".equals(kind) && !boss ? Zombie.class : org.bukkit.entity.Husk.class);
+        Class<Zombie> type = (Class<Zombie>) (Class<?>) ("operator".equals(kind) ? org.bukkit.entity.Drowned.class
+                : "patrol".equals(kind) && !boss ? Zombie.class : org.bukkit.entity.Husk.class);
         Zombie mob = raid.world.spawn(at, type, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
             z.setLeftHanded(false); // the gun model's third-person pose is tuned for the right hand
             z.setAdult();
@@ -265,6 +414,9 @@ public final class AiService implements Listener {
             z.setMaximumNoDamageTicks(0);
             EntityEquipment eq = z.getEquipment();
             eq.setItem(EquipmentSlot.HAND, plugin.items().loadedGun(gun, finalAmmo == null ? null : finalAmmo.id()));
+            if ("shield".equals(kind)) {
+                eq.setItem(EquipmentSlot.OFF_HAND, new ItemStack(org.bukkit.Material.SHIELD));
+            }
             if (armorLevel > 0) {
                 ItemDef helmet = plugin.registry().get("helmet_" + Math.max(1, armorLevel - rng.nextInt(2)));
                 ItemDef vest = plugin.registry().get("armor_" + armorLevel);
@@ -280,8 +432,9 @@ public final class AiService implements Listener {
                     eq.setDropChance(slot, 0f);
                 }
             }
-            setAttr(z, Attribute.MAX_HEALTH, boss ? 380 : "sniper".equals(kind) ? 80 : 100);
-            z.setHealth(boss ? 380 : "sniper".equals(kind) ? 80 : 100);
+            double health = boss ? 380 : "sniper".equals(kind) ? 80 : "shield".equals(kind) || "operator".equals(kind) ? 120 : 100;
+            setAttr(z, Attribute.MAX_HEALTH, health);
+            z.setHealth(health);
             setAttr(z, Attribute.MOVEMENT_SPEED, boss ? 0.22 : 0.25);
             setAttr(z, Attribute.FOLLOW_RANGE, 48);
             setAttr(z, Attribute.KNOCKBACK_RESISTANCE, 0.8);
@@ -376,10 +529,10 @@ public final class AiService implements Listener {
                 }
                 alertSquadmates(bot, target);
             }
-            double preferred = "sniper".equals(bot.kind) ? 999 : bot.gun.gun().range() * 0.8;
+            double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
                 mob.getPathfinder().moveTo(target.getLocation(), 1.0);
-            } else if (distance < 6 && !"sniper".equals(bot.kind)) {
+            } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
                 Vector away = mob.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0);
                 if (away.lengthSquared() > 0.01) {
                     mob.getPathfinder().moveTo(mob.getLocation().add(away.normalize().multiply(4)), 1.0);
@@ -397,6 +550,10 @@ public final class AiService implements Listener {
             return;
         }
         bot.firstSeenTick = -1;
+        if ("operator".equals(bot.kind) && bot.lastSeen == null && (bot.alertPos == null || now >= bot.alertUntil)) {
+            operate(bot, now);
+            return;
+        }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 mob.getPathfinder().moveTo(bot.lastSeen, 0.9);
@@ -636,10 +793,12 @@ public final class AiService implements Listener {
         }
         // The fallen soldier stays as a body in the same uniform (the corpse skins mirror the zombie and
         // husk skins, see tools/art/soldiers.py), wearing the helmet and vest it had.
+        items.addAll(bot.carried);
         boolean elite = bot.mob instanceof org.bukkit.entity.Husk;
+        boolean operator = bot.mob instanceof org.bukkit.entity.Drowned;
         io.papermc.paper.datacomponent.item.ResolvableProfile look = io.papermc.paper.datacomponent.item.ResolvableProfile
                 .resolvableProfile().skinPatch(p -> p.body(net.kyori.adventure.key.Key.key("craftov", "entity/soldier/"
-                        + (elite ? "elite" : "patrol"))).model(org.bukkit.profile.PlayerTextures.SkinModel.CLASSIC)).build();
+                        + (operator ? "operator" : elite ? "elite" : "patrol"))).model(org.bukkit.profile.PlayerTextures.SkinModel.CLASSIC)).build();
         plugin.raids().spawnBody(bot.raid, bot.mob.getLocation(), bot.name + " 的遗物", items, look, eq.getHelmet(), eq.getChestplate());
     }
 

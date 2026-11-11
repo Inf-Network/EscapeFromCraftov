@@ -151,5 +151,138 @@
     "volume": 0.9
    }
   ]
+ },
+ "entity.drowned.ambient": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "entity.drowned.hurt": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "minecraft:damage/hit1",
+    "pitch": 0.9
+   },
+   {
+    "name": "minecraft:damage/hit2",
+    "pitch": 0.9
+   },
+   {
+    "name": "minecraft:damage/hit3",
+    "pitch": 0.9
+   }
+  ]
+ },
+ "entity.drowned.death": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "minecraft:damage/hit1",
+    "pitch": 0.75
+   },
+   {
+    "name": "minecraft:damage/hit2",
+    "pitch": 0.75
+   },
+   {
+    "name": "minecraft:damage/hit3",
+    "pitch": 0.75
+   }
+  ]
+ },
+ "entity.drowned.step": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "volume": 0.9
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "volume": 0.9
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "volume": 0.9
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "volume": 0.9
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "volume": 0.9
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.drowned.ambient_water": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "entity.drowned.swim": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "entity.drowned.shoot": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "entity.drowned.hurt_water": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "minecraft:damage/hit1",
+    "pitch": 0.9
+   },
+   {
+    "name": "minecraft:damage/hit2",
+    "pitch": 0.9
+   },
+   {
+    "name": "minecraft:damage/hit3",
+    "pitch": 0.9
+   }
+  ]
+ },
+ "entity.drowned.death_water": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "minecraft:damage/hit1",
+    "pitch": 0.75
+   },
+   {
+    "name": "minecraft:damage/hit2",
+    "pitch": 0.75
+   },
+   {
+    "name": "minecraft:damage/hit3",
+    "pitch": 0.75
+   }
+  ]
  }
 }

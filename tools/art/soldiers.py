@@ -170,6 +170,12 @@ def patrol():
                    balaclava='#2F3328', skin_tone='#C49A78', seed=3)
 
 
+def operator():
+    """Rival operators (drowned): tan multicam, black plate carrier."""
+    return soldier(['#A08C68', '#7F6E4E', '#5F563F', '#C2AD86'], vest='#26282B', strap='#3A3C3F',
+                   balaclava='#2A2B2D', skin_tone='#C49A78', seed=9)
+
+
 def elite():
     return soldier(['#2B2D30', '#3E4146', '#55595F', '#1C1D1F'], vest='#1F2022', strap='#2E3033',
                    balaclava='#18191B', skin_tone='#B88E6E', seed=5, gas_mask=True)

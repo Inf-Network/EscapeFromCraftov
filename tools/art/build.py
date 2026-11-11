@@ -713,14 +713,22 @@ def build_trigger_capture():
     death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
     step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
     overrides = {'block.cobweb.hit': silence}
-    for mob in ('zombie', 'husk'):
+    for mob in ('zombie', 'husk', 'drowned'):
         overrides['entity.%s.ambient' % mob] = silence
         overrides['entity.%s.hurt' % mob] = hurt
         overrides['entity.%s.death' % mob] = death
         overrides['entity.%s.step' % mob] = step
+    for event in ('ambient_water', 'swim', 'shoot'):
+        overrides['entity.drowned.' + event] = silence
+    overrides['entity.drowned.hurt_water'] = hurt
+    overrides['entity.drowned.death_water'] = death
     write_json(os.path.join(MC, 'sounds.json'), overrides)
     save(soldiers.patrol(), os.path.join(MC, 'textures', 'entity', 'zombie', 'zombie.png'))
     save(soldiers.elite(), os.path.join(MC, 'textures', 'entity', 'zombie', 'husk.png'))
+    # Rival operators are drowned, whose model uses the modern layout; their outer layer stays empty.
+    save(soldiers.modern(soldiers.operator()), os.path.join(MC, 'textures', 'entity', 'zombie', 'drowned.png'))
+    save(Image.new('RGBA', (64, 64), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'entity', 'zombie', 'drowned_outer_layer.png'))
+    save(soldiers.modern(soldiers.operator()), os.path.join(CV, 'textures', 'entity', 'soldier', 'operator.png'))
     # Corpses are mannequins (player model), which need the modern layout.
     save(soldiers.modern(soldiers.patrol()), os.path.join(CV, 'textures', 'entity', 'soldier', 'patrol.png'))
     save(soldiers.modern(soldiers.elite()), os.path.join(CV, 'textures', 'entity', 'soldier', 'elite.png'))

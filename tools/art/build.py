@@ -107,10 +107,41 @@ def build_items(item_defs):
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), generated('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
-            # Right mouse held = aim down sights; the client switches the pose instantly, no packet needed.
-            def aim(hip, ads):
-                return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': 'key.use',
-                        'on_true': model_ref(ads), 'on_false': model_ref(hip)}
+            # Pose trees, all picked on the client from held keys (no packet, no delay): right mouse aims
+            # down sights; left mouse kicks the gun back and flashes the muzzle; sprinting carries it low
+            # and canted; strafing leans it. Scoped guns hide the gun while aiming, so they keep plain ADS.
+            def posed_aim(name, hip, ads, hip_display, ads_display):
+                def key(k, on, off):
+                    return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
+                            'on_true': on, 'on_false': off}
+
+                def pose(kind, base, display, pose_name, spec):
+                    path = 'gun_pose/%s_%s/%s' % (kind, pose_name, name)
+                    write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.pose_model(base, display, spec))
+                    return model_ref('craftov:item/' + path)
+
+                def flash(kind, base, display, spec):
+                    fire = models.pose_model(base, display, spec)['display']
+                    path = 'gun_flash/%s/%s' % (kind, name)
+                    write_json(os.path.join(CV, 'models', 'item', path + '.json'),
+                               models.flash_model(item_id, fire['firstperson_righthand'], fire['firstperson_lefthand']))
+                    return model_ref('craftov:item/' + path)
+
+                def strafe(base, poses):
+                    return key('key.left', poses['left'], key('key.right', poses['right'], base))
+
+                hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
+                hip_idle = strafe(model_ref(hip), hp)
+                hip_tree = key('key.attack', {'type': 'minecraft:composite', 'models': [
+                    hp['fire'], flash('hip', hip, hip_display, models.HIP_POSES['fire'])]},
+                    key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle))
+                if ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
+                    ads_tree = model_ref(ads)
+                else:
+                    ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
+                    ads_tree = key('key.attack', {'type': 'minecraft:composite', 'models': [
+                        ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, strafe(model_ref(ads), ap))
+                return key('key.use', ads_tree, hip_tree)
             # While the gun's reload cooldown runs, the client steps through the reload frames itself.
             def reloading(normal, optic_frames=None):
                 entries = []
@@ -120,7 +151,8 @@ def build_items(item_defs):
                         'type': 'minecraft:composite', 'models': [model_ref(n) for n in names]}})
                 return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
                         'fallback': normal}
-            in_hand = reloading(aim(held, 'craftov:item/gun_ads/' + item_id))
+            in_hand = reloading(posed_aim(item_id, held, 'craftov:item/gun_ads/' + item_id,
+                                          models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display']))
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.
             write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
@@ -142,8 +174,10 @@ def build_items(item_defs):
                 write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', combo + '.json'),
                            models.gun_aimed_model(item_id, 'craftov:item/gun_opt/' + combo))
                 aimed_cases.append({'when': oid, 'model': model_ref('craftov:item/gun_aimed/' + combo)})
-                cases.append({'when': oid, 'model': reloading(
-                    aim('craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo), optic_frames)})
+                cases.append({'when': oid, 'model': reloading(posed_aim(
+                    combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
+                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display']),
+                    optic_frames)})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}
@@ -175,6 +209,37 @@ def save_animated(frames, path, frametime=2):
         strip.paste(frame, (0, h * i))
     save(strip, path)
     write_json(path + '.mcmeta', {'animation': {'frametime': frametime}})
+
+
+def flash_frame(kind, strength, seed):
+    """One 16x16 frame of muzzle flash: a jagged jet seen side-on, or a star burst seen head-on."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    n = 64
+    yy, xx = np.mgrid[0:n, 0:n] / (n - 1) * 2 - 1
+    if kind == 'side':
+        # Elongated along u, thickest at the middle, ragged edges.
+        width = 0.55 * (1 - np.abs(xx) ** 1.6) * (0.75 + 0.25 * np.cos(xx * 9 + rng.uniform(0, 6)))
+        d = np.abs(yy) / np.maximum(width, 1e-3)
+        a = np.clip(1 - d, 0, 1) * np.clip(1 - np.abs(xx) ** 3, 0, 1)
+    else:
+        r = np.hypot(xx, yy)
+        ang = np.arctan2(yy, xx)
+        spikes = 0.45 + 0.55 * np.abs(np.cos(ang * 2.5 + rng.uniform(0, 3))) ** 3
+        a = np.clip(1 - r / (0.95 * spikes), 0, 1)
+    a = a ** 0.8 * strength
+    core = np.clip(a * 1.8 - 0.6, 0, 1)
+    rgb = np.stack([np.full_like(a, 255), 150 + 95 * np.clip(a * 1.4, 0, 1) + 10 * core, 40 + 200 * core], -1)
+    img = np.concatenate([np.clip(rgb, 0, 255), (np.clip(a * 1.3, 0, 1) * 255)[..., None]], -1).astype(np.uint8)
+    return Image.fromarray(img).resize((16, 16), Image.LANCZOS)
+
+
+def build_fx():
+    """Animated muzzle flash: bright, off, medium, off - one tick each, flickering while the trigger is held."""
+    blank = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+    for kind in ('side', 'front'):
+        frames = [flash_frame(kind, 1.0, 1), blank, flash_frame(kind, 0.75, 2), blank]
+        save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind), frametime=1)
 
 
 def build_ui():
@@ -512,6 +577,7 @@ def main():
     build_pack_meta()
     build_items(item_defs)
     build_containers()
+    build_fx()
     build_ui()
     build_skins()
     build_vanilla_hud()

@@ -256,6 +256,92 @@ def gun_model(gid):
     }
 
 
+def posed(display, view=(0, 0, 0), roll=0.0, shift=(0, 0, 0), left=False):
+    """A first-person display transform moved into another pose.
+
+    view: extra rotation about the camera axes in degrees (pitch up, yaw left, roll counter-clockwise),
+    roll: cant about the barrel (model +X), shift: pixels (right, up, toward the camera). The result
+    is solved back into the XYZ Euler angles the client applies (rotationXYZ, item pivot at its centre).
+    """
+    from scipy.spatial.transform import Rotation
+    base = Rotation.from_euler('XYZ', display['rotation'], degrees=True)
+    pitch, yaw, spin = view
+    if left:
+        # The client mirrors left-hand transforms (Y and Z angles negated), so mirror the change too.
+        yaw, spin, roll = -yaw, -spin, -roll
+    v = Rotation.from_euler('ZYX', [spin, yaw, pitch], degrees=True)
+    r = v * base * Rotation.from_euler('X', roll, degrees=True)
+    t = list(display.get('translation', [0, 0, 0]))
+    dx, dy, dz = shift
+    t = [round(t[0] + dx, 2), round(t[1] + dy, 2), round(t[2] + dz, 2)]
+    out = {'rotation': [round(float(a), 2) for a in r.as_euler('XYZ', degrees=True)], 'translation': t}
+    if 'scale' in display:
+        out['scale'] = display['scale']
+    return out
+
+
+# First-person poses picked on the client from held keys (no server round trip). Values are tuned
+# with fpview.py: sprint carries the gun low and canted, strafing leans it, firing kicks it back.
+HIP_POSES = {
+    'sprint': dict(view=(-30, 40, 20), roll=40, shift=(-0.5, -1.5, 0.5)),
+    'left': dict(view=(0, 0, 5), roll=0, shift=(-0.4, 0, 0)),
+    'right': dict(view=(0, 0, -5), roll=0, shift=(0.4, 0, 0)),
+    'fire': dict(view=(2.2, 0, 0), roll=0, shift=(0, 0.25, 1.4)),
+}
+ADS_POSES = {
+    'left': dict(view=(0, 0, 2), roll=0, shift=(0, 0, 0)),
+    'right': dict(view=(0, 0, -2), roll=0, shift=(0, 0, 0)),
+    'fire': dict(view=(0.9, 0, 0), roll=0, shift=(0, 0.1, 0.7)),
+}
+
+
+def muzzle_point(gid):
+    """Model-space centre of the barrel tip (barrel along +X)."""
+    el = gun_elements(gid)
+    mx = max(e['to'][0] for e in el)
+    tip = [e for e in el if e['to'][0] >= mx - 0.8]
+    my = sum((e['from'][1] + e['to'][1]) / 2 for e in tip) / len(tip)
+    mz = sum((e['from'][2] + e['to'][2]) / 2 for e in tip) / len(tip)
+    return mx, my, mz
+
+
+HIDDEN = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
+
+
+def flash_model(gid, display_r, display_l):
+    """Muzzle flash posed with the gun: two crossed jets along the barrel and a star facing the camera.
+
+    The textures animate on their own (bright / off / medium / off every tick), so holding the
+    trigger flickers the flash at about the cadence of automatic fire.
+    """
+    mx, my, mz = muzzle_point(gid)
+    length = round(min(8.5, 31.7 - mx), 2)
+    h = 3.0
+    face = lambda tex: {'uv': [0, 0, 16, 16], 'texture': tex}
+    x0, x1 = round(mx + 0.2, 2), round(mx + 0.2 + length, 2)
+    elements = [
+        {'from': [x0, round(my - h, 2), mz], 'to': [x1, round(my + h, 2), mz], 'shade': False,
+         'faces': {'north': face('#side'), 'south': face('#side')}},
+        {'from': [x0, my, round(mz - h, 2)], 'to': [x1, my, round(mz + h, 2)], 'shade': False,
+         'faces': {'up': face('#side'), 'down': face('#side')}},
+        {'from': [x0, round(my - h * 1.5, 2), round(mz - h * 1.5, 2)], 'to': [x0, round(my + h * 1.5, 2), round(mz + h * 1.5, 2)],
+         'shade': False, 'faces': {'east': face('#front'), 'west': face('#front')}},
+    ]
+    display = {k: HIDDEN for k in ('thirdperson_righthand', 'thirdperson_lefthand', 'ground', 'fixed', 'head', 'gui')}
+    display['firstperson_righthand'] = display_r
+    display['firstperson_lefthand'] = display_l
+    return {'textures': {'side': 'craftov:item/fx/muzzle_side', 'front': 'craftov:item/fx/muzzle_front',
+                         'particle': 'craftov:item/fx/muzzle_front'},
+            'elements': elements, 'display': display}
+
+
+def pose_model(parent, base_display, pose):
+    """Display-only variant of a gun model in one of the poses above."""
+    return {'parent': parent, 'display': {
+        'firstperson_righthand': posed(base_display['firstperson_righthand'], **pose),
+        'firstperson_lefthand': posed(base_display['firstperson_lefthand'], left=True, **pose)}}
+
+
 def gun_ads_model(gid, zoom=0):
     """Aim-down-sights pose, selected client-side while the use key (right mouse) is held.
 

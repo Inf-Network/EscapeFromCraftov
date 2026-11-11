@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_ads/m4c",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.9,
+    90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.06,
+    -1.58
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.9,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.06,
+    -1.58
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

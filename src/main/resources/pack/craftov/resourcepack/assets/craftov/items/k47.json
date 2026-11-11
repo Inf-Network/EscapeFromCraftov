@@ -564,12 +564,120 @@
         "property": "minecraft:keybind_down",
         "keybind": "key.use",
         "on_true": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt_ads/k47__optic_reddot"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/ads_fire/k47__optic_reddot"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/ads/k47__optic_reddot"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.left",
+          "on_true": {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_pose/ads_left/k47__optic_reddot"
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.right",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/ads_right/k47__optic_reddot"
+           },
+           "on_false": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_opt_ads/k47__optic_reddot"
+           }
+          }
+         }
         },
         "on_false": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt/k47__optic_reddot"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_fire/k47__optic_reddot"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/hip/k47__optic_reddot"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.forward",
+          "on_true": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.sprint",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_sprint/k47__optic_reddot"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.left",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_left/k47__optic_reddot"
+            },
+            "on_false": {
+             "type": "minecraft:condition",
+             "property": "minecraft:keybind_down",
+             "keybind": "key.right",
+             "on_true": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_pose/hip_right/k47__optic_reddot"
+             },
+             "on_false": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_opt/k47__optic_reddot"
+             }
+            }
+           }
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.left",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_left/k47__optic_reddot"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.right",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_right/k47__optic_reddot"
+            },
+            "on_false": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_opt/k47__optic_reddot"
+            }
+           }
+          }
+         }
         }
        }
       }
@@ -1066,12 +1174,120 @@
         "property": "minecraft:keybind_down",
         "keybind": "key.use",
         "on_true": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt_ads/k47__optic_holo"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/ads_fire/k47__optic_holo"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/ads/k47__optic_holo"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.left",
+          "on_true": {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_pose/ads_left/k47__optic_holo"
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.right",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/ads_right/k47__optic_holo"
+           },
+           "on_false": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_opt_ads/k47__optic_holo"
+           }
+          }
+         }
         },
         "on_false": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt/k47__optic_holo"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_fire/k47__optic_holo"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/hip/k47__optic_holo"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.forward",
+          "on_true": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.sprint",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_sprint/k47__optic_holo"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.left",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_left/k47__optic_holo"
+            },
+            "on_false": {
+             "type": "minecraft:condition",
+             "property": "minecraft:keybind_down",
+             "keybind": "key.right",
+             "on_true": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_pose/hip_right/k47__optic_holo"
+             },
+             "on_false": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_opt/k47__optic_holo"
+             }
+            }
+           }
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.left",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_left/k47__optic_holo"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.right",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_right/k47__optic_holo"
+            },
+            "on_false": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_opt/k47__optic_holo"
+            }
+           }
+          }
+         }
         }
        }
       }
@@ -1572,8 +1788,80 @@
          "model": "craftov:item/gun_opt_ads/k47__optic_3x"
         },
         "on_false": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt/k47__optic_3x"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_fire/k47__optic_3x"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/hip/k47__optic_3x"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.forward",
+          "on_true": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.sprint",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_sprint/k47__optic_3x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.left",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_left/k47__optic_3x"
+            },
+            "on_false": {
+             "type": "minecraft:condition",
+             "property": "minecraft:keybind_down",
+             "keybind": "key.right",
+             "on_true": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_pose/hip_right/k47__optic_3x"
+             },
+             "on_false": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_opt/k47__optic_3x"
+             }
+            }
+           }
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.left",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_left/k47__optic_3x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.right",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_right/k47__optic_3x"
+            },
+            "on_false": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_opt/k47__optic_3x"
+            }
+           }
+          }
+         }
         }
        }
       }
@@ -2074,8 +2362,80 @@
          "model": "craftov:item/gun_opt_ads/k47__optic_4x"
         },
         "on_false": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt/k47__optic_4x"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_fire/k47__optic_4x"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/hip/k47__optic_4x"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.forward",
+          "on_true": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.sprint",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_sprint/k47__optic_4x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.left",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_left/k47__optic_4x"
+            },
+            "on_false": {
+             "type": "minecraft:condition",
+             "property": "minecraft:keybind_down",
+             "keybind": "key.right",
+             "on_true": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_pose/hip_right/k47__optic_4x"
+             },
+             "on_false": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_opt/k47__optic_4x"
+             }
+            }
+           }
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.left",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_left/k47__optic_4x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.right",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_right/k47__optic_4x"
+            },
+            "on_false": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_opt/k47__optic_4x"
+            }
+           }
+          }
+         }
         }
        }
       }
@@ -2576,8 +2936,80 @@
          "model": "craftov:item/gun_opt_ads/k47__optic_8x"
         },
         "on_false": {
-         "type": "minecraft:model",
-         "model": "craftov:item/gun_opt/k47__optic_8x"
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.attack",
+         "on_true": {
+          "type": "minecraft:composite",
+          "models": [
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_fire/k47__optic_8x"
+           },
+           {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_flash/hip/k47__optic_8x"
+           }
+          ]
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.forward",
+          "on_true": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.sprint",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_sprint/k47__optic_8x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.left",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_left/k47__optic_8x"
+            },
+            "on_false": {
+             "type": "minecraft:condition",
+             "property": "minecraft:keybind_down",
+             "keybind": "key.right",
+             "on_true": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_pose/hip_right/k47__optic_8x"
+             },
+             "on_false": {
+              "type": "minecraft:model",
+              "model": "craftov:item/gun_opt/k47__optic_8x"
+             }
+            }
+           }
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.left",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_left/k47__optic_8x"
+           },
+           "on_false": {
+            "type": "minecraft:condition",
+            "property": "minecraft:keybind_down",
+            "keybind": "key.right",
+            "on_true": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_pose/hip_right/k47__optic_8x"
+            },
+            "on_false": {
+             "type": "minecraft:model",
+             "model": "craftov:item/gun_opt/k47__optic_8x"
+            }
+           }
+          }
+         }
         }
        }
       }
@@ -2977,12 +3409,120 @@
       "property": "minecraft:keybind_down",
       "keybind": "key.use",
       "on_true": {
-       "type": "minecraft:model",
-       "model": "craftov:item/gun_ads/k47"
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.attack",
+       "on_true": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_pose/ads_fire/k47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_flash/ads/k47"
+         }
+        ]
+       },
+       "on_false": {
+        "type": "minecraft:condition",
+        "property": "minecraft:keybind_down",
+        "keybind": "key.left",
+        "on_true": {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_pose/ads_left/k47"
+        },
+        "on_false": {
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.right",
+         "on_true": {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_pose/ads_right/k47"
+         },
+         "on_false": {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_ads/k47"
+         }
+        }
+       }
       },
       "on_false": {
-       "type": "minecraft:model",
-       "model": "craftov:item/gun/k47"
+       "type": "minecraft:condition",
+       "property": "minecraft:keybind_down",
+       "keybind": "key.attack",
+       "on_true": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_pose/hip_fire/k47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_flash/hip/k47"
+         }
+        ]
+       },
+       "on_false": {
+        "type": "minecraft:condition",
+        "property": "minecraft:keybind_down",
+        "keybind": "key.forward",
+        "on_true": {
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.sprint",
+         "on_true": {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_pose/hip_sprint/k47"
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.left",
+          "on_true": {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_pose/hip_left/k47"
+          },
+          "on_false": {
+           "type": "minecraft:condition",
+           "property": "minecraft:keybind_down",
+           "keybind": "key.right",
+           "on_true": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun_pose/hip_right/k47"
+           },
+           "on_false": {
+            "type": "minecraft:model",
+            "model": "craftov:item/gun/k47"
+           }
+          }
+         }
+        },
+        "on_false": {
+         "type": "minecraft:condition",
+         "property": "minecraft:keybind_down",
+         "keybind": "key.left",
+         "on_true": {
+          "type": "minecraft:model",
+          "model": "craftov:item/gun_pose/hip_left/k47"
+         },
+         "on_false": {
+          "type": "minecraft:condition",
+          "property": "minecraft:keybind_down",
+          "keybind": "key.right",
+          "on_true": {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun_pose/hip_right/k47"
+          },
+          "on_false": {
+           "type": "minecraft:model",
+           "model": "craftov:item/gun/k47"
+          }
+         }
+        }
+       }
       }
      }
     }

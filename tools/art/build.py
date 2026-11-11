@@ -349,7 +349,9 @@ def build_betterhud():
                                + [image('craftov_bp_%s_%d' % (part, state), 4, 3, cond(('craftov_part_' + part, state)))
                                   for part in hudart.BODY_PARTS for state in range(len(hudart.BODY_STATES))]
                                + [image('craftov_hp_empty', 30, 14), image('craftov_hp_bar', 30, 14),
-                                  image('craftov_stamina_empty', 30, 22), image('craftov_stamina_bar', 30, 22),
+                                  # Downed players have no stamina to manage, so the bar is hidden.
+                                  image('craftov_stamina_empty', 30, 22, cond(('craftov_is_downed', 'false'))),
+                                  image('craftov_stamina_bar', 30, 22, cond(('craftov_is_downed', 'false'))),
                                   image('craftov_armor_empty', 30, 35), image('craftov_helmet_bar', 30, 35),
                                   image('craftov_armor_empty', 88, 35), image('craftov_armor_bar', 88, 35)]),
             'texts': numbered([text('<#5BD16B>❤</#5BD16B> [craftov_hp]', 30, 3, 0.6),

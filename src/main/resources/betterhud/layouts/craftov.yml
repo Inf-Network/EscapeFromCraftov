@@ -331,10 +331,20 @@ craftov_vitals:
       name: craftov_stamina_empty
       x: 30
       y: 22
+      conditions:
+        '1':
+          first: craftov_is_downed
+          second: 'false'
+          operation: ==
     '40':
       name: craftov_stamina_bar
       x: 30
       y: 22
+      conditions:
+        '1':
+          first: craftov_is_downed
+          second: 'false'
+          operation: ==
     '41':
       name: craftov_armor_empty
       x: 30

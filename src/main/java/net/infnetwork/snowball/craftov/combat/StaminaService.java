@@ -102,7 +102,7 @@ public final class StaminaService implements Listener {
     }
 
     private double drainFactor(Player player) {
-        return 1.0 + Math.max(0, weight(player) - COMFORT_KG) / 25.0;
+        return 1.0 + Math.max(0, weight(player) - COMFORT_KG) / 50.0;
     }
 
     private void tick() {
@@ -116,7 +116,7 @@ public final class StaminaService implements Listener {
                 continue;
             }
             if (player.isSprinting()) {
-                s.stamina = Math.max(0, s.stamina - 0.55 * drainFactor(player));
+                s.stamina = Math.max(0, s.stamina - 0.22 * drainFactor(player));
                 s.lastSpend = now;
             } else if (now - s.lastSpend > 15) {
                 s.stamina = Math.min(MAX, s.stamina + (player.isSneaking() ? 0.75 : 0.6));
@@ -139,7 +139,7 @@ public final class StaminaService implements Listener {
             return;
         }
         State s = state(player);
-        s.stamina = Math.max(0, s.stamina - 7 * drainFactor(player));
+        s.stamina = Math.max(0, s.stamina - 4 * drainFactor(player));
         s.lastSpend = Bukkit.getCurrentTick();
     }
 

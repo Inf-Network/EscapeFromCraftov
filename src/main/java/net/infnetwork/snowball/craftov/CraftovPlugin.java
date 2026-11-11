@@ -69,6 +69,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private RaidManager raids;
     private AiService ai;
     private LobbyService lobby;
+    private net.infnetwork.snowball.craftov.lobby.RangeService range;
     private MatchService match;
     private TraderService traders;
     private MarketService market;
@@ -120,6 +121,7 @@ public final class CraftovPlugin extends JavaPlugin {
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
+        range = new net.infnetwork.snowball.craftov.lobby.RangeService(this);
         match = new MatchService(this);
         traders = new TraderService(this);
         market = new MarketService(this);
@@ -133,7 +135,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, operators, new ThrowableService(this));
+                raids, ai, lobby, range, operators, new ThrowableService(this));
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -150,6 +152,7 @@ public final class CraftovPlugin extends JavaPlugin {
         worlds.ensureBuiltins();
         maps.load();
         lobby.start();
+        range.start();
         market.start();
         new PackService(this).install();
         hookBetterHud();
@@ -172,6 +175,9 @@ public final class CraftovPlugin extends JavaPlugin {
         }
         if (escorts != null) {
             escorts.shutdown();
+        }
+        if (range != null) {
+            range.shutdown();
         }
         if (lobby != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -270,6 +276,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }
+    public net.infnetwork.snowball.craftov.lobby.RangeService range() { return range; }
     public MatchService match() { return match; }
     public TraderService traders() { return traders; }
     public MarketService market() { return market; }

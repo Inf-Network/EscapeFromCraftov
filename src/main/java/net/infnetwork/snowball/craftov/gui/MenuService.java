@@ -44,7 +44,13 @@ public final class MenuService {
             case "escort" -> new EscortMenu(plugin, player).open();
             case "collection" -> new CollectionMenu(plugin, player).open();
             case "rank", "rank_board" -> new RankMenu(plugin, player).open();
-            case "range_rack" -> new RangeMenu(plugin, player).open();
+            case "range_rack" -> {
+                if (plugin.range().isIn(player)) {
+                    new RangeMenu(plugin, player).open();
+                } else {
+                    plugin.range().enter(player);
+                }
+            }
             default -> openMain(player);
         }
     }

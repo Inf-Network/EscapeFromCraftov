@@ -49,7 +49,7 @@ public final class HudService {
         for (Player player : Bukkit.getOnlinePlayers()) {
             online.add(player.getUniqueId());
             try {
-                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, plugin.lobby().isLobby(player.getWorld())));
+                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player)));
             } catch (RuntimeException ex) {
                 snapshots.put(player.getUniqueId(), HudSnapshot.EMPTY);
             }

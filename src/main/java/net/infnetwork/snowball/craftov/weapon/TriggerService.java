@@ -98,7 +98,7 @@ public final class TriggerService implements Listener {
     private boolean canCapture(Player player) {
         return holdingGun(player) && player.getGameMode() != GameMode.SPECTATOR && !player.isDead()
                 && !plugin.downed().isDowned(player)
-                && (plugin.raids().isInRaid(player) || plugin.lobby().isLobby(player.getWorld()));
+                && (plugin.raids().isInRaid(player) || plugin.range().isIn(player));
     }
 
     // ------------------------------------------------------------------ tick

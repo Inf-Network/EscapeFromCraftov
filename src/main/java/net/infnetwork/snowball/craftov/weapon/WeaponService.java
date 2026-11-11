@@ -614,7 +614,7 @@ public final class WeaponService implements Listener {
             return null;
         }
         if (plugin.lobby().isLobby(player.getWorld())) {
-            return "<#9AA0A6>大厅里只能在靶场开火";
+            return "<#9AA0A6>大厅里不能开火，请到靶场入口进入个人靶场";
         }
         if (plugin.raids().isInRaid(player)) {
             return "<#9AA0A6>现在不能开火";

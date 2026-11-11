@@ -119,12 +119,9 @@ public final class LobbyService implements Listener {
         return new Location(w, 0.5, LobbyBuilder.Y + 1, 12.5, 180f, 0f);
     }
 
+    /** True while the player is in their private shooting range (see {@link RangeService}). */
     public boolean inRange(Player player) {
-        if (!isLobby(player.getWorld())) {
-            return false;
-        }
-        Location l = player.getLocation();
-        return l.getX() >= 7 && l.getX() <= LobbyBuilder.R && l.getZ() >= -9 && l.getZ() <= -3;
+        return plugin.range().isIn(player);
     }
 
     public boolean isTarget(Entity entity) {
@@ -181,7 +178,7 @@ public final class LobbyService implements Listener {
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         });
         world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><#F2E6C8>靶场武器架</b>\n<#9AA0A6>免费试用 · 子弹无限 · 可装瞄准镜\n<#6B7079>离开靶场自动收回"));
+            d.text(Text.mm("<b><#F2E6C8>靶场入口</b>\n<#9AA0A6>右键进入个人独立靶场\n<#6B7079>免费试枪 · 离开时自动归还原装备"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
@@ -463,6 +460,8 @@ public final class LobbyService implements Listener {
         lastMenuClick.put(player.getUniqueId(), now);
         if (UiItems.LOBBY_MENU.equals(tag)) {
             plugin.menus().openMain(player);
+        } else if (RangeService.EXIT.equals(tag)) {
+            plugin.range().leave(player, true);
         } else if (UiItems.RAID_TERMINAL.equals(tag)) {
             plugin.menus().openTerminal(player);
         }

@@ -42,7 +42,7 @@ final class RangeMenu extends Menu {
         button(40, UiItems.button("craftov:ui/icon_help", "<#C8CCD2><b>说明", List.of(
                 "<#9AA0A6>点击领取，子弹无限（弹匣/999）",
                 "<#9AA0A6>靶场武器不能存进仓库、不能出售",
-                "<#9AA0A6>离开黄线内的射击位会自动收回")), e -> {
+                "<#9AA0A6>离开靶场时全部清空，原装备原样归还")), e -> {
         });
         button(42, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80><b>归还全部靶场武器", List.of()), e -> {
             int n = plugin.lobby().stripRangeItems(viewer);
@@ -52,7 +52,7 @@ final class RangeMenu extends Menu {
 
     private void take(ItemDef def) {
         if (!plugin.lobby().inRange(viewer)) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>请先站到靶场射击位（黄线内）再领取"));
+            viewer.sendActionBar(Text.mm("<#FF8A80>请先从大厅的靶场入口进入个人靶场"));
             return;
         }
         ItemStack stack = def.isGun() ? plugin.items().sample(def) : plugin.items().create(def, 1);

@@ -38,6 +38,8 @@ public final class LootContainer {
     private boolean generated;
     private double progressMs;
     private long lastSearchTick = -1;
+    /** Bumped on every reveal or slot change so every open search screen can redraw. */
+    private int version;
     private @Nullable ItemDisplay display;
     private @Nullable Interaction hitbox;
     private @Nullable Entity corpse;
@@ -60,7 +62,12 @@ public final class LootContainer {
         return slots[slot];
     }
 
+    public int version() {
+        return version;
+    }
+
     public void set(int slot, @Nullable ItemStack stack) {
+        version++;
         slots[slot] = stack == null || stack.isEmpty() ? null : stack;
         if (slots[slot] != null) {
             revealed[slot] = true;
@@ -78,6 +85,7 @@ public final class LootContainer {
     /** Fills the container with pre-made items (corpses) that still need searching. */
     public void fill(List<ItemStack> items, boolean shuffle) {
         generated = true;
+        version++;
         List<Integer> free = new ArrayList<>();
         for (int i = 0; i < slots.length; i++) {
             free.add(i);
@@ -138,6 +146,7 @@ public final class LootContainer {
         if (progressMs >= need) {
             progressMs = 0;
             revealed[next] = true;
+            version++;
             return next;
         }
         return -1;

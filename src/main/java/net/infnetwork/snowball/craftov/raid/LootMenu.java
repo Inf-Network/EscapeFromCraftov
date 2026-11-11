@@ -22,6 +22,7 @@ public final class LootMenu extends Menu {
     private final CraftovPlugin plugin;
     private final LootContainer container;
     private int lastProgressStep = -1;
+    private int seenVersion = -1;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
         super(viewer, container.type.rows(), Text.mm("<#E8E8E8>" + Text.escape(container.title)
@@ -32,6 +33,7 @@ public final class LootMenu extends Menu {
 
     @Override
     protected void draw() {
+        seenVersion = container.version();
         int next = container.nextHidden();
         for (int slot = 0; slot < container.size(); slot++) {
             ItemStack stack = container.get(slot);
@@ -70,6 +72,9 @@ public final class LootMenu extends Menu {
                 || viewer.getLocation().distanceSquared(container.location) > 49 || plugin.downed().isDowned(viewer)) {
             viewer.closeInventory();
             return;
+        }
+        if (container.version() != seenVersion) {
+            redraw(); // another searcher revealed or took something
         }
         if (container.hiddenCount() == 0) {
             return;

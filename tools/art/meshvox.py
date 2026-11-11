@@ -152,20 +152,20 @@ def fill_width(grid):
 # Ours -> (source model, target length in model units (16 = one block), flip barrel, voxel size in model units).
 # Source models point their muzzle toward -X; flip=True mirrors that to +X (our convention).
 MAPPING = {
-    'p18': ('Pistol_1', 10.5, False, 0.3),
-    'd50': ('Pistol_6', 12.5, False, 0.3),
-    'sv9': ('SubmachineGun_2', 20.0, False, 0.4),
-    'v57': ('SubmachineGun_5', 24.0, False, 0.4),
-    'k47': ('AssaultRifle_2', 31.0, False, 0.4),
-    'm4c': ('AssaultRifle2_1', 30.0, False, 0.4),
-    'scr': ('Bullpup_1', 28.0, False, 0.4),
-    'kl7': ('AssaultRifle_5', 33.0, False, 0.4),
-    'r12': ('Shotgun_2', 32.0, False, 0.4),
-    'dm14': ('SniperRifle_2', 35.0, False, 0.4),
-    'awr': ('SniperRifle_3', 37.0, False, 0.4),
+    'p18': ('Pistol_1', 10.5, False, 0.2),
+    'd50': ('Pistol_6', 12.5, False, 0.2),
+    'sv9': ('SubmachineGun_2', 20.0, False, 0.25),
+    'v57': ('SubmachineGun_5', 24.0, False, 0.25),
+    'k47': ('AssaultRifle_2', 31.0, False, 0.25),
+    'm4c': ('AssaultRifle2_1', 30.0, False, 0.25),
+    'scr': ('Bullpup_1', 28.0, False, 0.25),
+    'kl7': ('AssaultRifle_5', 33.0, False, 0.25),
+    'r12': ('Shotgun_2', 32.0, False, 0.25),
+    'dm14': ('SniperRifle_2', 35.0, False, 0.25),
+    'awr': ('SniperRifle_3', 37.0, False, 0.25),
     # Riflescopes for the attachment system (mounted on top rails).
-    'optic_4x': ('Accessories/Scope_1', 9.5, False, 0.2),
-    'optic_8x': ('Accessories/Scope_3', 11.5, False, 0.2),
+    'optic_4x': ('Accessories/Scope_1', 9.5, False, 0.15),
+    'optic_8x': ('Accessories/Scope_3', 11.5, False, 0.15),
 }
 
 

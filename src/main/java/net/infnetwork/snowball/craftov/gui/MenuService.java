@@ -24,6 +24,7 @@ public final class MenuService {
     public void openMain(Player player) {
         if (lobbyOnly(player)) {
             new MainMenu(plugin, player).open();
+            plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.TERMINAL);
         }
     }
 

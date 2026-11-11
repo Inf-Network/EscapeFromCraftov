@@ -360,6 +360,7 @@ public final class RaidManager implements Listener {
             profile.money -= raid.tier.entryFee();
         }
         plugin.insurance().onDeploy(player, raid);
+        plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
         plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
         for (ItemRecord record : profile.secure) {
@@ -655,6 +656,7 @@ public final class RaidManager implements Listener {
         point.used++;
         plugin.weapons().reset(player);
         plugin.insurance().strip(player);
+        plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.EXTRACT);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.EXTRACTED;
         rp.extracting = null;

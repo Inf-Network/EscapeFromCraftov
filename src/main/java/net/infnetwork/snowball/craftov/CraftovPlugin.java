@@ -74,6 +74,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.util.Backups backups;
     private net.infnetwork.snowball.craftov.economy.BountyService bounties;
     private net.infnetwork.snowball.craftov.rank.SeasonService season;
+    private net.infnetwork.snowball.craftov.lobby.TutorialService tutorial;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
@@ -138,6 +139,7 @@ public final class CraftovPlugin extends JavaPlugin {
         hideout = new net.infnetwork.snowball.craftov.economy.HideoutService(this);
         bounties = new net.infnetwork.snowball.craftov.economy.BountyService(this);
         season = new net.infnetwork.snowball.craftov.rank.SeasonService(this);
+        tutorial = new net.infnetwork.snowball.craftov.lobby.TutorialService(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -309,6 +311,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public net.infnetwork.snowball.craftov.economy.HideoutService hideout() { return hideout; }
     public net.infnetwork.snowball.craftov.economy.BountyService bounties() { return bounties; }
     public net.infnetwork.snowball.craftov.rank.SeasonService season() { return season; }
+    public net.infnetwork.snowball.craftov.lobby.TutorialService tutorial() { return tutorial; }
 
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {

@@ -136,6 +136,11 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+tutorial:
+  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward.
+  enabled: true
+  reward: 20000
+
 season:
   # Changing the id starts a new season (everyone's pass progress resets).
   id: S1

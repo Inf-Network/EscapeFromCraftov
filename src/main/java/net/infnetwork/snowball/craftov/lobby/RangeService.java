@@ -121,6 +121,7 @@ public final class RangeService implements Listener {
         player.teleport(new Location(world, offset(plot) + 14.5, LobbyBuilder.Y + 1, -5.5, 180f, 0f));
         player.setGameMode(GameMode.ADVENTURE);
         hideOthers(player);
+        plugin.tutorial().done(player, TutorialService.Step.RANGE);
         Text.send(player, "<#F2C94C>已进入个人靶场。<#9AA0A6>右键武器架领取武器，子弹无限；离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
     }
 

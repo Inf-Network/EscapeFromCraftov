@@ -176,6 +176,7 @@ final class GunsmithMenu extends Menu {
         giveBack(old, ItemFactory.isRange(gun));
         viewer.playSound(viewer.getLocation(), "craftov:gun.reload_done", 0.8f, 1.2f);
         viewer.sendActionBar(Text.mm("<#5BD16B>已安装 " + partDef.coloredName()));
+        plugin.tutorial().done(viewer, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.GUNSMITH);
         redraw();
     }
 

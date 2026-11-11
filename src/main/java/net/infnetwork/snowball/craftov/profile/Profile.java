@@ -50,6 +50,9 @@ public final class Profile {
     public String seasonId = "";
     public long seasonXp;
     public Set<Integer> seasonClaimed = new LinkedHashSet<>();
+    /** New-player guide progress (TutorialService). */
+    public int tutorialStep;
+    public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));

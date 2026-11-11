@@ -234,12 +234,52 @@ def flash_frame(kind, strength, seed):
     return Image.fromarray(img).resize((16, 16), Image.LANCZOS)
 
 
+def bullet_hole(metal, seed):
+    """Bullet mark: a dark crater with a cracked, dusty rim; on metal a bright dented ring instead."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    n = 64
+    yy, xx = np.mgrid[0:n, 0:n] / (n - 1) * 2 - 1
+    r = np.hypot(xx, yy)
+    ang = np.arctan2(yy, xx)
+    jag = 1 + 0.12 * np.sin(ang * 7 + rng.uniform(0, 6)) + 0.08 * np.sin(ang * 13 + rng.uniform(0, 6))
+    rr = r * jag
+    rgba = np.zeros((n, n, 4))
+    if metal:
+        ring = np.exp(-((rr - 0.42) / 0.12) ** 2)
+        hole = np.clip((0.3 - rr) / 0.06, 0, 1)
+        rgba[..., :3] = (200 * ring + 40 * (1 - ring))[..., None] * np.array([1, 0.97, 0.9])
+        rgba[..., :3] = rgba[..., :3] * (1 - hole[..., None]) + np.array([25, 22, 20]) * hole[..., None]
+        rgba[..., 3] = np.clip(ring * 0.9 + hole, 0, 1)
+    else:
+        hole = np.clip((0.26 - rr) / 0.05, 0, 1)
+        rim = np.clip(1 - (rr - 0.26) / 0.55, 0, 1) ** 2
+        cracks = np.zeros_like(r)
+        for _ in range(6):
+            a0 = rng.uniform(-np.pi, np.pi)
+            d = np.abs(np.angle(np.exp(1j * (ang - a0))))
+            cracks += np.clip(1 - d / 0.07, 0, 1) * np.clip(1 - r / rng.uniform(0.6, 0.95), 0, 1)
+        dark = np.clip(hole + 0.55 * rim + 0.6 * cracks, 0, 1)
+        rgba[..., :3] = np.array([30, 27, 24]) * hole[..., None] + np.array([70, 66, 60]) * (1 - hole[..., None])
+        rgba[..., 3] = dark * 0.95
+    img = np.clip(rgba * [1, 1, 1, 255], 0, 255).astype(np.uint8)
+    return Image.fromarray(img).resize((16, 16), Image.LANCZOS)
+
+
 def build_fx():
-    """Animated muzzle flash: bright, off, medium, off - one tick each, flickering while the trigger is held."""
+    """Animated muzzle flash (bright, off, medium, off - one tick each) and bullet-hole decals."""
     blank = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
     for kind in ('side', 'front'):
         frames = [flash_frame(kind, 1.0, 1), blank, flash_frame(kind, 0.75, 2), blank]
         save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind), frametime=1)
+    # Decals are item displays lying flat on the wall (ImpactFx.java): one face at z=8, seen from +Z.
+    for name, metal in (('hole', False), ('hole_metal', True)):
+        save(bullet_hole(metal, 3 if metal else 5), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'fx', name + '.json'), {
+            'textures': {'hole': 'craftov:item/fx/' + name, 'particle': 'craftov:item/fx/' + name},
+            'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False,
+                          'faces': {'south': {'uv': [0, 0, 16, 16], 'texture': '#hole'}}}]})
+        write_json(os.path.join(CV, 'items', 'fx', name + '.json'), {'model': model_ref('craftov:item/fx/' + name)})
 
 
 def build_ui():

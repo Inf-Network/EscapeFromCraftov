@@ -476,7 +476,9 @@ public final class AiService implements Listener {
                     scaled, ammo, bot.gun.name(), i == 0);
         }
         Ballistics.muzzle(bot.mob, aim);
-        plugin.weapons().audio().shot(bot.mob, Ballistics.muzzlePoint(bot.mob, aim), gun, false);
+        Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);
+        plugin.weapons().audio().shot(bot.mob, muzzle, gun, false);
+        plugin.weapons().fx().muzzleLight(bot.mob, muzzle);
         if (!"pump".equals(gun.action()) && !"bolt".equals(gun.action())) {
             plugin.weapons().audio().casing(bot.mob, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }

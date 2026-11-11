@@ -25,8 +25,6 @@ import java.util.function.Predicate;
 /** Hitscan bullets shared by players and AI. */
 public final class Ballistics {
 
-    private static final Particle.DustOptions TRACER = new Particle.DustOptions(Color.fromRGB(255, 226, 150), 0.45f);
-
     private final CraftovPlugin plugin;
 
     public Ballistics(CraftovPlugin plugin) {
@@ -76,19 +74,19 @@ public final class Ballistics {
                 BodyPart part = BodyPart.of(living, result.getHitPosition());
                 double distance = eye.toVector().distance(result.getHitPosition());
                 plugin.damage().bullet(shooter, living, part, gun, ammo, distance, weaponName);
-                world.spawnParticle(Particle.BLOCK, end, 8, 0.1, 0.1, 0.1, Material.REDSTONE_BLOCK.createBlockData());
+                plugin.weapons().fx().body(living, end, dir);
             } else if (result.getHitBlock() != null) {
-                impact(result.getHitBlock(), end, result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection());
+                impact(result.getHitBlock(), end, result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection(), dir);
             }
         }
         if (tracer) {
-            tracer(eye, end, dir);
+            plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), end);
         }
         plugin.weapons().audio().flyby(shooter, eye, end, hitEntity, gun);
         return hitEntity;
     }
 
-    private void impact(Block block, Location at, @Nullable Vector normal) {
+    private void impact(Block block, Location at, @Nullable Vector normal, Vector dir) {
         World world = at.getWorld();
         Material type = block.getType();
         if (type.name().contains("GLASS") && type != Material.TINTED_GLASS && plugin.raids().isRaidWorld(world)) {
@@ -98,26 +96,8 @@ public final class Ballistics {
             world.spawnParticle(Particle.BLOCK, at, 20, 0.3, 0.3, 0.3, type.createBlockData());
             return;
         }
-        Location puff = normal == null ? at : at.clone().add(normal.clone().multiply(0.05));
-        world.spawnParticle(Particle.BLOCK, puff, 6, 0.05, 0.05, 0.05, type.isAir() ? Material.STONE.createBlockData() : type.createBlockData());
-        world.spawnParticle(Particle.SMOKE, puff, 2, 0.02, 0.02, 0.02, 0.01);
+        plugin.weapons().fx().block(block, at, normal, dir);
         plugin.weapons().audio().impact(block, at);
-    }
-
-    private static void tracer(Location eye, Location end, Vector dir) {
-        World world = eye.getWorld();
-        Vector start = eye.toVector().add(dir.clone().multiply(1.2));
-        Vector path = end.toVector().subtract(start);
-        double length = Math.min(path.length(), 70);
-        if (length < 0.5) {
-            return;
-        }
-        Vector step = path.normalize().multiply(1.6);
-        Vector point = start.clone();
-        for (double d = 0; d < length; d += 1.6) {
-            world.spawnParticle(Particle.DUST, point.getX(), point.getY(), point.getZ(), 1, 0, 0, 0, 0, TRACER, true);
-            point.add(step);
-        }
     }
 
     /** Where the muzzle of a gun held by {@code shooter} roughly is. */

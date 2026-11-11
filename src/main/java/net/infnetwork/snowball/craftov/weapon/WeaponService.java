@@ -124,6 +124,7 @@ public final class WeaponService implements Listener {
     private final CraftovPlugin plugin;
     private final Ballistics ballistics;
     private final GunAudio audio;
+    private final ImpactFx fx;
     private final Map<UUID, GunState> states = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
@@ -138,11 +139,16 @@ public final class WeaponService implements Listener {
         this.plugin = plugin;
         this.ballistics = new Ballistics(plugin);
         this.audio = new GunAudio(plugin);
+        this.fx = new ImpactFx(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
     }
 
     public GunAudio audio() {
         return audio;
+    }
+
+    public ImpactFx fx() {
+        return fx;
     }
 
     public Ballistics ballistics() {
@@ -377,7 +383,11 @@ public final class WeaponService implements Listener {
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
-        audio.shot(player, Ballistics.muzzlePoint(player, dir), gun, state.suppressed);
+        Location muzzle = Ballistics.muzzlePoint(player, dir);
+        audio.shot(player, muzzle, gun, state.suppressed);
+        if (!state.suppressed) {
+            fx.muzzleLight(player, muzzle);
+        }
         plugin.ai().alert(player.getLocation(), gun.soundVolume() * 12.0 * (state.suppressed ? 0.35 : 1.0), player);
         recoil(player, state);
         state.bloom = Math.min(3.0, state.bloom + 0.35);

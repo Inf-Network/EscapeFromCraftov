@@ -570,11 +570,13 @@ public final class AiService implements Listener {
                 items.add(plugin.items().create(key, 1));
             }
         }
-        Location at = bot.mob.getLocation();
-        LootContainer container = new LootContainer(LootContainer.newId(), type, at, 0, bot.name + " 的遗物");
-        container.fill(items, false);
-        container.spawn(at.getYaw());
-        bot.raid.containers.put(container.id, container);
+        // The fallen soldier stays as a body in the same uniform (the corpse skins mirror the zombie and
+        // husk skins, see tools/art/soldiers.py), wearing the helmet and vest it had.
+        boolean elite = bot.mob instanceof org.bukkit.entity.Husk;
+        io.papermc.paper.datacomponent.item.ResolvableProfile look = io.papermc.paper.datacomponent.item.ResolvableProfile
+                .resolvableProfile().skinPatch(p -> p.body(net.kyori.adventure.key.Key.key("craftov", "entity/soldier/"
+                        + (elite ? "elite" : "patrol"))).model(org.bukkit.profile.PlayerTextures.SkinModel.CLASSIC)).build();
+        plugin.raids().spawnBody(bot.raid, bot.mob.getLocation(), bot.name + " 的遗物", items, look, eq.getHelmet(), eq.getChestplate());
     }
 
     @EventHandler(ignoreCancelled = true)

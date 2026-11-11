@@ -631,6 +631,9 @@ def build_trigger_capture():
     write_json(os.path.join(MC, 'sounds.json'), overrides)
     save(soldiers.patrol(), os.path.join(MC, 'textures', 'entity', 'zombie', 'zombie.png'))
     save(soldiers.elite(), os.path.join(MC, 'textures', 'entity', 'zombie', 'husk.png'))
+    # Corpses are mannequins (player model), which need the modern layout.
+    save(soldiers.modern(soldiers.patrol()), os.path.join(CV, 'textures', 'entity', 'soldier', 'patrol.png'))
+    save(soldiers.modern(soldiers.elite()), os.path.join(CV, 'textures', 'entity', 'soldier', 'elite.png'))
     write_text(os.path.join(MC, 'shaders', 'core', 'rendertype_lines.fsh'), LINES_FSH)
 
 

@@ -173,3 +173,22 @@ def patrol():
 def elite():
     return soldier(['#2B2D30', '#3E4146', '#55595F', '#1C1D1F'], vest='#1F2022', strap='#2E3033',
                    balaclava='#18191B', skin_tone='#B88E6E', seed=5, gas_mask=True)
+
+
+def modern(img):
+    """The same skin in the modern player layout (separate left limbs), for mannequin corpses.
+
+    The classic layout draws the left arm and leg as mirror images of the right ones; the player
+    model reads them from their own areas, so they are copied there mirrored face by face.
+    """
+    out = img.copy()
+    for box, (lu, lv) in (('arm', (32, 48)), ('leg', (16, 48))):
+        (u, v), (w, h, d) = BOXES[box]
+        src = faces(box)
+        dst = {name: (lu + (x - u), lv + (y - v), fw, fh) for name, (x, y, fw, fh) in src.items()}
+        swap = {'right': 'left', 'left': 'right'}
+        for name, (x, y, fw, fh) in src.items():
+            piece = img.crop((x, y, x + fw, y + fh)).transpose(Image.FLIP_LEFT_RIGHT)
+            tx, ty, _, _ = dst[swap.get(name, name)]
+            out.paste(piece, (tx, ty))
+    return out

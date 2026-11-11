@@ -898,6 +898,19 @@ public final class RaidManager implements Listener {
     }
 
     public void spawnCorpse(Raid raid, Location at, String name, List<ItemStack> items, @Nullable Player owner) {
+        io.papermc.paper.datacomponent.item.ResolvableProfile look = owner == null ? Mannequin.defaultProfile()
+                : io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile());
+        spawnBody(raid, at, name + " 的遗体", items, look,
+                owner == null ? null : owner.getInventory().getHelmet(), owner == null ? null : owner.getInventory().getChestplate());
+    }
+
+    /**
+     * A body lying where someone fell: a mannequin with their look and the helmet and vest they wore,
+     * searched like any container.
+     */
+    public void spawnBody(Raid raid, Location at, String title, List<ItemStack> items,
+                          io.papermc.paper.datacomponent.item.ResolvableProfile look,
+                          @Nullable ItemStack helmet, @Nullable ItemStack chest) {
         ContainerType type = plugin.loot().type("body_bag");
         if (type == null) {
             return;
@@ -906,29 +919,33 @@ public final class RaidManager implements Listener {
         ground.setPitch(0);
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
                 1f, 1.4, 0.6, type.rows(), 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
-                ground, 0, name + " 的遗体");
+                ground, 0, title);
         container.fill(items, false);
         container.spawn(0);
-        if (owner != null) {
-            Mannequin corpse = raid.world.spawn(ground, Mannequin.class, m -> {
-                m.setProfile(io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile()));
-                m.setImmovable(true);
-                m.setInvulnerable(true);
-                m.setPersistent(false);
-                m.setAI(false);
-                m.setSilent(true);
-                m.setDescription(Text.mm("<#8A8F98>☠ " + Text.escape(name)));
-                m.customName(Text.mm("<#8A8F98>☠ " + Text.escape(name)));
-                m.setCustomNameVisible(false);
-                Set<Pose> poses = Mannequin.validPoses();
-                if (poses.contains(Pose.SLEEPING)) {
-                    m.setPose(Pose.SLEEPING, true);
-                } else if (poses.contains(Pose.SWIMMING)) {
-                    m.setPose(Pose.SWIMMING, true);
-                }
-            });
-            container.attachCorpse(corpse);
-        }
+        Mannequin corpse = raid.world.spawn(ground, Mannequin.class, m -> {
+            m.setProfile(look);
+            m.setImmovable(true);
+            m.setInvulnerable(true);
+            m.setPersistent(false);
+            m.setAI(false);
+            m.setSilent(true);
+            m.setDescription(Text.mm("<#8A8F98>☠ " + Text.escape(title)));
+            m.customName(Text.mm("<#8A8F98>☠ " + Text.escape(title)));
+            m.setCustomNameVisible(false);
+            if (helmet != null && !helmet.isEmpty()) {
+                m.getEquipment().setHelmet(helmet.clone());
+            }
+            if (chest != null && !chest.isEmpty()) {
+                m.getEquipment().setChestplate(chest.clone());
+            }
+            Set<Pose> poses = Mannequin.validPoses();
+            if (poses.contains(Pose.SLEEPING)) {
+                m.setPose(Pose.SLEEPING, true);
+            } else if (poses.contains(Pose.SWIMMING)) {
+                m.setPose(Pose.SWIMMING, true);
+            }
+        });
+        container.attachCorpse(corpse);
         raid.containers.put(container.id, container);
     }
 

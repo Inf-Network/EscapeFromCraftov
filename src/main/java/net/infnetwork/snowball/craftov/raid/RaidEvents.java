@@ -34,7 +34,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class RaidEvents {
 
     /** OPERATORS and SHIELDS are only started by hand (/cv event), for testing. */
-    public enum Kind { BLACKOUT, BARRAGE, REINFORCEMENTS, SUPPLY_DROP, BOSS_PATROL, OPERATORS, SHIELDS }
+    public enum Kind { BLACKOUT, BARRAGE, REINFORCEMENTS, SUPPLY_DROP, BOSS_PATROL, DRONE, OPERATORS, SHIELDS }
 
     private record Planned(Kind kind, long at) {
     }
@@ -80,7 +80,7 @@ public final class RaidEvents {
         if (count <= 0) {
             return;
         }
-        List<Kind> pool = new ArrayList<>(List.of(Kind.BLACKOUT, Kind.BARRAGE, Kind.REINFORCEMENTS, Kind.SUPPLY_DROP));
+        List<Kind> pool = new ArrayList<>(List.of(Kind.BLACKOUT, Kind.BARRAGE, Kind.REINFORCEMENTS, Kind.SUPPLY_DROP, Kind.DRONE));
         if (!raid.map.bosses().isEmpty()) {
             pool.add(Kind.BOSS_PATROL);
         }
@@ -131,6 +131,16 @@ public final class RaidEvents {
             case REINFORCEMENTS -> reinforcements(raid);
             case SUPPLY_DROP -> supplyDrop(raid);
             case BOSS_PATROL -> bossPatrol(raid);
+            case DRONE -> {
+                Location from = plugin.drones().launch(raid);
+                if (from != null) {
+                    for (Player player : raid.online()) {
+                        player.sendMessage(Text.mm("<#FF8A80>✈ 敌方侦察无人机已升空：<#C8CCD2>" + bearing(player.getLocation(), from)
+                                + "<#9AA0A6>。被它看见会引来附近的敌兵，可以把它打下来。"));
+                    }
+                }
+                yield from != null;
+            }
             case OPERATORS -> {
                 Location at = nearPlayers(raid, 25, 40);
                 if (at != null) {

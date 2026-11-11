@@ -175,6 +175,8 @@ SOUNDS = {
     'throw/smoke': lambda: norm(env(bp(noise(2.0), 2000, 8000), 0.05, 1.2)) * 0.6,
     'event/siren': lambda: norm(mixdown(*[(env(sine(lambda tt, k=k: 620 + 260 * np.sin(2 * np.pi * 0.55 * tt + k), 4.0), 0.3, 1.6) * 0.6, 0) for k in (0, 0.4)],
                                        (env(lp(noise(4.0), 900), 0.4, 1.5) * 0.15, 0))),
+    'event/drone': lambda: norm(mixdown((env(sum(sine(140 * h, 1.0) * (0.6 / h) for h in range(1, 7)) * (0.65 + 0.35 * np.sin(2 * np.pi * 46 * t(1.0))), 0.02, 9.0) * 0.6, 0),
+                                       (env(bp(noise(1.0), 300, 2400), 0.02, 9.0) * 0.25, 0))) * 0.7,
     'event/whistle': lambda: norm(mixdown((env(sine(lambda tt: 2400 - 1500 * tt / 1.1, 1.1), 0.25, 2.0) * 0.5, 0),
                                          (env(bp(noise(1.1), 1500, 4000), 0.3, 1.2) * 0.35, 0))) * 0.9,
     'throw/flash': lambda: norm(mixdown((np.tanh(3 * env(noise(0.3), 0.0005, 0.05)), 0), (env(sine(4200, 3.0), 0.01, 1.5) * 0.25, 0.05))),

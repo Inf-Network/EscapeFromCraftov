@@ -74,7 +74,11 @@ public final class Ballistics {
                 BodyPart part = BodyPart.of(living, result.getHitPosition());
                 double distance = eye.toVector().distance(result.getHitPosition());
                 plugin.damage().bullet(shooter, living, part, gun, ammo, distance, weaponName);
-                plugin.weapons().fx().body(living, end, dir);
+                if (plugin.drones().isDrone(living)) {
+                    world.spawnParticle(Particle.ELECTRIC_SPARK, end, 8, 0.1, 0.1, 0.1, 0.3);
+                } else {
+                    plugin.weapons().fx().body(living, end, dir);
+                }
             } else if (result.getHitBlock() != null) {
                 impact(result.getHitBlock(), end, result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection(), dir);
             }

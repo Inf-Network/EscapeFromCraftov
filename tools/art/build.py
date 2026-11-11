@@ -6,6 +6,7 @@ Outputs:
   src/main/resources/betterhud/        -> installed to plugins/BetterHud/
 """
 import json
+import math
 import os
 import shutil
 import sys
@@ -362,6 +363,40 @@ def build_fx():
             'textures': {'t': 'craftov:item/fx/' + name, 'particle': 'craftov:item/fx/' + name},
             'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False, 'faces': {'south': face, 'north': face}}]})
         write_json(os.path.join(CV, 'items', 'fx', name + '.json'), {'model': model_ref('craftov:item/fx/' + name)})
+    # Recon drone (DroneService.java): a small quadcopter with spinning rotor discs.
+    from PIL import ImageDraw
+    frames = []
+    for k in range(4):
+        f = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+        d = ImageDraw.Draw(f)
+        d.ellipse([0, 0, 15, 15], fill=(40, 42, 44, 70))
+        a = math.pi / 4 * k
+        for b in (a, a + math.pi):
+            d.line([(7.5, 7.5), (7.5 + 7 * math.cos(b), 7.5 + 7 * math.sin(b))], fill=(30, 31, 33, 220), width=2)
+        frames.append(f)
+    save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'rotor.png'), frametime=1)
+    body = Image.new('RGBA', (16, 16), (58, 61, 66, 255))
+    ImageDraw.Draw(body).rectangle([0, 12, 15, 15], fill=(36, 38, 41, 255))
+    save(body, os.path.join(CV, 'textures', 'item', 'fx', 'drone_body.png'))
+
+    def cube(a, b, tex, rot=None, faces=('north', 'south', 'east', 'west', 'up', 'down')):
+        e = {'from': a, 'to': b, 'faces': {f: {'uv': [0, 0, 16, 16], 'texture': tex} for f in faces}}
+        if rot:
+            e['rotation'] = {'angle': rot, 'axis': 'y', 'origin': [8, 8, 8]}
+        return e
+    drone = [cube([5.5, 7, 5.5], [10.5, 9, 10.5], '#b'),
+             cube([1.5, 8.2, 7.4], [14.5, 8.8, 8.6], '#b', 45), cube([7.4, 8.2, 1.5], [8.6, 8.8, 14.5], '#b', 45),
+             cube([7, 6.2, 9.8], [9, 7, 10.8], '#b'), cube([7.6, 6.4, 10.75], [8.4, 6.8, 10.85], '#l', None, ('south',))]
+    for x, z in ((3.3, 3.3), (12.7, 3.3), (3.3, 12.7), (12.7, 12.7)):
+        drone.append(cube([x - 0.4, 8.8, z - 0.4], [x + 0.4, 9.6, z + 0.4], '#b'))
+        drone.append(cube([x - 2.8, 9.7, z - 2.8], [x + 2.8, 9.7, z + 2.8], '#r', None, ('up', 'down')))
+    led = Image.new('RGBA', (16, 16), (230, 40, 30, 255))
+    save(led, os.path.join(CV, 'textures', 'item', 'fx', 'drone_led.png'))
+    write_json(os.path.join(CV, 'models', 'item', 'fx', 'drone.json'), {
+        'textures': {'b': 'craftov:item/fx/drone_body', 'r': 'craftov:item/fx/rotor', 'l': 'craftov:item/fx/drone_led',
+                     'particle': 'craftov:item/fx/drone_body'},
+        'elements': drone})
+    write_json(os.path.join(CV, 'items', 'fx', 'drone.json'), {'model': model_ref('craftov:item/fx/drone')})
     # Decals are item displays lying flat on the wall (ImpactFx.java): one face at z=8, seen from +Z.
     for name, metal in (('hole', False), ('hole_metal', True)):
         save(bullet_hole(metal, 3 if metal else 5), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))

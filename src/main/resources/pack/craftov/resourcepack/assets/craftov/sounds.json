@@ -343,6 +343,13 @@
    }
   ]
  },
+ "event.drone": {
+  "sounds": [
+   {
+    "name": "craftov:event/drone"
+   }
+  ]
+ },
  "event.whistle": {
   "sounds": [
    {

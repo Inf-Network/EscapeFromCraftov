@@ -194,6 +194,10 @@ public final class GunAudio {
     public void bodyImpact(LivingEntity victim, boolean head, boolean armored, boolean penetrated) {
         Location at = victim.getLocation().add(0, head ? victim.getHeight() * 0.9 : victim.getHeight() * 0.6, 0);
         float pitch = 0.94f + ThreadLocalRandom.current().nextFloat() * 0.12f;
+        if (plugin.drones().isDrone(victim)) {
+            victim.getWorld().playSound(at, "craftov:impact.metal", SoundCategory.PLAYERS, 1f, pitch * 1.2f);
+            return;
+        }
         if (armored) {
             victim.getWorld().playSound(at, head ? "craftov:impact.helmet" : "craftov:impact.armor", SoundCategory.PLAYERS,
                     1f, penetrated ? pitch * 0.92f : pitch);

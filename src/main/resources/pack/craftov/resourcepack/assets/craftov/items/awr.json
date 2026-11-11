@@ -14,405 +14,418 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:range_dispatch",
-   "property": "minecraft:cooldown",
-   "entries": [
+   "type": "minecraft:select",
+   "property": "minecraft:charge_type",
+   "cases": [
     {
-     "threshold": 0.95833,
+     "when": "arrow",
      "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_0"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_0"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.91667,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_1"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_1"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.875,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_2"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_2"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.83333,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_3"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_3"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.79167,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_4"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_4"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.75,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_5"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_5"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.70833,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_6"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_6"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.66667,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_7"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_7"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.625,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_8"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_8"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.58333,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_9"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_9"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.54167,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_10"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_10"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.5,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_11"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_11"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.45833,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_12"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_12"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.41667,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_13"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_13"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.375,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_14"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_14"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.33333,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_15"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_15"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.29167,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_16"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_16"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.25,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_17"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_17"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.20833,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_18"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_18"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.16667,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_19"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_19"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.125,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_20"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_20"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.08333,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_21"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_21"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.04167,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_22"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_22"
-       }
-      ]
-     }
-    },
-    {
-     "threshold": 0.0001,
-     "model": {
-      "type": "minecraft:composite",
-      "models": [
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/body_23"
-       },
-       {
-        "type": "minecraft:model",
-        "model": "craftov:item/gun_reload/awr/mag_23"
-       }
-      ]
+      "type": "minecraft:model",
+      "model": "craftov:item/gun_aimed/awr"
      }
     }
    ],
    "fallback": {
-    "type": "minecraft:condition",
-    "property": "minecraft:keybind_down",
-    "keybind": "key.use",
-    "on_true": {
-     "type": "minecraft:model",
-     "model": "craftov:item/gun_ads/awr"
-    },
-    "on_false": {
-     "type": "minecraft:model",
-     "model": "craftov:item/gun/awr"
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:cooldown",
+    "entries": [
+     {
+      "threshold": 0.95833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_0"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_0"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.91667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_1"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_1"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.875,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_2"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_2"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.83333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_3"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_3"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.79167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_4"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_4"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.75,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_5"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_5"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.70833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_6"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_6"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.66667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_7"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_7"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.625,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_8"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_8"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.58333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_9"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_9"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.54167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_10"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_10"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.5,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_11"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_11"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.45833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_12"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_12"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.41667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_13"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_13"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.375,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_14"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_14"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.33333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_15"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_15"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.29167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_16"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_16"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.25,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_17"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_17"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.20833,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_18"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_18"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.16667,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_19"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_19"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.125,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_20"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_20"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.08333,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_21"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_21"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.04167,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_22"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_22"
+        }
+       ]
+      }
+     },
+     {
+      "threshold": 0.0001,
+      "model": {
+       "type": "minecraft:composite",
+       "models": [
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/body_23"
+        },
+        {
+         "type": "minecraft:model",
+         "model": "craftov:item/gun_reload/awr/mag_23"
+        }
+       ]
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:condition",
+     "property": "minecraft:keybind_down",
+     "keybind": "key.use",
+     "on_true": {
+      "type": "minecraft:model",
+      "model": "craftov:item/gun_ads/awr"
+     },
+     "on_false": {
+      "type": "minecraft:model",
+      "model": "craftov:item/gun/awr"
+     }
     }
    }
   }

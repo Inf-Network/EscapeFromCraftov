@@ -214,6 +214,28 @@ def third_person(gid, arm_raise):
             {'rotation': [-arm_raise, -90, -90], 'translation': t, 'scale': s})
 
 
+# Seen by other players, the gun travels as a charged crossbow so their client draws the
+# two-handed crossbow-hold pose (main arm pitch -90+5.7 degrees plus look pitch, yaw 17 degrees
+# inward). This rotation undoes that arm transform exactly: barrel straight ahead, top up, the
+# stock on the shoulder. Solved numerically against the 1.21.11 ItemInHandLayer chain.
+AIMED_ROTATION = [5.73, 72.81, 0]
+
+
+def third_person_aimed(gid):
+    pistol = gid in PISTOLS
+    t = [0, 1, 1] if pistol else [0, -3.5, 1]
+    s = [0.75] * 3 if pistol else [0.6] * 3
+    r = AIMED_ROTATION
+    return ({'rotation': list(r), 'translation': t, 'scale': s},
+            {'rotation': [r[0], -r[1], -r[2]], 'translation': t, 'scale': s})
+
+
+def gun_aimed_model(gid, parent):
+    """Variant shown to other players while the holder has the gun up (see AIMED_ROTATION)."""
+    tp_r, tp_l = third_person_aimed(gid)
+    return {'parent': parent, 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
+
+
 def gun_model(gid):
     elements = gun_elements(gid)
     fp_r, fp_l = first_person(gid, elements, False)

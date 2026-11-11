@@ -64,6 +64,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private HealthService health;
     private StaminaService stamina;
     private TriggerService triggers;
+    private net.infnetwork.snowball.craftov.weapon.StanceService stance;
     private DownedService downed;
     private WeaponService weapons;
     private RaidManager raids;
@@ -118,6 +119,7 @@ public final class CraftovPlugin extends JavaPlugin {
         downed = new DownedService(this);
         weapons = new WeaponService(this);
         triggers = new TriggerService(this);
+        stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -135,7 +137,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, new ThrowableService(this));
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -153,6 +155,7 @@ public final class CraftovPlugin extends JavaPlugin {
         maps.load();
         lobby.start();
         range.start();
+        stance.start();
         market.start();
         new PackService(this).install();
         hookBetterHud();
@@ -266,6 +269,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public HealthService health() { return health; }
     public StaminaService stamina() { return stamina; }
     public TriggerService triggers() { return triggers; }
+    public net.infnetwork.snowball.craftov.weapon.StanceService stance() { return stance; }
 
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {

@@ -119,6 +119,11 @@ def build_items(item_defs):
                 return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
                         'fallback': normal}
             in_hand = reloading(aim(held, 'craftov:item/gun_ads/' + item_id))
+            # Other players receive the gun as a charged crossbow while it is raised (StanceService),
+            # which gives the two-handed aiming pose; these models keep the barrel straight in it.
+            write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
+            aimed = model_ref('craftov:item/gun_aimed/' + item_id)
+            aimed_cases = []
             # A mounted optic is stored as custom_model_data string 0 and picks a gun+optic model.
             cases = []
             for oid in models.optics_for(item_id):
@@ -132,11 +137,18 @@ def build_items(item_defs):
                     write_json(os.path.join(CV, 'models', 'item', 'gun_reload', item_id, '%s_%d.json' % (oid, k)),
                                models.frame_model('craftov:item/gun_part/' + combo, right))
                     optic_frames.append(name)
+                write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', combo + '.json'),
+                           models.gun_aimed_model(item_id, 'craftov:item/gun_opt/' + combo))
+                aimed_cases.append({'when': oid, 'model': model_ref('craftov:item/gun_aimed/' + combo)})
                 cases.append({'when': oid, 'model': reloading(
                     aim('craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo), optic_frames)})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}
+                aimed = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
+                         'cases': aimed_cases, 'fallback': aimed}
+            in_hand = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
+                       'cases': [{'when': 'arrow', 'model': aimed}], 'fallback': in_hand}
             write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
                 'type': 'minecraft:select', 'property': 'minecraft:display_context',
                 'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}})

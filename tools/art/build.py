@@ -19,6 +19,7 @@ import hudart  # noqa: E402
 import icons  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
+import soldiers  # noqa: E402
 import sounds  # noqa: E402
 import gunaudio  # noqa: E402
 import ui  # noqa: E402
@@ -611,10 +612,25 @@ void main() {
 
 
 def build_trigger_capture():
-    """Assets for left-click firing: the capture block (cobweb) is invisible and silent when "mined"."""
+    """Assets for left-click firing: the capture block (cobweb) is invisible and silent when "mined".
+
+    Also the vanilla sound overrides: the AI are zombies (patrols) and husks (elite) re-skinned as
+    soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
+    """
     save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'cobweb.png'))
-    write_json(os.path.join(MC, 'sounds.json'), {
-        'block.cobweb.hit': {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}})
+    silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
+    hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
+    death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
+    step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
+    overrides = {'block.cobweb.hit': silence}
+    for mob in ('zombie', 'husk'):
+        overrides['entity.%s.ambient' % mob] = silence
+        overrides['entity.%s.hurt' % mob] = hurt
+        overrides['entity.%s.death' % mob] = death
+        overrides['entity.%s.step' % mob] = step
+    write_json(os.path.join(MC, 'sounds.json'), overrides)
+    save(soldiers.patrol(), os.path.join(MC, 'textures', 'entity', 'zombie', 'zombie.png'))
+    save(soldiers.elite(), os.path.join(MC, 'textures', 'entity', 'zombie', 'husk.png'))
     write_text(os.path.join(MC, 'shaders', 'core', 'rendertype_lines.fsh'), LINES_FSH)
 
 

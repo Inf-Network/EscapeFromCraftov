@@ -193,14 +193,17 @@ public final class AiService implements Listener {
         int armorLevel = Math.min(6, Math.max(0, (boss ? 5 : gear + 1) + rng.nextInt(-1, 2)));
         ItemDef finalAmmo = ammo;
         double accuracy = raid.tier.aiAccuracy() * (boss ? 1.15 : "sniper".equals(kind) ? 1.1 : 1.0);
-        Zombie mob = raid.world.spawn(at, Zombie.class, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+        // Patrols are zombies and elite units (guards, snipers, bosses) husks: the resource pack dresses
+        // the two as different soldiers (tools/art/soldiers.py) and gives them human sounds.
+        @SuppressWarnings("unchecked")
+        Class<Zombie> type = (Class<Zombie>) (Class<?>) ("patrol".equals(kind) && !boss ? Zombie.class : org.bukkit.entity.Husk.class);
+        Zombie mob = raid.world.spawn(at, type, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
             z.setLeftHanded(false); // the gun model's third-person pose is tuned for the right hand
             z.setAdult();
             z.setShouldBurnInDay(false);
             z.setCanPickupItems(false);
             z.setPersistent(false);
             z.setRemoveWhenFarAway(false);
-            z.setSilent(true);
             z.setCanBreakDoors(false);
             z.setMaximumNoDamageTicks(0);
             EntityEquipment eq = z.getEquipment();

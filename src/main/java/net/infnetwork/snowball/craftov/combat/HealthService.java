@@ -357,9 +357,12 @@ public final class HealthService implements Listener {
         }
     }
 
+    /** Re-applies the movement modifiers right away (scope zoom is computed from the new speed). */
     public void forceSpeedUpdate(Player player) {
-        lastSpeed.remove(player.getUniqueId());
         lastJump.remove(player.getUniqueId());
+        double factor = speedFactor(player);
+        lastSpeed.put(player.getUniqueId(), factor);
+        applyModifier(player, Attribute.MOVEMENT_SPEED, SPEED_KEY, factor);
     }
 
     private double speedFactor(Player player) {

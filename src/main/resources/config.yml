@@ -136,6 +136,10 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+insurance:
+  # Share of the insured gear's value charged on deploy.
+  rate: 0.08
+
 events:
   # Share of raids fought at night (dark; soldiers see half as far but spot lit tactical lights from afar).
   night-chance: 0.3

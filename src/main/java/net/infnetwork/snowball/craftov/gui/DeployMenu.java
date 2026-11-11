@@ -98,6 +98,17 @@ final class DeployMenu extends Menu {
             fill = !fill;
             redraw();
         });
+        var profile = plugin.profiles().get(viewer);
+        long fee = plugin.insurance().quote(viewer);
+        button(34, UiItems.button("craftov:ui/icon_secure", (profile.autoInsure ? "<#5BD16B>● 装备保险" : "<#8A8F98>○ 装备保险"),
+                List.of("<#9AA0A6>出发时为枪械、护甲、胸挂和背包投保",
+                        "<#9AA0A6>费用为装备价值的 " + Math.round(plugin.insurance().rate() * 100) + "%，本次约 <#F2C94C>◈" + Text.money(fee),
+                        "<#9AA0A6>阵亡后没被别人带出的投保装备，",
+                        "<#9AA0A6>会在对局结束时退回仓库邮箱")), e -> {
+            profile.autoInsure = !profile.autoInsure;
+            plugin.profiles().markDirty(viewer.getUniqueId());
+            redraw();
+        });
         Party party = plugin.match().partyOf(viewer.getUniqueId());
         List<String> partyLore = new ArrayList<>();
         if (party == null) {

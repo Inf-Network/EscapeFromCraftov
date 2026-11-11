@@ -359,6 +359,7 @@ public final class RaidManager implements Listener {
         if (raid.tier.entryFee() > 0) {
             profile.money -= raid.tier.entryFee();
         }
+        plugin.insurance().onDeploy(player, raid);
         plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
         for (ItemRecord record : profile.secure) {
@@ -653,6 +654,7 @@ public final class RaidManager implements Listener {
         }
         point.used++;
         plugin.weapons().reset(player);
+        plugin.insurance().strip(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.EXTRACTED;
         rp.extracting = null;
@@ -1055,6 +1057,7 @@ public final class RaidManager implements Listener {
 
     private void close(Raid raid) {
         raid.state = Raid.State.CLOSED;
+        plugin.insurance().settle(raid);
         spectators.values().removeIf(entry -> entry.getKey() == raid);
         for (Player player : raid.world.getPlayers()) {
             byPlayer.remove(player.getUniqueId());

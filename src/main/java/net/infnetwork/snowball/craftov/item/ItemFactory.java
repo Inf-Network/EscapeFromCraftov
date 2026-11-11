@@ -542,6 +542,9 @@ public final class ItemFactory {
                 }
             }
         }
+        if (stack.getPersistentDataContainer().has(Keys.INSURED)) {
+            lore.add(Text.mm("<#5BD16B>✔ 本局已投保"));
+        }
         if (def.attach() != null) {
             var part = def.attach();
             List<String> fits = new ArrayList<>();

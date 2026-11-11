@@ -40,6 +40,8 @@ public final class Profile {
     public List<RaidReport> reports = new ArrayList<>();
     public List<TaskState> tasks = new ArrayList<>();
     public long taskDay = -1;
+    /** Insure guns, armour, rig and backpack on every deploy (InsuranceService). */
+    public boolean autoInsure;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

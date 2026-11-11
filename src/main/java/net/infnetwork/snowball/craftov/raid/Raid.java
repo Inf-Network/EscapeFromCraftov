@@ -33,6 +33,8 @@ public final class Raid {
     public final Map<String, LootContainer> containers = new HashMap<>();
     public final List<ExtractPoint> extracts = new ArrayList<>();
     public final Map<String, Long> switchUntil = new HashMap<>();
+    /** Switches whose departure countdown is running: everyone in their extracts leaves when it ends. */
+    public final java.util.Set<String> departing = new java.util.HashSet<>();
     public final Map<String, String> lockedDoors = new HashMap<>();
     /** Locked doors someone has opened with a key: they stay unlocked for the rest of the raid. */
     public final java.util.Set<String> unlockedDoors = new java.util.HashSet<>();

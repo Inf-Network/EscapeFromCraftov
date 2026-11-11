@@ -439,10 +439,21 @@ public final class RaidManager implements Listener {
                     player.sendActionBar(Text.mm("<#FF8A80>" + blocked));
                     continue;
                 }
+                if (inside.def.type() == ExtractType.SWITCH) {
+                    // Lever extracts leave all at once when the departure countdown ends (see tickSecond).
+                    long left = (raid.switchUntil.getOrDefault(inside.def.switchId(), 0L) - now) / 20 + 1;
+                    player.sendActionBar(Text.mm("<#5BD16B>撤离倒计时 <white>" + left + "s <#9AA0A6>· 留在区域内即可撤离"));
+                    rp.extracting = inside.def.id();
+                    continue;
+                }
                 if (!inside.def.id().equals(rp.extracting)) {
                     rp.extracting = inside.def.id();
                     rp.extractTicks = 0;
                     player.playSound(player.getLocation(), "craftov:extract.start", SoundCategory.MASTER, 0.9f, 1f);
+                    if (inside.def.type() == ExtractType.PAID) {
+                        Text.send(player, "<#FFC23D>付费撤离：<white>撤离完成时自动从账户扣除 ◈" + Text.money(inside.def.cost())
+                                + "</white> <#9AA0A6>(当前余额 ◈" + Text.money(plugin.profiles().get(player).money) + "，离开区域即取消)");
+                    }
                 }
                 rp.extractTicks += 5;
                 int need = inside.def.seconds() * 20;
@@ -478,7 +489,8 @@ public final class RaidManager implements Listener {
         }
         switch (def.type()) {
             case SWITCH -> {
-                if (!raid.switchActive(def.switchId())) {
+                if (!raid.switchActive(def.switchId()) && !raid.departing.contains(def.switchId())
+                        && !departingNow.contains(def.switchId())) {
                     MapDef.SwitchDef sw = raid.map.switches().stream().filter(s -> s.id().equals(def.switchId())).findFirst().orElse(null);
                     return "需要先开启" + (sw == null ? "电闸" : sw.name());
                 }
@@ -557,6 +569,14 @@ public final class RaidManager implements Listener {
                     }
                 }
             }
+            for (String id : new ArrayList<>(raid.departing)) {
+                if (!raid.switchActive(id)) {
+                    raid.departing.remove(id);
+                    departingNow.add(id);
+                    depart(raid, id);
+                    departingNow.remove(id);
+                }
+            }
             for (ExtractPoint point : raid.extracts) {
                 if (point.available && !point.announcedOpen && point.def.opensAt() > 0 && elapsed >= point.def.opensAt()) {
                     point.announcedOpen = true;
@@ -598,6 +618,28 @@ public final class RaidManager implements Listener {
     }
 
     // ------------------------------------------------------------------ extraction
+
+    /** Switch ids whose departure is being processed right now (the switch itself has just expired). */
+    private final java.util.Set<String> departingNow = new java.util.HashSet<>();
+
+    /** A lever countdown ran out: everyone standing in an extract tied to that lever leaves now. */
+    private void depart(Raid raid, String switchId) {
+        for (ExtractPoint point : raid.extracts) {
+            if (!point.available || point.def.type() != ExtractType.SWITCH || !point.def.switchId().equals(switchId)) {
+                continue;
+            }
+            for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+                Player player = Bukkit.getPlayer(rp.uuid);
+                if (player == null || rp.state != RaidPlayer.State.ALIVE || player.getWorld() != raid.world
+                        || horizontalDistanceSq(point.center, player.getLocation()) > point.def.radius() * point.def.radius()
+                        || Math.abs(point.center.getY() - player.getY()) >= 4 || extractBlocker(raid, point, player) != null) {
+                    continue;
+                }
+                extract(raid, player, rp, point);
+            }
+            raid.world.playSound(point.center, "craftov:extract.start", SoundCategory.MASTER, 4f, 0.8f);
+        }
+    }
 
     private void extract(Raid raid, Player player, RaidPlayer rp, ExtractPoint point) {
         Profile profile = plugin.profiles().get(player);
@@ -1152,19 +1194,21 @@ public final class RaidManager implements Listener {
                 player.sendActionBar(Text.mm("<#9AA0A6>" + Text.escape(sw.name()) + " 已经开启"));
                 return;
             }
-            raid.switchUntil.put(sw.id(), (long) Bukkit.getCurrentTick() + sw.activeSeconds() * 20L);
+            int countdown = plugin.getConfig().getInt("extract.switch-countdown-seconds", 60);
+            raid.switchUntil.put(sw.id(), (long) Bukkit.getCurrentTick() + countdown * 20L);
+            raid.departing.add(sw.id());
             if (block.getBlockData() instanceof Powerable powerable) {
                 powerable.setPowered(true);
                 block.setBlockData(powerable, false);
             }
             raid.world.playSound(block.getLocation(), "craftov:world.switch", SoundCategory.BLOCKS, 3f, 1f);
-            announce(raid, "<#FFC23D>" + Text.escape(sw.name()) + " 已被开启！相关撤离点开放 " + sw.activeSeconds() / 60 + " 分钟。");
+            announce(raid, "<#FFC23D>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (block.getBlockData() instanceof Powerable powerable) {
                     powerable.setPowered(false);
                     block.setBlockData(powerable, false);
                 }
-            }, sw.activeSeconds() * 20L);
+            }, countdown * 20L + 20L);
         }
     }
 

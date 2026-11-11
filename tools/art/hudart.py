@@ -113,3 +113,26 @@ def body_part(part, state):
     else:
         d.rectangle([x0, y0, x1, y1], fill=fill, outline=edge)
     return img
+
+
+def damage_arc(index, size=96, radius=38, width=7, span=36):
+    """Hit-direction marker: a red arc on a ring around the crosshair, index 0 = front, clockwise in 45s."""
+    import math
+    img = Image.new('RGBA', (size * 4, size * 4), (0, 0, 0, 0))
+    px = img.load()
+    c = size * 2
+    centre = math.radians(index * 45 - 90)
+    for y in range(size * 4):
+        for x in range(size * 4):
+            dx, dy = (x - c) / 4, (y - c) / 4
+            r = math.hypot(dx, dy)
+            if abs(r - radius) > width / 2:
+                continue
+            a = math.atan2(dy, dx) - centre
+            a = (a + math.pi) % (2 * math.pi) - math.pi
+            t = abs(math.degrees(a)) / (span / 2)
+            if t > 1:
+                continue
+            alpha = (1 - t ** 2) * (1 - (abs(r - radius) / (width / 2)) ** 3)
+            px[x, y] = (255, 77, 64, int(235 * alpha))
+    return img.resize((size, size), Image.LANCZOS)

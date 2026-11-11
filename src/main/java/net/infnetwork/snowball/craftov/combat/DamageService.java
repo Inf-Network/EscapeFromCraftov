@@ -156,6 +156,9 @@ public final class DamageService implements Listener {
                     .add(new HitRecord(shooter == null ? "未知" : displayName(shooter), weaponName, part, damage, (int) Math.round(distance)));
         }
         deal(victim, shooter, damage);
+        if (victim instanceof Player hurt && shooter != null) {
+            plugin.hud().damageFrom(hurt, shooter.getLocation());
+        }
         plugin.ai().onBotHurt(victim, shooter);
         if (shooter instanceof Player player) {
             feedback(player, victim, damage, zone);

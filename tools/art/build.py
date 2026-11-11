@@ -256,6 +256,7 @@ def build_ui():
         write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), generated('craftov:item/ui/' + name))
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
+    save(ui.suppression_overlay(), os.path.join(CV, 'textures', 'misc', 'suppressed.png'))
     for style in ('3x', '4x', '8x'):
         save(ui.scope_overlay(style), os.path.join(CV, 'textures', 'misc', 'scope_' + style + '.png'))
     # Health screen body parts: the plate stays as drawn, the silhouette takes the stack's dyed colour.
@@ -348,6 +349,7 @@ HUD_IMAGES = {
     'craftov/hit.png': lambda: hudart.marker((240, 240, 240, 255)),
     'craftov/hit_head.png': lambda: hudart.marker(rgb('#FFC23D')),
     'craftov/hit_kill.png': lambda: hudart.marker(rgb('#FF4D4D'), 17, 3, 3),
+    **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
     'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
     'craftov/compass/s.png': lambda: hudart.glyph('S'),
     'craftov/compass/e.png': lambda: hudart.glyph('E'),
@@ -408,6 +410,7 @@ def build_betterhud():
         'craftov_hit': {'type': 'single', 'file': 'craftov/hit.png'},
         'craftov_hit_head': {'type': 'single', 'file': 'craftov/hit_head.png'},
         'craftov_hit_kill': {'type': 'single', 'file': 'craftov/hit_kill.png'},
+        **{'craftov_damage_%d' % i: {'type': 'single', 'file': 'craftov/damage_%d.png' % i} for i in range(8)},
     }
 
     def listener(file, value, max_value):
@@ -496,6 +499,7 @@ def build_betterhud():
         'craftov_hit_layout': {'images': numbered([image('craftov_hit', 0, 0)])},
         'craftov_hit_head_layout': {'images': numbered([image('craftov_hit_head', 0, 0)])},
         'craftov_hit_kill_layout': {'images': numbered([image('craftov_hit_kill', -1, -1)])},
+        **{'craftov_damage_%d_layout' % i: {'images': numbered([image('craftov_damage_%d' % i, 0, 0)])} for i in range(8)},
     }
     # BetterHud centres a layout on its anchor by default; every position above is measured from the top-left corner.
     for layout in layouts.values():
@@ -522,6 +526,11 @@ def build_betterhud():
                                  ('craftov_hit_kill', 'craftov_hit_kill_layout', -8)):
         popups[name] = {'duration': 4, 'unique': True, 'group': 'craftov_hits',
                         'layouts': numbered([{'name': layout, 'gui': {'x': 50, 'y': 50}, 'pixel': {'x': offset, 'y': offset}}])}
+    # Hit direction: one popup per eighth so hits from several sides show at once (HudService.damageFrom).
+    for i in range(8):
+        popups['craftov_damage_%d' % i] = {'duration': 30, 'unique': True, 'group': 'craftov_damage_%d' % i,
+                                            'layouts': numbered([{'name': 'craftov_damage_%d_layout' % i,
+                                                                  'gui': {'x': 50, 'y': 50}, 'pixel': {'x': -48, 'y': -48}}])}
     write_text(os.path.join(BH, 'popups', 'craftov.yml'), yaml.safe_dump(popups, allow_unicode=True, sort_keys=False))
 
     compass = {'craftov_compass': {

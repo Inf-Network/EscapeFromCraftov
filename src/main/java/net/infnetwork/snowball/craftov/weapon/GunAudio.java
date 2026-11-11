@@ -175,6 +175,7 @@ public final class GunAudio {
             Location at = closest.toLocation(from.getWorld());
             player.playSound(at, key, SoundCategory.PLAYERS, (float) Math.min(1.0, 1.15 - miss / 3.5),
                     0.92f + ThreadLocalRandom.current().nextFloat() * 0.16f);
+            plugin.hud().suppressed(player, from);
         }
     }
 

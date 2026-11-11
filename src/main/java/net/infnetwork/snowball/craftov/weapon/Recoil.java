@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
  * Camera kick. Uses the server's relative rotation packet when available so the kick adds to the
  * player's current aim instead of snapping it; falls back to an absolute rotation.
  */
-final class Recoil {
+public final class Recoil {
 
     private static Method handle;
     private static Method forceRotation;
@@ -17,7 +17,7 @@ final class Recoil {
     private Recoil() {
     }
 
-    static void kick(Player player, float yaw, float pitch) {
+    public static void kick(Player player, float yaw, float pitch) {
         if (!unavailable) {
             try {
                 if (forceRotation == null) {

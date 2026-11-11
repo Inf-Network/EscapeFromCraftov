@@ -648,3 +648,59 @@ craftov_hit_kill_layout:
       x: -1
       y: -1
   offset: left
+craftov_damage_0_layout:
+  images:
+    '1':
+      name: craftov_damage_0
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_1_layout:
+  images:
+    '1':
+      name: craftov_damage_1
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_2_layout:
+  images:
+    '1':
+      name: craftov_damage_2
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_3_layout:
+  images:
+    '1':
+      name: craftov_damage_3
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_4_layout:
+  images:
+    '1':
+      name: craftov_damage_4
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_5_layout:
+  images:
+    '1':
+      name: craftov_damage_5
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_6_layout:
+  images:
+    '1':
+      name: craftov_damage_6
+      x: 0
+      y: 0
+  offset: left
+craftov_damage_7_layout:
+  images:
+    '1':
+      name: craftov_damage_7
+      x: 0
+      y: 0
+  offset: left

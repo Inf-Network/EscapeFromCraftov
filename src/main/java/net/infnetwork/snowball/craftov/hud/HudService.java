@@ -33,12 +33,18 @@ public final class HudService {
     private final Map<UUID, BossBar> status = new HashMap<>();
     private final Map<UUID, HudSnapshot> snapshots = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean betterHud;
+    /** Players looking through a scope picture (it owns the client-side helmet slot). */
+    private final java.util.Set<UUID> scoped = new java.util.HashSet<>();
+    /** Suppression overlay end tick per player. */
+    private final Map<UUID, Long> suppressedUntil = new HashMap<>();
+    private final Map<UUID, Long> lastShake = new HashMap<>();
 
     public HudService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.data = new HudData(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 4L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::snapshot, 20L, 2L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickSuppression, 20L, 2L);
     }
 
     private void snapshot() {
@@ -212,13 +218,86 @@ public final class HudService {
     /** Shows a scope picture (craftov:misc/&lt;overlay&gt;) through a client-only helmet, or removes it when null. */
     public void scopeOverlay(Player player, @org.jspecify.annotations.Nullable String overlay) {
         if (overlay != null) {
-            ItemStack scope = ItemStack.of(Material.PAPER);
-            scope.setData(DataComponentTypes.EQUIPPABLE, Equippable.equippable(EquipmentSlot.HEAD)
-                    .cameraOverlay(Key.key("craftov", "misc/" + overlay)).build());
-            player.sendEquipmentChange(player, EquipmentSlot.HEAD, scope);
+            scoped.add(player.getUniqueId());
         } else {
-            ItemStack real = player.getInventory().getHelmet();
-            player.sendEquipmentChange(player, EquipmentSlot.HEAD, real == null ? ItemStack.empty() : real);
+            scoped.remove(player.getUniqueId());
         }
+        if (overlay == null && suppressedUntil.containsKey(player.getUniqueId())) {
+            cameraOverlay(player, "suppressed");
+            return;
+        }
+        if (overlay != null) {
+            cameraOverlay(player, overlay);
+        } else {
+            restoreHelmet(player);
+        }
+    }
+
+    private static void cameraOverlay(Player player, String texture) {
+        ItemStack overlay = ItemStack.of(Material.PAPER);
+        overlay.setData(DataComponentTypes.EQUIPPABLE, Equippable.equippable(EquipmentSlot.HEAD)
+                .cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
+        player.sendEquipmentChange(player, EquipmentSlot.HEAD, overlay);
+    }
+
+    private static void restoreHelmet(Player player) {
+        ItemStack real = player.getInventory().getHelmet();
+        player.sendEquipmentChange(player, EquipmentSlot.HEAD, real == null ? ItemStack.empty() : real);
+    }
+
+    /**
+     * A bullet snapped past this player: the screen edges darken for about a second and the view
+     * jolts a little. A scope picture, if one is up, stays on top.
+     */
+    public void suppressed(Player player, org.bukkit.Location from) {
+        long now = Bukkit.getCurrentTick();
+        boolean fresh = !suppressedUntil.containsKey(player.getUniqueId());
+        suppressedUntil.put(player.getUniqueId(), now + 24);
+        if (fresh && !scoped.contains(player.getUniqueId())) {
+            cameraOverlay(player, "suppressed");
+        }
+        Long last = lastShake.get(player.getUniqueId());
+        if (last == null || now - last >= 4) {
+            lastShake.put(player.getUniqueId(), now);
+            java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
+            net.infnetwork.snowball.craftov.weapon.Recoil.kick(player, (float) (rng.nextDouble() - 0.5) * 0.9f,
+                    (float) (rng.nextDouble() - 0.5) * 0.7f);
+        }
+    }
+
+    private void tickSuppression() {
+        if (suppressedUntil.isEmpty()) {
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        var it = suppressedUntil.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            if (entry.getValue() > now) {
+                continue;
+            }
+            it.remove();
+            lastShake.remove(entry.getKey());
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null && !scoped.contains(entry.getKey())) {
+                restoreHelmet(player);
+            }
+        }
+    }
+
+    /** Red arc around the crosshair pointing at where a hit came from (front = top). */
+    public void damageFrom(Player victim, org.bukkit.Location source) {
+        if (!betterHud || source.getWorld() != victim.getWorld()) {
+            return;
+        }
+        org.bukkit.util.Vector to = source.toVector().subtract(victim.getLocation().toVector()).setY(0);
+        if (to.lengthSquared() < 0.01) {
+            return;
+        }
+        double yaw = Math.toRadians(victim.getLocation().getYaw());
+        double forward = to.getX() * -Math.sin(yaw) + to.getZ() * Math.cos(yaw);
+        double right = to.getX() * -Math.cos(yaw) + to.getZ() * -Math.sin(yaw);
+        int index = Math.floorMod((int) Math.round(Math.atan2(right, forward) / (Math.PI / 4)), 8);
+        plugin.betterHud().popup(victim, "craftov_damage_" + index);
     }
 }

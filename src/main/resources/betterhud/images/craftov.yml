@@ -25,6 +25,30 @@ craftov_hit_head:
 craftov_hit_kill:
   type: single
   file: craftov/hit_kill.png
+craftov_damage_0:
+  type: single
+  file: craftov/damage_0.png
+craftov_damage_1:
+  type: single
+  file: craftov/damage_1.png
+craftov_damage_2:
+  type: single
+  file: craftov/damage_2.png
+craftov_damage_3:
+  type: single
+  file: craftov/damage_3.png
+craftov_damage_4:
+  type: single
+  file: craftov/damage_4.png
+craftov_damage_5:
+  type: single
+  file: craftov/damage_5.png
+craftov_damage_6:
+  type: single
+  file: craftov/damage_6.png
+craftov_damage_7:
+  type: single
+  file: craftov/damage_7.png
 craftov_hp_bar:
   type: listener
   file: craftov/hp_bar.png

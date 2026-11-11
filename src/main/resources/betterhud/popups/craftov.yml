@@ -37,3 +37,107 @@ craftov_hit_kill:
       pixel:
         x: -8
         y: -8
+craftov_damage_0:
+  duration: 30
+  unique: true
+  group: craftov_damage_0
+  layouts:
+    '1':
+      name: craftov_damage_0_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_1:
+  duration: 30
+  unique: true
+  group: craftov_damage_1
+  layouts:
+    '1':
+      name: craftov_damage_1_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_2:
+  duration: 30
+  unique: true
+  group: craftov_damage_2
+  layouts:
+    '1':
+      name: craftov_damage_2_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_3:
+  duration: 30
+  unique: true
+  group: craftov_damage_3
+  layouts:
+    '1':
+      name: craftov_damage_3_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_4:
+  duration: 30
+  unique: true
+  group: craftov_damage_4
+  layouts:
+    '1':
+      name: craftov_damage_4_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_5:
+  duration: 30
+  unique: true
+  group: craftov_damage_5
+  layouts:
+    '1':
+      name: craftov_damage_5_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_6:
+  duration: 30
+  unique: true
+  group: craftov_damage_6
+  layouts:
+    '1':
+      name: craftov_damage_6_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48
+craftov_damage_7:
+  duration: 30
+  unique: true
+  group: craftov_damage_7
+  layouts:
+    '1':
+      name: craftov_damage_7_layout
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -48
+        y: -48

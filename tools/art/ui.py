@@ -236,3 +236,21 @@ def body_shape(name):
     c = Canvas()
     BODY_SHAPES[name](c)
     return c.img
+
+
+def suppression_overlay(w=640, h=360):
+    """Camera overlay while bullets snap past: dark, slightly blurred-looking edges, clear centre."""
+    import numpy as np
+    yy, xx = np.mgrid[0:h, 0:w]
+    nx = (xx / (w - 1) * 2 - 1)
+    ny = (yy / (h - 1) * 2 - 1)
+    r = np.sqrt(nx ** 2 * 0.85 + ny ** 2 * 1.15)
+    a = np.clip((r - 0.45) / 0.75, 0, 1) ** 1.6
+    rng = np.random.default_rng(7)
+    grain = rng.uniform(0.92, 1.0, (h, w))
+    alpha = (a * grain * 215).astype(np.uint8)
+    rgb = np.zeros((h, w, 3), np.uint8)
+    rgb[..., 0] = 14
+    rgb[..., 1] = 12
+    rgb[..., 2] = 10
+    return Image.fromarray(np.dstack([rgb, alpha]))

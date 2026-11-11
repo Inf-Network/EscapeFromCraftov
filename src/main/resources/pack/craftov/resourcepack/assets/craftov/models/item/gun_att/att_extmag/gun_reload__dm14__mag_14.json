@@ -1,0 +1,144 @@
+{
+ "parent": "craftov:item/gun_reload/dm14/mag_14",
+ "textures": {
+  "a": "craftov:item/gun_palette"
+ },
+ "elements": [
+  {
+   "from": [
+    5.284,
+    6.042,
+    7.256
+   ],
+   "to": [
+    7.716,
+    7.292,
+    8.056
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  },
+  {
+   "from": [
+    5.184,
+    5.692,
+    7.156
+   ],
+   "to": [
+    7.816,
+    6.042,
+    8.156
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  }
+ ]
+}

@@ -335,6 +335,65 @@ def flash_model(gid, display_r, display_l):
             'elements': elements, 'display': display}
 
 
+def attachment_boxes(gid, att):
+    """Boxes of an attachment in the gun's model space, placed from the gun's own geometry."""
+    el = gun_elements(gid)
+    mx, my, mz = muzzle_point(gid)
+    pistol = gid in PISTOLS
+    if att == 'att_suppressor':
+        r = 0.72 if pistol else 0.95
+        length = min(4.4 if pistol else 6.4, 31.7 - mx)
+        x0, x1 = mx - 0.3, mx - 0.3 + length
+        return [(x0, my - r, mz - r * 0.62, x1, my + r, mz + r * 0.62, DG),
+                (x0, my - r * 0.62, mz - r, x1, my + r * 0.62, mz + r, DG),
+                (x1 - 0.5, my - r * 0.66, mz - r * 0.66, x1 + 0.1, my + r * 0.66, mz + r * 0.66, K),
+                (x0 + length * 0.45, my - r - 0.05, mz - r * 0.3, x0 + length * 0.55, my + r + 0.05, mz + r * 0.3, K)]
+    if att == 'att_compensator':
+        r = 0.72
+        length = min(2.4, 31.7 - mx)
+        x0 = mx - 0.2
+        return [(x0, my - r, mz - r, x0 + length, my + r, mz + r, MG),
+                (x0 + 0.5, my + r - 0.25, mz - r * 0.5, x0 + 0.9, my + r + 0.02, mz + r * 0.5, K),
+                (x0 + 1.4, my + r - 0.25, mz - r * 0.5, x0 + 1.8, my + r + 0.02, mz + r * 0.5, K)]
+    if att == 'att_vgrip':
+        gx = mx - (8.0 if gid == 'r12' else 6.5)
+        under = [e['from'][1] for e in el if e['from'][0] <= gx <= e['to'][0]]
+        bottom = min(under) if under else my - 1.5
+        return [(gx - 1.0, bottom - 0.35, mz - 0.55, gx + 1.0, bottom + 0.05, mz + 0.55, K),
+                (gx - 0.55, bottom - 3.4, mz - 0.55, gx + 0.55, bottom - 0.35, mz + 0.55, DG),
+                (gx - 0.65, bottom - 3.6, mz - 0.65, gx + 0.65, bottom - 3.3, mz + 0.65, K)]
+    if att == 'att_taclight':
+        lx = mx - (2.6 if pistol else 4.5)
+        near = [e['from'][2] for e in el if e['from'][0] <= lx <= e['to'][0]]
+        side = min(near) if near else mz - 0.6
+        ly = my - (0.7 if pistol else 0.1)
+        return [(lx - 1.8, ly - 0.55, side - 1.1, lx + 1.5, ly + 0.55, side - 0.05, DG),
+                (lx + 1.5, ly - 0.7, side - 1.25, lx + 2.1, ly + 0.7, side + 0.05, K),
+                (lx + 2.1, ly - 0.5, side - 1.05, lx + 2.15, ly + 0.5, side - 0.15, WH),
+                (lx - 1.0, ly - 0.9, side - 0.8, lx - 0.2, ly - 0.55, side - 0.3, K)]
+    if att == 'att_extmag':
+        mag = gun_parts(gid).get('mag') or []
+        if not mag:
+            return []
+        x0 = min(e['from'][0] for e in mag)
+        x1 = max(e['to'][0] for e in mag)
+        y0 = min(e['from'][1] for e in mag)
+        y1 = max(e['to'][1] for e in mag)
+        z0 = min(e['from'][2] for e in mag)
+        z1 = max(e['to'][2] for e in mag)
+        ext = max(1.2, (y1 - y0) * 0.5)
+        inset = (x1 - x0) * 0.12
+        return [(x0 + inset, y0 - ext, z0, x1 - inset, y0 + 0.05, z1, DG),
+                (x0 + inset - 0.1, y0 - ext - 0.35, z0 - 0.1, x1 - inset + 0.1, y0 - ext, z1 + 0.1, K)]
+    return []
+
+
+def attachment_model(parent, gid, att):
+    """An attachment drawn in a gun model's pose: the parent supplies the display transforms."""
+    boxes = [tuple(round(v, 3) if isinstance(v, float) else v for v in b) for b in attachment_boxes(gid, att)]
+    return {'parent': parent, 'textures': {'a': 'craftov:item/gun_palette'}, 'elements': [element(b, '#a') for b in boxes]}
+
+
 def pose_model(parent, base_display, pose):
     """Display-only variant of a gun model in one of the poses above."""
     return {'parent': parent, 'display': {

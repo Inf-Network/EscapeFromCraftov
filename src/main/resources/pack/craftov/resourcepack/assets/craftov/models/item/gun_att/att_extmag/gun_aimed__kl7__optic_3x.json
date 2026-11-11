@@ -1,0 +1,144 @@
+{
+ "parent": "craftov:item/gun_aimed/kl7__optic_3x",
+ "textures": {
+  "a": "craftov:item/gun_palette"
+ },
+ "elements": [
+  {
+   "from": [
+    5.468,
+    -0.074,
+    7.403
+   ],
+   "to": [
+    10.332,
+    3.176,
+    8.603
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  },
+  {
+   "from": [
+    5.368,
+    -0.424,
+    7.303
+   ],
+   "to": [
+    10.432,
+    -0.074,
+    8.703
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  }
+ ]
+}

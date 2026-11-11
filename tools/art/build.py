@@ -66,6 +66,64 @@ def generated(texture, parent='minecraft:item/generated'):
     return {'parent': parent, 'textures': {'layer0': texture}}
 
 
+ATT_SLOTS = ['muzzle', 'grip', 'tactical', 'mag']   # custom_model_data strings 1..4 (Attachments.java)
+BODY_LEAVES = ('item/gun/', 'item/gun_opt/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_opt_ads/', 'item/gun_aimed/')
+
+
+def attachments_for(spec, item_defs):
+    """Attachment ids per slot that fit this gun (same rules as Attachments.gunClass/fits)."""
+    gun = spec.get('gun') or {}
+    cls = 'pistol' if gun.get('slot') == 'SECONDARY' else 'shotgun' if 'PUMP' in gun.get('modes', []) else 'rifle'
+    out = {slot: [] for slot in ATT_SLOTS}
+    for aid, aspec in item_defs.items():
+        at = aspec.get('attach')
+        if at and cls in at.get('mount', ['rifle']) and at.get('slot') in out:
+            out[at['slot']].append(aid)
+    return out
+
+
+def wrap_attachments(node, gid, atts):
+    """Adds the fitted attachments to every gun leaf of an item model tree.
+
+    Each attachment is a small model whose parent is the leaf, so it inherits that pose's (or reload
+    frame's) display transforms; the leaf becomes a composite of itself plus one select per slot.
+    Muzzle flashes disappear behind a suppressor.
+    """
+    if isinstance(node, list):
+        return [wrap_attachments(v, gid, atts) for v in node]
+    if not isinstance(node, dict):
+        return node
+    if node.get('type') != 'minecraft:model':
+        return {k: wrap_attachments(v, gid, atts) for k, v in node.items()}
+    ref = node['model']
+    name = ref.split(':', 1)[1]
+    if name.startswith('item/gun_flash/'):
+        if 'att_suppressor' not in atts['muzzle']:
+            return node
+        return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 1,
+                'cases': [{'when': 'att_suppressor', 'model': {'type': 'minecraft:empty'}}], 'fallback': node}
+    if name.startswith('item/gun_reload/'):
+        part = name.rsplit('/', 1)[1].rsplit('_', 1)[0]
+        slots = ['muzzle', 'grip', 'tactical'] if part == 'body' else ['mag'] if part == 'mag' else []
+    elif name.startswith(BODY_LEAVES):
+        slots = ATT_SLOTS
+    else:
+        slots = []
+    selects = []
+    for slot in slots:
+        cases = []
+        for aid in atts[slot]:
+            path = 'gun_att/%s/%s' % (aid, name[len('item/'):].replace('/', '__'))
+            out = os.path.join(CV, 'models', 'item', path + '.json')
+            if not os.path.exists(out):
+                write_json(out, models.attachment_model(ref, gid, aid))
+            cases.append({'when': aid, 'model': model_ref('craftov:item/' + path)})
+        if cases:
+            selects.append({'type': 'minecraft:select', 'property': 'minecraft:custom_model_data',
+                            'index': ATT_SLOTS.index(slot) + 1, 'cases': cases, 'fallback': {'type': 'minecraft:empty'}})
+    return {'type': 'minecraft:composite', 'models': [node] + selects} if selects else node
+
+
 def build_items(item_defs):
     for item_id, spec in item_defs.items():
         rarity = spec.get('rarity', 'WHITE')
@@ -186,9 +244,15 @@ def build_items(item_defs):
                          'cases': aimed_cases, 'fallback': aimed}
             in_hand = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
                        'cases': [{'when': 'arrow', 'model': aimed}], 'fallback': in_hand}
-            write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
-                'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}})
+            in_hand = wrap_attachments(in_hand, item_id, attachments_for(spec, item_defs))
+            # Gun trees are large (poses x sights x reload frames x attachments): written compact.
+            path = os.path.join(CV, 'items', item_id + '.json')
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump({'model': {
+                    'type': 'minecraft:select', 'property': 'minecraft:display_context',
+                    'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}},
+                    f, separators=(',', ':'))
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))

@@ -254,3 +254,13 @@ def suppression_overlay(w=640, h=360):
     rgb[..., 1] = 12
     rgb[..., 2] = 10
     return Image.fromarray(np.dstack([rgb, alpha]))
+
+
+def strobe_overlay(w=320, h=180):
+    """White-out frame for someone blinded by a strobe: nearly opaque, a touch brighter in the middle."""
+    import numpy as np
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.sqrt(((xx / (w - 1)) * 2 - 1) ** 2 + ((yy / (h - 1)) * 2 - 1) ** 2)
+    alpha = np.clip(245 - 25 * r, 0, 255).astype(np.uint8)
+    rgb = np.full((h, w, 3), (250, 250, 244), np.uint8)
+    return Image.fromarray(np.dstack([rgb, alpha]))

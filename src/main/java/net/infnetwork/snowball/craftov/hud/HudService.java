@@ -33,10 +33,14 @@ public final class HudService {
     private final Map<UUID, BossBar> status = new HashMap<>();
     private final Map<UUID, HudSnapshot> snapshots = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean betterHud;
-    /** Players looking through a scope picture (it owns the client-side helmet slot). */
-    private final java.util.Set<UUID> scoped = new java.util.HashSet<>();
-    /** Suppression overlay end tick per player. */
+    /**
+     * Camera overlays share one client-side helmet, so the strongest wins: a strobe flash, then a
+     * scope picture, then the suppression vignette, otherwise the real helmet.
+     */
+    private final Map<UUID, String> scopes = new HashMap<>();
     private final Map<UUID, Long> suppressedUntil = new HashMap<>();
+    private final Map<UUID, Long> dazzledUntil = new HashMap<>();
+    private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
 
     public HudService(CraftovPlugin plugin) {
@@ -44,7 +48,7 @@ public final class HudService {
         this.data = new HudData(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 4L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::snapshot, 20L, 2L);
-        Bukkit.getScheduler().runTaskTimer(plugin, this::tickSuppression, 20L, 2L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickOverlays, 20L, 1L);
     }
 
     private void snapshot() {
@@ -218,18 +222,38 @@ public final class HudService {
     /** Shows a scope picture (craftov:misc/&lt;overlay&gt;) through a client-only helmet, or removes it when null. */
     public void scopeOverlay(Player player, @org.jspecify.annotations.Nullable String overlay) {
         if (overlay != null) {
-            scoped.add(player.getUniqueId());
+            scopes.put(player.getUniqueId(), overlay);
         } else {
-            scoped.remove(player.getUniqueId());
+            scopes.remove(player.getUniqueId());
         }
-        if (overlay == null && suppressedUntil.containsKey(player.getUniqueId())) {
-            cameraOverlay(player, "suppressed");
+        refreshOverlay(player);
+    }
+
+    private @org.jspecify.annotations.Nullable String wantedOverlay(UUID id, long now) {
+        Long dazzled = dazzledUntil.get(id);
+        if (dazzled != null && dazzled > now && (now / 2) % 2 == 0) {
+            return "strobe";
+        }
+        String scope = scopes.get(id);
+        if (scope != null) {
+            return scope;
+        }
+        Long suppressed = suppressedUntil.get(id);
+        return suppressed != null && suppressed > now ? "suppressed" : null;
+    }
+
+    private void refreshOverlay(Player player) {
+        String want = wantedOverlay(player.getUniqueId(), Bukkit.getCurrentTick());
+        String key = want == null ? "" : want;
+        if (key.equals(shownOverlay.getOrDefault(player.getUniqueId(), ""))) {
             return;
         }
-        if (overlay != null) {
-            cameraOverlay(player, overlay);
-        } else {
+        if (want == null) {
+            shownOverlay.remove(player.getUniqueId());
             restoreHelmet(player);
+        } else {
+            shownOverlay.put(player.getUniqueId(), want);
+            cameraOverlay(player, want);
         }
     }
 
@@ -251,11 +275,8 @@ public final class HudService {
      */
     public void suppressed(Player player, org.bukkit.Location from) {
         long now = Bukkit.getCurrentTick();
-        boolean fresh = !suppressedUntil.containsKey(player.getUniqueId());
         suppressedUntil.put(player.getUniqueId(), now + 24);
-        if (fresh && !scoped.contains(player.getUniqueId())) {
-            cameraOverlay(player, "suppressed");
-        }
+        refreshOverlay(player);
         Long last = lastShake.get(player.getUniqueId());
         if (last == null || now - last >= 4) {
             lastShake.put(player.getUniqueId(), now);
@@ -265,22 +286,29 @@ public final class HudService {
         }
     }
 
-    private void tickSuppression() {
-        if (suppressedUntil.isEmpty()) {
+    /** Blinded by a strobe light: the screen flashes white every other tick for a moment. */
+    public void dazzle(Player player, int ticks) {
+        long until = Bukkit.getCurrentTick() + ticks;
+        dazzledUntil.merge(player.getUniqueId(), until, Math::max);
+        refreshOverlay(player);
+    }
+
+    private void tickOverlays() {
+        if (suppressedUntil.isEmpty() && dazzledUntil.isEmpty()) {
             return;
         }
         long now = Bukkit.getCurrentTick();
-        var it = suppressedUntil.entrySet().iterator();
-        while (it.hasNext()) {
-            var entry = it.next();
-            if (entry.getValue() > now) {
-                continue;
-            }
-            it.remove();
-            lastShake.remove(entry.getKey());
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player != null && !scoped.contains(entry.getKey())) {
-                restoreHelmet(player);
+        java.util.Set<UUID> touched = new java.util.HashSet<>(suppressedUntil.keySet());
+        touched.addAll(dazzledUntil.keySet());
+        suppressedUntil.values().removeIf(until -> until <= now);
+        dazzledUntil.values().removeIf(until -> until <= now);
+        for (UUID id : touched) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) {
+                refreshOverlay(player);
+            } else {
+                shownOverlay.remove(id);
+                lastShake.remove(id);
             }
         }
     }

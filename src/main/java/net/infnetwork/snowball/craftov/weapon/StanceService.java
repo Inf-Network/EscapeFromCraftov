@@ -37,6 +37,8 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     private final CraftovPlugin plugin;
     /** Entity ids of players holding a gun up, read by the Netty threads. */
     private final Set<Integer> raised = ConcurrentHashMap.newKeySet();
+    /** Entity ids of players with a gun in hand at all (middle click goes to the tactical light). */
+    private final Set<Integer> armed = ConcurrentHashMap.newKeySet();
     private final List<ItemStack> chargedArrow = List.of(ItemStack.of(Material.ARROW));
 
     public StanceService(CraftovPlugin plugin) {
@@ -52,6 +54,11 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
 
     private void tick() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isGun(player.getInventory().getItemInMainHand())) {
+                armed.add(player.getEntityId());
+            } else {
+                armed.remove(player.getEntityId());
+            }
             boolean want = wantsRaised(player);
             boolean changed = want ? raised.add(player.getEntityId()) : raised.remove(player.getEntityId());
             if (changed) {
@@ -90,6 +97,11 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     }
 
     @Override
+    public boolean takesPick(int entityId) {
+        return armed.contains(entityId);
+    }
+
+    @Override
     public @Nullable ItemStack mainHand(int entityId, ItemStack real) {
         if (!raised.contains(entityId) || !isGun(real)) {
             return null;
@@ -113,5 +125,6 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         raised.remove(event.getPlayer().getEntityId());
+        armed.remove(event.getPlayer().getEntityId());
     }
 }

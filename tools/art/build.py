@@ -362,6 +362,7 @@ def build_ui():
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
     save(ui.suppression_overlay(), os.path.join(CV, 'textures', 'misc', 'suppressed.png'))
+    save(ui.strobe_overlay(), os.path.join(CV, 'textures', 'misc', 'strobe.png'))
     for style in ('3x', '4x', '8x'):
         save(ui.scope_overlay(style), os.path.join(CV, 'textures', 'misc', 'scope_' + style + '.png'))
     # Health screen body parts: the plate stays as drawn, the silhouette takes the stack's dyed colour.

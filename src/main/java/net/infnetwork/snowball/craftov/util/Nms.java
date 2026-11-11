@@ -65,6 +65,10 @@ public final class Nms {
     private static @Nullable Method pairSecond;
     private static @Nullable Method asBukkitCopy;
     private static @Nullable Method asNmsCopy;
+    private static @Nullable Class<?> pickBlockClass;
+    private static @Nullable Class<?> pickEntityClass;
+    private static org.bukkit.plugin.@Nullable Plugin pickPlugin;
+    private static java.util.function.@Nullable Consumer<Player> pickHandler;
 
     /** Decides what other players see in an entity's main hand. Called on Netty threads. */
     public interface ViewRewriter {
@@ -73,6 +77,20 @@ public final class Nms {
 
         /** The main-hand item to show instead, or null to show the real one. */
         org.bukkit.inventory.@Nullable ItemStack mainHand(int entityId, org.bukkit.inventory.ItemStack real);
+
+        /** True if this player's middle click (pick block/entity) should be taken over: they hold a gun. */
+        default boolean takesPick(int entityId) {
+            return false;
+        }
+    }
+
+    /**
+     * Middle click with a gun goes to {@code handler} on the main thread instead of the server's pick
+     * logic (which would otherwise ignore the client-only capture cell or swap the held item away).
+     */
+    public static void onPick(org.bukkit.plugin.Plugin plugin, java.util.function.Consumer<Player> handler) {
+        pickPlugin = plugin;
+        pickHandler = handler;
     }
 
     private Nms() {
@@ -119,6 +137,8 @@ public final class Nms {
             animateClass = Class.forName("net.minecraft.network.protocol.game.ClientboundAnimatePacket");
             animateId = animateClass.getMethod("getId");
             animateAction = animateClass.getMethod("getAction");
+            pickBlockClass = Class.forName("net.minecraft.network.protocol.game.ServerboundPickItemFromBlockPacket");
+            pickEntityClass = Class.forName("net.minecraft.network.protocol.game.ServerboundPickItemFromEntityPacket");
             Class<?> pair = Class.forName("com.mojang.datafixers.util.Pair");
             pairOf = pair.getMethod("of", Object.class, Object.class);
             pairFirst = pair.getMethod("getFirst");
@@ -193,6 +213,17 @@ public final class Nms {
                 return;
             }
             channel.pipeline().addBefore("packet_handler", VIEW_HANDLER, new ChannelDuplexHandler() {
+                @Override
+                public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                    if (pickHandler != null && pickPlugin != null && (pickBlockClass.isInstance(msg) || pickEntityClass.isInstance(msg))
+                            && rewriter.takesPick(self)) {
+                        java.util.function.Consumer<Player> handler = pickHandler;
+                        org.bukkit.Bukkit.getScheduler().runTask(pickPlugin, () -> handler.accept(player));
+                        return;
+                    }
+                    super.channelRead(ctx, msg);
+                }
+
                 @Override
                 public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
                     Object out;

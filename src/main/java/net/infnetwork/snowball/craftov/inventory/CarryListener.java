@@ -115,8 +115,19 @@ public final class CarryListener implements Listener {
         ItemStack cursor = player.getItemOnCursor();
         ItemStack equipped = inv.getItem(slot);
         boolean shift = event.isShiftClick();
+        boolean drop = event.getClick() == ClickType.DROP || event.getClick() == ClickType.CONTROL_DROP;
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) {
+                return;
+            }
+            if (drop && cursor.isEmpty()) {
+                // Q on the equipped rig/backpack drops it with everything still packed inside.
+                ItemStack removed = carry.unequip(player, slot);
+                if (removed != null) {
+                    player.getWorld().dropItem(player.getEyeLocation().subtract(0, 0.3, 0), removed,
+                            item -> item.setVelocity(player.getLocation().getDirection().multiply(0.3)));
+                    player.updateInventory();
+                }
                 return;
             }
             if (cursor.isEmpty()) {

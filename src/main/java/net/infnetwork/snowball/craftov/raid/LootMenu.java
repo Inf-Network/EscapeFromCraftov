@@ -167,6 +167,17 @@ public final class LootMenu extends Menu {
             return;
         }
         plugin.weapons().flush(viewer);
+        if (event.getClickedInventory() == viewer.getInventory()
+                && (event.getSlot() == CarryService.LEGS || event.getSlot() == CarryService.FEET)) {
+            // An equipped rig/backpack goes in with its contents packed inside.
+            ItemStack packed = plugin.carry().unequip(viewer, event.getSlot());
+            if (packed != null) {
+                container.set(target, packed);
+                viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.5f, 0.8f);
+                redraw();
+            }
+            return;
+        }
         ItemStack moving = event.getClickedInventory().getItem(event.getSlot());
         if (moving == null || moving.isEmpty()) {
             return;

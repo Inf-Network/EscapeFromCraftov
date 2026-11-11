@@ -1288,8 +1288,18 @@ public final class RaidManager implements Listener {
                 if (equipped == null || equipped.isEmpty()) {
                     item.remove();
                     plugin.carry().equip(player, stack);
+                } else if (player.isSneaking()) {
+                    // Swap: the worn one drops here with its contents, the one on the ground goes on.
+                    ItemStack old = plugin.carry().unequip(player, CarryService.containerSlot(def.category()));
+                    item.remove();
+                    plugin.carry().equip(player, stack);
+                    if (old != null) {
+                        Item dropped = player.getWorld().dropItem(player.getLocation(), old);
+                        dropped.setPickupDelay(40);
+                    }
+                    player.playSound(player.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
                 } else {
-                    player.sendActionBar(Text.mm("<#9AA0A6>请先丢弃当前的" + def.category().displayName() + "再拾取"));
+                    player.sendActionBar(Text.mm("<#9AA0A6>潜行拾取可直接替换当前的" + def.category().displayName()));
                 }
             }
             return;

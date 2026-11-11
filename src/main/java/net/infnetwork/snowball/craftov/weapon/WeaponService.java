@@ -418,6 +418,8 @@ public final class WeaponService implements Listener {
             audio.casing(player, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
         if (state.ammo == 0) {
+            // Writing the empty magazine back marks the item "dry": its model stops flashing on the trigger.
+            flush(player);
             player.playSound(player.getLocation(), "craftov:gun.empty", SoundCategory.PLAYERS, 0.6f, 1.2f);
         }
         return true;

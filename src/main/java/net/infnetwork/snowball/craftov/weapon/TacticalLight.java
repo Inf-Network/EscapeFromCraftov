@@ -54,6 +54,9 @@ public final class TacticalLight implements Listener {
     private final Map<UUID, Mode> modes = new HashMap<>();
     private final Map<UUID, Lit> spots = new HashMap<>();
     private final Map<UUID, Lit> glows = new HashMap<>();
+    /** What makes the light visible even in daylight: a glowing spot where it lands and a lens flare. */
+    private final Map<UUID, org.bukkit.entity.ItemDisplay> spotFx = new HashMap<>();
+    private final Map<UUID, org.bukkit.entity.ItemDisplay> flareFx = new HashMap<>();
 
     public TacticalLight(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -109,6 +112,7 @@ public final class TacticalLight implements Listener {
             boolean on = mode == Mode.STEADY || (now / 2) % 2 == 0;
             Location eye = player.getEyeLocation();
             Vector dir = eye.getDirection();
+            showFx(player, eye, dir, on, mode == Mode.STROBE);
             Block spot = on ? spotBlock(eye, dir) : null;
             Block glow = on ? airAt(eye.clone().add(dir.clone().multiply(1.2))) : null;
             move(spots, player.getUniqueId(), spot, 15);
@@ -175,7 +179,73 @@ public final class TacticalLight implements Listener {
         }
     }
 
+    /** The visible part: a full-bright spot on the lit surface and a flare at the lens for everyone else. */
+    private void showFx(Player player, Location eye, Vector dir, boolean on, boolean strobe) {
+        UUID id = player.getUniqueId();
+        RayTraceResult hit = eye.getWorld().rayTraceBlocks(eye, dir, RANGE, FluidCollisionMode.NEVER, true);
+        org.bukkit.entity.ItemDisplay spot = spotFx.get(id);
+        if (hit != null && hit.getHitBlockFace() != null) {
+            Vector normal = hit.getHitBlockFace().getDirection();
+            double distance = hit.getHitPosition().distance(eye.toVector());
+            float size = on ? (float) (0.7 + distance * 0.09) * (strobe ? 1.25f : 1f) : 0f;
+            Location at = hit.getHitPosition().toLocation(eye.getWorld()).add(normal.clone().multiply(0.02));
+            at.setYaw(0);
+            at.setPitch(0);
+            org.joml.Quaternionf facing = new org.joml.Quaternionf().rotationTo(0, 0, 1,
+                    (float) normal.getX(), (float) normal.getY(), (float) normal.getZ());
+            if (spot == null || !spot.isValid()) {
+                spot = fxDisplay(at, "fx/light_spot", org.bukkit.entity.Display.Billboard.FIXED, null);
+                spotFx.put(id, spot);
+            } else {
+                spot.teleport(at);
+            }
+            spot.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), facing,
+                    new org.joml.Vector3f(size, size, size), new org.joml.Quaternionf()));
+        } else if (spot != null) {
+            spot.remove();
+            spotFx.remove(id);
+        }
+        Location lens = Ballistics.muzzlePoint(player, dir).add(dir.clone().multiply(0.2));
+        org.bukkit.entity.ItemDisplay flare = flareFx.get(id);
+        if (flare == null || !flare.isValid()) {
+            // The holder sees the beam, not their own lens: hidden before it is first sent.
+            flare = fxDisplay(lens, "fx/light_flare", org.bukkit.entity.Display.Billboard.CENTER, player);
+            flareFx.put(id, flare);
+        } else {
+            flare.teleport(lens);
+        }
+        float flareSize = on ? (strobe ? 1.1f : 0.6f) : 0f;
+        flare.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
+                new org.joml.Vector3f(flareSize, flareSize, flareSize), new org.joml.Quaternionf()));
+    }
+
+    private org.bukkit.entity.ItemDisplay fxDisplay(Location at, String model, org.bukkit.entity.Display.Billboard billboard,
+                                                    @Nullable Player hiddenFrom) {
+        org.bukkit.inventory.ItemStack item = org.bukkit.inventory.ItemStack.of(Material.PAPER);
+        item.setData(io.papermc.paper.datacomponent.DataComponentTypes.ITEM_MODEL, net.kyori.adventure.key.Key.key("craftov", model));
+        return at.getWorld().spawn(at, org.bukkit.entity.ItemDisplay.class, d -> {
+            d.setItemStack(item);
+            d.setItemDisplayTransform(org.bukkit.entity.ItemDisplay.ItemDisplayTransform.NONE);
+            d.setBillboard(billboard);
+            d.setBrightness(new org.bukkit.entity.Display.Brightness(15, 15));
+            d.setPersistent(false);
+            d.setTeleportDuration(1);
+            d.setViewRange(1.5f);
+            if (hiddenFrom != null) {
+                hiddenFrom.hideEntity(plugin, d);
+            }
+        });
+    }
+
     private void clear(UUID owner) {
+        org.bukkit.entity.ItemDisplay spotDisplay = spotFx.remove(owner);
+        if (spotDisplay != null) {
+            spotDisplay.remove();
+        }
+        org.bukkit.entity.ItemDisplay flare = flareFx.remove(owner);
+        if (flare != null) {
+            flare.remove();
+        }
         Lit spot = spots.remove(owner);
         if (spot != null) {
             revert(spot);

@@ -282,16 +282,8 @@ public final class ItemFactory {
                 pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
             }
         });
-        boolean fitted = record.attach != null && !record.attach.isEmpty();
-        if ((record.optic != null || fitted) && def.isGun()) {
-            // The item model reads the sight from custom_model_data string 0 and the other attachments from
-            // strings 1..4 (Attachments.SLOTS order); an empty string means nothing fitted there.
-            var cmd = io.papermc.paper.datacomponent.item.CustomModelData.customModelData()
-                    .addString(record.optic == null ? "" : record.optic);
-            for (String slot : net.infnetwork.snowball.craftov.weapon.Attachments.SLOTS) {
-                cmd.addString(fitted ? record.attach.getOrDefault(slot, "") : "");
-            }
-            stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
+        if (def.isGun()) {
+            applyModelData(stack);
         }
         refreshLore(stack, def);
         return stack;
@@ -413,7 +405,28 @@ public final class ItemFactory {
                 pdc.set(Keys.AMMO_TYPE, PersistentDataType.STRING, ammoType);
             }
         });
-        refreshLore(stack, defOf(stack));
+        ItemDef def = defOf(stack);
+        if (def != null && def.isGun()) {
+            applyModelData(stack);
+        }
+        refreshLore(stack, def);
+    }
+
+    /**
+     * What the gun's item model reads from custom_model_data strings: 0 the sight, 1..4 the other
+     * attachments (Attachments.SLOTS order), 5 "dry" while the magazine is empty (no flash or kick
+     * on the trigger then). An empty string means nothing there.
+     */
+    private static void applyModelData(ItemStack stack) {
+        var cmd = io.papermc.paper.datacomponent.item.CustomModelData.customModelData();
+        String optic = opticId(stack);
+        cmd.addString(optic == null ? "" : optic);
+        Map<String, String> fitted = attachments(stack);
+        for (String slot : net.infnetwork.snowball.craftov.weapon.Attachments.SLOTS) {
+            cmd.addString(fitted.getOrDefault(slot, ""));
+        }
+        cmd.addString(ammo(stack) <= 0 ? "dry" : "");
+        stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
     }
 
     public void setDura(ItemStack stack, double dura) {

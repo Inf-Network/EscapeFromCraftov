@@ -189,17 +189,23 @@ def build_items(item_defs):
                 def strafe(base, poses):
                     return key('key.left', poses['left'], key('key.right', poses['right'], base))
 
+                def unless_dry(fire, idle):
+                    # custom_model_data string 5 is "dry" while the magazine is empty: no flash, no kick.
+                    return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 5,
+                            'cases': [{'when': 'dry', 'model': idle}], 'fallback': fire}
+
                 hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
                 hip_idle = strafe(model_ref(hip), hp)
-                hip_tree = key('key.attack', {'type': 'minecraft:composite', 'models': [
-                    hp['fire'], flash('hip', hip, hip_display, models.HIP_POSES['fire'])]},
+                hip_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
+                    hp['fire'], flash('hip', hip, hip_display, models.HIP_POSES['fire'])]}, hip_idle),
                     key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle))
                 if ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
                     ads_tree = model_ref(ads)
                 else:
                     ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
-                    ads_tree = key('key.attack', {'type': 'minecraft:composite', 'models': [
-                        ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, strafe(model_ref(ads), ap))
+                    ads_idle = strafe(model_ref(ads), ap)
+                    ads_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
+                        ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, ads_idle), ads_idle)
                 return key('key.use', ads_tree, hip_tree)
             # While the gun's reload cooldown runs, the client steps through the reload frames itself.
             def reloading(normal, optic_frames=None):
@@ -337,6 +343,25 @@ def build_fx():
     for kind in ('side', 'front'):
         frames = [flash_frame(kind, 1.0, 1), blank, flash_frame(kind, 0.75, 2), blank]
         save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind), frametime=1)
+    # Tactical light (TacticalLight.java): a glowing spot laid on the lit surface and a lens flare at the
+    # muzzle for onlookers, both full-bright item displays, double-sided planes at z=8.
+    import numpy as np
+    n = 64
+    yy, xx = np.mgrid[0:n, 0:n] / (n - 1) * 2 - 1
+    r = np.hypot(xx, yy)
+    spot = np.clip(1 - r, 0, 1) ** 1.6
+    flare = np.clip(1 - r / 0.35, 0, 1) ** 1.2 + 0.55 * np.clip(1 - np.abs(yy) / 0.06, 0, 1) * np.clip(1 - np.abs(xx), 0, 1) ** 2 \
+        + 0.35 * np.clip(1 - np.abs(xx) / 0.06, 0, 1) * np.clip(1 - np.abs(yy), 0, 1) ** 2 + 0.4 * np.clip(1 - r, 0, 1) ** 3
+    for name, a, tint in (('light_spot', spot * 0.8, (255, 247, 220)), ('light_flare', np.clip(flare, 0, 1), (255, 250, 232))):
+        rgba = np.zeros((n, n, 4), np.uint8)
+        rgba[..., :3] = tint
+        rgba[..., 3] = (a * 255).astype(np.uint8)
+        save(Image.fromarray(rgba).resize((32, 32), Image.LANCZOS), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))
+        face = {'uv': [0, 0, 16, 16], 'texture': '#t'}
+        write_json(os.path.join(CV, 'models', 'item', 'fx', name + '.json'), {
+            'textures': {'t': 'craftov:item/fx/' + name, 'particle': 'craftov:item/fx/' + name},
+            'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False, 'faces': {'south': face, 'north': face}}]})
+        write_json(os.path.join(CV, 'items', 'fx', name + '.json'), {'model': model_ref('craftov:item/fx/' + name)})
     # Decals are item displays lying flat on the wall (ImpactFx.java): one face at z=8, seen from +Z.
     for name, metal in (('hole', False), ('hole_metal', True)):
         save(bullet_hole(metal, 3 if metal else 5), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))

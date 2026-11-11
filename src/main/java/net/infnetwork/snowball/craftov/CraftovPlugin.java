@@ -65,6 +65,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private StaminaService stamina;
     private TriggerService triggers;
     private net.infnetwork.snowball.craftov.weapon.StanceService stance;
+    private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
     private RaidManager raids;
@@ -131,6 +132,7 @@ public final class CraftovPlugin extends JavaPlugin {
         ranks = new RankService(this);
         collection = new CollectionService(this);
         escorts = new EscortService(this);
+        tasks = new net.infnetwork.snowball.craftov.task.TaskService(this);
         hud = new HudService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
@@ -288,6 +290,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public RankService ranks() { return ranks; }
     public CollectionService collection() { return collection; }
     public EscortService escorts() { return escorts; }
+    public net.infnetwork.snowball.craftov.task.TaskService tasks() { return tasks; }
     public HudService hud() { return hud; }
     public MenuService menus() { return menus; }
     public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }

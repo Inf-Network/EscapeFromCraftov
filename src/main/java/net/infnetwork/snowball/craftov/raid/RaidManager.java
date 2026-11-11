@@ -669,6 +669,7 @@ public final class RaidManager implements Listener {
         int rankDelta = raid.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
         long xp = Math.round((150 + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
+        plugin.tasks().onExtract(player, raid, profit);
         Profile.RaidReport report = report(raid, rp, "撤离成功 · " + point.def.name(), Math.max(0, profit), 0, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -755,6 +756,7 @@ public final class RaidManager implements Listener {
             RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
             if (kr != null) {
                 kr.kills++;
+                plugin.tasks().onPlayerKill(killer);
                 killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(player.getName())));
             }
         }
@@ -1225,6 +1227,7 @@ public final class RaidManager implements Listener {
         if (!container.generated()) {
             container.generate(plugin.loot().roll(container.type, container.shift));
             rp.containersSearched++;
+            plugin.tasks().onSearch(player);
         }
         player.playSound(player.getLocation(), "craftov:loot.open", SoundCategory.PLAYERS, 0.8f, 1f);
         new LootMenu(plugin, player, container).open();

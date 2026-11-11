@@ -508,6 +508,8 @@ public final class AiService implements Listener {
             RaidPlayer rp = raid.player(killer.getUniqueId());
             if (rp != null) {
                 rp.aiKills++;
+                plugin.tasks().onAiKill(killer, bot.boss, hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD,
+                        plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
             }
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>爆头" : "")));

@@ -38,6 +38,8 @@ public final class Profile {
     public Map<String, Long> stats = new HashMap<>();
     public List<Preset> presets = new ArrayList<>();
     public List<RaidReport> reports = new ArrayList<>();
+    public List<TaskState> tasks = new ArrayList<>();
+    public long taskDay = -1;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */
@@ -78,6 +80,18 @@ public final class Profile {
         public Preset(String name) {
             this.name = name;
         }
+    }
+
+    /** One daily contract (see TaskService). */
+    public static final class TaskState {
+        public String kind = "AI_KILL";
+        public @Nullable String map;
+        public @Nullable String mapName;
+        public long target;
+        public long progress;
+        public long reward;
+        public long xp;
+        public boolean done;
     }
 
     public static final class RaidReport {

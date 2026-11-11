@@ -62,6 +62,10 @@ final class MainMenu extends Menu {
                     plugin.traders().repairAll(viewer);
                     redraw();
                 });
+        long tasksDone = plugin.tasks().of(p).stream().filter(t -> t.done).count();
+        button(29, UiItems.button("craftov:ui/icon_start", "<#F2C94C><b>每日任务", List.of("<#9AA0A6>今日进度 " + tasksDone + "/"
+                + net.infnetwork.snowball.craftov.task.TaskService.COUNT, "<#9AA0A6>完成即得块币与经验，每天 04:00 刷新")),
+                e -> new TaskMenu(plugin, viewer, false).open());
         button(30, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>给身上的枪安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {

@@ -124,6 +124,11 @@ market:
 rank:
   min-level: 3
 
+tasks:
+  # Cost of swapping an unfinished daily contract, and the bonus for finishing all three.
+  reroll-cost: 3000
+  all-done-bonus: 20000
+
 escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3

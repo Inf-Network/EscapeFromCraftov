@@ -71,6 +71,8 @@ final class TerminalMenu extends Menu {
             viewer.closeInventory();
             plugin.operators().activate(viewer);
         });
+        button(24, UiItems.button("craftov:ui/icon_start", "<#F2C94C><b>每日任务", List.of("<#9AA0A6>查看今日任务进度")),
+                e -> new TaskMenu(plugin, viewer, true).open());
         button(20, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {

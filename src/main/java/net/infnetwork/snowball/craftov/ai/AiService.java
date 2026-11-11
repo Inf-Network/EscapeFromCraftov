@@ -389,10 +389,12 @@ public final class AiService implements Listener {
                 continue;
             }
             boolean known = player.getUniqueId().equals(bot.target) && now - bot.lastSeenTick < 40;
+            // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
+            double heard = player.isSneaking() || !moving(player) ? 0 : player.isSprinting() ? 24 : 10;
+            boolean noisy = d < heard * heard;
             if (!known && d > 64) {
                 Vector to = player.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
                 double dot = facing.lengthSquared() < 1e-4 || to.lengthSquared() < 1e-4 ? 1 : facing.normalize().dot(to.normalize());
-                boolean noisy = player.isSprinting() && d < 20 * 20;
                 if (dot < 0.2 && !noisy && now >= bot.alertUntil) {
                     continue;
                 }
@@ -401,6 +403,11 @@ public final class AiService implements Listener {
                 }
             }
             if (!mob.hasLineOfSight(player)) {
+                if (noisy && bot.target == null) {
+                    // Footsteps behind a wall: go and look.
+                    bot.alertPos = player.getLocation();
+                    bot.alertUntil = now + 20L * 6;
+                }
                 continue;
             }
             best = player;
@@ -417,6 +424,11 @@ public final class AiService implements Listener {
             bot.target = null;
         }
         return best;
+    }
+
+    private static boolean moving(Player player) {
+        org.bukkit.Input input = player.getCurrentInput();
+        return input.isForward() || input.isBackward() || input.isLeft() || input.isRight();
     }
 
     private void alertSquadmates(Bot bot, Player target) {

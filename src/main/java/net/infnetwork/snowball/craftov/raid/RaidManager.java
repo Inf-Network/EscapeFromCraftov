@@ -259,34 +259,89 @@ public final class RaidManager implements Listener {
         raid.state = Raid.State.RUNNING;
         raid.startTick = Bukkit.getCurrentTick();
         for (int i = 0; i < raid.squads.size(); i++) {
-            int squadNo = i + 1;
-            int group = groups.isEmpty() ? 1 : groups.get(i % groups.size());
-            raid.squadSpawnGroup.put(squadNo, group);
-            List<MapDef.SpawnDef> points = map.spawns().stream().filter(s -> s.group() == group).toList();
-            List<Player> members = new ArrayList<>();
-            for (UUID uuid : raid.squads.get(i)) {
-                Player player = Bukkit.getPlayer(uuid);
-                RaidPlayer rp = raid.player(uuid);
-                if (player == null || rp == null) {
-                    if (rp != null) {
-                        rp.state = RaidPlayer.State.LEFT;
-                    }
-                    byPlayer.remove(uuid);
-                    continue;
-                }
-                members.add(player);
-                prepare(raid, player, rp);
-            }
-            Location spawn = points.isEmpty() ? world.getSpawnLocation() : points.get(0).pos().at(world);
-            List<Player> squadPlayers = members;
-            Cinematic.play(plugin, raid, squadNo, squadPlayers, spawn, player -> {
-                int index = squadPlayers.indexOf(player);
-                Location target = points.isEmpty() ? spawn : points.get(Math.max(0, index) % points.size()).pos().at(world);
-                insert(raid, player, target);
-            });
+            deploySquad(raid, i + 1, groups.isEmpty() ? 1 : groups.get(i % groups.size()));
         }
         announce(raid, "<#9AA0A6>行动开始。<white>" + raid.players.size() + "</white> 名干员已部署，限时 "
                 + raid.map.raidSeconds() / 60 + " 分钟。");
+    }
+
+    private void deploySquad(Raid raid, int squadNo, int group) {
+        World world = raid.world;
+        raid.squadSpawnGroup.put(squadNo, group);
+        List<MapDef.SpawnDef> points = raid.map.spawns().stream().filter(s -> s.group() == group).toList();
+        List<Player> members = new ArrayList<>();
+        for (UUID uuid : raid.squads.get(squadNo - 1)) {
+            Player player = Bukkit.getPlayer(uuid);
+            RaidPlayer rp = raid.player(uuid);
+            if (player == null || rp == null) {
+                if (rp != null) {
+                    rp.state = RaidPlayer.State.LEFT;
+                }
+                byPlayer.remove(uuid);
+                continue;
+            }
+            members.add(player);
+            prepare(raid, player, rp);
+        }
+        Location spawn = points.isEmpty() ? world.getSpawnLocation() : points.get(0).pos().at(world);
+        Cinematic.play(plugin, raid, squadNo, members, spawn, player -> {
+            int index = members.indexOf(player);
+            Location target = points.isEmpty() ? spawn : points.get(Math.max(0, index) % points.size()).pos().at(world);
+            insert(raid, player, target);
+        });
+    }
+
+    /**
+     * A running raid of this map, difficulty and ranking that is still in its join window and has
+     * room for {@code size} more players, or null. Late squads backfill it instead of opening a new raid.
+     */
+    public @Nullable Raid joinable(String mapId, String tierId, boolean ranked, int size) {
+        int window = plugin.getConfig().getInt("match.join-window-seconds", 120);
+        int max = plugin.getConfig().getInt("match.max-players", 12);
+        Raid best = null;
+        for (Raid raid : raids.values()) {
+            if (raid.state != Raid.State.RUNNING || raid.ranked != ranked || !raid.map.id().equals(mapId)
+                    || !raid.tier.id().equals(tierId) || raid.elapsedSeconds() > window) {
+                continue;
+            }
+            int active = 0;
+            for (RaidPlayer rp : raid.players.values()) {
+                if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DOWNED) {
+                    active++;
+                }
+            }
+            if (active + size <= max && (best == null || raid.startTick > best.startTick)) {
+                best = raid;
+            }
+        }
+        return best;
+    }
+
+    /** Adds a squad to a raid that is already running, at the spawn group fewest squads use. */
+    public void joinRunning(Raid raid, List<Player> squad) {
+        List<UUID> members = new ArrayList<>();
+        int squadNo = raid.squads.size() + 1;
+        for (Player player : squad) {
+            RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo);
+            raid.players.put(player.getUniqueId(), rp);
+            byPlayer.put(player.getUniqueId(), raid);
+            members.add(player.getUniqueId());
+            player.showTitle(Title.title(Text.mm("<#F2C94C>匹配成功"), Text.mm("<#9AA0A6>加入进行中的行动 " + Text.escape(raid.map.name()) + " …"),
+                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
+            player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
+        }
+        raid.squads.add(members);
+        Map<Integer, Integer> use = new java.util.HashMap<>();
+        for (MapDef.SpawnDef spawn : raid.map.spawns()) {
+            use.putIfAbsent(spawn.group(), 0);
+        }
+        for (int group : raid.squadSpawnGroup.values()) {
+            use.merge(group, 1, Integer::sum);
+        }
+        List<Integer> groups = new ArrayList<>(use.keySet());
+        Collections.shuffle(groups);
+        int group = groups.stream().min(java.util.Comparator.comparingInt(use::get)).orElse(1);
+        deploySquad(raid, squadNo, group);
     }
 
     /** Takes the lobby loadout into the raid. */

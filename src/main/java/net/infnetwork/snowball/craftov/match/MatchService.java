@@ -287,43 +287,69 @@ public final class MatchService {
         for (QueueEntry entry : queue) {
             byKey.computeIfAbsent(entry.key(), k -> new ArrayList<>()).add(entry);
         }
+        int maxPlayers = plugin.getConfig().getInt("match.max-players", 12);
         for (List<QueueEntry> entries : byKey.values()) {
             QueueEntry first = entries.get(0);
-            int maxSquads = first.mode() == RaidMode.SOLO ? plugin.getConfig().getInt("match.max-solo-players", 8)
-                    : plugin.getConfig().getInt("match.max-squads", 4);
             entries.sort(Comparator.comparingInt(QueueEntry::rating));
-            List<List<UUID>> squads = formSquads(entries, first.mode());
-            long oldest = entries.stream().mapToLong(QueueEntry::since).min().orElse(now);
+            List<List<UUID>> squads = formSquads(entries);
+            // Backfill: squads join a raid of this pool that started moments ago and still has room.
+            for (List<UUID> squad : new ArrayList<>(squads)) {
+                Raid running = plugin.raids().joinable(first.map(), first.tier(), first.ranked(), squad.size());
+                if (running != null) {
+                    List<Player> online = onlineIdle(squad);
+                    queue.removeIf(entry -> entry.members().stream().anyMatch(squad::contains));
+                    squads.remove(squad);
+                    if (!online.isEmpty()) {
+                        plugin.raids().joinRunning(running, online);
+                    }
+                }
+            }
+            if (squads.isEmpty()) {
+                continue;
+            }
+            List<QueueEntry> waiting = entries.stream().filter(queue::contains).toList();
+            long oldest = waiting.stream().mapToLong(QueueEntry::since).min().orElse(now);
             int waited = (int) ((now - oldest) / 1000);
-            for (QueueEntry entry : entries) {
+            int players = squads.stream().mapToInt(List::size).sum();
+            for (QueueEntry entry : waiting) {
                 for (UUID uuid : entry.members()) {
                     Player p = Bukkit.getPlayer(uuid);
                     if (p != null) {
                         p.sendActionBar(Text.mm("<#F2C94C>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
-                                + " <#8A8F98>· 已就绪 " + queuedCount(entry.key()) + " 人 · " + Math.max(0, wait - waited) + "s 后出发"));
+                                + " <#8A8F98>· 已就绪 " + players + "/" + maxPlayers + " 人 · " + Math.max(0, wait - waited) + "s 后出发"));
                     }
                 }
             }
-            if (squads.size() >= maxSquads || waited >= wait) {
-                List<List<UUID>> chosen = squads.subList(0, Math.min(maxSquads, squads.size()));
-                launch(first, chosen, entries);
+            if (players >= maxPlayers || waited >= wait) {
+                List<List<UUID>> chosen = new ArrayList<>();
+                int total = 0;
+                for (List<UUID> squad : squads) {
+                    if (total + squad.size() <= maxPlayers) {
+                        chosen.add(squad);
+                        total += squad.size();
+                    }
+                }
+                launch(first, chosen);
             }
         }
     }
 
-    private List<List<UUID>> formSquads(List<QueueEntry> entries, RaidMode mode) {
-        List<List<UUID>> squads = new ArrayList<>();
-        if (mode == RaidMode.SOLO) {
-            for (QueueEntry entry : entries) {
-                for (UUID uuid : entry.members()) {
-                    squads.add(new ArrayList<>(List.of(uuid)));
-                }
+    private List<Player> onlineIdle(List<UUID> squad) {
+        List<Player> online = new ArrayList<>();
+        for (UUID uuid : squad) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && plugin.raids().raidOf(p) == null) {
+                online.add(p);
             }
-            return squads;
         }
+        return online;
+    }
+
+    private List<List<UUID>> formSquads(List<QueueEntry> entries) {
+        List<List<UUID>> squads = new ArrayList<>();
         List<QueueEntry> fillable = new ArrayList<>();
         for (QueueEntry entry : entries) {
-            if (entry.members().size() >= 3 || !entry.fill()) {
+            if (!entry.fillable()) {
                 squads.add(new ArrayList<>(entry.members()));
             } else {
                 fillable.add(entry);
@@ -349,20 +375,14 @@ public final class MatchService {
         return squads;
     }
 
-    private void launch(QueueEntry template, List<List<UUID>> squads, List<QueueEntry> entries) {
+    private void launch(QueueEntry template, List<List<UUID>> squads) {
         MapDef map = plugin.maps().get(template.map());
         Tier tier = plugin.tier(template.tier());
         List<List<Player>> players = new ArrayList<>();
         java.util.Set<UUID> launched = new java.util.HashSet<>();
         for (List<UUID> squad : squads) {
-            List<Player> online = new ArrayList<>();
-            for (UUID uuid : squad) {
-                Player p = Bukkit.getPlayer(uuid);
-                if (p != null && plugin.raids().raidOf(p) == null) {
-                    online.add(p);
-                    launched.add(uuid);
-                }
-            }
+            List<Player> online = onlineIdle(squad);
+            online.forEach(p -> launched.add(p.getUniqueId()));
             if (!online.isEmpty()) {
                 players.add(online);
             }
@@ -371,7 +391,7 @@ public final class MatchService {
         if (map == null || tier == null || players.isEmpty()) {
             return;
         }
-        plugin.raids().start(map, tier, template.mode(), template.ranked(), players);
+        plugin.raids().start(map, tier, RaidMode.TRIO, template.ranked(), players);
     }
 
     // ------------------------------------------------------------------ squad teams

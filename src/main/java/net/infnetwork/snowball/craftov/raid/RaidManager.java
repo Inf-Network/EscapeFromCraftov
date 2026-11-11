@@ -86,6 +86,7 @@ public final class RaidManager implements Listener {
         this.plugin = plugin;
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickFast, 10L, 5L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSecond, 20L, 20L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickSpectators, 30L, 20L);
     }
 
     // ------------------------------------------------------------------ queries
@@ -768,12 +769,84 @@ public final class RaidManager implements Listener {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
-                plugin.match().leaveTeam(p);
-                plugin.lobby().enterLobby(p);
                 sendReport(p, report, List.of());
                 sendDamageLog(p, hit, hits);
+                if (!spectateMate(p, raid, rp)) {
+                    plugin.match().leaveTeam(p);
+                    plugin.lobby().enterLobby(p);
+                }
             }
         }, 20L * 5);
+    }
+
+    /** Dead players watching a squadmate: spectator -> (raid, own raid record). */
+    private final Map<UUID, Map.Entry<Raid, RaidPlayer>> spectators = new HashMap<>();
+
+    /** After death the player follows a squadmate who is still in the raid. Returns false if none is left. */
+    private boolean spectateMate(Player player, Raid raid, RaidPlayer rp) {
+        if (raid.state != Raid.State.RUNNING || player.getWorld() != raid.world) {
+            spectators.remove(player.getUniqueId());
+            return false;
+        }
+        for (RaidPlayer mate : raid.squadOf(rp)) {
+            Player target = mate == rp ? null : Bukkit.getPlayer(mate.uuid);
+            if (target != null && mate.active() && target.getWorld() == raid.world) {
+                spectators.put(player.getUniqueId(), Map.entry(raid, rp));
+                player.setGameMode(GameMode.SPECTATOR);
+                player.setSpectatorTarget(target);
+                player.sendActionBar(Text.mm("<#9AA0A6>正在观战队友 <white>" + Text.escape(target.getName()) + " <#9AA0A6>· 按 <white>Shift</white> 返回大厅"));
+                return true;
+            }
+        }
+        spectators.remove(player.getUniqueId());
+        return false;
+    }
+
+    private void stopSpectating(Player player) {
+        spectators.remove(player.getUniqueId());
+        plugin.match().leaveTeam(player);
+        plugin.lobby().enterLobby(player);
+    }
+
+    /** Shift leaves the camera; a target that died, extracted or left hands over to the next mate. */
+    @EventHandler
+    public void onStopSpectating(com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent event) {
+        Player player = event.getPlayer();
+        Map.Entry<Raid, RaidPlayer> entry = spectators.get(player.getUniqueId());
+        if (entry == null) {
+            return;
+        }
+        Raid raid = entry.getKey();
+        RaidPlayer watched = event.getSpectatorTarget() instanceof Player t ? raid.player(t.getUniqueId()) : null;
+        boolean targetGone = watched == null || !watched.active() || event.getSpectatorTarget().getWorld() != raid.world;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline() || !spectators.containsKey(player.getUniqueId())) {
+                return;
+            }
+            if (targetGone && spectateMate(player, raid, entry.getValue())) {
+                return;
+            }
+            stopSpectating(player);
+        });
+    }
+
+    /** Spectators drift if their target extracts or dies between events: re-check once a second. */
+    private void tickSpectators() {
+        for (UUID uuid : new ArrayList<>(spectators.keySet())) {
+            Player player = Bukkit.getPlayer(uuid);
+            Map.Entry<Raid, RaidPlayer> entry = spectators.get(uuid);
+            if (player == null) {
+                spectators.remove(uuid);
+                continue;
+            }
+            org.bukkit.entity.Entity target = player.getSpectatorTarget();
+            RaidPlayer watched = target instanceof Player t ? entry.getKey().player(t.getUniqueId()) : null;
+            if (watched == null || !watched.active()) {
+                if (!spectateMate(player, entry.getKey(), entry.getValue())) {
+                    stopSpectating(player);
+                }
+            }
+        }
     }
 
     /** The melee weapon is never lost: it goes back into the next loadout. */
@@ -961,6 +1034,7 @@ public final class RaidManager implements Listener {
 
     private void close(Raid raid) {
         raid.state = Raid.State.CLOSED;
+        spectators.values().removeIf(entry -> entry.getKey() == raid);
         for (Player player : raid.world.getPlayers()) {
             byPlayer.remove(player.getUniqueId());
             plugin.lobby().enterLobby(player);

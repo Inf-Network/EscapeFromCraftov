@@ -40,7 +40,8 @@ public record ItemDef(
         boolean lootable,
         double weight,
         net.infnetwork.snowball.craftov.weapon.@Nullable OpticSpec optic,
-        net.infnetwork.snowball.craftov.weapon.@Nullable MeleeSpec melee
+        net.infnetwork.snowball.craftov.weapon.@Nullable MeleeSpec melee,
+        net.infnetwork.snowball.craftov.weapon.@Nullable AttachSpec attach
 ) {
 
     public boolean isMelee() {

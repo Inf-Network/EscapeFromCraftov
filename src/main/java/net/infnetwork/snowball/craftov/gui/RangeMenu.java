@@ -33,11 +33,11 @@ final class RangeMenu extends Menu {
         }
         List<ItemDef> optics = plugin.registry().byCategory(Category.ATTACHMENT);
         optics.sort(Comparator.comparingLong(ItemDef::value));
-        for (int i = 0; i < optics.size() && i < 9; i++) {
+        for (int i = 0; i < optics.size() && i < 18; i++) {
             ItemDef def = optics.get(i);
-            button(27 + i, plugin.items().markRange(plugin.items().create(def, 1)), e -> take(def));
+            button(18 + i, plugin.items().markRange(plugin.items().create(def, 1)), e -> take(def));
         }
-        button(38, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>给靶场武器装上 / 拆下瞄准镜")),
+        button(38, UiItems.button("craftov:ui/tab_attachment", "<#FF9F43><b>改枪台", List.of("<#9AA0A6>给靶场武器装上 / 拆下瞄准镜和配件")),
                 e -> plugin.menus().openGunsmith(viewer));
         button(40, UiItems.button("craftov:ui/icon_help", "<#C8CCD2><b>说明", List.of(
                 "<#9AA0A6>点击领取，子弹无限（弹匣/999）",

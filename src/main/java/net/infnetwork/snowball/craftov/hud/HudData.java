@@ -59,12 +59,12 @@ public final class HudData {
 
     public int magazine(Player p) {
         WeaponService.GunState s = gun(p);
-        return s == null ? 0 : s.def().gun().magazine();
+        return s == null ? 0 : s.gun().magazine();
     }
 
     public int reserve(Player p) {
         WeaponService.GunState s = gun(p);
-        return s == null ? 0 : plugin.weapons().reserve(p, s.def().gun(), null);
+        return s == null ? 0 : plugin.weapons().reserve(p, s.gun(), null);
     }
 
     public String fireMode(Player p) {
@@ -140,7 +140,7 @@ public final class HudData {
             return "<#FFB74D>换弹中 " + String.format("%.1f", left) + "s";
         }
         int reserve = reserve(p);
-        int mag = s.def().gun().magazine();
+        int mag = s.gun().magazine();
         if (s.ammo() == 0 && reserve == 0) {
             return "<#FF8A80>无弹药";
         }

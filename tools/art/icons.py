@@ -419,6 +419,49 @@ def karambit(c):
     c.ellipse(4, 27, 7, 30, (0, 0, 0, 0))
 
 
+def suppressor(c):
+    # Long matte can with ribbed end caps, seen at an angle.
+    c.poly([(5, 25), (23, 7), (27, 11), (9, 29)], rgb('#3A3D40'))
+    c.line([(7, 25), (24, 8)], rgb('#5A5E62'))
+    c.poly([(3, 27), (6, 24), (10, 28), (7, 31)], rgb('#26282A'))
+    c.poly([(22, 6), (25, 3), (29, 7), (26, 10)], rgb('#26282A'))
+    for k in range(3):
+        c.line([(11 + k * 4, 21 - k * 4), (14 + k * 4, 24 - k * 4)], rgb('#2E3033'))
+
+
+def compensator(c):
+    c.poly([(9, 22), (20, 11), (25, 16), (14, 27)], rgb('#4A4D50'))
+    for k in range(3):
+        c.poly([(13 + k * 3, 18 - k * 3), (15 + k * 3, 16 - k * 3), (17 + k * 3, 18 - k * 3), (15 + k * 3, 20 - k * 3)], rgb('#1C1D1F'))
+    c.line([(10, 22), (20, 12)], rgb('#6E7276'))
+
+
+def vertical_grip(c):
+    c.box(9, 6, 23, 10, rgb('#2F3134'))
+    c.box(13, 10, 19, 28, rgb('#3A3D40'))
+    for y in range(13, 27, 3):
+        c.line([(13, y), (18, y)], rgb('#2A2C2F'))
+    c.rect(13, 27, 19, 29, rgb('#26282A'))
+
+
+def tactical_light(c):
+    c.box(6, 12, 24, 20, rgb('#2E3033'))
+    c.box(24, 10, 28, 22, rgb('#3A3D40'))
+    c.ellipse(24, 11, 29, 21, rgb('#F2F0D8'))
+    c.ellipse(25, 13, 28, 19, rgb('#FFFFFF'))
+    c.rect(9, 20, 13, 23, rgb('#1C1D1F'))
+    c.line([(8, 14), (21, 14)], rgb('#44474B'))
+
+
+def extended_mag(c):
+    c.poly([(12, 4), (20, 4), (22, 28), (14, 30)], rgb('#3B3E41'))
+    c.line([(13, 6), (15, 28)], rgb('#55595D'))
+    c.rect(12, 4, 20, 6, rgb('#B08D57'))
+    c.rect(14, 27, 22, 30, rgb('#26282A'))
+    for y in range(9, 26, 4):
+        c.line([(14, y), (20, y)], rgb('#2E3033'))
+
+
 def seawater_filter(c):
     # Brass-capped cartridge with layered filter media behind a glass window.
     c.box(10, 4, 22, 28, rgb('#3B5C6E'))
@@ -651,6 +694,8 @@ ICONS = {
     'pearl_necklace': necklace, 'master_chip': master_chip,
     'seawater_filter': seawater_filter, 'urine_purifier': urine_purifier, 'eel_generator': eel_generator,
     # melee
+    'att_suppressor': suppressor, 'att_compensator': compensator, 'att_vgrip': vertical_grip,
+    'att_taclight': tactical_light, 'att_extmag': extended_mag,
     'knife_starter': combat_knife, 'knife_tactical': tactical_dagger, 'knife_machete': machete,
     'knife_karambit': karambit,
 }

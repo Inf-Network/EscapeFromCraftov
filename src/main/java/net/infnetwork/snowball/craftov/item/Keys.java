@@ -17,6 +17,8 @@ public final class Keys {
     public static final NamespacedKey VERSION = key("v");
     /** Optic item id mounted on a gun. */
     public static final NamespacedKey OPTIC = key("optic");
+    /** Fitted attachments other than the sight: "slot=itemId;slot=itemId". */
+    public static final NamespacedKey ATTACH = key("attach");
     /** Shooting-range loaner: never stored, sold or carried out of the range. */
     public static final NamespacedKey RANGE = key("range");
     /** Marks UI-only stacks (locked slots, menu buttons) that must never leave their slot. */

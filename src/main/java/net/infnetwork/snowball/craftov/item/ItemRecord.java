@@ -25,6 +25,8 @@ public final class ItemRecord {
     public @Nullable List<ItemRecord> contents;
     /** Optic item id mounted on a gun. */
     public @Nullable String optic;
+    /** Fitted attachments other than the sight, slot -> item id (guns only). */
+    public java.util.@Nullable Map<String, String> attach;
 
     public ItemRecord() {
     }
@@ -41,6 +43,7 @@ public final class ItemRecord {
         copy.ammoType = ammoType;
         copy.dura = dura;
         copy.optic = optic;
+        copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {

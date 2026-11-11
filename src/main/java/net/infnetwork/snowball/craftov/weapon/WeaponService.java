@@ -59,7 +59,11 @@ public final class WeaponService implements Listener {
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
-        boolean suppressed;
+        final boolean suppressed;
+        /** Tactical light fitted: "light", "strobe" or null. */
+        final @Nullable String light;
+        /** The gun's stats with its attachments applied. */
+        final GunSpec gun;
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
@@ -82,6 +86,18 @@ public final class WeaponService implements Listener {
             this.optic = mounted == null ? null : mounted.optic();
             this.opticName = mounted == null ? null : mounted.name();
             this.range = ItemFactory.isRange(stack);
+            var parts = Attachments.resolve(def.gun(), ItemFactory.attachments(stack), registry);
+            this.gun = Attachments.effective(def.gun(), parts);
+            this.suppressed = Attachments.suppressed(parts);
+            this.light = Attachments.light(parts);
+        }
+
+        public GunSpec gun() {
+            return gun;
+        }
+
+        public @Nullable String light() {
+            return light;
         }
 
         public @Nullable String opticName() {
@@ -168,7 +184,7 @@ public final class WeaponService implements Listener {
             return 1.0;
         }
         GunState state = state(player);
-        int zoom = state == null ? 1 : state.def.gun().zoom();
+        int zoom = state == null ? 1 : state.gun.zoom();
         return switch (zoom) {
             case 0 -> 0.85;
             case 1 -> 0.7;
@@ -262,7 +278,7 @@ public final class WeaponService implements Listener {
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
                         + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
-                        + " interval=" + state.def.gun().millisBetweenShots());
+                        + " interval=" + state.gun.millisBetweenShots());
             }
             if (isAiming(player)) {
                 if (held) {
@@ -282,7 +298,7 @@ public final class WeaponService implements Listener {
                 continue;
             }
             FireMode mode = state.fireMode();
-            GunSpec gun = state.def.gun();
+            GunSpec gun = state.gun;
             state.shotBudgetMs += 50.0;
             double interval = gun.millisBetweenShots();
             int guard = 0;
@@ -339,7 +355,7 @@ public final class WeaponService implements Listener {
         if (state.reloading() || state.needsRelease) {
             return;
         }
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         long now = Bukkit.getCurrentTick();
         long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
         state.triggerHeld = true;
@@ -359,7 +375,7 @@ public final class WeaponService implements Listener {
         if (!plugin.raids().canFire(player)) {
             return false;
         }
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         if (state.ammo <= 0) {
             audio.foley(player, gun, "dry", 0.7f);
             state.triggerHeld = false;
@@ -408,7 +424,7 @@ public final class WeaponService implements Listener {
     }
 
     private double currentSpread(Player player, GunState state) {
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         double spread = isAiming(player) ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
         Vector velocity = player.getVelocity();
         boolean moving = velocity.getX() * velocity.getX() + velocity.getZ() * velocity.getZ() > 0.003;
@@ -432,7 +448,7 @@ public final class WeaponService implements Listener {
     }
 
     private void recoil(Player player, GunState state) {
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         float pitchKick = (float) (gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3));
@@ -476,7 +492,7 @@ public final class WeaponService implements Listener {
         if (state.reloading()) {
             return;
         }
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         List<String> types = ammoTypesCarried(player, gun);
         if (plugin.lobby().inRange(player)) {
             types = new ArrayList<>(types);
@@ -517,7 +533,7 @@ public final class WeaponService implements Listener {
 
     /** Handling sounds spread over the reload: magazine out and in, or one shell at a time for the pump gun. */
     private void reloadFoley(Player player, GunState state, long duration) {
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         if ("pump".equals(gun.action())) {
             int shells = Math.max(1, Math.min(6, gun.magazine() - state.ammo));
             for (int i = 0; i < shells; i++) {
@@ -540,7 +556,7 @@ public final class WeaponService implements Listener {
 
     /** Closing sound of a finished reload: the bolt or pump is worked only if the magazine had run dry. */
     private void reloadDone(Player player, GunState state) {
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         if (!state.reloadEmpty) {
             return;
         }
@@ -576,7 +592,7 @@ public final class WeaponService implements Listener {
     }
 
     private void finishReload(Player player, GunState state) {
-        GunSpec gun = state.def.gun();
+        GunSpec gun = state.gun;
         String type = state.reloadType;
         state.reloadStart = -1;
         state.reloadEnd = -1;
@@ -643,7 +659,7 @@ public final class WeaponService implements Listener {
         if (state.optic != null) {
             return state.optic.fov();
         }
-        return state.def.gun().zoom() <= 0 ? 0.86 : 0.8;
+        return state.gun.zoom() <= 0 ? 0.86 : 0.8;
     }
 
     private void applyZoom(Player player, GunState state) {
@@ -774,10 +790,10 @@ public final class WeaponService implements Listener {
             return; // sneak+F is the operator skill
         }
         GunState state = bind(player);
-        if (state == null || state.def.gun().modes().size() < 2) {
+        if (state == null || state.gun.modes().size() < 2) {
             return;
         }
-        state.mode = (state.mode + 1) % state.def.gun().modes().size();
+        state.mode = (state.mode + 1) % state.gun.modes().size();
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, 1f);
         player.sendActionBar(Text.mm("<#F2C94C>射击模式: <white>" + state.fireMode().displayName()));
     }

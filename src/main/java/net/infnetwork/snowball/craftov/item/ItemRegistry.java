@@ -126,6 +126,15 @@ public final class ItemRegistry {
             melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getInt("hits-normal", 2), me.getInt("hits-special", 3),
                     me.getInt("hits-boss", 4), me.getDouble("player-damage", 30), me.getInt("cooldown", 12), me.getDouble("reach", 3.0));
         }
+        net.infnetwork.snowball.craftov.weapon.AttachSpec attach = null;
+        ConfigurationSection at = s.getConfigurationSection("attach");
+        if (at != null) {
+            attach = new net.infnetwork.snowball.craftov.weapon.AttachSpec(at.getString("slot", "muzzle"),
+                    Set.copyOf(at.getStringList("mount").isEmpty() ? List.of("rifle") : at.getStringList("mount")),
+                    at.getDouble("recoil", 1), at.getDouble("recoil-h", 1), at.getDouble("hip-spread", 1), at.getDouble("ads-spread", 1),
+                    at.getDouble("reload", 1), at.getDouble("move-speed", 1), at.getDouble("magazine", 1),
+                    at.getBoolean("suppressed", false), at.getString("light"));
+        }
         ThrowableSpec throwable = null;
         ConfigurationSection t = s.getConfigurationSection("throwable");
         if (t != null) {
@@ -175,7 +184,8 @@ public final class ItemRegistry {
                 s.getBoolean("lootable", true),
                 s.getDouble("weight", defaultWeight),
                 optic,
-                melee);
+                melee,
+                attach);
     }
 
     public @Nullable ItemDef get(@Nullable String id) {

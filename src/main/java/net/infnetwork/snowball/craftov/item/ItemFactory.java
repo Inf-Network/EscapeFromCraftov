@@ -34,6 +34,7 @@ import org.jspecify.annotations.Nullable;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /** Builds Craftov item stacks and converts them to and from {@link ItemRecord}s. */
 @SuppressWarnings("UnstableApiUsage")
@@ -102,6 +103,44 @@ public final class ItemFactory {
 
     public static @Nullable String opticId(@Nullable ItemStack stack) {
         return stack == null || stack.isEmpty() ? null : stack.getPersistentDataContainer().get(Keys.OPTIC, PersistentDataType.STRING);
+    }
+
+    /** Fitted attachments other than the sight, slot -> item id. */
+    public static Map<String, String> attachments(@Nullable ItemStack stack) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        String raw = stack == null || stack.isEmpty() ? null : stack.getPersistentDataContainer().get(Keys.ATTACH, PersistentDataType.STRING);
+        if (raw != null) {
+            for (String pair : raw.split(";")) {
+                int eq = pair.indexOf('=');
+                if (eq > 0 && eq < pair.length() - 1) {
+                    out.put(pair.substring(0, eq), pair.substring(eq + 1));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The gun with an attachment fitted in a slot (null empties it); magazine, mode and loaner flag are kept. */
+    public ItemStack withAttachment(ItemStack gun, String slot, @Nullable String id) {
+        ItemRecord record = recordOf(gun);
+        if (record == null) {
+            return gun;
+        }
+        Map<String, String> attach = record.attach == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(record.attach);
+        if (id == null) {
+            attach.remove(slot);
+        } else {
+            attach.put(slot, id);
+        }
+        record.attach = attach.isEmpty() ? null : attach;
+        int mode = mode(gun);
+        boolean range = isRange(gun);
+        ItemStack rebuilt = fromRecord(record);
+        if (rebuilt == null) {
+            return gun;
+        }
+        setMode(rebuilt, mode);
+        return range ? markRange(rebuilt) : rebuilt;
     }
 
     /** The gun with a different optic mounted (null removes it); magazine, mode and loaner flag are kept. */
@@ -237,11 +276,22 @@ public final class ItemFactory {
             if (record.optic != null && def.isGun()) {
                 pdc.set(Keys.OPTIC, PersistentDataType.STRING, record.optic);
             }
+            if (record.attach != null && !record.attach.isEmpty() && def.isGun()) {
+                StringBuilder fitted = new StringBuilder();
+                record.attach.forEach((slot, id) -> fitted.append(fitted.isEmpty() ? "" : ";").append(slot).append('=').append(id));
+                pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
+            }
         });
-        if (record.optic != null && def.isGun()) {
-            // The item model picks the gun+optic model from custom_model_data string 0.
-            stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, io.papermc.paper.datacomponent.item.CustomModelData
-                    .customModelData().addString(record.optic).build());
+        boolean fitted = record.attach != null && !record.attach.isEmpty();
+        if ((record.optic != null || fitted) && def.isGun()) {
+            // The item model reads the sight from custom_model_data string 0 and the other attachments from
+            // strings 1..4 (Attachments.SLOTS order); an empty string means nothing fitted there.
+            var cmd = io.papermc.paper.datacomponent.item.CustomModelData.customModelData()
+                    .addString(record.optic == null ? "" : record.optic);
+            for (String slot : net.infnetwork.snowball.craftov.weapon.Attachments.SLOTS) {
+                cmd.addString(fitted ? record.attach.getOrDefault(slot, "") : "");
+            }
+            stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
         }
         refreshLore(stack, def);
         return stack;
@@ -304,6 +354,8 @@ public final class ItemFactory {
             record.contents = GSON.fromJson(contents, RECORD_LIST);
         }
         record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
+        Map<String, String> attach = attachments(stack);
+        record.attach = attach.isEmpty() ? null : attach;
         return record;
     }
 
@@ -414,6 +466,14 @@ public final class ItemFactory {
         if (optic != null) {
             total += optic.value();
         }
+        if (record.attach != null) {
+            for (String id : record.attach.values()) {
+                ItemDef part = registry.get(id);
+                if (part != null) {
+                    total += part.value();
+                }
+            }
+        }
         return total;
     }
 
@@ -438,7 +498,10 @@ public final class ItemFactory {
             int ammo = ammo(stack);
             String ammoType = ammoType(stack);
             ItemDef ammoDef = registry.get(ammoType);
-            lore.add(Text.mm("<#8A8F98>口径 <white>" + gun.caliber() + "  <#8A8F98>弹匣 <white>" + ammo + "/" + gun.magazine()
+            Map<String, net.infnetwork.snowball.craftov.weapon.AttachSpec> parts =
+                    net.infnetwork.snowball.craftov.weapon.Attachments.resolve(gun, attachments(stack), registry);
+            int capacity = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts).magazine();
+            lore.add(Text.mm("<#8A8F98>口径 <white>" + gun.caliber() + "  <#8A8F98>弹匣 <white>" + ammo + "/" + capacity
                     + (ammoDef != null ? " <#8A8F98>(" + Text.escape(ammoDef.name()) + ")" : "")));
             StringBuilder modes = new StringBuilder();
             for (FireMode mode : gun.modes()) {
@@ -457,6 +520,32 @@ public final class ItemFactory {
                 lore.add(Text.mm("<#8A8F98>瞄准镜 <white>自带 " + builtIn.optic().magnification() + " 倍"));
             } else if (!"none".equals(gun.mount())) {
                 lore.add(Text.mm("<#8A8F98>瞄准镜 <white>机械瞄具 <#6B7079>(可在改枪台安装瞄准镜)"));
+            }
+            for (Map.Entry<String, String> fitted : attachments(stack).entrySet()) {
+                ItemDef part = registry.get(fitted.getValue());
+                if (part != null) {
+                    lore.add(Text.mm("<#8A8F98>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(fitted.getKey())
+                            + " " + part.coloredName()));
+                }
+            }
+        }
+        if (def.attach() != null) {
+            var part = def.attach();
+            List<String> fits = new ArrayList<>();
+            if (part.mounts().contains("rifle")) {
+                fits.add("步枪 / 冲锋枪");
+            }
+            if (part.mounts().contains("shotgun")) {
+                fits.add("霰弹枪");
+            }
+            if (part.mounts().contains("pistol")) {
+                fits.add("手枪");
+            }
+            lore.add(Text.mm("<#8A8F98>配件位 <white>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(part.slot())
+                    + "  <#8A8F98>适用 <white>" + String.join(" / ", fits)));
+            String effects = net.infnetwork.snowball.craftov.weapon.Attachments.effects(part);
+            if (!effects.isEmpty()) {
+                lore.add(Text.mm(effects));
             }
         }
         if (def.optic() != null) {

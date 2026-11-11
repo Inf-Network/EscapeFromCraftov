@@ -110,6 +110,7 @@ public final class DamageService implements Listener {
             case LEFT_LEG, RIGHT_LEG -> 0.7;
         };
         int pen = ammo == null ? 1 : ammo.penetration();
+        boolean armorSounded = false;
         double armorMult = 1.0;
         boolean penetrated = true;
         EntityEquipment equipment = victim.getEquipment();
@@ -137,10 +138,13 @@ public final class DamageService implements Listener {
                     if (newDura <= 0 && victim instanceof Player p) {
                         p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);
                     }
-                    victim.getWorld().playSound(victim.getLocation(), "craftov:hit.armor", SoundCategory.PLAYERS, 1.2f,
-                            penetrated ? 1.0f : 1.25f);
+                    plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, true, penetrated);
+                    armorSounded = true;
                 }
             }
+        }
+        if (!armorSounded) {
+            plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, false, true);
         }
         double damage = base * zoneMult * armorMult;
         if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {

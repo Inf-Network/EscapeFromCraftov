@@ -56,6 +56,10 @@ public final class WeaponService implements Listener {
         double shotBudgetMs;
         long reloadStart = -1;
         long reloadEnd = -1;
+        /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
+        boolean reloadEmpty;
+        /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
+        boolean suppressed;
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
@@ -119,6 +123,7 @@ public final class WeaponService implements Listener {
 
     private final CraftovPlugin plugin;
     private final Ballistics ballistics;
+    private final GunAudio audio;
     private final Map<UUID, GunState> states = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
@@ -132,7 +137,12 @@ public final class WeaponService implements Listener {
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.ballistics = new Ballistics(plugin);
+        this.audio = new GunAudio(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+    }
+
+    public GunAudio audio() {
+        return audio;
     }
 
     public Ballistics ballistics() {
@@ -345,7 +355,7 @@ public final class WeaponService implements Listener {
         }
         GunSpec gun = state.def.gun();
         if (state.ammo <= 0) {
-            player.playSound(player.getLocation(), "craftov:gun.dry", SoundCategory.PLAYERS, 0.8f, 1f);
+            audio.foley(player, gun, "dry", 0.7f);
             state.triggerHeld = false;
             state.needsRelease = true;
             if (reserve(player, gun, null) > 0) {
@@ -367,14 +377,19 @@ public final class WeaponService implements Listener {
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
-        float pitch = 0.94f + ThreadLocalRandom.current().nextFloat() * 0.12f;
-        player.getWorld().playSound(player.getLocation(), gun.sound(), SoundCategory.PLAYERS, gun.soundVolume(), pitch);
-        plugin.ai().alert(player.getLocation(), gun.soundVolume() * 12.0, player);
+        audio.shot(player, Ballistics.muzzlePoint(player, dir), gun, state.suppressed);
+        plugin.ai().alert(player.getLocation(), gun.soundVolume() * 12.0 * (state.suppressed ? 0.35 : 1.0), player);
         recoil(player, state);
         state.bloom = Math.min(3.0, state.bloom + 0.35);
-        if (state.fireMode() == FireMode.BOLT || state.fireMode() == FireMode.PUMP) {
-            Bukkit.getScheduler().runTaskLater(plugin, () -> player.playSound(player.getLocation(),
-                    state.fireMode() == FireMode.BOLT ? "craftov:gun.bolt" : "craftov:gun.pump", SoundCategory.PLAYERS, 0.9f, 1f), 6L);
+        if (state.fireMode() == FireMode.BOLT) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> audio.foley(player, gun, "bolt_open", 0.9f), 6L);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> audio.foley(player, gun, "bolt_close", 0.9f), 13L);
+            audio.casing(player, gun, 11);
+        } else if (state.fireMode() == FireMode.PUMP) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> audio.foley(player, gun, "pump", 0.9f), 6L);
+            audio.casing(player, gun, 10);
+        } else {
+            audio.casing(player, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
         if (state.ammo == 0) {
             player.playSound(player.getLocation(), "craftov:gun.empty", SoundCategory.PLAYERS, 0.6f, 1.2f);
@@ -486,13 +501,47 @@ public final class WeaponService implements Listener {
         player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
         state.reloadType = type;
         state.triggerHeld = false;
-        player.getWorld().playSound(player.getLocation(), "craftov:gun.reload_out", SoundCategory.PLAYERS, 0.9f, 1f);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            GunState s = states.get(player.getUniqueId());
-            if (s == state && s.reloading()) {
-                player.getWorld().playSound(player.getLocation(), "craftov:gun.reload_in", SoundCategory.PLAYERS, 0.9f, 1f);
+        state.reloadEmpty = state.ammo == 0;
+        reloadFoley(player, state, state.reloadEnd - now);
+    }
+
+    /** Handling sounds spread over the reload: magazine out and in, or one shell at a time for the pump gun. */
+    private void reloadFoley(Player player, GunState state, long duration) {
+        GunSpec gun = state.def.gun();
+        if ("pump".equals(gun.action())) {
+            int shells = Math.max(1, Math.min(6, gun.magazine() - state.ammo));
+            for (int i = 0; i < shells; i++) {
+                long at = Math.max(1, duration * (i + 1) / (shells + 2));
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (states.get(player.getUniqueId()) == state && state.reloading()) {
+                        audio.foley(player, gun, "shell", 0.8f);
+                    }
+                }, at);
             }
-        }, Math.max(2, (state.reloadEnd - now) * 2 / 3));
+            return;
+        }
+        audio.foley(player, gun, "magout", 0.9f);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (states.get(player.getUniqueId()) == state && state.reloading()) {
+                audio.foley(player, gun, "magin", 0.9f);
+            }
+        }, Math.max(2, duration * 2 / 3));
+    }
+
+    /** Closing sound of a finished reload: the bolt or pump is worked only if the magazine had run dry. */
+    private void reloadDone(Player player, GunState state) {
+        GunSpec gun = state.def.gun();
+        if (!state.reloadEmpty) {
+            return;
+        }
+        switch (gun.action()) {
+            case "pump" -> audio.foley(player, gun, "pump", 0.9f);
+            case "bolt" -> {
+                audio.foley(player, gun, "bolt_open", 0.9f);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> audio.foley(player, gun, "bolt_close", 0.9f), 6L);
+            }
+            default -> audio.foley(player, gun, "charge", 0.9f);
+        }
     }
 
     private String bestType(List<String> types) {
@@ -531,7 +580,7 @@ public final class WeaponService implements Listener {
             state.ammo = gun.magazine();
             state.ammoType = type;
             flush(player);
-            player.playSound(player.getLocation(), "craftov:gun.reload_done", SoundCategory.PLAYERS, 0.8f, 1f);
+            reloadDone(player, state);
             return;
         }
         if (!type.equals(state.ammoType) && state.ammo > 0 && state.ammoType != null) {
@@ -549,7 +598,7 @@ public final class WeaponService implements Listener {
         state.ammo += taken;
         state.ammoType = type;
         flush(player);
-        player.playSound(player.getLocation(), "craftov:gun.reload_done", SoundCategory.PLAYERS, 0.8f, 1f);
+        reloadDone(player, state);
     }
 
     // ------------------------------------------------------------------ ADS

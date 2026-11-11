@@ -1,93 +1,8 @@
 {
- "gun.pistol": {
-  "sounds": [
-   {
-    "name": "craftov:gun/pistol",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.pistol_heavy": {
-  "sounds": [
-   {
-    "name": "craftov:gun/pistol_heavy",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.smg": {
-  "sounds": [
-   {
-    "name": "craftov:gun/smg",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.rifle": {
-  "sounds": [
-   {
-    "name": "craftov:gun/rifle",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.rifle_heavy": {
-  "sounds": [
-   {
-    "name": "craftov:gun/rifle_heavy",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.shotgun": {
-  "sounds": [
-   {
-    "name": "craftov:gun/shotgun",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.dmr": {
-  "sounds": [
-   {
-    "name": "craftov:gun/dmr",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.sniper": {
-  "sounds": [
-   {
-    "name": "craftov:gun/sniper",
-    "attenuation_distance": 24
-   }
-  ]
- },
- "gun.dry": {
-  "sounds": [
-   {
-    "name": "craftov:gun/dry"
-   }
-  ]
- },
  "gun.empty": {
   "sounds": [
    {
     "name": "craftov:gun/empty"
-   }
-  ]
- },
- "gun.reload_out": {
-  "sounds": [
-   {
-    "name": "craftov:gun/reload_out"
-   }
-  ]
- },
- "gun.reload_in": {
-  "sounds": [
-   {
-    "name": "craftov:gun/reload_in"
    }
   ]
  },
@@ -112,20 +27,6 @@
    }
   ]
  },
- "gun.bolt": {
-  "sounds": [
-   {
-    "name": "craftov:gun/bolt"
-   }
-  ]
- },
- "gun.pump": {
-  "sounds": [
-   {
-    "name": "craftov:gun/pump"
-   }
-  ]
- },
  "hit.body": {
   "sounds": [
    {
@@ -144,20 +45,6 @@
   "sounds": [
    {
     "name": "craftov:hit/kill"
-   }
-  ]
- },
- "hit.armor": {
-  "sounds": [
-   {
-    "name": "craftov:hit/armor"
-   }
-  ]
- },
- "bullet.impact": {
-  "sounds": [
-   {
-    "name": "craftov:bullet/impact"
    }
   ]
  },
@@ -453,6 +340,1886 @@
   "sounds": [
    {
     "name": "craftov:throw/flash"
+   }
+  ]
+ },
+ "gun.p18.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.p18.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/p18/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/p18/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.d50.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/d50/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/d50/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.sv9.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/sv9/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/sv9/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.v57.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/v57/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/v57/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.m4c.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/m4c/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/m4c/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.k47.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/k47/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/k47/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.scr.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/scr/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/scr/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.kl7.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/kl7/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/kl7/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.r12.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/r12/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/r12/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.dm14.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/dm14/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/dm14/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.fp": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/fp_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/fp_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/fp_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/fp_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.near": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/near_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/near_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/near_2",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/near_3",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.mid": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/mid_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/mid_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/mid_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.far": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/far_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/far_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.muff": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/muff_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/muff_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.fp_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/fp_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/fp_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/fp_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.awr.near_s": {
+  "sounds": [
+   {
+    "name": "craftov:gun/awr/near_s_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/near_s_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/awr/near_s_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.light.out": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/light_out_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/light_out_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.light.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/light_in_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/light_in_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.rifle.out": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/rifle_out_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/rifle_out_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.rifle.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/rifle_in_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/rifle_in_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.heavy.out": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/heavy_out_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/heavy_out_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.heavy.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/heavy_in_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/heavy_in_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.sniper.out": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/sniper_out_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/sniper_out_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "gun.tail.sniper.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/sniper_in_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:gun/tail/sniper_in_1",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "bullet.crack": {
+  "sounds": [
+   {
+    "name": "craftov:bullet/crack_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:bullet/crack_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:bullet/crack_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "bullet.whiz": {
+  "sounds": [
+   {
+    "name": "craftov:bullet/whiz_0",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:bullet/whiz_1",
+    "attenuation_distance": 16
+   },
+   {
+    "name": "craftov:bullet/whiz_2",
+    "attenuation_distance": 16
+   }
+  ]
+ },
+ "impact.concrete": {
+  "sounds": [
+   {
+    "name": "craftov:impact/concrete_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/concrete_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/concrete_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.metal": {
+  "sounds": [
+   {
+    "name": "craftov:impact/metal_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/metal_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/metal_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.wood": {
+  "sounds": [
+   {
+    "name": "craftov:impact/wood_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/wood_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/wood_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.glass": {
+  "sounds": [
+   {
+    "name": "craftov:impact/glass_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/glass_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/glass_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.soft": {
+  "sounds": [
+   {
+    "name": "craftov:impact/soft_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/soft_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/soft_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.flesh": {
+  "sounds": [
+   {
+    "name": "craftov:impact/flesh_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/flesh_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/flesh_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.armor": {
+  "sounds": [
+   {
+    "name": "craftov:impact/armor_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/armor_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/armor_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.helmet": {
+  "sounds": [
+   {
+    "name": "craftov:impact/helmet_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/helmet_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/helmet_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "impact.ricochet": {
+  "sounds": [
+   {
+    "name": "craftov:impact/ricochet_0",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/ricochet_1",
+    "attenuation_distance": 20
+   },
+   {
+    "name": "craftov:impact/ricochet_2",
+    "attenuation_distance": 20
+   }
+  ]
+ },
+ "casing.brass": {
+  "sounds": [
+   {
+    "name": "craftov:casing/brass_0",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/brass_1",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/brass_2",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "casing.brass_soft": {
+  "sounds": [
+   {
+    "name": "craftov:casing/brass_soft_0",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/brass_soft_1",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/brass_soft_2",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "casing.shell": {
+  "sounds": [
+   {
+    "name": "craftov:casing/shell_0",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/shell_1",
+    "attenuation_distance": 12
+   },
+   {
+    "name": "craftov:casing/shell_2",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ar.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ar.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ar.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ar.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.dmr.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.dmr.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.dmr.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.dmr.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.smg.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.smg.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.smg.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.smg.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol_heavy.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol_heavy.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol_heavy.charge": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_charge_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pistol_heavy.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pump.pump": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pump_pump_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pump.shell": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pump_shell_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pump.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pump_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.bolt_open": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_bolt_open_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.bolt_close": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_bolt_close_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.magout": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_magout_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.magin": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_magin_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.dry": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "status.tinnitus": {
+  "sounds": [
+   {
+    "name": "craftov:status/tinnitus",
+    "attenuation_distance": 16
    }
   ]
  }

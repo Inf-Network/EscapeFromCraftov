@@ -14,6 +14,9 @@ import java.util.List;
  * @param recoilH     max horizontal kick per shot in degrees
  * @param reloadTicks reload duration
  * @param zoom        ADS zoom strength 0..3
+ * @param soundVolume how loud the report is (3.5 pistol .. 7 sniper); sets audible range and level
+ * @param audio       sound set id under craftov:gun.<audio>.* (see tools/art/gunaudio.py)
+ * @param action      mechanical action family for reload, dry-fire and casing sounds
  */
 public record GunSpec(
         String caliber,
@@ -36,8 +39,18 @@ public record GunSpec(
         float soundVolume,
         double moveSpeed,
         String mount,
-        @org.jspecify.annotations.Nullable String scope
+        @org.jspecify.annotations.Nullable String scope,
+        String audio,
+        String action
 ) {
+    /** Bullets that break the sound barrier crack past a listener; the rest whiz. */
+    public boolean supersonic() {
+        return switch (caliber) {
+            case "9x19", ".45ACP", ".50AE", "12ga" -> false;
+            default -> true;
+        };
+    }
+
     /** Rail type for attachments: "rifle", "pistol" or "none" (fixed built-in scope). */
     public boolean accepts(OpticSpec optic) {
         return optic.mounts().contains(mount);

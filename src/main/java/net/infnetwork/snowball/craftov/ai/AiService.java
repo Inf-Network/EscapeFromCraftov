@@ -449,7 +449,7 @@ public final class AiService implements Listener {
         if (bot.ammoLeft <= 0) {
             bot.ammoLeft = gun.magazine();
             bot.reloadUntil = now + gun.reloadTicks() + 10;
-            bot.mob.getWorld().playSound(bot.mob.getLocation(), "craftov:gun.reload_out", SoundCategory.HOSTILE, 1f, 1f);
+            plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
             return;
         }
         if (bot.burstLeft <= 0) {
@@ -476,8 +476,10 @@ public final class AiService implements Listener {
                     scaled, ammo, bot.gun.name(), i == 0);
         }
         Ballistics.muzzle(bot.mob, aim);
-        bot.mob.getWorld().playSound(bot.mob.getLocation(), gun.sound(), SoundCategory.HOSTILE, gun.soundVolume(),
-                0.95f + ThreadLocalRandom.current().nextFloat() * 0.1f);
+        plugin.weapons().audio().shot(bot.mob, Ballistics.muzzlePoint(bot.mob, aim), gun, false);
+        if (!"pump".equals(gun.action()) && !"bolt".equals(gun.action())) {
+            plugin.weapons().audio().casing(bot.mob, gun, 9 + ThreadLocalRandom.current().nextInt(5));
+        }
         long interval = Math.max(2, Math.round(1200.0 / gun.rpm()));
         if (bot.burstLeft <= 0) {
             interval += ThreadLocalRandom.current().nextInt(12, 30);
@@ -488,7 +490,7 @@ public final class AiService implements Listener {
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
                 gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
-                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope());
+                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
     }
 
     // ------------------------------------------------------------------ events

@@ -91,7 +91,10 @@ public final class ItemRegistry {
                     (float) g.getDouble("volume", 4.0),
                     g.getDouble("move-speed", 0.95),
                     g.getString("mount", "PRIMARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "rifle" : "pistol"),
-                    g.getString("scope"));
+                    g.getString("scope"),
+                    g.getString("audio", id),
+                    g.getString("action", modes.contains(FireMode.PUMP) ? "pump" : modes.contains(FireMode.BOLT) ? "bolt"
+                            : "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "pistol" : "ar"));
         }
         AmmoSpec ammo = null;
         ConfigurationSection a = s.getConfigurationSection("ammo");

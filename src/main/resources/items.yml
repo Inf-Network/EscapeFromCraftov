@@ -11,7 +11,7 @@ items:
     value: 4500
     lore: "可靠的 9mm 副武器，弹匣容量大。"
     gun: { caliber: "9x19", slot: SECONDARY, mag: 17, rpm: 450, modes: [SEMI], damage: 22, range: 25, max-range: 90,
-           hip-spread: 2.2, ads-spread: 0.6, recoil: 1.2, recoil-h: 0.5, reload: 34, zoom: 0, sound: "craftov:gun.pistol", volume: 3.5, move-speed: 1.0 }
+           hip-spread: 2.2, ads-spread: 0.6, recoil: 1.2, recoil-h: 0.5, reload: 34, zoom: 0, sound: "craftov:gun.pistol", volume: 3.5, move-speed: 1.0, action: pistol}
   d50:
     weight: 1.4
     name: "D50 战术手枪"
@@ -20,7 +20,7 @@ items:
     value: 18000
     lore: ".50AE 大口径手枪，一枪就让人清醒。"
     gun: { caliber: ".50AE", slot: SECONDARY, mag: 7, rpm: 200, modes: [SEMI], damage: 50, range: 30, max-range: 100,
-           hip-spread: 2.8, ads-spread: 0.7, recoil: 4.2, recoil-h: 1.2, reload: 40, zoom: 0, sound: "craftov:gun.pistol_heavy", volume: 4.5, move-speed: 1.0 }
+           hip-spread: 2.8, ads-spread: 0.7, recoil: 4.2, recoil-h: 1.2, reload: 40, zoom: 0, sound: "craftov:gun.pistol_heavy", volume: 4.5, move-speed: 1.0, action: pistol_heavy}
   # ------------------------------------------------------------------ SMGs
   sv9:
     weight: 2.6
@@ -30,7 +30,7 @@ items:
     value: 14000
     lore: "射速极高的 9mm 冲锋枪，近距离压制利器。"
     gun: { caliber: "9x19", slot: PRIMARY, mag: 30, rpm: 900, modes: [AUTO, SEMI], damage: 21, range: 22, max-range: 90,
-           hip-spread: 2.4, ads-spread: 0.7, recoil: 0.65, recoil-h: 0.45, reload: 44, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
+           hip-spread: 2.4, ads-spread: 0.7, recoil: 0.65, recoil-h: 0.45, reload: 44, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95, action: smg}
   v57:
     weight: 2.9
     name: "V57 个人防卫武器"
@@ -39,7 +39,7 @@ items:
     value: 42000
     lore: "50 发大弹匣与 5.7mm 穿甲弹的组合。"
     gun: { caliber: "5.7x28", slot: PRIMARY, mag: 50, rpm: 950, modes: [AUTO, SEMI], damage: 22, range: 28, max-range: 100,
-           hip-spread: 2.2, ads-spread: 0.55, recoil: 0.55, recoil-h: 0.4, reload: 56, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95 }
+           hip-spread: 2.2, ads-spread: 0.55, recoil: 0.55, recoil-h: 0.4, reload: 56, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95, action: pdw}
   # ------------------------------------------------------------------ rifles
   k47:
     weight: 3.8
@@ -49,7 +49,7 @@ items:
     value: 22000
     lore: "7.62mm 突击步枪，威力足，后坐力也足。"
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 30, rpm: 600, modes: [AUTO, SEMI], damage: 36, range: 45, max-range: 150,
-           hip-spread: 3.0, ads-spread: 0.45, recoil: 1.55, recoil-h: 0.8, reload: 52, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.0, move-speed: 0.9 }
+           hip-spread: 3.0, ads-spread: 0.45, recoil: 1.55, recoil-h: 0.8, reload: 52, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.0, move-speed: 0.9, action: ak}
   m4c:
     weight: 3.4
     name: "M4C 卡宾枪"
@@ -58,7 +58,7 @@ items:
     value: 34000
     lore: "操控性出色的 5.56mm 卡宾枪，支持三连发。"
     gun: { caliber: "5.56x45", slot: PRIMARY, mag: 30, rpm: 800, modes: [AUTO, BURST, SEMI], damage: 30, range: 50, max-range: 150,
-           hip-spread: 2.6, ads-spread: 0.35, recoil: 1.0, recoil-h: 0.5, reload: 48, zoom: 1, sound: "craftov:gun.rifle", volume: 5.0, move-speed: 0.92 }
+           hip-spread: 2.6, ads-spread: 0.35, recoil: 1.0, recoil-h: 0.5, reload: 48, zoom: 1, sound: "craftov:gun.rifle", volume: 5.0, move-speed: 0.92, action: ar}
   scr:
     weight: 3.6
     name: "SCR 战斗步枪"
@@ -67,7 +67,7 @@ items:
     value: 68000
     lore: "7.62x51 战斗步枪，中远距离一锤定音。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 580, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
-           hip-spread: 3.2, ads-spread: 0.35, recoil: 2.0, recoil-h: 0.9, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88 }
+           hip-spread: 3.2, ads-spread: 0.35, recoil: 2.0, recoil-h: 0.9, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88, action: dmr}
   kl7:
     weight: 6.5
     name: "KL7 轻机枪"
@@ -76,7 +76,7 @@ items:
     value: 75000
     lore: "75 发弹鼓，持续火力压制。很重。"
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 34, range: 45, max-range: 150,
-           hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72 }
+           hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72, action: lmg}
   r12:
     weight: 3.4
     name: "R12 泵动霰弹枪"
@@ -85,7 +85,7 @@ items:
     value: 12000
     lore: "近距离一枪 8 颗弹丸，室内战王者。"
     gun: { caliber: "12ga", slot: PRIMARY, mag: 6, rpm: 70, modes: [PUMP], damage: 14, pellets: 8, range: 10, max-range: 40,
-           hip-spread: 4.5, ads-spread: 3.2, recoil: 4.0, recoil-h: 1.2, reload: 70, zoom: 0, head: 1.6, sound: "craftov:gun.shotgun", volume: 5.0, move-speed: 0.92 }
+           hip-spread: 4.5, ads-spread: 3.2, recoil: 4.0, recoil-h: 1.2, reload: 70, zoom: 0, head: 1.6, sound: "craftov:gun.shotgun", volume: 5.0, move-speed: 0.92, action: pump}
   dm14:
     weight: 4.6
     name: "DM14 射手步枪"
@@ -94,7 +94,7 @@ items:
     value: 56000
     lore: "半自动精确射手步枪，自带 4 倍镜。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 10, rpm: 280, modes: [SEMI], damage: 58, range: 90, max-range: 200,
-           hip-spread: 3.6, ads-spread: 0.12, recoil: 2.6, recoil-h: 0.8, reload: 58, zoom: 2, mount: none, scope: optic_4x, head: 2.2, sound: "craftov:gun.dmr", volume: 6.0, move-speed: 0.88 }
+           hip-spread: 3.6, ads-spread: 0.12, recoil: 2.6, recoil-h: 0.8, reload: 58, zoom: 2, mount: none, scope: optic_4x, head: 2.2, sound: "craftov:gun.dmr", volume: 6.0, move-speed: 0.88, action: dmr}
   awr:
     weight: 6.8
     name: "AWR 栓动狙击步枪"
@@ -103,7 +103,7 @@ items:
     value: 120000
     lore: ".338 栓动狙击步枪，爆头即撤离。"
     gun: { caliber: ".338", slot: PRIMARY, mag: 5, rpm: 42, modes: [BOLT], damage: 115, range: 120, max-range: 240,
-           hip-spread: 5.0, ads-spread: 0.03, recoil: 5.0, recoil-h: 1.0, reload: 80, zoom: 3, mount: none, scope: optic_8x, head: 2.6, sound: "craftov:gun.sniper", volume: 7.0, move-speed: 0.85 }
+           hip-spread: 5.0, ads-spread: 0.03, recoil: 5.0, recoil-h: 1.0, reload: 80, zoom: 3, mount: none, scope: optic_8x, head: 2.6, sound: "craftov:gun.sniper", volume: 7.0, move-speed: 0.85, action: bolt}
 
   # ------------------------------------------------------------------ ammo (value per round)
   ammo_9_fmj:   { name: "9x19 FMJ", category: AMMO, rarity: WHITE, value: 6, ammo: { caliber: "9x19", pen: 1, damage: 1.0, armor-damage: 0.8 } }

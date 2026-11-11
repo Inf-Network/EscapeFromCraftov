@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 
+import numpy as np
 import yaml
 from PIL import Image
 
@@ -19,6 +20,7 @@ import icons  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import sounds  # noqa: E402
+import gunaudio  # noqa: E402
 import ui  # noqa: E402
 from px import gradient_bg, rgb  # noqa: E402
 
@@ -237,11 +239,20 @@ def build_sounds():
         sounds.write_ogg(fn(), os.path.join(CV, 'sounds', path + '.ogg'))
         key = path.replace('/', '.')
         entry = {'sounds': [{'name': 'craftov:' + path}]}
-        if path.startswith('gun/') and path.split('/')[1] in ('pistol', 'pistol_heavy', 'smg', 'rifle', 'rifle_heavy', 'shotgun', 'dmr', 'sniper'):
-            entry['sounds'][0]['attenuation_distance'] = 24
         if path in ('throw/explode',):
             entry['sounds'][0]['attenuation_distance'] = 32
         entries[key] = entry
+    # Gunfire, bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its
+    # variants; the client picks one at random per play. GunAudio.java sets the level per listener.
+    import soundfile
+    for key, variants, attenuation in gunaudio.catalogue():
+        listed = []
+        for path, data, sr in variants:
+            out = os.path.join(CV, 'sounds', path + '.ogg')
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            soundfile.write(out, np.clip(gunaudio.resample(data, sr), -1, 1).astype(np.float32), sr, format='OGG', subtype='VORBIS')
+            listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation})
+        entries[key] = {'sounds': listed}
     write_json(os.path.join(CV, 'sounds.json'), entries)
 
 

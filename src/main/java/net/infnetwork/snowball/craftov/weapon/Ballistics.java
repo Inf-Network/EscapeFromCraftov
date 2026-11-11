@@ -84,6 +84,7 @@ public final class Ballistics {
         if (tracer) {
             tracer(eye, end, dir);
         }
+        plugin.weapons().audio().flyby(shooter, eye, end, hitEntity, gun);
         return hitEntity;
     }
 
@@ -93,15 +94,14 @@ public final class Ballistics {
         if (type.name().contains("GLASS") && type != Material.TINTED_GLASS && plugin.raids().isRaidWorld(world)) {
             block.setType(Material.AIR, false);
             world.playSound(at, Sound.BLOCK_GLASS_BREAK, SoundCategory.BLOCKS, 1f, 1f);
+            plugin.weapons().audio().impact(block, at);
             world.spawnParticle(Particle.BLOCK, at, 20, 0.3, 0.3, 0.3, type.createBlockData());
             return;
         }
         Location puff = normal == null ? at : at.clone().add(normal.clone().multiply(0.05));
         world.spawnParticle(Particle.BLOCK, puff, 6, 0.05, 0.05, 0.05, type.isAir() ? Material.STONE.createBlockData() : type.createBlockData());
         world.spawnParticle(Particle.SMOKE, puff, 2, 0.02, 0.02, 0.02, 0.01);
-        if (ThreadLocalRandom.current().nextInt(3) == 0) {
-            world.playSound(at, "craftov:bullet.impact", SoundCategory.BLOCKS, 0.6f, 0.9f + ThreadLocalRandom.current().nextFloat() * 0.2f);
-        }
+        plugin.weapons().audio().impact(block, at);
     }
 
     private static void tracer(Location eye, Location end, Vector dir) {
@@ -120,10 +120,16 @@ public final class Ballistics {
         }
     }
 
-    public static void muzzle(LivingEntity shooter, Vector dir) {
+    /** Where the muzzle of a gun held by {@code shooter} roughly is. */
+    public static Location muzzlePoint(LivingEntity shooter, Vector dir) {
         Location eye = shooter.getEyeLocation();
-        Vector right = dir.getCrossProduct(new Vector(0, 1, 0)).normalize();
-        Location tip = eye.clone().add(dir.clone().multiply(0.9)).add(right.multiply(0.22)).add(0, -0.18, 0);
+        Vector flat = new Vector(dir.getX(), 0, dir.getZ());
+        Vector right = flat.lengthSquared() < 1e-6 ? new Vector(1, 0, 0) : flat.getCrossProduct(new Vector(0, 1, 0)).normalize();
+        return eye.clone().add(dir.clone().multiply(0.9)).add(right.multiply(0.22)).add(0, -0.18, 0);
+    }
+
+    public static void muzzle(LivingEntity shooter, Vector dir) {
+        Location tip = muzzlePoint(shooter, dir);
         shooter.getWorld().spawnParticle(Particle.SMOKE, tip, 2, 0.02, 0.02, 0.02, 0.01);
         shooter.getWorld().spawnParticle(Particle.DUST, tip, 2, 0.03, 0.03, 0.03, 0,
                 new Particle.DustOptions(Color.fromRGB(255, 200, 90), 0.8f));

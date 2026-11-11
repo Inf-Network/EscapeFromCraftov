@@ -69,6 +69,8 @@ public final class AiService implements Listener {
         @Nullable UUID target;
         long firstSeenTick = -1;
         long lastSeenTick = -1000;
+        /** When the current target was acquired; aim settles over the first seconds of an engagement. */
+        long engagedSince = -1000;
         @Nullable Location lastSeen;
         int burstLeft;
         long nextShotTick;
@@ -396,6 +398,9 @@ public final class AiService implements Listener {
             bestDist = d;
         }
         if (best != null) {
+            if (!best.getUniqueId().equals(bot.target) || now - bot.lastSeenTick > 60) {
+                bot.engagedSince = now;
+            }
             bot.target = best.getUniqueId();
             bot.lastSeen = best.getLocation();
             bot.lastSeenTick = now;
@@ -433,11 +438,13 @@ public final class AiService implements Listener {
         bot.burstLeft--;
         bot.ammoLeft--;
         Location eye = bot.mob.getEyeLocation();
-        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.9 : 1.15, 0).toVector()
+        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
+        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
                 .add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)))
                 .subtract(eye.toVector()).normalize();
         double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
-        double spread = (1.6 + distance * 0.035) * moving / Math.max(0.25, bot.accuracy);
+        double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
+        double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
         if ("sniper".equals(bot.kind)) {
             spread *= 0.45;
         }
@@ -460,7 +467,7 @@ public final class AiService implements Listener {
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
                 gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
-                gun.pellets(), gun.headMultiplier() * 0.75, gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope());
+                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope());
     }
 
     // ------------------------------------------------------------------ events

@@ -45,6 +45,7 @@ public final class MenuService {
             case "collection" -> new CollectionMenu(plugin, player).open();
             case "rank", "rank_board" -> new RankMenu(plugin, player).open();
             case "tasks" -> new TaskMenu(plugin, player, false).open();
+            case "hideout" -> new HideoutMenu(plugin, player).open();
             case "range_rack" -> {
                 if (plugin.range().isIn(player)) {
                     new RangeMenu(plugin, player).open();

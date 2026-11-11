@@ -70,6 +70,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.raid.RaidEvents events;
     private net.infnetwork.snowball.craftov.ai.DroneService drones;
     private net.infnetwork.snowball.craftov.economy.InsuranceService insurance;
+    private net.infnetwork.snowball.craftov.economy.HideoutService hideout;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
@@ -131,6 +132,7 @@ public final class CraftovPlugin extends JavaPlugin {
         events = new net.infnetwork.snowball.craftov.raid.RaidEvents(this);
         drones = new net.infnetwork.snowball.craftov.ai.DroneService(this);
         insurance = new net.infnetwork.snowball.craftov.economy.InsuranceService(this);
+        hideout = new net.infnetwork.snowball.craftov.economy.HideoutService(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -294,6 +296,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public net.infnetwork.snowball.craftov.raid.RaidEvents events() { return events; }
     public net.infnetwork.snowball.craftov.ai.DroneService drones() { return drones; }
     public net.infnetwork.snowball.craftov.economy.InsuranceService insurance() { return insurance; }
+    public net.infnetwork.snowball.craftov.economy.HideoutService hideout() { return hideout; }
 
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {

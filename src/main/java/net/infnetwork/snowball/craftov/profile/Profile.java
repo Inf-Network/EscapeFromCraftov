@@ -42,6 +42,10 @@ public final class Profile {
     public long taskDay = -1;
     /** Insure guns, armour, rig and backpack on every deploy (InsuranceService). */
     public boolean autoInsure;
+    /** Hideout facility levels, running crafts by facility, and when the intel centre was last emptied. */
+    public Map<String, Integer> hideout = new HashMap<>();
+    public Map<String, Craft> crafts = new HashMap<>();
+    public long intelSince;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */
@@ -82,6 +86,12 @@ public final class Profile {
         public Preset(String name) {
             this.name = name;
         }
+    }
+
+    /** A hideout production: recipe id and when it is done (epoch millis). */
+    public static final class Craft {
+        public String recipe = "";
+        public long endsAt;
     }
 
     /** One daily contract (see TaskService). */

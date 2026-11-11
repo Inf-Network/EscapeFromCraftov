@@ -19,7 +19,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockDamageAbortEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -58,6 +63,8 @@ public final class TriggerService implements Listener {
         long lastInput = -100;
         long abortTick = -100;
         long tapUntil = -100;
+        /** Swings until this tick come from Q, right-clicks or inventory use, not from the trigger. */
+        long muteUntil = -100;
         boolean mining;
         boolean held;
         /** The server resent real blocks (it does after every right-click on a block): resend all cells. */
@@ -271,6 +278,9 @@ public final class TriggerService implements Listener {
             c.mining = true;
             c.lastInput = now;
         } else if (event.getAction() == Action.LEFT_CLICK_AIR) {
+            if (now <= c.muteUntil) {
+                return;
+            }
             // Swings while digging a capture cell also arrive as "air" clicks (the server sees air there).
             c.lastInput = now;
             if (!c.mining) {
@@ -282,6 +292,11 @@ public final class TriggerService implements Listener {
     /** Vanilla answers every use-on-block with real block updates for that block and its neighbour. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRightClickBlock(PlayerInteractEvent event) {
+        // Aiming is a held right-click on air or plain blocks, so only interactable blocks mute.
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
+                && event.getClickedBlock().getType().isInteractable()) {
+            mute(event.getPlayer());
+        }
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             Capture c = captures.get(event.getPlayer().getUniqueId());
             if (c != null && !c.cells.isEmpty() && !Nms.ready()) {
@@ -293,7 +308,8 @@ public final class TriggerService implements Listener {
     /** The client swings every tick while the button is held over a block. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onSwing(PlayerArmSwingEvent event) {
-        if (event.getHand() == EquipmentSlot.HAND && holdingGun(event.getPlayer())) {
+        if (event.getHand() == EquipmentSlot.HAND && holdingGun(event.getPlayer())
+                && Bukkit.getCurrentTick() > capture(event.getPlayer()).muteUntil) {
             capture(event.getPlayer()).lastInput = Bukkit.getCurrentTick();
         }
     }
@@ -306,6 +322,51 @@ public final class TriggerService implements Listener {
             c.abortTick = Bukkit.getCurrentTick();
             c.mining = false;
         }
+    }
+
+    /**
+     * The client swings its arm after dropping an item (Q), using an item or block (right-click) and
+     * after some inventory actions; Paper reports those swings as left-clicks on air. Ignore them briefly.
+     */
+    public void mute(Player player) {
+        Capture c = capture(player);
+        long now = Bukkit.getCurrentTick();
+        c.muteUntil = now + 3;
+        c.tapUntil = -100;
+        if (!c.mining) {
+            c.lastInput = -100;
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onDrop(PlayerDropItemEvent event) {
+        mute(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventory(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player) {
+            mute(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            mute(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            mute(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        mute(event.getPlayer());
     }
 
     /** Clicking straight at a close entity sends an attack instead of a dig: treat it as a tap. */

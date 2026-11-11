@@ -57,7 +57,7 @@ public final class AiService implements Listener {
     static final class Bot {
         final Zombie mob;
         final Raid raid;
-        final Location home;
+        Location home;
         final double leash;
         final String kind;
         final ItemDef gun;
@@ -104,6 +104,46 @@ public final class AiService implements Listener {
     public @Nullable String nameOf(Entity entity) {
         Bot bot = bots.get(entity.getUniqueId());
         return bot == null ? null : bot.name;
+    }
+
+    /** Moves a raid's boss and its guards to a new post; returns the boss's name, or null if none is alive. */
+    public @Nullable String relocateBoss(Raid raid, Location to) {
+        Bot boss = null;
+        for (Bot bot : bots.values()) {
+            if (bot.raid == raid && bot.boss && bot.mob.isValid()) {
+                boss = bot;
+            }
+        }
+        if (boss == null) {
+            return null;
+        }
+        Location from = boss.home.clone();
+        for (Bot bot : bots.values()) {
+            if (bot.raid == raid && bot.mob.isValid() && (bot == boss || "guard".equals(bot.kind)
+                    && bot.home.getWorld() == from.getWorld() && bot.home.distanceSquared(from) < 30 * 30)) {
+                Location post = to.clone().add(bot.home.getX() - from.getX(), 0, bot.home.getZ() - from.getZ());
+                bot.home = post;
+                bot.alertPos = post;
+                bot.alertUntil = Bukkit.getCurrentTick() + 20L * 90;
+            }
+        }
+        return boss.name;
+    }
+
+    /** A patrol of {@code count} soldiers appears at {@code at} and heads for {@code toward}. */
+    public int reinforce(Raid raid, Location at, Location toward, int count) {
+        int spawned = 0;
+        for (int i = 0; i < count; i++) {
+            Location spot = at.clone().add(ThreadLocalRandom.current().nextDouble(-2, 2), 0, ThreadLocalRandom.current().nextDouble(-2, 2));
+            Bot bot = spawn(raid, spot, 14, "patrol", Math.min(3, raid.tier.aiGear() + 1), false, "增援士兵");
+            if (bot != null) {
+                bot.alertPos = toward.clone();
+                bot.alertUntil = Bukkit.getCurrentTick() + 20L * 90;
+                bot.home = toward.clone();
+                spawned++;
+            }
+        }
+        return spawned;
     }
 
     /** Living soldiers of a raid, for the kill replay recorder. */
@@ -396,7 +436,7 @@ public final class AiService implements Listener {
         Zombie mob = bot.mob;
         Player best = null;
         double bestDist = Double.MAX_VALUE;
-        double range = "sniper".equals(bot.kind) ? 90 : 48;
+        double sight = "sniper".equals(bot.kind) ? 90 : 48;
         Vector facing = mob.getLocation().getDirection().setY(0);
         for (Player player : bot.raid.online()) {
             RaidPlayer rp = bot.raid.player(player.getUniqueId());
@@ -404,11 +444,18 @@ public final class AiService implements Listener {
                     || now < rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240)) {
                 continue;
             }
+            // At night soldiers see about half as far, but a lit tactical light gives you away from beyond
+            // normal sight, whichever way they face.
+            boolean lit = plugin.lights().mode(player) != net.infnetwork.snowball.craftov.weapon.TacticalLight.Mode.OFF;
+            double range = lit ? sight * 1.3 : bot.raid.night ? sight * 0.55 : sight;
             double d = mob.getLocation().distanceSquared(player.getLocation());
             if (d > range * range || d >= bestDist) {
                 continue;
             }
             boolean known = player.getUniqueId().equals(bot.target) && now - bot.lastSeenTick < 40;
+            if (lit && mob.hasLineOfSight(player)) {
+                known = true;
+            }
             // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
             double heard = player.isSneaking() || !moving(player) ? 0 : player.isSprinting() ? 24 : 10;
             boolean noisy = d < heard * heard;

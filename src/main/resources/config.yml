@@ -133,6 +133,15 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+events:
+  # Share of raids fought at night (dark; soldiers see half as far but spot lit tactical lights from afar).
+  night-chance: 0.3
+  # Maps that are always played in daylight (test maps).
+  day-only-maps: [proving]
+  # Random events per raid: blackout, barrage, reinforcements, supply drop, boss patrol.
+  per-raid: 2
+  blackout-seconds: 180
+
 replay:
   # After being killed, watch the last six seconds again through the killer's eyes (Shift skips).
   enabled: true

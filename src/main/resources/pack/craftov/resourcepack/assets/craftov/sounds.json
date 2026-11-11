@@ -336,6 +336,20 @@
    }
   ]
  },
+ "event.siren": {
+  "sounds": [
+   {
+    "name": "craftov:event/siren"
+   }
+  ]
+ },
+ "event.whistle": {
+  "sounds": [
+   {
+    "name": "craftov:event/whistle"
+   }
+  ]
+ },
  "throw.flash": {
   "sounds": [
    {

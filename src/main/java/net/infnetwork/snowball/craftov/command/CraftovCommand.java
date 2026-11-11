@@ -21,7 +21,7 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event");
 
     private final CraftovPlugin plugin;
 
@@ -213,6 +213,26 @@ public final class CraftovCommand implements TabExecutor {
                 for (Raid raid : plugin.raids().raids()) {
                     Text.send(sender, "<white>" + raid.id + " <#9AA0A6>" + raid.map.name() + " " + raid.tier.name() + " " + raid.state
                             + " · 剩余 " + Text.duration(raid.remainingSeconds()) + " · 玩家 " + raid.activeCount() + " · AI " + plugin.ai().count(raid));
+                }
+            }
+            case "event" -> {
+                // /cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [raid id]: start a raid event now.
+                if (args.length < 2) {
+                    Text.send(sender, "<#9AA0A6>/cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [对局ID]");
+                    return;
+                }
+                net.infnetwork.snowball.craftov.raid.RaidEvents.Kind kind;
+                try {
+                    kind = net.infnetwork.snowball.craftov.raid.RaidEvents.Kind.valueOf(args[1].toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ex) {
+                    Text.send(sender, "<#FF8A80>未知事件：" + Text.escape(args[1]));
+                    return;
+                }
+                for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
+                    if (raid.state == Raid.State.RUNNING && (args.length < 3 || raid.id.equalsIgnoreCase(args[2]))) {
+                        boolean fired = plugin.events().fire(raid, kind);
+                        Text.send(sender, fired ? "<#FFC23D>已在 " + raid.id + " 触发 " + kind : "<#FF8A80>" + raid.id + " 无法触发 " + kind);
+                    }
                 }
             }
             case "end" -> {

@@ -43,6 +43,10 @@ public final class Raid {
     public boolean warned5;
     public boolean warned1;
     public long endTick;
+    /** Night raid: dark map, soldiers see less but spot tactical lights from afar (RaidEvents). */
+    public boolean night;
+    /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
+    public long blackoutUntil;
 
     public Raid(String id, MapDef map, Tier tier, RaidMode mode, boolean ranked, World world) {
         this.id = id;

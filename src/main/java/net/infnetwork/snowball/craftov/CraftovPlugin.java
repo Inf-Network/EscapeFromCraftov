@@ -67,6 +67,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.weapon.StanceService stance;
     private net.infnetwork.snowball.craftov.weapon.TacticalLight lights;
     private net.infnetwork.snowball.craftov.replay.ReplayService replays;
+    private net.infnetwork.snowball.craftov.raid.RaidEvents events;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
@@ -125,6 +126,7 @@ public final class CraftovPlugin extends JavaPlugin {
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
         replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
+        events = new net.infnetwork.snowball.craftov.raid.RaidEvents(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -282,6 +284,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public net.infnetwork.snowball.craftov.weapon.StanceService stance() { return stance; }
     public net.infnetwork.snowball.craftov.weapon.TacticalLight lights() { return lights; }
     public net.infnetwork.snowball.craftov.replay.ReplayService replays() { return replays; }
+    public net.infnetwork.snowball.craftov.raid.RaidEvents events() { return events; }
 
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {

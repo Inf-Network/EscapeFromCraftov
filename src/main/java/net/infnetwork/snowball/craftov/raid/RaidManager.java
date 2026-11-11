@@ -259,6 +259,7 @@ public final class RaidManager implements Listener {
         Collections.shuffle(groups);
         raid.state = Raid.State.RUNNING;
         raid.startTick = Bukkit.getCurrentTick();
+        plugin.events().begin(raid);
         for (int i = 0; i < raid.squads.size(); i++) {
             deploySquad(raid, i + 1, groups.isEmpty() ? 1 : groups.get(i % groups.size()));
         }
@@ -1297,6 +1298,11 @@ public final class RaidManager implements Listener {
         MapDef.SwitchDef sw = raid.switchBlocks.get(Raid.blockKey(block.getLocation()));
         if (sw != null) {
             event.setCancelled(true);
+            long dark = (raid.blackoutUntil - Bukkit.getCurrentTick()) / 20;
+            if (dark > 0) {
+                player.sendActionBar(Text.mm("<#FFC23D>⚡ 电网故障，电闸暂时无法使用 <#9AA0A6>(" + dark + "s)"));
+                return;
+            }
             if (raid.switchActive(sw.id())) {
                 player.sendActionBar(Text.mm("<#9AA0A6>" + Text.escape(sw.name()) + " 已经开启"));
                 return;

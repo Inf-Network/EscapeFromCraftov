@@ -136,6 +136,12 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+season:
+  # Changing the id starts a new season (everyone's pass progress resets).
+  id: S1
+  name: 第一赛季
+  xp-per-tier: 1000
+
 bounty:
   # Price of one bounty step placed from the lobby, and the house bounty on the top-ranked player.
   step: 10000

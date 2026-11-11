@@ -65,6 +65,8 @@ final class MainMenu extends Menu {
         long tasksDone = plugin.tasks().of(p).stream().filter(t -> t.done).count();
         button(28, UiItems.button("craftov:ui/icon_upgrade", "<#5BD16B><b>藏身处", List.of("<#9AA0A6>发电机 · 工作台 · 医疗站 · 情报中心",
                 "<#9AA0A6>制作弹药药品，挂机产出块币")), e -> new HideoutMenu(plugin, viewer).open());
+        button(33, UiItems.button("craftov:ui/icon_rank", "<#FFC23D><b>赛季通行证", List.of("<#9AA0A6>行动经验解锁 40 级奖励",
+                "<#9AA0A6>块币 · 药品 · 配件 · 每 10 级一把枪")), e -> new SeasonMenu(plugin, viewer).open());
         button(32, UiItems.button("craftov:ui/icon_rank", "<#FF4D4D><b>悬赏榜", List.of("<#9AA0A6>给其他玩家的人头挂上赏金",
                 "<#9AA0A6>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
         button(29, UiItems.button("craftov:ui/icon_start", "<#F2C94C><b>每日任务", List.of("<#9AA0A6>今日进度 " + tasksDone + "/"

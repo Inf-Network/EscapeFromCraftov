@@ -46,6 +46,10 @@ public final class Profile {
     public Map<String, Integer> hideout = new HashMap<>();
     public Map<String, Craft> crafts = new HashMap<>();
     public long intelSince;
+    /** Season pass progress (SeasonService): the season it belongs to, experience, claimed tiers. */
+    public String seasonId = "";
+    public long seasonXp;
+    public Set<Integer> seasonClaimed = new LinkedHashSet<>();
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));

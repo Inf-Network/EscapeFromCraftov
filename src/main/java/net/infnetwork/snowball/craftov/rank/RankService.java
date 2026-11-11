@@ -63,6 +63,7 @@ public final class RankService {
     }
 
     public void addXp(Player player, Profile profile, long xp) {
+        plugin.season().addXp(player, profile, xp);
         profile.xp += xp;
         while (profile.xp >= xpForLevel(profile.level) && profile.level < 60) {
             profile.xp -= xpForLevel(profile.level);

@@ -14,7 +14,8 @@ public enum Category {
     VALUABLE("物资"),
     COLLECTIBLE("收藏品"),
     SPECIAL("特殊"),
-    ATTACHMENT("配件");
+    ATTACHMENT("配件"),
+    MELEE("近战");
 
     private final String displayName;
 

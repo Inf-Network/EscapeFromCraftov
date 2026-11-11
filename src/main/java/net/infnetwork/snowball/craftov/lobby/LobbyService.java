@@ -258,6 +258,7 @@ public final class LobbyService implements Listener {
         plugin.health().setupPlayer(player, true);
         Profile profile = plugin.profiles().get(player);
         plugin.carry().apply(player, profile.loadout, UiItems.lobbyMenu());
+        plugin.carry().ensureMelee(player);
         player.setFallDistance(0);
         player.setFireTicks(0);
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));
@@ -275,6 +276,7 @@ public final class LobbyService implements Listener {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isLobby(player.getWorld()) && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR
                     && plugin.raids().raidOf(player) == null) {
+                plugin.carry().ensureMelee(player);
                 captureLoadout(player);
                 plugin.carry().refreshLocks(player);
             }

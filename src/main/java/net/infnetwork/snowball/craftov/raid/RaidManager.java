@@ -723,9 +723,10 @@ public final class RaidManager implements Listener {
         long lost = plugin.carry().carriedValue(player);
         // Body with everything the player carried.
         List<ItemStack> drop = new ArrayList<>();
+        ItemStack melee = player.getInventory().getItem(CarryService.MELEE_SLOT);
         for (int slot = 0; slot <= CarryService.HEAD; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack)) {
+            if (slot != CarryService.MELEE_SLOT && stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack)) {
                 drop.add(stack.clone());
             }
         }
@@ -734,6 +735,7 @@ public final class RaidManager implements Listener {
         player.setItemOnCursor(null);
         Profile profile = plugin.profiles().get(player);
         profile.loadout.clear();
+        keepMelee(profile, melee);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;
         profile.addStat("deaths", 1);
@@ -772,6 +774,16 @@ public final class RaidManager implements Listener {
                 sendDamageLog(p, hit, hits);
             }
         }, 20L * 5);
+    }
+
+    /** The melee weapon is never lost: it goes back into the next loadout. */
+    private void keepMelee(Profile profile, @Nullable ItemStack melee) {
+        if (plugin.carry().isMelee(melee)) {
+            ItemRecord record = plugin.items().toRecord(melee);
+            if (record != null) {
+                profile.loadout.put(CarryService.MELEE_SLOT, record);
+            }
+        }
     }
 
     private void missing(Raid raid, RaidPlayer rp, String reason) {

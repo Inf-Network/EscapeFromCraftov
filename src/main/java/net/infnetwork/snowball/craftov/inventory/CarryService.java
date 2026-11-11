@@ -28,6 +28,8 @@ import java.util.Map;
 public final class CarryService {
 
     public static final int TERMINAL_SLOT = 8;
+    /** Hotbar key 3 is reserved for the melee weapon; nothing else goes there and it is never lost. */
+    public static final int MELEE_SLOT = 2;
     public static final int RIG_START = 9;
     public static final int RIG_MAX = 9;
     public static final int PACK_START = 18;
@@ -61,6 +63,24 @@ public final class CarryService {
         return def == null || !def.isContainer() ? 0 : Math.min(max, def.slots());
     }
 
+    public boolean isMelee(@Nullable ItemStack stack) {
+        ItemDef def = items.defOf(stack);
+        return def != null && def.isMelee();
+    }
+
+    /** Puts the starter knife into an empty melee slot and moves anything that does not belong there. */
+    public void ensureMelee(Player player) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack current = inv.getItem(MELEE_SLOT);
+        if (isMelee(current)) {
+            return;
+        }
+        inv.setItem(MELEE_SLOT, items.create("knife_starter", 1));
+        if (current != null && !current.isEmpty() && !ItemFactory.isUi(current)) {
+            give(player, current, true);
+        }
+    }
+
     public static boolean isRigSlot(int slot) {
         return slot >= RIG_START && slot < RIG_START + RIG_MAX;
     }
@@ -73,7 +93,9 @@ public final class CarryService {
     public List<Integer> usableSlots(Player player) {
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < TERMINAL_SLOT; i++) {
-            out.add(i);
+            if (i != MELEE_SLOT) {
+                out.add(i);
+            }
         }
         int rig = rigCapacity(player);
         for (int i = 0; i < rig; i++) {
@@ -134,7 +156,14 @@ public final class CarryService {
     public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow) {
         ItemStack remaining = stack.clone();
         PlayerInventory inv = player.getInventory();
-        List<Integer> slots = usableSlots(player);
+        if (isMelee(remaining)) {
+            // A new melee weapon replaces the free starter knife; any other one stays where it is.
+            ItemDef held = items.defOf(inv.getItem(MELEE_SLOT));
+            if (held != null && "knife_starter".equals(held.id())) {
+                inv.setItem(MELEE_SLOT, null);
+            }
+        }
+        List<Integer> slots = isMelee(remaining) ? List.of(MELEE_SLOT) : usableSlots(player);
         boolean containerWithContents = ItemFactory.hasContents(remaining);
         if (!containerWithContents) {
             for (int slot : slots) {
@@ -172,7 +201,7 @@ public final class CarryService {
         }
         PlayerInventory inv = player.getInventory();
         int need = stack.getAmount();
-        for (int slot : usableSlots(player)) {
+        for (int slot : isMelee(stack) ? List.of(MELEE_SLOT) : usableSlots(player)) {
             ItemStack current = inv.getItem(slot);
             if (current == null || current.isEmpty()) {
                 return true;

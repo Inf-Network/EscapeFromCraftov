@@ -376,6 +376,18 @@ def star_crystal(c):
     c.line([(16, 1), (16, 3)], WH)
 
 
+def combat_knife(c):
+    # Clip-point blade from the top right down to a guard and a ribbed polymer grip.
+    c.poly([(13, 19), (26, 5), (29, 3), (28, 7), (16, 22)], rgb('#9AA3AB'))
+    c.line([(15, 20), (27, 6)], rgb('#D7DDE2'))
+    c.line([(24, 6), (29, 3)], rgb('#5D646B'))
+    c.line([(10, 17), (18, 25)], K, 2)
+    c.poly([(4, 27), (11, 20), (14, 23), (7, 30)], rgb('#2E3236'))
+    for i in range(3):
+        c.line([(6 + i * 2, 25 - i * 2), (8 + i * 2, 27 - i * 2)], rgb('#4A5056'))
+    c.rect(3, 28, 5, 30, ST)
+
+
 def screws(c):
     c.box(6, 12, 26, 26, rgb('#A0522D'))
     c.rect(6, 12, 26, 14, shade(rgb('#A0522D'), 1.3))
@@ -566,6 +578,8 @@ ICONS = {
     'pocket_watch': watch, 'gilded_teaset': teaset, 'star_crystal': star_crystal, 'gold_crown': crown,
     'quantum_cpu': chip(rgb('#1B4F72'), CY), 'meteor_knife': knife, 'lion_statue': lion, 'gramophone': gramophone,
     'pearl_necklace': necklace, 'master_chip': master_chip,
+    # melee
+    'knife_starter': combat_knife,
 }
 
 

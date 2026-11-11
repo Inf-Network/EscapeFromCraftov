@@ -221,6 +221,44 @@ public final class DamageService implements Listener {
         }
     }
 
+    private final java.util.Map<UUID, Long> lastMelee = new java.util.HashMap<>();
+
+    /** A knife hit: AI die in a fixed number of hits per class, players take flat damage. */
+    private void melee(Player player, LivingEntity victim, ItemDef def) {
+        net.infnetwork.snowball.craftov.weapon.MeleeSpec spec = def.melee();
+        long now = org.bukkit.Bukkit.getCurrentTick();
+        if (now - lastMelee.getOrDefault(player.getUniqueId(), -1000L) < spec.cooldownTicks()
+                || player.getEyeLocation().distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
+                || !plugin.raids().canFire(player)) {
+            return;
+        }
+        lastMelee.put(player.getUniqueId(), now);
+        String cls = plugin.ai().meleeClass(victim);
+        double damage;
+        if (cls != null) {
+            int hits = switch (cls) {
+                case "boss" -> spec.hitsBoss();
+                case "special" -> spec.hitsSpecial();
+                default -> spec.hitsNormal();
+            };
+            org.bukkit.attribute.AttributeInstance max = victim.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+            damage = (max == null ? victim.getHealth() : max.getValue()) / Math.max(1, hits) + 0.01;
+        } else if (victim instanceof Player) {
+            damage = spec.playerDamage();
+        } else {
+            return;
+        }
+        recordHit(victim, player, def.name(), BodyPart.CHEST);
+        if (victim instanceof Player) {
+            hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
+                    .add(new HitRecord(player.getName(), def.name(), BodyPart.CHEST, damage, 1));
+        }
+        deal(victim, player, damage);
+        plugin.ai().onBotHurt(victim, player);
+        victim.getWorld().playSound(victim.getLocation(), "minecraft:entity.player.attack.sweep", SoundCategory.PLAYERS, 1f, 1.2f);
+        feedback(player, victim, damage, HitZone.TORSO);
+    }
+
     /** Guns and tactical items are not melee weapons; punches do token damage only. */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onMelee(EntityDamageByEntityEvent event) {
@@ -231,6 +269,11 @@ public final class DamageService implements Listener {
             ItemDef def = plugin.items().defOf(player.getInventory().getItemInMainHand());
             if (def != null && def.isGun()) {
                 event.setCancelled(true);
+                return;
+            }
+            if (def != null && def.isMelee() && event.getEntity() instanceof LivingEntity victim) {
+                event.setCancelled(true);
+                melee(player, victim, def);
                 return;
             }
             event.setDamage(Math.min(event.getDamage(), 4.0));

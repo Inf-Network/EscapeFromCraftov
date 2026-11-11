@@ -1,0 +1,21 @@
+{
+ "model": {
+  "type": "minecraft:select",
+  "property": "minecraft:display_context",
+  "cases": [
+   {
+    "when": [
+     "gui"
+    ],
+    "model": {
+     "type": "minecraft:model",
+     "model": "craftov:item/gui/knife_starter"
+    }
+   }
+  ],
+  "fallback": {
+   "type": "minecraft:model",
+   "model": "craftov:item/knife_starter"
+  }
+ }
+}

@@ -96,7 +96,9 @@ def build_items(item_defs):
         else:
             icon = icons.render(item_id)
             held = 'craftov:item/' + item_id
-            write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id))
+            # Melee weapons are held like a sword; everything else like a flat item.
+            parent = 'minecraft:item/handheld' if spec.get('category') == 'MELEE' else 'minecraft:item/generated'
+            write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id, parent))
         save(icon, os.path.join(CV, 'textures', 'item', item_id + '.png'))
         composite = bg.copy()
         composite.alpha_composite(icon)

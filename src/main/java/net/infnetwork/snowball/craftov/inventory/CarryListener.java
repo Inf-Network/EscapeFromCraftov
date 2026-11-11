@@ -71,6 +71,10 @@ public final class CarryListener implements Listener {
             event.setCancelled(true);
             return;
         }
+        if (violatesMeleeSlot(player, event, slot, current, cursor)) {
+            event.setCancelled(true);
+            return;
+        }
         if (event.getAction() == InventoryAction.HOTBAR_SWAP) {
             ItemStack hotbar = player.getInventory().getItem(event.getHotbarButton());
             if (ItemFactory.isUi(hotbar) || slot >= CarryService.FEET
@@ -108,6 +112,22 @@ public final class CarryListener implements Listener {
             event.setCancelled(true);
             Text.send(player, "<#FF8A80>装有物品的胸挂/背包不能放进携行格，请直接装备或放进箱子。");
         }
+    }
+
+    /** Only melee weapons go into the melee slot, and they never leave it. */
+    private boolean violatesMeleeSlot(Player player, InventoryClickEvent event, int slot, ItemStack current, ItemStack cursor) {
+        if (event.getAction() == InventoryAction.HOTBAR_SWAP) {
+            ItemStack hotbar = player.getInventory().getItem(event.getHotbarButton());
+            if (event.getHotbarButton() == CarryService.MELEE_SLOT || slot == CarryService.MELEE_SLOT) {
+                return true;
+            }
+            return carry.isMelee(hotbar) || carry.isMelee(current);
+        }
+        if (slot == CarryService.MELEE_SLOT) {
+            // Picking the knife up or dropping it is not allowed; swapping in another melee weapon is.
+            return cursor == null || cursor.isEmpty() || !carry.isMelee(cursor);
+        }
+        return carry.isMelee(current) || carry.isMelee(cursor);
     }
 
     private void handleContainerSlot(Player player, int slot, InventoryClickEvent event) {
@@ -193,6 +213,11 @@ public final class CarryListener implements Listener {
                 return;
             }
             int slot = event.getView().convertSlot(raw);
+            if ((raw >= topSize || event.getView().getType() == InventoryType.CRAFTING)
+                    && (slot == CarryService.MELEE_SLOT || carry.isMelee(event.getOldCursor()))) {
+                event.setCancelled(true);
+                return;
+            }
             if (raw >= topSize || event.getView().getType() == InventoryType.CRAFTING) {
                 if (slot >= CarryService.FEET) {
                     event.setCancelled(true);
@@ -217,7 +242,7 @@ public final class CarryListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
-        if (ItemFactory.isUi(event.getItemDrop().getItemStack())) {
+        if (ItemFactory.isUi(event.getItemDrop().getItemStack()) || carry.isMelee(event.getItemDrop().getItemStack())) {
             event.setCancelled(true);
         }
     }

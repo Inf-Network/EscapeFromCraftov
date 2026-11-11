@@ -39,8 +39,13 @@ public record ItemDef(
         boolean tradeable,
         boolean lootable,
         double weight,
-        net.infnetwork.snowball.craftov.weapon.@Nullable OpticSpec optic
+        net.infnetwork.snowball.craftov.weapon.@Nullable OpticSpec optic,
+        net.infnetwork.snowball.craftov.weapon.@Nullable MeleeSpec melee
 ) {
+
+    public boolean isMelee() {
+        return melee != null;
+    }
 
     public boolean isGun() {
         return gun != null;

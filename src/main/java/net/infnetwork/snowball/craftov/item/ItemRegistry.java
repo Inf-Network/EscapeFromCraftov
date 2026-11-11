@@ -117,6 +117,12 @@ public final class ItemRegistry {
             optic = new net.infnetwork.snowball.craftov.weapon.OpticSpec(o.getDouble("fov", 0.75), o.getString("overlay"),
                     Set.copyOf(o.getStringList("mount").isEmpty() ? List.of("rifle") : o.getStringList("mount")));
         }
+        net.infnetwork.snowball.craftov.weapon.MeleeSpec melee = null;
+        ConfigurationSection me = s.getConfigurationSection("melee");
+        if (me != null) {
+            melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getInt("hits-normal", 2), me.getInt("hits-special", 3),
+                    me.getInt("hits-boss", 4), me.getDouble("player-damage", 30), me.getInt("cooldown", 12), me.getDouble("reach", 3.0));
+        }
         ThrowableSpec throwable = null;
         ConfigurationSection t = s.getConfigurationSection("throwable");
         if (t != null) {
@@ -143,6 +149,7 @@ public final class ItemRegistry {
             case KEY -> 0.05;
             case COLLECTIBLE -> 1.0;
             case ATTACHMENT -> 0.5;
+            case MELEE -> 0.3;
             default -> 0.6;
         };
         return new ItemDef(
@@ -164,7 +171,8 @@ public final class ItemRegistry {
                 s.getBoolean("tradeable", true),
                 s.getBoolean("lootable", true),
                 s.getDouble("weight", defaultWeight),
-                optic);
+                optic,
+                melee);
     }
 
     public @Nullable ItemDef get(@Nullable String id) {

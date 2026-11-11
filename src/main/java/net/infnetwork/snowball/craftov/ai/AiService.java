@@ -106,6 +106,15 @@ public final class AiService implements Listener {
         return bot == null ? null : bot.name;
     }
 
+    /** Melee class of an AI: "boss", "special" (guards, snipers, escorts) or "normal", or null if not AI. */
+    public @Nullable String meleeClass(Entity entity) {
+        Bot bot = bots.get(entity.getUniqueId());
+        if (bot == null) {
+            return null;
+        }
+        return bot.boss ? "boss" : "patrol".equals(bot.kind) ? "normal" : "special";
+    }
+
     public boolean isAi(@Nullable Entity entity) {
         return entity != null && bots.containsKey(entity.getUniqueId());
     }

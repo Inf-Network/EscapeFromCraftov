@@ -66,6 +66,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private TriggerService triggers;
     private net.infnetwork.snowball.craftov.weapon.StanceService stance;
     private net.infnetwork.snowball.craftov.weapon.TacticalLight lights;
+    private net.infnetwork.snowball.craftov.replay.ReplayService replays;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
     private DownedService downed;
     private WeaponService weapons;
@@ -123,6 +124,7 @@ public final class CraftovPlugin extends JavaPlugin {
         triggers = new TriggerService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
+        replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
         ai = new AiService(this);
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
@@ -141,7 +143,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, lights, replays, new ThrowableService(this));
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -177,6 +179,9 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onDisable() {
         if (editor != null) {
             editor.shutdown();
+        }
+        if (replays != null) {
+            replays.shutdown();
         }
         if (raids != null) {
             raids.shutdown();
@@ -276,6 +281,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public TriggerService triggers() { return triggers; }
     public net.infnetwork.snowball.craftov.weapon.StanceService stance() { return stance; }
     public net.infnetwork.snowball.craftov.weapon.TacticalLight lights() { return lights; }
+    public net.infnetwork.snowball.craftov.replay.ReplayService replays() { return replays; }
 
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {

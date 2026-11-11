@@ -106,6 +106,23 @@ public final class AiService implements Listener {
         return bot == null ? null : bot.name;
     }
 
+    /** Living soldiers of a raid, for the kill replay recorder. */
+    public List<Zombie> mobsIn(Raid raid) {
+        List<Zombie> out = new ArrayList<>();
+        for (Bot bot : bots.values()) {
+            if (bot.raid == raid && bot.mob.isValid()) {
+                out.add(bot.mob);
+            }
+        }
+        return out;
+    }
+
+    /** The gun an AI soldier carries, or null if the entity is not one. */
+    public @Nullable ItemDef gunOf(@Nullable Entity entity) {
+        Bot bot = entity == null ? null : bots.get(entity.getUniqueId());
+        return bot == null ? null : bot.gun;
+    }
+
     /** Melee class of an AI: "boss", "special" (guards, snipers, escorts) or "normal", or null if not AI. */
     public @Nullable String meleeClass(Entity entity) {
         Bot bot = bots.get(entity.getUniqueId());

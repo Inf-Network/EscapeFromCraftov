@@ -613,7 +613,7 @@ public final class RaidManager implements Listener {
             }
             if (raid.activeCount() == 0) {
                 raid.state = Raid.State.ENDING;
-                raid.endTick = now + 20L * 8;
+                raid.endTick = Math.max(raid.endTick, now + 20L * 8); // a kill replay may need longer
             }
         }
     }
@@ -767,7 +767,8 @@ public final class RaidManager implements Listener {
         player.playSound(player.getLocation(), "craftov:ui.death", SoundCategory.MASTER, 1f, 1f);
         UUID uuid = player.getUniqueId();
         List<DamageService.HitRecord> hits = plugin.damage().hitsTaken(uuid);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        // The kill replay (if there is a killer to follow) plays first, then the report and spectating.
+        plugin.replays().afterDeath(player, raid, hit, () -> {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
@@ -778,7 +779,7 @@ public final class RaidManager implements Listener {
                     plugin.lobby().enterLobby(p);
                 }
             }
-        }, 20L * 5);
+        });
     }
 
     /** Dead players watching a squadmate: spectator -> (raid, own raid record). */

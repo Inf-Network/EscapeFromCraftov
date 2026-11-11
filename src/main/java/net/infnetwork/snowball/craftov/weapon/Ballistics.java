@@ -82,6 +82,7 @@ public final class Ballistics {
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), end);
         }
+        plugin.replays().shot(shooter, muzzlePoint(shooter, dir), end, gun);
         plugin.weapons().audio().flyby(shooter, eye, end, hitEntity, gun);
         return hitEntity;
     }

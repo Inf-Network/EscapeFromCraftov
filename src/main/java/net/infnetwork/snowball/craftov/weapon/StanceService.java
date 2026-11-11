@@ -106,6 +106,11 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
         if (!raised.contains(entityId) || !isGun(real)) {
             return null;
         }
+        return raisedCopy(real);
+    }
+
+    /** The gun as a charged crossbow keeping its model: held that way, a humanoid shoulders it. */
+    public ItemStack raisedCopy(ItemStack real) {
         ItemStack shown = real.withType(Material.CROSSBOW);
         // Crossbows are damageable, so the stack must stay unstackable or the packet fails to encode.
         shown.setData(DataComponentTypes.MAX_STACK_SIZE, 1);

@@ -133,6 +133,10 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+replay:
+  # After being killed, watch the last six seconds again through the killer's eyes (Shift skips).
+  enabled: true
+
 cinematic:
   enabled: true
 

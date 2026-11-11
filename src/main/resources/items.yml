@@ -239,3 +239,24 @@ items:
     lootable: false
     lore: "配发的基础战术刀。死亡不会丢失。"
     melee: { hits-normal: 2, hits-special: 3, hits-boss: 4, player-damage: 30, cooldown: 12, reach: 3.0 }
+  knife_tactical:
+    name: "战术匕首"
+    category: MELEE
+    rarity: GREEN
+    value: 18000
+    lore: "双刃匕首，出手快。普通敌兵 2 刀、精英 2 刀、首领 3 刀。死亡不会丢失。"
+    melee: { hits-normal: 2, hits-special: 2, hits-boss: 3, player-damage: 38, cooldown: 10, reach: 3.0 }
+  knife_machete:
+    name: "开山刀"
+    category: MELEE
+    rarity: BLUE
+    value: 42000
+    lore: "又长又沉，普通敌兵一刀倒地，挥得慢一些。死亡不会丢失。"
+    melee: { hits-normal: 1, hits-special: 2, hits-boss: 3, player-damage: 50, cooldown: 16, reach: 3.4 }
+  knife_karambit:
+    name: "爪刀"
+    category: MELEE
+    rarity: PURPLE
+    value: 95000
+    lore: "弧形刃，出手极快。普通敌兵一刀、精英与首领两刀。死亡不会丢失。"
+    melee: { hits-normal: 1, hits-special: 2, hits-boss: 2, player-damage: 45, cooldown: 8, reach: 2.9 }

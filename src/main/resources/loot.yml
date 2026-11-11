@@ -22,7 +22,7 @@ containers:
     items: [1, 3]
     hitbox-width: 1.2
     hitbox-height: 0.5
-    categories: { WEAPON: 60, AMMO: 30, THROWABLE: 10, ATTACHMENT: 12 }
+    categories: { WEAPON: 60, AMMO: 30, THROWABLE: 10, ATTACHMENT: 12, MELEE: 5 }
     rarity: { WHITE: 20, GREEN: 38, BLUE: 26, PURPLE: 12, GOLD: 3.5, RED: 0.5 }
   ammo_box:
     name: "弹药箱"

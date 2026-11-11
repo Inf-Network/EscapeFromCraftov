@@ -388,6 +388,37 @@ def combat_knife(c):
     c.rect(3, 28, 5, 30, ST)
 
 
+def tactical_dagger(c):
+    # Double-edged dark blade with a centre ridge, cross guard and wrapped grip.
+    c.poly([(12, 20), (25, 6), (29, 2), (27, 8), (15, 23)], rgb('#4B5259'))
+    c.line([(14, 21), (27, 5)], rgb('#8E979F'))
+    c.line([(9, 16), (19, 26)], rgb('#B08D57'), 2)
+    c.poly([(4, 27), (11, 20), (14, 23), (7, 30)], rgb('#5A4632'))
+    for i in range(3):
+        c.line([(6 + i * 2, 25 - i * 2), (8 + i * 2, 27 - i * 2)], rgb('#3B2E21'))
+    c.rect(3, 28, 5, 30, rgb('#B08D57'))
+
+
+def machete(c):
+    # Long wide blade that flares toward the tip, plain wooden handle.
+    c.poly([(11, 21), (24, 4), (30, 1), (30, 6), (15, 25)], rgb('#A7ADB2'))
+    c.line([(13, 22), (28, 3)], rgb('#E1E5E8'))
+    c.line([(15, 25), (30, 6)], rgb('#6F767C'))
+    c.line([(9, 19), (16, 26)], K, 2)
+    c.poly([(3, 27), (10, 20), (13, 23), (6, 30)], rgb('#7A5230'))
+    c.rect(5, 26, 6, 27, ST)
+    c.rect(8, 23, 9, 24, ST)
+
+
+def karambit(c):
+    # Curved talon blade and a ring pommel.
+    c.poly([(14, 20), (18, 10), (24, 4), (28, 3), (25, 8), (20, 13), (17, 22)], rgb('#C0C6CC'))
+    c.line([(16, 19), (19, 11), (25, 5)], rgb('#EEF1F3'))
+    c.poly([(8, 25), (14, 19), (17, 22), (11, 28)], rgb('#3A2A4F'))
+    c.ellipse(2, 25, 9, 31, rgb('#9AA3AB'))
+    c.ellipse(4, 27, 7, 30, (0, 0, 0, 0))
+
+
 def seawater_filter(c):
     # Brass-capped cartridge with layered filter media behind a glass window.
     c.box(10, 4, 22, 28, rgb('#3B5C6E'))
@@ -620,7 +651,8 @@ ICONS = {
     'pearl_necklace': necklace, 'master_chip': master_chip,
     'seawater_filter': seawater_filter, 'urine_purifier': urine_purifier, 'eel_generator': eel_generator,
     # melee
-    'knife_starter': combat_knife,
+    'knife_starter': combat_knife, 'knife_tactical': tactical_dagger, 'knife_machete': machete,
+    'knife_karambit': karambit,
 }
 
 

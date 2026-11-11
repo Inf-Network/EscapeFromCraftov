@@ -49,7 +49,8 @@ public final class TraderService {
             if (!def.tradeable() || def.rarity().ordinal() > max.ordinal()) {
                 continue;
             }
-            boolean match = tab == Tab.CARRY ? def.isContainer() : def.category() == tab.category;
+            boolean match = tab == Tab.CARRY ? def.isContainer()
+                    : def.category() == tab.category || (tab == Tab.WEAPON && def.category() == Category.MELEE);
             if (match) {
                 out.add(def);
             }

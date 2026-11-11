@@ -13,6 +13,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Pose;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -77,7 +78,7 @@ public final class DownedService implements Listener {
         if (rp.downs >= maxDowns) {
             return false;
         }
-        if (raid.mode == net.infnetwork.snowball.craftov.raid.RaidMode.SOLO) {
+        if (raid.squadOf(rp).size() <= 1) {
             return plugin.getConfig().getBoolean("downed.solo", false);
         }
         for (RaidPlayer mate : raid.squadOf(rp)) {
@@ -190,6 +191,11 @@ public final class DownedService implements Listener {
                 continue;
             }
             crawl(player, state);
+            if (!hasStandingMate(raid, rp)) {
+                // Nobody left who could revive: bleeding out would only make everyone wait.
+                finish(raid, rp, player, state);
+                continue;
+            }
             Player reviver = findReviver(raid, rp, player);
             if (reviver != null) {
                 if (!reviver.getUniqueId().equals(state.reviver)) {
@@ -197,13 +203,21 @@ public final class DownedService implements Listener {
                     state.reviveTicks = 0;
                 }
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
+                reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
                 reviver.sendActionBar(Text.mm("<#5BD16B>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
                 player.sendActionBar(Text.mm("<#5BD16B>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
                 if (state.reviveTicks >= state.reviveNeeded) {
+                    stopReviving(reviver);
                     revive(player, reviver);
                 }
                 continue;
+            }
+            if (state.reviver != null) {
+                Player old = Bukkit.getPlayer(state.reviver);
+                if (old != null) {
+                    stopReviving(old);
+                }
             }
             state.reviver = null;
             state.reviveTicks = 0;
@@ -218,6 +232,34 @@ public final class DownedService implements Listener {
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
             }
+        }
+    }
+
+    private boolean hasStandingMate(Raid raid, RaidPlayer rp) {
+        for (RaidPlayer mate : raid.squadOf(rp)) {
+            if (mate != rp && mate.state == RaidPlayer.State.ALIVE && Bukkit.getPlayer(mate.uuid) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The reviver kneels over the downed player and works on them; everyone nearby sees it. */
+    private void reviveEffects(Player reviver, Player patient) {
+        if (reviver.getPose() != Pose.SNEAKING) {
+            reviver.setPose(Pose.SNEAKING, true);
+        }
+        Location at = patient.getLocation().add(0, 0.4, 0);
+        reviver.swingMainHand();
+        patient.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, at, 3, 0.35, 0.15, 0.35, 0);
+        if (Bukkit.getCurrentTick() % 20 < 5) {
+            patient.getWorld().playSound(at, "minecraft:item.armor.equip_leather", SoundCategory.PLAYERS, 0.6f, 1.2f);
+        }
+    }
+
+    private void stopReviving(Player reviver) {
+        if (reviver.hasFixedPose()) {
+            reviver.setPose(Pose.STANDING, false);
         }
     }
 
@@ -240,6 +282,10 @@ public final class DownedService implements Listener {
 
     /** Forces the crawling pose by placing a client-side barrier above the player's head. */
     private void crawl(Player player, Downed state) {
+        // Server-side pose so other players see the crawl; the fake barrier keeps the own client down.
+        if (player.getPose() != Pose.SWIMMING || !player.hasFixedPose()) {
+            player.setPose(Pose.SWIMMING, true);
+        }
         Location head = player.getLocation().add(0, 1.5, 0);
         Block block = head.getBlock();
         if (state.fakeBlock != null && !state.fakeBlock.getBlock().equals(block)) {
@@ -253,6 +299,15 @@ public final class DownedService implements Listener {
     }
 
     private void uncrawl(Player player, Downed state) {
+        if (player.hasFixedPose()) {
+            player.setPose(Pose.STANDING, false);
+        }
+        if (state.reviver != null) {
+            Player reviver = Bukkit.getPlayer(state.reviver);
+            if (reviver != null) {
+                stopReviving(reviver);
+            }
+        }
         if (state.fakeBlock != null && player.isOnline()) {
             player.sendBlockChange(state.fakeBlock, state.fakeBlock.getBlock().getBlockData());
             state.fakeBlock = null;

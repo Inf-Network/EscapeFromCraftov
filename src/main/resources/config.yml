@@ -136,6 +136,11 @@ escort:
   # Share of the reward paid to escorts when the client dies.
   failure-share: 0.3
 
+bounty:
+  # Price of one bounty step placed from the lobby, and the house bounty on the top-ranked player.
+  step: 10000
+  champion: 20000
+
 backup:
   # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups (also on shutdown).
   enabled: true

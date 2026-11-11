@@ -46,6 +46,8 @@ public final class Profile {
     public Map<String, Integer> hideout = new HashMap<>();
     public Map<String, Craft> crafts = new HashMap<>();
     public long intelSince;
+    /** Money other players have put on this player's head (BountyService). */
+    public long bounty;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

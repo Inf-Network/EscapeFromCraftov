@@ -65,6 +65,8 @@ final class MainMenu extends Menu {
         long tasksDone = plugin.tasks().of(p).stream().filter(t -> t.done).count();
         button(28, UiItems.button("craftov:ui/icon_upgrade", "<#5BD16B><b>藏身处", List.of("<#9AA0A6>发电机 · 工作台 · 医疗站 · 情报中心",
                 "<#9AA0A6>制作弹药药品，挂机产出块币")), e -> new HideoutMenu(plugin, viewer).open());
+        button(32, UiItems.button("craftov:ui/icon_rank", "<#FF4D4D><b>悬赏榜", List.of("<#9AA0A6>给其他玩家的人头挂上赏金",
+                "<#9AA0A6>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
         button(29, UiItems.button("craftov:ui/icon_start", "<#F2C94C><b>每日任务", List.of("<#9AA0A6>今日进度 " + tasksDone + "/"
                 + net.infnetwork.snowball.craftov.task.TaskService.COUNT, "<#9AA0A6>完成即得块币与经验，每天 04:00 刷新")),
                 e -> new TaskMenu(plugin, viewer, false).open());

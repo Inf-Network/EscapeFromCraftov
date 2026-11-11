@@ -67,14 +67,23 @@ public final class RaidEvents {
 
     /** Called when a raid begins: picks night or day and schedules its events. */
     public void begin(Raid raid) {
+        // Players are still in the insertion cinematic now; brief them once they are on the ground.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (raid.state != Raid.State.RUNNING) {
+                return;
+            }
+            plugin.bounties().announce(raid);
+            if (raid.night) {
+                for (Player player : raid.online()) {
+                    player.sendMessage(Text.mm("<#9AA0A6>🌙 <#C8CCD2>夜间行动：<#9AA0A6>敌兵视野变短，但开着的战术手电会让你从更远处暴露。"));
+                }
+            }
+        }, 20L * 14);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         boolean nightAllowed = !plugin.getConfig().getStringList("events.day-only-maps").contains(raid.map.id());
         if (nightAllowed && rng.nextDouble() < plugin.getConfig().getDouble("events.night-chance", 0.3)) {
             raid.night = true;
             raid.world.setTime(18000);
-            for (Player player : raid.online()) {
-                player.sendMessage(Text.mm("<#9AA0A6>🌙 <#C8CCD2>夜间行动：<#9AA0A6>敌兵视野变短，但开着的战术手电会让你从更远处暴露。"));
-            }
         }
         int count = plugin.getConfig().getInt("events.per-raid", 2);
         if (count <= 0) {

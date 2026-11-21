@@ -50,6 +50,10 @@ final class PriceMenu extends Menu {
         adjust(11, -0.01, "-1%");
         List<String> info = new ArrayList<>(List.of("<#8A8F98>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)",
                 "<#8A8F98>预计 " + hint, "<#8A8F98>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax)));
+        int level = plugin.market().minBuyLevel();
+        if (plugin.profiles().get(viewer).level < level) {
+            info.add("<#FFC23D>账号等级 " + level + " 前只有系统买家会收购");
+        }
         if (plugin.market().traded(record.id)) {
             info.add("<#8A8F98>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));
         }

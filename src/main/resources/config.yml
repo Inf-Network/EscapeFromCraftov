@@ -133,8 +133,10 @@ market:
   # Listings priced above this multiple of the reference price are refused (stops one colluding sale
   # at an absurd price from moving money between accounts).
   max-price-multiplier: 3.0
-  # Account level needed to buy other players' listings, so a fresh account cannot hand its starting
-  # money to another one on day one (1 = no requirement). Selling, and system buyers, are not affected.
+  # Account level both sides of a sale between players need: below it a player can neither buy other
+  # players' listings nor sell to other players, so a fresh account cannot hand its starting money to
+  # another one on day one in either direction (1 = no requirement). Listing, system buyers and the
+  # trader are not affected.
   min-buy-level: 3
   # Refuse sales between players when buyer and seller have logged in from the same address (each
   # profile keeps its last 4). OFF by default: players on one LAN, in one household or behind one

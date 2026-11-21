@@ -324,6 +324,9 @@ public final class MarketService implements Listener {
         plugin.profiles().markDirty(player.getUniqueId());
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
+        if (profile.level < minBuyLevel()) {
+            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购。");
+        }
         return true;
     }
 
@@ -366,15 +369,25 @@ public final class MarketService implements Listener {
         return plugin.getConfig().getInt("market.min-buy-level", 3);
     }
 
+    /** Whether players may buy {@code seller}'s listings (system buyers always may). */
+    public boolean sellerCanTrade(UUID seller) {
+        return plugin.profiles().level(seller) >= minBuyLevel();
+    }
+
     /**
      * Why {@code buyer} may not buy another player's {@code listing}, or null when they may. These
      * rules only cover sales between players: the plugin cannot tell a second account from a
      * friend in offline mode, so they make funnelling a fresh account's starting money costly.
+     * The level applies to both sides: a fresh account could otherwise hand its money over the
+     * other way, by listing trader goods at ◈1 for the other account to buy and resell.
      */
     private @Nullable String tradeBlock(Player player, Profile buyer, Listing listing) {
         int level = minBuyLevel();
         if (buyer.level < level) {
             return "购买其他玩家的商品需要账号等级 " + level + "（当前 Lv." + buyer.level + "），商人处的商品不受限制。";
+        }
+        if (!sellerCanTrade(listing.seller)) {
+            return "卖家账号等级不足 " + level + "，这件商品只卖给系统买家。";
         }
         boolean sameIp = plugin.getConfig().getBoolean("market.block-same-ip", false);
         long incomeCap = plugin.getConfig().getLong("market.daily-player-income-cap", 0);

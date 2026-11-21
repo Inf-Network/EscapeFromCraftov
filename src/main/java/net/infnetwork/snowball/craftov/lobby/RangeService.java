@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -40,7 +41,9 @@ import java.util.UUID;
  * Private shooting ranges. Entering saves the player's lobby inventory and moves them to a copy of
  * the hangar's firing line in a separate world, one copy per player, far from all others and with
  * other players hidden. Leaving wipes everything they hold and restores the saved inventory, so
- * nothing handed out on the range can ever reach the lobby, the stash or a raid.
+ * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
+ * inventory is kept here as well as in the profile and written back on leaving, so nothing that
+ * overwrites the profile's loadout during the session can cost the player their gear.
  */
 public final class RangeService implements Listener {
 
@@ -58,6 +61,8 @@ public final class RangeService implements Listener {
     private final CraftovPlugin plugin;
     private @Nullable World world;
     private final Map<UUID, Integer> plots = new HashMap<>();
+    /** The lobby loadout each player brought in, handed back to the profile when they leave. */
+    private final Map<UUID, Map<Integer, ItemRecord>> saved = new HashMap<>();
     private final Map<Integer, List<Entity>> plotEntities = new HashMap<>();
     private final BitSet used = new BitSet();
 
@@ -105,6 +110,7 @@ public final class RangeService implements Listener {
         // The lobby inventory is the real loadout: save it before anything is handed out.
         plugin.lobby().captureLoadout(player);
         plugin.profiles().saveNow(player.getUniqueId());
+        saved.put(player.getUniqueId(), copy(plugin.profiles().get(player).loadout));
         plugin.match().cancelQueue(player.getUniqueId(), "进入靶场");
         plugin.weapons().reset(player);
         int plot = used.nextClearBit(0);
@@ -140,6 +146,7 @@ public final class RangeService implements Listener {
             player.showPlayer(plugin, other);
             other.showPlayer(plugin, player);
         }
+        restoreLoadout(player.getUniqueId());
         if (toLobby) {
             plugin.lobby().enterLobby(player);
             player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
@@ -152,6 +159,20 @@ public final class RangeService implements Listener {
                 leave(player, true);
             }
         }
+    }
+
+    /** Writes the loadout saved on entry back to the profile, whatever happened to it meanwhile. */
+    private void restoreLoadout(UUID uuid) {
+        Map<Integer, ItemRecord> loadout = saved.remove(uuid);
+        if (loadout != null) {
+            plugin.profiles().edit(uuid, profile -> profile.loadout = loadout);
+        }
+    }
+
+    private static Map<Integer, ItemRecord> copy(Map<Integer, ItemRecord> loadout) {
+        Map<Integer, ItemRecord> out = new HashMap<>();
+        loadout.forEach((slot, record) -> out.put(slot, record.copy()));
+        return out;
     }
 
     private void hideOthers(Player player) {
@@ -266,11 +287,20 @@ public final class RangeService implements Listener {
         }
         for (UUID uuid : new ArrayList<>(plots.keySet())) {
             Player player = Bukkit.getPlayer(uuid);
-            if (player == null || !isRangeWorld(player.getWorld())) {
+            if (player != null && !isRangeWorld(player.getWorld())) {
+                // Moved off the range by other means (admin teleport, /cv lobby): end the session
+                // properly so the saved loadout comes back and the others can see them again.
+                boolean lobby = plugin.lobby().isLobby(player.getWorld());
+                leave(player, lobby);
+                if (!lobby) {
+                    plugin.carry().apply(player, plugin.profiles().get(player).loadout, UiItems.lobbyMenu());
+                }
+            } else if (player == null) {
                 Integer plot = plots.remove(uuid);
                 if (plot != null) {
                     release(plot);
                 }
+                restoreLoadout(uuid);
             }
         }
     }

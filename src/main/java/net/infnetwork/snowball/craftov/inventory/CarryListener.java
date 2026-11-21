@@ -108,7 +108,12 @@ public final class CarryListener implements Listener {
                 event.setCancelled(true);
                 int armorSlot = CarryService.containerSlot(def.category());
                 ItemStack equipped = player.getInventory().getItem(armorSlot);
-                if (equipped == null || equipped.isEmpty()) {
+                ItemDef held = items.defOf(cursor);
+                if (held != null && held.isContainer() && CarryService.containerSlot(held.category()) == armorSlot) {
+                    // The one in hand belongs in that same slot; a packed one could then go nowhere but
+                    // the mailbox, which would make the mailbox free stash space.
+                    Text.send(player, "<#FF8A80>请先把手上的" + held.category().displayName() + "装备上或放下。");
+                } else if (equipped == null || equipped.isEmpty()) {
                     ItemStack moving = current.clone();
                     player.getInventory().setItem(slot, null);
                     carry.equip(player, moving);

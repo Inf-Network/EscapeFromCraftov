@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Choose a listing price for a stash item. */
@@ -44,10 +45,13 @@ final class PriceMenu extends Menu {
         long tax = Math.round(price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
         adjust(10, -0.10, "-10%");
         adjust(11, -0.01, "-1%");
-        set(13, UiItems.button("craftov:ui/icon_value", "<#F2C94C>售价 ◈" + Text.money(price),
-                List.of("<#8A8F98>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)", "<#8A8F98>预计 " + hint,
-                        "<#8A8F98>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax),
-                        "<#8A8F98>近期成交 " + history())));
+        List<String> info = new ArrayList<>(List.of("<#8A8F98>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)",
+                "<#8A8F98>预计 " + hint, "<#8A8F98>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax)));
+        if (plugin.market().traded(record.id)) {
+            info.add("<#8A8F98>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));
+        }
+        info.add("<#8A8F98>近期成交 " + history() + " <#5F6368>(单件)");
+        set(13, UiItems.button("craftov:ui/icon_value", "<#F2C94C>售价 ◈" + Text.money(price), info));
         adjust(15, 0.01, "+1%");
         adjust(16, 0.10, "+10%");
         button(18, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80>返回", List.of()), e -> back.reopen());

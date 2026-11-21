@@ -49,11 +49,20 @@ public final class MarketService {
 
     public static final class Data {
         public List<Listing> listings = new ArrayList<>();
+        /** Trade price of one plain unit per item id, moved by player-to-player sales only. */
         public Map<String, Double> reference = new HashMap<>();
+        /** Recent sale prices per plain unit, any buyer, newest last. */
         public Map<String, List<Long>> history = new HashMap<>();
     }
 
-    public record Offer(String itemId, long lowest, int count, double reference) {
+    /**
+     * One item in the market browser.
+     *
+     * @param anchor    reference price of one plain unit (fixed by items.yml)
+     * @param reference trade price of one plain unit from player-to-player sales
+     * @param traded    whether players have traded this item at all, i.e. whether reference means anything
+     */
+    public record Offer(String itemId, long lowest, int count, double anchor, double reference, boolean traded) {
     }
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -119,13 +128,31 @@ public final class MarketService {
         return Math.max(1, Math.round(plugin.items().value(record) * multiplier()));
     }
 
-    public double reference(String itemId) {
-        Double ref = data.reference.get(itemId);
-        if (ref != null) {
-            return ref;
-        }
+    /** Reference price of one plain, full-durability unit of {@code itemId}. */
+    public double anchorUnit(String itemId) {
         ItemDef def = plugin.registry().get(itemId);
         return def == null ? 0 : def.value() * multiplier();
+    }
+
+    /**
+     * Trade price of one plain unit: a moving average of player-to-player sales, shown for
+     * information only. Nothing pays out against it, and it stays within a band around the
+     * reference price so that even a stored value from an older build cannot run away.
+     */
+    public double reference(String itemId) {
+        double base = anchorUnit(itemId);
+        Double ref = data.reference.get(itemId);
+        if (ref == null) {
+            return base;
+        }
+        double min = plugin.getConfig().getDouble("market.trade-price-min", 0.6);
+        double max = plugin.getConfig().getDouble("market.trade-price-max", 1.5);
+        return Math.max(base * min, Math.min(base * max, ref));
+    }
+
+    /** Whether players have traded {@code itemId} with each other, so its trade price is more than the default. */
+    public boolean traded(String itemId) {
+        return data.reference.containsKey(itemId);
     }
 
     public long referenceFor(ItemRecord record) {
@@ -165,9 +192,10 @@ public final class MarketService {
             long unit = listing.price / Math.max(1, listing.item.amount);
             Offer old = out.get(def.id());
             if (old == null) {
-                out.put(def.id(), new Offer(def.id(), unit, 1, reference(def.id())));
+                out.put(def.id(), new Offer(def.id(), unit, 1, anchorUnit(def.id()), reference(def.id()), traded(def.id())));
             } else {
-                out.put(def.id(), new Offer(def.id(), Math.min(old.lowest(), unit), old.count() + 1, old.reference()));
+                out.put(def.id(), new Offer(def.id(), Math.min(old.lowest(), unit), old.count() + 1, old.anchor(), old.reference(),
+                        old.traded()));
             }
         }
         List<Offer> list = new ArrayList<>(out.values());
@@ -262,7 +290,7 @@ public final class MarketService {
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
         plugin.profiles().markDirty(player.getUniqueId());
-        complete(listing, player.getName());
+        complete(listing, player.getName(), true);
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
         ItemDef def = plugin.registry().get(listing.item.id);
         Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
@@ -293,7 +321,7 @@ public final class MarketService {
         return null;
     }
 
-    private void complete(Listing listing, String buyerName) {
+    private void complete(Listing listing, String buyerName, boolean playerSale) {
         data.listings.remove(listing);
         long tax = Math.round(listing.price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
         long payout = listing.price - tax;
@@ -301,14 +329,7 @@ public final class MarketService {
             seller.money += payout;
             seller.addStat("market_sales", 1);
         });
-        double unit = listing.price / (double) Math.max(1, listing.item.amount);
-        double ref = reference(listing.item.id);
-        data.reference.put(listing.item.id, ref * 0.85 + unit * 0.15);
-        List<Long> history = data.history.computeIfAbsent(listing.item.id, k -> new ArrayList<>());
-        history.add(Math.round(unit));
-        while (history.size() > 20) {
-            history.remove(0);
-        }
+        recordSale(listing, playerSale);
         dirty = true;
         Player seller = Bukkit.getPlayer(listing.seller);
         if (seller != null) {
@@ -317,6 +338,33 @@ public final class MarketService {
                     + " 已被 " + Text.escape(buyerName) + " 买下，入账 ◈" + Text.money(payout) + " <#8A8F98>(税 ◈" + Text.money(tax) + ")");
             seller.playSound(seller.getLocation(), "craftov:ui.sell", 1f, 1.2f);
         }
+    }
+
+    /**
+     * Logs a sale in the price history and, for a sale between players, moves the trade price.
+     * The price is first brought down to one plain unit by dividing by the record's value, so
+     * attachments, loaded ammo, wear and stack size do not leak into the bare item's price. Sales
+     * to system buyers, and sales far from the reference price (collusion, dumping), never move it.
+     */
+    private void recordSale(Listing listing, boolean playerSale) {
+        String id = listing.item.id;
+        double base = anchorUnit(id);
+        double anchor = plugin.items().value(listing.item) * multiplier();
+        if (base <= 0 || anchor <= 0) {
+            return;
+        }
+        double ratio = listing.price / anchor;
+        double unit = ratio * base;
+        List<Long> history = data.history.computeIfAbsent(id, k -> new ArrayList<>());
+        history.add(Math.round(unit));
+        while (history.size() > 20) {
+            history.remove(0);
+        }
+        if (!playerSale || ratio < plugin.getConfig().getDouble("market.trade-outlier-min", 0.5)
+                || ratio > plugin.getConfig().getDouble("market.trade-outlier-max", 2.0)) {
+            return;
+        }
+        data.reference.put(id, reference(id) * 0.85 + unit * 0.15);
     }
 
     /** Expiry and simulated buyers. */
@@ -340,7 +388,7 @@ public final class MarketService {
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
             if (ThreadLocalRandom.current().nextDouble() < chance) {
                 virtualSales.computeIfAbsent(listing.item.id, k -> new ArrayDeque<>()).addLast(now);
-                complete(listing, "系统买家");
+                complete(listing, "系统买家", false);
             }
         }
         save();

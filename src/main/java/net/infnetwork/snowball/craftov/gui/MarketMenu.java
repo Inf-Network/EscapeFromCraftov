@@ -72,7 +72,10 @@ final class MarketMenu extends Menu {
             List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
             lore.add(Text.mm("<#8A8F98>最低单价 <#F2C94C>◈" + Text.money(offer.lowest()) + " <#8A8F98>· 在售 " + offer.count() + " 件"));
-            lore.add(Text.mm("<#8A8F98>参考价 ◈" + Text.money(Math.round(offer.reference()))));
+            lore.add(Text.mm("<#8A8F98>参考价 ◈" + Text.money(Math.round(offer.anchor()))));
+            if (offer.traded()) {
+                lore.add(Text.mm("<#8A8F98>玩家成交均价 ◈" + Text.money(Math.round(offer.reference()))));
+            }
             lore.add(Text.mm("<#5BD16B>点击查看在售列表"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot++, display, e -> {

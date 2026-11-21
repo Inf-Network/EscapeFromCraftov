@@ -130,6 +130,14 @@ market:
   # Most listings of one item the system buyers take per hour, across all sellers (0 = no cap).
   # A safety valve should a config change ever make reselling to them profitable again.
   virtual-hourly-cap: 40
+  # The trade price shown in the market is information only: it follows sales between players (never
+  # system buyers), counted per plain unit with attachments, loaded ammo and wear divided out. Sales
+  # outside [trade-outlier-min, trade-outlier-max] x the reference price are ignored, and the result is
+  # kept within [trade-price-min, trade-price-max] x the plain unit's reference price.
+  trade-outlier-min: 0.5
+  trade-outlier-max: 2.0
+  trade-price-min: 0.6
+  trade-price-max: 1.5
 
 rank:
   min-level: 3

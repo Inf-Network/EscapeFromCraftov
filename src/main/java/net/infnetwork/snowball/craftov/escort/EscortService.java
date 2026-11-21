@@ -177,6 +177,9 @@ public final class EscortService {
             p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
             p.money += refund;
         });
+        // Saved now, not with the next flush up to ten seconds later: a crash before the escrow
+        // reaches the disk returns all of it on the next start, on top of any pay already out.
+        plugin.profiles().saveNow(c.client);
     }
 
     /** Called when any raid participant finishes. Only the client's outcome settles a contract. */
@@ -192,18 +195,21 @@ public final class EscortService {
         double share = extracted ? 1.0 : plugin.getConfig().getDouble("escort.failure-share", 0.3);
         long pool = Math.round(c.reward * share);
         long each = c.escorts.isEmpty() ? 0 : pool / c.escorts.size();
+        // The escrow is closed and on its way to the disk before anyone is paid: the writes land
+        // in this order, so a crash between them can cost an escort the pay but never pays twice.
+        release(c, c.reward - each * c.escorts.size());
         for (UUID escort : c.escorts) {
             plugin.profiles().edit(escort, () -> "escort pay for " + c.clientName + "'s contract " + c.id + ": money +" + each
                     + ", stats.escort_income +" + each, p -> {
                 p.money += each;
                 p.addStat("escort_income", each);
             });
+            plugin.profiles().saveNow(escort);
             Player p = Bukkit.getPlayer(escort);
             if (p != null) {
                 Text.send(p, (extracted ? "<#5BD16B>护航成功！" : "<#FFC23D>老板阵亡，护航失败。") + "<#9AA0A6>获得 ◈" + Text.money(each));
             }
         }
-        release(c, c.reward - each * c.escorts.size());
     }
 
     /**

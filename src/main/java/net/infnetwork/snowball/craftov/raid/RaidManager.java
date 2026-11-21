@@ -1282,12 +1282,13 @@ public final class RaidManager implements Listener {
     }
 
     private void useKey(Player player, Raid raid, String doorKey, Block door, String lock) {
+        // A free proving-ground armory copy of the key wears out before the player's own one does.
         ItemStack key = null;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
-            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())) {
+            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())
+                    && (key == null || ItemFactory.isTest(stack) && !ItemFactory.isTest(key))) {
                 key = stack;
-                break;
             }
         }
         if (key == null) {

@@ -25,6 +25,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -133,9 +134,22 @@ public final class RangeService implements Listener {
 
     /** Ends the session: everything held is discarded and the saved lobby inventory comes back. */
     public void leave(Player player, boolean toLobby) {
+        if (!end(player) || !toLobby) {
+            return;
+        }
+        plugin.lobby().enterLobby(player);
+        player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
+    }
+
+    /**
+     * Ends the session where the player stands: the loaners are discarded, the plot is freed, the
+     * others can see them again and the loadout saved on entry goes back into the profile. False
+     * when there was no session.
+     */
+    private boolean end(Player player) {
         Integer plot = plots.remove(player.getUniqueId());
         if (plot == null) {
-            return;
+            return false;
         }
         plugin.weapons().reset(player);
         player.closeInventory();
@@ -147,10 +161,7 @@ public final class RangeService implements Listener {
             other.showPlayer(plugin, player);
         }
         restoreLoadout(player.getUniqueId());
-        if (toLobby) {
-            plugin.lobby().enterLobby(player);
-            player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
-        }
+        return true;
     }
 
     public void shutdown() {
@@ -286,22 +297,25 @@ public final class RangeService implements Listener {
             }
         }
         for (UUID uuid : new ArrayList<>(plots.keySet())) {
-            Player player = Bukkit.getPlayer(uuid);
-            if (player != null && !isRangeWorld(player.getWorld())) {
-                // Moved off the range by other means (admin teleport, /cv lobby): end the session
-                // properly so the saved loadout comes back and the others can see them again.
-                boolean lobby = plugin.lobby().isLobby(player.getWorld());
-                leave(player, lobby);
-                if (!lobby) {
-                    plugin.carry().apply(player, plugin.profiles().get(player).loadout, UiItems.lobbyMenu());
-                }
-            } else if (player == null) {
+            if (Bukkit.getPlayer(uuid) == null) {
                 Integer plot = plots.remove(uuid);
                 if (plot != null) {
                     release(plot);
                 }
                 restoreLoadout(uuid);
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        // Moved off the range by other means (admin teleport, /cv lobby, /tp). The session ends the
+        // moment they arrive: waiting for the next upkeep tick left a moment in which the lobby
+        // menus worked on a loadout the range was about to overwrite. Leaving through the exit
+        // item ends the session before the teleport, so this does nothing then.
+        Player player = event.getPlayer();
+        if (isRangeWorld(event.getFrom()) && end(player)) {
+            plugin.carry().apply(player, plugin.profiles().get(player).loadout, UiItems.lobbyMenu());
         }
     }
 

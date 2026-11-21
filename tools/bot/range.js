@@ -3,7 +3,8 @@
 // between the inventory and the profile (stash, trader, market, secure container, deploy) must refuse
 // to open, /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out
 // of reach), Q never fires and a left click does. Leaving must give back the lobby inventory slot
-// for slot, with nothing taken on the range, and so must being teleported off the range by an admin.
+// for slot, with nothing taken on the range, and so must being teleported off the range by an admin,
+// at once, so that a rifle stashed straight after /cv lobby is not handed back a moment later.
 // Then a solo raid on the test map checks that /cv secure still opens mid-raid and that extracting
 // keeps what the bot carried.
 //
@@ -153,13 +154,29 @@ async function rangePhase () {
   check('every stack is identical, components included', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).map(s => s.slice(0, 120)).join(' | '))
   check('no range loaner came back', !bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))
 
-  // Being teleported off the range by other means ends the session the same way.
+  // Being teleported off the range by other means ends the session the same way, and at once: the
+  // gear is back the moment the player lands, not on the range's next upkeep tick.
   await enterRange()
   await rcon(`execute in minecraft:craftov_lobby run tp ${name} 0.5 65 12.5`)
+  const rifle = await rcon(`execute if items entity ${name} container.* *[minecraft:item_model="craftov:m4c"]`)
+  const exit = await rcon(`execute if items entity ${name} container.* *[minecraft:item_model="craftov:ui/icon_cancel"]`)
+  check('the gear is back the moment an admin teleport lands', /passed/.test(rifle) && /failed/.test(exit), `rifle: ${rifle} | exit item: ${exit}`)
   await sleep(3000)
   const moved = diff(before, layout())
   check('an admin teleport off the range also gives the gear back', (await dimension()).includes('craftov_lobby') && moved.length === 0,
     (await dimension()) + ' ' + moved.join(', '))
+
+  // /cv lobby from the range and straight into the stash: the old build still had the session open
+  // for up to half a second, then handed the entry loadout back, so a deposited rifle came back too.
+  await enterRange()
+  const stash = await openWindow(() => { bot.chat('/cv lobby'); bot.chat('/cv stash') })
+  const rifleSlot = stash ? stash.slots.findIndex((s, i) => i >= stash.inventoryStart && s && id(s) === 'm4c') : -1
+  if (rifleSlot >= 0) { await bot.clickWindow(rifleSlot, 0, 0); await sleep(300) }
+  if (stash) bot.closeWindow(stash)
+  await sleep(2500)
+  const kept = layout()
+  check('a rifle stashed right after leaving stays in the stash', rifleSlot >= 0 && !Object.values(kept).some(v => v.startsWith('m4cx')),
+    rifleSlot < 0 ? 'no stash window or no rifle in it' : show(kept))
 }
 
 async function enterRange () {

@@ -18,6 +18,8 @@ final class PriceMenu extends Menu {
     private final StashMenu back;
     /** Fixed anchor price (MarketService.anchorFor): the default price and what system buyers judge by. */
     private final long reference;
+    /** Highest price the market accepts for this record (MarketService.maxPrice). */
+    private final long cap;
     private long price;
 
     PriceMenu(CraftovPlugin plugin, Player viewer, int stashIndex, ItemRecord record, StashMenu back) {
@@ -27,6 +29,7 @@ final class PriceMenu extends Menu {
         this.record = record;
         this.back = back;
         this.reference = plugin.market().anchorFor(record);
+        this.cap = plugin.market().maxPrice(record);
         this.price = reference;
     }
 
@@ -51,6 +54,8 @@ final class PriceMenu extends Menu {
             info.add("<#8A8F98>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));
         }
         info.add("<#8A8F98>近期成交 " + history() + " <#5F6368>(单件)");
+        info.add(price >= cap ? "<#FFC23D>已达最高售价（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）"
+                : "<#8A8F98>最高售价 ◈" + Text.money(cap));
         set(13, UiItems.button("craftov:ui/icon_value", "<#F2C94C>售价 ◈" + Text.money(price), info));
         adjust(15, 0.01, "+1%");
         adjust(16, 0.10, "+10%");
@@ -80,12 +85,22 @@ final class PriceMenu extends Menu {
     }
 
     private void adjust(int slot, double delta, String label) {
-        button(slot, UiItems.button(delta < 0 ? "craftov:ui/arrow_left" : "craftov:ui/arrow_right", "<white>" + label, List.of()),
-                e -> setPrice(Math.max(1, Math.round(price * (1 + delta)))));
+        if (delta > 0 && price >= cap) {
+            String why = "已达最高售价 ◈" + Text.money(cap) + "（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）";
+            button(slot, UiItems.button("craftov:ui/arrow_right", "<#8A8F98>" + label, List.of("<#FFC23D>" + why)),
+                    e -> viewer.sendActionBar(Text.mm("<#FFC23D>" + why)));
+            return;
+        }
+        // At least one coin per click, so +1% still moves a cheap item towards the cap.
+        button(slot, UiItems.button(delta < 0 ? "craftov:ui/arrow_left" : "craftov:ui/arrow_right", "<white>" + label, List.of()), e -> {
+            long next = Math.round(price * (1 + delta));
+            setPrice(delta < 0 ? Math.min(price - 1, next) : Math.max(price + 1, next));
+        });
     }
 
+    /** Sets the price within 1 .. cap; the + buttons stop at the cap. */
     private void setPrice(long value) {
-        price = Math.max(1, value);
+        price = Math.max(1, Math.min(cap, value));
         redraw();
     }
 }

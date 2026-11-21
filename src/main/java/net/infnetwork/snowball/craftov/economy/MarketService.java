@@ -128,6 +128,18 @@ public final class MarketService {
         return Math.max(1, Math.round(plugin.items().value(record) * multiplier()));
     }
 
+    public double maxPriceMultiplier() {
+        return plugin.getConfig().getDouble("market.max-price-multiplier", 3.0);
+    }
+
+    /**
+     * Highest price a listing of {@code record} may ask. Without it one colluding sale at any
+     * price moved money between accounts (1 round of 9mm for ◈140,000).
+     */
+    public long maxPrice(ItemRecord record) {
+        return Math.max(anchorFor(record), Math.round(plugin.items().value(record) * multiplier() * maxPriceMultiplier()));
+    }
+
     /** Reference price of one plain, full-durability unit of {@code itemId}. */
     public double anchorUnit(String itemId) {
         ItemDef def = plugin.registry().get(itemId);
@@ -243,6 +255,11 @@ public final class MarketService {
         }
         if (record.hasContents()) {
             Text.send(player, "<#FF8A80>请先清空胸挂/背包再上架。");
+            return false;
+        }
+        long cap = maxPrice(record);
+        if (price > cap) {
+            Text.send(player, "<#FF8A80>售价不能超过参考价的 " + Text.decimal(maxPriceMultiplier()) + " 倍（最高 ◈" + Text.money(cap) + "）。");
             return false;
         }
         long deposit = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));

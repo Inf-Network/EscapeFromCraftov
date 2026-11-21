@@ -28,8 +28,11 @@ starter:
     - "armor_1"
 
 # Free basic kit for players whose loadout is nearly worthless (claimed from the main menu).
+# max-value caps what they carry; max-assets caps everything they own (money, stash, mailbox,
+# carried gear, secure container, market listings and an escrowed escort reward).
 free-kit:
   max-value: 15000
+  max-assets: 200000
   cooldown-minutes: 20
   items:
     - "p18:1:ammo_9_fmj"

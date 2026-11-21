@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.escort.EscortService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
@@ -123,13 +124,50 @@ public final class TraderService {
 
     // ------------------------------------------------------------------ free kit
 
-    /** A basic kit for players who lost everything, so nobody is ever stuck in the lobby. */
+    public long freeKitMaxAssets() {
+        return plugin.getConfig().getLong("free-kit.max-assets", 200_000);
+    }
+
+    /**
+     * Everything the player owns, at item value: money, stash, mailbox, what they carry, the secure
+     * container, their market listings and an escrowed escort reward.
+     */
+    public long assets(Player player) {
+        Profile profile = plugin.profiles().get(player);
+        long total = profile.money + plugin.carry().carriedValue(player);
+        for (List<ItemRecord> records : List.of(profile.stash, profile.mailbox, profile.secure)) {
+            for (ItemRecord record : records) {
+                total += plugin.items().value(record);
+            }
+        }
+        for (MarketService.Listing listing : plugin.market().mine(player.getUniqueId())) {
+            total += plugin.items().value(listing.item);
+        }
+        EscortService.Contract escrow = plugin.escorts().byClient(player.getUniqueId());
+        if (escrow != null) {
+            total += escrow.reward;
+        }
+        return total;
+    }
+
+    /**
+     * A basic kit for players who lost everything, so nobody is ever stuck in the lobby. Only what
+     * they carry used to count, so anyone could park their gear in the stash and pick up a kit
+     * worth ◈30,000 (◈17,000 at the trader) every 20 minutes; everything they own counts now.
+     */
     public void claimFreeKit(Player player) {
         Profile profile = plugin.profiles().get(player);
         long value = plugin.carry().carriedValue(player);
         long max = plugin.getConfig().getLong("free-kit.max-value", 15000);
         if (value > max) {
             Text.send(player, "<#FF8A80>你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");
+            return;
+        }
+        long assets = assets(player);
+        long maxAssets = freeKitMaxAssets();
+        if (assets > maxAssets) {
+            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、携带、安全箱、交易行上架）约 ◈"
+                    + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<#9AA0A6>可以从仓库取出装备或到商人处购买。");
             return;
         }
         long last = profile.stat("free_kit_at");

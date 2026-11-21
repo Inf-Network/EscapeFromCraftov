@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.util;
 
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
 import org.jspecify.annotations.Nullable;
 
@@ -44,6 +45,12 @@ public final class Backups {
 
     public void start() {
         AtomicFiles.cleanTemp(folder().toPath());
+        FileConfiguration config = plugin.getConfig();
+        if (config.contains("backup.keep", true)
+                && !(config.contains("backup.keep-daily", true) && config.contains("backup.keep-shutdown", true))) {
+            plugin.getLogger().info("backup.keep is now backup.keep-daily and backup.keep-shutdown. Until those are set,"
+                    + " up to " + config.getInt("backup.keep") + " copies of each kind are kept (the old backup.keep).");
+        }
         long delay = Math.max(1, plugin.getConfig().getLong("backup.first-delay-minutes", 10) * 60 * 20);
         // Checked every ten minutes off the main thread; daily() decides whether a copy is due.
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::daily, delay, 20L * 60 * 10);
@@ -103,9 +110,21 @@ public final class Backups {
             }
             return;
         }
-        prune(folder, reason, DAILY.equals(reason)
-                ? plugin.getConfig().getInt("backup.keep-daily", 7)
-                : plugin.getConfig().getInt("backup.keep-shutdown", 5));
+        prune(folder, reason, DAILY.equals(reason) ? keep("keep-daily", 7) : keep("keep-shutdown", 5));
+    }
+
+    /**
+     * How many copies of one kind to keep. A server set up before the two kinds were kept apart
+     * has backup.keep instead, meant for all copies together: it still counts for each kind whose
+     * own key is not set, so an update never deletes copies the admin chose to keep.
+     */
+    private int keep(String key, int fallback) {
+        FileConfiguration config = plugin.getConfig();
+        String path = "backup." + key;
+        if (!config.contains(path, true) && config.contains("backup.keep", true)) {
+            return config.getInt("backup.keep");
+        }
+        return config.getInt(path, fallback);
     }
 
     private static void add(ZipOutputStream z, Path root, Path path) throws IOException {

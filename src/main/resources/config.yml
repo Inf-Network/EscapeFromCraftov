@@ -195,6 +195,8 @@ backup:
   interval-hours: 24
   # Minutes after start before the first check (then every ten minutes).
   first-delay-minutes: 10
+  # How many copies of each kind are kept. backup.keep from older versions (both kinds together)
+  # still applies to a kind until its own key is set here.
   keep-daily: 7
   keep-shutdown: 5
 

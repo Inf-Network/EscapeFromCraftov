@@ -356,10 +356,9 @@ public final class RaidManager implements Listener {
         Profile profile = plugin.profiles().get(player);
         profile.activeRaid = raid.id;
         profile.addStat("raids", 1);
-        if (raid.tier.entryFee() > 0) {
-            profile.money -= raid.tier.entryFee();
-        }
-        plugin.insurance().onDeploy(player, raid);
+        long entryFee = Math.max(0, raid.tier.entryFee());
+        profile.money -= entryFee;
+        rp.fees = entryFee + plugin.insurance().onDeploy(player, raid);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
         plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
@@ -1101,21 +1100,30 @@ public final class RaidManager implements Listener {
 
     /**
      * Plugin shutdown: the raid is voided and everybody in it goes home with what they carry (no
-     * losses, no rewards).
+     * losses, no rewards). Whoever was still flying in never set foot in it and also gets the entry
+     * fee and insurance premium back.
      */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
+            // A loading raid has not taken anything from its squads yet: they are still in the lobby.
+            boolean deployed = raid.state != Raid.State.LOADING;
             for (RaidPlayer rp : raid.players.values()) {
                 Player player = Bukkit.getPlayer(rp.uuid);
-                if (rp.active() && player != null) {
+                boolean flyingIn = deployed && rp.state == RaidPlayer.State.DEPLOYING;
+                if ((rp.active() || flyingIn) && player != null) {
                     plugin.weapons().reset(player);
                     plugin.downed().clear(player);
                     Profile profile = plugin.profiles().get(player);
                     profile.secure = new ArrayList<>(rp.secure);
                     profile.activeRaid = null;
+                    if (flyingIn) {
+                        profile.money += rp.fees;
+                    }
                     plugin.lobby().enterLobbyKeepInventory(player);
                     plugin.lobby().captureLoadout(player);
-                    Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
+                    Text.send(player, flyingIn && rp.fees > 0
+                            ? "<#FFC23D>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
+                            : "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
                     Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
                     plugin.profiles().edit(rp.uuid, profile -> {

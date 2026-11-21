@@ -22,6 +22,8 @@ public final class RaidPlayer {
     public int aiKills;
     public int downs;
     public long startValue;
+    /** Entry fee and insurance premium paid on deploy, handed back if the raid is called off before landing. */
+    public long fees;
     public long startTick;
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;

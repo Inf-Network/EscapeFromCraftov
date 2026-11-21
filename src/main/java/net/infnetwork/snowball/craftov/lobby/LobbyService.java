@@ -297,8 +297,10 @@ public final class LobbyService implements Listener {
             if (isLobby(player.getWorld()) && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR
                     && plugin.raids().raidOf(player) == null) {
                 plugin.carry().ensureMelee(player);
-                saveLoadout(player);
                 plugin.carry().refreshLocks(player);
+                // Last: both steps above can mail what no longer has a cell, and a loadout saved
+                // before them would still hold it, so it would come back on the next lobby entry.
+                saveLoadout(player);
             }
         }
     }

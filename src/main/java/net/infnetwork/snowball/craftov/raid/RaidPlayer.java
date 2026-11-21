@@ -5,8 +5,10 @@ import org.bukkit.Location;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Per-player raid session state. */
@@ -25,6 +27,8 @@ public final class RaidPlayer {
     public long startValue;
     /** Value of the gear carried in at deploy, secure container excluded (the deploy screen's 战备值). */
     public long gearValue;
+    /** Instance ids of everything brought in at deploy, so other players' profit can leave it out. */
+    public Set<String> gearUids = new HashSet<>();
     public long startTick;
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;

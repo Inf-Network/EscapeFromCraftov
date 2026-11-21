@@ -41,10 +41,19 @@ public final class RankService {
         return "<" + COLORS[i] + ">" + NAMES[i] + division + "</" + COLORS[i] + ">";
     }
 
+    /**
+     * Points for getting out: one per ◈6,000 of profit (at most 45), and one off per ◈6,000 lost
+     * (at most 30, like a death's gear loss), plus kills, scaled by difficulty. There is no flat
+     * bonus for extracting: with one, walking out naked scored +18 against −22 for dying, so naked
+     * runs alone climbed the ladder. Losses are halved below 1,100 points, as for deaths.
+     */
     public int onExtract(Profile profile, RaidPlayer rp, long profit, Raid raid) {
-        int delta = 18 + (int) Math.min(45, Math.max(0, profit) / 6000) + rp.kills * 6 + Math.min(10, rp.aiKills);
+        int delta = (int) Math.max(-30, Math.min(45, profit / 6000)) + rp.kills * 6 + Math.min(10, rp.aiKills);
         delta = (int) Math.round(delta * (1 + raid.tier.lootShift() * 0.25));
-        profile.rankPoints += delta;
+        if (delta < 0 && profile.rankPoints < 1100) {
+            delta = delta / 2;
+        }
+        profile.rankPoints = Math.max(0, profile.rankPoints + delta);
         return delta;
     }
 

@@ -366,6 +366,7 @@ public final class RaidManager implements Listener {
         for (ItemRecord record : profile.secure) {
             rp.secure.add(record.copy());
         }
+        rp.gearUids = tagGear(player, rp.secure);
         rp.gearValue = plugin.carry().carriedValue(player);
         rp.startValue = rp.gearValue + secureValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
@@ -664,7 +665,8 @@ public final class RaidManager implements Listener {
         long carried = plugin.carry().carriedValue(player);
         long secure = secureValue(rp.secure);
         long total = carried + secure;
-        long profit = total - rp.startValue;
+        long handed = othersGear(raid, rp, player);
+        long profit = total - handed - rp.startValue;
         profile.secure = new ArrayList<>(rp.secure);
         profile.addStat("extracts", 1);
         profile.addStat("extracted_value", Math.max(0, profit));
@@ -687,6 +689,10 @@ public final class RaidManager implements Listener {
                 + " <#8A8F98>· 净收益 " + (profit >= 0 ? "<#5BD16B>+" : "<#FF8A80>") + Text.money(profit)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(3), Duration.ofMillis(600))));
         player.playSound(player.getLocation(), "craftov:extract.success", SoundCategory.MASTER, 1f, 1f);
+        if (handed > 0) {
+            Text.send(player, "<#9AA0A6>其他玩家带进本局的装备 <#F2C94C>◈" + Text.money(handed)
+                    + " <#9AA0A6>归你所有，但不计入净收益（排位分、经验和任务）。");
+        }
         // Inventory stays as the new lobby loadout.
         plugin.lobby().enterLobbyKeepInventory(player);
         plugin.lobby().captureLoadout(player);
@@ -1044,6 +1050,80 @@ public final class RaidManager implements Listener {
         long total = 0;
         for (ItemRecord record : records) {
             total += plugin.items().value(record);
+        }
+        return total;
+    }
+
+    /**
+     * Gives every single (non-stacking) item the player takes into the raid an instance id, if it
+     * has none yet, and returns the ids of everything they took in. Guns always have one; armour,
+     * rigs, backpacks, med kits and the like get theirs here, and keep it.
+     */
+    private Set<String> tagGear(Player player, List<ItemRecord> secure) {
+        Set<String> uids = new java.util.HashSet<>();
+        for (int slot = 0; slot <= CarryService.HEAD; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            ItemDef def = plugin.items().defOf(stack);
+            if (def == null || ItemFactory.isUi(stack) || ItemFactory.isRange(stack)) {
+                continue;
+            }
+            String uid = ItemFactory.uid(stack);
+            if (uid == null && def.maxStack() == 1) {
+                String fresh = UUID.randomUUID().toString();
+                stack.editPersistentDataContainer(pdc -> pdc.set(Keys.UID, PersistentDataType.STRING, fresh));
+                uid = fresh;
+            }
+            if (uid != null) {
+                uids.add(uid);
+            }
+        }
+        for (ItemRecord record : secure) {
+            ItemDef def = plugin.registry().get(record.id);
+            if (record.uid == null && def != null && def.maxStack() == 1) {
+                record.uid = UUID.randomUUID().toString();
+            }
+            if (record.uid != null) {
+                uids.add(record.uid);
+            }
+        }
+        return uids;
+    }
+
+    /**
+     * Value of what {@code player} carries out (secure container included) that another player
+     * of this raid brought in. It is theirs to keep, but it is not their raid's profit: two players
+     * could otherwise hand a ◈250,000 loadout to each other in turn and score rank points,
+     * experience and the daily "net profit" contract off it every raid.
+     */
+    private long othersGear(Raid raid, RaidPlayer rp, Player player) {
+        Set<String> theirs = new java.util.HashSet<>();
+        for (RaidPlayer other : raid.players.values()) {
+            if (other != rp) {
+                theirs.addAll(other.gearUids);
+            }
+        }
+        if (theirs.isEmpty()) {
+            return 0;
+        }
+        long total = 0;
+        for (ItemRecord record : plugin.carry().snapshot(player).values()) {
+            total += foreignValue(record, theirs);
+        }
+        for (ItemRecord record : rp.secure) {
+            total += foreignValue(record, theirs);
+        }
+        return total;
+    }
+
+    private long foreignValue(ItemRecord record, Set<String> theirs) {
+        if (record.uid != null && theirs.contains(record.uid)) {
+            return plugin.items().value(record);
+        }
+        long total = 0;
+        if (record.contents != null) {
+            for (ItemRecord child : record.contents) {
+                total += foreignValue(child, theirs);
+            }
         }
         return total;
     }

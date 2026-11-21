@@ -8,8 +8,12 @@ command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraft
 
   craftov status                 checkout, server state and connection settings
   craftov head                   the checked-out commit and branch
-  craftov sync                   fast-forward the checkout to `main` from a git
-                                 bundle on stdin (git bundle create - main)
+  craftov branches               local branches and recent commits
+  craftov bundle                 a git bundle of every local branch, on stdout
+  craftov sync [--park <name>]   fast-forward the checkout to `main` from a git
+                                 bundle on stdin (git bundle create - main);
+                                 --park renames a branch with commits the
+                                 bundle lacks to <name> instead of refusing
   craftov jar                    install a plugin jar read from stdin as
                                  server/run/plugins/Craftov.jar
   craftov build                  ./gradlew deployLocal here, with JDK 25
@@ -356,12 +360,29 @@ def cmd_head():
     print(git("rev-parse", "HEAD").stdout.strip(), branch)
 
 
+def cmd_branches():
+    check_project()
+    print(git("branch", "-vv", "--no-color").stdout.rstrip())
+    print()
+    print(git("log", "-10", "--no-color", "--format=%h %ad %s", "--date=short").stdout.rstrip())
+
+
+def cmd_bundle():
+    check_project()
+    r = subprocess.run(["git", "bundle", "create", "-", "--branches"], cwd=PROJECT, env=env(),
+                       stdin=subprocess.DEVNULL, stdout=sys.stdout.buffer, stderr=subprocess.PIPE)
+    if r.returncode != 0:
+        raise Fail("git bundle failed:\n" + r.stderr.decode("utf-8", "replace").strip())
+
+
 def cmd_status():
     check_project()
     branch = git("symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip() or "(detached)"
     head = git("log", "-1", "--format=%h %s").stdout.strip()
     changed = git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
     print("checkout   %s  %s %s" % (PROJECT, branch, head))
+    if branch != "main":
+        print("           not on main: craftov sync switches to it")
     print("           %s" % ("clean" if not changed else "%d changed files: " % len(changed)
                              + ", ".join(l[3:] for l in changed[:8])))
     if not os.path.exists(os.path.join(RUN, "paper.jar")):
@@ -394,7 +415,14 @@ def cmd_status():
             print("rcon       %s" % exc)
 
 
-def cmd_sync():
+def cmd_sync(args):
+    park = None
+    if args:
+        if len(args) != 2 or args[0] != "--park":
+            raise Fail("usage: craftov sync [--park <name>]")
+        park = args[1]
+        if git("check-ref-format", "--branch", park, check=False).returncode != 0 or park == "main":
+            raise Fail("--park needs a branch name other than main")
     check_project()
     data = sys.stdin.buffer.read()
     if not re.match(rb"# v[23] git bundle", data):
@@ -416,19 +444,37 @@ def cmd_sync():
     if head == target and branch == "main":
         print("already at " + git("log", "-1", "--format=%h %s").stdout.strip())
         return
-    if not is_ancestor(head, target):
-        raise Fail("the Mac checkout (%s %s) has commits the server does not: push them or move them "
-                   "off this branch first" % (branch or "detached", head[:8]))
+    parking = not is_ancestor(head, target)
+    if parking and park is None:
+        raise Fail("the Mac checkout (%s %s) has commits the server does not: push them, or rerun "
+                   "with --park <name> to keep them on a branch of that name" % (branch or "detached", head[:8]))
+    if parking and not branch:
+        raise Fail("the Mac checkout is a detached HEAD with commits the server does not; "
+                   "put them on a branch first")
+    if parking and git("rev-parse", "--verify", "-q", "refs/heads/" + park, check=False).returncode == 0:
+        raise Fail("a branch named %s already exists on the Mac" % park)
     changed = git("status", "--porcelain", "--untracked-files=no").stdout.rstrip()
     if changed:
         raise Fail("the Mac checkout has uncommitted changes; commit or discard them first:\n" + changed)
-    if branch == "main":
+    local = git("rev-parse", "--verify", "-q", "refs/heads/main", check=False).stdout.strip()
+    if branch != "main" and local and not is_ancestor(local, target):
+        raise Fail("the local branch main has commits the server does not; move them first")
+    if branch == "main" and not parking:
         git("merge", "--quiet", "--ff-only", "refs/craftov/synced")
     else:
-        local = git("rev-parse", "--verify", "-q", "refs/heads/main", check=False).stdout.strip()
-        if local and not is_ancestor(local, target):
-            raise Fail("the local branch main has commits the server does not; move them first")
-        git("checkout", "--quiet", "-B", "main", "refs/craftov/synced")
+        if parking:
+            # Rename, never delete: the commits stay on <park>.
+            git("branch", "-m", branch, park)
+        try:
+            git("checkout", "--quiet", "-B", "main", "refs/craftov/synced")
+        except Fail:
+            if parking:
+                git("branch", "-m", park, branch)  # back as it was
+            raise
+        if parking:
+            # It no longer follows the remote branch it was cut from.
+            git("branch", "--unset-upstream", park, check=False)
+            print("kept %s %s as branch %s" % (branch, head[:8], park))
         git("branch", "--quiet", "--set-upstream-to=origin/main", "main", check=False)
     print("main now at %s (was %s on %s)" % (git("log", "-1", "--format=%h %s").stdout.strip(),
                                              head[:8], branch or "detached HEAD"))
@@ -587,6 +633,8 @@ def cmd_yml(action, name):
         raise Fail("usage: craftov yml diff %s | craftov yml copy %s" % ("|".join(YML_DIFF), "|".join(YML_COPY)))
     repo = os.path.join(PROJECT, "src", "main", "resources", name)
     live = os.path.join(RUN, "plugins", "Craftov", name)
+    if not os.path.exists(repo):
+        raise Fail("the checkout has no src/main/resources/%s: is it on main? (craftov sync)" % name)
     with open(repo, encoding="utf-8") as f:
         new = f.read().splitlines(keepends=True)
     old = []
@@ -619,12 +667,15 @@ def main():
         sys.stdout.write(__doc__)
         return
     cmd, rest = args[0], args[1:]
-    simple = {"status": cmd_status, "head": cmd_head, "sync": cmd_sync, "jar": cmd_jar,
+    simple = {"status": cmd_status, "head": cmd_head, "branches": cmd_branches,
+              "bundle": cmd_bundle, "jar": cmd_jar,
               "build": cmd_build, "setup": cmd_setup, "start": cmd_start, "stop": cmd_stop,
               "restart": cmd_restart}
     try:
         if cmd in simple and not rest:
             simple[cmd]()
+        elif cmd == "sync":
+            cmd_sync(rest)
         elif cmd == "rcon":
             cmd_rcon(rest)
         elif cmd == "log" and len(rest) <= 1:
@@ -640,7 +691,7 @@ def main():
     except PermissionError as exc:
         sys.stderr.write("craftov: %s\n%s\n" % (exc, TCC_HINT))
         sys.exit(1)
-    except Fail as exc:
+    except (Fail, OSError) as exc:
         sys.stderr.write("craftov: %s\n" % exc)
         sys.exit(1)
 

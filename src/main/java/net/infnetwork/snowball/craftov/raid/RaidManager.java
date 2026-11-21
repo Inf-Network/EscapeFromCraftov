@@ -780,7 +780,9 @@ public final class RaidManager implements Listener {
         trimReports(profile);
         plugin.profiles().saveNow(player.getUniqueId());
         plugin.escorts().settle(raid, rp, false);
-        if (hit != null && hit.attacker() != null) {
+        // Your own grenade is no kill: it would count for the daily contract and pay the top player
+        // his own house bounty.
+        if (hit != null && hit.attacker() != null && !hit.attacker().equals(player.getUniqueId())) {
             Player killer = Bukkit.getPlayer(hit.attacker());
             RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
             if (kr != null) {

@@ -20,7 +20,9 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Escort contracts (护航): a client escrows a reward, escorts join the client's squad, and the
- * reward is paid out when the client extracts (a consolation share if the client dies).
+ * reward is paid out when the client extracts (a consolation share if the client dies). A player
+ * escorts one contract at a time, leaving the client's party gives it up, and only escorts who
+ * deployed in the client's squad are paid.
  */
 public final class EscortService {
 
@@ -112,6 +114,12 @@ public final class EscortService {
             Text.send(escort, "<#FF8A80>不能接取自己的委托。");
             return;
         }
+        Contract held = involving(escort.getUniqueId());
+        if (held != null) {
+            Text.send(escort, held == c ? "<#FF8A80>你已经接取了这份委托。"
+                    : "<#FF8A80>你已经在 " + Text.escape(held.clientName) + " 的护航委托中，离开其小队后才能接取别的委托。");
+            return;
+        }
         if (c.escorts.size() >= 2) {
             Text.send(escort, "<#FF8A80>该委托护航名额已满。");
             return;
@@ -147,6 +155,36 @@ public final class EscortService {
         Text.send(client, "<#9AA0A6>委托已取消，赏金已退回。");
     }
 
+    /**
+     * A player left (or was kicked from, or dropped out of) a party. An escort who leaves the
+     * client's squad gives up the contract, and a client who leaves it takes the contract away
+     * from everyone who stayed; a contract with nobody left on it opens up again in the lobby.
+     */
+    public void onPartyLeave(UUID uuid) {
+        for (Contract c : contracts.values()) {
+            boolean changed;
+            if (c.client.equals(uuid)) {
+                changed = !c.escorts.isEmpty();
+                for (UUID escort : c.escorts) {
+                    Player p = Bukkit.getPlayer(escort);
+                    if (p != null) {
+                        Text.send(p, "<#FFC23D>委托人 " + Text.escape(c.clientName) + " 离开了小队，你的护航委托已取消。");
+                    }
+                }
+                c.escorts.clear();
+            } else {
+                changed = c.escorts.remove(uuid);
+                Player p = changed ? Bukkit.getPlayer(uuid) : null;
+                if (p != null) {
+                    Text.send(p, "<#FFC23D>你离开了 " + Text.escape(c.clientName) + " 的小队，护航委托已放弃。");
+                }
+            }
+            if (changed && c.escorts.isEmpty() && c.state == State.ACCEPTED) {
+                c.state = State.OPEN;
+            }
+        }
+    }
+
     /** Called when any raid participant finishes. Only the client's outcome settles a contract. */
     public void settle(Raid raid, RaidPlayer rp, boolean extracted) {
         if (rp.escortContract == null) {
@@ -159,8 +197,17 @@ public final class EscortService {
         contracts.remove(c.id);
         double share = extracted ? 1.0 : plugin.getConfig().getDouble("escort.failure-share", 0.3);
         long pool = Math.round(c.reward * share);
-        long each = c.escorts.isEmpty() ? 0 : pool / c.escorts.size();
+        // Only escorts who went into this raid on the contract, in the client's squad, earn a
+        // share; the rest of the reward goes back to the client.
+        List<UUID> paid = new ArrayList<>();
         for (UUID escort : c.escorts) {
+            RaidPlayer erp = raid.player(escort);
+            if (erp != null && erp.squad == rp.squad && c.id.equals(erp.escortContract) && !paid.contains(escort)) {
+                paid.add(escort);
+            }
+        }
+        long each = paid.isEmpty() ? 0 : pool / paid.size();
+        for (UUID escort : paid) {
             plugin.profiles().edit(escort, p -> {
                 p.money += each;
                 p.addStat("escort_income", each);
@@ -170,7 +217,7 @@ public final class EscortService {
                 Text.send(p, (extracted ? "<#5BD16B>护航成功！" : "<#FFC23D>老板阵亡，护航失败。") + "<#9AA0A6>获得 ◈" + Text.money(each));
             }
         }
-        long refund = c.reward - each * c.escorts.size();
+        long refund = c.reward - each * paid.size();
         if (refund > 0) {
             plugin.profiles().edit(c.client, p -> p.money += refund);
         }

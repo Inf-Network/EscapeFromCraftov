@@ -127,6 +127,7 @@ public final class MatchService {
         }
         cancelQueue(party.leader, "队员离队");
         party.members.remove(player.getUniqueId());
+        plugin.escorts().onPartyLeave(player.getUniqueId());
         if (announce) {
             Text.send(player, "<#9AA0A6>你已离开小队。");
             broadcast(party, "<white>" + Text.escape(player.getName()) + "</white> <#9AA0A6>离开了小队");
@@ -140,6 +141,7 @@ public final class MatchService {
         }
         if (party.members.size() == 1) {
             parties.remove(party.members.get(0));
+            plugin.escorts().onPartyLeave(party.members.get(0));
             Player last = Bukkit.getPlayer(party.members.get(0));
             if (last != null) {
                 Text.send(last, "<#9AA0A6>小队已解散。");

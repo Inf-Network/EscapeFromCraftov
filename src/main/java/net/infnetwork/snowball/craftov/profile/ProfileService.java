@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.profile;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import net.infnetwork.snowball.craftov.util.AtomicFiles;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -11,10 +12,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -72,6 +71,7 @@ public final class ProfileService {
 
     public void start() throws IOException {
         Files.createDirectories(dir);
+        AtomicFiles.cleanTemp(dir);
         File[] files = dir.toFile().listFiles((d, name) -> name.endsWith(".json"));
         if (files != null) {
             for (File file : files) {
@@ -301,14 +301,7 @@ public final class ProfileService {
 
     private void writeSync(String json, UUID uuid) {
         try {
-            Path target = dir.resolve(uuid + ".json");
-            Path tmp = dir.resolve(uuid + ".json.tmp");
-            Files.writeString(tmp, json, StandardCharsets.UTF_8);
-            try {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ex) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFiles.write(dir.resolve(uuid + ".json"), json);
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save profile " + uuid + ": " + ex.getMessage());
         }

@@ -7,6 +7,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.util.AtomicFiles;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -82,6 +83,9 @@ public final class MarketService implements Listener {
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
+    /** Copies handed out for saving (main thread), and the newest one on disk (under the write lock). */
+    private long saves;
+    private long written;
     /**
      * When system buyers took each seller's listings of each item in the last hour, oldest first
      * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
@@ -97,6 +101,7 @@ public final class MarketService implements Listener {
     }
 
     public void start() {
+        AtomicFiles.cleanTemp(file.getParent());
         try {
             if (Files.exists(file)) {
                 Data loaded = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), Data.class);
@@ -149,19 +154,25 @@ public final class MarketService implements Listener {
         }
         dirty = false;
         String json = GSON.toJson(data);
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> write(json));
+        long version = ++saves;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> write(json, version));
     }
 
     public void saveSync() {
-        write(GSON.toJson(data));
+        write(GSON.toJson(data), ++saves);
     }
 
-    private void write(String json) {
+    /**
+     * Async saves run on Bukkit's thread pool and may overlap: an older copy must never land after
+     * a newer one, or after the final save on shutdown (which waits here for a running write).
+     */
+    private synchronized void write(String json, long version) {
+        if (version <= written) {
+            return;
+        }
         try {
-            Files.createDirectories(file.getParent());
-            Path tmp = file.resolveSibling("market.json.tmp");
-            Files.writeString(tmp, json, StandardCharsets.UTF_8);
-            Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            AtomicFiles.write(file, json);
+            written = version;
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save market data: " + ex.getMessage());
         }

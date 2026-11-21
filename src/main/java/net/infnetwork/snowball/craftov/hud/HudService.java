@@ -321,24 +321,40 @@ public final class HudService {
         refreshOverlay(player);
     }
 
+    /**
+     * How often an overlay that is up gets sent again. The client-side helmet only lasts until the
+     * server next syncs the real head slot: a helmet losing durability to a headshot, a helmet swap or
+     * an inventory refresh puts the real helmet back on the client (a Bukkit setHelmet even sends it
+     * twice, once at once and once from the next container sync), so resending only on a change of
+     * overlay would leave the screen clear until the next fade step.
+     */
+    private static final int OVERLAY_RESEND_TICKS = 2;
+
     private void tickOverlays() {
-        if (suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()) {
+        if (shownOverlay.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()) {
             return;
         }
         long now = Bukkit.getCurrentTick();
-        java.util.Set<UUID> touched = new java.util.HashSet<>(suppressedUntil.keySet());
+        java.util.Set<UUID> touched = new java.util.HashSet<>(shownOverlay.keySet());
+        touched.addAll(suppressedUntil.keySet());
         touched.addAll(dazzledUntil.keySet());
         touched.addAll(flashed.keySet());
         suppressedUntil.values().removeIf(until -> until <= now);
         dazzledUntil.values().removeIf(until -> until <= now);
         flashed.values().removeIf(flash -> flash.until() <= now);
+        boolean resend = now % OVERLAY_RESEND_TICKS == 0;
         for (UUID id : touched) {
             Player player = Bukkit.getPlayer(id);
-            if (player != null) {
-                refreshOverlay(player);
-            } else {
+            if (player == null) {
                 shownOverlay.remove(id);
                 lastShake.remove(id);
+                continue;
+            }
+            String before = shownOverlay.get(id);
+            refreshOverlay(player);
+            String shown = shownOverlay.get(id);
+            if (resend && shown != null && shown.equals(before)) {
+                cameraOverlay(player, shown);
             }
         }
     }

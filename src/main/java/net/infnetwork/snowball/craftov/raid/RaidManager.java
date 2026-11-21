@@ -889,9 +889,18 @@ public final class RaidManager implements Listener {
         }
         rp.state = RaidPlayer.State.DEAD;
         List<ItemStack> drop = new ArrayList<>();
+        ItemStack kept = null;
         if (rp.disconnectedInventory != null) {
-            drop.addAll(rp.disconnectedInventory.values());
+            for (Map.Entry<Integer, ItemStack> entry : rp.disconnectedInventory.entrySet()) {
+                // As in die(): the melee weapon stays out of the body and goes back into the loadout.
+                if (entry.getKey() == CarryService.MELEE_SLOT && plugin.carry().isMelee(entry.getValue())) {
+                    kept = entry.getValue();
+                } else {
+                    drop.add(entry.getValue());
+                }
+            }
         }
+        ItemStack melee = kept;
         if (rp.lastLocation != null && !drop.isEmpty()) {
             spawnCorpse(raid, rp.lastLocation, rp.name, drop, null);
         }
@@ -902,6 +911,7 @@ public final class RaidManager implements Listener {
         long lostValue = lost;
         plugin.profiles().edit(rp.uuid, profile -> {
             profile.loadout.clear();
+            keepMelee(profile, melee);
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);

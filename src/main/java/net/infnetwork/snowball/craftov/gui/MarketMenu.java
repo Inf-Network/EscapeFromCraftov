@@ -103,7 +103,9 @@ final class MarketMenu extends Menu {
             lore.add(Component.empty());
             lore.add(Text.mm("<#8A8F98>卖家 <white>" + Text.escape(listing.sellerName)));
             lore.add(Text.mm("<#8A8F98>价格 <#F2C94C>◈" + Text.money(listing.price)));
-            lore.add(Text.mm("<#5BD16B>点击购买（存入仓库）"));
+            int level = plugin.market().minBuyLevel();
+            lore.add(Text.mm(plugin.profiles().get(viewer).level < level ? "<#FF8A80>需要账号等级 " + level + " 才能购买其他玩家的商品"
+                    : "<#5BD16B>点击购买（存入仓库）"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             String id = listing.id;
             button(slot++, display, e -> {

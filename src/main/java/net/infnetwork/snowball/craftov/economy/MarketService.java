@@ -296,6 +296,11 @@ public final class MarketService {
             return false;
         }
         Profile buyer = plugin.profiles().get(player);
+        String blocked = tradeBlock(player, buyer, listing);
+        if (blocked != null) {
+            Text.send(player, "<#FF8A80>" + blocked);
+            return false;
+        }
         if (buyer.money < listing.price) {
             Text.send(player, "<#FF8A80>块币不足。");
             return false;
@@ -313,6 +318,23 @@ public final class MarketService {
         Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
                 + " <#8A8F98>（已存入仓库）-◈" + Text.money(listing.price));
         return true;
+    }
+
+    public int minBuyLevel() {
+        return plugin.getConfig().getInt("market.min-buy-level", 3);
+    }
+
+    /**
+     * Why {@code buyer} may not buy another player's {@code listing}, or null when they may. These
+     * rules only cover sales between players: the plugin cannot tell a second account from a
+     * friend in offline mode, so they make funnelling a fresh account's starting money costly.
+     */
+    private @Nullable String tradeBlock(Player player, Profile buyer, Listing listing) {
+        int level = minBuyLevel();
+        if (buyer.level < level) {
+            return "购买其他玩家的商品需要账号等级 " + level + "（当前 Lv." + buyer.level + "），商人处的商品不受限制。";
+        }
+        return null;
     }
 
     public boolean cancel(Player player, String listingId) {

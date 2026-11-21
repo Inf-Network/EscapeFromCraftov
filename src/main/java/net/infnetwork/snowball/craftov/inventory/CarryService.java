@@ -15,6 +15,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -372,6 +373,11 @@ public final class CarryService {
         return new ArrayList<>(snapshot(player).values());
     }
 
+    /**
+     * Rebuilds the inventory from a layout. Records whose id items.yml does not know are mailed and
+     * taken out of the layout (the profile's loadout, say), so applying it again before the next
+     * capture cannot mail them a second time.
+     */
     public void apply(Player player, Map<Integer, ItemRecord> layout, ItemStack terminal) {
         PlayerInventory inv = player.getInventory();
         inv.clear();
@@ -382,6 +388,7 @@ public final class CarryService {
             if (record != null) {
                 ItemStack stack = items.fromRecord(record);
                 if (stack == null) {
+                    layout.remove(slot);
                     mail(player, record);
                 }
                 inv.setItem(slot, stack);
@@ -390,14 +397,17 @@ public final class CarryService {
         inv.setItem(TERMINAL_SLOT, terminal);
         refreshLocks(player);
         List<ItemStack> overflow = new ArrayList<>();
-        for (Map.Entry<Integer, ItemRecord> entry : layout.entrySet()) {
+        for (Iterator<Map.Entry<Integer, ItemRecord>> it = layout.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, ItemRecord> entry = it.next();
             int slot = entry.getKey();
             if (slot >= FEET || slot == TERMINAL_SLOT) {
                 continue;
             }
-            ItemStack stack = items.fromRecord(entry.getValue());
+            ItemRecord record = entry.getValue();
+            ItemStack stack = items.fromRecord(record);
             if (stack == null) {
-                mail(player, entry.getValue());
+                it.remove();
+                mail(player, record);
                 continue;
             }
             ItemStack current = inv.getItem(slot);

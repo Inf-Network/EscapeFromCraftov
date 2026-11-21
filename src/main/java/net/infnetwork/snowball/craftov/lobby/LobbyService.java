@@ -264,6 +264,9 @@ public final class LobbyService implements Listener {
         Profile profile = plugin.profiles().get(player);
         plugin.carry().apply(player, profile.loadout, UiItems.lobbyMenu());
         plugin.carry().ensureMelee(player);
+        // What did not fit went to the mailbox: the loadout is what was placed, at once, so entering
+        // the lobby again before the periodic save cannot mail those items a second time.
+        saveLoadout(player);
         player.setFallDistance(0);
         player.setFireTicks(0);
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));

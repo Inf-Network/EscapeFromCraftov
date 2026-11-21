@@ -71,8 +71,37 @@ public final class TaskService {
                 used.add(Kind.valueOf(task.kind));
                 profile.tasks.add(task);
             }
+        } else {
+            replaceClosedMaps(profile);
         }
         return profile.tasks;
+    }
+
+    /**
+     * An unfinished map contract for a map that can no longer be queued for (removed, or a test map,
+     * which only test mode opens) could never be completed: it is swapped for a new contract for free
+     * instead of blocking the slot until the daily reset.
+     */
+    private void replaceClosedMaps(Profile profile) {
+        List<MapDef> open = raidMaps();
+        boolean changed = false;
+        for (int i = 0; i < profile.tasks.size(); i++) {
+            Profile.TaskState task = profile.tasks.get(i);
+            if (task.done || !Kind.EXTRACT_MAP.name().equals(task.kind) || open.stream().anyMatch(m -> m.id().equals(task.map))) {
+                continue;
+            }
+            Set<Kind> used = EnumSet.noneOf(Kind.class);
+            for (int j = 0; j < profile.tasks.size(); j++) {
+                if (j != i) {
+                    used.add(Kind.valueOf(profile.tasks.get(j).kind));
+                }
+            }
+            profile.tasks.set(i, roll(used));
+            changed = true;
+        }
+        if (changed) {
+            plugin.profiles().markDirty(profile.uuid);
+        }
     }
 
     /** Swaps an unfinished contract for a different one. */

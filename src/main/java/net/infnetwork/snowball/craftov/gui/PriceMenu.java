@@ -41,7 +41,7 @@ final class PriceMenu extends Menu {
         }
         double ratio = price / (double) reference;
         String hint = ratio > 1.25 ? "<#FF4D4D>系统买家不会收购"
-                : plugin.market().virtualCapped(record.id) ? "<#FFC23D>系统买家本小时已收满此物品，需要等待"
+                : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>本小时系统买家已收满你的这种物品，需要等待"
                 : ratio <= 0.9 ? "<#5BD16B>很快售出" : ratio <= 1.0 ? "<#5BD16B>较快售出" : ratio <= 1.1 ? "<#FFC23D>可能需要等待"
                 : "<#FF8A80>较难售出";
         long fee = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));

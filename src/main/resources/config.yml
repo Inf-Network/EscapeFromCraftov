@@ -127,8 +127,9 @@ market:
   # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
   # than the trader's buy-multiplier, so reselling trader stock never pays.
   reference-multiplier: 0.85
-  # Most listings of one item the system buyers take per hour, across all sellers (0 = no cap).
-  # A safety valve should a config change ever make reselling to them profitable again.
+  # Most listings of one item the system buyers take from one seller per hour (0 = no cap). A safety
+  # valve should a config change ever make reselling to them profitable again; per seller, so one
+  # player cannot use it up for everyone else.
   virtual-hourly-cap: 40
   # Listings priced above this multiple of the reference price are refused (stops one colluding sale
   # at an absurd price from moving money between accounts).

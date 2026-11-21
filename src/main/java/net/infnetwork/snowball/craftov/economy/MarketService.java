@@ -82,8 +82,14 @@ public final class MarketService implements Listener {
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
-    /** When system buyers took each item id in the last hour, oldest first (market.virtual-hourly-cap). */
-    private final Map<String, ArrayDeque<Long>> virtualSales = new HashMap<>();
+    /**
+     * When system buyers took each seller's listings of each item in the last hour, oldest first
+     * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
+     */
+    private final Map<SaleKey, ArrayDeque<Long>> virtualSales = new HashMap<>();
+
+    private record SaleKey(UUID seller, String itemId) {
+    }
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -222,17 +228,17 @@ public final class MarketService implements Listener {
         return plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
     }
 
-    /** True when system buyers have taken their hourly quota of {@code itemId} and will wait. */
-    public boolean virtualCapped(String itemId) {
+    /** True when system buyers have taken their hourly quota of {@code seller}'s {@code itemId} and will wait. */
+    public boolean virtualCapped(UUID seller, String itemId) {
         int cap = virtualCap();
         if (cap <= 0) {
             return false;
         }
-        ArrayDeque<Long> times = virtualSales.get(itemId);
+        ArrayDeque<Long> times = virtualSales.get(new SaleKey(seller, itemId));
         return times != null && times.size() >= cap;
     }
 
-    /** Forgets system-buyer sales older than an hour, and items with none left. */
+    /** Forgets system-buyer sales older than an hour, and sellers' items with none left. */
     private void pruneVirtualSales(long now) {
         virtualSales.values().removeIf(times -> {
             while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
@@ -574,7 +580,7 @@ public final class MarketService implements Listener {
                 dirty = true;
                 continue;
             }
-            if (!npc || now - listing.created < minAge || virtualCapped(listing.item.id)) {
+            if (!npc || now - listing.created < minAge || virtualCapped(listing.seller, listing.item.id)) {
                 continue;
             }
             // Measured against the fixed anchor, never the trade-driven reference: otherwise each
@@ -583,7 +589,7 @@ public final class MarketService implements Listener {
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
             if (ThreadLocalRandom.current().nextDouble() < chance) {
                 if (counting) {
-                    virtualSales.computeIfAbsent(listing.item.id, k -> new ArrayDeque<>()).addLast(now);
+                    virtualSales.computeIfAbsent(new SaleKey(listing.seller, listing.item.id), k -> new ArrayDeque<>()).addLast(now);
                 }
                 complete(listing, "系统买家", false);
             }

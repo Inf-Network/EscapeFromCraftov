@@ -114,6 +114,10 @@ ai:
 trader:
   buy-multiplier: 1.15
   sell-multiplier: 0.55
+  # Share of an armour piece's value charged per full bar of missing durability. Repairing raises
+  # the value by 0.75 of it, and the market's system buyers pay at most ~0.99 of value after fee and
+  # tax, so below ~0.74 repairing worn armour to sell it is profit (tools/econ/repair.py checks).
+  repair-rate: 0.75
   # Rarest tier the trader sells (GOLD and RED only come from raids and the market).
   max-rarity: PURPLE
 

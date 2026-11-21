@@ -267,6 +267,16 @@ public final class TraderService {
         return true;
     }
 
+    /**
+     * Share of an armour piece's value charged per full bar of missing durability. A repair raises
+     * the item's value by 0.75 of its value per full bar (ItemFactory.value), so below about 0.74
+     * (0.75 times what the market's system buyers pay at most after fee and tax) repairing worn
+     * armour and selling it made money; tools/econ/repair.py checks every piece in items.yml.
+     */
+    public double repairRate() {
+        return plugin.getConfig().getDouble("trader.repair-rate", 0.75);
+    }
+
     public long repairCost(ItemStack stack) {
         ItemDef def = plugin.items().defOf(stack);
         if (def == null || !def.isArmor()) {
@@ -274,7 +284,7 @@ public final class TraderService {
         }
         double dura = net.infnetwork.snowball.craftov.item.ItemFactory.dura(stack, def.durability());
         double missing = def.durability() - dura;
-        return Math.round(missing / def.durability() * def.value() * 0.35);
+        return Math.round(missing / def.durability() * def.value() * repairRate());
     }
 
     /** Repairs every armor piece the player wears or carries. */

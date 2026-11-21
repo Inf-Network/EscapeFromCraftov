@@ -2,7 +2,12 @@ package net.infnetwork.snowball.craftov.map;
 
 import java.util.List;
 
-/** Immutable description of a raid map. Coordinates are in the template world. */
+/**
+ * Immutable description of a raid map. Coordinates are in the template world.
+ *
+ * @param test a test map (the proving ground): only players with test access (test.enabled or
+ *             craftov.admin) can see or queue for it
+ */
 public record MapDef(
         String id,
         String name,
@@ -18,7 +23,8 @@ public record MapDef(
         List<DoorDef> doors,
         List<SwitchDef> switches,
         double minX, double minZ, double maxX, double maxZ,
-        String timeOfDay
+        String timeOfDay,
+        boolean test
 ) {
     public record SpawnDef(int group, Pos pos) {
     }

@@ -212,9 +212,10 @@ public final class EditorService implements Listener {
             case "description", "desc" -> session.draft.description = value;
             case "minutes" -> session.draft.raidMinutes = Math.max(5, Integer.parseInt(value));
             case "time" -> session.draft.time = value;
+            case "test" -> session.draft.test = Boolean.parseBoolean(value);
             case "camera" -> session.draft.camera = Pos.of(player.getEyeLocation());
             default -> {
-                Text.send(player, "<#FF8A80>可设置：name / description / minutes / time(day|dusk|night|dawn) / camera");
+                Text.send(player, "<#FF8A80>可设置：name / description / minutes / time(day|dusk|night|dawn) / test(true|false) / camera");
                 return;
             }
         }
@@ -228,7 +229,8 @@ public final class EditorService implements Listener {
             return;
         }
         MapDraft d = session.draft;
-        Text.send(player, "<white>" + Text.escape(d.name) + " <#8A8F98>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time);
+        Text.send(player, "<white>" + Text.escape(d.name) + " <#8A8F98>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time
+                + (d.test ? " · <#FFB74D>测试图" : ""));
         Text.send(player, "<#9AA0A6>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
                 + " · 敌兵 " + d.ai.size() + " · 首领 " + d.bosses.size() + " · 门禁 " + d.doors.size() + " · 电闸 " + d.switches.size());
     }

@@ -122,9 +122,9 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
    - **删除**：删掉 3 格内最近的标记。
    - **扫描箱子**：把附近 64 格内的箱子、木桶等方块一键转换为物资箱。
    - **保存/边界**：右键保存；潜行右键两个角设置地图边界。
-3. 所有标记都会以只有编辑者可见的悬浮文字显示。`/cv editor set name 我的地图`、`set minutes 20`、`set time dusk`、`set camera`（入场运镜中心）可修改属性，`/cv editor exit` 保存并退出。
+3. 所有标记都会以只有编辑者可见的悬浮文字显示。`/cv editor set name 我的地图`、`set minutes 20`、`set time dusk`、`set camera`（入场运镜中心）、`set test true`（设为测试图，只有测试模式和管理员能看到、能排）可修改属性，`/cv editor exit` 保存并退出。
 
-地图保存在 `plugins/Craftov/maps/<id>.yml`，也可以直接编辑。
+地图保存在 `plugins/Craftov/maps/<id>.yml`，也可以直接编辑（`test: true` 即测试图；`proving.yml` 没写这个键时也按测试图处理）。
 
 ## 配置文件
 

@@ -7,6 +7,8 @@
 #   tools/mac/mac jar        build the plugin here and install it on the Mac
 #   tools/mac/mac deploy     sync + jar + restart the server on the Mac
 #   tools/mac/mac pull-mac   fetch the Mac's local branches into refs/mac/*
+#   tools/mac/mac selfupdate install this tree's tools/mac/craftov on the Mac
+#                            (sync does it too, from the synced commits)
 #   tools/mac/mac <command>  anything else goes to `ssh mac craftov <command>`:
 #                            status, branches, start, stop, restart, rcon <cmd>,
 #                            log [n], clientlog [n], build, yml diff|copy <file>,
@@ -45,8 +47,9 @@ jar() {
 case "${1:-}" in
   sync) shift; sync "$@" ;;
   pull-mac) pull_mac ;;
+  selfupdate) ssh mac craftov selfupdate < tools/mac/craftov ;;
   jar) jar ;;
   deploy) sync; jar; ssh mac craftov restart ;;
-  "") sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  "") sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) ssh mac craftov "$@" ;;
 esac

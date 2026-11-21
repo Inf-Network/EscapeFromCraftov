@@ -13,7 +13,11 @@ command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraft
   craftov sync [--park <name>]   fast-forward the checkout to `main` from a git
                                  bundle on stdin (git bundle create - main);
                                  --park renames a branch with commits the
-                                 bundle lacks to <name> instead of refusing
+                                 bundle lacks to <name> instead of refusing.
+                                 Then installs the checkout's tools/mac/craftov
+                                 over this extension if it differs
+  craftov selfupdate             install a new version of this extension read
+                                 from stdin
   craftov jar                    install a plugin jar read from stdin as
                                  server/run/plugins/Craftov.jar
   craftov build                  ./gradlew deployLocal here, with JDK 25
@@ -31,7 +35,9 @@ command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraft
   craftov packip <IPv4>          the address CraftEngine advertises the pack at
 
 sync, jar and build run code from the repository on this Mac: that is the
-point of the extension, and why it touches nothing outside the checkout.
+point of the extension, and why it touches nothing outside the checkout and
+itself. Updating itself adds nothing to that: a plugin the server sends can
+already rewrite this file.
 """
 import datetime
 import difflib
@@ -437,7 +443,69 @@ def cmd_status():
             print("rcon       %s" % exc)
 
 
+def install_self(data):
+    """Replaces this extension with `data`, after the new version has shown it
+    runs and can still update itself: a broken update must stay fixable from
+    the server."""
+    me = os.path.realpath(sys.argv[0])
+    ext_dir = os.path.realpath(os.path.join(HOME, ".local", "libexec", "remote-gate"))
+    if os.path.dirname(me) != ext_dir:
+        raise Fail("not running as an installed gate extension (%s)" % me)
+    with open(me, "rb") as f:
+        if f.read() == data:
+            return "the craftov extension is already current"
+    if not data.startswith(b"#!/usr/bin/python3"):
+        raise Fail("not a craftov extension (no python shebang)")
+    # A dot name: the gate never runs it as an extension while it is checked.
+    tmp = os.path.join(ext_dir, ".craftov.new")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.chmod(tmp, 0o755)
+    try:
+        r = subprocess.run([tmp, "selfupdate", "--check"], capture_output=True, text=True, env=env(),
+                           stdin=subprocess.DEVNULL, timeout=30)
+        if r.returncode != 0 or r.stdout.strip() != "selfupdate ok":
+            raise Fail("the new version did not pass its check, keeping this one:\n"
+                       + (r.stderr or r.stdout).strip()[-1500:])
+        os.replace(tmp, me)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return "updated the craftov extension (sha256 %s)" % hashlib.sha256(data).hexdigest()[:12]
+
+
+def cmd_selfupdate(args):
+    if args == ["--check"]:
+        print("selfupdate ok")
+        return
+    if args:
+        raise Fail("usage: craftov selfupdate < tools/mac/craftov")
+    print(install_self(sys.stdin.buffer.read()))
+
+
+def self_update_from_checkout():
+    """After a sync: follow the checkout's copy, so changes to the extension
+    arrive with the commits that make them."""
+    path = os.path.join(PROJECT, "tools", "mac", "craftov")
+    if not os.path.exists(path):
+        return
+    with open(path, "rb") as f:
+        data = f.read()
+    try:
+        msg = install_self(data)
+    except Fail as exc:
+        print("warning: extension not updated: %s" % exc)
+        return
+    if not msg.endswith("already current"):
+        print(msg)
+
+
 def cmd_sync(args):
+    sync_checkout(args)
+    self_update_from_checkout()
+
+
+def sync_checkout(args):
     park = None
     if args:
         if len(args) != 2 or args[0] != "--park":
@@ -743,6 +811,8 @@ def main():
             simple[cmd]()
         elif cmd == "sync":
             cmd_sync(rest)
+        elif cmd == "selfupdate":
+            cmd_selfupdate(rest)
         elif cmd == "rcon":
             cmd_rcon(rest)
         elif cmd == "log" and len(rest) <= 1:

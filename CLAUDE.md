@@ -50,7 +50,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - **资源包地址**：`plugins/CraftEngine/config.yml` 的 `self-host.ip`，资源包托管在 MC 同一端口 25565。改用 `tools/mac/mac packip <IP>`（服务器运行中会自动 `ce reload all`）。平时用 Mac 的局域网 IP，`start.sh` 每次开服会自动刷新私有网段的地址；用户要让外网玩家进来时会告诉你公网 IP（"换ip x.x.x.x"），公网 IP 不会被自动覆盖，外网要能连还需要用户把 25565 映射到 Mac。Mac 当前的公网 IP 可以从这台机器 `who` 里用户 ssh 进来的地址看到。
 - **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后先 `tools/mac/mac yml diff items.yml` 确认服务器那份没有手动改动，再 `tools/mac/mac yml copy items.yml`（自动备份旧的），然后重启。`config.yml` 缺的键会回落到 jar 里的默认值。
 - **同步被拒绝**：Mac 项目有未提交改动、或有这边没有的提交时，`sync` 会拒绝而不是覆盖。`tools/mac/mac pull-mac` 把 Mac 的本地分支取到这边的 `refs/mac/*` 查看；确认保住之后用 `tools/mac/mac sync --park <名字>` 把那个分支改名保留，再切到 `main`。
-- **扩展本身**：服务器改不了 Mac 上的扩展。改了 `tools/mac/craftov` 后，`ssh mac put craftov < tools/mac/craftov`，再请用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`。门卫在 Mac 的 `~/.local/bin/remote-gate`，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库。
+- **扩展本身**：Mac 上的 `~/.local/libexec/remote-gate/craftov` 会在每次 `sync`（包括 `deploy`）之后自动换成同步过去的 `tools/mac/craftov`，所以改扩展只要提交再 `deploy`；没提交时用 `tools/mac/mac selfupdate` 直接推工作区里的版本。替换前新版本必须在 Mac 上跑通 `selfupdate --check`，否则保留旧的，所以**新版本必须保留 `selfupdate` 指令**，不然以后就只能请用户手动装（`ssh mac put craftov < tools/mac/craftov`，用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`）。门卫 `~/.local/bin/remote-gate` 不会自动更新，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库，改它要用户手动装。
 - **本机无头测试服**（给 bot 用）：在这台机器上 `server/setup.sh --local` 生成 `server/run/`，`server/run/start.sh` 开服；控制台命令用 `cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（需要在 `server.properties` 里打开 RCON，密码和 `tools/bot/rcon.js` 一致）。
 
 ## 提交规范

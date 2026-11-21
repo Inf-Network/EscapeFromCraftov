@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.escort.EscortService;
+import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
@@ -10,6 +11,7 @@ import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -83,14 +85,16 @@ public final class TraderService {
             stacks.add(plugin.items().create(def, n));
             remaining -= n;
         }
+        // Each stack that does not fit on the player takes a stash cell of its own.
+        @Nullable ItemStack[] cells = plugin.carry().copyCells(player);
         int needStash = 0;
         for (ItemStack stack : stacks) {
-            if (!plugin.carry().hasRoomFor(player, stack)) {
+            if (!plugin.carry().simulateGive(cells, stack)) {
                 needStash++;
             }
         }
         if (profile.stashUsed() + needStash > profile.stashCapacity) {
-            Text.send(player, "<#FF8A80>背包与仓库都放不下了。");
+            Text.send(player, "<#FF8A80>背包与仓库都放不下了（还差 " + (profile.stashUsed() + needStash - profile.stashCapacity) + " 格仓库空间）。");
             return false;
         }
         profile.money -= cost;
@@ -178,7 +182,7 @@ public final class TraderService {
             Text.send(player, "<#FF8A80>免费补给冷却中，还需 " + net.infnetwork.snowball.craftov.util.Text.duration(wait / 1000) + "。");
             return;
         }
-        profile.stats.put("free_kit_at", System.currentTimeMillis());
+        List<ItemStack> kit = new ArrayList<>();
         for (String raw : plugin.getConfig().getStringList("free-kit.items")) {
             String[] parts = raw.split(":");
             ItemDef def = plugin.registry().get(parts[0]);
@@ -188,22 +192,38 @@ public final class TraderService {
             ItemStack stack = def.isGun() && parts.length > 2 ? plugin.items().loadedGun(def, parts[2])
                     : plugin.items().create(def, parts.length > 1 ? Integer.parseInt(parts[1]) : 1);
             // Marked so the kit cannot be turned straight into money at the trader or the market.
-            plugin.items().markKit(stack);
-            if (def.isContainer()) {
-                ItemStack equipped = player.getInventory().getItem(net.infnetwork.snowball.craftov.inventory.CarryService.containerSlot(def.category()));
-                if (equipped == null || equipped.isEmpty()) {
-                    plugin.carry().equip(player, stack);
-                    continue;
-                }
+            kit.add(plugin.items().markKit(stack));
+        }
+        // Dry run of the placement below: whatever the player cannot carry goes to the stash, which
+        // must have room for it, or the kit would push the stash over its paid capacity.
+        @Nullable ItemStack[] cells = plugin.carry().copyCells(player);
+        int toStash = 0;
+        for (ItemStack stack : kit) {
+            int slot = kitSlot(plugin.items().defOf(stack));
+            if (slot >= 0 && (cells[slot] == null || cells[slot].isEmpty())) {
+                cells[slot] = stack.clone();
+            } else if (!plugin.carry().simulateGive(cells, stack)) {
+                toStash++;
             }
-            if (def.isArmor()) {
-                int slot = def.category() == Category.HELMET ? net.infnetwork.snowball.craftov.inventory.CarryService.HEAD
-                        : net.infnetwork.snowball.craftov.inventory.CarryService.CHEST;
-                ItemStack worn = player.getInventory().getItem(slot);
-                if (worn == null || worn.isEmpty()) {
+        }
+        int free = profile.stashCapacity - profile.stashUsed();
+        if (toStash > free) {
+            Text.send(player, "<#FF8A80>仓库空间不足：免费补给有 " + toStash + " 件背不下、要存进仓库，但仓库只剩 " + Math.max(0, free)
+                    + " 格。<#9AA0A6>清理仓库或腾出背包后再领取。");
+            return;
+        }
+        profile.stats.put("free_kit_at", System.currentTimeMillis());
+        for (ItemStack stack : kit) {
+            ItemDef def = plugin.items().defOf(stack);
+            int slot = kitSlot(def);
+            ItemStack worn = slot < 0 ? null : player.getInventory().getItem(slot);
+            if (slot >= 0 && (worn == null || worn.isEmpty())) {
+                if (def.isContainer()) {
+                    plugin.carry().equip(player, stack);
+                } else {
                     player.getInventory().setItem(slot, stack);
-                    continue;
                 }
+                continue;
             }
             ItemStack left = plugin.carry().give(player, stack, false);
             if (left != null) {
@@ -216,6 +236,20 @@ public final class TraderService {
         plugin.lobby().captureLoadout(player);
         plugin.profiles().markDirty(player.getUniqueId());
         Text.send(player, "<#5BD16B>已领取免费补给，祝你好运。");
+    }
+
+    /** Where a free-kit item is put on when that slot is empty: rigs, backpacks, helmets and armour; -1 for the rest. */
+    private static int kitSlot(@Nullable ItemDef def) {
+        if (def == null) {
+            return -1;
+        }
+        if (def.isContainer()) {
+            return CarryService.containerSlot(def.category());
+        }
+        if (def.isArmor()) {
+            return def.category() == Category.HELMET ? CarryService.HEAD : CarryService.CHEST;
+        }
+        return -1;
     }
 
     // ------------------------------------------------------------------ services

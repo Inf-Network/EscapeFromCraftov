@@ -91,17 +91,19 @@ public final class CarryService {
 
     /** Slot indices (0..35) the player can currently store items in. */
     public List<Integer> usableSlots(Player player) {
+        return usableSlots(rigCapacity(player), backpackCapacity(player));
+    }
+
+    private static List<Integer> usableSlots(int rig, int pack) {
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < TERMINAL_SLOT; i++) {
             if (i != MELEE_SLOT) {
                 out.add(i);
             }
         }
-        int rig = rigCapacity(player);
         for (int i = 0; i < rig; i++) {
             out.add(RIG_START + i);
         }
-        int pack = backpackCapacity(player);
         for (int i = 0; i < pack; i++) {
             out.add(PACK_START + i);
         }
@@ -193,6 +195,64 @@ public final class CarryService {
             return null;
         }
         return remaining;
+    }
+
+    /** A copy of the player's inventory, indexed like {@link PlayerInventory#getItem(int)}, for {@link #simulateGive}. */
+    public @Nullable ItemStack[] copyCells(Player player) {
+        ItemStack[] contents = player.getInventory().getContents();
+        @Nullable ItemStack[] out = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack stack = contents[i];
+            out[i] = stack == null || stack.isEmpty() ? null : stack.clone();
+        }
+        return out;
+    }
+
+    /**
+     * Dry run of {@link #give} on {@code cells} (from {@link #copyCells}): places {@code stack}
+     * there the same way and returns false when some of it would be left over. Run it for each of
+     * several stacks in turn so that each one sees the cells the ones before it took; checking
+     * them one by one against the real inventory let two stacks count the same free cell. Cells
+     * are counted from the rig and backpack in {@code cells}, and placeholders in them count as
+     * free, so a container just put into its slot opens its cells as {@link #refreshLocks} would.
+     */
+    public boolean simulateGive(@Nullable ItemStack[] cells, ItemStack stack) {
+        ItemStack remaining = stack.clone();
+        if (ItemFactory.hasContents(remaining)) {
+            return false;
+        }
+        List<Integer> slots;
+        if (isMelee(remaining)) {
+            ItemDef held = items.defOf(cells[MELEE_SLOT]);
+            if (held != null && "knife_starter".equals(held.id())) {
+                cells[MELEE_SLOT] = null;
+            }
+            slots = List.of(MELEE_SLOT);
+        } else {
+            slots = usableSlots(capacity(cells[LEGS], RIG_MAX), capacity(cells[FEET], PACK_MAX));
+        }
+        for (int slot : slots) {
+            ItemStack current = cells[slot];
+            if (current != null && !ItemFactory.isUi(current) && current.isSimilar(remaining)) {
+                int space = current.getMaxStackSize() - current.getAmount();
+                if (space > 0) {
+                    int moved = Math.min(space, remaining.getAmount());
+                    current.setAmount(current.getAmount() + moved);
+                    remaining.setAmount(remaining.getAmount() - moved);
+                    if (remaining.getAmount() <= 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (int slot : slots) {
+            ItemStack current = cells[slot];
+            if (current == null || current.isEmpty() || ItemFactory.isUi(current)) {
+                cells[slot] = remaining;
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {

@@ -107,7 +107,7 @@ final class StashMenu extends Menu {
         set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
         button(50, UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + p.mailbox.size(),
-                List.of("<#9AA0A6>交易行退回、过期的物品", "<#9AA0A6>点击领取到仓库")), e -> {
+                List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品", "<#9AA0A6>点击领取到仓库")), e -> {
             claimMailbox(p);
             redraw();
         });

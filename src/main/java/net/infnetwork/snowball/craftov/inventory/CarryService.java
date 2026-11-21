@@ -1,10 +1,12 @@
 package net.infnetwork.snowball.craftov.inventory;
 
+import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -23,7 +25,9 @@ import java.util.Map;
  *  row 9..17     chest rig slots              rows 18..35 backpack slots
  *  36 feet = backpack   37 legs = rig   38 chest = body armor   39 head = helmet
  * </pre>
- * Rigs and backpacks carry their contents inside the item stack while unequipped.
+ * Rigs and backpacks carry their contents inside the item stack while unequipped. Whatever does
+ * not fit anywhere is dropped at the player's feet in a raid and mailed to the stash mailbox
+ * everywhere else, because outside a raid nobody can pick a dropped item up again.
  */
 public final class CarryService {
 
@@ -40,10 +44,12 @@ public final class CarryService {
     public static final int HEAD = 39;
     public static final int OFFHAND = 40;
 
+    private final CraftovPlugin plugin;
     private final ItemFactory items;
 
-    public CarryService(ItemFactory items) {
-        this.items = items;
+    public CarryService(CraftovPlugin plugin) {
+        this.plugin = plugin;
+        this.items = plugin.items();
     }
 
     public ItemFactory items() {
@@ -151,7 +157,7 @@ public final class CarryService {
 
     /**
      * Adds an item to free usable slots, stacking first. Returns the part that did not fit; when
-     * {@code dropOverflow} is set that remainder is dropped at the player's feet instead.
+     * {@code dropOverflow} is set that remainder is spilled instead (see {@link #spill}).
      */
     public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow) {
         ItemStack remaining = stack.clone();
@@ -189,10 +195,29 @@ public final class CarryService {
             }
         }
         if (dropOverflow) {
-            player.getWorld().dropItemNaturally(player.getLocation(), remaining);
+            spill(player, remaining);
             return null;
         }
         return remaining;
+    }
+
+    /**
+     * Gets rid of an item that has no room on the player. In a raid it drops at their feet for
+     * anyone to loot. Anywhere else (lobby, range, editor) a dropped item can never be picked up
+     * again, so it goes to the stash mailbox instead. Range loaners and non-Craftov stacks have no
+     * stored form and still drop.
+     */
+    private void spill(Player player, ItemStack stack) {
+        ItemRecord record = plugin.raids().isRaidWorld(player.getWorld()) ? null : items.toRecord(stack);
+        if (record == null) {
+            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+            return;
+        }
+        plugin.profiles().edit(player.getUniqueId(), p -> p.mailbox.add(record));
+        ItemDef def = items.defOf(stack);
+        String amount = stack.getAmount() > 1 ? " <#9AA0A6>×" + stack.getAmount() : "";
+        Text.send(player, "<#9AA0A6>身上放不下，" + (def == null ? "物品" : def.coloredName()) + amount
+                + " <#9AA0A6>已放进<#F2C94C>仓库邮箱<#9AA0A6>。");
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {
@@ -216,7 +241,7 @@ public final class CarryService {
         return false;
     }
 
-    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or dropped. */
+    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or spilled. */
     public void enforceContainers(Player player) {
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot < FEET; slot++) {
@@ -233,7 +258,7 @@ public final class CarryService {
                     continue;
                 }
             }
-            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+            spill(player, stack);
         }
     }
 

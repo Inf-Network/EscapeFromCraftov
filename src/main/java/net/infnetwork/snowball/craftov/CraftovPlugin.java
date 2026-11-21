@@ -118,7 +118,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
-        carry = new CarryService(items);
+        carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
         worlds = new WorldService(this, maps);

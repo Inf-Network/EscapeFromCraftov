@@ -5,6 +5,7 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.raid.LootContainer;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -109,7 +110,8 @@ public final class InsuranceService {
             }
         }
         returns.forEach((owner, records) -> {
-            plugin.profiles().edit(owner, p -> p.mailbox.addAll(records));
+            plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
+                    + ProfileService.json(records), p -> p.mailbox.addAll(records));
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
                 Text.send(player, "<#5BD16B>保险理赔：<white>" + records.size() + " 件装备 <#9AA0A6>已退回仓库邮箱。");

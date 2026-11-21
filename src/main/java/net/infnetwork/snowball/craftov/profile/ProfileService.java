@@ -2,8 +2,6 @@ package net.infnetwork.snowball.craftov.profile;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import net.infnetwork.snowball.craftov.util.AtomicFiles;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -18,11 +16,15 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -37,11 +39,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * JSON-file profile storage. Profiles of online players stay cached; offline profiles are loaded
@@ -50,13 +54,21 @@ import java.util.function.Consumer;
  *
  * <p>A profile file that exists but cannot be read is never replaced: it stays where it is, a copy
  * goes next to it as {@code <uuid>.json.corrupt-<time>}, and its owner cannot log in until an admin
- * repairs the file (or deletes it to start the account over). Changes meant for such an account
- * are written to the log instead of being dropped silently.
+ * repairs the file (or deletes it to start the account over). A change that has to happen to such
+ * an account anyway (an escort settlement, an insurance claim) goes into a journal next to it,
+ * {@code <uuid>.json.unsaved}, one line per change in the order they happened, and the account
+ * stays locked while that file exists: the admin applies the lines to the repaired file and
+ * deletes the journal, so a repaired file can never be played (or have its escrow returned) on
+ * without them.
  */
 public final class ProfileService implements Listener {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+    /** One-line JSON for the journal, in the same form the profile file uses. */
+    private static final Gson LINE = new GsonBuilder().disableHtmlEscaping().create();
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS");
+    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String JOURNAL = ".unsaved";
     private static final String LOCKED = "<#FF4D4D>你的档案读取失败，为免覆盖原有数据已暂停登录。\n\n"
             + "<#9AA0A6>原文件已原样保留，请联系管理员修复。";
 
@@ -77,6 +89,13 @@ public final class ProfileService implements Listener {
      * never written, so the broken file is not replaced by an empty account. Main thread only.
      */
     private final Set<Profile> placeholders = Collections.newSetFromMap(new IdentityHashMap<>());
+    /**
+     * Profiles found unreadable, with the size and time of the file at that read. Such a file is
+     * read (and reported) again only once it has changed, so a player retrying the login or the
+     * market checking a broken seller every tick does not re-read it and every corrupt copy each
+     * time. Any thread.
+     */
+    private final Map<UUID, Stamp> unreadable = new ConcurrentHashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
@@ -85,6 +104,18 @@ public final class ProfileService implements Listener {
 
     /** An offline profile and the number of its writes still queued on the io thread. */
     private record Pending(Profile profile, AtomicInteger writes) {
+    }
+
+    /** Size and modification time of a file, to notice it was changed (repaired). */
+    private record Stamp(long modified, long size) {
+        static @Nullable Stamp of(Path file) {
+            try {
+                BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+                return new Stamp(attrs.lastModifiedTime().toMillis(), attrs.size());
+            } catch (IOException ex) {
+                return null;
+            }
+        }
     }
 
     /** What leaderboards and start-up checks need of every saved profile, kept without loading it. */
@@ -107,9 +138,16 @@ public final class ProfileService implements Listener {
                 if (profile != null) {
                     index.put(profile.uuid, summarize(profile));
                 } else {
-                    quarantine(file.toPath());
+                    broken(file.toPath());
                 }
             }
+        }
+        String[] journals = dir.toFile().list((d, name) -> name.endsWith(".json" + JOURNAL));
+        if (journals != null && journals.length > 0) {
+            Arrays.sort(journals);
+            plugin.getLogger().severe("==== " + journals.length + " profile(s) have changes that could not be saved to them,"
+                    + " waiting in data/players: " + String.join(", ", journals) + ". Their owners cannot log in until each"
+                    + " file's lines are applied to the profile next to it and the file is deleted. ====");
         }
         Bukkit.getScheduler().runTaskTimer(plugin, this::flushDirty, 200L, 200L);
     }
@@ -120,9 +158,11 @@ public final class ProfileService implements Listener {
         if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
             return;
         }
-        Path file = file(event.getUniqueId());
-        if (Files.exists(file) && read(file) == null) {
-            quarantine(file);
+        UUID uuid = event.getUniqueId();
+        String why = Files.exists(journal(uuid)) ? "has changes waiting in " + journal(uuid).getFileName()
+                : Files.exists(file(uuid)) && load(uuid) == null ? "is unreadable" : null;
+        if (why != null) {
+            plugin.getLogger().warning("Refused the login of " + event.getName() + ": profile " + uuid + ".json " + why + ".");
             event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Text.mm(LOCKED));
         }
     }
@@ -139,7 +179,7 @@ public final class ProfileService implements Listener {
             profile = pending != null ? pending.profile() : load(uuid);
             if (profile == null) {
                 profile = new Profile(uuid, name);
-                if (Files.exists(file(uuid))) {
+                if (Files.exists(file(uuid)) || Files.exists(journal(uuid))) {
                     lockOut(profile);
                 }
             }
@@ -204,31 +244,59 @@ public final class ProfileService implements Listener {
 
     /**
      * Applies a mutation to a profile whether or not its owner is online. When the profile cannot
-     * be loaded the change is written to the log, so an admin can apply it by hand.
+     * be used, {@code change} goes into the account's journal instead (see the class comment). It
+     * tells an admin what to do to the file by hand, so it has to state the mutation exactly:
+     * {@code field +n} or {@code field -n} for an amount added to or taken from the current value,
+     * {@code field = value} for a value that replaces it, and every item in full as JSON.
      */
-    public void edit(UUID uuid, Consumer<Profile> mutation) {
+    public void edit(UUID uuid, Supplier<String> change, Consumer<Profile> mutation) {
+        Profile profile = editable(uuid);
+        if (profile == null) {
+            hold(uuid, change);
+            return;
+        }
+        mutation.accept(profile);
+        Pending pending = offline.get(uuid);
+        if (pending != null && pending.profile() == profile) {
+            writeAsync(profile, pending.writes());
+        } else {
+            markDirty(uuid);
+        }
+    }
+
+    /**
+     * Whether {@code uuid}'s profile can be changed now: it exists, can be read and has no journal.
+     * Cheap for a file already found broken, which is only read again once it has changed.
+     */
+    public boolean canEdit(UUID uuid) {
+        return editable(uuid) != null;
+    }
+
+    /**
+     * The profile changes to {@code uuid} are made on: the live one, or an offline one kept in
+     * {@link #offline} (loaded now if need be, and dropped again by the next flush when nothing
+     * was written to it); null when it cannot be used or does not exist.
+     */
+    private @Nullable Profile editable(UUID uuid) {
         Profile profile = cache.get(uuid);
         if (profile != null) {
-            if (placeholders.contains(profile)) {
-                logLostEdit(uuid, mutation);
-                return;
-            }
-            mutation.accept(profile);
-            markDirty(uuid);
-            return;
+            return placeholders.contains(profile) ? null : profile;
         }
         Pending pending = offline.get(uuid);
         if (pending == null) {
             Profile loaded = load(uuid);
             if (loaded == null) {
-                logLostEdit(uuid, mutation);
-                return;
+                return null;
             }
             pending = new Pending(loaded, new AtomicInteger());
             offline.put(uuid, pending);
         }
-        mutation.accept(pending.profile());
-        writeAsync(pending.profile(), pending.writes());
+        return pending.profile();
+    }
+
+    /** A value as one line of JSON, the way the profile file holds it (for change descriptions). */
+    public static String json(Object value) {
+        return LINE.toJson(value);
     }
 
     public void markDirty(UUID uuid) {
@@ -321,17 +389,49 @@ public final class ProfileService implements Listener {
         return dir.resolve(uuid + ".json");
     }
 
-    /** The saved profile; null when there is none or it cannot be read (see {@link #quarantine}). */
+    private Path journal(UUID uuid) {
+        return dir.resolve(uuid + ".json" + JOURNAL);
+    }
+
+    /**
+     * The saved profile; null when there is none or it cannot be used: the file is unreadable (see
+     * {@link #quarantine}) or changes wait in its journal. Any thread.
+     */
     private @Nullable Profile load(UUID uuid) {
         Path file = file(uuid);
         if (!Files.exists(file)) {
+            unreadable.remove(uuid);
             return null;
+        }
+        if (Files.exists(journal(uuid))) {
+            return null;
+        }
+        Stamp stamp = Stamp.of(file);
+        if (stamp != null && stamp.equals(unreadable.get(uuid))) {
+            return null; // still the broken content reported before
         }
         Profile profile = read(file);
         if (profile == null) {
-            quarantine(file);
+            broken(file);
+        } else {
+            unreadable.remove(uuid);
         }
         return profile;
+    }
+
+    /** Remembers an unreadable profile file (see {@link #unreadable}) and copies it aside. Any thread. */
+    private void broken(Path file) {
+        Stamp stamp = Stamp.of(file);
+        String name = file.getFileName().toString();
+        try {
+            UUID uuid = UUID.fromString(name.substring(0, name.length() - ".json".length()));
+            if (stamp != null) {
+                unreadable.put(uuid, stamp);
+            }
+        } catch (IllegalArgumentException ignored) {
+            // not named after a player: nothing will look it up
+        }
+        quarantine(file);
     }
 
     /** Parses a profile file; null (and a log line) when it is empty, malformed or has no uuid. Any thread. */
@@ -389,29 +489,43 @@ public final class ProfileService implements Listener {
     }
 
     /**
-     * Logs a change for a profile that could not be loaded: the fields it sets when replayed on an
-     * empty profile, which for counters (money, stats) is the amount it adds.
+     * A change for a profile that cannot be used: appended to its journal (created with a short
+     * explanation on top), which keeps the account locked until an admin has applied it. With no
+     * file and no journal there is no account to apply it to (an admin deleted it to start over):
+     * the change is only logged.
      */
-    private void logLostEdit(UUID uuid, Consumer<Profile> mutation) {
-        String change;
+    private void hold(UUID uuid, Supplier<String> change) {
+        String what;
         try {
-            Profile blank = new Profile(uuid, "");
-            JsonObject before = GSON.toJsonTree(blank).getAsJsonObject();
-            mutation.accept(blank);
-            JsonObject after = GSON.toJsonTree(blank).getAsJsonObject();
-            StringBuilder out = new StringBuilder();
-            for (Map.Entry<String, JsonElement> entry : after.entrySet()) {
-                if (!entry.getValue().equals(before.get(entry.getKey()))) {
-                    out.append(out.isEmpty() ? "" : ", ").append(entry.getKey()).append('=').append(entry.getValue());
-                }
-            }
-            change = out.isEmpty() ? "(nothing visible)" : out.toString();
+            what = change.get();
         } catch (RuntimeException ex) {
-            change = "(could not be replayed: " + ex + ")";
+            what = "(could not be described: " + ex + ")";
         }
-        String why = Files.exists(file(uuid)) ? "is unreadable" : "does not exist";
-        plugin.getLogger().severe("Profile " + uuid + " " + why + "; this change to it was NOT saved, apply it by hand"
-                + " (amounts are what it adds): " + change);
+        Path journal = journal(uuid);
+        boolean fresh = !Files.exists(journal);
+        if (fresh && !Files.exists(file(uuid))) {
+            plugin.getLogger().warning("Profile " + uuid + " does not exist; this change to it was dropped: " + what);
+            return;
+        }
+        String text = (fresh ? "# Changes that could not be saved to " + uuid + ".json because it could not be read.\n"
+                + "# Its owner cannot log in while this file exists. Repair the profile (plugins/Craftov/backups\n"
+                + "# has earlier copies), apply every line below to it in order, then delete this file.\n"
+                + "# \"+n\" or \"-n\" changes the current value by that much, \"= value\" replaces it.\n" : "")
+                + LocalDateTime.now().format(WHEN) + "  " + what + "\n";
+        try (FileChannel channel = FileChannel.open(journal, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                StandardOpenOption.APPEND)) {
+            ByteBuffer buffer = ByteBuffer.wrap(text.getBytes(StandardCharsets.UTF_8));
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            channel.force(true);
+            plugin.getLogger().severe("Profile " + uuid + ".json cannot be used; this change was NOT saved to it and"
+                    + " waits in " + journal.getFileName() + ": " + what);
+        } catch (IOException ex) {
+            plugin.getLogger().severe("Profile " + uuid + ".json cannot be used; this change was NOT saved to it and"
+                    + " could not be written to " + journal.getFileName() + " either (" + ex.getMessage() + "). Apply it"
+                    + " by hand before its owner logs in again: " + what);
+        }
     }
 
     private static void normalize(Profile p) {

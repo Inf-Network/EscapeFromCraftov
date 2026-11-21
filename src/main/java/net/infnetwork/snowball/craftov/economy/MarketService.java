@@ -7,6 +7,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.AtomicFiles;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -559,7 +560,9 @@ public final class MarketService implements Listener {
         data.listings.remove(listing);
         long payout = payout(listing);
         long tax = listing.price - payout;
-        plugin.profiles().edit(listing.seller, seller -> {
+        plugin.profiles().edit(listing.seller, () -> "market sale of listing " + listing.id + " (" + listing.item.id + " x"
+                + listing.item.amount + "): money +" + payout + ", stats.market_sales +1, stats.market_income +" + payout
+                + (playerSale && payout > 0 ? ", marketIncome +" + payout + " (only if marketDay is " + today() + ")" : ""), seller -> {
             seller.money += payout;
             seller.addStat("market_sales", 1);
             seller.addStat("market_income", payout);
@@ -615,7 +618,8 @@ public final class MarketService implements Listener {
         for (Listing listing : new ArrayList<>(data.listings)) {
             if (now >= listing.expires) {
                 data.listings.remove(listing);
-                plugin.profiles().edit(listing.seller, p -> p.mailbox.add(listing.item));
+                plugin.profiles().edit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
+                        + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item));
                 dirty = true;
                 continue;
             }

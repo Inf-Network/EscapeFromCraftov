@@ -172,7 +172,8 @@ public final class EscortService {
 
     /** Ends the client's escrow for {@code c} and hands {@code refund} of it back. */
     private void release(Contract c, long refund) {
-        plugin.profiles().edit(c.client, p -> {
+        plugin.profiles().edit(c.client, () -> "escort contract " + c.id + " closed: escortEscrow -" + c.reward
+                + " (never below 0), money +" + refund, p -> {
             p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
             p.money += refund;
         });
@@ -192,7 +193,8 @@ public final class EscortService {
         long pool = Math.round(c.reward * share);
         long each = c.escorts.isEmpty() ? 0 : pool / c.escorts.size();
         for (UUID escort : c.escorts) {
-            plugin.profiles().edit(escort, p -> {
+            plugin.profiles().edit(escort, () -> "escort pay for " + c.clientName + "'s contract " + c.id + ": money +" + each
+                    + ", stats.escort_income +" + each, p -> {
                 p.money += each;
                 p.addStat("escort_income", each);
             });
@@ -212,9 +214,19 @@ public final class EscortService {
         long total = 0;
         int count = 0;
         for (var summary : plugin.profiles().summaries(s -> s.escortEscrow() > 0)) {
+            if (!plugin.profiles().canEdit(summary.uuid())) {
+                // Changes wait in its journal, and they may close this very contract (the client
+                // went missing while the file was broken): returning the escrow as well would pay
+                // it out twice.
+                plugin.getLogger().severe("Escort escrow of " + summary.escortEscrow() + " held for " + summary.name() + " ("
+                        + summary.uuid() + ") was NOT returned: that profile has changes waiting in " + summary.uuid()
+                        + ".json.unsaved. Apply them and delete that file; the next start returns whatever escrow is left.");
+                continue;
+            }
             total += summary.escortEscrow();
             count++;
-            plugin.profiles().edit(summary.uuid(), p -> {
+            plugin.profiles().edit(summary.uuid(), () -> "escort escrow returned after a crash: money +" + summary.escortEscrow()
+                    + ", escortEscrow -" + summary.escortEscrow(), p -> {
                 p.money += p.escortEscrow;
                 p.escortEscrow = 0;
             });

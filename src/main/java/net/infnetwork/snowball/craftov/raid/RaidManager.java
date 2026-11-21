@@ -14,6 +14,7 @@ import net.infnetwork.snowball.craftov.map.ExtractType;
 import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
@@ -64,6 +65,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 
 /** Owns every running raid: deployment, extraction, death, disconnects and settlement. */
 public final class RaidManager implements Listener {
@@ -890,7 +892,13 @@ public final class RaidManager implements Listener {
             lost += plugin.items().value(stack);
         }
         long lostValue = lost;
-        plugin.profiles().edit(rp.uuid, profile -> {
+        // For the journal, should the profile be unreadable: the gear is in the raid now, so the
+        // loadout must be emptied and the raid cleared, or a repaired profile brings it back.
+        Supplier<String> change = () -> "missing in raid " + raid.id + ": loadout = {} (that gear stayed in the raid),"
+                + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
+                + (raid.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
+                + plugin.ranks().deathDelta(0, rp, lostValue) + " below 1100, never below 0)" : "");
+        plugin.profiles().edit(rp.uuid, change, profile -> {
             profile.loadout.clear();
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
@@ -1109,7 +1117,7 @@ public final class RaidManager implements Listener {
         for (Raid raid : new ArrayList<>(raids.values())) {
             for (RaidPlayer rp : raid.players.values()) {
                 try {
-                    sendHome(rp);
+                    sendHome(raid, rp);
                 } catch (RuntimeException ex) {
                     plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not send " + rp.name + " home from raid " + raid.id, ex);
                 }
@@ -1131,7 +1139,7 @@ public final class RaidManager implements Listener {
         byWorld.clear();
     }
 
-    private void sendHome(RaidPlayer rp) {
+    private void sendHome(Raid raid, RaidPlayer rp) {
         Player player = Bukkit.getPlayer(rp.uuid);
         if (rp.active() && player != null) {
             plugin.weapons().reset(player);
@@ -1144,7 +1152,8 @@ public final class RaidManager implements Listener {
             Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
         } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
             Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
-            plugin.profiles().edit(rp.uuid, profile -> {
+            plugin.profiles().edit(rp.uuid, () -> "server stopped during raid " + raid.id + ": loadout = "
+                    + ProfileService.json(inv) + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null", profile -> {
                 profile.loadout = new HashMap<>(inv);
                 profile.secure = new ArrayList<>(rp.secure);
                 profile.activeRaid = null;

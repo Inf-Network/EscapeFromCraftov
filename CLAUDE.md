@@ -33,23 +33,25 @@ README「玩法一览」表里列出的全部系统都已实现：大厅与战�
 python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud 布局
 ```
 
-- 系统默认 `java` 是 17。跑服务器要用 `/Library/Java/JavaVirtualMachines/zulu-25.jdk/Contents/Home/bin/java`（`run-forever.sh` 已经设置好）。
-- 没有单元测试目录；验证靠编译 + 部署 + `tools/bot/` 里的 mineflayer 脚本（`node test.js <名字> [场景]`，以及 fire / meds / revive / squad / doors / econ 等专项脚本）。bot 用离线模式连 `127.0.0.1`，跑之前要临时加白名单，名字用随机的，否则会重连进旧对局。
+- 开发在远程服务器上（这台机器的 `java` 就是 25，`./gradlew` 直接能用），真人测试服在用户的 Mac 上，见下面「测试服运维」。
+- 没有单元测试目录；验证靠编译 + 部署 + `tools/bot/` 里的 mineflayer 脚本（`node test.js <名字> [场景]`，以及 fire / meds / revive / squad / doors / econ 等专项脚本）。bot 只能连这台机器上的本地测试服（Mac 的 25565 从这边连不到），用离线模式连 `127.0.0.1`，跑之前要临时加白名单，名字用随机的，否则会重连进旧对局。
 - 改完 `tools/art/build.py` 后，它每次都会重新编码音效、产生无意义的 diff：提交前用 `git checkout -- src/main/resources/pack/craftov/resourcepack/assets/*/sounds/` 还原没改过的音效。
 - 生成的 BetterHud yml 和资源包文件不要手改，改 `tools/art/` 里的生成器，否则下次构建会被覆盖。
 
 ## 测试服运维
 
-测试服目录 `server/run/`（被 gitignore，由 `server/setup.sh` 生成）。
+真人测试在用户的 Mac 上：测试服是 Mac 上 `~/Documents/projects/plugins/EscapeFromCraftov/server/run`（被 gitignore，由 `server/setup.sh` 生成）。这台服务器通过 mac-bridge（`ssh mac`，只能运行 Mac 上的门卫脚本）和门卫扩展 `tools/mac/craftov` 操作它，命令一律走 `tools/mac/mac`：
 
-- **开服**：`cd server/run && screen -dmS craftov ./run-forever.sh`。`run-forever.sh` 在服务器退出 5 秒后自动重启。等 `console.log` 出现 `Done (`。
-- **执行控制台命令一律用 RCON**：`cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（端口和密码见 `tools/bot/rcon.js` 与 `server/run/server.properties`）。`screen -X stuff` 打不进控制台，因为 `nohup` 断开了 stdin。
-- **更新插件**：`./gradlew deployLocal` 后 RCON `stop`，重启循环会自动拉起新版本。
-- **关服**：先 `pkill -f run-forever.sh` 结束重启循环，再 RCON `stop`，等 `paper.jar` 进程退出，最后 `screen -S craftov -X quit`。顺序反了会被重启循环再拉起来一次。
-- **白名单**：`online-mode=false`，离线 UUID 由名字的**确切大小写**算出，`whitelist add` 必须用玩家真实的大小写（看 `console.log` 里的 `UUID of player Xxx`）。
-- **资源包地址**：`server/run/plugins/CraftEngine/config.yml` 的 `self-host.ip`，资源包托管在 MC 同一端口 25565。用户的公网 IP 经常变，用户会直接告诉你新 IP（"换ip x.x.x.x"）。服务器运行中改完要 RCON `ce reload all`。`start.sh` 每次启动只会自动刷新私有网段（192.168 / 10. / 172.16–31）的地址，公网 IP 不会被覆盖。外网要能连，用户那边需要把 25565 映射到本机。
-- **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后要手动把 `src/main/resources/items.yml` 复制过去（先确认服务器上那份没有手动改动），否则新物品不会出现。`config.yml` 缺的键会回落到 jar 里的默认值。
-- 用户的客户端日志在 `/Users/snowball/Documents/minecraft/.minecraft/versions/1.21.11-NeoForge/logs/latest.log`，排查资源包下载失败（`download_failed`）时看这里。
+- **部署**：`tools/mac/mac deploy` = 把 `main` 的提交同步到 Mac 项目（git bundle 走 ssh，Mac 不联网）+ 在这边 `./gradlew jar` 后推过去 + 重启并等到 `Done (`。只换插件：`tools/mac/mac jar` 再 `tools/mac/mac restart`。jar 用改名的方式替换，运行中的服务器不受影响。
+- **开关服 / 状态**：`tools/mac/mac start|stop|restart|status`。扩展会处理 Mac 上的 `run-forever.sh` 重启循环（5 秒后自动拉起）和用户手动开的 `screen -S craftov`：关服先结束循环再 RCON `stop`，等 `paper.jar` 退出。不要用 `ssh mac` 之外的方式去动 Mac 上的进程。
+- **控制台命令**：`tools/mac/mac rcon <命令>`，命令原样传过去（JSON 引号保留）。
+- **日志**：`tools/mac/mac log [行数]`（`logs/latest.log`）；开服失败时 Paper 还没打开日志前的报错（坏 jar、java 起不来）在 `tools/mac/mac consolelog [行数]`；客户端日志 `tools/mac/mac clientlog [行数]`，排查资源包下载失败（`download_failed`）时看。
+- **白名单**：`online-mode=false`，离线 UUID 由名字的**确切大小写**算出，`whitelist add` 必须用玩家真实的大小写（看日志里的 `UUID of player Xxx`）。用户的名字是 `Snowball_233`。
+- **资源包地址**：`plugins/CraftEngine/config.yml` 的 `self-host.ip`，资源包托管在 MC 同一端口 25565。改用 `tools/mac/mac packip <IP>`（服务器运行中会自动 `ce reload all`）。平时用 Mac 的局域网 IP，`start.sh` 每次开服会自动刷新私有网段的地址；用户要让外网玩家进来时会告诉你公网 IP（"换ip x.x.x.x"），公网 IP 不会被自动覆盖，外网要能连还需要用户把 25565 映射到 Mac。Mac 当前的公网 IP 可以从这台机器 `who` 里用户 ssh 进来的地址看到。
+- **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后先 `tools/mac/mac yml diff items.yml` 确认服务器那份没有手动改动，再 `tools/mac/mac yml copy items.yml`（自动备份旧的），然后重启。`config.yml` 缺的键会回落到 jar 里的默认值。
+- **同步被拒绝**：Mac 项目有未提交改动、或有这边没有的提交时，`sync` 会拒绝而不是覆盖。`tools/mac/mac pull-mac` 把 Mac 的本地分支取到这边的 `refs/mac/*` 查看；确认保住之后用 `tools/mac/mac sync --park <名字>` 把那个分支改名保留，再切到 `main`。
+- **扩展本身**：服务器改不了 Mac 上的扩展。改了 `tools/mac/craftov` 后，`ssh mac put craftov < tools/mac/craftov`，再请用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`。门卫在 Mac 的 `~/.local/bin/remote-gate`，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库。
+- **本机无头测试服**（给 bot 用）：在这台机器上 `server/setup.sh --local` 生成 `server/run/`，`server/run/start.sh` 开服；控制台命令用 `cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（需要在 `server.properties` 里打开 RCON，密码和 `tools/bot/rcon.js` 一致）。
 
 ## 提交规范
 

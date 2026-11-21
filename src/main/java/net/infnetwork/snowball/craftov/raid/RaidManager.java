@@ -226,6 +226,14 @@ public final class RaidManager implements Listener {
     }
 
     private void deploy(Raid raid) {
+        if (raid.players.isEmpty()) {
+            // Everyone dropped out while the map loaded (see onQuit): nothing to deploy. tickSecond
+            // closes it in a moment; unloading the world right away cuts off chunk generation the
+            // preload set off around the map, and CraftEngine then logs a stack trace per chunk.
+            raid.state = Raid.State.ENDING;
+            raid.endTick = Bukkit.getCurrentTick() + 100L;
+            return;
+        }
         World world = raid.world;
         MapDef map = raid.map;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
@@ -275,11 +283,13 @@ public final class RaidManager implements Listener {
         for (UUID uuid : raid.squads.get(squadNo - 1)) {
             Player player = Bukkit.getPlayer(uuid);
             RaidPlayer rp = raid.player(uuid);
-            if (player == null || rp == null) {
-                if (rp != null) {
-                    rp.state = RaidPlayer.State.LEFT;
-                }
-                byPlayer.remove(uuid);
+            if (rp == null || rp.state != RaidPlayer.State.DEPLOYING) {
+                // Already settled (gone missing, left): never charge and deploy anyone twice.
+                continue;
+            }
+            if (player == null) {
+                rp.state = RaidPlayer.State.LEFT;
+                byPlayer.remove(uuid, raid);
                 continue;
             }
             members.add(player);
@@ -1436,6 +1446,13 @@ public final class RaidManager implements Listener {
         if (raid == null || rp == null) {
             return;
         }
+        if (raid.state == Raid.State.LOADING) {
+            // Still in the lobby and nothing charged or taken yet (prepare runs at deployment):
+            // the player just drops out of this raid. LobbyService.onQuit then saves the real
+            // inventory as the loadout; the secure container is never touched.
+            withdraw(raid, rp);
+            return;
+        }
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
             die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
@@ -1456,6 +1473,22 @@ public final class RaidManager implements Listener {
             byPlayer.remove(player.getUniqueId());
         }
         plugin.match().leaveTeam(player);
+    }
+
+    /** Takes a player out of a raid that has not deployed yet and tells their squad. */
+    private void withdraw(Raid raid, RaidPlayer rp) {
+        raid.players.remove(rp.uuid);
+        // Squad lists keep their place even when emptied: their index is the squad number.
+        for (List<UUID> squad : raid.squads) {
+            squad.remove(rp.uuid);
+        }
+        byPlayer.remove(rp.uuid, raid);
+        for (RaidPlayer mate : raid.players.values()) {
+            Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
+            if (p != null) {
+                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> 在部署前断开连接，已退出本局。");
+            }
+        }
     }
 
     /** Called by loot menus so systems (escort, stats) can react to looting. */

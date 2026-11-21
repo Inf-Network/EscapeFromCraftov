@@ -239,6 +239,8 @@ public final class LobbyService implements Listener {
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
         plugin.carry().mail(player, plugin.carry().reclaimCursor(player));
+        // Whatever comes home from a raid (extracted, voided, server stop) is no longer insured.
+        plugin.insurance().strip(player);
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);
         enterLobby(player);

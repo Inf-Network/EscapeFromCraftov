@@ -281,6 +281,9 @@ public final class ItemFactory {
                 record.attach.forEach((slot, id) -> fitted.append(fitted.isEmpty() ? "" : ";").append(slot).append('=').append(id));
                 pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
             }
+            if (record.insured != null) {
+                pdc.set(Keys.INSURED, PersistentDataType.STRING, record.insured);
+            }
         });
         if (def.isGun()) {
             applyModelData(stack);
@@ -350,6 +353,7 @@ public final class ItemFactory {
         record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
         Map<String, String> attach = attachments(stack);
         record.attach = attach.isEmpty() ? null : attach;
+        record.insured = pdc.get(Keys.INSURED, PersistentDataType.STRING);
         return record;
     }
 

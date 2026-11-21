@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.profile.Profile;
@@ -82,34 +83,61 @@ public final class InsuranceService {
         Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后若没被别人带出，对局结束时退回邮箱。");
     }
 
-    /** Extracting ends insurance on everything carried out, whoever it belonged to. */
+    /** Extracting ends insurance on everything carried out, whoever it belonged to, packed contents included. */
     public void strip(Player player) {
         for (ItemStack stack : player.getInventory().getContents()) {
-            if (stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.INSURED)) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            boolean changed = false;
+            if (stack.getPersistentDataContainer().has(Keys.INSURED)) {
                 stack.editPersistentDataContainer(pdc -> pdc.remove(Keys.INSURED));
+                changed = true;
+            }
+            if (ItemFactory.hasContents(stack)) {
+                List<ItemRecord> contents = plugin.items().contents(stack);
+                boolean inner = false;
+                for (ItemRecord child : contents) {
+                    inner |= child.uninsure();
+                }
+                if (inner) {
+                    plugin.items().setContents(stack, contents);
+                    changed = true;
+                }
+            }
+            if (changed) {
                 plugin.items().refreshLore(stack, plugin.items().defOf(stack));
             }
         }
     }
 
-    /** Raid closing: insured items left behind go home. */
+    /**
+     * Raid closing (or the server stopping): insured items left behind go home, also when they are
+     * packed inside a rig or backpack lying around.
+     */
     public void settle(Raid raid) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
-                if (claim(raid, stack, returns)) {
-                    container.set(slot, null);
+                ItemStack left = claim(raid, stack, returns);
+                if (left != stack) {
+                    container.set(slot, left);
                 }
             }
         }
         for (Item item : raid.world.getEntitiesByClass(Item.class)) {
-            if (claim(raid, item.getItemStack(), returns)) {
+            ItemStack stack = item.getItemStack();
+            ItemStack left = claim(raid, stack, returns);
+            if (left == null) {
                 item.remove();
+            } else if (left != stack) {
+                item.setItemStack(left);
             }
         }
         returns.forEach((owner, records) -> {
             plugin.profiles().edit(owner, p -> p.mailbox.addAll(records));
+            plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
                 Text.send(player, "<#5BD16B>保险理赔：<white>" + records.size() + " 件装备 <#9AA0A6>已退回仓库邮箱。");
@@ -117,27 +145,64 @@ public final class InsuranceService {
         });
     }
 
-    private boolean claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
+    /**
+     * Sends home everything in the stack that is insured for this raid. Returns what stays behind:
+     * the stack itself when nothing was, a rebuilt one when only something packed inside it was, and
+     * null when all of it went.
+     */
+    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
         if (stack == null || stack.isEmpty()) {
-            return false;
+            return stack;
         }
-        String mark = stack.getPersistentDataContainer().get(Keys.INSURED, PersistentDataType.STRING);
-        if (mark == null || !mark.endsWith(":" + raid.id)) {
-            return false;
+        ItemRecord record = plugin.items().toRecord(stack);
+        if (record == null || !insuredIn(raid, record)) {
+            return stack;
         }
-        UUID owner;
-        try {
-            owner = UUID.fromString(mark.substring(0, mark.indexOf(':')));
-        } catch (IllegalArgumentException ex) {
-            return false;
+        ItemRecord left = claim(raid, record, returns);
+        if (left == null) {
+            return null;
         }
-        ItemStack clean = stack.clone();
-        clean.editPersistentDataContainer(pdc -> pdc.remove(Keys.INSURED));
-        ItemRecord record = plugin.items().toRecord(clean);
-        if (record == null) {
-            return false;
+        ItemStack rebuilt = plugin.items().fromRecord(left);
+        return rebuilt == null ? stack : rebuilt;
+    }
+
+    /** Record form of {@link #claim(Raid, ItemStack, Map)}: packed contents first, then the record itself. */
+    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns) {
+        if (record.contents != null) {
+            record.contents.removeIf(child -> claim(raid, child, returns) == null);
         }
+        UUID owner = owner(raid, record.insured);
+        if (owner == null) {
+            return record;
+        }
+        record.insured = null;
         returns.computeIfAbsent(owner, k -> new ArrayList<>()).add(record);
-        return true;
+        return null;
+    }
+
+    private static boolean insuredIn(Raid raid, ItemRecord record) {
+        if (owner(raid, record.insured) != null) {
+            return true;
+        }
+        if (record.contents != null) {
+            for (ItemRecord child : record.contents) {
+                if (insuredIn(raid, child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** The owner an insurance mark names for this raid, or null (no mark, another raid, garbage). */
+    private static @Nullable UUID owner(Raid raid, @Nullable String mark) {
+        if (mark == null || !mark.endsWith(":" + raid.id) || mark.indexOf(':') <= 0) {
+            return null;
+        }
+        try {
+            return UUID.fromString(mark.substring(0, mark.indexOf(':')));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

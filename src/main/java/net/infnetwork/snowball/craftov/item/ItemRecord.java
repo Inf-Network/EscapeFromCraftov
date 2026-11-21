@@ -27,6 +27,11 @@ public final class ItemRecord {
     public @Nullable String optic;
     /** Fitted attachments other than the sight, slot -> item id (guns only). */
     public java.util.@Nullable Map<String, String> attach;
+    /**
+     * Insurance mark "owner uuid:raid id" (InsuranceService). It travels with the record so a gun
+     * that is rebuilt mid-raid (gunsmith, reconnect, packed into a dropped backpack) stays insured.
+     */
+    public @Nullable String insured;
 
     public ItemRecord() {
     }
@@ -44,6 +49,7 @@ public final class ItemRecord {
         copy.dura = dura;
         copy.optic = optic;
         copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
+        copy.insured = insured;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {
@@ -64,7 +70,20 @@ public final class ItemRecord {
                 && Objects.equals(ammo, other.ammo)
                 && Objects.equals(ammoType, other.ammoType)
                 && Objects.equals(dura, other.dura)
+                && Objects.equals(insured, other.insured)
                 && !hasContents() && !other.hasContents();
+    }
+
+    /** Removes the insurance mark from this record and everything inside it; true if there was one. */
+    public boolean uninsure() {
+        boolean had = insured != null;
+        insured = null;
+        if (contents != null) {
+            for (ItemRecord child : contents) {
+                had |= child.uninsure();
+            }
+        }
+        return had;
     }
 
     /** Number of storage cells this record occupies, counting nested contents. */

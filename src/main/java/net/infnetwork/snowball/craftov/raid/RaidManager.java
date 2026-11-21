@@ -1111,6 +1111,10 @@ public final class RaidManager implements Listener {
     /** Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
+            // Insured gear in bodies and on the ground goes home as at a normal raid end: the world is
+            // deleted below and nothing would be left to settle after the restart. First, so a later
+            // step failing during shutdown cannot skip it.
+            plugin.insurance().settle(raid);
             for (RaidPlayer rp : raid.players.values()) {
                 Player player = Bukkit.getPlayer(rp.uuid);
                 if (rp.active() && player != null) {
@@ -1124,6 +1128,7 @@ public final class RaidManager implements Listener {
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
                     Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
+                    inv.values().forEach(ItemRecord::uninsure); // the raid is void: its insurance with it
                     plugin.profiles().edit(rp.uuid, profile -> {
                         profile.loadout = new HashMap<>(inv);
                         profile.secure = new ArrayList<>(rp.secure);

@@ -45,9 +45,13 @@ final class DeployMenu extends Menu {
         int slot = 10;
         for (MapDef def : plugin.maps().all()) {
             boolean selected = def.id().equals(map);
+            int waiting = plugin.match().queuedCount(def.id(), tier);
             button(slot++, UiItems.button("craftov:ui/icon_map", (selected ? "<#F2C94C>▶ " : "<white>") + "<b>" + Text.escape(def.name()),
                     List.of("<#9AA0A6>" + Text.escape(def.description()), "<#8A8F98>时长 " + def.raidSeconds() / 60 + " 分钟 · 撤离点 "
-                            + def.extracts().size() + " · 物资点 " + def.containers().size(), selected ? "<#5BD16B>已选择" : "<#8A8F98>点击选择")),
+                            + def.extracts().size() + " · 物资点 " + def.containers().size(),
+                            "<#8A8F98>每局最多 " + plugin.match().capacity(def) + " 支小队"
+                                    + (waiting > 0 ? " · <#F2C94C>当前难度匹配中 " + waiting + " 人" : ""),
+                            selected ? "<#5BD16B>已选择" : "<#8A8F98>点击选择")),
                     e -> {
                         map = def.id();
                         redraw();
@@ -83,12 +87,13 @@ final class DeployMenu extends Menu {
             redraw();
         });
         button(30, UiItems.button("craftov:ui/icon_party", (mode == RaidMode.TRIO ? "<#F2C94C>▶ " : "<white>") + "三人小队",
-                List.of("<#9AA0A6>可倒地并由队友救援", "<#9AA0A6>不足 3 人时可自动补位")), e -> {
+                List.of("<#9AA0A6>可倒地并由队友救援", "<#9AA0A6>开启自动补位时，不足 3 人会与其他玩家组队")), e -> {
             mode = RaidMode.TRIO;
             redraw();
         });
         button(32, UiItems.button("craftov:ui/icon_rank", (ranked ? "<#FFC23D>● 排位赛" : "<#8A8F98>○ 排位赛"),
-                List.of("<#9AA0A6>撤离与击败干员获得排位分", "<#9AA0A6>阵亡将扣除排位分", "<#8A8F98>需要 Lv." + plugin.getConfig().getInt("rank.min-level", 3))),
+                List.of("<#9AA0A6>撤离与击败干员获得排位分", "<#9AA0A6>阵亡将扣除排位分", "<#9AA0A6>只影响排位分，不影响匹配",
+                        "<#8A8F98>需要 Lv." + plugin.getConfig().getInt("rank.min-level", 3))),
                 e -> {
                     ranked = !ranked;
                     redraw();

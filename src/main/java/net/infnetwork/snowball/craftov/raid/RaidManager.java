@@ -163,8 +163,11 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ start
 
-    /** Starts a raid for the given squads. Players must currently be in the lobby. */
-    public void start(MapDef map, Tier tier, RaidMode mode, boolean ranked, List<List<Player>> squads) {
+    /**
+     * Starts a raid for the given squads. Players must currently be in the lobby. The roster is final:
+     * nobody joins a raid after it starts. {@code ranked} holds the players who win or lose rank points.
+     */
+    public void start(MapDef map, Tier tier, List<List<Player>> squads, java.util.Set<UUID> ranked) {
         World world = plugin.worlds().createRaidWorld(map);
         if (world == null) {
             for (List<Player> squad : squads) {
@@ -173,7 +176,7 @@ public final class RaidManager implements Listener {
             return;
         }
         String id = "R" + (++counter);
-        Raid raid = new Raid(id, map, tier, mode, ranked, world);
+        Raid raid = new Raid(id, map, tier, world);
         raids.put(id, raid);
         byWorld.put(world, raid);
         int squadNo = 0;
@@ -181,7 +184,7 @@ public final class RaidManager implements Listener {
             squadNo++;
             List<UUID> members = new ArrayList<>();
             for (Player player : squad) {
-                RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo);
+                RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo, ranked.contains(player.getUniqueId()));
                 raid.players.put(player.getUniqueId(), rp);
                 byPlayer.put(player.getUniqueId(), raid);
                 members.add(player.getUniqueId());
@@ -291,59 +294,6 @@ public final class RaidManager implements Listener {
             Location target = points.isEmpty() ? spawn : points.get(Math.max(0, index) % points.size()).pos().at(world);
             insert(raid, player, target);
         });
-    }
-
-    /**
-     * A running raid of this map, difficulty and ranking that is still in its join window and has
-     * room for {@code size} more players, or null. Late squads backfill it instead of opening a new raid.
-     */
-    public @Nullable Raid joinable(String mapId, String tierId, boolean ranked, int size) {
-        int window = plugin.getConfig().getInt("match.join-window-seconds", 120);
-        int max = plugin.getConfig().getInt("match.max-players", 12);
-        Raid best = null;
-        for (Raid raid : raids.values()) {
-            if (raid.state != Raid.State.RUNNING || raid.ranked != ranked || !raid.map.id().equals(mapId)
-                    || !raid.tier.id().equals(tierId) || raid.elapsedSeconds() > window) {
-                continue;
-            }
-            int active = 0;
-            for (RaidPlayer rp : raid.players.values()) {
-                if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DOWNED) {
-                    active++;
-                }
-            }
-            if (active + size <= max && (best == null || raid.startTick > best.startTick)) {
-                best = raid;
-            }
-        }
-        return best;
-    }
-
-    /** Adds a squad to a raid that is already running, at the spawn group fewest squads use. */
-    public void joinRunning(Raid raid, List<Player> squad) {
-        List<UUID> members = new ArrayList<>();
-        int squadNo = raid.squads.size() + 1;
-        for (Player player : squad) {
-            RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo);
-            raid.players.put(player.getUniqueId(), rp);
-            byPlayer.put(player.getUniqueId(), raid);
-            members.add(player.getUniqueId());
-            player.showTitle(Title.title(Text.mm("<#F2C94C>匹配成功"), Text.mm("<#9AA0A6>加入进行中的行动 " + Text.escape(raid.map.name()) + " …"),
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
-            player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
-        }
-        raid.squads.add(members);
-        Map<Integer, Integer> use = new java.util.HashMap<>();
-        for (MapDef.SpawnDef spawn : raid.map.spawns()) {
-            use.putIfAbsent(spawn.group(), 0);
-        }
-        for (int group : raid.squadSpawnGroup.values()) {
-            use.merge(group, 1, Integer::sum);
-        }
-        List<Integer> groups = new ArrayList<>(use.keySet());
-        Collections.shuffle(groups);
-        int group = groups.stream().min(java.util.Comparator.comparingInt(use::get)).orElse(1);
-        deploySquad(raid, squadNo, group);
     }
 
     /** Takes the lobby loadout into the raid. */
@@ -671,7 +621,7 @@ public final class RaidManager implements Listener {
         profile.addStat("ai_kills", rp.aiKills);
         profile.activeRaid = null;
         List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid);
-        int rankDelta = raid.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
+        int rankDelta = rp.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
         long xp = Math.round((150 + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         plugin.tasks().onExtract(player, raid, profit);
@@ -748,7 +698,7 @@ public final class RaidManager implements Listener {
         profile.addStat("deaths", 1);
         profile.addStat("kills", rp.kills);
         profile.addStat("ai_kills", rp.aiKills);
-        int rankDelta = raid.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
+        int rankDelta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
         long xp = Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         Profile.RaidReport report = report(raid, rp, reason, 0, lost, rankDelta, xp);
@@ -895,7 +845,7 @@ public final class RaidManager implements Listener {
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);
-            int delta = raid.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
+            int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
             profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
             trimReports(profile);
         });
@@ -976,7 +926,7 @@ public final class RaidManager implements Listener {
         Profile.RaidReport report = new Profile.RaidReport();
         report.time = System.currentTimeMillis();
         report.map = raid.map.name();
-        report.tier = raid.tier.name() + (raid.ranked ? " · 排位" : "");
+        report.tier = raid.tier.name() + (rp.ranked ? " · 排位" : "");
         report.outcome = outcome;
         report.extractedValue = extracted;
         report.lostValue = lost;

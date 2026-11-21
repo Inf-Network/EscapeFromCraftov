@@ -107,6 +107,14 @@ public final class RaidManager implements Listener {
         return byWorld.get(world);
     }
 
+    /**
+     * True while a dead player watches a squadmate. They have already left the raid (raidOf is
+     * null), but they are still out of the lobby and their loadout is the one death left them.
+     */
+    public boolean isSpectating(Player player) {
+        return spectators.containsKey(player.getUniqueId());
+    }
+
     public @Nullable RaidPlayer session(Player player) {
         Raid raid = raidOf(player);
         return raid == null ? null : raid.player(player.getUniqueId());

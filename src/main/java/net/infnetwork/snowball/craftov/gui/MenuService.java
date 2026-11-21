@@ -20,6 +20,10 @@ public final class MenuService {
             Text.send(player, "<#FF8A80>行动中无法使用该功能。");
             return false;
         }
+        if (plugin.raids().isSpectating(player)) {
+            Text.send(player, "<#FF8A80>观战中无法使用该功能，按 Shift 返回大厅。");
+            return false;
+        }
         return notInRange(player);
     }
 
@@ -123,9 +127,11 @@ public final class MenuService {
         }
         Raid raid = plugin.raids().raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
-        if (rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
-            // Flying in, or dead and spectating: the raid has its own copy of the container by now
-            // and settles it on landing, death or extraction, so anything moved here would be lost.
+        // Flying in, or dead (kill replay, then spectating a squadmate, when the player no longer
+        // counts as in the raid): the raid has its own copy of the container, or death has just
+        // settled it and the loadout, and outside the raid the menu would save the spectator's
+        // empty inventory as the loadout.
+        if (plugin.raids().isSpectating(player) || rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
             Text.send(player, "<#FF8A80>入场途中或观战时无法打开安全箱。");
             return;
         }

@@ -55,6 +55,11 @@ public final class Profile {
     public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
+    /**
+     * Reward held for this player's escort contract (EscortService). Contracts live in memory only,
+     * so whatever is still held when the player joins a freshly started server goes back to them.
+     */
+    public long escortEscrow;
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

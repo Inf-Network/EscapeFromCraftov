@@ -383,6 +383,7 @@ public final class LobbyService implements Listener {
             profile.activeRaid = null;
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
         }
+        plugin.escorts().reclaim(player, profile);
         plugin.health().setupPlayer(player, false);
         stripRangeItems(player);
         upgradeItems(player);

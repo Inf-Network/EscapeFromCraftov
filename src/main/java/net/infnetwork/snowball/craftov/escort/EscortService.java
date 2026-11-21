@@ -21,6 +21,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Escort contracts (护航): a client escrows a reward, escorts join the client's squad, and the
  * reward is paid out when the client extracts (a consolation share if the client dies).
+ *
+ * <p>Contracts are kept in memory, but the escrowed reward is written into the client's profile
+ * together with the money it came out of. Stopping the server refunds every open contract; after a
+ * crash the reward is still recorded and goes back to the client when they next join.
  */
 public final class EscortService {
 
@@ -94,6 +98,7 @@ public final class EscortService {
             return;
         }
         profile.money -= reward;
+        profile.escortEscrow += reward;
         plugin.profiles().markDirty(client.getUniqueId());
         String id = Long.toHexString(ThreadLocalRandom.current().nextLong() & 0xFFFFFFL);
         contracts.put(id, new Contract(id, client.getUniqueId(), client.getName(), reward, note));
@@ -143,7 +148,7 @@ public final class EscortService {
             return;
         }
         contracts.remove(c.id);
-        plugin.profiles().edit(c.client, p -> p.money += c.reward);
+        refund(c);
         Text.send(client, "<#9AA0A6>委托已取消，赏金已退回。");
     }
 
@@ -171,14 +176,38 @@ public final class EscortService {
             }
         }
         long refund = c.reward - each * c.escorts.size();
-        if (refund > 0) {
-            plugin.profiles().edit(c.client, p -> p.money += refund);
+        plugin.profiles().edit(c.client, p -> {
+            p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
+            p.money += refund;
+        });
+    }
+
+    /** Gives a contract's whole reward back to the client and releases it from escrow. */
+    private void refund(Contract c) {
+        plugin.profiles().edit(c.client, p -> {
+            p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
+            p.money += c.reward;
+        });
+    }
+
+    /**
+     * Join: a reward still held in escrow without a live contract belongs to a contract the server
+     * lost when it went down without shutting down cleanly. It goes back to the client.
+     */
+    public void reclaim(Player player, Profile profile) {
+        if (profile.escortEscrow <= 0 || byClient(player.getUniqueId()) != null) {
+            return;
         }
+        long held = profile.escortEscrow;
+        profile.escortEscrow = 0;
+        profile.money += held;
+        plugin.profiles().markDirty(player.getUniqueId());
+        Text.send(player, "<#FFC23D>你的护航委托因服务器中断已撤销，托管的赏金 ◈" + Text.money(held) + " 已退回。");
     }
 
     public void shutdown() {
         for (Contract c : contracts.values()) {
-            plugin.profiles().edit(c.client, p -> p.money += c.reward);
+            refund(c);
         }
         contracts.clear();
     }

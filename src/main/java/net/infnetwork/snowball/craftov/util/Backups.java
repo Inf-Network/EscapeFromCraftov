@@ -8,16 +8,18 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -110,18 +112,30 @@ public final class Backups {
         if (!Files.exists(path)) {
             return;
         }
-        if (Files.isDirectory(path)) {
-            try (Stream<Path> files = Files.walk(path)) {
-                for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
-                    // A save's temp file is renamed away any moment, and is never the data anyway.
-                    if (!AtomicFiles.isTemp(file.getFileName().toString())) {
-                        put(z, root, file);
-                    }
-                }
-            }
-        } else {
+        if (!Files.isDirectory(path)) {
             put(z, root, path);
+            return;
         }
+        Files.walkFileTree(path, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                // A save's temp file is renamed away any moment, and is never the data anyway.
+                if (attrs.isRegularFile() && !AtomicFiles.isTemp(file.getFileName().toString())) {
+                    put(z, root, file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException ex) throws IOException {
+                // Listed, then gone before it could be looked at: mostly a save's temp file that
+                // was renamed over its target meanwhile (Files.walk failed the whole copy here).
+                if (ex instanceof NoSuchFileException) {
+                    return FileVisitResult.CONTINUE;
+                }
+                throw ex;
+            }
+        });
     }
 
     private static void put(ZipOutputStream z, Path root, Path file) throws IOException {

@@ -122,7 +122,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
     }
 
     private static final String[][] ARMORY = {
-            {"test_weapons", "全部武器", "已装满弹匣"},
+            {"test_weapons", "武器和配件", "枪已装满弹匣"},
             {"test_ammo", "全部弹药", "每种一组"},
             {"test_armor", "头盔与护甲", "1-6 级"},
             {"test_carry", "胸挂与背包", "装备后解锁格子"},

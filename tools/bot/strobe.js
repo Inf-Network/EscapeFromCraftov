@@ -1,11 +1,14 @@
 // Strobe light and flashbang check (issue #15): neither may freeze a soldier, and a flashed player gets
-// a white screen instead of blindness and nausea. One bot fits a tactical light to an M4, enters the
+// a white screen instead of a black one with nausea. One bot fits a tactical light to an M4, enters the
 // proving ground solo and then:
 //   1. throws a flashbang against the outside of the AI arena wall while the soldiers inside are still
 //      at their posts: the soldiers behind the wall within the blast radius must not all stand frozen
 //      for the next 3.5 s (the blast draws them, so one walks off, or one shoots);
-//   2. facing that flashbang itself, the bot must get no blindness or nausea, a camera overlay
-//      craftov:misc/flash_* on its head slot and the ringing sound;
+//   2. facing that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
+//      slot and the ringing sound, and no nausea. Blindness only comes with the fully white screen (so
+//      F5 cannot clear it) and must be lifted before the first translucent fade step. The bot wears a
+//      helmet that is swapped while it is white: the overlay must be back within half a second of the
+//      head slot sync that replaces it on the client;
 //   3. switches to strobe (two pick-block packets), waits for a soldier within strobe range to shoot
 //      it, steps in to about 4.5 blocks and holds the beam on that soldier for 8 s: the soldier must
 //      still hit the bot at least once and move over a block (from that close it backs off unless
@@ -113,6 +116,11 @@ function openSpotNear (bot, soldier) {
   })
   const effects = []
   bot._client.on('entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) effects.push({ id: p.effectId, at: Date.now() }) })
+  const removedEffects = []
+  bot._client.on('remove_entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) removedEffects.push({ id: p.effectId, at: Date.now() }) })
+  // The server syncing our real head slot (player inventory, slot 5) replaces any overlay helmet.
+  const headSyncs = []
+  bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) headSyncs.push({ at: Date.now() }) })
   const sounds = []
   bot.on('soundEffectHeard', (sound, pos) => sounds.push({ sound: String(sound), pos, at: Date.now() }))
   await new Promise(resolve => bot.once('spawn', resolve))
@@ -166,15 +174,20 @@ function openSpotNear (bot, soldier) {
   await rcon(`execute as ${name} at @s run tp @s ${spot.stand[0]} 65 ${spot.stand[1]} ${spot.yaw} 10`)
   await sleep(1500)
   bot.setQuickBarSlot(heldSlot(bot, 'flash') - 36)
+  await rcon(`item replace entity ${name} armor.head with minecraft:leather_helmet`)
   await sleep(600)
   const overlaysBefore = overlays.length
   const effectsBefore = effects.length
+  const removedBefore = removedEffects.length
   const soundsBefore = sounds.length
   bot.activateItem() // the teleport left us facing the wall, slightly down
   await sleep(200)
   bot.deactivateItem()
   if (!await waitFor(() => sounds.slice(soundsBefore).some(s => s.sound.includes('throw.flash')), 6000)) throw new Error('no flashbang went off')
   const blast = sounds.slice(soundsBefore).find(s => s.sound.includes('throw.flash')).pos
+  // A new helmet while the screen is white, like one losing durability to a headshot.
+  const swapAt = Date.now()
+  await rcon(`item replace entity ${name} armor.head with minecraft:iron_helmet`)
   const behind = soldiers(bot).filter(e => insideArena(e.position) && e.position.distanceTo(blast) <= 10)
   log('flashbang at', blast.toString(), 'soldiers behind the wall in range', behind.map(e => ({ id: e.id, d: e.position.distanceTo(blast).toFixed(1) })))
   // Watch them for the 3.5 s the old stun lasted, counting movement from 0.5 s in (a stunned soldier
@@ -197,10 +210,24 @@ function openSpotNear (bot, soldier) {
   // ---------------------------------------------------------------- 2. what the bot got
   await sleep(1500)
   const mine = overlays.slice(overlaysBefore)
-  checks.noBlindNausea = !effects.slice(effectsBefore).some(e => e.id === 14 || e.id === 8) // blindness, nausea
+  const added = effects.slice(effectsBefore)
+  const blindOn = added.filter(e => e.id === 14) // blindness
+  const blindOff = removedEffects.slice(removedBefore).filter(e => e.id === 14)
+  const firstFade = mine.find(o => /^flash_[123]$/.test(o.overlay || ''))
+  checks.noNausea = !added.some(e => e.id === 8)
+  checks.blindOnlyWhileWhite = blindOn.length > 0 && blindOff.length > 0 && !!firstFade &&
+    blindOff[blindOff.length - 1].at >= blindOn[blindOn.length - 1].at && blindOff[blindOff.length - 1].at <= firstFade.at
   checks.flashOverlay = mine.some(o => o.overlay && o.overlay.startsWith('flash'))
   checks.ringing = sounds.slice(soundsBefore).some(s => s.sound.includes('status.tinnitus'))
-  log('our overlays', mine.map(o => o.overlay), 'effects', effects.slice(effectsBefore).map(e => e.id))
+  const syncs = headSyncs.filter(h => h.at >= swapAt)
+  const lastSync = syncs[syncs.length - 1]
+  const back = lastSync && mine.find(o => o.at >= lastSync.at && o.overlay && o.overlay.startsWith('flash'))
+  checks.overlayBackAfterHelmetSync = !!back && back.at - lastSync.at < 500
+  log('our overlays', [...new Set(mine.map(o => o.overlay))], 'sent', mine.length, 'effects', added.map(e => e.id),
+    'blindness on/off ms after the blast', blindOn.map(e => e.at - swapAt), blindOff.map(e => e.at - swapAt),
+    'first fade step', firstFade ? firstFade.at - swapAt : null,
+    'head syncs', syncs.map(h => h.at - swapAt), 'overlay back', back ? back.at - swapAt : null)
+  await rcon(`item replace entity ${name} armor.head with minecraft:air`)
 
   // ---------------------------------------------------------------- 3. strobe on a soldier
   await rcon(`execute as ${name} at @s run tp @s 36.5 65 30.5 180 0`)

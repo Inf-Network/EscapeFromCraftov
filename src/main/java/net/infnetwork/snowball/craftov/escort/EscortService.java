@@ -21,8 +21,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Escort contracts (护航): a client escrows a reward, escorts join the client's squad, and the
  * reward is paid out when the client extracts (a consolation share if the client dies). A player
- * escorts one contract at a time, leaving the client's party gives it up, and only escorts who
- * deployed in the client's squad are paid.
+ * escorts one contract at a time, leaving the client's party before deploying gives it up, and
+ * only escorts who deployed in the client's squad are paid.
  */
 public final class EscortService {
 
@@ -159,9 +159,15 @@ public final class EscortService {
      * A player left (or was kicked from, or dropped out of) a party. An escort who leaves the
      * client's squad gives up the contract, and a client who leaves it takes the contract away
      * from everyone who stayed; a contract with nobody left on it opens up again in the lobby.
+     * Once the squad has deployed the escorts are fixed: settle pays whoever went in with the
+     * client, so a client cannot kick them before extracting to keep the reward, and an escort
+     * who is already out may leave the party or log off without losing their share.
      */
     public void onPartyLeave(UUID uuid) {
         for (Contract c : contracts.values()) {
+            if (c.state == State.IN_RAID) {
+                continue;
+            }
             boolean changed;
             if (c.client.equals(uuid)) {
                 changed = !c.escorts.isEmpty();

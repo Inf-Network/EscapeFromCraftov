@@ -13,14 +13,17 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
  * Entry camera: the squad's view sweeps from high above the map down to their insertion point.
  * Implemented with an invisible item display (smooth teleport interpolation) that the players
- * spectate. Players are checked with isConnected, not isOnline: isOnline is true again for the old
- * Player object once that player reconnects, and the camera must leave a rejoined player alone.
+ * spectate. Players are looked up by UUID on every step, never kept as Player objects: someone who
+ * drops out and reconnects during the flight is a new Player object, and RaidManager.tryRejoin puts
+ * them back in spectator in the raid world so the camera picks them up again.
  */
 public final class Cinematic {
 
@@ -30,10 +33,15 @@ public final class Cinematic {
     private Cinematic() {
     }
 
+    /**
+     * Flies the camera for these players, then calls onDone with every one of their UUIDs, online
+     * or not, once it lands (at once when the camera is off).
+     */
     public static void play(CraftovPlugin plugin, Raid raid, int squadNumber, List<Player> players, Location spawn,
-                            Consumer<Player> onDone) {
+                            Consumer<UUID> onDone) {
+        List<UUID> ids = players.stream().map(Player::getUniqueId).toList();
         if (!plugin.getConfig().getBoolean("cinematic.enabled", true) || players.isEmpty()) {
-            players.forEach(onDone);
+            ids.forEach(onDone);
             return;
         }
         Location center = raid.map.camera().at(raid.world);
@@ -59,11 +67,10 @@ public final class Cinematic {
                 if (raid.state == Raid.State.CLOSED || !camera.isValid()) {
                     cancel();
                     camera.remove();
-                    players.forEach(p -> {
-                        if (p.isConnected() && p.getGameMode() == GameMode.SPECTATOR) {
-                            p.setSpectatorTarget(null);
-                        }
-                    });
+                    watching().forEach(p -> p.setSpectatorTarget(null));
+                    if (raid.state == Raid.State.RUNNING) {
+                        ids.forEach(onDone); // the camera vanished mid-flight: land everyone rather than leave them hanging
+                    }
                     return;
                 }
                 double t = Math.min(1.0, tick / (double) DURATION);
@@ -82,13 +89,13 @@ public final class Cinematic {
                     loc.setPitch(0);
                 }
                 camera.teleport(loc);
-                for (Player player : players) {
-                    if (!player.isConnected()) {
-                        continue;
-                    }
+                for (Player player : watching()) {
                     if (player.getSpectatorTarget() != camera) {
                         if (player.getLocation().distanceSquared(loc) > 64 * 64) {
+                            // Far away (just reconnected): move next to the camera now and attach on
+                            // the next step, once the client has been sent the camera entity.
                             player.teleport(loc);
+                            continue;
                         }
                         player.setSpectatorTarget(camera);
                     }
@@ -104,18 +111,24 @@ public final class Cinematic {
                 if (t >= 1.0) {
                     cancel();
                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        for (Player player : players) {
-                            if (player.isConnected()) {
-                                if (player.getGameMode() == GameMode.SPECTATOR) {
-                                    player.setSpectatorTarget(null);
-                                }
-                                onDone.accept(player);
-                            }
-                        }
+                        watching().forEach(p -> p.setSpectatorTarget(null));
+                        ids.forEach(onDone);
                         camera.remove();
                     }, 4L);
                 }
                 tick += STEP;
+            }
+
+            /** Squad members who are on the camera right now: online, in the raid world, spectating. */
+            private List<Player> watching() {
+                List<Player> out = new ArrayList<>();
+                for (UUID id : ids) {
+                    Player player = Bukkit.getPlayer(id);
+                    if (player != null && player.getWorld() == raid.world && player.getGameMode() == GameMode.SPECTATOR) {
+                        out.add(player);
+                    }
+                }
+                return out;
             }
         }.runTaskTimer(plugin, 2L, STEP);
     }

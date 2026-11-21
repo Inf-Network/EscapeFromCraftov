@@ -295,15 +295,21 @@ public final class RaidManager implements Listener {
             // The insertion point is fixed before the camera flies: whoever drops out during the
             // flight reconnects there, or leaves their body there when the reconnect window ends.
             rp.lastLocation = points.isEmpty() ? world.getSpawnLocation() : points.get(members.size() % points.size()).pos().at(world);
+            rp.inFlight = true;
             members.add(player);
             prepare(raid, player, rp);
         }
         Location spawn = points.isEmpty() ? world.getSpawnLocation() : points.get(0).pos().at(world);
-        Cinematic.play(plugin, raid, squadNo, members, spawn, player -> {
-            RaidPlayer rp = raid.player(player.getUniqueId());
-            if (rp != null && rp.state != RaidPlayer.State.DEPLOYING) {
-                return; // reconnected (already on the ground) or settled while the camera flew
+        Cinematic.play(plugin, raid, squadNo, members, spawn, uuid -> {
+            RaidPlayer rp = raid.player(uuid);
+            if (rp != null) {
+                rp.inFlight = false;
             }
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || rp != null && rp.state != RaidPlayer.State.DEPLOYING) {
+                return; // offline (a later reconnect lands at once), or settled while the camera flew
+            }
+            // Everyone still on the camera lands now, including whoever reconnected during the flight.
             insert(raid, player, rp == null || rp.lastLocation == null ? spawn : rp.lastLocation);
         });
     }
@@ -1178,12 +1184,22 @@ public final class RaidManager implements Listener {
         }
         plugin.carry().restore(player, rp.disconnectedInventory, UiItems.raidTerminal());
         rp.disconnectedInventory = null;
-        rp.state = RaidPlayer.State.ALIVE;
-        rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         plugin.health().setupPlayer(player, false);
         Location back = rp.lastLocation.getWorld() == raid.world ? rp.lastLocation : raid.map.spawns().isEmpty()
                 ? raid.world.getSpawnLocation() : raid.map.spawns().get(0).pos().at(raid.world);
         player.teleport(back);
+        if (rp.inFlight) {
+            // Back before the squad's entry camera ended: the camera picks the player up again
+            // (Cinematic looks players up by UUID) and they land with the squad through insert(),
+            // with the same title and spawn protection, instead of ahead of everyone else.
+            rp.state = RaidPlayer.State.DEPLOYING;
+            player.setGameMode(GameMode.SPECTATOR);
+            plugin.match().teamFor(raid, rp, player);
+            Text.send(player, "<#5BD16B>已重新连接到行动，正在随小队前往渗透点。");
+            return true;
+        }
+        rp.state = RaidPlayer.State.ALIVE;
+        rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         player.setGameMode(GameMode.ADVENTURE);
         player.setFallDistance(0);
         plugin.match().teamFor(raid, rp, player);

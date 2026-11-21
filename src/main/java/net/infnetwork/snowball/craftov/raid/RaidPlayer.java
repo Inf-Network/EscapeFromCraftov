@@ -30,6 +30,11 @@ public final class RaidPlayer {
     public long protectedUntil;
     public @Nullable Location lastLocation;
     public long disconnectedAt;
+    /**
+     * From deployment until the squad's entry camera ends. A player who drops out and comes back
+     * in this window goes back on the camera and lands with the squad.
+     */
+    public boolean inFlight;
     /** What a disconnected player carried, by slot. Stacks rather than records: they keep insurance marks. */
     public @Nullable Map<Integer, ItemStack> disconnectedInventory;
     public @Nullable String escortContract;

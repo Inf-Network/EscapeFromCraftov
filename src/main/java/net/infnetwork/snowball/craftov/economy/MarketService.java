@@ -23,11 +23,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
  * players or to simulated buyers when priced near the reference price, and return on expiry.
+ *
+ * <p>Every trade writes the market and the profiles it touched straight away, in order, so a crash
+ * cannot leave a sold listing on the market after its seller was paid (or the other way round).
  */
 public final class MarketService {
 
@@ -55,6 +61,12 @@ public final class MarketService {
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
+    /** One writer, so saves land in the order they were taken. */
+    private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Craftov-MarketIO");
+        t.setDaemon(true);
+        return t;
+    });
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -84,11 +96,24 @@ public final class MarketService {
         }
         dirty = false;
         String json = GSON.toJson(data);
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> write(json));
+        io.execute(() -> write(json));
     }
 
+    /** Shutdown: lets queued saves finish, then writes the current state last. */
     public void saveSync() {
+        io.shutdown();
+        try {
+            io.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
         write(GSON.toJson(data));
+    }
+
+    /** Writes the market and the given player's profile now, after a trade changed both. */
+    private void commit(UUID player) {
+        plugin.profiles().saveNow(player);
+        save();
     }
 
     private void write(String json) {
@@ -203,7 +228,7 @@ public final class MarketService {
         listing.expires = listing.created + plugin.getConfig().getLong("market.listing-hours", 48) * 3600_000L;
         data.listings.add(listing);
         dirty = true;
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         return true;
@@ -230,8 +255,8 @@ public final class MarketService {
         }
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
-        plugin.profiles().markDirty(player.getUniqueId());
         complete(listing, player.getName());
+        commit(player.getUniqueId());
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
         ItemDef def = plugin.registry().get(listing.item.id);
         Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
@@ -248,7 +273,7 @@ public final class MarketService {
         dirty = true;
         Profile profile = plugin.profiles().get(player);
         profile.mailbox.add(listing.item);
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#9AA0A6>已下架，物品已退回仓库邮箱。");
         return true;
     }
@@ -270,6 +295,7 @@ public final class MarketService {
             seller.money += payout;
             seller.addStat("market_sales", 1);
         });
+        plugin.profiles().saveNow(listing.seller);
         double unit = listing.price / (double) Math.max(1, listing.item.amount);
         double ref = reference(listing.item.id);
         data.reference.put(listing.item.id, ref * 0.85 + unit * 0.15);
@@ -297,6 +323,7 @@ public final class MarketService {
             if (now >= listing.expires) {
                 data.listings.remove(listing);
                 plugin.profiles().edit(listing.seller, p -> p.mailbox.add(listing.item));
+                plugin.profiles().saveNow(listing.seller);
                 dirty = true;
                 continue;
             }

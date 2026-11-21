@@ -194,41 +194,51 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Each step runs on its own: one system failing to shut down must never cost the players
+        // their saves, which are written at the end.
         if (editor != null) {
-            editor.shutdown();
+            shutdownStep("editor", editor::shutdown);
         }
         if (replays != null) {
-            replays.shutdown();
+            shutdownStep("replays", replays::shutdown);
         }
         if (drones != null) {
-            drones.shutdown();
+            shutdownStep("drones", drones::shutdown);
         }
         if (raids != null) {
-            raids.shutdown();
+            shutdownStep("raids", raids::shutdown);
         }
         if (escorts != null) {
-            escorts.shutdown();
+            shutdownStep("escorts", escorts::shutdown);
         }
         if (range != null) {
-            range.shutdown();
+            shutdownStep("range", range::shutdown);
         }
         if (lobby != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (lobby.isLobby(player.getWorld())) {
-                    lobby.captureLoadout(player);
+                    shutdownStep("loadout of " + player.getName(), () -> lobby.captureLoadout(player));
                 }
             }
         }
         if (market != null) {
-            market.saveSync();
+            shutdownStep("market", market::saveSync);
         }
         if (profiles != null) {
-            profiles.shutdown();
+            shutdownStep("profiles", profiles::shutdown);
         }
         if (backups != null) {
-            backups.run("shutdown");
+            shutdownStep("backup", () -> backups.run("shutdown"));
         }
-        cleanupTeams();
+        shutdownStep("teams", this::cleanupTeams);
+    }
+
+    private void shutdownStep(String what, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException ex) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Shutdown step failed: " + what, ex);
+        }
     }
 
     private void hookBetterHud() {

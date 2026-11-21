@@ -266,8 +266,14 @@ public final class LobbyService implements Listener {
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));
     }
 
-    /** Persists the lobby inventory as the next raid's loadout. */
+    /**
+     * Persists the lobby inventory as the next raid's loadout. Does nothing on the range: what the
+     * player holds there is loaners, and the loadout saved on entry has to survive until they leave.
+     */
     public void captureLoadout(Player player) {
+        if (plugin.range().isIn(player)) {
+            return;
+        }
         Profile profile = plugin.profiles().get(player);
         plugin.weapons().flush(player);
         profile.loadout = plugin.carry().snapshot(player);

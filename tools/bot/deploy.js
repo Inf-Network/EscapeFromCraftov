@@ -1,7 +1,7 @@
 // Disconnects between "match found" and landing, with headless bots.
 //
 //   node deploy.js                  every scenario
-//   node deploy.js loading flight   only these
+//   node deploy.js loading flight   only these (loading rejoin squad escort flight late timeout)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on. Ports come from
 // MC_PORT (25565), RCON_PORT (25575) and RCON_PASSWORD (craftov-local). To keep the
@@ -136,6 +136,18 @@ function untouched (before, after) {
   return problems
 }
 
+/** The profile with every carry cell filled: big rig and backpack, each free cell a bandage. */
+function fullLoad (profile) {
+  const loadout = { ...profile.loadout }
+  for (let slot = 0; slot < 36; slot++) {
+    if (slot === 2 || slot === 8) continue
+    if (!loadout[slot]) loadout[slot] = { id: 'bandage', amount: 1 }
+  }
+  loadout['36'] = { id: 'pack_3', amount: 1 }
+  loadout['37'] = { id: 'rig_3', amount: 1 }
+  return { ...profile, loadout }
+}
+
 /** Queues and quits the instant the match-found title arrives. Returns how long after the title. */
 async function quitOnMatch (bot) {
   let quitAt = 0
@@ -214,30 +226,64 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', problems.join('; ') || 'leader landed and was told; the one who left kept everything']
   },
 
-  // Quit during the entry camera and come back: lands on the insertion point with the same gear.
+  // Quit early in the entry camera and come straight back: back on the camera, then lands on the
+  // insertion point when the flight ends, with the landing title and the same (insured) gear.
   async flight () {
     const { name } = await prime()
     let bot = await make(name)
     await sleep(2500)
     queue(bot)
     if (!await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'spectator', 40000)) return ['FAIL', 'no entry camera']
-    await sleep(1500)
+    const cameraAt = Date.now()
+    await sleep(800)
     const carried = inventory(bot)
     await quit(bot)
-    await sleep(3000)
+    bot = await make(name)
+    const back = (Date.now() - cameraAt) / 1000
+    const onCamera = await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'spectator', 3000)
+    const landed = await waitFor(() => bot.game.gameMode === 'adventure', 15000)
+    const landedAt = (Date.now() - cameraAt) / 1000
+    await sleep(1500)
+    const now = inventory(bot)
+    const at = await position(name)
+    const titled = bot.titles.some(t => t.text.includes('行动开始'))
+    const problems = []
+    if (!onCamera) problems.push(`back in ${bot.worldName} ${bot.game.gameMode}, not on the camera`)
+    if (!landed) problems.push('never landed')
+    // The camera runs about 6.8 s; landing earlier means a head start on the squad.
+    if (landed && landedAt < 6.0) problems.push(`landed ${landedAt.toFixed(1)}s after the camera started`)
+    if (!titled) problems.push('no landing title')
+    if (!same(carried.ids, now.ids)) problems.push(`gear ${carried.ids.join(',')} -> ${now.ids.join(',')}`)
+    if (carried.insured !== now.insured || now.insured === 0) problems.push(`insured ${carried.insured} -> ${now.insured}`)
+    // Proving ground insertion points stand at y 65, z 95..96.
+    if (!at || Math.abs(at[1] - 65) > 1.5 || at[2] < 94 || at[2] > 97.5) problems.push(`landed at ${at}`)
+    await quit(bot)
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'back on the camera, landed with the squad'} | back after ${back.toFixed(1)}s, landed after ${landedAt.toFixed(1)}s at ${at} | ${now.ids.length} items, ${now.insured} insured`]
+  },
+
+  // Quit during the entry camera and come back after it ended: lands on the insertion point at
+  // once with the same gear, and nothing moves the player afterwards.
+  async late () {
+    const { name } = await prime()
+    let bot = await make(name)
+    await sleep(2500)
+    queue(bot)
+    if (!await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'spectator', 40000)) return ['FAIL', 'no entry camera']
+    await sleep(800)
+    const carried = inventory(bot)
+    await quit(bot)
+    await sleep(8000)
     bot = await make(name)
     await sleep(2500)
     const now = inventory(bot)
     const at = await position(name)
     const mode = bot.game.gameMode
-    // The camera would have finished by now: the rejoined player must not be moved or reset by it.
-    await sleep(8000)
+    await sleep(5000)
     const later = await position(name)
     const problems = []
     if (!inRaidWorld(bot) || mode !== 'adventure') problems.push(`in ${bot.worldName} ${mode}`)
     if (!same(carried.ids, now.ids)) problems.push(`gear ${carried.ids.join(',')} -> ${now.ids.join(',')}`)
     if (carried.insured !== now.insured || now.insured === 0) problems.push(`insured ${carried.insured} -> ${now.insured}`)
-    // Proving ground insertion points stand at y 65, z 95..96.
     if (!at || Math.abs(at[1] - 65) > 1.5 || at[2] < 94 || at[2] > 97.5) problems.push(`landed at ${at}`)
     if (!later || !at || Math.hypot(later[0] - at[0], later[2] - at[2]) > 1) problems.push(`moved to ${later}`)
     if (bot.game.gameMode !== 'adventure') problems.push(`later ${bot.game.gameMode}`)
@@ -245,10 +291,67 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'back on the insertion point with the same gear'} | at ${at} | ${now.ids.length} items, ${now.insured} insured`]
   },
 
-  // Quit during the entry camera and stay away: a body with the gear at the insertion point,
-  // reported missing, insured gear back in the mailbox, melee weapon kept.
+  // An escort client drops out on "match found" while their escort deploys: the contract is
+  // cancelled, the reward comes back, the escort is told, and the client can post again.
+  async escort () {
+    const client = await prime()
+    const guard = await prime()
+    const C = await make(client.name)
+    const G = await make(guard.name)
+    await sleep(2500)
+    const openWith = (bot, fn) => new Promise(resolve => {
+      const t = setTimeout(() => resolve(null), 4000)
+      bot.once('windowOpen', w => { clearTimeout(t); resolve(w) })
+      fn()
+    })
+    let menu = await openWith(C, () => C.chat('/cv'))
+    if (!menu) return ['FAIL', 'client: no main menu']
+    menu = await openWith(C, () => C.clickWindow(16, 0, 0))
+    if (!menu) return ['FAIL', 'client: no escort hall']
+    await C.clickWindow(38, 0, 0); await sleep(600)
+    C.closeWindow(menu)
+    menu = await openWith(G, () => G.chat('/cv'))
+    menu = menu && await openWith(G, () => G.clickWindow(16, 0, 0))
+    if (!menu) return ['FAIL', 'escort: no escort hall']
+    await G.clickWindow(0, 0, 0); await sleep(800)
+    G.closeWindow(menu)
+    if (!C.chatLog.some(m => m.includes('接取了你的护航委托'))) return ['FAIL', `contract not accepted: ${C.chatLog.slice(-4).join(' | ')}`]
+    let quitAt = 0
+    C.on('title', t => {
+      if (!quitAt && strip(JSON.stringify(t)).includes('匹配成功')) { quitAt = Date.now(); C.end('disconnect.quitting') }
+    })
+    C.chat(`/cv queue ${MAP} NORMAL TRIO`)
+    const landed = await waitFor(() => inRaidWorld(G) && G.game.gameMode === 'adventure', 40000)
+    await sleep(1500)
+    const told = G.chatLog.some(m => m.includes(client.name) && m.includes('护航委托已取消'))
+    await quit(G)
+    const afterC = await settledProfile(client.name)
+    if (stat(afterC, 'raids') > stat(client.before, 'raids')) return ['SKIP', 'the quit reached the server after deployment']
+    const problems = untouched(client.before, afterC)
+    if (!landed) problems.push(`escort did not land (${G.worldName} ${G.game.gameMode})`)
+    if (!told) problems.push('escort was not told')
+    // Back in the lobby the client can post a new contract: the old one is gone, not stuck.
+    const C2 = await make(client.name)
+    await sleep(2500)
+    menu = await openWith(C2, () => C2.chat('/cv'))
+    menu = menu && await openWith(C2, () => C2.clickWindow(16, 0, 0))
+    if (menu) { await C2.clickWindow(38, 0, 0); await sleep(600) }
+    const reposted = C2.chatLog.some(m => m.includes('护航委托已发布'))
+    if (!reposted) problems.push(`client could not post again: ${C2.chatLog.slice(-3).join(' | ')}`)
+    // Take the new contract down again so later runs start clean.
+    if (menu && reposted) { await C2.clickWindow(0, 0, 0); await sleep(600) }
+    await quit(C2)
+    return [problems.length ? 'FAIL' : 'PASS', problems.join('; ') || 'reward refunded, escort told, client could post again']
+  },
+
+  // A fully loaded player (38 stacks: every pocket, rig and backpack cell, and all four worn
+  // pieces) quits during the entry camera and stays away: a body with the gear at the insertion
+  // point, reported missing, insured gear (helmet and armour included) back in the mailbox, melee
+  // weapon kept.
   async timeout () {
     const { name, before } = await prime()
+    const full = fullLoad(before)
+    fs.writeFileSync(profileFile(name), JSON.stringify(full, null, 2))
     const bot = await make(name)
     await sleep(2500)
     queue(bot)
@@ -282,9 +385,14 @@ const scenarios = {
     if (!same(after.secure, before.secure)) problems.push(`secure ${JSON.stringify(after.secure)}`)
     const kept = Object.keys(after.loadout)
     if (!same(kept, ['2'])) problems.push(`loadout slots ${kept}`)
-    const mailed = (after.mailbox || []).length
-    if (carried.insured > 0 && mailed === 0) problems.push('no insurance payout')
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'body, report, melee and insurance as expected'} | body ${bodyAt.replace(/^.*data: /, '')} | ${carried.insured} insured, ${mailed} mailed`]
+    const mailed = (after.mailbox || []).map(r => r.id).sort()
+    if (carried.insured > 0 && mailed.length === 0) problems.push('no insurance payout')
+    // Worn armour comes last in slot order: it is what a too-small body used to drop.
+    for (const slot of ['36', '37', '38', '39']) {
+      if (!mailed.includes(full.loadout[slot].id)) problems.push(`${full.loadout[slot].id} not mailed back`)
+    }
+    if (carried.ids.length < 38) problems.push(`only ${carried.ids.length} stacks carried`)
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'body, report, melee and insurance as expected'} | body ${bodyAt.replace(/^.*data: /, '')} | ${carried.ids.length} stacks, ${carried.insured} insured, mailed ${mailed.join(',')}`]
   }
 }
 

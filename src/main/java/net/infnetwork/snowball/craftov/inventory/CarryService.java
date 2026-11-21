@@ -336,16 +336,46 @@ public final class CarryService {
         return out;
     }
 
-    /** A {@link #raidSnapshot} without its test items, fit to be saved as a loadout. */
-    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout) {
+    /**
+     * A {@link #raidSnapshot} without its test items, fit to be saved as the loadout of a player who is
+     * offline. An armory rig or backpack is left out, so the player's own items in its cells would land
+     * in locked cells and be dropped on the lobby floor at the next login: they move to free pockets
+     * instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
+     */
+    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout, List<ItemRecord> homeless) {
+        boolean rigGone = isTestRecord(layout.get(LEGS));
+        boolean packGone = isTestRecord(layout.get(FEET));
         Map<Integer, ItemRecord> out = new HashMap<>();
+        List<ItemRecord> orphans = new ArrayList<>();
         layout.forEach((slot, record) -> {
             ItemRecord kept = ItemFactory.persistent(record);
-            if (kept != null) {
+            if (kept == null) {
+                return;
+            }
+            if (rigGone && isRigSlot(slot) || packGone && isPackSlot(slot)) {
+                orphans.add(kept);
+            } else {
                 out.put(slot, kept);
             }
         });
+        for (ItemRecord orphan : orphans) {
+            int free = -1;
+            for (int slot = 0; slot < TERMINAL_SLOT && free < 0; slot++) {
+                if (slot != MELEE_SLOT && !out.containsKey(slot)) {
+                    free = slot;
+                }
+            }
+            if (free < 0) {
+                homeless.add(orphan);
+            } else {
+                out.put(free, orphan);
+            }
+        }
         return out;
+    }
+
+    private static boolean isTestRecord(@Nullable ItemRecord record) {
+        return record != null && record.isTest();
     }
 
     public List<ItemRecord> allRecords(Player player) {

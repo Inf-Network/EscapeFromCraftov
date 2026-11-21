@@ -1064,9 +1064,12 @@ public final class RaidManager implements Listener {
                     plugin.lobby().captureLoadout(player);
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = CarryService.persistent(rp.disconnectedInventory);
+                    // Own items from an armory rig or backpack that find no free pocket go to the mailbox.
+                    List<ItemRecord> homeless = new ArrayList<>();
+                    Map<Integer, ItemRecord> inv = CarryService.persistent(rp.disconnectedInventory, homeless);
                     plugin.profiles().edit(rp.uuid, profile -> {
                         profile.loadout = inv;
+                        profile.mailbox.addAll(homeless);
                         profile.secure = new ArrayList<>(rp.secure);
                         profile.activeRaid = null;
                     });

@@ -15,13 +15,21 @@
 //                 connection and is answered by the reloaded plugin, the gun fires in the range
 //                 without reconnecting, and the log has no plugin errors
 //  market-expire  three listings of one offline seller expire in the same tick after a restart:
-//                 all three land in his mailbox
+//                 all three land in his mailbox. An expired listing of a seller whose profile is
+//                 broken stays listed (no journal, the file untouched, one warning), and goes to
+//                 his mailbox once the file is repaired while the server runs
+//  lost-edit      an escort client's profile breaks while he is disconnected in a raid: the
+//                 timeout and the escrow release go into <uuid>.json.unsaved, the guard is paid,
+//                 the repaired profile stays locked and keeps its escrow over a restart until the
+//                 journal is applied by hand, then logs in with the refund once and no restore
 //  market-corrupt a garbled market.json survives a start and a stop byte for byte
 //  map            rustport.yml with "type: SWTICH" survives a restart unchanged, a .broken copy
 //                 exists, the log reports it and the map is not regenerated
 //  escort-crash   a posted escort contract followed by kill -9: the reward is back after the restart
 //  backup         RESTARTS restarts with backup.first-delay-minutes 0 keep the first daily copy, and
 //                 a shutdown backup that cannot read a file leaves no zip (or temp file) behind
+//  backup-keep    a config with only the old "keep: 30" keeps ten older shutdown copies over a
+//                 shutdown backup, and the start log says the key was split
 //
 // node persistence.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
 //                            RCON_PASS=craftov-local STEPS=(comma list, default all) RESTARTS=10
@@ -42,7 +50,8 @@ if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
 const RESTARTS = Number(process.env.RESTARTS || 10)
-const ALL = ['corrupt', 'escort-mia', 'stop-mid-raid', 'hot-reload', 'market-expire', 'market-corrupt', 'map', 'escort-crash', 'backup']
+const ALL = ['corrupt', 'escort-mia', 'lost-edit', 'stop-mid-raid', 'hot-reload', 'market-expire', 'market-corrupt', 'map', 'escort-crash',
+  'backup', 'backup-keep']
 const STEPS = process.env.STEPS ? process.env.STEPS.split(',').map(s => s.trim()) : ALL
 const out = process.env.LOG || '/tmp/persistence.log'
 const PLUGIN = path.join(SERVER_DIR, 'plugins/Craftov')
@@ -316,11 +325,93 @@ async function escortMia () {
   }
 }
 
+async function lostEdit () {
+  // Long enough for the logout copy to leave memory (flushed every 10 s) before the profile
+  // breaks, so the timeout has to read the broken file.
+  setConfig('raid', 'reconnect-seconds', 25)
+  await rcon('cv reload')
+  const id = tag()
+  const bossName = 'Jrn' + id
+  const guardName = 'Jgd' + id
+  const boss = await online(bossName)
+  const guard = await online(guardName)
+  const file = profileFile(bossName)
+  const journal = file + '.unsaved'
+  try {
+    await postContract(boss)
+    const menu = await escortMenu(guard)
+    let slot = -1
+    for (let i = 0; i < 27; i++) if (lore(menu.slots[i]).some(l => l.includes(bossName))) slot = i
+    if (slot < 0) throw new Error('contract not listed')
+    await guard.clickWindow(slot, 0, 0)
+    await sleep(800)
+    guard.closeWindow(menu)
+    const guardBefore = await balance(guardName)
+    boss.chat('/cv queue proving NORMAL TRIO')
+    const end = Date.now() + 120000
+    while (Date.now() < end && !boss.titles.some(t => t.includes('行动开始'))) await sleep(500)
+    check('lost-edit: client deployed', boss.titles.some(t => t.includes('行动开始')))
+    await sleep(2000)
+    await leave(boss)
+    await sleep(13000)
+    const good = fs.readFileSync(file)
+    const broken = good.subarray(0, Math.floor(good.length / 2))
+    fs.writeFileSync(file, broken)
+    const journaled = await waitFile(journal, s => s.includes('escort contract'), 40000)
+    const text = journaled ? fs.readFileSync(journal, 'utf8') : ''
+    log('journal', text)
+    check('lost-edit: the timeout is journaled with its resets', /missing in raid \S+: loadout = \{\}.*activeRaid = null, stats\.deaths \+1/.test(text))
+    check('lost-edit: the escrow release is journaled after it', text.indexOf('escortEscrow -20000') > text.indexOf('missing in raid')
+      && text.includes('money +14000'))
+    check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
+    check('lost-edit: the guard got 30%', await balance(guardName) === guardBefore + 6000)
+    fs.writeFileSync(file, good) // repaired, the journal not applied yet
+    const r = await join(bossName)
+    if (r.bot) await leave(r.bot)
+    check('lost-edit: login refused while the journal is there', !!r.kicked && r.kicked.includes('档案读取失败'), r.kicked || r.error || 'joined')
+    guard.quit()
+    await stop()
+    const started = await start()
+    check('lost-edit: the escrow is not returned on start', started.split('\n').some(l => l.includes('was NOT returned') && l.includes(offlineUuid(bossName))))
+    check('lost-edit: the repaired file is untouched', Buffer.compare(fs.readFileSync(file), good) === 0)
+    // Apply the journal by hand, as the README says, then delete it.
+    const p = JSON.parse(good)
+    const secure = text.match(/secure = (\[.*?\]), activeRaid/)
+    p.loadout = {}
+    p.secure = secure ? JSON.parse(secure[1]) : p.secure
+    p.activeRaid = null
+    p.stats = p.stats || {}
+    p.stats.deaths = (p.stats.deaths || 0) + 1
+    p.escortEscrow = Math.max(0, (p.escortEscrow || 0) - 20000)
+    p.money += 14000
+    fs.writeFileSync(file, JSON.stringify(p, null, 2))
+    fs.rmSync(journal)
+    const back = await online(bossName)
+    const after = await balance(bossName)
+    check('lost-edit: logs in with the refund once', after === p.money, { after, expected: p.money })
+    check('lost-edit: no "server interrupted" restore', !back.chatLog.some(m => m.includes('服务器中断')))
+    await leave(back)
+    await sleep(12000)
+    await stop()
+    await start()
+    const again = await online(bossName)
+    check('lost-edit: nothing returned again on the next start', await balance(bossName) === p.money)
+    await leave(again)
+  } finally {
+    await rcon('cv end').catch(() => {})
+    try { guard.quit() } catch { /* already gone */ }
+    setConfig('raid', 'reconnect-seconds', 120)
+    await rcon('cv reload').catch(() => {})
+    fs.rmSync(journal, { force: true })
+    for (const f of fs.readdirSync(playersDir).filter(f => f.startsWith(path.basename(file) + '.corrupt-'))) fs.rmSync(path.join(playersDir, f))
+  }
+}
+
 async function marketExpire () {
   const name = 'Sel' + tag()
   const bot = await online(name)
   await leave(bot)
-  // A second seller whose profile is broken: his returned listing must show up in the log.
+  // A second seller whose profile is broken: his listing must wait for the repair.
   const brokenName = 'Lost' + tag()
   await leave(await online(brokenName))
   await sleep(12000)
@@ -351,10 +442,17 @@ async function marketExpire () {
   const after = profile(name)
   check('market-expire: all three expired listings in the mailbox', (after.mailbox || []).length === mailboxBefore + 3,
     { before: mailboxBefore, after: (after.mailbox || []).length })
-  const lostLine = consoleText().split('\n').find(l => l.includes(offlineUuid(brokenName)) && l.includes('NOT saved'))
-  check('market-expire: the return for a broken profile is logged', !!lostLine && lostLine.includes(lostItem.id), lostLine)
+  const listed = () => JSON.parse(fs.readFileSync(marketFile, 'utf8')).listings.some(l => l.id === 'persistlost' + now)
+  check('market-expire: the broken seller\'s listing stays listed', listed())
+  check('market-expire: no journal for it', !fs.existsSync(brokenFile + '.unsaved'))
   check('market-expire: the broken profile is left as it was', Buffer.compare(fs.readFileSync(brokenFile), broken) === 0)
+  const banners = consoleText().split('\n').filter(l => l.includes('==== Profile ' + path.basename(brokenFile) + ' is unreadable')).length
+  check('market-expire: the broken profile is reported once, not every tick', banners === 1, banners)
+  // Repaired while the server runs: the next market tick returns the listing.
+  const mails = (JSON.parse(brokenGood).mailbox || []).length
   fs.writeFileSync(brokenFile, brokenGood)
+  const back = await waitFile(brokenFile, s => { try { return (JSON.parse(s).mailbox || []).length === mails + 1 } catch { return false } }, 30000)
+  check('market-expire: once repaired, the listing goes to his mailbox', back && !listed())
   for (const f of fs.readdirSync(playersDir).filter(f => f.startsWith(path.basename(brokenFile) + '.corrupt-'))) fs.rmSync(path.join(playersDir, f))
 }
 
@@ -438,6 +536,34 @@ async function backup () {
   await start()
 }
 
+async function backupKeep () {
+  const dir = path.join(PLUGIN, 'backups')
+  const cfgFile = path.join(PLUGIN, 'config.yml')
+  await stop()
+  const cfg = fs.readFileSync(cfgFile, 'utf8')
+  // A config from before the split: only "keep", meant for all copies together.
+  fs.writeFileSync(cfgFile, cfg.replace(/^ {2}keep-daily: .*\n/m, '').replace(/^ {2}keep-shutdown: .*\n/m, '')
+    .replace(/^backup:\n/m, 'backup:\n  keep: 30\n'))
+  fs.mkdirSync(dir, { recursive: true })
+  const fakes = []
+  for (let i = 0; i < 10; i++) {
+    const f = path.join(dir, `craftov-20200101-00000${i}-shutdown.zip`)
+    fs.writeFileSync(f, '')
+    fakes.push(f)
+  }
+  try {
+    const text = await start()
+    check('backup-keep: the split is noted on start', text.includes('backup.keep is now'))
+    await stop()
+    const kept = fakes.filter(f => fs.existsSync(f)).length
+    check('backup-keep: older shutdown copies kept under the old keep: 30', kept === 10, kept)
+  } finally {
+    fs.writeFileSync(cfgFile, cfg)
+    for (const f of fakes) fs.rmSync(f, { force: true })
+  }
+  await start()
+}
+
 async function stopMidRaid () {
   const name = 'Hom' + tag()
   const bot = await online(name)
@@ -517,7 +643,19 @@ async function hotReload () {
   check('hot-reload: no plugin errors around the reload', bad.length === 0, bad.slice(0, 3))
 }
 
-const STEP_FNS = { 'hot-reload': hotReload, 'stop-mid-raid': stopMidRaid, corrupt, 'escort-mia': escortMia, 'market-expire': marketExpire, 'market-corrupt': marketCorrupt, map, 'escort-crash': escortCrash, backup }
+const STEP_FNS = {
+  'hot-reload': hotReload,
+  'stop-mid-raid': stopMidRaid,
+  corrupt,
+  'escort-mia': escortMia,
+  'lost-edit': lostEdit,
+  'market-expire': marketExpire,
+  'market-corrupt': marketCorrupt,
+  map,
+  'escort-crash': escortCrash,
+  backup,
+  'backup-keep': backupKeep
+}
 
 ;(async () => {
   try {

@@ -169,7 +169,9 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
             }
             case LIST -> {
-                new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                if (!plugin.market().refuseIfClosed(viewer)) {
+                    new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                }
                 return;
             }
         }

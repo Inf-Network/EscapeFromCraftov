@@ -77,7 +77,7 @@ public final class MenuService {
     }
 
     public void openMarket(Player player) {
-        if (lobbyOnly(player)) {
+        if (lobbyOnly(player) && !plugin.market().refuseIfClosed(player)) {
             new MarketMenu(plugin, player).open();
         }
     }

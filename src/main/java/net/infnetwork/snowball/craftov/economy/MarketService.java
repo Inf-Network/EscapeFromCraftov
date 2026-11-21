@@ -83,6 +83,7 @@ public final class MarketService implements Listener {
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
+    private boolean closed;
     /** Copies handed out for saving (main thread), and the newest one on disk (under the write lock). */
     private long saves;
     private long written;
@@ -102,15 +103,21 @@ public final class MarketService implements Listener {
 
     public void start() {
         AtomicFiles.cleanTemp(file.getParent());
-        try {
-            if (Files.exists(file)) {
+        if (Files.exists(file)) {
+            try {
                 Data loaded = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), Data.class);
-                if (loaded != null) {
-                    data = loaded;
+                if (loaded == null) {
+                    throw new IllegalStateException("the file is empty");
                 }
+                data = loaded;
+            } catch (IOException | RuntimeException ex) {
+                // Starting over with empty data would hand nobody their listed items back and
+                // write the empty data over the file on shutdown: keep the market shut instead.
+                closed = true;
+                plugin.getLogger().severe("==== Market data " + file.getFileName() + " could not be read (" + ex.getMessage()
+                        + "). The market is closed and the file will not be written; repair it and restart the server. ====");
+                return;
             }
-        } catch (IOException | RuntimeException ex) {
-            plugin.getLogger().severe("Could not read market data: " + ex.getMessage());
         }
         if (data.listings == null) data.listings = new ArrayList<>();
         if (data.reference == null) data.reference = new HashMap<>();
@@ -148,8 +155,21 @@ public final class MarketService implements Listener {
         save();
     }
 
+    /** True when market.json could not be read on start: no trading, and the file is left alone. */
+    public boolean closed() {
+        return closed;
+    }
+
+    /** Tells the player the market is shut and returns true, or returns false when it is open. */
+    public boolean refuseIfClosed(Player player) {
+        if (closed) {
+            Text.send(player, "<#FF8A80>交易行数据读取失败，暂停开放，请联系管理员。");
+        }
+        return closed;
+    }
+
     public void save() {
-        if (!dirty) {
+        if (!dirty || closed) {
             return;
         }
         dirty = false;
@@ -159,7 +179,9 @@ public final class MarketService implements Listener {
     }
 
     public void saveSync() {
-        write(GSON.toJson(data), ++saves);
+        if (!closed) {
+            write(GSON.toJson(data), ++saves);
+        }
     }
 
     /**
@@ -308,7 +330,7 @@ public final class MarketService implements Listener {
     /** Moves a stash record onto the market. */
     public boolean list(Player player, int stashIndex, long price) {
         Profile profile = plugin.profiles().get(player);
-        if (stashIndex < 0 || stashIndex >= profile.stash.size()) {
+        if (refuseIfClosed(player) || stashIndex < 0 || stashIndex >= profile.stash.size()) {
             return false;
         }
         int max = plugin.getConfig().getInt("market.max-listings", 12);
@@ -358,6 +380,9 @@ public final class MarketService implements Listener {
     }
 
     public boolean buy(Player player, String listingId) {
+        if (refuseIfClosed(player)) {
+            return false;
+        }
         Listing listing = find(listingId);
         if (listing == null) {
             Text.send(player, "<#FF8A80>该商品已售出或下架。");
@@ -505,6 +530,9 @@ public final class MarketService implements Listener {
     }
 
     public boolean cancel(Player player, String listingId) {
+        if (refuseIfClosed(player)) {
+            return false;
+        }
         Listing listing = find(listingId);
         if (listing == null || !listing.seller.equals(player.getUniqueId())) {
             return false;

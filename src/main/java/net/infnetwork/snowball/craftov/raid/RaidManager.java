@@ -944,10 +944,17 @@ public final class RaidManager implements Listener {
         }
         Location ground = at.clone();
         ground.setPitch(0);
+        // A fully loaded player carries up to 38 stacks (7 pockets, 9 rig cells, 18 backpack cells
+        // and 4 worn pieces), more than the 4-row bag holds, and worn armour comes last in slot
+        // order: the body grows to fit, up to a double chest.
+        int rows = Math.max(type.rows(), Math.min(6, (items.size() + 8) / 9));
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
-                1f, 1.4, 0.6, type.rows(), 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
+                1f, 1.4, 0.6, rows, 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
                 ground, 0, title);
-        container.fill(items, false);
+        int lost = container.fill(items, false);
+        if (lost > 0) {
+            plugin.getLogger().warning(title + ": " + lost + " stacks did not fit in the body and were lost");
+        }
         container.spawn(0);
         Mannequin corpse = raid.world.spawn(ground, Mannequin.class, m -> {
             m.setProfile(look);

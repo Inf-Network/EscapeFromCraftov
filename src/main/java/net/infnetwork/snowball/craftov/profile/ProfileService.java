@@ -140,16 +140,21 @@ public final class ProfileService {
     }
 
     public void shutdown() {
+        // Let the writes already queued finish first: one of them still running after the final
+        // save below would put an older copy of the profile back on disk (or race it for the
+        // same temp file).
+        io.shutdown();
+        try {
+            if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
+                plugin.getLogger().warning("Profile writes still pending at shutdown; saving the current copies over them");
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
         for (Profile profile : cache.values()) {
             writeSync(GSON.toJson(profile), profile.uuid);
         }
         dirty.clear();
-        io.shutdown();
-        try {
-            io.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     public List<Summary> leaderboard(Comparator<Summary> order, int limit) {

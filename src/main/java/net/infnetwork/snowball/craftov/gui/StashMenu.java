@@ -69,7 +69,7 @@ final class StashMenu extends Menu {
             switch (mode) {
                 case TAKE -> lore.add(Text.mm("<#5BD16B>点击取出到背包"));
                 case SELL -> lore.add(Text.mm("<#FFC23D>点击出售给商人 <#F2C94C>◈" + Text.money(plugin.traders().sellPrice(record))));
-                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().referenceFor(record))));
+                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
             }
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot, display, e -> clickStash(stashIndex, record));

@@ -122,6 +122,10 @@ market:
   # Simulated buyers purchase listings priced near the reference price, so the market works on small servers.
   virtual-buyers: true
   virtual-min-age-seconds: 45
+  # Reference price = item value (durability, attachments, loaded ammo and stack size included) x this.
+  # It is fixed by items.yml: system buyers and the pricing screen judge listings against it, and no
+  # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
+  # than the trader's buy-multiplier, so reselling trader stock never pays.
   reference-multiplier: 0.85
 
 rank:

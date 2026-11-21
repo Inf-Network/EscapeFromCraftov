@@ -27,7 +27,12 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
- * players or to simulated buyers when priced near the reference price, and return on expiry.
+ * players or to simulated buyers when priced near the anchor price, and return on expiry.
+ *
+ * <p>The anchor is the item's own value (durability, attachments, loaded ammo and stack size
+ * included) times {@code market.reference-multiplier}. It comes from items.yml, so no sale can
+ * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
+ * 1.15 × buy price, and buying from the trader to resell never pays.
  */
 public final class MarketService {
 
@@ -102,13 +107,22 @@ public final class MarketService {
         }
     }
 
+    private double multiplier() {
+        return plugin.getConfig().getDouble("market.reference-multiplier", 0.85);
+    }
+
+    /** The price system buyers and the pricing screen measure a listing of {@code record} against. */
+    public long anchorFor(ItemRecord record) {
+        return Math.max(1, Math.round(plugin.items().value(record) * multiplier()));
+    }
+
     public double reference(String itemId) {
         Double ref = data.reference.get(itemId);
         if (ref != null) {
             return ref;
         }
         ItemDef def = plugin.registry().get(itemId);
-        return def == null ? 0 : def.value() * plugin.getConfig().getDouble("market.reference-multiplier", 0.85);
+        return def == null ? 0 : def.value() * multiplier();
     }
 
     public long referenceFor(ItemRecord record) {
@@ -303,8 +317,9 @@ public final class MarketService {
             if (!npc || now - listing.created < minAge) {
                 continue;
             }
-            double ref = referenceFor(listing.item);
-            double ratio = ref <= 0 ? 9 : listing.price / ref;
+            // Measured against the fixed anchor, never the trade-driven reference: otherwise each
+            // overpriced sale would raise the bar for the next one.
+            double ratio = listing.price / (double) anchorFor(listing.item);
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
             if (ThreadLocalRandom.current().nextDouble() < chance) {
                 complete(listing, "系统买家");

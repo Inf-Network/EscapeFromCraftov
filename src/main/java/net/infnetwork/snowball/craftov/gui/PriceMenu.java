@@ -15,6 +15,7 @@ final class PriceMenu extends Menu {
     private final int stashIndex;
     private final ItemRecord record;
     private final StashMenu back;
+    /** Fixed anchor price (MarketService.anchorFor): the default price and what system buyers judge by. */
     private final long reference;
     private long price;
 
@@ -24,7 +25,7 @@ final class PriceMenu extends Menu {
         this.stashIndex = stashIndex;
         this.record = record;
         this.back = back;
-        this.reference = Math.max(1, plugin.market().referenceFor(record));
+        this.reference = plugin.market().anchorFor(record);
         this.price = reference;
     }
 

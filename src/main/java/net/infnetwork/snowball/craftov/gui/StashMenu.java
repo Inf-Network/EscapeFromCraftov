@@ -169,6 +169,10 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
             }
             case LIST -> {
+                if (record.isKit()) {
+                    viewer.sendActionBar(Text.mm("<#FF8A80>免费补给的物品不能上架交易行"));
+                    return;
+                }
                 new PriceMenu(plugin, viewer, stashIndex, record, this).open();
                 return;
             }

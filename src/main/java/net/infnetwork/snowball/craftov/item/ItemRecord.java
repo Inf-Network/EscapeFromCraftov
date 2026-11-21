@@ -27,6 +27,8 @@ public final class ItemRecord {
     public @Nullable String optic;
     /** Fitted attachments other than the sight, slot -> item id (guns only). */
     public java.util.@Nullable Map<String, String> attach;
+    /** True for free-kit items, which sell for nothing (null otherwise, so it is left out of saved JSON). */
+    public @Nullable Boolean kit;
 
     public ItemRecord() {
     }
@@ -44,6 +46,7 @@ public final class ItemRecord {
         copy.dura = dura;
         copy.optic = optic;
         copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
+        copy.kit = kit;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {
@@ -57,6 +60,10 @@ public final class ItemRecord {
         return contents != null && !contents.isEmpty();
     }
 
+    public boolean isKit() {
+        return Boolean.TRUE.equals(kit);
+    }
+
     /** Two records stack when everything but the amount matches. */
     public boolean stacksWith(ItemRecord other) {
         return Objects.equals(id, other.id)
@@ -64,6 +71,7 @@ public final class ItemRecord {
                 && Objects.equals(ammo, other.ammo)
                 && Objects.equals(ammoType, other.ammoType)
                 && Objects.equals(dura, other.dura)
+                && isKit() == other.isKit()
                 && !hasContents() && !other.hasContents();
     }
 

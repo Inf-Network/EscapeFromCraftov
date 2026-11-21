@@ -43,8 +43,8 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
-    /** Bump when item components change; older stacks are rebuilt from their records on join. */
-    public static final int VERSION = 3;
+    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark. */
+    public static final int VERSION = 4;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -97,6 +97,17 @@ public final class ItemFactory {
     /** Marks a stack as a shooting-range loaner (lore says so; it can never be stored or sold). */
     public ItemStack markRange(ItemStack stack) {
         stack.editPersistentDataContainer(pdc -> pdc.set(Keys.RANGE, PersistentDataType.BYTE, (byte) 1));
+        refreshLore(stack, defOf(stack));
+        return stack;
+    }
+
+    public static boolean isKit(@Nullable ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.KIT);
+    }
+
+    /** Marks a stack as handed out by the free kit (lore says so; the trader pays nothing for it). */
+    public ItemStack markKit(ItemStack stack) {
+        stack.editPersistentDataContainer(pdc -> pdc.set(Keys.KIT, PersistentDataType.BYTE, (byte) 1));
         refreshLore(stack, defOf(stack));
         return stack;
     }
@@ -281,6 +292,9 @@ public final class ItemFactory {
                 record.attach.forEach((slot, id) -> fitted.append(fitted.isEmpty() ? "" : ";").append(slot).append('=').append(id));
                 pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
             }
+            if (record.isKit()) {
+                pdc.set(Keys.KIT, PersistentDataType.BYTE, (byte) 1);
+            }
         });
         if (def.isGun()) {
             applyModelData(stack);
@@ -348,6 +362,7 @@ public final class ItemFactory {
         record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
         Map<String, String> attach = attachments(stack);
         record.attach = attach.isEmpty() ? null : attach;
+        record.kit = pdc.has(Keys.KIT) ? Boolean.TRUE : null;
         return record;
     }
 
@@ -453,11 +468,24 @@ public final class ItemFactory {
     }
 
     public long value(ItemRecord record) {
+        return value(record, false);
+    }
+
+    /**
+     * What the trader pays against: {@link #value(ItemRecord)}, except that free-kit items count
+     * nothing for themselves. Attachments, rounds in the magazine and packed contents still count,
+     * since they need not have come from the kit.
+     */
+    public long tradeValue(ItemRecord record) {
+        return value(record, true);
+    }
+
+    private long value(ItemRecord record, boolean trade) {
         ItemDef def = registry.get(record.id);
         if (def == null) {
             return 0;
         }
-        double unit = def.value();
+        double unit = trade && record.isKit() ? 0 : def.value();
         if (def.hasDurability() && record.dura != null && def.durability() > 0) {
             double fraction = Math.max(0, Math.min(1, record.dura / def.durability()));
             unit *= def.category() == Category.MEDICAL || def.category() == Category.KEY
@@ -472,7 +500,7 @@ public final class ItemFactory {
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                total += value(child);
+                total += value(child, trade);
             }
         }
         ItemDef optic = registry.get(record.optic);
@@ -591,6 +619,9 @@ public final class ItemFactory {
             lore.add(Text.mm("<#8A8F98>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
         }
         lore.add(Text.mm("<#8A8F98>重量 <white>" + fmt(def.weight() * stack.getAmount()) + "kg"));
+        if (isKit(stack)) {
+            lore.add(Text.mm("<#FFB74D>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
+        }
         if (isRange(stack)) {
             lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
         } else {

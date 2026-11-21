@@ -63,8 +63,9 @@ public final class TraderService {
         return Math.round(def.value() * plugin.getConfig().getDouble("trader.buy-multiplier", 1.15));
     }
 
+    /** What the trader pays for {@code record}: nothing for free-kit items themselves. */
     public long sellPrice(ItemRecord record) {
-        return Math.round(plugin.items().value(record) * plugin.getConfig().getDouble("trader.sell-multiplier", 0.55));
+        return Math.round(plugin.items().tradeValue(record) * plugin.getConfig().getDouble("trader.sell-multiplier", 0.55));
     }
 
     /** Buys {@code amount}; the purchase goes to the inventory, overflow to the stash. */
@@ -186,6 +187,8 @@ public final class TraderService {
             }
             ItemStack stack = def.isGun() && parts.length > 2 ? plugin.items().loadedGun(def, parts[2])
                     : plugin.items().create(def, parts.length > 1 ? Integer.parseInt(parts[1]) : 1);
+            // Marked so the kit cannot be turned straight into money at the trader or the market.
+            plugin.items().markKit(stack);
             if (def.isContainer()) {
                 ItemStack equipped = player.getInventory().getItem(net.infnetwork.snowball.craftov.inventory.CarryService.containerSlot(def.category()));
                 if (equipped == null || equipped.isEmpty()) {

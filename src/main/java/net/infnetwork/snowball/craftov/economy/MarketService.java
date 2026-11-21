@@ -182,6 +182,10 @@ public final class MarketService {
             Text.send(player, "<#FF8A80>该物品无法上架。");
             return false;
         }
+        if (record.isKit()) {
+            Text.send(player, "<#FF8A80>免费补给的物品不能上架交易行。");
+            return false;
+        }
         if (record.hasContents()) {
             Text.send(player, "<#FF8A80>请先清空胸挂/背包再上架。");
             return false;

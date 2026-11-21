@@ -244,11 +244,16 @@ public final class LobbyService implements Listener {
     }
 
     public void enterLobby(Player player) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                plugin.tutorial().show(player, plugin.profiles().get(player));
-            }
-        }, 40L);
+        // onDisable sends everybody home from the raids and the range, and by then the plugin
+        // already counts as disabled: scheduling would throw and cut the shutdown short. The
+        // tutorial hint is not needed then anyway.
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    plugin.tutorial().show(player, plugin.profiles().get(player));
+                }
+            }, 40L);
+        }
         plugin.downed().clear(player);
         plugin.weapons().reset(player);
         plugin.hud().onLobby(player);

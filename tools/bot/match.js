@@ -6,6 +6,8 @@
 // Needs a local test server (server/setup.sh --local) with RCON on and, to keep
 // the run short, in plugins/Craftov/config.yml:
 //   match: { wait-seconds: 6, max-squads: 4 }   rank: { min-level: 1 }
+// The bots are not op and most scenarios queue for the proving ground, a test
+// map, so test mode must be on too:  test: { enabled: true }
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the
 // number of failures.
 const fs = require('fs')

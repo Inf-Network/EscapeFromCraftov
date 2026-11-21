@@ -1,7 +1,9 @@
 // Money loopholes (issue #21): free kit, kit gear value, stash overfill, escort contracts,
-// insured backpacks, gear handed between players and the house bounty (see bounty() for its setup).
+// insured backpacks and guns, gear and stacks handed between players, rank points and experience
+// for extracting, self-kills and the house bounty (see bounty() and rank() for their setup).
 //
-//   PORT=25565 RCON_PORT=25575 node loopholes.js [kit|stash|escort|insurance|profit|bounty|all]
+//   PORT=25565 RCON_PORT=25575 node loopholes.js [kit|stash|overfull|escort|escortraid|insurance|
+//                                                 insgun|profit|stacks|selfkill|rank|bounty|all]
 //
 // CRAFTOV_RUN points at the server directory (default ../../server/run) so the script can read
 // player profiles from plugins/Craftov/data/players. Bots use random names, so they start as new
@@ -41,7 +43,10 @@ function flat (n) {
 }
 
 function make (prefix) {
-  const name = prefix + tag
+  return joinAs(prefix + tag)
+}
+
+function joinAs (name) {
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.msgs = []
   bot.worldChanges = 0
@@ -159,6 +164,21 @@ async function depositAll (bot, w) {
     await sleep(350)
   }
 }
+
+/** Slot of the menu item whose components mention who (escort contract lists), or -1. */
+function slotOf (w, who) {
+  for (let s = 0; s < 27; s++) if (json(w.slots[s]).includes(who)) return s
+  return -1
+}
+
+/** Waits for the newest raid report of name, newer than count reports, and returns it. */
+async function nextReport (name, count) {
+  await waitFor(() => { const pr = profile(name); return pr && pr.reports && pr.reports.length > count }, 15000)
+  const pr = profile(name)
+  return pr && pr.reports ? pr.reports[0] : null
+}
+
+const reportCount = name => { const pr = profile(name); return pr && pr.reports ? pr.reports.length : 0 }
 
 // ------------------------------------------------------------------ scenarios
 
@@ -278,7 +298,6 @@ async function escort () {
   }
   await openWith(e, () => e.chat('/cv'))
   let list = await openWith(e, () => e.clickWindow(16, 0, 0))
-  const slotOf = (w, who) => { for (let s = 0; s < 27; s++) if (json(w.slots[s]).includes(who)) return s; return -1 }
   let mark = e.msgs.length
   await e.clickWindow(slotOf(list, c.username), 0, 0)
   check('escort: accepting a contract works', !!await heard(e, /已接取/, mark))
@@ -330,6 +349,31 @@ async function escort () {
   for (const b of [c, c2, e]) b.quit()
 }
 
+/** Stash already over its capacity (older builds): the free kit still comes when it all fits on the player. */
+async function overfull () {
+  const name = 'Over' + tag
+  let o = await joinAs(name)
+  o.quit()
+  await sleep(4000)
+  const file = fs.readdirSync(PLAYERS).map(f => path.join(PLAYERS, f)).find(f => {
+    try { return JSON.parse(fs.readFileSync(f, 'utf8')).name === name } catch (e) { return false }
+  })
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'))
+  data.stashCapacity = 3
+  fs.writeFileSync(file, JSON.stringify(data, null, 2))
+  log(name, 'stash', data.stash.length, 'cells, capacity set to', data.stashCapacity)
+  o = await joinAs(name)
+  await cmd(`clear ${name}`)
+  await sleep(1500)
+  const w = await openWith(o, () => o.chat('/cv'))
+  const mark = o.msgs.length
+  await o.clickWindow(25, 0, 0)
+  const line = await heard(o, /已领取免费补给|仓库空间不足|不能领取|总资产/, mark)
+  check('overfull: with the stash over capacity and nothing to store, the free kit is handed out', /已领取免费补给/.test(line || ''), line)
+  o.closeWindow(w)
+  o.quit()
+}
+
 /** Insured backpack packed with loot and left in a box comes home empty. */
 async function insurance () {
   const p = await make('Ins')
@@ -365,6 +409,45 @@ async function insurance () {
   p.quit()
 }
 
+/** An insured gun reloaded with looted rounds in the raid comes home with only what it was insured with. */
+async function insgun () {
+  const p = await make('InsG')
+  let w = await openWith(p, () => p.chat('/cv deploy'))
+  await p.clickWindow(34, 0, 0) // auto insurance on
+  await sleep(400)
+  p.closeWindow(w)
+  p.setQuickBarSlot(0) // starter k47, full of 7.62 PS
+  const mark = p.msgs.length
+  check('insgun: deployed', await enterRaid([p], () => p.chat('/cv queue proving NORMAL SOLO')))
+  check('insgun: gear insured on deploy', !!await heard(p, /件装备投保/, mark, 2000))
+  await sleep(1500)
+  await cmd(`cv give ${p.username} ammo_762_ap 60`)
+  await sleep(800)
+  p.setQuickBarSlot(0)
+  await sleep(300)
+  // Sneak + Q: reload with the next ammo type (the looted AP rounds).
+  p.setControlState('sneak', true)
+  await sleep(400)
+  p._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+  await sleep(400)
+  p.setControlState('sneak', false)
+  await sleep(4500)
+  p.setQuickBarSlot(1) // switching away writes the magazine onto the stack
+  await sleep(800)
+  const k47 = p.inventory.slots[36]
+  const loaded = (json(k47).match(/"craftov:ammo_type":\{"type":"string","value":"([^"]+)"/) || [])[1]
+  check('insgun: the insured k47 now holds the looted AP rounds', loaded === 'ammo_762_ap', loaded)
+  await cmd(`damage ${p.username} 1000 minecraft:generic`)
+  await waitFor(() => { const pr = profile(p.username); return pr && pr.mailbox && pr.mailbox.some(r => r.id === 'k47') }, 40000)
+  const mail = (profile(p.username) || { mailbox: [] }).mailbox
+  log('InsG', 'mailbox', mail.map(r => `${r.id} ${r.ammo || 0}x${r.ammoType || '-'}`))
+  const gun = mail.find(r => r.id === 'k47')
+  check('insgun: the k47 comes home without the looted rounds', gun && (gun.ammo || 0) === 0 && gun.ammoType === 'ammo_762_ps', gun && `${gun.ammo} x ${gun.ammoType}`)
+  const pistol = mail.find(r => r.id === 'p18')
+  check('insgun: an untouched insured pistol comes home with its own rounds', pistol && pistol.ammo > 0 && pistol.ammoType === 'ammo_9_fmj', pistol && `${pistol.ammo} x ${pistol.ammoType}`)
+  p.quit()
+}
+
 /** A hands his guns to B in a box; B extracts with them and they do not count as B's profit. */
 async function profit () {
   const a = await make('Giver')
@@ -395,6 +478,140 @@ async function profit () {
   check('profit: the taker\'s report shows no profit from them', report && report.extractedValue < 1000, report && report.extractedValue)
   await extract(a)
   a.quit(); b.quit()
+}
+
+/** A hands three stacks of .338 rounds to B in a box; only B's own finds count as B's profit. */
+async function stacks () {
+  const a = await make('Pile')
+  const b = await make('Heap')
+  for (let i = 0; i < 3; i++) await cmd(`cv give ${a.username} ammo_338_fmj 30`)
+  await sleep(800)
+  const ok = await enterRaid([a, b], () => { a.chat('/cv queue proving NORMAL SOLO'); b.chat('/cv queue proving NORMAL SOLO') })
+  log('both', 'in raid', ok)
+  let w = await openArmory(a)
+  if (!w) { check('stacks: armory opened', false); a.quit(); b.quit(); return }
+  const empty = new Set()
+  for (let s = 0; s < w.inventoryStart; s++) if (!w.slots[s]) empty.add(s)
+  for (let n = 0; n < 3; n++) {
+    const i = findCarried(w, it => idOf(it) === 'ammo_338_fmj')
+    if (i >= 0) { await a.clickWindow(bottom(w, i), 0, 0); await sleep(400) }
+  }
+  const handed = [...empty].filter(s => idOf(w.slots[s]) === 'ammo_338_fmj')
+  a.closeWindow(w)
+  log('Pile', 'left .338 in the box at', handed)
+  w = await openArmory(b)
+  for (const s of handed) { await b.clickWindow(s, 0, 0); await sleep(400) }
+  b.closeWindow(w)
+  // B's own finds: 5.56 nobody brought, and 7.62 PS while A still holds all of his.
+  await cmd(`cv give ${b.username} ammo_556_m855 60`)
+  await cmd(`cv give ${b.username} ammo_762_ps 60`)
+  await sleep(800)
+  const before = reportCount(b.username)
+  const mark = b.msgs.length
+  check('stacks: taker extracted', await extract(b))
+  const note = await heard(b, /其他玩家带进本局的装备/, mark, 5000)
+  const value = Number(((note || '').match(/◈([\d,]+)/) || ['', '0'])[1].replace(/,/g, ''))
+  check('stacks: the 90 .338 rounds handed over (◈28,800) are left out of the taker\'s profit', value === 28800, note)
+  const report = await nextReport(b.username, before)
+  check('stacks: the taker\'s own finds still count (60 × ◈32 + 60 × ◈30 = ◈3,720)', report && report.extractedValue === 3720, report && report.extractedValue)
+  await extract(a)
+  a.quit(); b.quit()
+}
+
+/** Escort roster is fixed in the raid: a kicked escort and one who extracted and logged off are both paid. */
+async function escortraid () {
+  const c = await make('Lead')
+  const e1 = await make('EscA')
+  const e2 = await make('EscB')
+  await openWith(c, () => c.chat('/cv'))
+  const posted = await openWith(c, () => c.clickWindow(16, 0, 0))
+  await c.clickWindow(38, 0, 0) // post a ◈20,000 contract
+  await sleep(500)
+  c.closeWindow(posted)
+  for (const e of [e1, e2]) {
+    await openWith(e, () => e.chat('/cv'))
+    const list = await openWith(e, () => e.clickWindow(16, 0, 0))
+    const mark = e.msgs.length
+    await e.clickWindow(slotOf(list, c.username), 0, 0)
+    check(`escortraid: ${e.username} accepts`, !!await heard(e, /已接取/, mark))
+    e.closeWindow(list)
+  }
+  const cBefore = await money(c.username)
+  const e1Before = await money(e1.username)
+  check('escortraid: squad deployed', await enterRaid([c, e1, e2], () => c.chat('/cv queue proving NORMAL TRIO')))
+  c.chat(`/cv party kick ${e1.username}`)
+  await sleep(1500)
+  check('escortraid: escort B extracted first', await extract(e2))
+  await sleep(1500)
+  e2.quit()
+  await sleep(3000)
+  check('escortraid: client extracted', await extract(c))
+  await sleep(2500)
+  const e1Paid = (await money(e1.username)) - e1Before
+  // B's balance also moved with his own extraction (level-up and task rewards): read the escort income.
+  const e2Paid = (((profile(e2.username) || {}).stats || {}).escort_income || 0)
+  const cAfter = await money(c.username)
+  check('escortraid: the escort kicked in the raid is still paid', e1Paid === 10000, e1Paid)
+  check('escortraid: the escort who extracted and logged off is still paid', e2Paid === 10000, e2Paid)
+  check('escortraid: the client gets nothing back', cAfter === cBefore, `${cBefore} -> ${cAfter}`)
+  await extract(e1)
+  c.quit(); e1.quit()
+}
+
+/** Your own grenade is no kill: no kill action bar (and so no task or bounty credit) for the thrower. */
+async function selfkill () {
+  const s = await make('Nade')
+  check('selfkill: deployed', await enterRaid([s], () => s.chat('/cv queue proving NORMAL SOLO')))
+  await sleep(2000)
+  await cmd(`cv give ${s.username} frag 2`)
+  await sleep(800)
+  let hot = -1
+  for (let i = 36; i <= 44; i++) if (idOf(s.inventory.slots[i]) === 'frag') hot = i - 36
+  check('selfkill: frag in the hotbar', hot >= 0, hot)
+  s.setQuickBarSlot(Math.max(0, hot))
+  await s.look(0, -Math.PI / 2, true)
+  const mark = s.msgs.length
+  const dead = s.worldChanges
+  for (let n = 0; n < 2 && !s.msgs.slice(mark).some(m => /行动失败|结果/.test(m)); n++) {
+    s.activateItem()
+    await sleep(250)
+    s.deactivateItem()
+    await sleep(6000)
+  }
+  const died = s.msgs.slice(mark).some(m => /行动失败|结果|破片手雷/.test(m)) || s.worldChanges > dead
+  check('selfkill: the thrower died to his own grenade', died, s.msgs.slice(mark).filter(m => /结果|破片/.test(m)))
+  check('selfkill: no kill credited for it', !s.msgs.slice(mark).some(m => /✖ 击杀/.test(m)))
+  await sleep(12000)
+  s.quit()
+}
+
+/**
+ * Rank points and experience for extracting: none for a naked run, a loss capped at 20 (halved
+ * below 1,100 points). Ranked raids need level 3, so set rank.min-level to 0 in the server's
+ * plugins/Craftov/config.yml first; not part of "all".
+ */
+async function rank () {
+  const r = await make('Rank')
+  await cmd(`clear ${r.username}`)
+  await sleep(1000)
+  let before = reportCount(r.username)
+  check('rank: naked ranked raid', await enterRaid([r], () => r.chat('/cv queue proving NORMAL SOLO true')))
+  await extract(r)
+  let report = await nextReport(r.username, before)
+  check('rank: a naked extraction scores no rank points', report && report.rankDelta === 0, report && report.rankDelta)
+  check('rank: and no flat extraction experience', report && report.xp === 0, report && report.xp)
+  await sleep(2000)
+  await cmd(`cv give ${r.username} armor_6`)
+  await sleep(800)
+  before = reportCount(r.username)
+  check('rank: ranked raid with ◈280,000 of armour', await enterRaid([r], () => r.chat('/cv queue proving NORMAL SOLO true')))
+  await cmd(`clear ${r.username}`)
+  await sleep(1000)
+  await extract(r)
+  report = await nextReport(r.username, before)
+  check('rank: walking out with ◈280,000 less costs 20 points, halved below 1,100 (old: 30, halved)', report && report.rankDelta === -10, report && report.rankDelta)
+  check('rank: with gear brought in the flat 150 experience is paid', report && report.xp === 150, report && report.xp)
+  r.quit()
 }
 
 /**
@@ -463,11 +680,11 @@ async function bounty () {
   champ.quit(); hunter.quit()
 }
 
-const scenarios = { kit, stash, escort, insurance, profit, bounty }
+const scenarios = { kit, stash, overfull, escort, escortraid, insurance, insgun, profit, stacks, selfkill, rank, bounty }
 
 ;(async () => {
   const which = process.argv[2] || 'all'
-  const run = which === 'all' ? Object.keys(scenarios).filter(s => s !== 'bounty') : which.split(',')
+  const run = which === 'all' ? Object.keys(scenarios).filter(s => s !== 'bounty' && s !== 'rank') : which.split(',')
   for (const name of run) {
     log('====', name)
     try {

@@ -78,13 +78,31 @@ public final class EscortService {
         return null;
     }
 
+    /**
+     * Called on deploy: the contract this player's raid counts for, if it has escorts. Only the
+     * client heading out locks it (no cancelling, no new contract): an escort deploying on their
+     * own must not leave the client stuck until the client has played a raid themselves.
+     */
     public @Nullable String contractFor(UUID uuid) {
         Contract c = involving(uuid);
-        if (c != null && c.state != State.OPEN) {
-            c.state = State.IN_RAID;
-            return c.id;
+        if (c == null || c.state == State.OPEN) {
+            return null;
         }
-        return null;
+        if (c.client.equals(uuid)) {
+            c.state = State.IN_RAID;
+        }
+        return c.id;
+    }
+
+    /**
+     * The client's raid was voided without an outcome (they ended up outside the raid world): the
+     * contract stands as before the deploy, so it can be played again or cancelled.
+     */
+    public void voided(RaidPlayer rp) {
+        Contract c = rp.escortContract == null ? null : contracts.get(rp.escortContract);
+        if (c != null && c.client.equals(rp.uuid) && c.state == State.IN_RAID) {
+            c.state = c.escorts.isEmpty() ? State.OPEN : State.ACCEPTED;
+        }
     }
 
     public void create(Player client, long reward, String note) {

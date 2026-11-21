@@ -1092,6 +1092,7 @@ public final class RaidManager implements Listener {
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;
+        plugin.escorts().voided(rp);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
         plugin.lobby().enterLobbyKeepInventory(player);

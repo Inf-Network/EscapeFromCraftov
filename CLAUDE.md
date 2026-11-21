@@ -6,7 +6,7 @@ Craftov：Paper 1.21.11 上的搜打撤（extraction shooter）插件，玩法�
 
 ## 开发进度
 
-分支 `craftov`（推到 `origin/craftov`，`main` 是旧版本）。这是对原先无法游玩的插件的完全重写，包名 `net.infnetwork.snowball.craftov`。
+主分支 `main`（推到 `origin/main`）。旧版本保存在 `old` 分支；`craftov` 分支已并入 `main`，不再使用。这是对原先无法游玩的插件的完全重写，包名 `net.infnetwork.snowball.craftov`。
 
 ### 已完成并推送
 
@@ -53,7 +53,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 
 ## 提交规范
 
-- **每做完一个小模块就提交并 `git push origin craftov`**，不用等用户要求。一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
+- **每做完一个小模块就提交并 `git push origin main`**，不用等用户要求。一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
 - **提交信息和 PR 里不加任何 Co-Authored-By / AI 署名**（用户明确要求过，优先于默认的署名设置）。
 - 格式：英文 Conventional Commits 前缀（`feat:` / `fix:` / `tune:` / `docs:` / `refactor:` / `chore:`），主题行小写、描述玩家能感知到的行为（例如 `feat: bounties on players`、`fix: no flash on an empty gun, and a tactical light you can see`）。正文用几句完整的英文解释做了什么、数值是多少，约 75 列换行。
 - 新功能要同步更新 `README.md`（中文，玩法表 / 操作 / 指令 / 配置），可以和功能放在同一个提交里。

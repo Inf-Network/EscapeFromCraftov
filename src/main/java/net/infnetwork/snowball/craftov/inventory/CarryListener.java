@@ -130,67 +130,85 @@ public final class CarryListener implements Listener {
         return carry.isMelee(current) || carry.isMelee(cursor);
     }
 
+    /**
+     * Rig and backpack slots. The click is already cancelled, so vanilla never moves these stacks;
+     * this resolves it at once against the cursor and slot as they are right now. It used to run a
+     * tick later on stacks read at click time, so two clicks the server handled in the same tick
+     * (lag, or a macro) both acted on the same stale stack and duplicated or deleted the container.
+     */
     private void handleContainerSlot(Player player, int slot, InventoryClickEvent event) {
-        PlayerInventory inv = player.getInventory();
         ItemStack cursor = player.getItemOnCursor();
-        ItemStack equipped = inv.getItem(slot);
-        boolean shift = event.isShiftClick();
-        boolean drop = event.getClick() == ClickType.DROP || event.getClick() == ClickType.CONTROL_DROP;
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (!player.isOnline()) {
-                return;
-            }
-            if (drop && cursor.isEmpty()) {
-                // Q on the equipped rig/backpack drops it with everything still packed inside.
-                ItemStack removed = carry.unequip(player, slot);
-                if (removed != null) {
-                    player.getWorld().dropItem(player.getEyeLocation().subtract(0, 0.3, 0), removed,
-                            item -> item.setVelocity(player.getLocation().getDirection().multiply(0.3)));
-                    player.updateInventory();
-                }
-                return;
-            }
-            if (cursor.isEmpty()) {
-                if (equipped == null || equipped.isEmpty()) {
-                    return;
-                }
-                if (shift) {
-                    boolean emptyCells = true;
-                    int start = slot == CarryService.LEGS ? CarryService.RIG_START : CarryService.PACK_START;
-                    int cap = slot == CarryService.LEGS ? carry.rigCapacity(player) : carry.backpackCapacity(player);
-                    for (int i = 0; i < cap; i++) {
-                        ItemStack cell = inv.getItem(start + i);
-                        if (cell != null && !cell.isEmpty() && !ItemFactory.isUi(cell)) {
-                            emptyCells = false;
-                            break;
-                        }
-                    }
-                    if (!emptyCells) {
-                        Text.send(player, "<#FF8A80>里面还有物品，请用鼠标直接拿起再放进箱子或丢弃。");
-                        return;
-                    }
+        ItemStack equipped = player.getInventory().getItem(slot);
+        boolean holding = !cursor.isEmpty();
+        boolean worn = equipped != null && !equipped.isEmpty();
+        switch (event.getClick()) {
+            // Two quick clicks reach the server as a click and a double click; both pick up or put on.
+            case LEFT, RIGHT, DOUBLE_CLICK -> {
+                if (holding) {
+                    wearFromCursor(player, slot, cursor.clone(), worn);
+                } else if (worn) {
                     ItemStack removed = carry.unequip(player, slot);
                     if (removed != null) {
-                        ItemStack left = carry.give(player, removed, false);
-                        if (left != null) {
-                            carry.equip(player, left);
-                        }
+                        player.setItemOnCursor(removed);
                     }
-                } else {
-                    ItemStack removed = carry.unequip(player, slot);
-                    player.setItemOnCursor(removed);
                 }
-            } else {
-                ItemDef def = items.defOf(cursor);
-                if (def == null || !def.isContainer() || CarryService.containerSlot(def.category()) != slot) {
-                    return;
-                }
-                ItemStack old = (equipped == null || equipped.isEmpty()) ? null : carry.unequip(player, slot);
-                player.setItemOnCursor(old);
-                carry.equip(player, cursor);
             }
-            player.updateInventory();
-        });
+            case SHIFT_LEFT, SHIFT_RIGHT -> {
+                if (!holding && worn) {
+                    shiftUnequip(player, slot);
+                }
+            }
+            case DROP, CONTROL_DROP -> {
+                if (!holding && worn) {
+                    dropWorn(player, slot);
+                }
+            }
+            default -> {
+                // Middle clicks and the like have nothing to do on these slots.
+            }
+        }
+        player.updateInventory();
+    }
+
+    /** Puts the container on the cursor on; whatever was worn there goes onto the cursor. */
+    private void wearFromCursor(Player player, int slot, ItemStack moving, boolean worn) {
+        ItemDef def = items.defOf(moving);
+        if (def == null || !def.isContainer() || CarryService.containerSlot(def.category()) != slot) {
+            return;
+        }
+        ItemStack old = worn ? carry.unequip(player, slot) : null;
+        player.setItemOnCursor(old);
+        carry.equip(player, moving);
+    }
+
+    /** Shift-click takes off an empty rig or backpack into a free carry cell. */
+    private void shiftUnequip(Player player, int slot) {
+        PlayerInventory inv = player.getInventory();
+        int start = slot == CarryService.LEGS ? CarryService.RIG_START : CarryService.PACK_START;
+        int cap = slot == CarryService.LEGS ? carry.rigCapacity(player) : carry.backpackCapacity(player);
+        for (int i = 0; i < cap; i++) {
+            ItemStack cell = inv.getItem(start + i);
+            if (cell != null && !cell.isEmpty() && !ItemFactory.isUi(cell)) {
+                Text.send(player, "<#FF8A80>里面还有物品，请用鼠标直接拿起再放进箱子或丢弃。");
+                return;
+            }
+        }
+        ItemStack removed = carry.unequip(player, slot);
+        if (removed != null) {
+            ItemStack left = carry.give(player, removed, false);
+            if (left != null) {
+                carry.equip(player, left);
+            }
+        }
+    }
+
+    /** Q on the worn rig or backpack drops it with everything still packed inside. */
+    private void dropWorn(Player player, int slot) {
+        ItemStack removed = carry.unequip(player, slot);
+        if (removed != null) {
+            player.getWorld().dropItem(player.getEyeLocation().subtract(0, 0.3, 0), removed,
+                    item -> item.setVelocity(player.getLocation().getDirection().multiply(0.3)));
+        }
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)

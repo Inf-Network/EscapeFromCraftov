@@ -136,7 +136,7 @@ public final class TaskService {
     private List<MapDef> raidMaps() {
         List<MapDef> maps = new ArrayList<>();
         for (MapDef map : plugin.maps().all()) {
-            if (!map.spawns().isEmpty()) {
+            if (!map.spawns().isEmpty() && !map.test()) {
                 maps.add(map);
             }
         }

@@ -9,6 +9,7 @@ import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,8 +17,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Deploy screen: map, difficulty, solo or squad, ranked, fill and insurance, then queue. Test maps are
+ * listed only for players who may enter them, and are never picked for anyone else, not even from the
+ * choice remembered from their last deploy.
+ */
 final class DeployMenu extends Menu {
 
+    /** Last choice per player (map, tier, mode, ranked), until the server restarts. */
     private static final Map<UUID, String[]> LAST = new HashMap<>();
 
     private final CraftovPlugin plugin;
@@ -31,27 +38,60 @@ final class DeployMenu extends Menu {
         super(viewer, 5, Text.mm("<#F2E6C8>部署行动"));
         this.plugin = plugin;
         String[] last = LAST.get(viewer.getUniqueId());
-        List<MapDef> maps = new ArrayList<>(plugin.maps().all());
-        this.map = last != null ? last[0] : maps.isEmpty() ? "" : maps.get(0).id();
-        this.tier = last != null ? last[1] : plugin.tiers().keySet().iterator().next();
+        this.map = validMap(last != null ? last[0] : null);
+        this.tier = last != null && plugin.tier(last[1]) != null ? last[1] : plugin.tiers().keySet().iterator().next();
         Party party = plugin.match().partyOf(viewer.getUniqueId());
         this.mode = party != null && party.size() > 1 ? RaidMode.TRIO : last != null ? RaidMode.valueOf(last[2]) : RaidMode.TRIO;
         this.ranked = last != null && Boolean.parseBoolean(last[3]);
     }
 
+    /** Maps this player may queue for, in registry order. */
+    private List<MapDef> playable() {
+        List<MapDef> out = new ArrayList<>();
+        for (MapDef def : plugin.maps().all()) {
+            if (plugin.canPlay(viewer, def)) {
+                out.add(def);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The wanted map if this player may still queue for it (test access can be lost, a map can be
+     * deleted), otherwise the first playable map that is not a test map, then any playable map.
+     */
+    private String validMap(@Nullable String wanted) {
+        List<MapDef> maps = playable();
+        for (MapDef def : maps) {
+            if (def.id().equals(wanted)) {
+                return def.id();
+            }
+        }
+        for (MapDef def : maps) {
+            if (!def.test()) {
+                return def.id();
+            }
+        }
+        return maps.isEmpty() ? "" : maps.get(0).id();
+    }
+
     @Override
     protected void draw() {
         long value = plugin.carry().carriedValue(viewer);
+        map = validMap(map);
         int slot = 10;
-        for (MapDef def : plugin.maps().all()) {
+        for (MapDef def : playable()) {
             boolean selected = def.id().equals(map);
             int waiting = plugin.match().queuedCount(def.id(), tier);
-            button(slot++, UiItems.button("craftov:ui/icon_map", (selected ? "<#F2C94C>▶ " : "<white>") + "<b>" + Text.escape(def.name()),
-                    List.of("<#9AA0A6>" + Text.escape(def.description()), "<#8A8F98>时长 " + def.raidSeconds() / 60 + " 分钟 · 撤离点 "
-                            + def.extracts().size() + " · 物资点 " + def.containers().size(),
-                            "<#8A8F98>每局最多 " + plugin.match().capacity(def) + " 支小队"
-                                    + (waiting > 0 ? " · <#F2C94C>当前难度匹配中 " + waiting + " 人" : ""),
-                            selected ? "<#5BD16B>已选择" : "<#8A8F98>点击选择")),
+            List<String> mapLore = new ArrayList<>(List.of("<#9AA0A6>" + Text.escape(def.description()),
+                    "<#8A8F98>时长 " + def.raidSeconds() / 60 + " 分钟 · 撤离点 " + def.extracts().size() + " · 物资点 " + def.containers().size(),
+                    "<#8A8F98>每局最多 " + plugin.match().capacity(def) + " 支小队"
+                            + (waiting > 0 ? " · <#F2C94C>当前难度匹配中 " + waiting + " 人" : "")));
+            if (def.test()) {
+                mapLore.add("<#FFB74D>测试图 · 只对测试模式和管理员开放");
+            }
+            mapLore.add(selected ? "<#5BD16B>已选择" : "<#8A8F98>点击选择");
+            button(slot++, UiItems.button("craftov:ui/icon_map", (selected ? "<#F2C94C>▶ " : "<white>") + "<b>" + Text.escape(def.name()), mapLore),
                     e -> {
                         map = def.id();
                         redraw();

@@ -202,5 +202,6 @@ search:
 
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item
-  # for free, top up money and reset health. Admins (craftov.admin) can always use it. Keep off on live servers.
+  # for free, top up money and reset health, and can see and queue for test maps (the proving ground).
+  # Admins (craftov.admin) can always do both. Keep off on live servers.
   enabled: false

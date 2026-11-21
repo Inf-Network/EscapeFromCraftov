@@ -250,6 +250,12 @@ public final class MatchService {
                 Text.send(player, "<#FF8A80>小队成员 " + Text.escape(member.getName()) + " 不在大厅。");
                 return false;
             }
+            // Every member, not just the leader: an admin leader must not take ordinary players in.
+            if (!plugin.canPlay(member, map)) {
+                Text.send(player, "<#FF8A80>" + Text.escape(map.name()) + "只在测试模式开放"
+                        + (member == player ? "。" : "，小队成员 " + Text.escape(member.getName()) + " 不能进入。"));
+                return false;
+            }
             plugin.lobby().captureLoadout(member);
             long value = plugin.carry().carriedValue(member);
             if (value < tier.minValue()) {
@@ -430,10 +436,10 @@ public final class MatchService {
             for (QueueEntry entry : squad.entries()) {
                 queue.remove(entry);
                 List<Player> online = onlineIdle(entry.members());
-                // The queue-time checks again: gear can be stashed and money spent while waiting.
+                // The queue-time checks again: gear can be stashed, money spent and test mode closed while waiting.
                 String problem = null;
                 for (Player p : online) {
-                    String why = unfit(p, tier);
+                    String why = unfit(p, map, tier);
                     if (why != null) {
                         problem = Text.escape(p.getName()) + " " + why;
                         break;
@@ -460,9 +466,13 @@ public final class MatchService {
     }
 
     /** Why this player may not deploy now, or null. */
-    private @Nullable String unfit(Player player, Tier tier) {
+    private @Nullable String unfit(Player player, MapDef map, Tier tier) {
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return "不在大厅";
+        }
+        if (!plugin.canPlay(player, map)) {
+            // Test mode switched off (or admin rights taken away) while waiting.
+            return "不能进入" + map.name() + "（只在测试模式开放）";
         }
         long value = plugin.carry().carriedValue(player);
         if (value < tier.minValue()) {

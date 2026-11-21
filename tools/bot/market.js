@@ -4,11 +4,14 @@
 //     price never moves and the trader -> market round trip loses money;
 //  3. a scoped and suppressed M4C sold to a system buyer leaves the bare M4C's trade price alone and
 //     enters the price history per plain gun;
-//  4. player to player with two bots on one address: level 1 is refused. With SERVER_DIR set, the
-//     script also switches market.min-buy-level / block-same-ip / daily-player-income-cap in
-//     SERVER_DIR/plugins/Craftov/config.yml (restored at the end, then /cv reload) to check the
-//     same-address and daily-cap refusals, that a kitted M4C bought by a player keeps the bare M4C's
-//     trade price where it was, and that a sale at 3x the reference price is ignored.
+//  4. player to player with two bots on one address: a level-1 buyer is refused. With SERVER_DIR set,
+//     the buyer is raised to level 3 in its profile file (it leaves and rejoins) to check that a
+//     level-1 seller is refused too, and the script switches market.min-buy-level / block-same-ip /
+//     daily-player-income-cap / virtual-hourly-cap in SERVER_DIR/plugins/Craftov/config.yml
+//     (restored at the end, then /cv reload) to check the same-address refusal, the daily cap on both
+//     sides (seller income, buyer bargain), that the hourly system-buyer quota is per seller, that a
+//     kitted M4C bought by a player keeps the bare M4C's trade price where it was, and that a sale at
+//     3x the reference price is ignored.
 //
 // node market.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(unset)
 //                         SALES=20 WAIT_MIN=25 LOG=/tmp/market.log
@@ -74,8 +77,7 @@ function find (w, id, from, to, pred, last = false) {
 
 // ------------------------------------------------------------------ bots
 
-function spawnBot (prefix) {
-  const name = prefix + (Date.now() % 100000)
+function spawnBot (prefix, name = prefix + (Date.now() % 100000)) {
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
@@ -214,6 +216,7 @@ async function main () {
   let pm = await priceMenu(S, 'armor_4', { deposit: true })
   check('vest reference price is value x 0.85', line(pm, '参考价').startsWith('参考价 ◈51,000'), line(pm, '参考价'))
   check('vest highest price shown', info(pm).includes('最高售价 ◈153,000'), info(pm).join(' | '))
+  check('pricing screen tells a level-1 seller only system buyers buy', info(pm).includes('账号等级 3 前只有系统买家会收购'), info(pm).join(' | '))
   await click(S, 23)
   check('x1.2 asks 61,200 and is hard to sell', priceOf(pm) === 61200 && line(pm, '预计').includes('较难售出'), line(pm, '预计'))
   for (let i = 0; i < 15; i++) await click(S, 16, 200)
@@ -302,17 +305,37 @@ async function main () {
   S.closeWindow(pm)
   await sleep(300)
 
-  // 4. Player to player, same address.
-  const B = await spawnBot('MkB')
+  // 4. Player to player, same address. The splint is listed at 1.2x so system buyers leave it alone.
+  let B = await spawnBot('MkB')
   pm = await priceMenu(S, 'splint')
+  await click(S, 23)
+  let from = S.chatLog.length
   await confirm(S)
+  const note = await waitChat(S, /只有系统买家会收购/, 3000, from)
+  check('a level-1 seller is told only system buyers will buy', !!note, note || S.chatLog.slice(from).join(' | '))
   let r = await tryBuy(B, 'splint')
   check('market list tells a level-1 buyer about the level', r.lines.some(l => l.includes('需要账号等级 3')), r.lines.slice(-2).join(' | '))
   check('level-1 buyer is refused', r.chat.some(m => m.includes('需要账号等级 3')), r.chat.join(' | '))
   if (!cfgPath) {
-    log('SERVER_DIR not set: skipping the same-address, daily-cap and player-trade-price checks')
+    log('SERVER_DIR not set: skipping the seller-level, same-address, daily-cap, quota and player-trade-price checks')
   } else {
     try {
+      // The buyer reaches level 3 (profile edited while it is offline); the seller is still level 1.
+      const bName = B.username
+      B.quit()
+      await sleep(2000)
+      const dir = path.join(SERVER_DIR, 'plugins/Craftov/data/players')
+      const file = fs.readdirSync(dir).map(f => path.join(dir, f)).filter(f => f.endsWith('.json'))
+        .find(f => JSON.parse(fs.readFileSync(f, 'utf8')).name === bName)
+      const profile = JSON.parse(fs.readFileSync(file, 'utf8'))
+      profile.level = 3
+      fs.writeFileSync(file, JSON.stringify(profile, null, 2))
+      B = await spawnBot('MkB', bName)
+      r = await tryBuy(B, 'splint')
+      check('market list tells a level-3 buyer the level-1 seller cannot sell to players', r.lines.some(l => l.includes('卖家账号等级不足 3')),
+        r.lines.slice(-2).join(' | '))
+      check('level-3 buyer cannot buy from a level-1 seller', r.chat.some(m => m.includes('卖家账号等级不足 3')), r.chat.join(' | '))
+
       await setMarket({ 'min-buy-level': 1, 'block-same-ip': true, 'daily-player-income-cap': 0 })
       r = await tryBuy(B, 'splint')
       check('same-address buyer is refused', r.chat.some(m => m.includes('同一网络地址')), r.chat.join(' | '))
@@ -324,8 +347,33 @@ async function main () {
       await confirm(S)
       r = await tryBuy(B, 'armor_4')
       check('purchase past the seller\'s daily income cap is refused', r.chat.some(m => m.includes('收入已达上限')), r.chat.join(' | '))
+      // A vest at 0.9x hands the buyer 5,100 below the reference price: past a 5,000 cap.
+      await rcon(`cv give ${name} armor_4`)
+      await sleep(300)
+      pm = await priceMenu(S, 'armor_4', { deposit: true })
+      await click(S, 21)
+      await confirm(S)
+      r = await tryBuy(B, 'armor_4')
+      check('purchase handing the buyer more than its daily cap below the reference is refused',
+        r.chat.some(m => m.includes('比参考价低 ◈5,100') && m.includes('收益已达上限')), r.chat.join(' | '))
       await setMarket({ 'daily-player-income-cap': 0 })
       await cancelAll(S)
+
+      // The hourly system-buyer quota is per seller: the seller sold SALES vests this hour, the buyer none.
+      await setMarket({ 'virtual-hourly-cap': SALES })
+      await rcon(`cv give ${name} armor_4`)
+      await sleep(300)
+      pm = await priceMenu(S, 'armor_4', { deposit: true })
+      check('seller who sold SALES vests this hour sees the quota reached', line(pm, '预计').includes('本小时系统买家已收满'), line(pm, '预计'))
+      S.closeWindow(pm)
+      await sleep(300)
+      await rcon(`cv give ${bName} armor_4`)
+      await sleep(300)
+      pm = await priceMenu(B, 'armor_4', { deposit: true })
+      check('another seller of the same item is not held back by that quota', !line(pm, '预计').includes('本小时系统买家已收满'), line(pm, '预计'))
+      B.closeWindow(pm)
+      await sleep(300)
+      await setMarket({ 'virtual-hourly-cap': 40 })
 
       // A kitted M4C bought by a player at its reference price: the bare M4C's trade price stays.
       await rcon(`cv give ${name} m4c`)
@@ -336,7 +384,7 @@ async function main () {
       pm = await priceMenu(S, 'm4c', { deposit: true })
       await click(S, 22)
       const kitPrice = priceOf(pm)
-      let from = S.chatLog.length
+      from = S.chatLog.length
       await confirm(S)
       r = await tryBuy(B, 'm4c')
       const bought = await waitChat(S, /M4C 卡宾枪 ×1 已被 MkB/, 5000, from)

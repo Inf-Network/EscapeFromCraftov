@@ -152,7 +152,11 @@ final class PresetMenu extends Menu {
         plugin.profiles().markDirty(viewer.getUniqueId());
         Text.send(viewer, "<#5BD16B>已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
         if (!missing.isEmpty()) {
-            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足或缺少胸挂/背包）：" + Text.escape(String.join("、", missing)));
+            Map<String, Integer> counted = new java.util.LinkedHashMap<>();
+            missing.forEach(item -> counted.merge(item, 1, Integer::sum));
+            List<String> lines = new ArrayList<>();
+            counted.forEach((item, n) -> lines.add(n > 1 ? item + " ×" + n : item));
+            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足或缺少胸挂/背包）：" + Text.escape(String.join("、", lines)));
         }
     }
 

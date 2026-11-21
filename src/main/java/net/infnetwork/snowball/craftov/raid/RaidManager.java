@@ -1100,40 +1100,56 @@ public final class RaidManager implements Listener {
         Text.send(player, "<#FFC23D>" + message);
     }
 
-    /** Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). */
+    /**
+     * Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). Each
+     * player and each raid is handled on its own, so one failure cannot leave the others in a
+     * raid that no longer exists.
+     */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
             for (RaidPlayer rp : raid.players.values()) {
-                Player player = Bukkit.getPlayer(rp.uuid);
-                if (rp.active() && player != null) {
-                    plugin.weapons().reset(player);
-                    plugin.downed().clear(player);
-                    Profile profile = plugin.profiles().get(player);
-                    profile.secure = new ArrayList<>(rp.secure);
-                    profile.activeRaid = null;
-                    plugin.lobby().enterLobbyKeepInventory(player);
-                    plugin.lobby().captureLoadout(player);
-                    Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
-                } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
-                    plugin.profiles().edit(rp.uuid, profile -> {
-                        profile.loadout = new HashMap<>(inv);
-                        profile.secure = new ArrayList<>(rp.secure);
-                        profile.activeRaid = null;
-                    });
+                try {
+                    sendHome(rp);
+                } catch (RuntimeException ex) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not send " + rp.name + " home from raid " + raid.id, ex);
                 }
             }
-            raid.state = Raid.State.CLOSED;
-            plugin.ai().clear(raid);
-            for (LootContainer container : raid.containers.values()) {
-                container.remove();
+            try {
+                raid.state = Raid.State.CLOSED;
+                plugin.ai().clear(raid);
+                for (LootContainer container : raid.containers.values()) {
+                    container.remove();
+                }
+                plugin.match().disposeTeams(raid);
+                plugin.worlds().disposeRaidWorld(raid.world);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not close raid " + raid.id, ex);
             }
-            plugin.match().disposeTeams(raid);
-            plugin.worlds().disposeRaidWorld(raid.world);
         }
         raids.clear();
         byPlayer.clear();
         byWorld.clear();
+    }
+
+    private void sendHome(RaidPlayer rp) {
+        Player player = Bukkit.getPlayer(rp.uuid);
+        if (rp.active() && player != null) {
+            plugin.weapons().reset(player);
+            plugin.downed().clear(player);
+            Profile profile = plugin.profiles().get(player);
+            profile.secure = new ArrayList<>(rp.secure);
+            profile.activeRaid = null;
+            plugin.lobby().enterLobbyKeepInventory(player);
+            plugin.lobby().captureLoadout(player);
+            Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
+        } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
+            Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
+            plugin.profiles().edit(rp.uuid, profile -> {
+                profile.loadout = new HashMap<>(inv);
+                profile.secure = new ArrayList<>(rp.secure);
+                profile.activeRaid = null;
+            });
+        }
     }
 
     /** Rejoin after a disconnect. Returns true if the player was put back into their raid. */

@@ -163,6 +163,12 @@ public final class WorldService {
             plugin.getLogger().warning("Could not unload raid world " + name + "; it will be removed on next start");
             return;
         }
+        if (!plugin.isEnabled()) {
+            // Shutdown: a disabled plugin cannot schedule tasks (the scheduler throws, which used
+            // to stop closing the remaining raids), so the copy goes right away.
+            deleteQuietly(folder.toPath());
+            return;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder.toPath()));
     }
 

@@ -193,13 +193,15 @@ final class PresetMenu extends Menu {
             if (!record.id.equals(def.id()) || record.hasContents()) {
                 continue;
             }
-            if (record.amount <= want) {
+            // Never more than one stack: the rest of a record above the stack size stays in the stash.
+            int take = Math.min(Math.min(want, def.maxStack()), record.amount);
+            if (take >= record.amount) {
                 p.stash.remove(i);
                 return plugin.items().fromRecord(record);
             }
             ItemRecord part = record.copy();
-            part.amount = want;
-            record.amount -= want;
+            part.amount = take;
+            record.amount -= take;
             return plugin.items().fromRecord(part);
         }
         return null;

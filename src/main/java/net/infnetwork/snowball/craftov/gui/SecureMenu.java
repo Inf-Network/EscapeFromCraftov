@@ -73,14 +73,16 @@ final class SecureMenu extends Menu {
             return;
         }
         ItemStack left = plugin.carry().give(viewer, stack, false);
-        if (left != null && left.getAmount() == stack.getAmount()) {
+        int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
+        if (moved <= 0) {
             viewer.sendActionBar(Text.mm("<#FF8A80>携行空间不足"));
             return;
         }
-        if (left == null) {
+        // Only what was handed over leaves the record (one above the stack size builds a single stack).
+        ItemRecord record = items.get(index);
+        record.amount -= moved;
+        if (record.amount <= 0) {
             items.remove(index);
-        } else {
-            items.get(index).amount = left.getAmount();
         }
         changed();
     }

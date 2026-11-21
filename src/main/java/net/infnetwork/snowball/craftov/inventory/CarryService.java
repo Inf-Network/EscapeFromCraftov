@@ -153,7 +153,8 @@ public final class CarryService {
 
     /**
      * Adds an item to free usable slots, stacking first. Returns the part that did not fit; when
-     * {@code dropOverflow} is set that remainder is dropped at the player's feet instead.
+     * {@code dropOverflow} is set that remainder is {@link #stow stowed} instead (dropped in a raid,
+     * mailed anywhere else).
      */
     public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow) {
         ItemStack remaining = stack.clone();
@@ -191,10 +192,51 @@ public final class CarryService {
             }
         }
         if (dropOverflow) {
-            player.getWorld().dropItemNaturally(player.getLocation(), remaining);
+            stow(player, remaining);
             return null;
         }
         return remaining;
+    }
+
+    /**
+     * Somewhere for a stack the player cannot carry: at their feet inside a raid, where it can be
+     * picked up again; in the stash mailbox anywhere else, since nothing on the ground can be picked
+     * up outside a raid.
+     */
+    public void stow(Player player, @Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        if (CraftovPlugin.get().raids().isRaidWorld(player.getWorld())) {
+            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+        } else {
+            mail(player, stack);
+        }
+    }
+
+    /**
+     * Puts the item held on the cursor (inventory screen open) back into the carry cells; a packed
+     * rig or backpack is worn again if its slot is free. The cursor is empty afterwards. Returns what
+     * did not fit, or null.
+     */
+    public @Nullable ItemStack reclaimCursor(Player player) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (cursor.isEmpty()) {
+            return null;
+        }
+        player.setItemOnCursor(null);
+        if (ItemFactory.isUi(cursor)) {
+            return null;
+        }
+        ItemDef def = items.defOf(cursor);
+        if (def != null && def.isContainer() && ItemFactory.hasContents(cursor)) {
+            ItemStack worn = player.getInventory().getItem(containerSlot(def.category()));
+            if (worn == null || worn.isEmpty()) {
+                equip(player, cursor);
+                return null;
+            }
+        }
+        return give(player, cursor, false);
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {
@@ -218,7 +260,7 @@ public final class CarryService {
         return false;
     }
 
-    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or dropped. */
+    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or stowed. */
     public void enforceContainers(Player player) {
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot < FEET; slot++) {
@@ -235,7 +277,7 @@ public final class CarryService {
                     continue;
                 }
             }
-            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+            stow(player, stack);
         }
     }
 
@@ -382,6 +424,19 @@ public final class CarryService {
         Text.send(player, def == null
                 ? "<#FFC23D>物品表里暂时没有 <white>" + Text.escape(record.id) + amount + "</white>，已存入仓库邮箱，恢复后可以从仓库取回。"
                 : "<#FFC23D>" + def.coloredName() + "<#FFC23D>" + amount + " 放不下，已存入仓库邮箱。");
+    }
+
+    /** {@link #mail(Player, ItemRecord) Mails} a stack; range loaners and foreign stacks have no record and are dropped. */
+    public void mail(Player player, @Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
+            return;
+        }
+        ItemRecord record = items.toRecord(stack);
+        if (record == null) {
+            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+            return;
+        }
+        mail(player, record);
     }
 
     public long carriedValue(Player player) {

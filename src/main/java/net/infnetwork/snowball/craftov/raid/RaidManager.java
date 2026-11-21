@@ -655,6 +655,9 @@ public final class RaidManager implements Listener {
         }
         point.used++;
         plugin.weapons().reset(player);
+        // Something held on the cursor is carried out too: back into the inventory (or the mailbox)
+        // before the value is counted.
+        plugin.carry().mail(player, plugin.carry().reclaimCursor(player));
         plugin.insurance().strip(player);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.EXTRACT);
         plugin.downed().clear(player);
@@ -736,6 +739,12 @@ public final class RaidManager implements Listener {
             if (slot != CarryService.MELEE_SLOT && stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack)) {
                 drop.add(stack.clone());
             }
+        }
+        // Whatever was held on the cursor (a picked-up backpack with everything in it, say) is carried too.
+        ItemStack cursor = player.getItemOnCursor();
+        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor) && !plugin.carry().isMelee(cursor)) {
+            drop.add(cursor.clone());
+            lost += plugin.items().value(cursor);
         }
         spawnCorpse(raid, at, player.getName(), drop, player);
         player.getInventory().clear();
@@ -1444,6 +1453,8 @@ public final class RaidManager implements Listener {
             return;
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
+            // The cursor item stays in the raid: back into the inventory, or on the ground here.
+            plugin.carry().stow(player, plugin.carry().reclaimCursor(player));
             rp.disconnectedInventory = plugin.carry().snapshot(player);
             rp.lastLocation = rp.state == RaidPlayer.State.ALIVE ? player.getLocation() : null;
             rp.state = RaidPlayer.State.DISCONNECTED;

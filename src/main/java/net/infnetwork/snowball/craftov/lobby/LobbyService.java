@@ -238,6 +238,7 @@ public final class LobbyService implements Listener {
     /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
+        plugin.carry().mail(player, plugin.carry().reclaimCursor(player));
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);
         enterLobby(player);
@@ -266,8 +267,17 @@ public final class LobbyService implements Listener {
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));
     }
 
-    /** Persists the lobby inventory as the next raid's loadout. */
+    /**
+     * Persists the lobby inventory as the next raid's loadout. Whatever is held on the cursor goes
+     * back into the inventory first (or to the mailbox), so it is part of the loadout.
+     */
     public void captureLoadout(Player player) {
+        plugin.carry().mail(player, plugin.carry().reclaimCursor(player));
+        saveLoadout(player);
+    }
+
+    /** The loadout as it is, cursor left alone (the periodic save must not snatch an item being dragged). */
+    private void saveLoadout(Player player) {
         if (plugin.registry().isEmpty()) {
             return; // without item definitions the snapshot would come out empty and wipe the loadout
         }
@@ -282,7 +292,7 @@ public final class LobbyService implements Listener {
             if (isLobby(player.getWorld()) && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR
                     && plugin.raids().raidOf(player) == null) {
                 plugin.carry().ensureMelee(player);
-                captureLoadout(player);
+                saveLoadout(player);
                 plugin.carry().refreshLocks(player);
             }
         }

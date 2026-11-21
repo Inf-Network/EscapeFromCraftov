@@ -92,7 +92,8 @@ public final class Backups {
             }
             Files.move(tmp, zip, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException | UncheckedIOException ex) {
-            plugin.getLogger().warning("Backup failed: " + ex.getMessage());
+            // The message alone is often just a path (AccessDeniedException, NoSuchFileException).
+            plugin.getLogger().warning("Backup failed (" + ex.getClass().getSimpleName() + "): " + ex.getMessage());
             try {
                 Files.deleteIfExists(tmp);
             } catch (IOException ignored) {

@@ -127,6 +127,9 @@ market:
   # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
   # than the trader's buy-multiplier, so reselling trader stock never pays.
   reference-multiplier: 0.85
+  # Most listings of one item the system buyers take per hour, across all sellers (0 = no cap).
+  # A safety valve should a config change ever make reselling to them profitable again.
+  virtual-hourly-cap: 40
 
 rank:
   min-level: 3

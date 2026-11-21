@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -60,6 +61,8 @@ public final class MarketService {
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
+    /** When system buyers took each item id in the last hour, oldest first (market.virtual-hourly-cap). */
+    private final Map<String, ArrayDeque<Long>> virtualSales = new HashMap<>();
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -132,6 +135,20 @@ public final class MarketService {
         }
         double ratio = def.value() <= 0 ? 1 : plugin.items().value(record) / (double) (def.value() * Math.max(1, record.amount));
         return Math.max(1, Math.round(reference(record.id) * ratio * Math.max(1, record.amount)));
+    }
+
+    /** True when system buyers have taken their hourly quota of {@code itemId} and will wait. */
+    public boolean virtualCapped(String itemId) {
+        int cap = plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
+        ArrayDeque<Long> times = virtualSales.get(itemId);
+        if (cap <= 0 || times == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
+            times.pollFirst();
+        }
+        return times.size() >= cap;
     }
 
     public List<Long> history(String itemId) {
@@ -314,7 +331,7 @@ public final class MarketService {
                 dirty = true;
                 continue;
             }
-            if (!npc || now - listing.created < minAge) {
+            if (!npc || now - listing.created < minAge || virtualCapped(listing.item.id)) {
                 continue;
             }
             // Measured against the fixed anchor, never the trade-driven reference: otherwise each
@@ -322,6 +339,7 @@ public final class MarketService {
             double ratio = listing.price / (double) anchorFor(listing.item);
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
             if (ThreadLocalRandom.current().nextDouble() < chance) {
+                virtualSales.computeIfAbsent(listing.item.id, k -> new ArrayDeque<>()).addLast(now);
                 complete(listing, "系统买家");
             }
         }

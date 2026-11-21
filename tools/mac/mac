@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Drives the Craftov test server on the user's Mac from the dev server, through
+# mac-bridge (`ssh mac`) and the `craftov` gate extension (tools/mac/craftov).
+#
+#   tools/mac/mac sync       send the commits on main to the Mac checkout
+#   tools/mac/mac jar        build the plugin here and install it on the Mac
+#   tools/mac/mac deploy     sync + jar + restart the server on the Mac
+#   tools/mac/mac <command>  anything else goes to `ssh mac craftov <command>`:
+#                            status, start, stop, restart, rcon <cmd>, log [n],
+#                            clientlog [n], build, yml diff|copy <file>, packip <ip>
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+sync() {
+  local mac_sha mac_branch main
+  read -r mac_sha mac_branch < <(ssh mac craftov head)
+  main=$(git rev-parse main)
+  if [[ $mac_sha == "$main" && $mac_branch == main ]]; then
+    echo "Mac checkout already at $(git log -1 --format='%h %s' main)"
+  elif [[ $mac_sha != "$main" ]] && git merge-base --is-ancestor "$mac_sha" main 2>/dev/null; then
+    # Only the commits the Mac lacks.
+    git bundle create - main "^$mac_sha" 2>/dev/null | ssh mac craftov sync
+  else
+    git bundle create - main 2>/dev/null | ssh mac craftov sync
+  fi
+}
+
+jar() {
+  ./gradlew jar --quiet
+  ssh mac craftov jar < "$(ls -t build/libs/Craftov-*.jar | head -1)"
+}
+
+case "${1:-}" in
+  sync) sync ;;
+  jar) jar ;;
+  deploy) sync; jar; ssh mac craftov restart ;;
+  "") sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) ssh mac craftov "$@" ;;
+esac

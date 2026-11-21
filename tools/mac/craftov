@@ -1,0 +1,648 @@
+#!/usr/bin/python3 -I
+"""craftov: run the Craftov test server on this Mac for the agent on the dev server.
+
+A remote-gate extension (see mac-bridge): installed as
+~/.local/libexec/remote-gate/craftov, it answers `ssh mac craftov ...`. Every
+command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraftov
+(or the path written in ~/.config/craftov-gate/project).
+
+  craftov status                 checkout, server state and connection settings
+  craftov head                   the checked-out commit and branch
+  craftov sync                   fast-forward the checkout to `main` from a git
+                                 bundle on stdin (git bundle create - main)
+  craftov jar                    install a plugin jar read from stdin as
+                                 server/run/plugins/Craftov.jar
+  craftov build                  ./gradlew deployLocal here, with JDK 25
+  craftov setup                  create server/run with server/setup.sh --local
+  craftov start | stop | restart run the server in the background; start and
+                                 restart wait for "Done"
+  craftov rcon <command...>      run a console command over RCON
+  craftov log [lines]            the end of server/run/logs/latest.log
+  craftov clientlog [lines]      the end of the Minecraft client log
+  craftov yml diff <file>        compare plugins/Craftov/<file> with the repo copy
+  craftov yml copy <file>        replace it with the repo copy (keeps a backup);
+                                 <file> is items.yml or loot.yml (diff: config.yml too)
+  craftov packip <IPv4>          the address CraftEngine advertises the pack at
+
+sync, jar and build run code from the repository on this Mac: that is the
+point of the extension, and why it touches nothing outside the checkout.
+"""
+import datetime
+import difflib
+import hashlib
+import io
+import os
+import re
+import secrets
+import shutil
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import time
+import zipfile
+
+HOME = os.path.expanduser("~")
+CONF_DIR = os.path.join(HOME, ".config", "craftov-gate")
+
+
+def conf(name, default):
+    """A path the Mac's user may override in ~/.config/craftov-gate/<name>."""
+    try:
+        with open(os.path.join(CONF_DIR, name)) as f:
+            value = f.read().strip()
+    except FileNotFoundError:
+        return default
+    return os.path.expanduser(value) if value else default
+
+
+PROJECT = conf("project", os.path.join(HOME, "Documents", "projects", "plugins", "EscapeFromCraftov"))
+RUN = os.path.join(PROJECT, "server", "run")
+LATEST_LOG = os.path.join(RUN, "logs", "latest.log")
+CLIENT_LOG = conf("clientlog", os.path.join(
+    HOME, "Documents", "minecraft", ".minecraft", "versions", "1.21.11-NeoForge", "logs", "latest.log"))
+JDKS = ("/Library/Java/JavaVirtualMachines/zulu-25.jdk/Contents/Home",
+        "/usr/lib/jvm/java-25-openjdk-amd64", "/usr/lib/jvm/java-25-openjdk")
+# sshd gives forced commands a bare PATH; Homebrew tools live outside it.
+BASE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
+YML_COPY = ("items.yml", "loot.yml")
+YML_DIFF = YML_COPY + ("config.yml",)
+TCC_HINT = (
+    "macOS keeps ssh sessions out of ~/Documents (privacy protection). Either turn on\n"
+    "  System Settings > General > Sharing > Remote Login (i) > Allow full disk access for remote users\n"
+    "or move the project out of ~/Documents and write its new path into ~/.config/craftov-gate/project.")
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- helpers
+
+_java_home = []
+
+
+def java_home():
+    if not _java_home:
+        found = next((p for p in JDKS if os.path.exists(os.path.join(p, "bin", "java"))), None)
+        if found is None and os.path.exists("/usr/libexec/java_home"):
+            r = subprocess.run(["/usr/libexec/java_home", "-v", "25"], capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                found = r.stdout.strip()
+        _java_home.append(found)
+    return _java_home[0]
+
+
+def env():
+    e = {"HOME": HOME, "PATH": BASE_PATH, "LANG": "en_US.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
+    for key in ("USER", "LOGNAME", "TMPDIR"):
+        if key in os.environ:
+            e[key] = os.environ[key]
+    jh = java_home()
+    if jh:
+        e["JAVA_HOME"] = jh
+        e["JAVA"] = os.path.join(jh, "bin", "java")
+        e["PATH"] = os.path.join(jh, "bin") + ":" + BASE_PATH
+    return e
+
+
+def run(argv, cwd=None, check=True):
+    r = subprocess.run(argv, cwd=cwd or PROJECT, env=env(), stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise Fail("%s failed (exit %d):\n%s" % (" ".join(argv[:3]), r.returncode,
+                                                 (r.stderr or r.stdout).strip()))
+    return r
+
+
+def git(*args, check=True):
+    return run(["git"] + list(args), check=check)
+
+
+def is_ancestor(a, b):
+    return git("merge-base", "--is-ancestor", a, b, check=False).returncode == 0
+
+
+def check_project():
+    try:
+        os.stat(os.path.join(PROJECT, ".git"))
+    except FileNotFoundError:
+        raise Fail("no git checkout at %s (put its path in ~/.config/craftov-gate/project)" % PROJECT)
+
+
+def check_run():
+    check_project()
+    if not os.path.exists(os.path.join(RUN, "paper.jar")):
+        raise Fail("no server in %s yet: run `craftov setup` first" % RUN)
+
+
+def props():
+    out = {}
+    try:
+        with open(os.path.join(RUN, "server.properties"), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    out[key.strip()] = value.strip()
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def set_props(updates):
+    path = os.path.join(RUN, "server.properties")
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    left = dict(updates)
+    for i, line in enumerate(lines):
+        key = line.split("=", 1)[0].strip()
+        if "=" in line and not line.lstrip().startswith("#") and key in left:
+            lines[i] = "%s=%s" % (key, left.pop(key))
+    lines += ["%s=%s" % kv for kv in left.items()]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def tail(path, n):
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - max(65536, n * 400)))
+        data = f.read()
+    return "\n".join(data.decode("utf-8", "replace").splitlines()[-n:])
+
+
+def line_count(arg, default=60):
+    if arg is None:
+        return default
+    if not arg.isdigit() or not 0 < int(arg) <= 5000:
+        raise Fail("lines must be a number from 1 to 5000")
+    return int(arg)
+
+
+# ------------------------------------------------------------- processes
+
+def same_dir(a, b):
+    try:
+        return os.path.realpath(a) == os.path.realpath(b)
+    except OSError:
+        return False
+
+
+def proc_cwd(pid):
+    r = subprocess.run(["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"], capture_output=True,
+                       text=True, env=env())
+    return next((l[1:] for l in r.stdout.splitlines() if l.startswith("n")), None)
+
+
+def proc_cmd(pid):
+    r = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, env=env())
+    return r.stdout.strip()
+
+
+def procs(pattern):
+    """Pids whose command line matches `pattern` and that run inside server/run."""
+    r = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True, env=env())
+    out = []
+    for word in r.stdout.split():
+        pid = int(word)
+        if pid != os.getpid() and same_dir(proc_cwd(pid) or "/nonexistent", RUN):
+            out.append(pid)
+    return out
+
+
+def server_pids():
+    return procs("paper.jar")
+
+
+def loop_pids():
+    """The run-forever.sh restart loop: only the shell, not a screen wrapping it."""
+    out = []
+    for pid in procs("run-forever.sh"):
+        first = proc_cmd(pid).split(" ", 1)[0]
+        if os.path.basename(first) in ("bash", "sh", "zsh", "dash", "run-forever.sh"):
+            out.append(pid)
+    return out
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def listening(port):
+    r = subprocess.run(["lsof", "-nP", "-iTCP:%s" % port, "-sTCP:LISTEN", "-t"], capture_output=True,
+                       text=True, env=env())
+    return [int(p) for p in r.stdout.split()]
+
+
+def log_inode():
+    try:
+        return os.stat(LATEST_LOG).st_ino
+    except FileNotFoundError:
+        return None
+
+
+def wait_done(old_inode, timeout):
+    """Waits for a fresh latest.log (Paper rotates it on start) to report "Done (".
+
+    The inode check matters on a restart: the old server's log also contains a
+    "Done (" line and keeps being written while it shuts down."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(2)
+        inode = log_inode()
+        if inode is not None and inode != old_inode:
+            with open(LATEST_LOG, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            done = re.search(r"^.*Done \(.*$", text, re.M)
+            if done:
+                print(done.group(0).strip())
+                port = props().get("server-port", "25565")
+                print("listening on port %s" % port if listening(port) else "warning: nothing on port " + port)
+                return
+        if not server_pids() and not loop_pids():
+            raise Fail("the server exited while starting; end of the log:\n" + tail_any(40))
+    raise Fail("no \"Done\" after %d s; end of the log:\n%s" % (timeout, tail_any(40)))
+
+
+def tail_any(n):
+    for path in (LATEST_LOG, os.path.join(RUN, "console.log")):
+        if os.path.exists(path):
+            return tail(path, n)
+    return "(no log)"
+
+
+# ------------------------------------------------------------------ RCON
+
+def _read(sock, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise ConnectionError("RCON connection closed")
+        buf += chunk
+    return buf
+
+
+def _packet(sock):
+    (size,) = struct.unpack("<i", _read(sock, 4))
+    data = _read(sock, size)
+    rid, kind = struct.unpack("<ii", data[:8])
+    return rid, kind, data[8:-2].decode("utf-8", "replace")
+
+
+def _send(sock, rid, kind, body):
+    data = body.encode("utf-8")
+    sock.sendall(struct.pack("<iii", len(data) + 10, rid, kind) + data + b"\0\0")
+
+
+def rcon(command):
+    p = props()
+    if p.get("enable-rcon") != "true":
+        raise Fail("RCON is off in server.properties (craftov start turns it on)")
+    port = int(p.get("rcon.port", "25575"))
+    try:
+        sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+    except OSError as exc:
+        raise Fail("cannot reach RCON on port %d (%s): is the server running?" % (port, exc))
+    try:
+        with sock:
+            _send(sock, 1, 3, p.get("rcon.password", ""))
+            if _packet(sock)[0] == -1:
+                raise Fail("RCON password rejected")
+            _send(sock, 2, 2, command)
+            try:
+                parts = [_packet(sock)[2]]
+            except OSError:
+                if command.split()[0] == "stop":
+                    return ""  # the server may hang up before it answers
+                raise
+            # Long replies come split into 4096-byte packets with no end marker.
+            sock.settimeout(0.3)
+            while True:
+                try:
+                    parts.append(_packet(sock)[2])
+                except OSError:
+                    break
+    except OSError as exc:
+        raise Fail("RCON on port %d: %s" % (port, exc))
+    return re.sub("§.", "", "".join(parts))
+
+
+def ensure_rcon():
+    """Stopping the server cleanly needs RCON: turn it on with a private password."""
+    p = props()
+    if p.get("enable-rcon") == "true" and p.get("rcon.password"):
+        return
+    set_props({"enable-rcon": "true", "rcon.port": p.get("rcon.port", "25575"),
+               "rcon.password": p.get("rcon.password") or secrets.token_hex(12),
+               "broadcast-rcon-to-ops": "false"})
+    print("turned on RCON in server.properties")
+
+
+# -------------------------------------------------------------- commands
+
+def cmd_head():
+    check_project()
+    branch = git("symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip() or "(detached)"
+    print(git("rev-parse", "HEAD").stdout.strip(), branch)
+
+
+def cmd_status():
+    check_project()
+    branch = git("symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip() or "(detached)"
+    head = git("log", "-1", "--format=%h %s").stdout.strip()
+    changed = git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()
+    print("checkout   %s  %s %s" % (PROJECT, branch, head))
+    print("           %s" % ("clean" if not changed else "%d changed files: " % len(changed)
+                             + ", ".join(l[3:] for l in changed[:8])))
+    if not os.path.exists(os.path.join(RUN, "paper.jar")):
+        print("server     no server/run yet (craftov setup)")
+        return
+    srv, loops = server_pids(), loop_pids()
+    p = props()
+    port = p.get("server-port", "25565")
+    state = "running pid %s" % ",".join(map(str, srv)) if srv else "stopped"
+    if loops:
+        state += ", restart loop pid %s" % ",".join(map(str, loops))
+    print("server     %s; port %s %s" % (state, port, "listening" if listening(port) else "closed"))
+    jar = os.path.join(RUN, "plugins", "Craftov.jar")
+    if os.path.exists(jar):
+        built = datetime.datetime.fromtimestamp(os.path.getmtime(jar)).strftime("%Y-%m-%d %H:%M")
+        print("plugin     Craftov.jar from %s" % built)
+    print("settings   online-mode=%s white-list=%s enable-rcon=%s" % (
+        p.get("online-mode"), p.get("white-list"), p.get("enable-rcon")))
+    print("pack ip    %s" % (pack_ip() or "?"))
+    lan = run(["ipconfig", "getifaddr", "en0"], check=False).stdout.strip() if shutil.which(
+        "ipconfig", path=BASE_PATH) else ""
+    if lan:
+        print("lan ip     %s" % lan)
+    print("java       %s" % (java_home() or "JDK 25 not found"))
+    if srv and p.get("enable-rcon") == "true":
+        try:
+            print("players    " + rcon("list").strip())
+            print("whitelist  " + rcon("whitelist list").strip())
+        except (Fail, OSError) as exc:
+            print("rcon       %s" % exc)
+
+
+def cmd_sync():
+    check_project()
+    data = sys.stdin.buffer.read()
+    if not re.match(rb"# v[23] git bundle", data):
+        raise Fail("sync reads a git bundle on stdin: git bundle create - main | ssh mac craftov sync")
+    git_dir = git("rev-parse", "--absolute-git-dir").stdout.strip()
+    bundle = os.path.join(git_dir, "craftov-sync.bundle")
+    with open(bundle, "wb") as f:
+        f.write(data)
+    try:
+        verify = git("bundle", "verify", bundle, check=False)
+        if verify.returncode != 0:
+            raise Fail("the bundle does not apply here (send a full one):\n" + verify.stderr.strip())
+        git("fetch", "--quiet", "--no-tags", bundle, "+refs/heads/main:refs/craftov/synced")
+    finally:
+        os.remove(bundle)
+    target = git("rev-parse", "refs/craftov/synced").stdout.strip()
+    head = git("rev-parse", "HEAD").stdout.strip()
+    branch = git("symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip()
+    if head == target and branch == "main":
+        print("already at " + git("log", "-1", "--format=%h %s").stdout.strip())
+        return
+    if not is_ancestor(head, target):
+        raise Fail("the Mac checkout (%s %s) has commits the server does not: push them or move them "
+                   "off this branch first" % (branch or "detached", head[:8]))
+    changed = git("status", "--porcelain", "--untracked-files=no").stdout.rstrip()
+    if changed:
+        raise Fail("the Mac checkout has uncommitted changes; commit or discard them first:\n" + changed)
+    if branch == "main":
+        git("merge", "--quiet", "--ff-only", "refs/craftov/synced")
+    else:
+        local = git("rev-parse", "--verify", "-q", "refs/heads/main", check=False).stdout.strip()
+        if local and not is_ancestor(local, target):
+            raise Fail("the local branch main has commits the server does not; move them first")
+        git("checkout", "--quiet", "-B", "main", "refs/craftov/synced")
+        git("branch", "--quiet", "--set-upstream-to=origin/main", "main", check=False)
+    print("main now at %s (was %s on %s)" % (git("log", "-1", "--format=%h %s").stdout.strip(),
+                                             head[:8], branch or "detached HEAD"))
+
+
+def cmd_jar():
+    check_run()
+    data = sys.stdin.buffer.read()
+    try:
+        names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+    except zipfile.BadZipFile:
+        raise Fail("jar reads a plugin jar on stdin")
+    if "plugin.yml" not in names and "paper-plugin.yml" not in names:
+        raise Fail("not a plugin jar (no plugin.yml)")
+    target = os.path.join(RUN, "plugins", "Craftov.jar")
+    tmp = target + ".part"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    # A rename leaves a running server's open jar intact; copying over it would not.
+    os.replace(tmp, target)
+    print("installed Craftov.jar (%d KB, sha256 %s); restart to load it" % (
+        len(data) // 1024, hashlib.sha256(data).hexdigest()[:12]))
+
+
+def cmd_build():
+    check_project()
+    if not java_home():
+        raise Fail("JDK 25 not found")
+    r = subprocess.run(["./gradlew", "deployLocal", "--console=plain", "--quiet"], cwd=PROJECT,
+                       env=env(), stdin=subprocess.DEVNULL)
+    if r.returncode != 0:
+        raise Fail("gradle failed (exit %d)" % r.returncode)
+    print("built and copied to server/run/plugins/Craftov.jar; restart to load it")
+
+
+def cmd_setup():
+    check_project()
+    if os.path.exists(os.path.join(RUN, "paper.jar")):
+        raise Fail("server/run already exists; setup only creates a new one")
+    r = subprocess.run(["/bin/bash", "server/setup.sh", "--local"], cwd=PROJECT, env=env(),
+                       stdin=subprocess.DEVNULL)
+    if r.returncode != 0:
+        raise Fail("setup failed (exit %d)" % r.returncode)
+    ensure_rcon()
+
+
+def cmd_start(timeout=300):
+    check_run()
+    if server_pids():
+        print("already running")
+        return
+    old = log_inode()
+    if loop_pids():
+        print("the restart loop is bringing the server up")
+        wait_done(old, timeout)
+        return
+    ensure_rcon()
+    jh = java_home()
+    if not jh:
+        raise Fail("JDK 25 not found")
+    script = next((s for s in ("run-forever.sh", "start.sh") if os.path.exists(os.path.join(RUN, s))), None)
+    argv = (["/bin/bash", script] if script else
+            [os.path.join(jh, "bin", "java"), "-Xms2G", "-Xmx4G", "-XX:+UseG1GC", "-jar", "paper.jar", "--nogui"])
+    out = open(os.path.join(RUN, "console.log"), "ab")
+    # Own session, no inherited fds: it outlives this ssh call and the call can return.
+    subprocess.Popen(argv, cwd=RUN, env=env(), stdin=subprocess.DEVNULL, stdout=out,
+                     stderr=subprocess.STDOUT, start_new_session=True)
+    print("started %s" % (script or "paper.jar"))
+    wait_done(old, timeout)
+
+
+def quit_screen():
+    screen = shutil.which("screen", path=BASE_PATH)
+    if screen and ".craftov" in run([screen, "-ls"], check=False).stdout:
+        run([screen, "-S", "craftov", "-X", "quit"], check=False)
+
+
+def cmd_stop(timeout=120):
+    check_run()
+    # The loop first, or it brings the server straight back up.
+    for pid in loop_pids():
+        os.kill(pid, signal.SIGTERM)
+    srv = server_pids()
+    if srv:
+        try:
+            rcon("stop")
+        except (Fail, OSError):
+            for pid in srv:
+                os.kill(pid, signal.SIGTERM)  # Paper saves and stops on SIGTERM too
+        deadline = time.time() + timeout
+        while any(alive(pid) for pid in srv):
+            if time.time() > deadline:
+                raise Fail("still running after %d s: pid %s" % (timeout, ",".join(map(str, srv))))
+            time.sleep(1)
+    quit_screen()
+    print("stopped")
+
+
+def cmd_restart(timeout=300):
+    check_run()
+    srv = server_pids()
+    if srv and loop_pids():
+        ensure_rcon()
+        old = log_inode()
+        try:
+            rcon("stop")
+        except (Fail, OSError):
+            for pid in srv:
+                os.kill(pid, signal.SIGTERM)
+        print("stopping; the restart loop brings it back up")
+        wait_done(old, timeout)
+        return
+    cmd_stop()
+    cmd_start(timeout)
+
+
+def cmd_rcon(args):
+    if not args:
+        raise Fail("usage: craftov rcon <command...>")
+    # Take the command verbatim from the ssh line, so quotes in JSON survive.
+    raw = os.environ.get("SSH_ORIGINAL_COMMAND", "")
+    m = re.match(r"\s*craftov\s+rcon\s+(.+?)\s*$", raw, re.S)
+    print(rcon(m.group(1) if m else " ".join(args)).rstrip())
+
+
+def pack_ip():
+    try:
+        with open(os.path.join(RUN, "plugins", "CraftEngine", "config.yml"), encoding="utf-8") as f:
+            m = re.search(r'\n  self-host:\n    ip: "([^"]*)"', f.read())
+    except FileNotFoundError:
+        return None
+    return m.group(1) if m else None
+
+
+def cmd_packip(ip):
+    check_run()
+    if not re.fullmatch(r"(\d{1,3})(\.\d{1,3}){3}", ip) or any(int(x) > 255 for x in ip.split(".")):
+        raise Fail("packip takes an IPv4 address")
+    path = os.path.join(RUN, "plugins", "CraftEngine", "config.yml")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    text, n = re.subn(r'(\n  self-host:\n    ip: )"[^"]*"', r'\g<1>"%s"' % ip, text)
+    if n != 1:
+        raise Fail("self-host ip not found in " + path)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    print("pack ip set to " + ip)
+    if server_pids():
+        print(rcon("ce reload all").strip() or "ce reload all sent")
+
+
+def cmd_yml(action, name):
+    check_run()
+    allowed = YML_COPY if action == "copy" else YML_DIFF
+    if action not in ("diff", "copy") or name not in allowed:
+        raise Fail("usage: craftov yml diff %s | craftov yml copy %s" % ("|".join(YML_DIFF), "|".join(YML_COPY)))
+    repo = os.path.join(PROJECT, "src", "main", "resources", name)
+    live = os.path.join(RUN, "plugins", "Craftov", name)
+    with open(repo, encoding="utf-8") as f:
+        new = f.read().splitlines(keepends=True)
+    old = []
+    if os.path.exists(live):
+        with open(live, encoding="utf-8") as f:
+            old = f.read().splitlines(keepends=True)
+    if action == "diff":
+        diff = "".join(difflib.unified_diff(old, new, "server/run/plugins/Craftov/" + name,
+                                            "src/main/resources/" + name))
+        print(diff.rstrip() or "identical")
+        return
+    if os.path.exists(live):
+        backup = live + time.strftime(".%Y%m%d-%H%M%S.bak")
+        shutil.copy2(live, backup)
+        print("backed up the server copy to " + os.path.relpath(backup, RUN))
+    shutil.copyfile(repo, live)
+    print("copied %s into plugins/Craftov; restart to load it" % name)
+
+
+def cmd_log(args, path):
+    n = line_count(args[0] if args else None)
+    if not os.path.exists(path):
+        raise Fail("no log at " + path)
+    print(tail(path, n))
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("help", "-h", "--help"):
+        sys.stdout.write(__doc__)
+        return
+    cmd, rest = args[0], args[1:]
+    simple = {"status": cmd_status, "head": cmd_head, "sync": cmd_sync, "jar": cmd_jar,
+              "build": cmd_build, "setup": cmd_setup, "start": cmd_start, "stop": cmd_stop,
+              "restart": cmd_restart}
+    try:
+        if cmd in simple and not rest:
+            simple[cmd]()
+        elif cmd == "rcon":
+            cmd_rcon(rest)
+        elif cmd == "log" and len(rest) <= 1:
+            cmd_log(rest, LATEST_LOG)
+        elif cmd == "clientlog" and len(rest) <= 1:
+            cmd_log(rest, CLIENT_LOG)
+        elif cmd == "packip" and len(rest) == 1:
+            cmd_packip(rest[0])
+        elif cmd == "yml" and len(rest) == 2:
+            cmd_yml(rest[0], rest[1])
+        else:
+            raise Fail("unknown command; see `craftov help`")
+    except PermissionError as exc:
+        sys.stderr.write("craftov: %s\n%s\n" % (exc, TCC_HINT))
+        sys.exit(1)
+    except Fail as exc:
+        sys.stderr.write("craftov: %s\n" % exc)
+        sys.exit(1)
+
+
+main()

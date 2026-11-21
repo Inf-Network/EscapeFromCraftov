@@ -190,7 +190,10 @@ async function enterRange () {
 async function raidPhase () {
   const from = worldChanges
   bot.chat('/cv queue proving NORMAL SOLO')
-  const inRaid = await waitFor(async () => worldChanges > from && bot.game.gameMode === 'adventure' && !/lobby|range/.test(await dimension()), 90000)
+  // Landed, not still in the insertion camera: the client's game mode can lag behind the world
+  // change, so ask the server (the secure container stays shut during the fly-in).
+  const landed = async () => /passed/i.test(await rcon(`execute if entity @a[name=${name},gamemode=adventure]`))
+  const inRaid = await waitFor(async () => worldChanges > from && !/lobby|range/.test(await dimension()) && await landed(), 90000)
   check('a solo raid on the test map starts', inRaid, await dimension())
   if (!inRaid) return
   await sleep(3000)

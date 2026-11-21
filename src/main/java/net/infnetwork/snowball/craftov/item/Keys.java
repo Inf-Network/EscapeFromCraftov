@@ -21,6 +21,8 @@ public final class Keys {
     public static final NamespacedKey ATTACH = key("attach");
     /** Insured for one raid: "ownerUuid:raidId" (InsuranceService). */
     public static final NamespacedKey INSURED = key("insured");
+    /** An insured item as it was at deploy (ItemRecord JSON), so a claim returns no more than that. */
+    public static final NamespacedKey INSURED_AS = key("insured_as");
     /** Shooting-range loaner: never stored, sold or carried out of the range. */
     public static final NamespacedKey RANGE = key("range");
     /** Handed out by the free kit: the trader pays nothing for it and it cannot be listed on the market. */

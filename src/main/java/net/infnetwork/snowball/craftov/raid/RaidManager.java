@@ -367,6 +367,9 @@ public final class RaidManager implements Listener {
             rp.secure.add(record.copy());
         }
         rp.gearUids = tagGear(player, rp.secure);
+        List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
+        takenIn.addAll(rp.secure);
+        rp.broughtIn = stackCounts(takenIn);
         rp.gearValue = plugin.carry().carriedValue(player);
         rp.startValue = rp.gearValue + secureValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
@@ -665,7 +668,10 @@ public final class RaidManager implements Listener {
         long carried = plugin.carry().carriedValue(player);
         long secure = secureValue(rp.secure);
         long total = carried + secure;
-        long handed = othersGear(raid, rp, player);
+        List<ItemRecord> out = new ArrayList<>(plugin.carry().snapshot(player).values());
+        out.addAll(rp.secure);
+        long handed = othersGear(raid, rp, out);
+        rp.carriedOut = stackCounts(out);
         long profit = total - handed - rp.startValue;
         profile.secure = new ArrayList<>(rp.secure);
         profile.addStat("extracts", 1);
@@ -1094,38 +1100,128 @@ public final class RaidManager implements Listener {
      * of this raid brought in. It is theirs to keep, but it is not their raid's profit: two players
      * could otherwise hand a ◈250,000 loadout to each other in turn and score rank points,
      * experience and the daily "net profit" contract off it every raid.
+     *
+     * <p>Single items are recognised by their instance id. Stacking items (ammo, meds, valuables)
+     * have none, so they go by count: of each item the player carries out more of than they took in,
+     * up to what the others took in and no longer hold counts as theirs. A crate find of the same
+     * item can be caught by this when someone else fired, threw or used theirs; it costs little,
+     * whereas leaving stacks out let a pile of .338 rounds or gold bars change hands every raid.
      */
-    private long othersGear(Raid raid, RaidPlayer rp, Player player) {
+    private long othersGear(Raid raid, RaidPlayer rp, List<ItemRecord> out) {
         Set<String> theirs = new java.util.HashSet<>();
         for (RaidPlayer other : raid.players.values()) {
             if (other != rp) {
                 theirs.addAll(other.gearUids);
             }
         }
-        if (theirs.isEmpty()) {
-            return 0;
-        }
         long total = 0;
-        for (ItemRecord record : plugin.carry().snapshot(player).values()) {
+        Map<String, long[]> stacks = new HashMap<>();
+        for (ItemRecord record : out) {
             total += foreignValue(record, theirs);
+            countStacks(record, stacks, theirs);
         }
-        for (ItemRecord record : rp.secure) {
-            total += foreignValue(record, theirs);
+        Map<UUID, Map<String, Long>> held = new HashMap<>();
+        for (Map.Entry<String, long[]> entry : stacks.entrySet()) {
+            String id = entry.getKey();
+            long count = entry.getValue()[0];
+            long excess = count - rp.broughtIn.getOrDefault(id, 0L);
+            if (excess <= 0) {
+                continue;
+            }
+            long given = 0;
+            for (RaidPlayer other : raid.players.values()) {
+                long in = other == rp ? 0 : other.broughtIn.getOrDefault(id, 0L);
+                if (in > 0) {
+                    given += Math.max(0, in - held.computeIfAbsent(other.uuid, k -> held(raid, other)).getOrDefault(id, 0L));
+                }
+            }
+            long foreign = Math.min(excess, given);
+            if (foreign > 0) {
+                total += entry.getValue()[1] * foreign / count;
+            }
         }
         return total;
     }
 
+    /**
+     * Value of the items in {@code record} with one of {@code theirs} instance ids. Whatever is packed
+     * in someone else's rig or backpack is judged on its own, like everything else.
+     */
     private long foreignValue(ItemRecord record, Set<String> theirs) {
-        if (record.uid != null && theirs.contains(record.uid)) {
-            return plugin.items().value(record);
-        }
         long total = 0;
+        long inside = 0;
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
+                inside += plugin.items().value(child);
                 total += foreignValue(child, theirs);
             }
         }
+        if (record.uid != null && theirs.contains(record.uid)) {
+            total += plugin.items().value(record) - inside;
+        }
         return total;
+    }
+
+    /**
+     * Adds the stacking items in {@code record}, and in anything packed inside it, to {@code into}
+     * as item id -> {count, value}. Rounds loaded in a gun count as that ammo, so loading someone
+     * else's rounds into your own gun does not hide them; the magazine of a gun with one of
+     * {@code skip} ids is left out, because foreignValue already counts that gun whole.
+     */
+    private void countStacks(ItemRecord record, Map<String, long[]> into, Set<String> skip) {
+        ItemDef def = plugin.registry().get(record.id);
+        if (def == null) {
+            return;
+        }
+        if (def.maxStack() > 1) {
+            long[] entry = into.computeIfAbsent(record.id, k -> new long[2]);
+            entry[0] += Math.max(1, record.amount);
+            entry[1] += plugin.items().value(record);
+        }
+        boolean skipped = record.uid != null && skip.contains(record.uid);
+        ItemDef ammo = record.ammoType == null ? null : plugin.registry().get(record.ammoType);
+        if (!skipped && ammo != null && record.ammo != null && record.ammo > 0) {
+            long[] entry = into.computeIfAbsent(ammo.id(), k -> new long[2]);
+            entry[0] += record.ammo;
+            entry[1] += ammo.value() * record.ammo;
+        }
+        if (record.contents != null) {
+            for (ItemRecord child : record.contents) {
+                countStacks(child, into, skip);
+            }
+        }
+    }
+
+    /** Stacking items in {@code records} by item id (counts only, every magazine included). */
+    private Map<String, Long> stackCounts(Collection<ItemRecord> records) {
+        Map<String, long[]> stacks = new HashMap<>();
+        for (ItemRecord record : records) {
+            countStacks(record, stacks, Set.of());
+        }
+        Map<String, Long> counts = new HashMap<>();
+        stacks.forEach((id, entry) -> counts.put(id, entry[0]));
+        return counts;
+    }
+
+    /**
+     * Stacking items {@code other} still holds: what they carried out if they are out, their
+     * inventory if they are still in the raid (or its snapshot while disconnected), and always
+     * their secure container. The dead hold only the secure container; their body is up for grabs.
+     */
+    private Map<String, Long> held(Raid raid, RaidPlayer other) {
+        if (other.carriedOut != null) {
+            return other.carriedOut;
+        }
+        List<ItemRecord> records = new ArrayList<>(other.secure);
+        if (other.state == RaidPlayer.State.DISCONNECTED && other.disconnectedInventory != null) {
+            records.addAll(other.disconnectedInventory.values());
+        } else if (other.state != RaidPlayer.State.DEAD) {
+            Player p = Bukkit.getPlayer(other.uuid);
+            if (p != null && raidOf(p) == raid) {
+                records.addAll(plugin.carry().snapshot(p).values());
+            }
+        }
+        return stackCounts(records);
     }
 
     // ------------------------------------------------------------------ voluntary exit / shutdown
@@ -1170,6 +1266,10 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.LEFT;
+        // Gone home with everything, like an extraction, as far as other players' profit goes.
+        List<ItemRecord> out = new ArrayList<>(plugin.carry().snapshot(player).values());
+        out.addAll(rp.secure);
+        rp.carriedOut = stackCounts(out);
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;

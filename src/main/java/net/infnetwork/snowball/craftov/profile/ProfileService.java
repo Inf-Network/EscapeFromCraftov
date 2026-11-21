@@ -24,9 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -42,6 +44,14 @@ public final class ProfileService {
     private final Map<UUID, Profile> cache = new HashMap<>();
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
+    /**
+     * Profiles that are not cached but still have a write queued (an offline edit, a logout). Loading
+     * one takes this copy rather than the file, which may not hold the latest write yet: two offline
+     * edits in a row (an insurance payout, then a loadout restore) would otherwise both start from the
+     * old file, and the second write would undo the first. Shared with the IO thread.
+     */
+    private final Map<UUID, Pending> pending = new ConcurrentHashMap<>();
+    private final AtomicLong writes = new AtomicLong();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
@@ -49,6 +59,10 @@ public final class ProfileService {
     });
 
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills) {
+    }
+
+    /** An uncached profile and the number of its last queued write. */
+    private record Pending(Profile profile, long write) {
     }
 
     public ProfileService(Plugin plugin) {
@@ -182,6 +196,10 @@ public final class ProfileService {
     // ------------------------------------------------------------------ io
 
     private @Nullable Profile load(UUID uuid) {
+        Pending queued = pending.get(uuid);
+        if (queued != null) {
+            return queued.profile();
+        }
         Path file = dir.resolve(uuid + ".json");
         if (!Files.exists(file)) {
             return null;
@@ -223,7 +241,15 @@ public final class ProfileService {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
-        io.execute(() -> writeSync(json, uuid));
+        long write = writes.incrementAndGet();
+        if (cache.get(uuid) != profile) {
+            pending.put(uuid, new Pending(profile, write));
+        }
+        io.execute(() -> {
+            writeSync(json, uuid);
+            // Once the last queued write is on disk the file is current again.
+            pending.computeIfPresent(uuid, (k, queued) -> queued.write() == write ? null : queued);
+        });
     }
 
     private void writeSync(String json, UUID uuid) {

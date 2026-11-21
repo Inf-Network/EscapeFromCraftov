@@ -30,7 +30,8 @@ final class BountyMenu extends Menu {
         set(4, UiItems.button("craftov:ui/icon_rank", "<#FF4D4D><b>悬赏榜", List.of(
                 "<#9AA0A6>点击玩家头像，花 ◈" + Text.money(plugin.bounties().step()) + " 追加悬赏",
                 "<#9AA0A6>在行动中击杀被悬赏的玩家即可领取全部赏金",
-                "<#9AA0A6>排位第一的玩家自带 ◈" + Text.money(plugin.getConfig().getLong("bounty.champion", 20_000)) + " 系统悬赏")));
+                "<#9AA0A6>排位第一的玩家自带 ◈" + Text.money(plugin.bounties().houseBounty()) + " 系统悬赏",
+                "<#8A8F98>（只在排位赛、其战备值不低于 ◈" + Text.money(plugin.bounties().houseMinValue()) + " 时有效，每天一次）")));
         int slot = 9;
         List<Player> online = new ArrayList<>(Bukkit.getOnlinePlayers());
         online.sort((a, b) -> Long.compare(plugin.bounties().total(b.getUniqueId()), plugin.bounties().total(a.getUniqueId())));

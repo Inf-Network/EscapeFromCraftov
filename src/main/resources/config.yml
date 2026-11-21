@@ -149,8 +149,11 @@ season:
 
 bounty:
   # Price of one bounty step placed from the lobby, and the house bounty on the top-ranked player.
+  # The house bounty only pays in ranked raids, when the top player deployed with at least
+  # champion-min-value of gear, and at most once a day.
   step: 10000
   champion: 20000
+  champion-min-value: 60000
 
 backup:
   # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups (also on shutdown).

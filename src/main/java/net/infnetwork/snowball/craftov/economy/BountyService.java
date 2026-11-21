@@ -11,13 +11,15 @@ import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Bounties. Players put money on other players' heads from the lobby; the top-ranked player also
- * carries a standing bounty paid by the house. Whoever kills a marked player in a raid collects all
- * of it, and everyone in a raid is told which marked players are in it.
+ * carries a standing bounty paid by the house, once a day, in ranked raids they deploy into with
+ * real gear. Whoever kills a marked player in a raid collects all of it, and everyone in a raid is
+ * told which marked players are in it.
  */
 public final class BountyService {
 
@@ -37,10 +39,42 @@ public final class BountyService {
         return top.isEmpty() ? null : top.get(0).uuid();
     }
 
+    public long houseBounty() {
+        return plugin.getConfig().getLong("bounty.champion", 20_000);
+    }
+
+    /** Gear the top player must deploy with for the house bounty to count. */
+    public long houseMinValue() {
+        return plugin.getConfig().getLong("bounty.champion-min-value", 60_000);
+    }
+
+    /** Everything on the player's head as the lobby shows it: placed bounties plus the house one if they are on top. */
     public long total(UUID target) {
         long placed = plugin.profiles().get(target, "").bounty;
-        long house = target.equals(champion()) ? plugin.getConfig().getLong("bounty.champion", 20_000) : 0;
+        long house = target.equals(champion()) ? houseBounty() : 0;
         return placed + house;
+    }
+
+    /**
+     * What killing {@code rp} pays in this raid. Placed bounties always count. The house bounty is
+     * new money, so it only counts in ranked raids (where the top player also loses points for the
+     * death), when they deployed with at least bounty.champion-min-value of gear, and once a day:
+     * otherwise the top player could walk into a casual raid naked and have a friend shoot them
+     * for ◈20,000 every few minutes.
+     */
+    public long inRaid(Raid raid, RaidPlayer rp) {
+        long placed = plugin.profiles().get(rp.uuid, rp.name).bounty;
+        return placed + (houseApplies(raid, rp) ? houseBounty() : 0);
+    }
+
+    private boolean houseApplies(Raid raid, RaidPlayer rp) {
+        return raid.ranked && rp.gearValue >= houseMinValue() && rp.uuid.equals(champion())
+                && plugin.profiles().get(rp.uuid, rp.name).houseBountyDay != today();
+    }
+
+    /** Bounty day: rolls over at 04:00 like the daily contracts. */
+    private static long today() {
+        return LocalDateTime.now().minusHours(4).toLocalDate().toEpochDay();
     }
 
     /** Null on success, otherwise why not. */
@@ -67,7 +101,7 @@ public final class BountyService {
     public void announce(Raid raid) {
         StringBuilder targets = new StringBuilder();
         for (RaidPlayer rp : raid.players.values()) {
-            long amount = total(rp.uuid);
+            long amount = inRaid(raid, rp);
             if (amount > 0) {
                 targets.append(targets.isEmpty() ? "" : "  ").append("<white>").append(Text.escape(rp.name))
                         .append(" <#F2C94C>◈").append(Text.money(amount));
@@ -87,11 +121,22 @@ public final class BountyService {
 
     /** A player killed another in a raid: pays out any bounty on the victim. */
     public void onKill(Player killer, Player victim, Raid raid) {
-        long amount = total(victim.getUniqueId());
+        RaidPlayer rp = raid.player(victim.getUniqueId());
+        if (rp == null) {
+            return;
+        }
+        boolean house = houseApplies(raid, rp);
+        long amount = inRaid(raid, rp);
         if (amount <= 0) {
             return;
         }
-        plugin.profiles().edit(victim.getUniqueId(), p -> p.bounty = 0);
+        long day = today();
+        plugin.profiles().edit(victim.getUniqueId(), p -> {
+            p.bounty = 0;
+            if (house) {
+                p.houseBountyDay = day;
+            }
+        });
         Profile profile = plugin.profiles().get(killer);
         profile.money += amount;
         plugin.profiles().markDirty(killer.getUniqueId());

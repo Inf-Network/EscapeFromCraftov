@@ -366,7 +366,8 @@ public final class RaidManager implements Listener {
         for (ItemRecord record : profile.secure) {
             rp.secure.add(record.copy());
         }
-        rp.startValue = plugin.carry().carriedValue(player) + secureValue(rp.secure);
+        rp.gearValue = plugin.carry().carriedValue(player);
+        rp.startValue = rp.gearValue + secureValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());

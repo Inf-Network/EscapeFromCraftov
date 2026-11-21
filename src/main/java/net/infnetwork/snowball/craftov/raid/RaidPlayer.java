@@ -21,7 +21,10 @@ public final class RaidPlayer {
     public int kills;
     public int aiKills;
     public int downs;
+    /** Value carried in and in the secure container at deploy (raid profit is measured against it). */
     public long startValue;
+    /** Value of the gear carried in at deploy, secure container excluded (the deploy screen's 战备值). */
+    public long gearValue;
     public long startTick;
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;

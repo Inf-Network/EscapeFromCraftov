@@ -40,6 +40,8 @@ public final class Profile {
     public List<RaidReport> reports = new ArrayList<>();
     public List<TaskState> tasks = new ArrayList<>();
     public long taskDay = -1;
+    /** Day (BountyService) the house bounty on this player was last paid out; it pays once a day. */
+    public long houseBountyDay = -1;
     /** Insure guns, armour, rig and backpack on every deploy (InsuranceService). */
     public boolean autoInsure;
     /** Hideout facility levels, running crafts by facility, and when the intel centre was last emptied. */

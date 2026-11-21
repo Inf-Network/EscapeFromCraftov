@@ -165,29 +165,38 @@ public final class EscortService {
         double share = extracted ? 1.0 : plugin.getConfig().getDouble("escort.failure-share", 0.3);
         long pool = Math.round(c.reward * share);
         long each = c.escorts.isEmpty() ? 0 : pool / c.escorts.size();
+        // The escrow is released and written before anybody is paid out of it. Otherwise a crash
+        // right after an offline escort's payout reached disk would leave the escrow on the
+        // client's file, and the client would get the whole reward back on their next join.
+        release(c, c.reward - each * c.escorts.size());
         for (UUID escort : c.escorts) {
             plugin.profiles().edit(escort, p -> {
                 p.money += each;
                 p.addStat("escort_income", each);
             });
+            plugin.profiles().saveNow(escort);
             Player p = Bukkit.getPlayer(escort);
             if (p != null) {
                 Text.send(p, (extracted ? "<#5BD16B>护航成功！" : "<#FFC23D>老板阵亡，护航失败。") + "<#9AA0A6>获得 ◈" + Text.money(each));
             }
         }
-        long refund = c.reward - each * c.escorts.size();
-        plugin.profiles().edit(c.client, p -> {
-            p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
-            p.money += refund;
-        });
     }
 
     /** Gives a contract's whole reward back to the client and releases it from escrow. */
     private void refund(Contract c) {
+        release(c, c.reward);
+    }
+
+    /**
+     * Takes a contract's reward out of the client's escrow, hands {@code back} of it to the client,
+     * and writes the client's profile at once (an offline client's edit is written anyway).
+     */
+    private void release(Contract c, long back) {
         plugin.profiles().edit(c.client, p -> {
             p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
-            p.money += c.reward;
+            p.money += back;
         });
+        plugin.profiles().saveNow(c.client);
     }
 
     /**

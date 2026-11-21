@@ -27,11 +27,13 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
  * JSON-file profile storage. Profiles of online players stay cached; offline profiles are loaded
- * on demand (market payouts, escort settlements) and written straight back.
+ * on demand (market payouts, escort settlements) and written straight back, and stay in memory
+ * until that write has landed so the next change builds on this one.
  */
 public final class ProfileService {
 
@@ -42,11 +44,22 @@ public final class ProfileService {
     private final Map<UUID, Profile> cache = new HashMap<>();
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
+    /**
+     * Offline profiles changed through {@link #edit}, kept until every write queued for them has
+     * reached the disk. Without this, back-to-back edits (several market listings of one offline
+     * seller returned or sold in the same tick) each re-read a file the previous write had not
+     * replaced yet, and all but one of the changes were lost. Main thread only.
+     */
+    private final Map<UUID, Pending> offline = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
         return t;
     });
+
+    /** An offline profile and the number of its writes still queued on the io thread. */
+    private record Pending(Profile profile, AtomicInteger writes) {
+    }
 
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
                           long marketSales, long marketIncome) {
@@ -78,7 +91,9 @@ public final class ProfileService {
     public Profile get(UUID uuid, String name) {
         Profile profile = cache.get(uuid);
         if (profile == null) {
-            profile = load(uuid);
+            // A profile edited while offline may still be on its way to the disk: take that copy.
+            Pending pending = offline.remove(uuid);
+            profile = pending != null ? pending.profile() : load(uuid);
             if (profile == null) {
                 profile = new Profile(uuid, name);
             }
@@ -100,7 +115,28 @@ public final class ProfileService {
      */
     public @Nullable Profile peek(UUID uuid) {
         Profile profile = cache.get(uuid);
-        return profile != null ? profile : load(uuid);
+        if (profile != null) {
+            return profile;
+        }
+        Pending pending = offline.get(uuid);
+        return pending != null ? pending.profile() : load(uuid);
+    }
+
+    /**
+     * Account level without reading the disk: the live profile when its owner is online or was
+     * just edited, otherwise the last saved summary; 0 for an unknown account.
+     */
+    public int level(UUID uuid) {
+        Profile profile = cache.get(uuid);
+        if (profile != null) {
+            return profile.level;
+        }
+        Pending pending = offline.get(uuid);
+        if (pending != null) {
+            return pending.profile().level;
+        }
+        Summary summary = index.get(uuid);
+        return summary == null ? 0 : summary.level();
     }
 
     /** Applies a mutation to a profile whether or not its owner is online. */
@@ -111,12 +147,17 @@ public final class ProfileService {
             markDirty(uuid);
             return;
         }
-        Profile offline = load(uuid);
-        if (offline == null) {
-            return;
+        Pending pending = offline.get(uuid);
+        if (pending == null) {
+            Profile loaded = load(uuid);
+            if (loaded == null) {
+                return;
+            }
+            pending = new Pending(loaded, new AtomicInteger());
+            offline.put(uuid, pending);
         }
-        mutation.accept(offline);
-        writeAsync(offline);
+        mutation.accept(pending.profile());
+        writeAsync(pending.profile(), pending.writes());
     }
 
     public void markDirty(UUID uuid) {
@@ -147,19 +188,24 @@ public final class ProfileService {
             }
         }
         dirty.clear();
+        // Only this thread queues writes, so a count of 0 means the file holds the latest copy.
+        offline.values().removeIf(pending -> pending.writes().get() == 0);
     }
 
     public void shutdown() {
-        for (Profile profile : cache.values()) {
-            writeSync(GSON.toJson(profile), profile.uuid);
-        }
-        dirty.clear();
+        // Let queued writes finish first: an older copy still in the queue would otherwise land
+        // on top of the final save below.
         io.shutdown();
         try {
             io.awaitTermination(10, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+        for (Profile profile : cache.values()) {
+            writeSync(GSON.toJson(profile), profile.uuid);
+        }
+        dirty.clear();
+        offline.clear();
     }
 
     public List<Summary> leaderboard(Comparator<Summary> order, int limit) {
@@ -231,10 +277,26 @@ public final class ProfileService {
     }
 
     private void writeAsync(Profile profile) {
+        writeAsync(profile, null);
+    }
+
+    /** Queues a snapshot of {@code profile}; {@code inFlight} counts it until it is on disk. */
+    private void writeAsync(Profile profile, @Nullable AtomicInteger inFlight) {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
-        io.execute(() -> writeSync(json, uuid));
+        if (inFlight != null) {
+            inFlight.incrementAndGet();
+        }
+        io.execute(() -> {
+            try {
+                writeSync(json, uuid);
+            } finally {
+                if (inFlight != null) {
+                    inFlight.decrementAndGet();
+                }
+            }
+        });
     }
 
     private void writeSync(String json, UUID uuid) {

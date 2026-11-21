@@ -1120,11 +1120,18 @@ public final class RaidManager implements Listener {
 
     /** Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). */
     public void shutdown() {
+        // Insured gear in bodies and on the ground goes home as at a normal raid end: the worlds are
+        // deleted below and nothing would be left to settle after the restart. Every raid is settled
+        // before any of them is torn down, so a teardown step failing during shutdown (sending
+        // players home, deleting a world) cannot cost a later raid its payouts.
+        for (Raid raid : raids.values()) {
+            try {
+                plugin.insurance().settle(raid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
+            }
+        }
         for (Raid raid : new ArrayList<>(raids.values())) {
-            // Insured gear in bodies and on the ground goes home as at a normal raid end: the world is
-            // deleted below and nothing would be left to settle after the restart. First, so a later
-            // step failing during shutdown cannot skip it.
-            plugin.insurance().settle(raid);
             for (RaidPlayer rp : raid.players.values()) {
                 Player player = Bukkit.getPlayer(rp.uuid);
                 if (rp.active() && player != null) {

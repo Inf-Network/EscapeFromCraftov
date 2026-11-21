@@ -198,6 +198,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onDisable() {
         // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
         step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
+        step("betterhud", betterHud, () -> betterHud.shutdown());
         step("editor", editor, () -> editor.shutdown());
         step("replays", replays, () -> replays.shutdown());
         step("drones", drones, () -> drones.shutdown());

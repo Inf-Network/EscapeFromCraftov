@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -341,13 +342,35 @@ public final class MarketService implements Listener {
         if (buyer.level < level) {
             return "购买其他玩家的商品需要账号等级 " + level + "（当前 Lv." + buyer.level + "），商人处的商品不受限制。";
         }
-        if (plugin.getConfig().getBoolean("market.block-same-ip", false)) {
-            Profile seller = plugin.profiles().peek(listing.seller);
-            if (seller != null && sharesAddress(player, buyer, seller)) {
-                return "你和卖家从同一网络地址登录过，不能购买对方的商品。";
-            }
+        boolean sameIp = plugin.getConfig().getBoolean("market.block-same-ip", false);
+        long incomeCap = plugin.getConfig().getLong("market.daily-player-income-cap", 0);
+        if (!sameIp && incomeCap <= 0) {
+            return null;
+        }
+        Profile seller = plugin.profiles().peek(listing.seller);
+        if (seller == null) {
+            return null;
+        }
+        if (sameIp && sharesAddress(player, buyer, seller)) {
+            return "你和卖家从同一网络地址登录过，不能购买对方的商品。";
+        }
+        if (incomeCap > 0 && incomeToday(seller) + payout(listing) > incomeCap) {
+            return "卖家今天从其他玩家处的交易行收入已达上限（◈" + Text.money(incomeCap) + "），明天再来吧。";
         }
         return null;
+    }
+
+    /** Market day: rolls over at 04:00 like the daily contracts. */
+    private static long today() {
+        return LocalDateTime.now().minusHours(4).toLocalDate().toEpochDay();
+    }
+
+    private static long incomeToday(Profile profile) {
+        return profile.marketDay == today() ? profile.marketIncome : 0;
+    }
+
+    private long payout(Listing listing) {
+        return listing.price - Math.round(listing.price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
     }
 
     private static boolean sharesAddress(Player player, Profile buyer, Profile seller) {
@@ -408,11 +431,19 @@ public final class MarketService implements Listener {
 
     private void complete(Listing listing, String buyerName, boolean playerSale) {
         data.listings.remove(listing);
-        long tax = Math.round(listing.price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
-        long payout = listing.price - tax;
+        long payout = payout(listing);
+        long tax = listing.price - payout;
         plugin.profiles().edit(listing.seller, seller -> {
             seller.money += payout;
             seller.addStat("market_sales", 1);
+            if (playerSale) {
+                long day = today();
+                if (seller.marketDay != day) {
+                    seller.marketDay = day;
+                    seller.marketIncome = 0;
+                }
+                seller.marketIncome += payout;
+            }
         });
         recordSale(listing, playerSale);
         dirty = true;

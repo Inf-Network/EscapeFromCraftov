@@ -124,7 +124,8 @@ public final class ThrowableService implements Listener {
     }
 
     private void flash(Location at, ThrowableSpec spec) {
-        at.getWorld().spawnParticle(Particle.FLASH, at, 2);
+        // The flash particle takes a colour on 1.21.11; without one Paper throws and the grenade does nothing.
+        at.getWorld().spawnParticle(Particle.FLASH, at, 2, 0, 0, 0, 0, org.bukkit.Color.WHITE);
         at.getWorld().playSound(at, "craftov:throw.flash", SoundCategory.PLAYERS, 4f, 1f);
         for (Player player : at.getWorld().getNearbyPlayers(at, spec.radius())) {
             Vector to = at.toVector().subtract(player.getEyeLocation().toVector());

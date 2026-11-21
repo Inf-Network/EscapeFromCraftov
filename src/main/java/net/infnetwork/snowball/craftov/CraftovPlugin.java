@@ -327,6 +327,14 @@ public final class CraftovPlugin extends JavaPlugin {
     public boolean canUseCatalog(Player player) {
         return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
     }
+
+    /**
+     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
+     * hands out one of everything) need the same access as the catalog.
+     */
+    public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
+        return !map.test() || canUseCatalog(player);
+    }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
     public RaidManager raids() { return raids; }

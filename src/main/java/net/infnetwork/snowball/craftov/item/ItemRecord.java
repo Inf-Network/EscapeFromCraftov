@@ -27,6 +27,12 @@ public final class ItemRecord {
     public @Nullable String optic;
     /** Fitted attachments other than the sight, slot -> item id (guns only). */
     public java.util.@Nullable Map<String, String> attach;
+    /**
+     * Proving-ground armory item (true, else null so Gson leaves it out). Only exists inside a raid:
+     * packed in a rig or backpack, or kept while its owner is disconnected. Never persisted, see
+     * {@link ItemFactory#toRecord}.
+     */
+    public @Nullable Boolean test;
 
     public ItemRecord() {
     }
@@ -44,6 +50,7 @@ public final class ItemRecord {
         copy.dura = dura;
         copy.optic = optic;
         copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
+        copy.test = test;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {
@@ -51,6 +58,10 @@ public final class ItemRecord {
             }
         }
         return copy;
+    }
+
+    public boolean isTest() {
+        return Boolean.TRUE.equals(test);
     }
 
     public boolean hasContents() {
@@ -64,6 +75,7 @@ public final class ItemRecord {
                 && Objects.equals(ammo, other.ammo)
                 && Objects.equals(ammoType, other.ammoType)
                 && Objects.equals(dura, other.dura)
+                && Objects.equals(test, other.test)
                 && !hasContents() && !other.hasContents();
     }
 

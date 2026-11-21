@@ -82,8 +82,11 @@ public final class LootContainer {
         return generated;
     }
 
-    /** Fills the container with pre-made items (corpses) that still need searching. */
-    public void fill(List<ItemStack> items, boolean shuffle) {
+    /**
+     * Fills the container with pre-made items (corpses) that still need searching. Returns the items
+     * that did not fit, so the caller can put them somewhere instead of losing them.
+     */
+    public List<ItemStack> fill(List<ItemStack> items, boolean shuffle) {
         generated = true;
         version++;
         List<Integer> free = new ArrayList<>();
@@ -94,15 +97,18 @@ public final class LootContainer {
             Collections.shuffle(free);
         }
         int index = 0;
+        List<ItemStack> left = new ArrayList<>();
         for (ItemStack stack : items) {
             if (index >= free.size()) {
-                break;
+                left.add(stack);
+                continue;
             }
             int slot = shuffle ? free.get(index) : index;
             slots[slot] = stack;
             revealed[slot] = false;
             index++;
         }
+        return left;
     }
 
     public void generate(List<ItemStack> items) {

@@ -933,10 +933,20 @@ public final class RaidManager implements Listener {
         }
         Location ground = at.clone();
         ground.setPitch(0);
+        // A full rig and backpack plus pockets, armour and the cursor is more than the 4 rows of
+        // loot.yml's body_bag: the body grows to fit everything, up to a double chest.
+        int rows = Math.min(6, Math.max(type.rows(), (items.size() + 8) / 9));
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
-                1f, 1.4, 0.6, type.rows(), 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
+                1f, 1.4, 0.6, rows, 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
                 ground, 0, title);
-        container.fill(items, false);
+        List<ItemStack> left = container.fill(items, false);
+        if (!left.isEmpty()) {
+            plugin.getLogger().warning(title + " holds " + items.size() + " items, " + left.size()
+                    + " more than fit in a body; they are dropped beside it");
+            for (ItemStack stack : left) {
+                raid.world.dropItemNaturally(ground, stack);
+            }
+        }
         container.spawn(0);
         Mannequin corpse = raid.world.spawn(ground, Mannequin.class, m -> {
             m.setProfile(look);

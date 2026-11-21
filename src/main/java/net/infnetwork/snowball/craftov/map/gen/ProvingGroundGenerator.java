@@ -130,7 +130,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
             {"test_throwables", "投掷物", "破片/烟雾/震撼"},
             {"test_keys", "全部钥匙", "开北侧门禁室"},
             {"test_valuables", "全部物资", "白到红"},
-            {"test_collectibles", "全部收藏品", "撤离后登记"},
+            {"test_collectibles", "全部收藏品", "不计入收藏室"},
     };
 
     private void armory() {

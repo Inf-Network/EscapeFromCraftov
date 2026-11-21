@@ -372,6 +372,10 @@ public final class LobbyService implements Listener {
             profile.activeRaid = null;
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
         }
+        if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {
+            Text.send(player, "<#FF4D4D>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))
+                    + " <#9AA0A6>(详见控制台，修好后 /cv reload)");
+        }
         plugin.health().setupPlayer(player, false);
         stripRangeItems(player);
         upgradeItems(player);

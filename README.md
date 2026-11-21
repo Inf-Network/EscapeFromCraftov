@@ -125,7 +125,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
    - **保存/边界**：右键保存；潜行右键两个角设置地图边界。
 3. 所有标记都会以只有编辑者可见的悬浮文字显示。`/cv editor set name 我的地图`、`set minutes 20`、`set time dusk`、`set camera`（入场运镜中心）可修改属性，`/cv editor exit` 保存并退出。
 
-地图保存在 `plugins/Craftov/maps/<id>.yml`，也可以直接编辑。
+地图保存在 `plugins/Craftov/maps/<id>.yml`，也可以直接编辑。手改出错（语法错误、拼错撤离点类型等）的文件不会被覆盖：这张图暂时不加载，文件原样保留并另存一份 `<id>.yml.broken`，控制台和管理员进服时会提示；修好后 `/cv reload`，或删掉文件让内置地图在下次开服时恢复默认。
 
 ## 配置文件
 

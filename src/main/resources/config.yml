@@ -133,6 +133,11 @@ market:
 
 rank:
   min-level: 3
+  # Flat experience for extracting (times the tier's xp), in full with at least extract-xp-min-gear
+  # of gear brought in and in proportion below that, so a naked run gets none of it. Profit
+  # (1 per ◈800) and kills earn their own experience on top.
+  extract-xp: 150
+  extract-xp-min-gear: 15000
 
 tasks:
   # Cost of swapping an unfinished daily contract, and the bonus for finishing all three.

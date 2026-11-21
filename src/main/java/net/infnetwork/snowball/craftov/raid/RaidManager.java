@@ -681,7 +681,7 @@ public final class RaidManager implements Listener {
         profile.activeRaid = null;
         List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid);
         int rankDelta = raid.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
-        long xp = Math.round((150 + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
+        long xp = Math.round((extractXp(rp) + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         plugin.tasks().onExtract(player, raid, profit);
         Profile.RaidReport report = report(raid, rp, "撤离成功 · " + point.def.name(), Math.max(0, profit), 0, rankDelta, xp);
@@ -704,6 +704,17 @@ public final class RaidManager implements Listener {
         plugin.lobby().captureLoadout(player);
         plugin.profiles().saveNow(player.getUniqueId());
         sendReport(player, report, newCollectibles);
+    }
+
+    /**
+     * The flat experience for getting out: in full for players who brought in gear worth at least
+     * rank.extract-xp-min-gear, in proportion below that. Walking out naked earned 150 a run with
+     * nothing at stake; profit and kills still earn their own experience.
+     */
+    private double extractXp(RaidPlayer rp) {
+        double base = plugin.getConfig().getDouble("rank.extract-xp", 150);
+        long min = plugin.getConfig().getLong("rank.extract-xp-min-gear", 15000);
+        return min <= 0 ? base : base * Math.min(1.0, rp.gearValue / (double) min);
     }
 
     // ------------------------------------------------------------------ death

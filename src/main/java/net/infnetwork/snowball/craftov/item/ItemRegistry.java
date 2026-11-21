@@ -14,6 +14,8 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -46,7 +48,7 @@ public final class ItemRegistry {
     public @Nullable String load(File file) {
         YamlConfiguration yaml = new YamlConfiguration();
         try {
-            yaml.loadFromString(Files.readString(file.toPath(), StandardCharsets.UTF_8));
+            yaml.loadFromString(read(file));
         } catch (IOException ex) {
             return fail("无法读取 " + file.getName() + "：" + ex.getMessage());
         } catch (InvalidConfigurationException ex) {
@@ -80,6 +82,21 @@ public final class ItemRegistry {
         items.putAll(parsed);
         logger.info("Loaded " + items.size() + " item definitions");
         return null;
+    }
+
+    /**
+     * The file as text. A file saved in another encoding (GBK from Notepad, say) is read the way
+     * Bukkit always read it, with the bytes that are not UTF-8 replaced: the ids still load, only
+     * the names show garbage until the file is saved as UTF-8.
+     */
+    private String read(File file) throws IOException {
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        try {
+            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException ex) {
+            logger.warning(file.getName() + " is not valid UTF-8: the characters that could not be read are replaced. Save it as UTF-8.");
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     private String fail(String reason) {

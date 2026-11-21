@@ -1,10 +1,14 @@
 package net.infnetwork.snowball.craftov.inventory;
 
+import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.Menu;
+import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.GameMode;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -19,16 +23,15 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.plugin.Plugin;
 
 /** Enforces the carry layout on the player's own inventory screen. */
 public final class CarryListener implements Listener {
 
-    private final Plugin plugin;
+    private final CraftovPlugin plugin;
     private final CarryService carry;
     private final ItemFactory items;
 
-    public CarryListener(Plugin plugin, CarryService carry) {
+    public CarryListener(CraftovPlugin plugin, CarryService carry) {
         this.plugin = plugin;
         this.carry = carry;
         this.items = carry.items();
@@ -202,12 +205,32 @@ public final class CarryListener implements Listener {
         }
     }
 
-    /** Q on the worn rig or backpack drops it with everything still packed inside. */
+    /**
+     * Q on the worn rig or backpack drops it with everything still packed inside, but only for a
+     * raider who is up: in the lobby nobody can pick it up again, and a downed player keeps their
+     * gear. The drop is then announced like a vanilla one, so every other drop rule still has its
+     * say; if one of them refuses, the container goes straight back on.
+     */
     private void dropWorn(Player player, int slot) {
+        RaidPlayer rp = plugin.raids().session(player);
+        if (rp == null || rp.state != RaidPlayer.State.ALIVE) {
+            String what = (slot == CarryService.LEGS ? Category.RIG : Category.BACKPACK).displayName();
+            Text.send(player, rp == null ? "<#FF8A80>只有在对局中才能丢弃" + what + "。"
+                    : rp.state == RaidPlayer.State.DOWNED ? "<#FF8A80>倒地时不能丢弃" + what + "。"
+                    : "<#FF8A80>现在不能丢弃" + what + "。");
+            return;
+        }
         ItemStack removed = carry.unequip(player, slot);
-        if (removed != null) {
-            player.getWorld().dropItem(player.getEyeLocation().subtract(0, 0.3, 0), removed,
-                    item -> item.setVelocity(player.getLocation().getDirection().multiply(0.3)));
+        if (removed == null) {
+            return;
+        }
+        Item dropped = player.getWorld().dropItem(player.getEyeLocation().subtract(0, 0.3, 0), removed,
+                item -> item.setVelocity(player.getLocation().getDirection().multiply(0.3)));
+        // The constructor is marked internal, but firing it is the only way to let the lobby, the range
+        // and the raid rules veto this drop the way they veto any other.
+        if (!dropped.isValid() || !new PlayerDropItemEvent(player, dropped).callEvent()) {
+            dropped.remove();
+            carry.equip(player, removed);
         }
     }
 

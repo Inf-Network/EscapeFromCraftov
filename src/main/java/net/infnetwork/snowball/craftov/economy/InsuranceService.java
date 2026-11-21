@@ -25,7 +25,8 @@ import java.util.UUID;
  * Gear insurance. With it switched on, deploying charges a share of the value of your guns, armour,
  * rig and backpack and marks them as insured for that raid. Whoever extracts with a marked item
  * keeps it and the mark is gone (insurance used up, or lost to a looter). Insured items still lying
- * in bodies, containers or on the ground when the raid closes go back to their owner's mailbox.
+ * in bodies, containers or on the ground when the raid closes go back to their owner's mailbox;
+ * rigs and backpacks come back empty, whatever was packed inside them stays in the raid.
  */
 public final class InsuranceService {
 
@@ -137,6 +138,10 @@ public final class InsuranceService {
         if (record == null) {
             return false;
         }
+        // Only the insured rig or backpack itself comes home. A container taken off in the raid
+        // carries its cells packed inside, and returning those would let anyone fill an insured
+        // pack with loot, leave it in a box and collect the lot from the mailbox.
+        record.contents = null;
         returns.computeIfAbsent(owner, k -> new ArrayList<>()).add(record);
         return true;
     }

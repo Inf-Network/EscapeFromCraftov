@@ -890,12 +890,7 @@ public final class RaidManager implements Listener {
         rp.state = RaidPlayer.State.DEAD;
         List<ItemStack> drop = new ArrayList<>();
         if (rp.disconnectedInventory != null) {
-            for (ItemRecord record : rp.disconnectedInventory.values()) {
-                ItemStack stack = plugin.items().fromRecord(record);
-                if (stack != null) {
-                    drop.add(stack);
-                }
-            }
+            drop.addAll(rp.disconnectedInventory.values());
         }
         if (rp.lastLocation != null && !drop.isEmpty()) {
             spawnCorpse(raid, rp.lastLocation, rp.name, drop, null);
@@ -1129,7 +1124,13 @@ public final class RaidManager implements Listener {
                     plugin.lobby().captureLoadout(player);
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
+                    Map<Integer, ItemRecord> inv = new HashMap<>();
+                    rp.disconnectedInventory.forEach((slot, stack) -> {
+                        ItemRecord record = plugin.items().toRecord(stack);
+                        if (record != null) {
+                            inv.put(slot, record);
+                        }
+                    });
                     plugin.profiles().edit(rp.uuid, profile -> {
                         profile.loadout = new HashMap<>(inv);
                         profile.secure = new ArrayList<>(rp.secure);
@@ -1158,7 +1159,7 @@ public final class RaidManager implements Listener {
                 || rp.disconnectedInventory == null || rp.lastLocation == null) {
             return false;
         }
-        plugin.carry().apply(player, rp.disconnectedInventory, UiItems.raidTerminal());
+        plugin.carry().restore(player, rp.disconnectedInventory, UiItems.raidTerminal());
         rp.disconnectedInventory = null;
         rp.state = RaidPlayer.State.ALIVE;
         rp.protectedUntil = Bukkit.getCurrentTick() + 40;
@@ -1471,7 +1472,7 @@ public final class RaidManager implements Listener {
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
             // During the entry flight (DEPLOYING) lastLocation already holds the insertion point:
             // the usual reconnect window applies and a timeout leaves the body there.
-            rp.disconnectedInventory = plugin.carry().snapshot(player);
+            rp.disconnectedInventory = plugin.carry().copyCarried(player);
             if (rp.state == RaidPlayer.State.ALIVE) {
                 rp.lastLocation = player.getLocation();
             }

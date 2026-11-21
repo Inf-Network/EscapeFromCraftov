@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
+import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -29,7 +30,8 @@ public final class RaidPlayer {
     public long protectedUntil;
     public @Nullable Location lastLocation;
     public long disconnectedAt;
-    public @Nullable Map<Integer, ItemRecord> disconnectedInventory;
+    /** What a disconnected player carried, by slot. Stacks rather than records: they keep insurance marks. */
+    public @Nullable Map<Integer, ItemStack> disconnectedInventory;
     public @Nullable String escortContract;
     public int containersSearched;
 

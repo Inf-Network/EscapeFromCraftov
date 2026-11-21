@@ -323,33 +323,58 @@ public final class CarryService {
         return out;
     }
 
+    /**
+     * Copies of the same stacks {@link #snapshot} records, keyed by slot. Unlike records they keep
+     * every component, such as a raid's insurance mark, so they can be handed back unchanged.
+     */
+    public Map<Integer, ItemStack> copyCarried(Player player) {
+        Map<Integer, ItemStack> out = new HashMap<>();
+        PlayerInventory inv = player.getInventory();
+        for (int slot = 0; slot <= HEAD; slot++) {
+            ItemStack stack = inv.getItem(slot);
+            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack) && items.toRecord(stack) != null) {
+                out.put(slot, stack.clone());
+            }
+        }
+        return out;
+    }
+
     public List<ItemRecord> allRecords(Player player) {
         return new ArrayList<>(snapshot(player).values());
     }
 
     public void apply(Player player, Map<Integer, ItemRecord> layout, ItemStack terminal) {
+        Map<Integer, ItemStack> stacks = new HashMap<>();
+        for (Map.Entry<Integer, ItemRecord> entry : layout.entrySet()) {
+            ItemStack stack = items.fromRecord(entry.getValue());
+            if (stack != null) {
+                stacks.put(entry.getKey(), stack);
+            }
+        }
+        restore(player, stacks, terminal);
+    }
+
+    /** Puts these stacks back in their slots; whatever no longer fits goes to free cells. */
+    public void restore(Player player, Map<Integer, ItemStack> layout, ItemStack terminal) {
         PlayerInventory inv = player.getInventory();
         inv.clear();
         player.setItemOnCursor(null);
         // Equipment first so capacity is known before cells are filled.
         for (int slot : new int[]{FEET, LEGS, CHEST, HEAD}) {
-            ItemRecord record = layout.get(slot);
-            if (record != null) {
-                inv.setItem(slot, items.fromRecord(record));
+            ItemStack stack = layout.get(slot);
+            if (stack != null) {
+                inv.setItem(slot, stack.clone());
             }
         }
         inv.setItem(TERMINAL_SLOT, terminal);
         refreshLocks(player);
         List<ItemStack> overflow = new ArrayList<>();
-        for (Map.Entry<Integer, ItemRecord> entry : layout.entrySet()) {
+        for (Map.Entry<Integer, ItemStack> entry : layout.entrySet()) {
             int slot = entry.getKey();
             if (slot >= FEET || slot == TERMINAL_SLOT) {
                 continue;
             }
-            ItemStack stack = items.fromRecord(entry.getValue());
-            if (stack == null) {
-                continue;
-            }
+            ItemStack stack = entry.getValue().clone();
             ItemStack current = inv.getItem(slot);
             if (slot < 36 && (current == null || current.isEmpty())) {
                 inv.setItem(slot, stack);

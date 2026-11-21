@@ -22,7 +22,7 @@ import java.util.UUID;
 
 /**
  * Vanilla HUD (boss bars) used when BetterHud is not installed, plus effects that work either way:
- * hit markers and the sniper scope overlay.
+ * hit markers and the camera overlays (scope, suppression, strobe and flashbang white-outs).
  */
 @SuppressWarnings("UnstableApiUsage")
 public final class HudService {
@@ -34,12 +34,13 @@ public final class HudService {
     private final Map<UUID, HudSnapshot> snapshots = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean betterHud;
     /**
-     * Camera overlays share one client-side helmet, so the strongest wins: a strobe flash, then a
-     * scope picture, then the suppression vignette, otherwise the real helmet.
+     * Camera overlays share one client-side helmet, so the strongest wins: a flashbang white-out, a
+     * strobe flash, then a scope picture, then the suppression vignette, otherwise the real helmet.
      */
     private final Map<UUID, String> scopes = new HashMap<>();
     private final Map<UUID, Long> suppressedUntil = new HashMap<>();
     private final Map<UUID, Long> dazzledUntil = new HashMap<>();
+    private final Map<UUID, Flash> flashed = new HashMap<>();
     private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
 
@@ -230,6 +231,11 @@ public final class HudService {
     }
 
     private @org.jspecify.annotations.Nullable String wantedOverlay(UUID id, long now) {
+        Flash flash = flashed.get(id);
+        if (flash != null && flash.until() > now) {
+            double left = flash.until() - now;
+            return "flash_" + (int) Math.max(1, Math.min(FLASH_STEPS, Math.ceil(left * FLASH_STEPS / flash.fade())));
+        }
         Long dazzled = dazzledUntil.get(id);
         if (dazzled != null && dazzled > now && (now / 2) % 2 == 0) {
             return "strobe";
@@ -293,15 +299,39 @@ public final class HudService {
         refreshOverlay(player);
     }
 
+    /** Flashbang white-out (misc/flash_1..4, 4 = fully white): when it ends and how many ticks it takes to fade. */
+    private record Flash(long until, int fade) {
+    }
+
+    private static final int FLASH_STEPS = 4;
+
+    /**
+     * Flashbanged: the screen goes fully white, then steps down through fainter overlays over the last
+     * half of {@code ticks} (10 to 30 ticks of fade). It covers a scope picture, which comes back after.
+     */
+    public void flash(Player player, int ticks) {
+        if (ticks <= 0) {
+            return;
+        }
+        long until = Bukkit.getCurrentTick() + ticks;
+        Flash current = flashed.get(player.getUniqueId());
+        if (current == null || current.until() < until) {
+            flashed.put(player.getUniqueId(), new Flash(until, Math.max(10, Math.min(30, ticks / 2))));
+        }
+        refreshOverlay(player);
+    }
+
     private void tickOverlays() {
-        if (suppressedUntil.isEmpty() && dazzledUntil.isEmpty()) {
+        if (suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()) {
             return;
         }
         long now = Bukkit.getCurrentTick();
         java.util.Set<UUID> touched = new java.util.HashSet<>(suppressedUntil.keySet());
         touched.addAll(dazzledUntil.keySet());
+        touched.addAll(flashed.keySet());
         suppressedUntil.values().removeIf(until -> until <= now);
         dazzledUntil.values().removeIf(until -> until <= now);
+        flashed.values().removeIf(flash -> flash.until() <= now);
         for (UUID id : touched) {
             Player player = Bukkit.getPlayer(id);
             if (player != null) {

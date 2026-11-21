@@ -98,6 +98,12 @@ combat:
   friendly-fire: false
   damage-numbers: true
   flashbang:
+    # A flashed player's screen goes white (then fades) and their ears ring: facing-ticks when they
+    # looked at the blast, away-ticks when it was behind them, never less than min-ticks. No effect
+    # through walls. Soldiers are dazzled instead (ai.dazzle).
+    facing-ticks: 80
+    away-ticks: 30
+    min-ticks: 20
     # Share of a flashbang's effect left at the edge of its radius (full strength at the blast).
     edge-strength: 0.4
 

@@ -18,8 +18,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
@@ -124,32 +122,36 @@ public final class ThrowableService implements Listener {
         }.runTaskTimer(plugin, 0L, 5L);
     }
 
+    /**
+     * Players and soldiers follow the same rules: nothing through a wall, much less with the blast behind
+     * them, weaker towards the edge of the radius. Players get a white screen that fades out and ringing
+     * ears; soldiers are dazzled (they keep fighting, but shoot wide), even right after a strobe.
+     */
     private void flash(Location at, ThrowableSpec spec) {
         // The flash particle takes a colour on 1.21.11; without one Paper throws and the grenade does nothing.
         at.getWorld().spawnParticle(Particle.FLASH, at, 2, 0, 0, 0, 0, org.bukkit.Color.WHITE);
         at.getWorld().playSound(at, "craftov:throw.flash", SoundCategory.PLAYERS, 4f, 1f);
-        for (Player player : at.getWorld().getNearbyPlayers(at, spec.radius())) {
-            Vector to = at.toVector().subtract(player.getEyeLocation().toVector());
-            double facing = player.getEyeLocation().getDirection().dot(to.clone().normalize());
-            RayTraceResult wall = at.getWorld().rayTraceBlocks(player.getEyeLocation(), to.clone().normalize(), to.length(),
-                    org.bukkit.FluidCollisionMode.NEVER, true);
-            if (wall != null && wall.getHitBlock() != null) {
-                continue;
-            }
-            int ticks = facing > 0.3 ? 80 : 30;
-            player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, ticks, 0, false, false, false));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, false, false, false));
-        }
-        // Soldiers are dazzled (they keep fighting, but shoot wide), never through a wall, and only
-        // briefly when the blast is behind them. A flashbang works even right after a strobe.
+        var config = plugin.getConfig();
         for (LivingEntity entity : at.getWorld().getNearbyLivingEntities(at, spec.radius())) {
-            if (entity instanceof Player || !plugin.ai().isAi(entity)) {
+            boolean player = entity instanceof Player p && p.getGameMode() != org.bukkit.GameMode.SPECTATOR;
+            if (!player && !plugin.ai().isAi(entity)) {
                 continue;
             }
             FlashHit hit = flashHit(at, entity, spec.radius());
-            if (hit != null) {
-                int full = hit.facing() ? plugin.getConfig().getInt("ai.dazzle.flash-facing-ticks", 40)
-                        : plugin.getConfig().getInt("ai.dazzle.flash-away-ticks", 15);
+            if (hit == null) {
+                continue;
+            }
+            if (player) {
+                int facing = config.getInt("combat.flashbang.facing-ticks", 80);
+                int full = hit.facing() ? facing : config.getInt("combat.flashbang.away-ticks", 30);
+                int ticks = (int) Math.max(config.getInt("combat.flashbang.min-ticks", 20), Math.round(full * hit.falloff()));
+                Player flashed = (Player) entity;
+                plugin.hud().flash(flashed, ticks);
+                float volume = (float) Math.min(1.0, 0.3 + 0.7 * ticks / Math.max(1.0, facing));
+                flashed.playSound(flashed.getLocation(), "craftov:status.tinnitus", SoundCategory.PLAYERS, volume, 1f);
+            } else {
+                int full = hit.facing() ? config.getInt("ai.dazzle.flash-facing-ticks", 40)
+                        : config.getInt("ai.dazzle.flash-away-ticks", 15);
                 plugin.ai().dazzle(entity, (int) Math.round(full * hit.falloff()), true);
             }
         }

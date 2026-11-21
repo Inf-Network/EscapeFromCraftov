@@ -22,6 +22,8 @@ command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraft
                                  restart wait for "Done"
   craftov rcon <command...>      run a console command over RCON
   craftov log [lines]            the end of server/run/logs/latest.log
+  craftov consolelog [lines]     the end of server/run/console.log (the server's
+                                 stdout, with errors from before Paper's log opens)
   craftov clientlog [lines]      the end of the Minecraft client log
   craftov yml diff <file>        compare plugins/Craftov/<file> with the repo copy
   craftov yml copy <file>        replace it with the repo copy (keeps a backup);
@@ -181,7 +183,7 @@ def tail(path, n):
 def line_count(arg, default=60):
     if arg is None:
         return default
-    if not arg.isdigit() or not 0 < int(arg) <= 5000:
+    if not re.fullmatch(r"[0-9]{1,4}", arg) or not 0 < int(arg) <= 5000:
         raise Fail("lines must be a number from 1 to 5000")
     return int(arg)
 
@@ -254,12 +256,19 @@ def log_inode():
         return None
 
 
-def wait_done(old_inode, timeout):
+def wait_done(old_inode, timeout, old_pids=()):
     """Waits for a fresh latest.log (Paper rotates it on start) to report "Done (".
 
     The inode check matters on a restart: the old server's log also contains a
-    "Done (" line and keeps being written while it shuts down."""
+    "Done (" line and keeps being written while it shuts down. Under the restart
+    loop a broken server never leaves the loop idle, so two server processes
+    dying without "Done", or no server process at all for a while (a java that
+    dies at once is never seen), count as a failed start. old_pids are the ones
+    being stopped: they are meant to die, and while they save the world the
+    loop is not expected to start anything."""
     deadline = time.time() + timeout
+    seen, died = set(), set()
+    last_busy = time.time()
     while time.time() < deadline:
         time.sleep(2)
         inode = log_inode()
@@ -272,16 +281,29 @@ def wait_done(old_inode, timeout):
                 port = props().get("server-port", "25565")
                 print("listening on port %s" % port if listening(port) else "warning: nothing on port " + port)
                 return
-        if not server_pids() and not loop_pids():
-            raise Fail("the server exited while starting; end of the log:\n" + tail_any(40))
-    raise Fail("no \"Done\" after %d s; end of the log:\n%s" % (timeout, tail_any(40)))
+        now = set(server_pids()) - set(old_pids)
+        died |= seen - now
+        seen |= now
+        if now or any(alive(pid) for pid in old_pids):
+            last_busy = time.time()
+        if not now and not loop_pids():
+            raise Fail("the server exited while starting\n" + start_logs(old_inode))
+        if len(died) >= 2 or time.time() - last_busy > 12:
+            raise Fail("the server keeps exiting while starting (the restart loop is relaunching it)\n"
+                       + start_logs(old_inode))
+    raise Fail("no \"Done\" after %d s\n%s" % (timeout, start_logs(old_inode)))
 
 
-def tail_any(n):
-    for path in (LATEST_LOG, os.path.join(RUN, "console.log")):
-        if os.path.exists(path):
-            return tail(path, n)
-    return "(no log)"
+def start_logs(old_inode):
+    """console.log has what happens before Paper opens a fresh latest.log (a bad
+    java, a corrupt jar); latest.log only counts once it was rotated."""
+    out = []
+    if log_inode() not in (None, old_inode):
+        out.append("--- logs/latest.log\n" + tail(LATEST_LOG, 30))
+    console = os.path.join(RUN, "console.log")
+    if os.path.exists(console):
+        out.append("--- console.log\n" + tail(console, 15))
+    return "\n".join(out) or "(no log)"
 
 
 # ------------------------------------------------------------------ RCON
@@ -421,9 +443,13 @@ def cmd_sync(args):
         if len(args) != 2 or args[0] != "--park":
             raise Fail("usage: craftov sync [--park <name>]")
         park = args[1]
-        if git("check-ref-format", "--branch", park, check=False).returncode != 0 or park == "main":
-            raise Fail("--park needs a branch name other than main")
     check_project()
+    if park is not None:
+        # Plain names only: git expands forms like @{-1}, and APFS folds case.
+        fmt = git("check-ref-format", "--branch", park, check=False)
+        if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,63}", park) or fmt.returncode != 0
+                or fmt.stdout.strip() != park or park.lower() == "main"):
+            raise Fail("--park needs a plain branch name other than main")
     data = sys.stdin.buffer.read()
     if not re.match(rb"# v[23] git bundle", data):
         raise Fail("sync reads a git bundle on stdin: git bundle create - main | ssh mac craftov sync")
@@ -451,7 +477,8 @@ def cmd_sync(args):
     if parking and not branch:
         raise Fail("the Mac checkout is a detached HEAD with commits the server does not; "
                    "put them on a branch first")
-    if parking and git("rev-parse", "--verify", "-q", "refs/heads/" + park, check=False).returncode == 0:
+    if parking and park.lower() in (b.lower() for b in git(
+            "for-each-ref", "--format=%(refname:short)", "refs/heads/").stdout.split()):
         raise Fail("a branch named %s already exists on the Mac" % park)
     changed = git("status", "--porcelain", "--untracked-files=no").stdout.rstrip()
     if changed:
@@ -459,6 +486,12 @@ def cmd_sync(args):
     local = git("rev-parse", "--verify", "-q", "refs/heads/main", check=False).stdout.strip()
     if branch != "main" and local and not is_ancestor(local, target):
         raise Fail("the local branch main has commits the server does not; move them first")
+    here = os.path.realpath(git("rev-parse", "--show-toplevel").stdout.strip())
+    for block in git("worktree", "list", "--porcelain").stdout.split("\n\n"):
+        fields = dict(l.split(" ", 1) for l in block.splitlines() if " " in l)
+        if fields.get("branch") == "refs/heads/main" and os.path.realpath(fields.get("worktree", "")) != here:
+            # Git before 2.44 would move main under that worktree without a word.
+            raise Fail("main is checked out in another worktree at %s" % fields["worktree"])
     if branch == "main" and not parking:
         git("merge", "--quiet", "--ff-only", "refs/craftov/synced")
     else:
@@ -466,7 +499,12 @@ def cmd_sync(args):
             # Rename, never delete: the commits stay on <park>.
             git("branch", "-m", branch, park)
         try:
-            git("checkout", "--quiet", "-B", "main", "refs/craftov/synced")
+            # Not `checkout -B`: before Git 2.44 it ignores other worktrees.
+            if git("rev-parse", "--verify", "-q", "refs/heads/main", check=False).returncode == 0:
+                git("branch", "--quiet", "-f", "main", "refs/craftov/synced")  # a fast-forward, checked above
+                git("checkout", "--quiet", "main")
+            else:
+                git("checkout", "--quiet", "-b", "main", "refs/craftov/synced")
         except Fail:
             if parking:
                 git("branch", "-m", park, branch)  # back as it was
@@ -540,36 +578,65 @@ def cmd_start(timeout=300):
             [os.path.join(jh, "bin", "java"), "-Xms2G", "-Xmx4G", "-XX:+UseG1GC", "-jar", "paper.jar", "--nogui"])
     out = open(os.path.join(RUN, "console.log"), "ab")
     # Own session, no inherited fds: it outlives this ssh call and the call can return.
-    subprocess.Popen(argv, cwd=RUN, env=env(), stdin=subprocess.DEVNULL, stdout=out,
-                     stderr=subprocess.STDOUT, start_new_session=True)
+    proc = subprocess.Popen(argv, cwd=RUN, env=env(), stdin=subprocess.DEVNULL, stdout=out,
+                            stderr=subprocess.STDOUT, start_new_session=True)
     print("started %s" % (script or "paper.jar"))
-    wait_done(old, timeout)
+    try:
+        wait_done(old, timeout)
+    except Fail:
+        # Don't leave a loop we started relaunching a broken server.
+        term(proc.pid)
+        for pid in server_pids():
+            term(pid)
+        raise
 
 
-def quit_screen():
+def term(pid):
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass  # already gone, which is what we wanted
+
+
+def parent(pid):
+    r = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True, env=env())
+    word = r.stdout.strip()
+    return int(word) if word.isdigit() else None
+
+
+def quit_screens(pids):
+    """Closes a screen session (`screen -dmS craftov ./run-forever.sh`) only if it
+    is the parent of a process this checkout ran. -S gets the full pid.name:
+    a bare name matches every session that starts with it."""
     screen = shutil.which("screen", path=BASE_PATH)
-    if screen and ".craftov" in run([screen, "-ls"], check=False).stdout:
-        run([screen, "-S", "craftov", "-X", "quit"], check=False)
+    if not screen or not pids:
+        return
+    listing = run([screen, "-ls"], check=False).stdout
+    for pid in pids:
+        if re.search(r"^\s*%d\.craftov\s" % pid, listing, re.M):
+            run([screen, "-S", "%d.craftov" % pid, "-X", "quit"], check=False)
 
 
 def cmd_stop(timeout=120):
     check_run()
+    loops, srv = loop_pids(), server_pids()
+    parents = [p for p in (parent(pid) for pid in loops + srv) if p]
     # The loop first, or it brings the server straight back up.
-    for pid in loop_pids():
-        os.kill(pid, signal.SIGTERM)
+    for pid in loops:
+        term(pid)
     srv = server_pids()
     if srv:
         try:
             rcon("stop")
         except (Fail, OSError):
             for pid in srv:
-                os.kill(pid, signal.SIGTERM)  # Paper saves and stops on SIGTERM too
+                term(pid)  # Paper saves and stops on SIGTERM too
         deadline = time.time() + timeout
         while any(alive(pid) for pid in srv):
             if time.time() > deadline:
                 raise Fail("still running after %d s: pid %s" % (timeout, ",".join(map(str, srv))))
             time.sleep(1)
-    quit_screen()
+    quit_screens(parents)
     print("stopped")
 
 
@@ -583,9 +650,9 @@ def cmd_restart(timeout=300):
             rcon("stop")
         except (Fail, OSError):
             for pid in srv:
-                os.kill(pid, signal.SIGTERM)
+                term(pid)
         print("stopping; the restart loop brings it back up")
-        wait_done(old, timeout)
+        wait_done(old, timeout, old_pids=srv)
         return
     cmd_stop()
     cmd_start(timeout)
@@ -680,6 +747,8 @@ def main():
             cmd_rcon(rest)
         elif cmd == "log" and len(rest) <= 1:
             cmd_log(rest, LATEST_LOG)
+        elif cmd == "consolelog" and len(rest) <= 1:
+            cmd_log(rest, os.path.join(RUN, "console.log"))
         elif cmd == "clientlog" and len(rest) <= 1:
             cmd_log(rest, CLIENT_LOG)
         elif cmd == "packip" and len(rest) == 1:

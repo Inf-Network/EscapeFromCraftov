@@ -38,7 +38,11 @@ public final class BountyService {
     }
 
     public long total(UUID target) {
-        long placed = plugin.profiles().get(target, "").bounty;
+        // Read without caching: the raid-start announcement also asks about players who have
+        // disconnected since, and get() would keep their profile in memory as if they were online
+        // (for an unreadable file, a stand-in that their next login would then play on unsaved).
+        Profile profile = plugin.profiles().peek(target);
+        long placed = profile == null ? 0 : profile.bounty;
         long house = target.equals(champion()) ? plugin.getConfig().getLong("bounty.champion", 20_000) : 0;
         return placed + house;
     }

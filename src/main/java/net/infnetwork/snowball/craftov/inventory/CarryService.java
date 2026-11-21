@@ -258,7 +258,8 @@ public final class CarryService {
             if (cell == null || cell.isEmpty() || ItemFactory.isUi(cell)) {
                 continue;
             }
-            ItemRecord record = items.toRecord(cell);
+            // Proving-ground armory items stay test items inside the pack instead of disappearing.
+            ItemRecord record = items.packRecord(cell);
             if (record != null) {
                 packed.add(record);
             }
@@ -306,8 +307,20 @@ public final class CarryService {
 
     // ------------------------------------------------------------------ snapshots
 
-    /** Everything the player carries (excluding UI stacks), keyed by inventory slot. */
+    /** Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. */
     public Map<Integer, ItemRecord> snapshot(Player player) {
+        return snapshot(player, false);
+    }
+
+    /**
+     * Like {@link #snapshot(Player)} but keeps proving-ground armory items, for a player who disconnects
+     * mid-raid and may rejoin it. Never store it as a loadout without {@link #persistent}.
+     */
+    public Map<Integer, ItemRecord> raidSnapshot(Player player) {
+        return snapshot(player, true);
+    }
+
+    private Map<Integer, ItemRecord> snapshot(Player player, boolean keepTest) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot <= HEAD; slot++) {
@@ -315,11 +328,23 @@ public final class CarryService {
             if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
                 continue;
             }
-            ItemRecord record = items.toRecord(stack);
+            ItemRecord record = keepTest ? items.packRecord(stack) : items.toRecord(stack);
             if (record != null) {
                 out.put(slot, record);
             }
         }
+        return out;
+    }
+
+    /** A {@link #raidSnapshot} without its test items, fit to be saved as a loadout. */
+    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout) {
+        Map<Integer, ItemRecord> out = new HashMap<>();
+        layout.forEach((slot, record) -> {
+            ItemRecord kept = ItemFactory.persistent(record);
+            if (kept != null) {
+                out.put(slot, kept);
+            }
+        });
         return out;
     }
 

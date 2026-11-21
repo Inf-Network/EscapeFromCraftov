@@ -1064,9 +1064,9 @@ public final class RaidManager implements Listener {
                     plugin.lobby().captureLoadout(player);
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
+                    Map<Integer, ItemRecord> inv = CarryService.persistent(rp.disconnectedInventory);
                     plugin.profiles().edit(rp.uuid, profile -> {
-                        profile.loadout = new HashMap<>(inv);
+                        profile.loadout = inv;
                         profile.secure = new ArrayList<>(rp.secure);
                         profile.activeRaid = null;
                     });
@@ -1394,7 +1394,8 @@ public final class RaidManager implements Listener {
             return;
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
-            rp.disconnectedInventory = plugin.carry().snapshot(player);
+            // Armory items are kept for a rejoin; they still never reach the saved loadout.
+            rp.disconnectedInventory = plugin.carry().raidSnapshot(player);
             rp.lastLocation = rp.state == RaidPlayer.State.ALIVE ? player.getLocation() : null;
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();

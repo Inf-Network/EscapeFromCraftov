@@ -4,8 +4,11 @@
 // no room on the player goes to the stash mailbox in the lobby but still drops in a raid.
 //
 // The clicks are written as raw packets back to back, so the server reads them in one tick. The
-// raid part brings a second bot as a squadmate, because a solo player is never downed. Both bots
-// get random names (Cr#####, Cm#####): turn the whitelist off or add them first.
+// raid part brings a second bot as a squadmate, because a solo player is never downed. Closing the
+// inventory, clicking outside it or leaving the game with a packed container on the cursor and no
+// free cell must not delete it in the lobby or while downed, and a shift-click on the slot still
+// puts it on. Both bots get random names (Cr#####, Cm#####): turn the whitelist off or add them
+// first.
 //
 //   PORT=25565 RCON_PORT=25575 node carry.js        # all checks
 //   CHECKS=lobby-q,raid-dupe node carry.js          # a subset
@@ -103,6 +106,11 @@ function describe () {
 /** One raw click on the player's own inventory. A stale stateId makes the server resend the whole window. */
 function click (slot, button = 0, mode = 0) {
   bot._client.write('window_click', { windowId: 0, stateId: -1, slot, mouseButton: button, mode, changedSlots: [], cursorItem: undefined })
+}
+/** Closes the player's own inventory screen the way the vanilla client does; its cursor is gone after that. */
+function closeInv () {
+  bot._client.write('close_window', { windowId: 0 })
+  bot.inventory.selectedItem = null
 }
 /** Lets the server finish anything it does a tick later, then pulls the real window state. */
 async function settle (ms = 400) {
@@ -229,6 +237,83 @@ const checks = [
     check('lobby-overflow', mailBefore !== null && mailAfter === mailBefore + 1 && ground().n === groundBefore && carried() === carriedBefore,
       `mailbox ${mailBefore} -> ${mailAfter}, ground ${groundBefore} -> ${ground().n}, carried ${carriedBefore} -> ${carried()} chat=${JSON.stringify(chat.slice(-2))}`)
   }],
+  ['lobby-close', 'lobby: closing the inventory with the full backpack on the cursor and no free cell puts it back on', async () => {
+    const mailBefore = await mailbox()
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    closeInv()
+    await settle()
+    const mailAfter = await mailbox()
+    check('lobby-close', onCursor === 'pack_3' && at(PACK) === 'pack_3' && world() === before && mailAfter === mailBefore,
+      `cursorBefore=${onCursor} before=${before} after=${world()} mailbox ${mailBefore} -> ${mailAfter} ${describe()}`)
+  }],
+  ['lobby-close-item', 'lobby: closing the inventory with an item on the cursor and no free cell mails it', async () => {
+    const mailBefore = await mailbox()
+    const pocket = POCKETS.find(s => at(s) === 'medkit_s')
+    click(pocket); await settle()
+    const onCursor = cursor()
+    await cmd(`cv give ${name} medkit_s`) // fills the pocket the medkit came from
+    await settle()
+    const before = world()
+    const groundBefore = ground().n
+    closeInv()
+    await settle()
+    const mailAfter = await mailbox()
+    check('lobby-close-item', onCursor === 'medkit_s' && mailAfter === mailBefore + 1 && world() === before - 1 && ground().n === groundBefore,
+      `cursorBefore=${onCursor} before=${before} after=${world()} mailbox ${mailBefore} -> ${mailAfter} ${describe()}`)
+  }],
+  ['lobby-outside', 'lobby: a click outside the window with the full backpack on the cursor keeps it on the cursor', async () => {
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    click(OUTSIDE)
+    await settle()
+    const held = cursor()
+    const after = world()
+    click(PACK); await settle() // back on
+    check('lobby-outside', onCursor === 'pack_3' && held === 'pack_3' && after === before && at(PACK) === 'pack_3' && world() === before,
+      `cursorBefore=${onCursor} cursorAfter=${held} before=${before} after=${after} ${describe()}`)
+  }],
+  ['lobby-shift-wear', 'lobby: shift-click on the backpack slot with the backpack on the cursor puts it back on', async () => {
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    click(PACK, 0, 1)
+    await settle()
+    check('lobby-shift-wear', onCursor === 'pack_3' && at(PACK) === 'pack_3' && cursor() === null && world() === before,
+      `cursorBefore=${onCursor} before=${before} after=${world()} ${describe()}`)
+  }],
+  ['lobby-shift-blocked', 'lobby: with the full backpack on the cursor, shift-clicking another backpack on is refused and nothing is mailed', async () => {
+    await freePocket()
+    await cmd(`cv give ${name} pack_2`)
+    await settle()
+    const spare = POCKETS.find(s => at(s) === 'pack_2')
+    const mailBefore = await mailbox()
+    click(PACK); await settle()
+    const before = world()
+    chat.length = 0
+    click(spare, 0, 1)
+    await settle()
+    const refused = at(spare) === 'pack_2' && at(PACK) === null && cursor() === 'pack_3'
+    closeInv()
+    await settle()
+    const mailAfter = await mailbox()
+    check('lobby-shift-blocked', spare !== undefined && refused && at(PACK) === 'pack_3' && at(spare) === 'pack_2' && world() === before && mailAfter === mailBefore,
+      `spare=${spare} refused=${refused} before=${before} after=${world()} mailbox ${mailBefore} -> ${mailAfter} ${describe()} chat=${JSON.stringify(chat.slice(-2))}`)
+  }],
+  ['lobby-quit', 'lobby: leaving with the full backpack on the cursor keeps it for the next login', async () => {
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    bot.quit()
+    await sleep(2000)
+    bot = await join(name, true)
+    await sleep(3000)
+    await settle()
+    check('lobby-quit', onCursor === 'pack_3' && at(PACK) === 'pack_3' && world() === before,
+      `cursorBefore=${onCursor} before=${before} after=${world()} ${describe()}`)
+  }],
   ['raid-dupe','raid: full rig on the cursor, rig slot click + click outside the window in one tick leaves one rig', async () => {
     click(RIG); await settle()
     const onCursor = cursor()
@@ -249,6 +334,26 @@ const checks = [
     const droppedAfter = droppedNearby().filter(it => idOf(it) === 'medkit_s').length + mateMedkits()
     check('raid-overflow', droppedAfter === droppedBefore + 1 && carried() === carriedBefore,
       `dropped (ground + picked up by the mate) ${droppedBefore} -> ${droppedAfter}, carried ${carriedBefore} -> ${carried()}`)
+    await cmd(`execute as ${name} at @s run kill @e[type=item,distance=..3]`)
+  }],
+  ['raid-close-gun', 'raid: alive, closing the inventory with a gun on the cursor and no free cell keeps the gun', async () => {
+    // The weapon code takes a gun thrown without a click for a reload and refuses the throw. The mate
+    // may pick a dropped gun up, and it carries a starter gun of its own, so its guns count too.
+    const mateGuns = () => mate ? mate.inventory.slots.filter(it => idOf(it) === 'p18').length : 0
+    await freePocket()
+    await cmd(`cv give ${name} p18`)
+    await settle()
+    const pocket = POCKETS.find(s => at(s) === 'p18')
+    click(pocket); await settle()
+    const onCursor = cursor()
+    await cmd(`cv give ${name} medkit_s`) // fills the pocket the gun came from
+    await settle()
+    const before = count('p18') + mateGuns()
+    closeInv()
+    await settle()
+    const after = count('p18') + mateGuns()
+    check('raid-close-gun', onCursor === 'p18' && after === before,
+      `cursorBefore=${onCursor} guns ${before} -> ${after} ${describe()}`)
     await cmd(`execute as ${name} at @s run kill @e[type=item,distance=..3]`)
   }],
   ['raid-q','raid: alive, Q on the worn backpack throws it with its contents', async () => {
@@ -273,6 +378,29 @@ const checks = [
     await settle()
     check('raid-downed-q', ready && at(PACK) === 'pack_3' && ground().n === groundBefore && world() === before,
       `ready=${ready} hp=${bot.health} before=${before} after=${world()} ${describe()} chat=${JSON.stringify(chat.slice(-2))}`)
+  }],
+  ['raid-downed-close', 'raid: downed, closing the inventory with the full backpack on the cursor and no free cell puts it back on', async () => {
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    const groundBefore = ground().n
+    closeInv()
+    await settle()
+    check('raid-downed-close', onCursor === 'pack_3' && at(PACK) === 'pack_3' && ground().n === groundBefore && world() === before,
+      `cursorBefore=${onCursor} hp=${bot.health} before=${before} after=${world()} ${describe()}`)
+  }],
+  ['raid-downed-outside', 'raid: downed, a click outside the window with the full backpack on the cursor throws nothing', async () => {
+    click(PACK); await settle()
+    const onCursor = cursor()
+    const before = world()
+    const groundBefore = ground().n
+    click(OUTSIDE)
+    await settle()
+    const held = cursor()
+    const groundAfter = ground().n
+    click(PACK); await settle() // back on
+    check('raid-downed-outside', onCursor === 'pack_3' && held === 'pack_3' && groundAfter === groundBefore && at(PACK) === 'pack_3' && world() === before,
+      `cursorBefore=${onCursor} cursorAfter=${held} hp=${bot.health} before=${before} after=${world()} ${describe()}`)
   }]
 ]
 
@@ -286,6 +414,9 @@ const want = key => !ONLY || ONLY.includes(key)
     // Start from nothing: the starter rig holds ammo and could not be swapped out in the lobby.
     await cmd(`clear ${name}`)
     for (let i = 0; i < 12 && at(MELEE) !== 'knife_starter'; i++) await settle(500) // the lobby hands the knife back
+    // The terminal only comes back when the lobby is entered again. A stand-in keeps hotbar slot 9
+    // taken as it is in play, or vanilla would quietly put a returned cursor there.
+    await cmd(`item replace entity ${name} hotbar.8 with minecraft:barrier`)
     for (const [key, label, run] of checks.filter(c => c[0].startsWith('lobby-') && want(c[0]))) {
       log('--', label)
       await kit()

@@ -10,9 +10,14 @@ import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,9 +25,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -35,7 +42,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
  * 1.15 × buy price, and buying from the trader to resell never pays.
  */
-public final class MarketService {
+public final class MarketService implements Listener {
 
     public static final class Listing {
         public String id;
@@ -334,7 +341,46 @@ public final class MarketService {
         if (buyer.level < level) {
             return "购买其他玩家的商品需要账号等级 " + level + "（当前 Lv." + buyer.level + "），商人处的商品不受限制。";
         }
+        if (plugin.getConfig().getBoolean("market.block-same-ip", false)) {
+            Profile seller = plugin.profiles().peek(listing.seller);
+            if (seller != null && sharesAddress(player, buyer, seller)) {
+                return "你和卖家从同一网络地址登录过，不能购买对方的商品。";
+            }
+        }
         return null;
+    }
+
+    private static boolean sharesAddress(Player player, Profile buyer, Profile seller) {
+        Set<String> mine = new HashSet<>(buyer.ips);
+        String now = address(player);
+        if (now != null) {
+            mine.add(now);
+        }
+        Player online = Bukkit.getPlayer(seller.uuid);
+        String theirs = online == null ? null : address(online);
+        return (theirs != null && mine.contains(theirs)) || seller.ips.stream().anyMatch(mine::contains);
+    }
+
+    private static @Nullable String address(Player player) {
+        InetSocketAddress socket = player.getAddress();
+        return socket == null || socket.getAddress() == null ? null : socket.getAddress().getHostAddress();
+    }
+
+    /** Remembers the last few login addresses for the same-address check (market.block-same-ip). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        String ip = address(player);
+        if (ip == null) {
+            return;
+        }
+        Profile profile = plugin.profiles().get(player);
+        profile.ips.remove(ip);
+        profile.ips.add(ip);
+        while (profile.ips.size() > 4) {
+            profile.ips.remove(0);
+        }
+        plugin.profiles().markDirty(player.getUniqueId());
     }
 
     public boolean cancel(Player player, String listingId) {

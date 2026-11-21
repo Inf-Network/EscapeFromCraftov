@@ -55,6 +55,8 @@ public final class Profile {
     public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
+    /** Last few login addresses, newest last (MarketService: same-address trades). */
+    public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

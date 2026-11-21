@@ -93,6 +93,15 @@ public final class ProfileService {
         return cache.get(uuid);
     }
 
+    /**
+     * Reads a profile without caching it: the live one when its owner is online, otherwise a copy
+     * from disk that must not be changed (use {@link #edit} for that).
+     */
+    public @Nullable Profile peek(UUID uuid) {
+        Profile profile = cache.get(uuid);
+        return profile != null ? profile : load(uuid);
+    }
+
     /** Applies a mutation to a profile whether or not its owner is online. */
     public void edit(UUID uuid, Consumer<Profile> mutation) {
         Profile profile = cache.get(uuid);
@@ -212,6 +221,7 @@ public final class ProfileService {
         if (p.stats == null) p.stats = new HashMap<>();
         if (p.presets == null) p.presets = new ArrayList<>();
         if (p.reports == null) p.reports = new ArrayList<>();
+        if (p.ips == null) p.ips = new ArrayList<>();
         if (p.unlockedOperators == null || p.unlockedOperators.isEmpty()) {
             p.unlockedOperators = new java.util.LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
         }

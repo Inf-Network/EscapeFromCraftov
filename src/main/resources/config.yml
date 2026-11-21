@@ -136,6 +136,11 @@ market:
   # Account level needed to buy other players' listings, so a fresh account cannot hand its starting
   # money to another one on day one (1 = no requirement). Selling, and system buyers, are not affected.
   min-buy-level: 3
+  # Refuse sales between players when buyer and seller have logged in from the same address (each
+  # profile keeps its last 4). OFF by default: players on one LAN, in one household or behind one
+  # carrier NAT share an address and could not trade. Worth turning on for a public server; the real
+  # fix for second accounts is online-mode=true.
+  block-same-ip: false
   # The trade price shown in the market is information only: it follows sales between players (never
   # system buyers), counted per plain unit with attachments, loaded ammo and wear divided out. Sales
   # outside [trade-outlier-min, trade-outlier-max] x the reference price are ignored, and the result is

@@ -97,6 +97,9 @@ downed:
 combat:
   friendly-fire: false
   damage-numbers: true
+  flashbang:
+    # Share of a flashbang's effect left at the edge of its radius (full strength at the blast).
+    edge-strength: 0.4
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
@@ -115,6 +118,10 @@ ai:
     spread-multiplier: 3.0
     shot-delay-ticks: 10
     immune-ticks: 80
+    # Flashbang: dazzle length when the soldier faces the blast or has it behind them, scaled down
+    # with distance (combat.flashbang.edge-strength). No effect through walls; ignores immune-ticks.
+    flash-facing-ticks: 40
+    flash-away-ticks: 15
 
 trader:
   buy-multiplier: 1.15

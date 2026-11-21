@@ -78,7 +78,6 @@ public final class AiService implements Listener {
         @Nullable Location alertPos;
         long alertUntil;
         long nextWanderTick;
-        long stunnedUntil;
         /** Blinded by a strobe or a flashbang: still fights, but shoots later and much wider until then. */
         long dazzledUntil;
         /** After a dazzle wears off the soldier has its eyes back for a while and a strobe cannot blind it again. */
@@ -472,15 +471,6 @@ public final class AiService implements Listener {
         });
     }
 
-    public void stun(Location at, double radius, int ticks) {
-        for (Bot bot : bots.values()) {
-            if (bot.mob.getWorld() == at.getWorld() && bot.mob.getLocation().distanceSquared(at) <= radius * radius) {
-                bot.stunnedUntil = Bukkit.getCurrentTick() + ticks;
-                bot.mob.getPathfinder().stopPathfinding();
-            }
-        }
-    }
-
     /**
      * A strobe in the face: the soldier keeps moving and fighting, but its next shot is held back and
      * its rounds go wide until the effect wears off. A soldier that is already dazzled, or has just
@@ -536,7 +526,7 @@ public final class AiService implements Listener {
                 dead.add(mob.getUniqueId());
                 continue;
             }
-            if (bot.raid.state != Raid.State.RUNNING || now < bot.stunnedUntil) {
+            if (bot.raid.state != Raid.State.RUNNING) {
                 continue;
             }
             think(bot, now);

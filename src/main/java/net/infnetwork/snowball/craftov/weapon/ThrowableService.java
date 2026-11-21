@@ -23,6 +23,7 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
+import org.jspecify.annotations.Nullable;
 
 /** Grenades: thrown as bouncing item entities, then detonate after their fuse. */
 public final class ThrowableService implements Listener {
@@ -139,7 +140,51 @@ public final class ThrowableService implements Listener {
             player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, ticks, 0, false, false, false));
             player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, false, false, false));
         }
-        plugin.ai().stun(at, spec.radius(), 70);
+        // Soldiers are dazzled (they keep fighting, but shoot wide), never through a wall, and only
+        // briefly when the blast is behind them. A flashbang works even right after a strobe.
+        for (LivingEntity entity : at.getWorld().getNearbyLivingEntities(at, spec.radius())) {
+            if (entity instanceof Player || !plugin.ai().isAi(entity)) {
+                continue;
+            }
+            FlashHit hit = flashHit(at, entity, spec.radius());
+            if (hit != null) {
+                int full = hit.facing() ? plugin.getConfig().getInt("ai.dazzle.flash-facing-ticks", 40)
+                        : plugin.getConfig().getInt("ai.dazzle.flash-away-ticks", 15);
+                plugin.ai().dazzle(entity, (int) Math.round(full * hit.falloff()), true);
+            }
+        }
+    }
+
+    /** Whether someone was looking at the blast, and how much of its strength reaches them (0..1]. */
+    private record FlashHit(boolean facing, double falloff) {
+    }
+
+    /**
+     * How a flashbang going off at {@code at} reaches someone: null if they are out of range or a block
+     * stands between the blast and their eyes. Full strength at the blast, fading to
+     * combat.flashbang.edge-strength at the edge of the radius.
+     */
+    private @Nullable FlashHit flashHit(Location at, LivingEntity entity, double radius) {
+        Location eye = entity.getEyeLocation();
+        if (eye.getWorld() != at.getWorld()) {
+            return null;
+        }
+        Vector toEye = eye.toVector().subtract(at.toVector());
+        double distance = toEye.length();
+        if (distance > radius) {
+            return null;
+        }
+        boolean facing = true;
+        if (distance > 0.05) {
+            Vector dir = toEye.clone().multiply(1 / distance);
+            RayTraceResult wall = at.getWorld().rayTraceBlocks(at, dir, distance, org.bukkit.FluidCollisionMode.NEVER, true);
+            if (wall != null && wall.getHitBlock() != null) {
+                return null;
+            }
+            facing = eye.getDirection().dot(dir.multiply(-1)) > 0.3;
+        }
+        double edge = plugin.getConfig().getDouble("combat.flashbang.edge-strength", 0.4);
+        return new FlashHit(facing, 1 - (1 - edge) * Math.min(1, distance / Math.max(0.1, radius)));
     }
 
     @EventHandler(ignoreCancelled = true)

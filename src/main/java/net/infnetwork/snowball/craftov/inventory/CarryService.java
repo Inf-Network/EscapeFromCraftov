@@ -1,10 +1,12 @@
 package net.infnetwork.snowball.craftov.inventory;
 
+import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -290,6 +292,7 @@ public final class CarryService {
         for (ItemRecord record : contents) {
             ItemStack stack = items.fromRecord(record);
             if (stack == null) {
+                mail(player, record);
                 continue;
             }
             while (cursor < cap && inv.getItem(start + cursor) != null && !inv.getItem(start + cursor).isEmpty()) {
@@ -335,7 +338,11 @@ public final class CarryService {
         for (int slot : new int[]{FEET, LEGS, CHEST, HEAD}) {
             ItemRecord record = layout.get(slot);
             if (record != null) {
-                inv.setItem(slot, items.fromRecord(record));
+                ItemStack stack = items.fromRecord(record);
+                if (stack == null) {
+                    mail(player, record);
+                }
+                inv.setItem(slot, stack);
             }
         }
         inv.setItem(TERMINAL_SLOT, terminal);
@@ -348,6 +355,7 @@ public final class CarryService {
             }
             ItemStack stack = items.fromRecord(entry.getValue());
             if (stack == null) {
+                mail(player, entry.getValue());
                 continue;
             }
             ItemStack current = inv.getItem(slot);
@@ -360,6 +368,20 @@ public final class CarryService {
         for (ItemStack stack : overflow) {
             give(player, stack, true);
         }
+    }
+
+    /**
+     * Keeps a record the player cannot hold right now in their stash mailbox. Items whose id
+     * items.yml no longer knows land here too: they cannot be built, but the record is kept and can be
+     * taken out of the stash again once the definition is back.
+     */
+    public void mail(Player player, ItemRecord record) {
+        CraftovPlugin.get().profiles().edit(player.getUniqueId(), p -> p.mailbox.add(record));
+        ItemDef def = items.registry().get(record.id);
+        String amount = record.amount > 1 ? " ×" + record.amount : "";
+        Text.send(player, def == null
+                ? "<#FFC23D>物品表里暂时没有 <white>" + Text.escape(record.id) + amount + "</white>，已存入仓库邮箱，恢复后可以从仓库取回。"
+                : "<#FFC23D>" + def.coloredName() + "<#FFC23D>" + amount + " 放不下，已存入仓库邮箱。");
     }
 
     public long carriedValue(Player player) {

@@ -108,7 +108,13 @@ public final class CraftovPlugin extends JavaPlugin {
         saveResourceIfMissing("loot.yml");
         loadTiers();
         registry = new ItemRegistry(getLogger());
-        registry.load(new File(getDataFolder(), "items.yml"));
+        if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
+            // Running without an item table would empty every loadout it captures: stay off until
+            // the file is fixed instead.
+            getLogger().severe("Craftov is disabled because items.yml could not be loaded. Fix it and restart.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         items = new ItemFactory(registry);
         loot = new LootService(items, getLogger());
         loot.load(new File(getDataFolder(), "loot.yml"));

@@ -268,6 +268,9 @@ public final class LobbyService implements Listener {
 
     /** Persists the lobby inventory as the next raid's loadout. */
     public void captureLoadout(Player player) {
+        if (plugin.registry().isEmpty()) {
+            return; // without item definitions the snapshot would come out empty and wipe the loadout
+        }
         Profile profile = plugin.profiles().get(player);
         plugin.weapons().flush(player);
         profile.loadout = plugin.carry().snapshot(player);

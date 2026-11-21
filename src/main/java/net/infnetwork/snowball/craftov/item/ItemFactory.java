@@ -331,12 +331,14 @@ public final class ItemFactory {
     }
 
     private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
-        ItemDef def = defOf(stack);
-        if (def == null) {
+        String id = idOf(stack);
+        if (id == null) {
             return null;
         }
+        // An id that items.yml no longer has (removed, renamed, a broken file) still gets its record:
+        // the stack stays in the loadout and comes back once the definition does.
         PersistentDataContainerView pdc = stack.getPersistentDataContainer();
-        ItemRecord record = new ItemRecord(def.id(), stack.getAmount());
+        ItemRecord record = new ItemRecord(id, stack.getAmount());
         record.uid = pdc.get(Keys.UID, PersistentDataType.STRING);
         record.ammo = pdc.get(Keys.AMMO, PersistentDataType.INTEGER);
         record.ammoType = pdc.get(Keys.AMMO_TYPE, PersistentDataType.STRING);

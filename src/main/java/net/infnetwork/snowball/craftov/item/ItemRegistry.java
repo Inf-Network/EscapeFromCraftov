@@ -8,10 +8,14 @@ import net.infnetwork.snowball.craftov.weapon.GunSpec;
 import net.infnetwork.snowball.craftov.weapon.ThrowableSpec;
 import net.infnetwork.snowball.craftov.weapon.WeaponSlot;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jspecify.annotations.Nullable;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,26 +37,58 @@ public final class ItemRegistry {
         this.logger = logger;
     }
 
-    public void load(File file) {
-        items.clear();
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+    /**
+     * Reads items.yml into a fresh table and only swaps it in when the whole file is good. A syntax
+     * error, a missing {@code items} section or one broken item keeps the table that is loaded now:
+     * an empty or partial table would make every loadout drop the items it no longer knows.
+     * Returns null on success, otherwise what is wrong (Chinese, shown to whoever reloaded).
+     */
+    public @Nullable String load(File file) {
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.loadFromString(Files.readString(file.toPath(), StandardCharsets.UTF_8));
+        } catch (IOException ex) {
+            return fail("无法读取 " + file.getName() + "：" + ex.getMessage());
+        } catch (InvalidConfigurationException ex) {
+            return fail(file.getName() + " 不是有效的 YAML：" + ex.getMessage());
+        }
         ConfigurationSection root = yaml.getConfigurationSection("items");
         if (root == null) {
-            logger.severe("items.yml has no 'items' section");
-            return;
+            return fail(file.getName() + " 里没有 items 段");
         }
+        Map<String, ItemDef> parsed = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
             if (s == null) {
+                errors.add(id + "：不是一个物品段");
                 continue;
             }
             try {
-                items.put(id, parse(id, s));
+                parsed.put(id, parse(id, s));
             } catch (RuntimeException ex) {
-                logger.severe("Invalid item '" + id + "': " + ex.getMessage());
+                errors.add(id + "：" + ex.getMessage());
             }
         }
+        if (!errors.isEmpty()) {
+            return fail(file.getName() + " 中有 " + errors.size() + " 个物品无效：" + String.join("；", errors));
+        }
+        if (parsed.isEmpty()) {
+            return fail(file.getName() + " 里没有任何物品");
+        }
+        items.clear();
+        items.putAll(parsed);
         logger.info("Loaded " + items.size() + " item definitions");
+        return null;
+    }
+
+    private String fail(String reason) {
+        logger.severe("items.yml not loaded, keeping the " + items.size() + " item definitions already loaded: " + reason);
+        return reason;
+    }
+
+    public boolean isEmpty() {
+        return items.isEmpty();
     }
 
     private ItemDef parse(String id, ConfigurationSection s) {

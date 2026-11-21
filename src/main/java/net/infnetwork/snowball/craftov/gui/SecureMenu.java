@@ -47,10 +47,13 @@ final class SecureMenu extends Menu {
             }
             if (slot < items.size()) {
                 ItemStack stack = plugin.items().fromRecord(items.get(slot));
-                if (stack != null) {
-                    int index = slot;
-                    button(slot, stack, e -> take(index));
+                if (stack == null) {
+                    // An id items.yml no longer has: it cannot be built, but it can be moved to the mailbox.
+                    stack = UiItems.button("craftov:ui/collection_unknown", "<#9AA0A6>未知物品 <white>" + Text.escape(items.get(slot).id),
+                            List.of("<#8A8F98>物品表里暂时没有这件物品", "<#9AA0A6>点击移入仓库邮箱，恢复后可从仓库取回"));
                 }
+                int index = slot;
+                button(slot, stack, e -> take(index));
             }
         }
         fillRow(1, UiItems.filler());
@@ -65,8 +68,8 @@ final class SecureMenu extends Menu {
         }
         ItemStack stack = plugin.items().fromRecord(items.get(index));
         if (stack == null) {
-            items.remove(index);
-            redraw();
+            plugin.carry().mail(viewer, items.remove(index));
+            changed();
             return;
         }
         ItemStack left = plugin.carry().give(viewer, stack, false);

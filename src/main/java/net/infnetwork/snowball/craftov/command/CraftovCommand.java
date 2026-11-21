@@ -288,11 +288,18 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "reload" -> {
                 plugin.reloadConfig();
-                plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
+                String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
                 plugin.loadTiers();
-                Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");
+                if (itemError == null) {
+                    Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");
+                } else {
+                    String shown = itemError.replaceAll("\\s+", " ");
+                    Text.send(sender, "<#FF4D4D>items.yml 有错误，物品表没有更新，仍在使用原来的物品表：<#FF8A80>"
+                            + Text.escape(shown.length() > 300 ? shown.substring(0, 300) + "…" : shown));
+                    Text.send(sender, "<#9AA0A6>配置、掉落与地图已重新加载，完整错误见服务器日志。");
+                }
             }
             default -> help(sender);
         }

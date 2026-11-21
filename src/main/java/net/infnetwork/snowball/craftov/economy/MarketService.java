@@ -56,6 +56,8 @@ public final class MarketService implements Listener {
     }
 
     public static final class Data {
+        /** Format version; 0 in files written before it existed (Gson keeps the default for a missing field). */
+        public int version;
         public List<Listing> listings = new ArrayList<>();
         /** Trade price of one plain unit per item id, moved by player-to-player sales only. */
         public Map<String, Double> reference = new HashMap<>();
@@ -73,6 +75,8 @@ public final class MarketService implements Listener {
     public record Offer(String itemId, long lowest, int count, double anchor, double reference, boolean traded) {
     }
 
+    /** 1: trade prices became player-only and bounded; anything older may hold ratcheted-up prices. */
+    private static final int DATA_VERSION = 1;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final CraftovPlugin plugin;
     private final Path file;
@@ -100,7 +104,37 @@ public final class MarketService implements Listener {
         if (data.listings == null) data.listings = new ArrayList<>();
         if (data.reference == null) data.reference = new HashMap<>();
         if (data.history == null) data.history = new HashMap<>();
+        if (data.version < DATA_VERSION) {
+            migrate();
+        }
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L * 10, 20L * 10);
+    }
+
+    /**
+     * Upgrades market data from before the price fix: trade prices and history may have been
+     * ratcheted up by the old feedback loop, so they start over at the reference price, and
+     * listings above the new price cap expire now and go back to their sellers' mailboxes on the
+     * first tick (the listing fee is not refunded).
+     */
+    private void migrate() {
+        int prices = data.reference.size();
+        data.reference.clear();
+        data.history.clear();
+        int returned = 0;
+        long now = System.currentTimeMillis();
+        for (Listing listing : data.listings) {
+            if (listing.price > maxPrice(listing.item)) {
+                listing.expires = now;
+                returned++;
+            }
+        }
+        data.version = DATA_VERSION;
+        dirty = true;
+        if (prices > 0 || returned > 0) {
+            plugin.getLogger().warning("Market data from an older version: reset " + prices + " trade prices and returned "
+                    + returned + " listings priced above the cap. Accounts that farmed the old prices have a high market_sales stat.");
+        }
+        save();
     }
 
     public void save() {

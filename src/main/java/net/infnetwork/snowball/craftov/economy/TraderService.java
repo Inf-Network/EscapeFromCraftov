@@ -206,8 +206,10 @@ public final class TraderService {
                 toStash++;
             }
         }
+        // A stash already over its capacity (older builds let purchases overfill it) only matters
+        // when something actually has to go into it.
         int free = profile.stashCapacity - profile.stashUsed();
-        if (toStash > free) {
+        if (toStash > 0 && toStash > free) {
             Text.send(player, "<#FF8A80>仓库空间不足：免费补给有 " + toStash + " 件背不下、要存进仓库，但仓库只剩 " + Math.max(0, free)
                     + " 格。<#9AA0A6>清理仓库或腾出背包后再领取。");
             return;

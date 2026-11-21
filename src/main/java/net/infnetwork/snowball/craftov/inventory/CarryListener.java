@@ -166,8 +166,11 @@ public final class CarryListener implements Listener {
                     }
                 }
             }
+            // With shift still held on release, a plain click arrives as a shift-click.
             case SHIFT_LEFT, SHIFT_RIGHT -> {
-                if (!holding && worn) {
+                if (holding) {
+                    wearFromCursor(player, slot, cursor.clone(), worn);
+                } else if (worn) {
                     shiftUnequip(player, slot);
                 }
             }

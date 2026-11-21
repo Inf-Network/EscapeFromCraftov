@@ -188,10 +188,15 @@ bounty:
   champion: 20000
 
 backup:
-  # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups (also on shutdown).
+  # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups: a daily copy
+  # (*-auto.zip) and one on every shutdown (*-shutdown.zip), each kind kept separately.
   enabled: true
+  # A daily copy is made once the newest one is this old; restarts do not add extra ones.
   interval-hours: 24
-  keep: 7
+  # Minutes after start before the first check (then every ten minutes).
+  first-delay-minutes: 10
+  keep-daily: 7
+  keep-shutdown: 5
 
 insurance:
   # Share of the insured gear's value charged on deploy.

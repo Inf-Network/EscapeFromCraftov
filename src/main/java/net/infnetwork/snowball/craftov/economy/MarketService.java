@@ -218,18 +218,28 @@ public final class MarketService implements Listener {
         return Math.max(1, Math.round(reference(record.id) * ratio * Math.max(1, record.amount)));
     }
 
+    private int virtualCap() {
+        return plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
+    }
+
     /** True when system buyers have taken their hourly quota of {@code itemId} and will wait. */
     public boolean virtualCapped(String itemId) {
-        int cap = plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
-        ArrayDeque<Long> times = virtualSales.get(itemId);
-        if (cap <= 0 || times == null) {
+        int cap = virtualCap();
+        if (cap <= 0) {
             return false;
         }
-        long now = System.currentTimeMillis();
-        while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
-            times.pollFirst();
-        }
-        return times.size() >= cap;
+        ArrayDeque<Long> times = virtualSales.get(itemId);
+        return times != null && times.size() >= cap;
+    }
+
+    /** Forgets system-buyer sales older than an hour, and items with none left. */
+    private void pruneVirtualSales(long now) {
+        virtualSales.values().removeIf(times -> {
+            while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
+                times.pollFirst();
+            }
+            return times.isEmpty();
+        });
     }
 
     public List<Long> history(String itemId) {
@@ -555,6 +565,8 @@ public final class MarketService implements Listener {
         long now = System.currentTimeMillis();
         boolean npc = plugin.getConfig().getBoolean("market.virtual-buyers", true);
         long minAge = plugin.getConfig().getLong("market.virtual-min-age-seconds", 45) * 1000L;
+        boolean counting = virtualCap() > 0;
+        pruneVirtualSales(now);
         for (Listing listing : new ArrayList<>(data.listings)) {
             if (now >= listing.expires) {
                 data.listings.remove(listing);
@@ -570,7 +582,9 @@ public final class MarketService implements Listener {
             double ratio = listing.price / (double) anchorFor(listing.item);
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
             if (ThreadLocalRandom.current().nextDouble() < chance) {
-                virtualSales.computeIfAbsent(listing.item.id, k -> new ArrayDeque<>()).addLast(now);
+                if (counting) {
+                    virtualSales.computeIfAbsent(listing.item.id, k -> new ArrayDeque<>()).addLast(now);
+                }
                 complete(listing, "系统买家", false);
             }
         }

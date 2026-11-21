@@ -2,7 +2,9 @@ package net.infnetwork.snowball.craftov.util;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -11,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -67,8 +70,9 @@ public final class Nms {
     private static @Nullable Method asNmsCopy;
     private static @Nullable Class<?> pickBlockClass;
     private static @Nullable Class<?> pickEntityClass;
-    private static org.bukkit.plugin.@Nullable Plugin pickPlugin;
-    private static java.util.function.@Nullable Consumer<Player> pickHandler;
+    /** Set on the main thread, read on Netty threads. */
+    private static volatile org.bukkit.plugin.@Nullable Plugin pickPlugin;
+    private static volatile java.util.function.@Nullable Consumer<Player> pickHandler;
 
     /** Decides what other players see in an entity's main hand. Called on Netty threads. */
     public interface ViewRewriter {
@@ -164,34 +168,96 @@ public final class Nms {
 
     // ------------------------------------------------------------------ capture cells
 
+    private static @Nullable Channel channel(Player player) throws ReflectiveOperationException {
+        Object listener = connection(player);
+        return listener == null ? null : (Channel) channelField.get(networkManager.get(listener));
+    }
+
+    /**
+     * Adds {@code handler} under {@code name} unless one of ours is already there. A handler of that
+     * name that is not of {@code type} was left by an earlier load of the plugin (a /reload whose
+     * shutdown could not remove it): it still feeds the old plugin's state, so it is replaced.
+     */
+    private static void install(Channel channel, String name, Class<? extends ChannelHandler> type, ChannelHandler handler) {
+        ChannelPipeline pipeline = channel.pipeline();
+        ChannelHandler existing = pipeline.get(name);
+        if (type.isInstance(existing) || pipeline.get("packet_handler") == null) {
+            return;
+        }
+        if (existing != null) {
+            pipeline.replace(existing, name, handler);
+        } else {
+            pipeline.addBefore("packet_handler", name, handler);
+        }
+    }
+
+    /**
+     * Plugin shutdown: takes the handlers out of every player's connection and forgets the
+     * middle-click handler. Left in place they would keep running the disabled plugin's code
+     * after a /reload (firing would stop working until a reconnect, and a middle click would
+     * schedule a task for a disabled plugin on a Netty thread).
+     */
+    public static void shutdown(Collection<? extends Player> players) {
+        pickHandler = null;
+        pickPlugin = null;
+        if (!ready) {
+            return;
+        }
+        for (Player player : players) {
+            try {
+                Channel channel = channel(player);
+                if (channel == null) {
+                    continue;
+                }
+                // Netty pipelines may be changed from any thread; removing the exact instance
+                // never touches a handler a newer load of the plugin has put in its place.
+                ChannelPipeline pipeline = channel.pipeline();
+                ChannelHandler capture = pipeline.get(HANDLER);
+                if (capture instanceof CaptureHandler) {
+                    pipeline.remove(capture);
+                }
+                ChannelHandler view = pipeline.get(VIEW_HANDLER);
+                if (view instanceof ViewHandler) {
+                    pipeline.remove(view);
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // the connection is closing anyway
+            }
+        }
+    }
+
     /** Keeps the given cells (BlockPos.asLong keys) showing the capture block for this player. */
     public static void protectCells(Player player, Set<Long> cells) {
         if (!ready) {
             return;
         }
         try {
-            Object listener = connection(player);
-            if (listener == null) {
-                return;
+            Channel channel = channel(player);
+            if (channel != null) {
+                install(channel, HANDLER, CaptureHandler.class, new CaptureHandler(cells));
             }
-            Channel channel = (Channel) channelField.get(networkManager.get(listener));
-            if (channel == null || channel.pipeline().get(HANDLER) != null || channel.pipeline().get("packet_handler") == null) {
-                return;
-            }
-            channel.pipeline().addBefore("packet_handler", HANDLER, new ChannelDuplexHandler() {
-                @Override
-                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-                    if (!cells.isEmpty() && blockUpdateClass.isInstance(msg)) {
-                        Object pos = blockUpdatePos.invoke(msg);
-                        if (cells.contains((Long) asLong.invoke(pos))) {
-                            msg = blockUpdateCtor.newInstance(pos, cobwebState);
-                        }
-                    }
-                    super.write(ctx, msg, promise);
-                }
-            });
         } catch (ReflectiveOperationException | RuntimeException ex) {
             // Without the filter TriggerService resends cells after right-clicks instead.
+        }
+    }
+
+    /** Rewrites real block updates at the capture cells back to the capture block. */
+    private static final class CaptureHandler extends ChannelDuplexHandler {
+        private final Set<Long> cells;
+
+        CaptureHandler(Set<Long> cells) {
+            this.cells = cells;
+        }
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            if (!cells.isEmpty() && blockUpdateClass.isInstance(msg)) {
+                Object pos = blockUpdatePos.invoke(msg);
+                if (cells.contains((Long) asLong.invoke(pos))) {
+                    msg = blockUpdateCtor.newInstance(pos, cobwebState);
+                }
+            }
+            super.write(ctx, msg, promise);
         }
     }
 
@@ -202,45 +268,55 @@ public final class Nms {
         if (!viewReady) {
             return;
         }
-        int self = player.getEntityId();
         try {
-            Object listener = connection(player);
-            if (listener == null) {
-                return;
+            Channel channel = channel(player);
+            if (channel != null) {
+                install(channel, VIEW_HANDLER, ViewHandler.class, new ViewHandler(player, rewriter));
             }
-            Channel channel = (Channel) channelField.get(networkManager.get(listener));
-            if (channel == null || channel.pipeline().get(VIEW_HANDLER) != null || channel.pipeline().get("packet_handler") == null) {
-                return;
-            }
-            channel.pipeline().addBefore("packet_handler", VIEW_HANDLER, new ChannelDuplexHandler() {
-                @Override
-                public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-                    if (pickHandler != null && pickPlugin != null && (pickBlockClass.isInstance(msg) || pickEntityClass.isInstance(msg))
-                            && rewriter.takesPick(self)) {
-                        java.util.function.Consumer<Player> handler = pickHandler;
-                        org.bukkit.Bukkit.getScheduler().runTask(pickPlugin, () -> handler.accept(player));
-                        return;
-                    }
-                    super.channelRead(ctx, msg);
-                }
-
-                @Override
-                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-                    Object out;
-                    try {
-                        out = rewrite(msg, self, rewriter);
-                    } catch (ReflectiveOperationException | RuntimeException ex) {
-                        out = msg;
-                    }
-                    if (out == null) {
-                        promise.setSuccess();
-                        return;
-                    }
-                    super.write(ctx, out, promise);
-                }
-            });
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // the stance is cosmetic
+        }
+    }
+
+    /** Takes over middle clicks with a gun and rewrites what this player sees of others' hands. */
+    private static final class ViewHandler extends ChannelDuplexHandler {
+        private final Player player;
+        private final int self;
+        private final ViewRewriter rewriter;
+
+        ViewHandler(Player player, ViewRewriter rewriter) {
+            this.player = player;
+            this.self = player.getEntityId();
+            this.rewriter = rewriter;
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            java.util.function.Consumer<Player> handler = pickHandler;
+            org.bukkit.plugin.Plugin owner = pickPlugin;
+            if (handler != null && owner != null && (pickBlockClass.isInstance(msg) || pickEntityClass.isInstance(msg))
+                    && rewriter.takesPick(self)) {
+                if (owner.isEnabled()) {
+                    org.bukkit.Bukkit.getScheduler().runTask(owner, () -> handler.accept(player));
+                }
+                return;
+            }
+            super.channelRead(ctx, msg);
+        }
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            Object out;
+            try {
+                out = rewrite(msg, self, rewriter);
+            } catch (ReflectiveOperationException | RuntimeException ex) {
+                out = msg;
+            }
+            if (out == null) {
+                promise.setSuccess();
+                return;
+            }
+            super.write(ctx, out, promise);
         }
     }
 

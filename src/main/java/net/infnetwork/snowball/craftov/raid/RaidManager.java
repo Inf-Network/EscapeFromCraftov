@@ -292,14 +292,19 @@ public final class RaidManager implements Listener {
                 byPlayer.remove(uuid, raid);
                 continue;
             }
+            // The insertion point is fixed before the camera flies: whoever drops out during the
+            // flight reconnects there, or leaves their body there when the reconnect window ends.
+            rp.lastLocation = points.isEmpty() ? world.getSpawnLocation() : points.get(members.size() % points.size()).pos().at(world);
             members.add(player);
             prepare(raid, player, rp);
         }
         Location spawn = points.isEmpty() ? world.getSpawnLocation() : points.get(0).pos().at(world);
         Cinematic.play(plugin, raid, squadNo, members, spawn, player -> {
-            int index = members.indexOf(player);
-            Location target = points.isEmpty() ? spawn : points.get(Math.max(0, index) % points.size()).pos().at(world);
-            insert(raid, player, target);
+            RaidPlayer rp = raid.player(player.getUniqueId());
+            if (rp != null && rp.state != RaidPlayer.State.DEPLOYING) {
+                return; // reconnected (already on the ground) or settled while the camera flew
+            }
+            insert(raid, player, rp == null || rp.lastLocation == null ? spawn : rp.lastLocation);
         });
     }
 
@@ -1162,7 +1167,10 @@ public final class RaidManager implements Listener {
                 ? raid.world.getSpawnLocation() : raid.map.spawns().get(0).pos().at(raid.world);
         player.teleport(back);
         player.setGameMode(GameMode.ADVENTURE);
+        player.setFallDistance(0);
         plugin.match().teamFor(raid, rp, player);
+        // LobbyService.onJoin skips the lobby HUD for a rejoin, so the raid HUD is shown here.
+        plugin.hud().onRaidStart(player);
         Text.send(player, "<#5BD16B>已重新连接到行动。");
         return true;
     }
@@ -1461,14 +1469,15 @@ public final class RaidManager implements Listener {
             return;
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
+            // During the entry flight (DEPLOYING) lastLocation already holds the insertion point:
+            // the usual reconnect window applies and a timeout leaves the body there.
             rp.disconnectedInventory = plugin.carry().snapshot(player);
-            rp.lastLocation = rp.state == RaidPlayer.State.ALIVE ? player.getLocation() : null;
+            if (rp.state == RaidPlayer.State.ALIVE) {
+                rp.lastLocation = player.getLocation();
+            }
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();
             player.getInventory().clear();
-            if (rp.lastLocation == null) {
-                missing(raid, rp, "部署时断线");
-            }
         } else if (rp.state == RaidPlayer.State.DEAD || rp.state == RaidPlayer.State.EXTRACTED) {
             byPlayer.remove(player.getUniqueId());
         }

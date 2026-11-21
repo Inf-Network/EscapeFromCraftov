@@ -19,7 +19,8 @@ import java.util.function.Consumer;
 /**
  * Entry camera: the squad's view sweeps from high above the map down to their insertion point.
  * Implemented with an invisible item display (smooth teleport interpolation) that the players
- * spectate.
+ * spectate. Players are checked with isConnected, not isOnline: isOnline is true again for the old
+ * Player object once that player reconnects, and the camera must leave a rejoined player alone.
  */
 public final class Cinematic {
 
@@ -59,7 +60,7 @@ public final class Cinematic {
                     cancel();
                     camera.remove();
                     players.forEach(p -> {
-                        if (p.isOnline() && p.getGameMode() == GameMode.SPECTATOR) {
+                        if (p.isConnected() && p.getGameMode() == GameMode.SPECTATOR) {
                             p.setSpectatorTarget(null);
                         }
                     });
@@ -82,7 +83,7 @@ public final class Cinematic {
                 }
                 camera.teleport(loc);
                 for (Player player : players) {
-                    if (!player.isOnline()) {
+                    if (!player.isConnected()) {
                         continue;
                     }
                     if (player.getSpectatorTarget() != camera) {
@@ -104,7 +105,7 @@ public final class Cinematic {
                     cancel();
                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
                         for (Player player : players) {
-                            if (player.isOnline()) {
+                            if (player.isConnected()) {
                                 if (player.getGameMode() == GameMode.SPECTATOR) {
                                     player.setSpectatorTarget(null);
                                 }

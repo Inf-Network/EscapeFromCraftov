@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -32,6 +33,9 @@ import java.util.function.Consumer;
 /**
  * JSON-file profile storage. Profiles of online players stay cached; offline profiles are loaded
  * on demand (market payouts, escort settlements) and written straight back.
+ *
+ * <p>Writes run on one IO thread, so a profile loaded again before its last write has reached
+ * disk is taken from that write's copy, not from the older file (see {@link #queued}).
  */
 public final class ProfileService {
 
@@ -42,6 +46,14 @@ public final class ProfileService {
     private final Map<UUID, Profile> cache = new HashMap<>();
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
+    /**
+     * The newest copy of each profile handed to the IO thread, until that write is on disk. An
+     * offline player edited twice in a row (shutdown restoring a disconnected player and then
+     * paying out their insurance, two market listings of one seller expiring in the same pass), or
+     * a player rejoining right after quitting, would otherwise be read from the older file, and the
+     * write of that stale copy would land last and undo the first change.
+     */
+    private final Map<UUID, Queued> queued = new ConcurrentHashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
@@ -49,6 +61,15 @@ public final class ProfileService {
     });
 
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills) {
+    }
+
+    /** One write handed to the IO thread. Compared by identity, so a later write replaces it. */
+    private static final class Queued {
+        private final Profile profile;
+
+        private Queued(Profile profile) {
+            this.profile = profile;
+        }
     }
 
     public ProfileService(Plugin plugin) {
@@ -187,6 +208,10 @@ public final class ProfileService {
     // ------------------------------------------------------------------ io
 
     private @Nullable Profile load(UUID uuid) {
+        Queued pending = queued.get(uuid);
+        if (pending != null) {
+            return pending.profile;
+        }
         Path file = dir.resolve(uuid + ".json");
         if (!Files.exists(file)) {
             return null;
@@ -228,7 +253,13 @@ public final class ProfileService {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
-        io.execute(() -> writeSync(json, uuid));
+        Queued entry = new Queued(profile);
+        queued.put(uuid, entry);
+        io.execute(() -> {
+            writeSync(json, uuid);
+            // Only if no newer write of the same profile was queued meanwhile.
+            queued.remove(uuid, entry);
+        });
     }
 
     private void writeSync(String json, UUID uuid) {

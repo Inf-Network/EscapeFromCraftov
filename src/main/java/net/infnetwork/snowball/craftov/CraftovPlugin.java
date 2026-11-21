@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.logging.Level;
 
 /** Craftov: an extraction-shooter game mode for Paper 1.21.11. */
 public final class CraftovPlugin extends JavaPlugin {
@@ -195,41 +196,36 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (editor != null) {
-            editor.shutdown();
-        }
-        if (replays != null) {
-            replays.shutdown();
-        }
-        if (drones != null) {
-            drones.shutdown();
-        }
-        if (raids != null) {
-            raids.shutdown();
-        }
-        if (escorts != null) {
-            escorts.shutdown();
-        }
-        if (range != null) {
-            range.shutdown();
-        }
-        if (lobby != null) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
+        // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
+        step("editor", editor, () -> editor.shutdown());
+        step("replays", replays, () -> replays.shutdown());
+        step("drones", drones, () -> drones.shutdown());
+        step("raids", raids, () -> raids.shutdown());
+        step("escorts", escorts, () -> escorts.shutdown());
+        step("range", range, () -> range.shutdown());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("loadout of " + player.getName(), lobby, () -> {
                 if (lobby.isLobby(player.getWorld())) {
                     lobby.captureLoadout(player);
                 }
-            }
+            });
         }
-        if (market != null) {
-            market.saveSync();
+        step("market", market, () -> market.saveSync());
+        step("profiles", profiles, () -> profiles.shutdown());
+        step("backup", backups, () -> backups.run("shutdown"));
+        step("teams", this, this::cleanupTeams);
+    }
+
+    /** Runs one shutdown step if its service was created, logging instead of throwing. */
+    private void step(String name, @Nullable Object service, Runnable action) {
+        if (service == null) {
+            return;
         }
-        if (profiles != null) {
-            profiles.shutdown();
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError ex) {
+            getLogger().log(Level.SEVERE, "Shutdown step '" + name + "' failed; carrying on with the rest", ex);
         }
-        if (backups != null) {
-            backups.run("shutdown");
-        }
-        cleanupTeams();
     }
 
     private void hookBetterHud() {

@@ -1,9 +1,13 @@
-// Server stop mid-raid (issue #19). Five bots set the scene, then the server is stopped over RCON and
+// Server stop mid-raid (issue #19). Six bots set the scene, then the server is stopped over RCON and
 // started again, and the saves are checked on disk and in game:
 //   raider  - in a solo raid on the test map: picks something up (cv give) and moves a bandage into
 //             the secure container. Must keep both, with no "raid voided by a crash" on rejoin.
 //   dead    - insured, killed in the same raid while it is still running. The insured rifle and
 //             armour left on the body must come back to the mailbox when the server stops.
+//   gone    - insured, in the same raid: throws the insured rifle on the ground and disconnects, so
+//             the stop finds them inside the reconnect window. Shutdown restores what they carried
+//             and then pays out the insurance for the same offline profile: both must stick (raid
+//             not voided on rejoin, rifle in the mailbox once, not also back in the loadout).
 //   flyer   - insured, queued last so the stop lands while the insertion camera is still running.
 //             The secure container must stay shut meanwhile; it must go home with the gear and
 //             get the insurance premium back.
@@ -15,8 +19,11 @@
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_DIR=../../server/run node shutdown.js [--crash]
 //
-// --crash adds a last step that kills the server outright (SIGKILL) with an escort contract open and
-// checks that the bounty comes back when its owner rejoins (Linux only: the process is found in /proc).
+// --crash adds two steps that kill the server outright (SIGKILL; Linux only, the process is found in
+// /proc): once with an escort contract open, checking that the bounty comes back when its owner
+// rejoins; and once a second after the boss of a contract died in a raid whose escort had already
+// died and logged off, checking that the escort keeps the share and the boss is not refunded again.
+// On the way the dead escort, spectating the boss, must find the secure container and stash shut.
 //
 // The server must be running. After the stop the script starts it again with SERVER_DIR/start.sh
 // (detached, output appended to SERVER_DIR/console.log); with NO_START=1 it only waits for somebody
@@ -37,7 +44,9 @@ const NO_START = !!process.env.NO_START
 const SERVER_REAL = fs.realpathSync(SERVER_DIR)
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const tag = String(Math.floor(1000 + Math.random() * 9000))
-const NAMES = { raider: 'SdRaid' + tag, dead: 'SdDead' + tag, flyer: 'SdFly' + tag, ranger: 'SdRng' + tag, boss: 'SdBoss' + tag }
+const NAMES = { raider: 'SdRaid' + tag, dead: 'SdDead' + tag, gone: 'SdGone' + tag, flyer: 'SdFly' + tag, ranger: 'SdRng' + tag, boss: 'SdBoss' + tag }
+// Only joins for the --crash escort step.
+const EXTRA = { guard: 'SdGrd' + tag }
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a)
@@ -89,7 +98,7 @@ function serverPids () {
 
 const bots = {}
 function make (role) {
-  const name = NAMES[role]
+  const name = NAMES[role] || EXTRA[role]
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.chatLog = []
@@ -143,22 +152,42 @@ async function setup () {
   // Kits. Everyone gets something insurable so the premium is not zero.
   for (const item of ['armor_3', 'm4c', 'ammo_556_m855 60', 'bandage 3']) await rcon(`cv give ${NAMES.raider} ${item}`)
   for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.dead} ${item}`)
+  for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.gone} ${item}`)
   for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.flyer} ${item}`)
   for (const item of ['helmet_3', 'armor_3', 'm4c', 'medkit_s']) await rcon(`cv give ${NAMES.ranger} ${item}`)
   await sleep(2500)
   await insure('dead')
+  await insure('gone')
   await insure('flyer')
 
-  // The raid: raider and dead queue together and land in one raid.
+  // The raid: raider, dead and gone queue together and land in one raid.
+  const raiders = [NAMES.raider, NAMES.dead, NAMES.gone]
   await queueSolo('raider')
   await queueSolo('dead')
-  const landed = await waitFor(async () => await inRaidWorld(NAMES.raider) && await inRaidWorld(NAMES.dead)
-    && await inMode(NAMES.raider, 'adventure') && await inMode(NAMES.dead, 'adventure'), 120000, 1000)
-  check('raider and dead land in a raid', landed, `${await dimension(NAMES.raider)} / ${await dimension(NAMES.dead)}`)
+  await queueSolo('gone')
+  let landed = true
+  for (const name of raiders) {
+    landed = landed && await waitFor(async () => await inRaidWorld(name) && await inMode(name, 'adventure'), 120000, 1000)
+  }
+  check('raider, dead and gone land in a raid', landed, (await Promise.all(raiders.map(dimension))).join(' / '))
   if (!landed) return false
-  check('both are in the same raid', await dimension(NAMES.raider) === await dimension(NAMES.dead))
+  check('all three are in the same raid', new Set(await Promise.all(raiders.map(dimension))).size === 1)
   expect.raiderMoney = await balance(NAMES.raider)
   await sleep(3500) // spawn protection
+
+  // Gone: the insured rifle goes on the ground (from the inventory screen; Q alone reloads), then
+  // the connection drops. The stop must come inside the 120 s reconnect window.
+  const g = bots.gone
+  const rifle = g.inventory.items().find(i => itemId(i) === 'm4c')
+  if (rifle) {
+    await g.tossStack(rifle).catch(e => log('gone', 'toss', e.message))
+    await sleep(800)
+  }
+  const thrown = !g.inventory.items().some(i => itemId(i) === 'm4c')
+  check('gone throws the insured rifle on the ground', !!rifle && thrown, g.inventory.items().map(itemId).join(','))
+  g.quit()
+  delete bots.gone
+  await sleep(1500)
 
   // Raider: "loot" a splint and move a bandage into the secure container.
   await rcon(`cv give ${NAMES.raider} splint`)
@@ -249,6 +278,12 @@ async function stopAndRestart () {
   check('raider: secure container change kept', ids(raider.secure).includes('bandage'), ids(raider.secure).join(','))
   check('raider: balance unchanged', raider.money === expect.raiderMoney, `${expect.raiderMoney} -> ${raider.money}`)
 
+  const goneP = profile(NAMES.gone)
+  const count = (records, id) => Object.values(records || {}).filter(r => r.id === id).length
+  check('gone: activeRaid cleared (the restore was not undone)', goneP.activeRaid == null, String(goneP.activeRaid))
+  check('gone: carried gear kept, without the thrown rifle', ids(goneP.loadout).includes('armor_3') && !ids(goneP.loadout).includes('m4c'), ids(goneP.loadout).join(','))
+  check('gone: thrown insured rifle in the mailbox exactly once', count(goneP.mailbox, 'm4c') === 1, ids(goneP.mailbox).join(','))
+
   const dead = profile(NAMES.dead)
   check('dead: insured rifle and armour in the mailbox', ['m4c', 'armor_3'].every(i => ids(dead.mailbox).includes(i)), ids(dead.mailbox).join(','))
   check('dead: activeRaid cleared', dead.activeRaid == null)
@@ -292,7 +327,13 @@ async function start (since) {
 async function afterRestart () {
   const r = await make('raider')
   await make('boss')
+  const g = await make('gone')
   await sleep(4000)
+  check('gone: no "voided by a crash" message on rejoin', !g.chatLog.some(m => m.includes('因服务器中断已作废')))
+  const worn = g.inventory.items().map(itemId)
+  check('gone: back with the armour and without the rifle', worn.includes('armor_3') && !worn.includes('m4c'), worn.join(','))
+  g.quit()
+  delete bots.gone
   check('raider: no "voided by a crash" message on rejoin', !r.chatLog.some(m => m.includes('因服务器中断已作废')))
   check('raider: back in the lobby', (await dimension(NAMES.raider)).includes('craftov_lobby'), await dimension(NAMES.raider))
   const held = r.inventory.items().map(itemId)
@@ -330,11 +371,94 @@ async function crash () {
   check('crash: the bounty is back on rejoin', money === before, `expected ${before}, got ${money}`)
 }
 
+// --crash, second kill: the boss dies in a raid after the escort died and logged off. The escort's
+// share is written at once; the boss's escrow must be released on disk no later than that, or the
+// boss would get the whole bounty back on rejoin while the escort keeps the share.
+async function crashEscort () {
+  if (serverPids() === null) return
+  const c = bots.boss
+  const e = await make('guard')
+  await sleep(3000)
+  const reward = 20000 // first button in the escort hall
+  const share = Math.round(reward * 0.3) // escort.failure-share, all of it to the one escort
+  await openWindow(c, () => c.chat('/cv'))
+  const hall = await openWindow(c, () => c.clickWindow(16, 0, 0))
+  if (hall) { await c.clickWindow(38, 0, 0); await sleep(600); c.closeWindow(hall) }
+  await openWindow(e, () => e.chat('/cv'))
+  const list = await openWindow(e, () => e.clickWindow(16, 0, 0))
+  if (list) { await e.clickWindow(0, 0, 0); await sleep(800); e.closeWindow(list) }
+  check('escort crash: guard accepts the contract', e.chatLog.some(m => m.includes('已接取') && m.includes(NAMES.boss)))
+  c.chat('/cv queue proving NORMAL TRIO')
+  let landed = true
+  for (const name of [NAMES.boss, EXTRA.guard]) {
+    landed = landed && await waitFor(async () => await inRaidWorld(name) && await inMode(name, 'adventure'), 120000, 1000)
+  }
+  check('escort crash: boss and guard land in a raid', landed)
+  if (!landed) return
+  await sleep(3500) // spawn protection
+
+  // With a squadmate still up the kill only downs the guard. Only hostile fire finishes a downed
+  // player (and a squadmate's does not count), so a stand-in lands the last hit. It is summoned and
+  // hits in one command: stray entities do not last until the next one.
+  await rcon(`kill ${EXTRA.guard}`)
+  if (await waitFor(() => c.chatLog.some(m => m.includes(EXTRA.guard) && m.includes('倒地')), 2000)) {
+    await sleep(500)
+    log('finish', await rcon(`execute at ${EXTRA.guard} summon armor_stand run damage ${EXTRA.guard} 1000 minecraft:mob_attack by @s`))
+  }
+  // After the death report the guard watches the boss. That is no longer "in the raid", but the
+  // secure container and the lobby menus must stay shut until they are back in the lobby.
+  // The death report comes first; a dead player still in the raid world in spectator mode after it
+  // is watching a squadmate (otherwise they would be back in the lobby).
+  const reported = await waitFor(() => e.chatLog.some(m => m.trim().startsWith('结果')), 15000)
+  await sleep(1000)
+  const watching = reported && await inRaidWorld(EXTRA.guard) && await inMode(EXTRA.guard, 'spectator')
+  check('escort crash: dead guard spectates the boss', watching, await dimension(EXTRA.guard))
+  if (watching) {
+    let from = e.chatLog.length
+    const secure = await openWindow(e, () => e.chat('/cv secure'), 1500)
+    if (secure) e.closeWindow(secure)
+    check('spectating: the secure container stays shut', !secure && e.chatLog.slice(from).some(m => m.includes('无法打开安全箱')))
+    from = e.chatLog.length
+    const stash = await openWindow(e, () => e.chat('/cv stash'), 1500)
+    if (stash) e.closeWindow(stash)
+    check('spectating: the stash stays shut', !stash && e.chatLog.slice(from).some(m => m.includes('观战中无法使用')))
+  }
+  e.quit()
+  delete bots.guard
+  await sleep(2000) // the quit save
+  const guardBefore = profile(EXTRA.guard).money
+  const bossBefore = await balance(NAMES.boss)
+  const from = c.chatLog.length
+  await rcon(`kill ${NAMES.boss}`)
+  await sleep(1000) // well inside the 10 s profile flush
+  const killedAt = Date.now()
+  for (const pid of serverPids()) { log('SIGKILL', pid); process.kill(Number(pid), 'SIGKILL') }
+  check('escort crash: the server is gone', await waitFor(() => serverPids().length === 0, 20000, 500))
+  c.quit()
+  delete bots.boss
+  await sleep(1500)
+  // A level-up on death pays a reward too.
+  const levelUp = c.chatLog.slice(from).map(m => (m.match(/账号升级.*奖励 ◈([\d,]+)/) || [, '0'])[1]).reduce((a, b) => a + Number(b.replace(/,/g, '')), 0)
+  const boss = profile(NAMES.boss)
+  check('escort crash: guard keeps the share', profile(EXTRA.guard).money === guardBefore + share, `${guardBefore} -> ${profile(EXTRA.guard).money}`)
+  check('escort crash: boss escrow released on disk', !boss.escortEscrow, String(boss.escortEscrow))
+  check('escort crash: boss got the rest back once', boss.money === bossBefore + reward - share + levelUp, `expected ${bossBefore + reward - share + levelUp}, got ${boss.money}`)
+  if (!(await start(killedAt))) return
+  const back = await make('boss')
+  await sleep(4000)
+  check('escort crash: no second refund on rejoin', !back.chatLog.some(m => m.includes('护航委托因服务器中断已撤销')))
+  const money = await balance(NAMES.boss)
+  check('escort crash: balance after rejoin', money === boss.money, `expected ${boss.money}, got ${money}`)
+}
+
 ;(async () => {
   try {
     if (await setup() && await stopAndRestart()) {
       await afterRestart()
-      if (process.argv.includes('--crash')) await crash()
+      if (process.argv.includes('--crash')) {
+        await crash()
+        await crashEscort()
+      }
     }
   } catch (e) {
     check('scenario ran without errors', false, e.stack)

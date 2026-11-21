@@ -1,7 +1,11 @@
 // Checks for the silent item losses of issue #18: a broken or changed items.yml, items held on the
 // cursor, loading a preset without its backpack, insurance marks, full bodies and season rewards.
 //
-//   node itemloss.js reload | unknown | raid | insure [end|stop] | preset | season
+//   node itemloss.js reload | unknown | raid | insure [end|stop|offline|two] | missing | preset | season
+//
+// insure: end = the raid ends normally; stop = the server stops after the owner died; offline = it
+// stops while the owner is disconnected; two = two raids are running when it stops. The three stop
+// variants leave the server stopped.
 //
 // Env: PORT / RCON_PORT / RCON_PASS of the local test server (default 25565 / 25575 / craftov-local),
 // CRAFTOV_DATA = its plugins/Craftov folder (default ../../server/run/plugins/Craftov). Profiles are
@@ -147,6 +151,10 @@ async function reload () {
     bot = await make(name)
     check('inventory complete after rejoining', carried(bot).length === before, carriedIds(bot))
     await leave(bot)
+    // A file saved as GBK (a Chinese comment from Notepad) still loads, with a warning in the log.
+    fs.writeFileSync(itemsYml, Buffer.concat([Buffer.from(original, 'utf8'), Buffer.from([0x0a, 0x23, 0x20, 0xc4, 0xe3, 0xba, 0xc3, 0x0a])]))
+    const gbk = await rcon('cv reload')
+    check('an items.yml that is not UTF-8 still loads', gbk.includes('已重新加载'), gbk.slice(0, 160))
   } finally {
     fs.writeFileSync(itemsYml, original)
     log('restored items.yml:', await rcon('cv reload'))
@@ -155,20 +163,31 @@ async function reload () {
 
 async function unknown () {
   const name = 'Uk' + tag
-  await prepare(name, p => { p.loadout = { 0: rec('medkit_s', { dura: 120 }), 1: rec('screws') }; p.mailbox = [] })
+  // Full pockets, a backpack holding a tape and a first-aid kit.
+  const loadout = { 36: rec('pack_3'), 18: rec('tape'), 19: rec('medkit_s', { dura: 120 }) }
+  for (const s of [0, 1, 3, 4, 5, 6, 7]) loadout[s] = rec('screws')
+  await prepare(name, p => { p.loadout = loadout; p.mailbox = [] })
   let bot = await make(name)
   const original = fs.readFileSync(itemsYml, 'utf8')
   try {
-    fs.writeFileSync(itemsYml, original.replace(/^ {2}medkit_s:/m, '  medkit_s_renamed:'))
-    log('reload without medkit_s:', await rcon('cv reload'))
+    fs.writeFileSync(itemsYml, original.replace(/^ {2}medkit_s:/m, '  medkit_s_renamed:').replace(/^ {2}pack_3:/m, '  pack_3_renamed:'))
+    log('reload without medkit_s and pack_3:', await rcon('cv reload'))
     await sleep(3000) // a few periodic loadout saves
-    bot.chat('/cv lobby') // rebuilds the inventory from the loadout
+    // Rebuilds the inventory from the loadout, twice before the next periodic save: the unknown
+    // backpack and kit are mailed, the tape no longer has a cell and the pockets are full, so it is
+    // mailed too, and the second pass must not mail any of them again.
+    bot.chat('/cv lobby')
+    await sleep(300)
+    bot.chat('/cv lobby')
     await sleep(1500)
     check('player told the unknown item went to the mailbox', bot.chats.some(c => c.includes('medkit_s') && c.includes('邮箱')))
     await leave(bot)
     const p = readProfile(name)
-    check('unknown item is in the mailbox', countIds(p.mailbox, 'medkit_s') === 1, p.mailbox)
-    check('other items stay in the loadout', countIds(Object.values(p.loadout), 'screws') === 1, Object.values(p.loadout).map(r => r.id))
+    check('each mailed item is in the mailbox once', countIds(p.mailbox, 'medkit_s') === 1 && countIds(p.mailbox, 'pack_3') === 1
+      && countIds(p.mailbox, 'tape') === 1, p.mailbox.map(r => r.id))
+    check('other items stay in the loadout', countIds(Object.values(p.loadout), 'screws') === 7, Object.values(p.loadout).map(r => r.id))
+    p.loadout = {} // room to take the kit out of the stash below
+    writeProfile(name, p)
   } finally {
     fs.writeFileSync(itemsYml, original)
     log('restored items.yml:', await rcon('cv reload'))
@@ -241,14 +260,29 @@ async function raid () {
   check('gold bar saved in the loadout', countIds(Object.values(p.loadout), 'gold_bar') === 1, Object.values(p.loadout).map(r => r.id))
 }
 
+const insuredLoadout = () => ({ 0: gun('m4c'), 1: rec('optic_reddot'), 18: gun('k47'), 36: rec('pack_3'), 38: rec('armor_3', { dura: 80 }) })
+
+async function stopServer () {
+  log('stopping the server with the raid still running')
+  await rcon('stop').catch(() => {})
+  const end = Date.now() + 60000
+  // A server in the middle of stopping may drop the connection without an answer: give up after 3 s.
+  const up = () => Promise.race([rcon('list').then(() => true, () => false), sleep(3000).then(() => false)])
+  while (Date.now() < end && await up()) await sleep(1000)
+  await sleep(3000)
+}
+
+const noMarks = records => records.every(r => !r.insured && !(r.contents || []).some(c => c.insured))
+
 async function insure () {
+  if (variant === 'two') return insureTwoRaids()
   const name = 'In' + tag
   const mate = 'Im' + tag
   await prepare(name, p => {
     p.autoInsure = true
     p.money = 1000000
     p.mailbox = []
-    p.loadout = { 0: gun('m4c'), 1: rec('optic_reddot'), 18: gun('k47'), 36: rec('pack_3'), 38: rec('armor_3', { dura: 80 }) }
+    p.loadout = insuredLoadout()
   })
   await prepare(mate, p => {})
   let bot = await make(name)
@@ -275,14 +309,24 @@ async function insure () {
   await sleep(1000)
   check('backpack dropped', !carried(bot).some(s => cid(s) === 'pack_3'), carriedIds(bot))
   await sleep(2500)
+  if (variant === 'offline') {
+    // The owner disconnects with the m4c and the armour; the backpack and the k47 lie on the ground.
+    // Stopping the server pays those out and restores the loadout: both to the offline profile.
+    bot.quit()
+    await sleep(3000)
+    await stopServer()
+    const p = readProfile(name)
+    const ids = p.mailbox.map(r => r.id).sort()
+    check('mailbox has the dropped backpack and the gun inside it', JSON.stringify(ids) === JSON.stringify(['k47', 'pack_3']), ids)
+    const kept = Object.values(p.loadout)
+    check('loadout restored with the m4c and the armour', countIds(kept, 'm4c') === 1 && countIds(kept, 'armor_3') === 1, kept.map(r => r.id))
+    check('no insurance mark left anywhere', noMarks(p.mailbox) && noMarks(kept))
+    return
+  }
   await rcon('kill ' + name)
   await sleep(3000)
   if (variant === 'stop') {
-    log('stopping the server with the raid still running')
-    await rcon('stop').catch(() => {})
-    const end = Date.now() + 60000
-    while (Date.now() < end && await rcon('list').then(() => true, () => false)) await sleep(1000)
-    await sleep(3000)
+    await stopServer()
   } else {
     // The last player dying ends the raid (cv end does nothing on a server up for less than a raid length).
     await rcon('kill ' + mate)
@@ -295,7 +339,66 @@ async function insure () {
   const ids = p.mailbox.map(r => r.id).sort()
   check('mailbox has all 4 insured items', JSON.stringify(ids) === JSON.stringify(['armor_3', 'k47', 'm4c', 'pack_3']), ids)
   check('the m4c came back with its red dot', p.mailbox.some(r => r.id === 'm4c' && r.optic === 'optic_reddot'))
-  check('no insurance mark left on mailed items', p.mailbox.every(r => !r.insured && !(r.contents || []).some(c => c.insured)))
+  check('no insurance mark left on mailed items', noMarks(p.mailbox))
+}
+
+/** Two raids running (two tiers), an insured player dead in each, then the server stops. */
+async function insureTwoRaids () {
+  const squads = [['Ia' + tag, 'Ib' + tag, 'NORMAL'], ['Ic' + tag, 'Id' + tag, 'CONFIDENTIAL']]
+  for (const [owner, mate] of squads) {
+    await prepare(owner, p => { p.autoInsure = true; p.money = 1000000; p.mailbox = []; p.loadout = insuredLoadout() })
+    await prepare(mate, p => { p.loadout = insuredLoadout() }) // enough gear for the CONFIDENTIAL tier
+  }
+  const bots = []
+  for (const [owner, mate, tier] of squads) {
+    const pair = [await make(owner), await make(mate)]
+    const before = pair.map(b => b.worldChanges)
+    for (const b of pair) b.chat(`/cv queue proving ${tier} SOLO`)
+    const ok = await waitFor(() => pair.every((b, i) => b.game.gameMode === 'adventure' && b.worldChanges > before[i]), 90000)
+    check(tier + ' pair deployed', ok)
+    bots.push(...pair)
+  }
+  const raids = await rcon('cv raids')
+  check('two raids running', (raids.match(/RUNNING/g) || []).length === 2, raids)
+  await sleep(4000)
+  for (const [owner] of squads) {
+    const bot = bots.find(b => b.username === owner)
+    check(owner + ' insured', bot.chats.some(c => c.includes('已为 4 件装备投保')))
+    await rcon('kill ' + owner)
+  }
+  await sleep(3000)
+  await stopServer()
+  for (const [owner] of squads) {
+    const p = readProfile(owner)
+    const ids = p.mailbox.map(r => r.id).sort()
+    check(owner + ' got all 4 insured items back', JSON.stringify(ids) === JSON.stringify(['armor_3', 'k47', 'm4c', 'pack_3']), ids)
+    check(owner + ' mailbox has no insurance mark', noMarks(p.mailbox))
+  }
+}
+
+/** A disconnected player times out while an item they carry has an id items.yml no longer knows. */
+async function missing () {
+  const name = 'Ms' + tag
+  await prepare(name, p => { p.mailbox = []; p.loadout = { 0: rec('medkit_s', { dura: 120 }), 1: rec('screws') } })
+  const bot = await make(name)
+  await deploy([bot])
+  const configYml = path.join(DATA, 'config.yml')
+  const config = fs.readFileSync(configYml, 'utf8')
+  const original = fs.readFileSync(itemsYml, 'utf8')
+  try {
+    fs.writeFileSync(configYml, config.replace(/reconnect-seconds: \d+/, 'reconnect-seconds: 3'))
+    fs.writeFileSync(itemsYml, original.replace(/^ {2}medkit_s:/m, '  medkit_s_renamed:'))
+    log('reload without medkit_s, 3 s to reconnect:', await rcon('cv reload'))
+    await leave(bot)
+    await sleep(8000)
+    const p = readProfile(name)
+    check('counted as missing', p.reports.length > 0 && JSON.stringify(p.reports[0]).includes('断线超时'), p.reports[0])
+    check('the unknown kit went to the mailbox', countIds(p.mailbox, 'medkit_s') === 1, p.mailbox.map(r => r.id))
+  } finally {
+    fs.writeFileSync(configYml, config)
+    fs.writeFileSync(itemsYml, original)
+    log('restored config.yml and items.yml:', await rcon('cv reload'))
+  }
 }
 
 async function preset () {
@@ -316,6 +419,7 @@ async function preset () {
   p0.loadout = { 1: rec('screws') }
   p0.stash = Array.from({ length: 10 }, () => rec('medkit_s', { dura: 120 }))
   p0.money = 5000 // a bandage (920) yes, the backpack (43,700) no
+  p0.presets[0].slots['5'] = 'gone_item' // an id items.yml does not have
   writeProfile(name, p0)
   bot = await make(name)
   menu = await openWindow(bot, () => bot.chat('/cv'))
@@ -324,6 +428,7 @@ async function preset () {
   await sleep(800)
   bot.closeWindow(again || menu)
   check('chat lists what was not placed', bot.chats.some(c => c.includes('没有放上') && c.includes('急救包')))
+  check('the unknown id is listed too', bot.chats.some(c => c.includes('没有放上') && c.includes('gone_item')))
   await leave(bot)
   const p = readProfile(name)
   const all = Object.values(p.loadout).concat(p.stash)
@@ -361,7 +466,7 @@ async function season () {
   check('all four in the loadout', countIds(Object.values(p.loadout), 'medkit_l') === 4)
 }
 
-const scenarios = { reload, unknown, raid, insure, preset, season }
+const scenarios = { reload, unknown, raid, insure, missing, preset, season }
 
 ;(async () => {
   try {

@@ -132,7 +132,7 @@ public final class MarketService implements Listener {
         dirty = true;
         if (prices > 0 || returned > 0) {
             plugin.getLogger().warning("Market data from an older version: reset " + prices + " trade prices and returned "
-                    + returned + " listings priced above the cap. Accounts that farmed the old prices have a high market_sales stat.");
+                    + returned + " listings priced above the cap. Accounts that farmed the old prices show up in /cv marketaudit.");
         }
         save();
     }
@@ -470,6 +470,7 @@ public final class MarketService implements Listener {
         plugin.profiles().edit(listing.seller, seller -> {
             seller.money += payout;
             seller.addStat("market_sales", 1);
+            seller.addStat("market_income", payout);
             if (playerSale) {
                 long day = today();
                 if (seller.marketDay != day) {

@@ -48,7 +48,8 @@ public final class ProfileService {
         return t;
     });
 
-    public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills) {
+    public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
+                          long marketSales, long marketIncome) {
     }
 
     public ProfileService(Plugin plugin) {
@@ -252,6 +253,7 @@ public final class ProfileService {
     }
 
     private static Summary summarize(Profile p) {
-        return new Summary(p.uuid, p.name, p.rankPoints, p.level, p.stat("extracted_value"), p.stat("kills"));
+        return new Summary(p.uuid, p.name, p.rankPoints, p.level, p.stat("extracted_value"), p.stat("kills"), p.money,
+                p.stat("market_sales"), p.stat("market_income"));
     }
 }

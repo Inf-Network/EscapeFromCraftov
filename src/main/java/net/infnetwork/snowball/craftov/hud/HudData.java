@@ -64,7 +64,7 @@ public final class HudData {
 
     public int reserve(Player p) {
         WeaponService.GunState s = gun(p);
-        return s == null ? 0 : plugin.weapons().reserve(p, s.gun(), null);
+        return s == null ? 0 : plugin.weapons().reserve(p, s);
     }
 
     public String fireMode(Player p) {

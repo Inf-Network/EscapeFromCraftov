@@ -405,13 +405,18 @@ public final class CarryService {
         return total;
     }
 
-    /** Removes up to {@code amount} of an item from carry cells; returns how many were removed. */
+    /** Removes up to {@code amount} of an item from carry cells (never test items); returns how many were removed. */
     public int takeItem(Player player, String id, int amount) {
+        return takeItem(player, id, amount, false);
+    }
+
+    /** Like {@link #takeItem(Player, String, int)}, but from proving-ground armory stacks only when {@code test}. */
+    public int takeItem(Player player, String id, int amount, boolean test) {
         PlayerInventory inv = player.getInventory();
         int removed = 0;
         for (int slot = 0; slot < 36 && removed < amount; slot++) {
             ItemStack stack = inv.getItem(slot);
-            if (id.equals(ItemFactory.idOf(stack))) {
+            if (id.equals(ItemFactory.idOf(stack)) && ItemFactory.isTest(stack) == test) {
                 int take = Math.min(amount - removed, stack.getAmount());
                 stack.setAmount(stack.getAmount() - take);
                 removed += take;

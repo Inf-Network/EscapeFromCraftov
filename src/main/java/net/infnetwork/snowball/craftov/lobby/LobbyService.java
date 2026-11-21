@@ -406,6 +406,7 @@ public final class LobbyService implements Listener {
             captureLoadout(player);
         }
         plugin.match().onQuit(player);
+        plugin.hud().onQuit(player);
         player.getInventory().clear();
         plugin.profiles().unload(player.getUniqueId());
         lastMenuClick.remove(player.getUniqueId());

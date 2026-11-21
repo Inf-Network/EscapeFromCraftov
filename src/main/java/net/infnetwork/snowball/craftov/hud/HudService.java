@@ -14,6 +14,8 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -41,6 +43,8 @@ public final class HudService {
     private final Map<UUID, Long> suppressedUntil = new HashMap<>();
     private final Map<UUID, Long> dazzledUntil = new HashMap<>();
     private final Map<UUID, Flash> flashed = new HashMap<>();
+    /** Players blinded by {@link #flash} whose blindness has not been lifted yet. */
+    private final java.util.Set<UUID> flashBlinded = new java.util.HashSet<>();
     private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
 
@@ -306,19 +310,48 @@ public final class HudService {
     private static final int FLASH_STEPS = 4;
 
     /**
+     * Vanilla blends blindness fog in and out over 22 ticks and starts the fade-out that long before the
+     * effect runs out, so the effect is given this much longer than the white part and lifted by hand.
+     */
+    private static final int BLINDNESS_BLEND_TICKS = 23;
+
+    /**
      * Flashbanged: the screen goes fully white, then steps down through fainter overlays over the last
      * half of {@code ticks} (10 to 30 ticks of fade). It covers a scope picture, which comes back after.
+     * <p>
+     * Camera overlays are only drawn in first person with the HUD shown, so pressing F5 (or F1) would
+     * clear a flash completely. While the screen is fully white the player is also blinded
+     * (combat.flashbang.blind-while-white): in first person the opaque white hides the fog, and the
+     * effect is lifted (tickOverlays) before the white starts to fade, so the fog never shows through.
      */
     public void flash(Player player, int ticks) {
         if (ticks <= 0) {
             return;
         }
-        long until = Bukkit.getCurrentTick() + ticks;
-        Flash current = flashed.get(player.getUniqueId());
+        UUID id = player.getUniqueId();
+        long now = Bukkit.getCurrentTick();
+        long until = now + ticks;
+        Flash current = flashed.get(id);
         if (current == null || current.until() < until) {
-            flashed.put(player.getUniqueId(), new Flash(until, Math.max(10, Math.min(30, ticks / 2))));
+            current = new Flash(until, Math.max(10, Math.min(30, ticks / 2)));
+            flashed.put(id, current);
+        }
+        long white = current.until() - current.fade() - now;
+        if (white > 0 && plugin.getConfig().getBoolean("combat.flashbang.blind-while-white", true)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, (int) white + BLINDNESS_BLEND_TICKS,
+                    0, false, false, false));
+            flashBlinded.add(id);
         }
         refreshOverlay(player);
+    }
+
+    /** Leaving the server mid-flash: the blindness that goes with the white-out must not be saved with the player. */
+    public void onQuit(Player player) {
+        UUID id = player.getUniqueId();
+        flashed.remove(id);
+        if (flashBlinded.remove(id)) {
+            player.removePotionEffect(PotionEffectType.BLINDNESS);
+        }
     }
 
     /**
@@ -331,7 +364,8 @@ public final class HudService {
     private static final int OVERLAY_RESEND_TICKS = 2;
 
     private void tickOverlays() {
-        if (shownOverlay.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()) {
+        if (shownOverlay.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()
+                && flashBlinded.isEmpty()) {
             return;
         }
         long now = Bukkit.getCurrentTick();
@@ -339,6 +373,7 @@ public final class HudService {
         touched.addAll(suppressedUntil.keySet());
         touched.addAll(dazzledUntil.keySet());
         touched.addAll(flashed.keySet());
+        touched.addAll(flashBlinded);
         suppressedUntil.values().removeIf(until -> until <= now);
         dazzledUntil.values().removeIf(until -> until <= now);
         flashed.values().removeIf(flash -> flash.until() <= now);
@@ -348,7 +383,13 @@ public final class HudService {
             if (player == null) {
                 shownOverlay.remove(id);
                 lastShake.remove(id);
+                flashBlinded.remove(id);
                 continue;
+            }
+            Flash flash = flashed.get(id);
+            if ((flash == null || now >= flash.until() - flash.fade()) && flashBlinded.remove(id)) {
+                // The white is about to fade (it stays fully white for a quarter of the fade yet).
+                player.removePotionEffect(PotionEffectType.BLINDNESS);
             }
             String before = shownOverlay.get(id);
             refreshOverlay(player);

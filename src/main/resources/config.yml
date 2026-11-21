@@ -106,6 +106,12 @@ combat:
     min-ticks: 20
     # Share of a flashbang's effect left at the edge of its radius (full strength at the blast).
     edge-strength: 0.4
+    # Also blind the player while the screen is fully white. The white is a camera overlay, which the
+    # client only draws in first person with the HUD shown, so without this a flashed player could
+    # press F5 (or F1) and see clearly; with it they see blindness fog there (it closes in over about
+    # a second). In first person the opaque white hides the fog, and the effect is lifted before the
+    # white starts to fade. Blindness also stops sprinting meanwhile.
+    blind-while-white: true
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

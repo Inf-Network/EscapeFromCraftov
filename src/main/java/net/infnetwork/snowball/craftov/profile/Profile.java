@@ -55,7 +55,11 @@ public final class Profile {
     public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
-    /** Market income from other players' purchases on {@link #marketDay} (MarketService daily cap). */
+    /**
+     * Market gains from other players on {@link #marketDay} (MarketService daily cap): what they paid
+     * for this player's listings after tax, plus how far below the reference price this player
+     * bought theirs.
+     */
     public long marketDay = -1;
     public long marketIncome;
     /** Last few login addresses, newest last (MarketService: same-address trades). */

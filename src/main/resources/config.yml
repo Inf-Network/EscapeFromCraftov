@@ -143,9 +143,11 @@ market:
   # carrier NAT share an address and could not trade. Worth turning on for a public server; the real
   # fix for second accounts is online-mode=true.
   block-same-ip: false
-  # Most a player can earn per day (04:00 reset) from other players buying their listings, after tax
-  # (0 = no cap). OFF by default: friends trading gear on a small or LAN server would hit any cap low
-  # enough to matter. System-buyer sales never count towards it.
+  # Most value a player can gain per day (04:00 reset) from trading with other players (0 = no cap):
+  # what other players pay for their listings after tax, plus how far below the reference price they
+  # buy other players' listings, so underpriced sales count as well as overpriced ones. OFF by default:
+  # friends trading gear on a small or LAN server would hit any cap low enough to matter. Sales to
+  # system buyers never count towards it.
   daily-player-income-cap: 0
   # The trade price shown in the market is information only: it follows sales between players (never
   # system buyers), counted per plain unit with attachments, loaded ammo and wear divided out. Sales

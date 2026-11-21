@@ -354,6 +354,7 @@ public final class MarketService implements Listener {
             Text.send(player, "<#FF8A80>仓库空间不足。");
             return false;
         }
+        addTradeGain(buyer, bargain(listing));
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
         plugin.profiles().markDirty(player.getUniqueId());
@@ -391,6 +392,11 @@ public final class MarketService implements Listener {
         }
         boolean sameIp = plugin.getConfig().getBoolean("market.block-same-ip", false);
         long incomeCap = plugin.getConfig().getLong("market.daily-player-income-cap", 0);
+        long bargain = bargain(listing);
+        if (incomeCap > 0 && bargain > 0 && incomeToday(buyer) + bargain > incomeCap) {
+            return "这件商品比参考价低 ◈" + Text.money(bargain) + "，你今天从其他玩家处的交易行收益已达上限（◈"
+                    + Text.money(incomeCap) + "），明天再来吧。";
+        }
         if (!sameIp && incomeCap <= 0) {
             return null;
         }
@@ -405,6 +411,24 @@ public final class MarketService implements Listener {
             return "卖家今天从其他玩家处的交易行收入已达上限（◈" + Text.money(incomeCap) + "），明天再来吧。";
         }
         return null;
+    }
+
+    /** How far below the reference price a player buying {@code listing} pays: value handed to the buyer. */
+    private long bargain(Listing listing) {
+        return Math.max(0, anchorFor(listing.item) - listing.price);
+    }
+
+    /** Counts {@code amount} towards the player's market gains from other players today (daily cap). */
+    private static void addTradeGain(Profile profile, long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        long day = today();
+        if (profile.marketDay != day) {
+            profile.marketDay = day;
+            profile.marketIncome = 0;
+        }
+        profile.marketIncome += amount;
     }
 
     /** Market day: rolls over at 04:00 like the daily contracts. */
@@ -485,12 +509,7 @@ public final class MarketService implements Listener {
             seller.addStat("market_sales", 1);
             seller.addStat("market_income", payout);
             if (playerSale) {
-                long day = today();
-                if (seller.marketDay != day) {
-                    seller.marketDay = day;
-                    seller.marketIncome = 0;
-                }
-                seller.marketIncome += payout;
+                addTradeGain(seller, payout);
             }
         });
         recordSale(listing, playerSale);

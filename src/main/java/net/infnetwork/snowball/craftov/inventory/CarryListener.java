@@ -20,6 +20,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -64,6 +65,15 @@ public final class CarryListener implements Listener {
         ItemStack cursor = event.getCursor();
         if (ItemFactory.isUi(current) || ItemFactory.isUi(cursor)) {
             event.setCancelled(true);
+            return;
+        }
+        if (event.getClickedInventory() == null) {
+            // A click outside the window throws the cursor. Where throwing is not allowed, vanilla puts a
+            // refused throw back with addItem and deletes whatever has no room, so the click is refused
+            // instead and the item stays on the cursor.
+            if (cursor != null && !cursor.isEmpty() && !mayDrop(player)) {
+                event.setCancelled(true);
+            }
             return;
         }
         if (event.getClickedInventory() != player.getInventory()) {
@@ -234,6 +244,12 @@ public final class CarryListener implements Listener {
         }
     }
 
+    /** Throwing an item is allowed only for a raider who is up; the lobby, the range and the raid refuse it otherwise. */
+    private boolean mayDrop(Player player) {
+        RaidPlayer rp = plugin.raids().session(player);
+        return rp != null && rp.state == RaidPlayer.State.ALIVE;
+    }
+
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onDrag(InventoryDragEvent event) {
         if (!(event.getWhoClicked() instanceof Player player) || !managed(player)) {
@@ -299,16 +315,62 @@ public final class CarryListener implements Listener {
         if (!(event.getPlayer() instanceof Player player)) {
             return;
         }
+        if (managed(player)) {
+            // A player who disconnects is no longer there to pick a thrown cursor back up.
+            settleCursor(player, event.getReason() == InventoryCloseEvent.Reason.DISCONNECT);
+        }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !managed(player)) {
                 return;
             }
-            ItemStack cursor = player.getItemOnCursor();
-            if (ItemFactory.isUi(cursor)) {
-                player.setItemOnCursor(null);
-            }
             carry.enforceContainers(player);
             carry.refreshLocks(player);
         });
+    }
+
+    /**
+     * Leaving with the inventory screen open fires no close event, and the lobby and the raid both
+     * save the inventory before vanilla hands the cursor back, so the cursor is settled first.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onQuit(PlayerQuitEvent event) {
+        if (managed(event.getPlayer())) {
+            settleCursor(event.getPlayer(), true);
+        }
+    }
+
+    /**
+     * Puts the cursor back on the player before vanilla does. Right after the close event vanilla puts
+     * it into the first free cell, or, with none free, throws it; the lobby, the range and a downed
+     * raider refuse that throw, and a refused throw is put back with addItem, which deletes whatever
+     * has no room. A packed rig or backpack must not land in a cell either. So unless vanilla's way is
+     * safe (a raider who is up, holding anything but a packed container), the cursor is settled here:
+     * a packed container goes back on when its slot is free, anything else goes into a free cell, and
+     * what has no room is spilled (mailed outside a raid, dropped at the player's feet in one).
+     */
+    private void settleCursor(Player player, boolean always) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (cursor.isEmpty()) {
+            return;
+        }
+        if (ItemFactory.isUi(cursor)) {
+            player.setItemOnCursor(null);
+            return;
+        }
+        boolean packed = ItemFactory.hasContents(cursor);
+        if (!always && !packed && mayDrop(player)) {
+            return;
+        }
+        ItemStack moving = cursor.clone();
+        player.setItemOnCursor(null);
+        ItemDef def = items.defOf(moving);
+        if (packed && def != null && def.isContainer()) {
+            ItemStack worn = player.getInventory().getItem(CarryService.containerSlot(def.category()));
+            if (worn == null || worn.isEmpty()) {
+                carry.equip(player, moving);
+                return;
+            }
+        }
+        carry.give(player, moving, true);
     }
 }

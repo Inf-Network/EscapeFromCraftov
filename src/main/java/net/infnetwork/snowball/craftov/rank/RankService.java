@@ -41,15 +41,25 @@ public final class RankService {
         return "<" + COLORS[i] + ">" + NAMES[i] + division + "</" + COLORS[i] + ">";
     }
 
+    /** Points a death costs at least (before kills), see onDeath. */
+    private static final int DEATH_BASE = 22;
     /**
-     * Points for getting out: one per ◈6,000 of profit (at most 45), and one off per ◈6,000 lost
-     * (at most 30, like a death's gear loss), plus kills, scaled by difficulty. There is no flat
-     * bonus for extracting: with one, walking out naked scored +18 against −22 for dying, so naked
-     * runs alone climbed the ladder. Losses are halved below 1,100 points, as for deaths.
+     * Most points an extraction at a loss costs: below a death's, so walking out with less than
+     * you brought is never scored worse than dying with it, or abandoning the raid.
+     */
+    private static final int EXTRACT_MAX_LOSS = DEATH_BASE - 2;
+
+    /**
+     * Points for getting out: one per ◈6,000 of profit (at most 45) plus kills, scaled by
+     * difficulty, and one off per ◈6,000 lost (at most 20, not scaled). There is no flat bonus for
+     * extracting: with one, walking out naked scored +18 against −22 for dying, so naked runs alone
+     * climbed the ladder. Losses are halved below 1,100 points, as for deaths.
      */
     public int onExtract(Profile profile, RaidPlayer rp, long profit, Raid raid) {
-        int delta = (int) Math.max(-30, Math.min(45, profit / 6000)) + rp.kills * 6 + Math.min(10, rp.aiKills);
-        delta = (int) Math.round(delta * (1 + raid.tier.lootShift() * 0.25));
+        int gain = (int) Math.min(45, Math.max(0, profit) / 6000) + rp.kills * 6 + Math.min(10, rp.aiKills);
+        gain = (int) Math.round(gain * (1 + raid.tier.lootShift() * 0.25));
+        int loss = profit < 0 ? (int) Math.min(EXTRACT_MAX_LOSS, -profit / 6000) : 0;
+        int delta = gain - loss;
         if (delta < 0 && profile.rankPoints < 1100) {
             delta = delta / 2;
         }
@@ -58,7 +68,7 @@ public final class RankService {
     }
 
     public int onDeath(Profile profile, RaidPlayer rp, long lost, Raid raid) {
-        int delta = -(22 + (int) Math.min(30, lost / 20000)) + rp.kills * 5;
+        int delta = -(DEATH_BASE + (int) Math.min(30, lost / 20000)) + rp.kills * 5;
         if (profile.rankPoints < 1100) {
             delta = delta / 2;
         }

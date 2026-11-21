@@ -149,7 +149,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - 美术与音效生成器：`tools/art/`（Python + Pillow + numpy/scipy + soundfile）
 - CraftEngine 资源：`src/main/resources/pack/craftov/`（启动时安装到 `plugins/CraftEngine/resources/craftov/` 并自动重建资源包）
 - BetterHud 布局：`src/main/resources/betterhud/`（安装到 `plugins/BetterHud/`，并与 CraftEngine 资源包自动合并）
-- 无头测试客户端：`tools/bot/`（mineflayer，`npm install` 后 `node test.js`）
+- 无头测试客户端：`tools/bot/`（mineflayer，`npm install` 后 `node test.js`）。靶场回归：`PORT=25565 RCON_PORT=25575 node range.js [--no-raid]`，检查靶场里仓库 / 商人 / 安全箱打不开、离开后装备逐格还原、行动中安全箱和撤离照常，全部通过时退出码为 0。
 - 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）
 
 ### 左键开火的实现

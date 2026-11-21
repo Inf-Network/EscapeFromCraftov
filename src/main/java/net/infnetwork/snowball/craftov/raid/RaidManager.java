@@ -1099,7 +1099,10 @@ public final class RaidManager implements Listener {
         Text.send(player, "<#FFC23D>" + message);
     }
 
-    /** Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). */
+    /**
+     * Plugin shutdown: the raid is voided and everybody in it goes home with what they carry (no
+     * losses, no rewards).
+     */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
             for (RaidPlayer rp : raid.players.values()) {
@@ -1123,6 +1126,13 @@ public final class RaidManager implements Listener {
                 }
             }
             raid.state = Raid.State.CLOSED;
+            // As when a raid closes: insured gear still on bodies, in containers or on the ground
+            // goes back to its owners, and the dead watching a squadmate are sent home too.
+            plugin.insurance().settle(raid);
+            spectators.values().removeIf(entry -> entry.getKey() == raid);
+            for (Player player : raid.world.getPlayers()) {
+                plugin.lobby().enterLobby(player);
+            }
             plugin.ai().clear(raid);
             for (LootContainer container : raid.containers.values()) {
                 container.remove();

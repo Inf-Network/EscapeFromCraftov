@@ -407,6 +407,10 @@ public final class MarketService implements Listener {
             Text.send(player, "<#FF8A80>仓库空间不足。");
             return false;
         }
+        if (!plugin.profiles().canEdit(listing.seller)) {
+            Text.send(player, "<#FF8A80>卖家的档案暂时无法读取，这件商品暂停出售。");
+            return false;
+        }
         addTradeGain(buyer, bargain(listing));
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
@@ -560,6 +564,7 @@ public final class MarketService implements Listener {
         data.listings.remove(listing);
         long payout = payout(listing);
         long tax = listing.price - payout;
+        // Both callers have checked canEdit, so the seller can be paid now and nothing is journaled.
         plugin.profiles().edit(listing.seller, () -> "market sale of listing " + listing.id + " (" + listing.item.id + " x"
                 + listing.item.amount + "): money +" + payout + ", stats.market_sales +1, stats.market_income +" + payout
                 + (playerSale && payout > 0 ? ", marketIncome +" + payout + " (only if marketDay is " + today() + ")" : ""), seller -> {
@@ -608,7 +613,11 @@ public final class MarketService implements Listener {
         data.reference.put(id, reference(id) * 0.85 + unit * 0.15);
     }
 
-    /** Expiry and simulated buyers. */
+    /**
+     * Expiry and simulated buyers. A listing whose seller's profile cannot be used right now (an
+     * unreadable file waiting for an admin) is left alone, neither returned nor sold, so the item
+     * and its price stay in the market until the profile can take them.
+     */
     private void tick() {
         long now = System.currentTimeMillis();
         boolean npc = plugin.getConfig().getBoolean("market.virtual-buyers", true);
@@ -617,10 +626,11 @@ public final class MarketService implements Listener {
         pruneVirtualSales(now);
         for (Listing listing : new ArrayList<>(data.listings)) {
             if (now >= listing.expires) {
-                data.listings.remove(listing);
-                plugin.profiles().edit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
-                        + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item));
-                dirty = true;
+                if (plugin.profiles().tryEdit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
+                        + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item))) {
+                    data.listings.remove(listing);
+                    dirty = true;
+                }
                 continue;
             }
             if (!npc || now - listing.created < minAge || virtualCapped(listing.seller, listing.item.id)) {
@@ -630,7 +640,7 @@ public final class MarketService implements Listener {
             // overpriced sale would raise the bar for the next one.
             double ratio = listing.price / (double) anchorFor(listing.item);
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
-            if (ThreadLocalRandom.current().nextDouble() < chance) {
+            if (ThreadLocalRandom.current().nextDouble() < chance && plugin.profiles().canEdit(listing.seller)) {
                 if (counting) {
                     virtualSales.computeIfAbsent(new SaleKey(listing.seller, listing.item.id), k -> new ArrayDeque<>()).addLast(now);
                 }

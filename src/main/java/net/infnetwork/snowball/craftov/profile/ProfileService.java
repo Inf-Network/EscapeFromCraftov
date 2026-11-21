@@ -265,6 +265,19 @@ public final class ProfileService implements Listener {
     }
 
     /**
+     * Like {@link #edit}, but a change for an account that is locked (its file unreadable, or a
+     * journal waiting) is not journaled: this returns false and changes nothing, so the caller
+     * keeps what it was about to hand over (a market listing) and tries again later.
+     */
+    public boolean tryEdit(UUID uuid, Supplier<String> change, Consumer<Profile> mutation) {
+        if (editable(uuid) == null && (Files.exists(file(uuid)) || Files.exists(journal(uuid)))) {
+            return false;
+        }
+        edit(uuid, change, mutation);
+        return true;
+    }
+
+    /**
      * Whether {@code uuid}'s profile can be changed now: it exists, can be read and has no journal.
      * Cheap for a file already found broken, which is only read again once it has changed.
      */

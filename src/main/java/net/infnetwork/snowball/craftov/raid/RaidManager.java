@@ -1516,6 +1516,7 @@ public final class RaidManager implements Listener {
                 Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> 在部署前断开连接，已退出本局。");
             }
         }
+        plugin.escorts().onWithdraw(rp.uuid, rp.name);
     }
 
     /** Called by loot menus so systems (escort, stats) can react to looting. */

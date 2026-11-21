@@ -324,8 +324,7 @@ public final class CarryListener implements Listener {
             return;
         }
         if (managed(player)) {
-            // A player who disconnects is no longer there to pick a thrown cursor back up.
-            settleCursor(player, event.getReason() == InventoryCloseEvent.Reason.DISCONNECT);
+            settleCursor(player);
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !managed(player)) {
@@ -343,20 +342,21 @@ public final class CarryListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onQuit(PlayerQuitEvent event) {
         if (managed(event.getPlayer())) {
-            settleCursor(event.getPlayer(), true);
+            settleCursor(event.getPlayer());
         }
     }
 
     /**
      * Puts the cursor back on the player before vanilla does. Right after the close event vanilla puts
-     * it into the first free cell, or, with none free, throws it; the lobby, the range and a downed
-     * raider refuse that throw, and a refused throw is put back with addItem, which deletes whatever
-     * has no room. A packed rig or backpack must not land in a cell either. So unless vanilla's way is
-     * safe (a raider who is up, holding anything but a packed container), the cursor is settled here:
-     * a packed container goes back on when its slot is free, anything else goes into a free cell, and
-     * what has no room is spilled (mailed outside a raid, dropped at the player's feet in one).
+     * it into the first free cell, or, with none free, throws it. That throw is refused in the lobby,
+     * on the range and while downed, and for a gun even by a raider who is up (a throw that does not
+     * come from a click is a reload), and a refused throw is put back with addItem, which deletes
+     * whatever has no room. A packed rig or backpack must not land in a cell either. So the cursor is
+     * always settled here: a packed container goes back on when its slot is free, anything else goes
+     * into a free cell, and what has no room is spilled (mailed outside a raid, dropped at the
+     * player's feet in one).
      */
-    private void settleCursor(Player player, boolean always) {
+    private void settleCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();
         if (cursor.isEmpty()) {
             return;
@@ -366,9 +366,6 @@ public final class CarryListener implements Listener {
             return;
         }
         boolean packed = ItemFactory.hasContents(cursor);
-        if (!always && !packed && mayDrop(player)) {
-            return;
-        }
         ItemStack moving = cursor.clone();
         player.setItemOnCursor(null);
         ItemDef def = items.defOf(moving);

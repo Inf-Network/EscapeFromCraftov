@@ -1,6 +1,8 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.raid.Raid;
+import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 
@@ -116,8 +118,17 @@ public final class MenuService {
 
     public void openSecure(Player player) {
         // Not lobbyOnly: the raid terminal opens the secure container mid-raid.
-        if (notInRange(player)) {
-            new SecureMenu(plugin, player).open();
+        if (!notInRange(player)) {
+            return;
         }
+        Raid raid = plugin.raids().raidOf(player);
+        RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
+        if (rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
+            // Flying in, or dead and spectating: the raid has its own copy of the container by now
+            // and settles it on landing, death or extraction, so anything moved here would be lost.
+            Text.send(player, "<#FF8A80>入场途中或观战时无法打开安全箱。");
+            return;
+        }
+        new SecureMenu(plugin, player).open();
     }
 }

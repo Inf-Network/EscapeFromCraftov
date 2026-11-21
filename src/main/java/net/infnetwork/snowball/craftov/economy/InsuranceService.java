@@ -70,7 +70,7 @@ public final class InsuranceService {
             return;
         }
         profile.money -= fee;
-        String mark = player.getUniqueId() + ":" + raid.id;
+        String mark = player.getUniqueId() + ":" + raid.key;
         int count = 0;
         for (ItemStack stack : player.getInventory().getContents()) {
             ItemDef def = plugin.items().defOf(stack);
@@ -175,7 +175,7 @@ public final class InsuranceService {
         if (owner == null) {
             return record;
         }
-        record.insured = null;
+        record.uninsure(); // what is left inside is not insured for this raid: no mark goes to the mailbox
         returns.computeIfAbsent(owner, k -> new ArrayList<>()).add(record);
         return null;
     }
@@ -196,7 +196,7 @@ public final class InsuranceService {
 
     /** The owner an insurance mark names for this raid, or null (no mark, another raid, garbage). */
     private static @Nullable UUID owner(Raid raid, @Nullable String mark) {
-        if (mark == null || !mark.endsWith(":" + raid.id) || mark.indexOf(':') <= 0) {
+        if (mark == null || !mark.endsWith(":" + raid.key) || mark.indexOf(':') <= 0) {
             return null;
         }
         try {

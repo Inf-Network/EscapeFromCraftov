@@ -418,6 +418,9 @@ public final class CarryService {
      * taken out of the stash again once the definition is back.
      */
     public void mail(Player player, ItemRecord record) {
+        // Whatever reaches the mailbox has left its raid: an insurance mark kept there could match a
+        // later raid and pay out an item nobody insured.
+        record.uninsure();
         CraftovPlugin.get().profiles().edit(player.getUniqueId(), p -> p.mailbox.add(record));
         ItemDef def = items.registry().get(record.id);
         String amount = record.amount > 1 ? " ×" + record.amount : "";

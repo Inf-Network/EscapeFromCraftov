@@ -28,7 +28,7 @@ public final class ItemRecord {
     /** Fitted attachments other than the sight, slot -> item id (guns only). */
     public java.util.@Nullable Map<String, String> attach;
     /**
-     * Insurance mark "owner uuid:raid id" (InsuranceService). It travels with the record so a gun
+     * Insurance mark "owner uuid:raid key" (InsuranceService). It travels with the record so a gun
      * that is rebuilt mid-raid (gunsmith, reconnect, packed into a dropped backpack) stays insured.
      */
     public @Nullable String insured;

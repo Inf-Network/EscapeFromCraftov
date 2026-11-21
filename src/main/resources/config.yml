@@ -107,6 +107,14 @@ ai:
   insertion-grace-ticks: 240
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep
+  # moving and shooting back, but their next shot waits shot-delay-ticks and their spread is multiplied
+  # until the dazzle ends. Then a strobe cannot dazzle them again for immune-ticks.
+  dazzle:
+    strobe-ticks: 20
+    spread-multiplier: 3.0
+    shot-delay-ticks: 10
+    immune-ticks: 80
 
 trader:
   buy-multiplier: 1.15

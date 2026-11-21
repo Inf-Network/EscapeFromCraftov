@@ -21,6 +21,18 @@
 //   armory  test mode on: armory items carry the test mark, and after extracting with collectibles,
 //           valuables, a gun and an armory backpack: money, stash and collected unchanged, profit ~0,
 //           no test item left, the bot's own item packed in the armory backpack handed back.
+//   parts   test mode on: the armory weapons case holds every attachment, marked; an armory sight
+//           is refused on the bot's own gun, fits the armory gun, and comes off as an armory part.
+//   keys    test mode on: with its own key and an armory copy for the same door, opening the door
+//           wears the armory copy and leaves the bot's own key alone.
+//   contract a saved daily contract for the proving ground (test mode off) is swapped for another
+//           one when the contracts are read, for free; the other two contracts stay.
+//   offline test mode on, two bots in a raid, each with an armory backpack whose cells hold its own
+//           items while its pockets and rig are full. A disconnects and rejoins (armory items come
+//           back), disconnects again, and the server is stopped with B still online. After the
+//           restart: no test item and no backpack cell in either loadout, A's own items in a pocket
+//           or the mailbox, B's own items in the mailbox, and nothing dropped when A logs in. Needs a
+//           server that comes back after `stop` (a restart loop around start.sh); it waits up to 4 min.
 //
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the number of failures.
 const fs = require('fs')
@@ -40,8 +52,8 @@ const run = Math.random().toString(36).slice(2, 5)
 let serial = 0
 const bots = []
 
-function make () {
-  const name = `t${run}${(serial++).toString().padStart(2, '0')}`
+function make (reuse) {
+  const name = reuse || `t${run}${(serial++).toString().padStart(2, '0')}`
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.worldName = ''
@@ -123,6 +135,69 @@ const revealed = w => top(w).filter(([, s]) => !JSON.stringify(s.components || '
 /** Waits until the container has revealed at least `count` items (search time grows with rarity). */
 async function searched (w, count, ms = 60000) {
   return waitFor(() => revealed(w).length >= count, ms)
+}
+
+/** Today's contract day as the server counts it (04:00 local rollover), in epoch days. */
+function contractDay () {
+  const d = new Date(Date.now() - 4 * 3600e3)
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000)
+}
+
+const POCKETS = [36, 37, 39, 40, 41, 42, 43] // hotbar 0, 1, 3..7 (2 is the melee slot)
+const PACK_CELLS = Array.from({ length: 18 }, (_, i) => 18 + i)
+const GIFTS = ['screws', 'tape', 'battery', 'lighter', 'canned_food', 'copper_coil', 'water_tabs', 'circuit', 'toolset',
+  'cigarettes', 'coffee', 'energy_drink', 'multimeter', 'ration', 'ssd', 'radio']
+const ownIn = (bot, slots) => slots.map(i => bot.inventory.slots[i]).filter(s => s && !isTest(s)).map(itemId).filter(Boolean)
+
+/** Queues a squad of solo bots for the proving ground and waits until all are in the raid. */
+async function deploy (list) {
+  for (const bot of list) bot.chat('/cv queue proving NORMAL SOLO')
+  const ok = await waitFor(() => list.every(inRaid), 120000)
+  await sleep(6000) // insertion camera and spawn protection
+  return ok
+}
+
+/**
+ * Equips the biggest armory backpack, then has own items given until the pockets and the own rig are
+ * full and at least `cells` own items sit in the backpack's cells. Returns the own item ids in the cells.
+ */
+async function packOwnItems (bot, cells) {
+  const w = await openContainerAt(bot, 47.5, 65, 77.5)
+  if (!w) return null
+  await waitFor(() => revealed(w).length === top(w).length, 60000)
+  // The biggest armory pack still in the box (bots share it; an own pack swapped in is not one).
+  const packs = revealed(w).filter(([, s]) => /pack_/.test(itemId(s) || '') && isTest(s))
+  const [bigSlot] = packs[packs.length - 1] || []
+  if (bigSlot === undefined) return null
+  await bot.clickWindow(bigSlot, 1, 0) // right-click: equip (the bot's own pack stays in the box)
+  await sleep(800)
+  bot.closeWindow(w)
+  await sleep(500)
+  if (!isTest(bot.inventory.slots[8])) return null
+  for (const id of GIFTS) {
+    if (ownIn(bot, PACK_CELLS).length >= cells) break
+    await rcon(`cv give ${bot.username} ${id}`)
+    await sleep(300)
+  }
+  return ownIn(bot, PACK_CELLS)
+}
+
+/** An RCON call that gives up after a few seconds (a stopping server may close without answering). */
+const rconQuick = cmd => Promise.race([rcon(cmd), sleep(4000).then(() => { throw new Error('rcon timeout') })])
+
+/** Stops the server, then waits for RCON to go away and to answer again (a restart loop brings it back). */
+async function restart () {
+  rconQuick('stop').catch(() => {})
+  const end = Date.now() + 240000
+  let down = false
+  while (Date.now() < end) {
+    try {
+      await rconQuick('list')
+      if (down) { await sleep(5000); return true }
+    } catch (e) { down = true }
+    await sleep(2000)
+  }
+  return false
 }
 
 const scenarios = {
@@ -288,6 +363,7 @@ const scenarios = {
     notes.armoryPackMarked = isTest(big) && lore(big).includes('试验场物资')
     await a.clickWindow(bigSlot, 1, 0) // right-click: equip
     await sleep(800)
+    notes.armoryPackWorn = isTest(a.inventory.slots[8]) && /pack_/.test(itemId(a.inventory.slots[8]) || '')
     const own = top(w).find(([, s]) => itemId(s) === 'pack_1' && !isTest(s))
     if (own) { await a.clickWindow(own[0], 0, 0); await sleep(600) }
     a.closeWindow(w)
@@ -336,10 +412,186 @@ const scenarios = {
       notice: saw(a, '试验场物资已收回'),
       handedBack
     }
-    const ok = notes.armoryPackMarked && notes.collectiblesMarked && notes.valuablesMarked && notes.weaponsMarked &&
+    const ok = notes.armoryPackMarked && notes.armoryPackWorn && notes.collectiblesMarked && notes.valuablesMarked && notes.weaponsMarked &&
       notes.bandageInArmoryPack && notes.carriedTest > 0 && after.money === before.money && stashSame &&
       after.collected.length === before.collected.length && report && report.extractedValue < 1000 &&
       left === 0 && result.notice && handedBack
+    return [ok, result]
+  },
+
+  async parts () {
+    await testMode(true)
+    const a = await make()
+    if (!await deploy([a])) return [false, { error: 'never reached the raid', world: a.worldName }]
+    let w = await openContainerAt(a, 8.5, 65, 77.5)
+    if (!w) return [false, { error: 'armory weapons box did not open' }]
+    await waitFor(() => top(w).length > 0 && revealed(w).length === top(w).length, 90000)
+    const parts = revealed(w).filter(([, s]) => /^(optic|att)_/.test(itemId(s) || ''))
+    const notes = { title: plain(w.title), items: top(w).length, parts: parts.length, partsMarked: parts.every(([, s]) => isTest(s)) }
+    for (const id of ['k47', 'optic_reddot']) {
+      const found = revealed(w).find(([, s]) => itemId(s) === id)
+      if (!found) return [false, { error: `no armory ${id}`, notes }]
+      await a.clickWindow(found[0], 0, 0)
+      await sleep(400)
+    }
+    a.closeWindow(w)
+    await sleep(500)
+    a.setQuickBarSlot(0) // the bot's own K47 is held, so the gunsmith opens on it
+    await sleep(300)
+    w = await openWindow(a, () => a.chat('/cv mod'))
+    if (!w) return [false, { error: 'gunsmith did not open', notes }]
+    const partSlot = () => [45, 46, 47, 48, 49, 50, 51, 52, 53].find(i => itemId(w.slots[i]) === 'optic_reddot' && isTest(w.slots[i]))
+    let ps = partSlot()
+    notes.onOwnGun = ps === undefined ? null : lore(w.slots[ps])
+    const testGun = [0, 1, 2, 3, 4, 5, 6, 7, 8].find(i => itemId(w.slots[i]) === 'k47' && isTest(w.slots[i]))
+    if (testGun === undefined || ps === undefined) return [false, { error: 'armory K47 or sight missing in the gunsmith', notes }]
+    await a.clickWindow(testGun, 0, 0)
+    await sleep(600)
+    ps = partSlot()
+    notes.onArmoryGun = ps === undefined ? null : lore(w.slots[ps])
+    if (ps !== undefined) { await a.clickWindow(ps, 0, 0); await sleep(800) }
+    const gun = a.inventory.slots.find(s => s && itemId(s) === 'k47' && isTest(s))
+    notes.fitted = pdc(gun, 'optic')
+    notes.fittedGunMarked = isTest(gun)
+    notes.sightRowShows = itemId(w.slots[31])
+    notes.sightLeftCarried = a.inventory.slots.filter(s => s && itemId(s) === 'optic_reddot').length
+    await a.clickWindow(31, 0, 0) // take it off again
+    await sleep(800)
+    const back = a.inventory.slots.filter(s => s && itemId(s) === 'optic_reddot')
+    notes.removedBackMarked = back.length === 1 && isTest(back[0])
+    notes.ownGunFitted = pdc(a.inventory.slots.find(s => s && itemId(s) === 'k47' && !isTest(s)), 'optic')
+    a.closeWindow(w)
+    const ok = notes.parts === 10 && notes.partsMarked && (notes.onOwnGun || '').includes('试验场配件只能装在试验场武器上') &&
+      (notes.onArmoryGun || '').includes('点击安装') && notes.fitted === 'optic_reddot' && notes.fittedGunMarked &&
+      notes.sightRowShows === 'optic_reddot' && notes.sightLeftCarried === 0 && notes.removedBackMarked && !notes.ownGunFitted
+    return [ok, notes]
+  },
+
+  async keys () {
+    await testMode(true)
+    const a = await make()
+    if (!await deploy([a])) return [false, { error: 'never reached the raid', world: a.worldName }]
+    await rcon(`cv give ${a.username} key_dorm`)
+    await sleep(500)
+    const w = await openContainerAt(a, 86.5, 65, 77.5)
+    if (!w) return [false, { error: 'armory keys box did not open' }]
+    await waitFor(() => revealed(w).some(([, s]) => itemId(s) === 'key_dorm'), 60000)
+    const armoryKey = revealed(w).find(([, s]) => itemId(s) === 'key_dorm')
+    if (!armoryKey) return [false, { error: 'no armory key_dorm' }]
+    await a.clickWindow(armoryKey[0], 0, 0)
+    await sleep(400)
+    a.closeWindow(w)
+    await sleep(500)
+    const key = test => a.inventory.slots.find(s => s && itemId(s) === 'key_dorm' && isTest(s) === test)
+    const before = { own: pdc(key(false), 'dura'), armory: pdc(key(true), 'dura'), both: !!key(false) && !!key(true) }
+    const empty = [43, 42, 41].find(i => !a.inventory.slots[i])
+    if (empty !== undefined) a.setQuickBarSlot(empty - 36) // an empty hand, so nothing else takes the click
+    await rcon(`execute as ${a.username} at @s run tp @s 8.5 65 49.6 180 10`)
+    await sleep(1500)
+    const Vec3 = require('vec3')
+    const door = a.blockAt(new Vec3(8, 65, 48))
+    if (!door) return [false, { error: 'door block not loaded', before }]
+    await a.activateBlock(door)
+    await sleep(1200)
+    const doorNow = a.blockAt(new Vec3(8, 65, 48))
+    const after = { own: pdc(key(false), 'dura'), armory: key(true) ? pdc(key(true), 'dura') : 'used up', door: doorNow && doorNow.getProperties().open }
+    const lower = v => v === null ? 3 : Number(v) // a fresh key has no wear recorded yet: full durability (3)
+    const ok = before.both && after.own === before.own && after.armory !== before.armory &&
+      (after.armory === 'used up' || lower(after.armory) === lower(before.armory) - 1) && after.door === true
+    return [ok, { before, after }]
+  },
+
+  async contract () {
+    await testMode(false)
+    let a = await make()
+    const name = a.username
+    await waitFor(() => fs.existsSync(profileFile(a)), 15000)
+    a.quit()
+    bots.splice(bots.indexOf(a), 1)
+    await sleep(4000)
+    const p = profile(a)
+    const money = p.money
+    p.taskDay = contractDay()
+    p.tasks = [
+      { kind: 'EXTRACT_MAP', map: 'proving', mapName: '试验场', target: 1, progress: 0, reward: 12000, xp: 600, done: false },
+      { kind: 'AI_KILL', target: 5, progress: 2, reward: 7500, xp: 487, done: false },
+      { kind: 'SEARCH', target: 8, progress: 1, reward: 7200, xp: 480, done: false }
+    ]
+    fs.writeFileSync(profileFile(a), JSON.stringify(p, null, 2))
+    a = await make(name)
+    const menu = await openWindow(a, () => a.chat('/cv menu'))
+    if (menu) a.closeWindow(menu)
+    await sleep(500)
+    a.quit()
+    bots.splice(bots.indexOf(a), 1)
+    await sleep(4000)
+    const after = profile(a)
+    const tasks = after.tasks.map(t => ({ kind: t.kind, map: t.map || null, progress: t.progress }))
+    const ok = !!menu && after.taskDay === p.taskDay && tasks.length === 3 && !tasks.some(t => t.map === 'proving') &&
+      tasks[1].kind === 'AI_KILL' && tasks[1].progress === 2 && tasks[2].kind === 'SEARCH' && tasks[2].progress === 1 &&
+      after.money === money
+    return [ok, { menu: !!menu, tasks, money: [money, after.money] }]
+  },
+
+  async offline () {
+    await testMode(true)
+    const a = await make()
+    const b = await make()
+    await waitFor(() => fs.existsSync(profileFile(a)) && fs.existsSync(profileFile(b)), 15000)
+    const mailBefore = { a: profile(a).mailbox.length, b: profile(b).mailbox.length }
+    if (!await deploy([a, b])) return [false, { error: 'never reached the raid', worlds: [a.worldName, b.worldName] }]
+    const cellsB = await packOwnItems(b, 3)
+    let cellsA = await packOwnItems(a, 3)
+    if (!cellsA || !cellsB || cellsA.length < 3 || cellsB.length < 3) return [false, { error: 'could not fill the armory backpacks', cellsA, cellsB }]
+    // A frees one pocket by moving its item into a backpack cell: one own item will fit there later.
+    const pocket = POCKETS.find(i => a.inventory.slots[i] && !isTest(a.inventory.slots[i]) && GIFTS.includes(itemId(a.inventory.slots[i])))
+    const cell = PACK_CELLS.find(i => !a.inventory.slots[i])
+    await a.clickWindow(pocket, 0, 0); await sleep(300)
+    await a.clickWindow(cell, 0, 0); await sleep(500)
+    cellsA = ownIn(a, PACK_CELLS)
+    const freePocketsA = POCKETS.filter(i => !a.inventory.slots[i]).length
+    const nameA = a.username
+    const feet = bot => ({ id: itemId(bot.inventory.slots[8]), test: isTest(bot.inventory.slots[8]) })
+    const packBefore = feet(a)
+    // Disconnect and rejoin within the reconnect window: the armory backpack comes back as it was.
+    a.quit()
+    bots.splice(bots.indexOf(a), 1)
+    await sleep(3000)
+    let a2 = await make(nameA)
+    await waitFor(() => inRaid(a2) && a2.inventory.slots[8], 15000)
+    await sleep(1000)
+    const rejoin = { inRaid: inRaid(a2), packBefore, packAfter: feet(a2), cells: ownIn(a2, PACK_CELLS).length === cellsA.length }
+    a2.quit()
+    bots.splice(bots.indexOf(a2), 1)
+    await sleep(3000)
+    // Server stop with A offline and B online in the raid.
+    const back = await restart()
+    bots.splice(0).forEach(bot => { try { bot.quit() } catch (e) {} })
+    if (!back) return [false, { error: 'server did not come back after stop', rejoin }]
+    await sleep(3000)
+    const pa = profile(a)
+    const pb = profile(b)
+    const hasTest = r => !!r && (r.test || (r.contents || []).some(c => c.test))
+    const cellKeys = loadout => Object.keys(loadout).map(Number).filter(k => k >= 18 && k <= 35)
+    const mailA = pa.mailbox.slice(mailBefore.a).map(r => r.id)
+    const mailB = pb.mailbox.slice(mailBefore.b).map(r => r.id)
+    const pocketIds = Object.entries(pa.loadout).filter(([k]) => Number(k) < 8).map(([, r]) => r.id)
+    const result = {
+      cellsA, cellsB, freePocketsA, rejoin,
+      a: { activeRaid: pa.activeRaid || null, cellKeys: cellKeys(pa.loadout), test: Object.values(pa.loadout).some(hasTest), mailed: mailA },
+      b: { activeRaid: pb.activeRaid || null, cellKeys: cellKeys(pb.loadout), test: Object.values(pb.loadout).some(hasTest), mailed: mailB }
+    }
+    // A logs in: its loadout fits, nothing is dropped on the lobby floor.
+    a2 = await make(nameA)
+    await sleep(3000)
+    result.a.lobby = inLobby(a2)
+    result.a.dropped = Object.values(a2.entities).filter(e => e.name === 'item' && e.position.distanceTo(a2.entity.position) < 6).length
+    const accounted = cellsA.every(id => pocketIds.includes(id) || mailA.includes(id))
+    const ok = rejoin.inRaid && rejoin.packAfter.test && /pack_/.test(rejoin.packAfter.id || '') && rejoin.cells &&
+      !result.a.activeRaid && result.a.cellKeys.length === 0 && !result.a.test && accounted && freePocketsA === 1 &&
+      mailA.length === cellsA.length - 1 &&
+      !result.b.activeRaid && result.b.cellKeys.length === 0 && !result.b.test && cellsB.every(id => mailB.includes(id)) &&
+      result.a.lobby && result.a.dropped === 0
     return [ok, result]
   }
 }

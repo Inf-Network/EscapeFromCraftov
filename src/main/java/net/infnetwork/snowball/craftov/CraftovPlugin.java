@@ -181,6 +181,7 @@ public final class CraftovPlugin extends JavaPlugin {
         backups = new net.infnetwork.snowball.craftov.util.Backups(this);
         backups.start();
         market.start();
+        escorts.start();
         new PackService(this).install();
         hookBetterHud();
 

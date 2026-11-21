@@ -56,6 +56,12 @@ public final class Profile {
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     /**
+     * Reward taken from this player for their escort contract and not yet paid out or returned
+     * (EscortService). Saved with the deduction itself, so a contract lost in a crash is refunded
+     * on the next start.
+     */
+    public long escortEscrow;
+    /**
      * Market gains from other players on {@link #marketDay} (MarketService daily cap): what they paid
      * for this player's listings after tax, plus how far below the reference price this player
      * bought theirs.

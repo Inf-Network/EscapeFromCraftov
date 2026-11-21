@@ -87,8 +87,9 @@ public final class ProfileService implements Listener {
     private record Pending(Profile profile, AtomicInteger writes) {
     }
 
+    /** What leaderboards and start-up checks need of every saved profile, kept without loading it. */
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
-                          long marketSales, long marketIncome) {
+                          long marketSales, long marketIncome, long escortEscrow) {
     }
 
     public ProfileService(Plugin plugin) {
@@ -467,6 +468,11 @@ public final class ProfileService implements Listener {
 
     private static Summary summarize(Profile p) {
         return new Summary(p.uuid, p.name, p.rankPoints, p.level, p.stat("extracted_value"), p.stat("kills"), p.money,
-                p.stat("market_sales"), p.stat("market_income"));
+                p.stat("market_sales"), p.stat("market_income"), p.escortEscrow);
+    }
+
+    /** Saved profiles matching {@code filter}, from the summaries (no disk reads). */
+    public List<Summary> summaries(java.util.function.Predicate<Summary> filter) {
+        return index.values().stream().filter(filter).toList();
     }
 }

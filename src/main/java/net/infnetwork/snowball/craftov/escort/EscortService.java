@@ -21,6 +21,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Escort contracts (护航): a client escrows a reward, escorts join the client's squad, and the
  * reward is paid out when the client extracts (a consolation share if the client dies).
+ *
+ * <p>Contracts live in memory, but the escrowed reward is recorded on the client's profile
+ * ({@link Profile#escortEscrow}) together with the deduction, so a reward whose contract was lost
+ * in a crash goes back to the client on the next start.
  */
 public final class EscortService {
 
@@ -94,7 +98,8 @@ public final class EscortService {
             return;
         }
         profile.money -= reward;
-        plugin.profiles().markDirty(client.getUniqueId());
+        profile.escortEscrow += reward;
+        plugin.profiles().saveNow(client.getUniqueId());
         String id = Long.toHexString(ThreadLocalRandom.current().nextLong() & 0xFFFFFFL);
         contracts.put(id, new Contract(id, client.getUniqueId(), client.getName(), reward, note));
         Text.send(client, "<#5BD16B>护航委托已发布，赏金 ◈" + Text.money(reward) + " 已托管。");
@@ -143,8 +148,16 @@ public final class EscortService {
             return;
         }
         contracts.remove(c.id);
-        plugin.profiles().edit(c.client, p -> p.money += c.reward);
+        release(c, c.reward);
         Text.send(client, "<#9AA0A6>委托已取消，赏金已退回。");
+    }
+
+    /** Ends the client's escrow for {@code c} and hands {@code refund} of it back. */
+    private void release(Contract c, long refund) {
+        plugin.profiles().edit(c.client, p -> {
+            p.escortEscrow = Math.max(0, p.escortEscrow - c.reward);
+            p.money += refund;
+        });
     }
 
     /** Called when any raid participant finishes. Only the client's outcome settles a contract. */
@@ -170,15 +183,32 @@ public final class EscortService {
                 Text.send(p, (extracted ? "<#5BD16B>护航成功！" : "<#FFC23D>老板阵亡，护航失败。") + "<#9AA0A6>获得 ◈" + Text.money(each));
             }
         }
-        long refund = c.reward - each * c.escorts.size();
-        if (refund > 0) {
-            plugin.profiles().edit(c.client, p -> p.money += refund);
+        release(c, c.reward - each * c.escorts.size());
+    }
+
+    /**
+     * Start-up: contracts live in memory only, so any reward still held in escrow belongs to a
+     * contract lost when the server went down without a clean shutdown (crash, kill, power cut).
+     */
+    public void start() {
+        long total = 0;
+        int count = 0;
+        for (var summary : plugin.profiles().summaries(s -> s.escortEscrow() > 0)) {
+            total += summary.escortEscrow();
+            count++;
+            plugin.profiles().edit(summary.uuid(), p -> {
+                p.money += p.escortEscrow;
+                p.escortEscrow = 0;
+            });
+        }
+        if (count > 0) {
+            plugin.getLogger().warning("Returned " + total + " money held for " + count + " escort contracts lost when the server stopped.");
         }
     }
 
     public void shutdown() {
         for (Contract c : contracts.values()) {
-            plugin.profiles().edit(c.client, p -> p.money += c.reward);
+            release(c, c.reward);
         }
         contracts.clear();
     }

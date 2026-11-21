@@ -883,11 +883,16 @@ public final class RaidManager implements Listener {
         }
         rp.state = RaidPlayer.State.DEAD;
         List<ItemStack> drop = new ArrayList<>();
+        // Items whose id items.yml no longer has cannot lie in the body: they go to the mailbox.
+        List<ItemRecord> unknown = new ArrayList<>();
         if (rp.disconnectedInventory != null) {
             for (ItemRecord record : rp.disconnectedInventory.values()) {
                 ItemStack stack = plugin.items().fromRecord(record);
                 if (stack != null) {
                     drop.add(stack);
+                } else {
+                    record.uninsure();
+                    unknown.add(record);
                 }
             }
         }
@@ -901,6 +906,7 @@ public final class RaidManager implements Listener {
         long lostValue = lost;
         plugin.profiles().edit(rp.uuid, profile -> {
             profile.loadout.clear();
+            profile.mailbox.addAll(unknown);
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);

@@ -40,12 +40,15 @@ final class PresetMenu extends Menu {
                 long cost = 0;
                 for (Map.Entry<Integer, String> e : preset.slots.entrySet()) {
                     ItemDef def = plugin.registry().get(e.getValue());
-                    if (def != null) {
-                        int amount = preset.amounts.getOrDefault(e.getKey(), 1);
-                        lore.add("<#8A8F98>· " + def.coloredName() + (amount > 1 ? " <#8A8F98>×" + amount : ""));
-                        if (sold(def)) {
-                            cost += plugin.traders().buyPrice(def) * amount;
-                        }
+                    int amount = preset.amounts.getOrDefault(e.getKey(), 1);
+                    String count = amount > 1 ? " <#8A8F98>×" + amount : "";
+                    if (def == null) {
+                        lore.add("<#8A8F98>· <#9AA0A6>未知物品 " + Text.escape(e.getValue()) + count);
+                        continue;
+                    }
+                    lore.add("<#8A8F98>· " + def.coloredName() + count);
+                    if (sold(def)) {
+                        cost += plugin.traders().buyPrice(def) * amount;
                     }
                 }
                 if (lore.size() > 12) {
@@ -119,6 +122,7 @@ final class PresetMenu extends Menu {
             int want = preset.amounts.getOrDefault(slot, 1);
             ItemDef def = plugin.registry().get(e.getValue());
             if (def == null) {
+                missing.add(e.getValue()); // an id items.yml no longer has: nothing to take or buy
                 continue;
             }
             if (!exists(slot, def)) {
@@ -156,7 +160,7 @@ final class PresetMenu extends Menu {
             missing.forEach(item -> counted.merge(item, 1, Integer::sum));
             List<String> lines = new ArrayList<>();
             counted.forEach((item, n) -> lines.add(n > 1 ? item + " ×" + n : item));
-            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足或缺少胸挂/背包）：" + Text.escape(String.join("、", lines)));
+            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足、缺少胸挂/背包或物品表里没有）：" + Text.escape(String.join("、", lines)));
         }
     }
 

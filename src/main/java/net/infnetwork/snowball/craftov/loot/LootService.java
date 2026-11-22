@@ -144,24 +144,23 @@ public final class LootService {
         return stack;
     }
 
-    /** Picks a random lootable item of the given category, walking to the nearest rarity with stock. */
+    /**
+     * Picks a random lootable item of the given category and rarity, or of the nearest lower rarity
+     * with stock; null when there is none. Never a rarer one: collectibles start at purple and keys
+     * at blue, so walking up turned every white or green collectible roll into a ◈48,000 one and
+     * every white key roll into a blue key.
+     */
     public @Nullable ItemDef pick(Category category, Rarity rarity, Random rng) {
         Rarity[] all = Rarity.values();
-        for (int distance = 0; distance < all.length; distance++) {
-            for (int dir : new int[]{-1, 1}) {
-                int index = rarity.ordinal() + dir * distance;
-                if (index < 0 || index >= all.length || (distance == 0 && dir == 1)) {
-                    continue;
+        for (int index = rarity.ordinal(); index >= 0; index--) {
+            List<ItemDef> candidates = new ArrayList<>();
+            for (ItemDef def : registry.byCategory(category)) {
+                if (def.lootable() && def.rarity() == all[index]) {
+                    candidates.add(def);
                 }
-                List<ItemDef> candidates = new ArrayList<>();
-                for (ItemDef def : registry.byCategory(category)) {
-                    if (def.lootable() && def.rarity() == all[index]) {
-                        candidates.add(def);
-                    }
-                }
-                if (!candidates.isEmpty()) {
-                    return candidates.get(rng.nextInt(candidates.size()));
-                }
+            }
+            if (!candidates.isEmpty()) {
+                return candidates.get(rng.nextInt(candidates.size()));
             }
         }
         return null;

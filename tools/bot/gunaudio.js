@@ -16,11 +16,16 @@
 //            the open report at 0.2 / 0.75 of the muffled one.
 //   room     a stone room around both: every shot brings gun.tail.light.in or .in2 (alternating) in
 //            the same tick as the report, each after a stop of its own key, for shooter and listener.
-//   deal     a fresh shooter fires the P18 twelve times: the variant the client picks from each fp
-//            seed (java.util.Random(seed).nextInt(4)) never repeats back to back and each of the four
-//            comes three times; the listener's near report carries the same variant.
+//   cover    a closed stone room around a DM14, the listener outside at 40..130 blocks: the room
+//            arrives muffled (gun.tail.heavy.in_muff / in_muff2, never the bright .in / .in2), the
+//            muffled report and room against the open report follow the fade over mid-far (70-110),
+//            the muffled share changes gradually and from 110 blocks on nothing is muffled.
+//   deal     a fresh shooter fires the P18 twelve times and the SV9 nine automatic samples: the
+//            variant the client picks from each seed (java.util.Random(seed).nextInt(n)) never starts
+//            on the recorded shot the one before ended on (src/main/resources/gun_variants.json), for
+//            the shooter's report and the listener's, and every variant comes equally often.
 //
-//   PORT=25565 RCON_PORT=25575 node gunaudio.js [volume bands wall room deal]
+//   PORT=25565 RCON_PORT=25575 node gunaudio.js [volume bands wall room cover deal]
 //
 // Needs test.enabled (the proving ground) and a short match.wait-seconds; the bots are made op and
 // deopped at the end. Exit code: number of failed checks (2+ also when the setup failed).
@@ -39,7 +44,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const run = Math.random().toString(36).slice(2, 6)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['volume', 'bands', 'wall', 'room', 'deal']
+const scenarios = wanted.length ? wanted : ['volume', 'bands', 'wall', 'room', 'cover', 'deal']
 const failures = []
 function check (label, ok, detail = '') {
   if (!ok) failures.push(label)
@@ -65,6 +70,10 @@ const guns = (() => {
   return out
 })()
 const sources = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/art/audio_sources.json'), 'utf8'))
+/** Per sound event, the recorded shot of each round of each variant (what GunAudio deals by). */
+const variantShots = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/main/resources/gun_variants.json'), 'utf8'))
+/** Whether variant b of an event may follow variant a: it does not start on the shot a ended on. */
+const follows = (rows, a, b) => rows[b][0] !== rows[a][rows[a].length - 1]
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x))
 const shooterVolume = gid => clamp(config.shooter[0] + clamp((guns[gid] - 3.5) / 3.5, 0, 1) * (config.shooter[1] - config.shooter[0]), 0, 1)
 const ramp = (d, a, b) => b <= a ? (d < a ? 0 : 1) : clamp((d - a) / (b - a), 0, 1)
@@ -75,6 +84,7 @@ function bandWeights (d) {
 }
 /** GunAudio.gain for an open report: items.yml volume / 5 capped at 1.2, halved at 30 x that blocks. */
 const openGain = (gid, d) => Math.min(1.2, guns[gid] / 5) / (1 + Math.pow(d / Math.max(4, 30 * guns[gid] / 5), 1.5))
+const AUDIBLE = 0.012
 const PROXY_ATTENUATION = 1 - 4 / 16
 
 /** The variant a vanilla client picks for this packet seed out of n: java.util.Random(seed).nextInt(n). */
@@ -326,25 +336,89 @@ async function room (shooter, listener) {
   log('  listener packets', since(listener, fromL, /./).map(h => (h.stop ? 'stop ' : '') + h.key.replace('craftov:', '')).join(', '))
 }
 
+/** A closed room around the shooter: the listener outside hears it through the wall at every distance. */
+async function cover (shooter, listener) {
+  // Longer to the south, where the shooter faces: the trigger's capture block goes 3 blocks ahead.
+  const x0 = Math.floor(SPOT.x) - 4
+  const z0 = Math.floor(SPOT.z) - 4
+  const y0 = SPOT.y - 1
+  const box = (block, hollow) => rcon(`execute in minecraft:${world()} run fill ${x0} ${y0} ${z0} ${x0 + 8} ${y0 + 5} ${z0 + 11} minecraft:${block}${hollow ? ' hollow' : ''}`)
+  await box('stone', true)
+  await stand(shooter, SPOT.x, SPOT.y, SPOT.z, 0)
+  await arm(shooter, 'dm14')
+  const dry = 0.2
+  const rows = []
+  const distances = [40, 60, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 130]
+  for (const [i, d] of distances.entries()) {
+    // A fresh, loaded DM14 before its ten rounds run out.
+    if (i === 8) await arm(shooter, 'dm14')
+    const got = await heardAt(shooter, listener, d, /^craftov:gun\.(dm14\.(near|mid|far|muff)|tail\.heavy\.in(_muff)?2?)$/)
+    const vol = re => got.filter(h => re.test(h.key)).reduce((a, h) => a + h.volume ** 2, 0) ** 0.5
+    const open = vol(/dm14\.(near|mid|far)$/)
+    const muff = vol(/dm14\.muff$/)
+    const roomMuff = vol(/in_muff2?$/)
+    const bright = got.filter(h => /tail\.heavy\.in2?$/.test(h.key)).length
+    const md = muzzleDistance(d)
+    const close = 1 - bandWeights(md)[2]
+    const openShare = dry + (1 - dry) * (1 - close)
+    const gain = openGain('dm14', md)
+    rows.push({ d, open, muff, roomMuff, bright, close, openShare, gain,
+      share: muff ** 2 / (muff ** 2 + open ** 2 || 1), want: (0.75 * close) ** 2 / ((0.75 * close) ** 2 + openShare ** 2) })
+    log(`  ${d} blocks: ${got.map(h => h.key.replace('craftov:gun.', '') + ' ' + h.volume.toFixed(3)).join(', ')}`)
+  }
+  await box('air', false)
+  check('cover: every shot is heard (the open report arrives at every distance)', rows.every(r => r.open > 0), rows.filter(r => !(r.open > 0)).map(r => r.d))
+  check('cover: the room reaches the listener behind its wall muffled, never bright', rows.every(r => r.bright === 0) && rows[0].roomMuff > 0,
+    rows.map(r => `${r.d}:${r.bright ? 'BRIGHT' : r.roomMuff ? 'muff' : '-'}`).join(' '))
+  // Both share the shot's level variation, so the ratios are exact; near the threshold a sound may drop out.
+  const ratioOk = (got, want, level) => level < 1.5 * AUDIBLE / 2 ? true : got > 0 && Math.abs(got / want - 1) < 0.05
+  check('cover: the muffled report against the open one follows the fade (0.75 x close : 0.2 + 0.8 x (1 - close))',
+    rows.every(r => r.close <= 0 || ratioOk(r.muff / r.open, 0.75 * r.close / r.openShare, r.gain * 0.75 * r.close)),
+    rows.map(r => `${r.d}:${(r.muff / r.open).toFixed(3)}/${(0.75 * r.close / r.openShare).toFixed(3)}`).join(' '))
+  check('cover: the muffled room against the open report follows the same fade',
+    rows.every(r => r.close <= 0 || (r.gain * 0.6 * r.close < 1.5 * AUDIBLE ? true : r.roomMuff > 0 && Math.abs(r.roomMuff / r.open / (0.6 * r.close / r.openShare) - 1) < 0.05)),
+    rows.map(r => `${r.d}:${(r.roomMuff / r.open).toFixed(3)}/${(0.6 * r.close / r.openShare).toFixed(3)}`).join(' '))
+  check('cover: from the far end of mid-far on, cover changes nothing (no muffled report or room)',
+    rows.filter(r => r.close <= 0).every(r => r.muff === 0 && r.roomMuff === 0) && rows.some(r => r.close <= 0),
+    rows.filter(r => r.close <= 0).map(r => r.d))
+  check('cover: the muffled share changes gradually (no step over 0.3 between neighbouring distances)',
+    rows.every((r, i) => i === 0 || Math.abs(r.share - rows[i - 1].share) <= 0.3),
+    rows.map(r => `${r.d}:${r.share.toFixed(2)}`).join(' '))
+}
+
+/** The dealer fires `shots` reports of a gun; the deal is checked by recorded shot, for its report and the listener's. */
+async function dealGun (dealer, listener, gid, shots) {
+  await arm(dealer, gid)
+  const x = guns[gid] && /^(m4c|sv9|v57)$/.test(gid) ? `.x${gid === 'm4c' ? 2 : 3}` : ''
+  const keys = { fp: `gun.${gid}${x}.fp`, near: `gun.${gid}${x}.near` }
+  const picks = { fp: [], near: [] }
+  for (let i = 0; i < shots; i++) {
+    const from = { fp: dealer.heard.length, near: listener.heard.length }
+    await pull(dealer)
+    await sleep(450)
+    for (const [band, bot] of [['fp', dealer], ['near', listener]]) {
+      const h = bot.heard.slice(from[band]).find(e => !e.stop && e.key === 'craftov:' + keys[band])
+      picks[band].push(h ? variantOf(h.seed, variantShots[keys[band]].length) : null)
+    }
+  }
+  for (const band of ['fp', 'near']) {
+    const rows = variantShots[keys[band]]
+    const seq = picks[band]
+    const counts = rows.map((_, i) => seq.filter(v => v === i).length)
+    const shotsHeard = seq.map(v => v === null ? '?' : rows[v].join('+')).join(' ')
+    check(`deal: ${keys[band]} never starts on the recorded shot the one before ended on`,
+      seq.every((v, i) => v !== null && (i === 0 || follows(rows, seq[i - 1], v))), `variants ${seq.join('')} shots ${shotsHeard}`)
+    check(`deal: each of the ${rows.length} variants of ${keys[band]} comes ${shots / rows.length} times in ${shots}`,
+      counts.every(c => c === shots / rows.length), counts.join(','))
+  }
+}
+
 async function deal (dealer, listener) {
   await stand(dealer, SPOT.x, SPOT.y, SPOT.z + 3, 0)
   await stand(listener, SPOT.x + 8, SPOT.y, SPOT.z + 3, 90)
-  await arm(dealer, 'p18')
-  const picks = []
-  for (let i = 0; i < 12; i++) {
-    const fromD = dealer.heard.length
-    const fromL = listener.heard.length
-    await pull(dealer)
-    await sleep(450)
-    const fp = since(dealer, fromD, /^craftov:gun\.p18\.fp$/)[0]
-    const near = since(listener, fromL, /^craftov:gun\.p18\.near$/)[0]
-    picks.push({ fp: fp ? variantOf(fp.seed, 4) : null, near: near ? variantOf(near.seed, 4) : null })
-  }
-  const seq = picks.map(p => p.fp)
-  const counts = [0, 1, 2, 3].map(i => seq.filter(x => x === i).length)
-  check('deal: no variant twice in a row', seq.every((x, i) => x !== null && (i === 0 || x !== seq[i - 1])), seq.join(''))
-  check('deal: each of the four variants three times in twelve shots', counts.every(c => c === 3), counts.join(','))
-  check('deal: the listener hears the variant the shooter does', picks.every(p => p.near === p.fp), picks.map(p => `${p.fp}${p.near}`).join(' '))
+  await dealGun(dealer, listener, 'p18', 12)
+  // Automatic: every pull fires a whole three-round sample.
+  await dealGun(dealer, listener, 'sv9', 9)
 }
 
 // ---------------------------------------------------------------- main
@@ -377,6 +451,7 @@ async function finish (code) {
       else if (scenario === 'bands') await bands(shooter, listener)
       else if (scenario === 'wall') await wall(shooter, listener)
       else if (scenario === 'room') await room(shooter, listener)
+      else if (scenario === 'cover') await cover(shooter, listener)
       else if (scenario === 'deal') await deal(dealer, listener)
     }
   } catch (e) {

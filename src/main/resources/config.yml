@@ -100,6 +100,9 @@ downed:
   # with a clear line from their eyes to the downed player.
   revive-range: 2.2
   revive-max-height: 1.0
+  # The revive starts over when the reviver walks more than this many blocks from where they began,
+  # or takes damage (their own bleeding aside).
+  revive-max-move: 0.5
   max-downs: 2
   # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
   solo: false

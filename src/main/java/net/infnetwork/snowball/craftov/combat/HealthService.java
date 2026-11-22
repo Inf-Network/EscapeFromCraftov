@@ -75,6 +75,8 @@ public final class HealthService implements Listener {
     private final Map<UUID, Double> lastJump = new HashMap<>();
     private final Map<UUID, MedUse> medUse = new HashMap<>();
     private final Map<UUID, WorldBorder> vignettes = new HashMap<>();
+    /** True while a wound's bleeding is being dealt, so listeners can tell it from a hit. */
+    private boolean bleeding;
 
     public HealthService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -320,12 +322,22 @@ public final class HealthService implements Listener {
             }
             if (bleed > 0 && worst != null) {
                 plugin.damage().recordHit(player, null, "失血", worst);
-                plugin.damage().deal(player, null, bleed);
+                bleeding = true;
+                try {
+                    plugin.damage().deal(player, null, bleed);
+                } finally {
+                    bleeding = false;
+                }
                 player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                         org.bukkit.Material.REDSTONE_BLOCK.createBlockData());
             }
             updateFood(player);
         }
+    }
+
+    /** True during the damage event of a wound bleeding, not a hit. */
+    public boolean isBleeding() {
+        return bleeding;
     }
 
     private void tickSpeed() {

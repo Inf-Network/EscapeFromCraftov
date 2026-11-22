@@ -18,6 +18,7 @@ import org.bukkit.entity.Pose;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.util.BoundingBox;
@@ -48,6 +49,10 @@ public final class DownedService implements Listener {
         public final int reviveNeeded;
         public DamageService.@Nullable LastHit cause;
         Location fakeBlock;
+        /** Where the reviver stood when the current attempt began. */
+        @Nullable Location reviveFrom;
+        /** Tick the last attempt was cut short by the reviver moving or getting hurt. */
+        long interruptedAt = -100;
 
         Downed(int number, double pool, int reviveNeeded) {
             this.number = number;
@@ -210,15 +215,20 @@ public final class DownedService implements Listener {
             }
             Player reviver = findReviver(raid, rp, player, state);
             if (reviver != null) {
+                Location at = reviver.getLocation();
                 if (!reviver.getUniqueId().equals(state.reviver)) {
                     state.reviver = reviver.getUniqueId();
                     state.reviveTicks = 0;
+                    state.reviveFrom = at;
+                } else if (state.reviveFrom == null || horizontalDistanceSquared(at, state.reviveFrom) > square(maxMove())) {
+                    interrupt(state, at);
                 }
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
                 reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
-                reviver.sendActionBar(Text.mm("<#5BD16B>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
-                player.sendActionBar(Text.mm("<#5BD16B>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
+                String note = Bukkit.getCurrentTick() - state.interruptedAt < 20 ? "<#FF8A80>救援被打断，重新开始  " : "";
+                reviver.sendActionBar(Text.mm(note + "<#5BD16B>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
+                player.sendActionBar(Text.mm(note + "<#5BD16B>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
                 if (state.reviveTicks >= state.reviveNeeded) {
                     stopReviving(reviver);
                     revive(player, reviver);
@@ -243,6 +253,53 @@ public final class DownedService implements Listener {
                     + " <#9AA0A6>" + (int) Math.ceil(state.pool) + "s"));
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
+            }
+        }
+    }
+
+    /**
+     * Starts the attempt over from {@code at}: the reviver walked more than downed.revive-max-move
+     * blocks from where they began, or got hurt. Reviving is meant to pin the medic down, not be
+     * done on the move or through incoming fire.
+     */
+    private void interrupt(Downed state, Location at) {
+        if (state.reviveTicks > 0) {
+            state.interruptedAt = Bukkit.getCurrentTick();
+        }
+        state.reviveTicks = 0;
+        state.reviveFrom = at;
+    }
+
+    private double maxMove() {
+        return plugin.getConfig().getDouble("downed.revive-max-move", 0.5);
+    }
+
+    private static double horizontalDistanceSquared(Location a, Location b) {
+        if (a.getWorld() != b.getWorld()) {
+            return Double.MAX_VALUE;
+        }
+        double dx = a.getX() - b.getX();
+        double dz = a.getZ() - b.getZ();
+        return dx * dx + dz * dz;
+    }
+
+    private static double square(double value) {
+        return value * value;
+    }
+
+    /**
+     * A reviver who takes damage loses the progress they made. Their own wounds bleeding does not
+     * count: a medic who is bleeding could never finish otherwise.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onReviverHurt(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0 || plugin.health().isBleeding()) {
+            return;
+        }
+        UUID id = hurt.getUniqueId();
+        for (Downed state : downed.values()) {
+            if (id.equals(state.reviver)) {
+                interrupt(state, hurt.getLocation());
             }
         }
     }

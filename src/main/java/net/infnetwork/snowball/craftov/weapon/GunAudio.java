@@ -35,7 +35,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * as the gun is (a pistol well under a sniper rifle); everyone else gets the near, mid and far
  * versions crossfaded by distance (both of a pair play across a band edge, their weights adding up
  * to one), and behind a wall a muffled version with a little of the open one under it, arriving
- * after the speed-of-sound delay. Loudness follows our own curve instead of Minecraft's linear
+ * after the speed-of-sound delay. As the far report takes over (weapons.audio.mid-far) the wall and
+ * the room fade out, since the far report is dull and echoing itself. Loudness follows our own curve instead of Minecraft's linear
  * roll-off: the sound is placed a few blocks from the listener in the shooter's direction, which
  * keeps the stereo direction while the volume is set exactly. The reports are recordings that carry
  * the outdoor range's own decay; under a roof the room answers every shot as it is fired (a tail
@@ -268,20 +269,24 @@ public final class GunAudio {
                 continue;
             }
             long arrives = now + Math.round(d / SOUND_SPEED);
-            // Beyond 90 blocks the far report already carries its echoes.
-            if (room != null && d < 90 && gain * roomShare >= AUDIBLE) {
-                schedule(arrives, listener, muzzle, roomKey(listener, room), gain * roomShare, roomPitch, pick, true);
+            double[] weights = bandWeights(d, nearMid, midFar);
+            // The far report carries the terrain's echoes and is dull already, so walls and rooms
+            // matter less as it takes over: both fade out over the mid-far crossfade, instead of
+            // stopping at one distance where the sound would suddenly change.
+            double close = 1 - weights[2];
+            if (room != null && gain * roomShare * close >= AUDIBLE) {
+                schedule(arrives, listener, muzzle, roomKey(listener, room), gain * roomShare * close, roomPitch, pick, true);
             }
             double open = 1.0;
-            if (d > 2 && d < 90 && occluded(ear, muzzle)) {
+            if (d > 2 && close > 0 && occluded(ear, muzzle)) {
                 // Through a wall: dull, but with a little of the open report under it so it is still
                 // a gunshot. Suppressed reports are dull already and only lose level.
-                open = suppressed ? 0.4 : muffledDry;
-                if (!suppressed) {
-                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled, pitch, pick, false);
+                double dry = suppressed ? 0.4 : muffledDry;
+                open = dry + (1 - dry) * (1 - close);
+                if (!suppressed && gain * muffled * close >= AUDIBLE / 2) {
+                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled * close, pitch, pick, false);
                 }
             }
-            double[] weights = bandWeights(d, nearMid, midFar);
             for (int i = 0; i < bands.length; i++) {
                 // Suppressed reports have no far band: mid_s takes the far weight too.
                 double w = suppressed && i == bands.length - 1 ? 1 - weights[0] : weights[i];

@@ -252,7 +252,8 @@ weapons:
     near-mid: [20, 32]
     mid-far: [70, 110]
     # Behind a wall: the muffled report at this share of the level, plus the open report at
-    # muffled-dry so it still sounds like a gunshot.
+    # muffled-dry so it still sounds like a gunshot. Over mid-far the wall (and an indoor shooter's
+    # room) fades out as the far report takes over: from its far end on, cover changes nothing.
     muffled: 0.75
     muffled-dry: 0.2
     # Each shot's level varies at random by up to this many dB either way.

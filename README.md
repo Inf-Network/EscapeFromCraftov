@@ -107,7 +107,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 
 玩家：`/cv`（菜单）、`/cv deploy`、`/cv stash`、`/cv mail`（邮箱）、`/cv trader`、`/cv market`、`/cv secure`、`/cv leave`（取消匹配）、`/party invite|accept|leave|kick <玩家>`（也可以写成 `/squad`，不带参数时列出小队成员）。在个人靶场里 `/cv` 打开靶场武器架，`deploy`、`stash`、`mail`、`trader`、`market`、`secure` 要先离开靶场。
 
-管理（`craftov.admin`，默认 OP）：
+管理（`craftov.admin`，默认 OP；服务器是离线模式时 OP 只能从局域网登录，见「配置文件」末尾）：
 
 - `/cv give <玩家> <物品ID> [数量]`、`/cv money <玩家> <数量>`
 - `/cv raids`、`/cv end [对局ID]`（立刻结束）、`/cv tp <对局ID>`（旁观）
@@ -139,7 +139,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 
 `plugins/Craftov/` 下：
 
-- `config.yml`：新手装备、难度档、匹配、断线重连窗口与交战中断线判定（`raid.reconnect-seconds`、`raid.combat-logout-seconds`，后者设为 0 关闭）、服务器维护补偿（`raid.void-compensation.money`）、倒地时长、护甲减伤与耐久（`combat.armor`）、刀砍手脚的伤害系数和检视时长（`combat.melee`）、移动 / 下蹲 / 跳跃对扩散的影响（`weapons.spread`）、冲刺停下后枪要多少 tick 才端起来能开火（`weapons.sprint-recovery-ticks`）、切枪后各类枪的拔枪时间（`weapons.draw-ticks`，按 items.yml 里枪的 `action` 分类，单位 tick）、后坐回落与连射时只作用在子弹上的那部分后坐（`weapons.recoil`）、枪声（`weapons.audio`：开枪者听到自己枪声的音量范围、近 / 中 / 远三档交叉淡化的距离、隔墙时闷声和原声的比例（隔墙效果在 `mid-far` 区间里逐渐消失）、每枪音量的随机起伏）、AI 强度（`ai.damage-multiplier` 是敌兵打中身体和四肢的伤害相当于玩家用同一把枪、同一种弹药的多少，默认 0.65，首领再 ×1.15，不受世界难度影响；敌兵爆头时只用枪的爆头倍率的一半（至少 1 倍），所以默认下敌兵爆头约为玩家爆头的三分之一（霰弹枪约 0.4）；以前对局世界是困难难度，敌兵实际打出的相当于 0.975，想保留那时的手感就改成 0.95 左右；`ai.aim-error` 是敌兵子弹落点离瞄准点多远，按目标处的米数算，远近一样（默认常规 0.6 米到绝密干员、首领 0.25 米，狙击手 `ai.sniper-aim-error` 0.2 到 0.1 米，目标在动时按实际移动速度放大，走路 ×1.4、冲刺约 ×1.5，刚开火的 3 秒内更散）；`ai.awareness` 是敌兵察觉玩家的快慢；`ai.dazzle` 是敌兵被爆闪 / 震撼弹晃到后的失准）、震撼弹白屏时长与全白期间的失明（`combat.flashbang`）、子弹打碎玻璃后保留的伤害和能打穿的方块（`combat.penetration`）、命中判定的延迟补偿（`combat.lag-compensation`：回溯 ping + `extra-ms`，最多 `max-ms`，`max-ms` 超过 1000 按 1000 算）、商人/交易行费率、免费补给等。
+- `config.yml`：新手装备、难度档、匹配、断线重连窗口与交战中断线判定（`raid.reconnect-seconds`、`raid.combat-logout-seconds`，后者设为 0 关闭）、服务器维护补偿（`raid.void-compensation.money`）、倒地时长、护甲减伤与耐久（`combat.armor`）、刀砍手脚的伤害系数和检视时长（`combat.melee`）、移动 / 下蹲 / 跳跃对扩散的影响（`weapons.spread`）、冲刺停下后枪要多少 tick 才端起来能开火（`weapons.sprint-recovery-ticks`）、切枪后各类枪的拔枪时间（`weapons.draw-ticks`，按 items.yml 里枪的 `action` 分类，单位 tick）、后坐回落与连射时只作用在子弹上的那部分后坐（`weapons.recoil`）、枪声（`weapons.audio`：开枪者听到自己枪声的音量范围、近 / 中 / 远三档交叉淡化的距离、隔墙时闷声和原声的比例（隔墙效果在 `mid-far` 区间里逐渐消失）、每枪音量的随机起伏）、AI 强度（`ai.damage-multiplier` 是敌兵打中身体和四肢的伤害相当于玩家用同一把枪、同一种弹药的多少，默认 0.65，首领再 ×1.15，不受世界难度影响；敌兵爆头时只用枪的爆头倍率的一半（至少 1 倍），所以默认下敌兵爆头约为玩家爆头的三分之一（霰弹枪约 0.4）；以前对局世界是困难难度，敌兵实际打出的相当于 0.975，想保留那时的手感就改成 0.95 左右；`ai.aim-error` 是敌兵子弹落点离瞄准点多远，按目标处的米数算，远近一样（默认常规 0.6 米到绝密干员、首领 0.25 米，狙击手 `ai.sniper-aim-error` 0.2 到 0.1 米，目标在动时按实际移动速度放大，走路 ×1.4、冲刺约 ×1.5，刚开火的 3 秒内更散）；`ai.awareness` 是敌兵察觉玩家的快慢；`ai.dazzle` 是敌兵被爆闪 / 震撼弹晃到后的失准）、震撼弹白屏时长与全白期间的失明（`combat.flashbang`）、子弹打碎玻璃后保留的伤害和能打穿的方块（`combat.penetration`）、命中判定的延迟补偿（`combat.lag-compensation`：回溯 ping + `extra-ms`，最多 `max-ms`，`max-ms` 超过 1000 按 1000 算）、商人/交易行费率、免费补给、离线模式下 OP 能从哪些地址登录（`security`，见本节末尾）等。
 - `items.yml`：全部物品（名称、品质、价值、枪械参数、弹药穿透、护甲等级、医疗效果……）。枪的 `recoil-return` 是停火后还回的后坐比例（0–1，默认 0.7）。
 - `loot.yml`：每种物资箱的类别与品质权重，以及难度加成对各品质权重的影响（`shift-bonus`）。
 - `items.yml` 和 `loot.yml` 只在缺失时才从 jar 里复制，更新插件不会改动服务器上的这两个文件。文件开头的 `revision` 比新 jar 自带的低时，开服和 `/cv reload` 会在日志（以及执行 reload 的人）那里提示：价格、掉落权重等改动要先备份旧文件、换成新的（或把改动合并进去并把 `revision` 改成新值）才会生效。经济平衡（#22）把两个文件都升到了 revision 1，战斗修复（#26–#29）把 `items.yml` 升到 2，武器手感（#32–#34：射速、后坐和每把枪的 `recoil-return`）升到 3。
@@ -153,7 +153,11 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 
 更新插件 jar 请整服重启，热重载（Paper 的 `/bukkit:reload confirm`，1.21.11 上 `/reload` 是原版的数据包重载；或插件管理器重载）不在支持范围内。插件关闭时会移除自己加在每个玩家连接上的网络钩子、清空罗盘标记，所以重载后在线玩家应当不用重连就能继续开火、用中键开手电，罗盘也只显示新标记，但这些还没有在真人客户端上确认过。另外 BetterHud 没有注销罗盘标记来源的接口，每次重载都会在 BetterHud 里留下一个不再返回任何标记的旧来源，旧插件也因此留在内存里。
 
-正式服请保持 `online-mode=true`（`server/setup.sh` 不带 `--local` 时的默认值）。离线模式下任何人都能用任意名字进服，插件分辨不出谁是小号，交易行的等级要求、同 IP 限制和每日收入上限只能提高用小号转钱的成本。
+正式服请保持 `online-mode=true`（`server/setup.sh` 不带 `--local` 时的默认值）。离线模式下没有人核对玩家是谁：离线 UUID 只由名字算出，任何人在离线启动器里填上别人的名字（包括服主），就能通过白名单、登进那个人的账号、处置他的仓库；那个账号是 OP 时还能用 `/op`、`/stop` 和全部 `/cv` 管理指令。插件也分辨不出谁是小号，交易行的等级要求、同 IP 限制和每日收入上限只能提高用小号转钱的成本。
+
+离线模式下 Craftov 开服时会在日志里警告，并且只让 OP 账号从 `security.admin-addresses` 里的地址登录（默认是本机和局域网私有网段，可以写单个地址或 `192.168.0.0/16` 这样的网段；写成空列表则所有 OP 都进不来）。从别处登录的 OP 会被拒绝，提示里有对方的地址，管理员确实要从外网登录时把自己的地址加进去。`security.admin-guard` 是 `"auto"`（默认，只在离线模式、且前面没有做正版验证的代理时生效）、`"always"` 或 `"off"`。这只保护 OP：普通玩家的账号，以及用权限插件单独给的 `craftov.admin`，都不在保护范围内。用 frp、ngrok、playit 一类的内网穿透，或不转发真实地址的代理时，所有玩家看起来都来自 127.0.0.1，这时要把 `127.0.0.0/8` 和 `::1/128` 从列表里删掉。
+
+要让外网玩家进来，先在 `server.properties` 里改成 `online-mode=true` 再重启：正版客户端能进，离线启动器进不来。切换后每个玩家的 UUID 都会变成正版 UUID，`data/players/` 里按离线 UUID 存的档案（仓库、余额、等级）不会自动迁移，白名单和 OP 也要重新加。一定要让离线玩家进来时，先装登录插件（AuthMe 一类）；它和 Craftov 的加入流程（发新手物资、传送到大厅、断线重连）是否兼容还没有实测过。
 
 ## 开发
 

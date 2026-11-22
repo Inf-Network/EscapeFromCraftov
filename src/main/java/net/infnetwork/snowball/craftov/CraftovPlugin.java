@@ -183,9 +183,11 @@ public final class CraftovPlugin extends JavaPlugin {
         hud = new HudService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
+        var adminGuard = new net.infnetwork.snowball.craftov.security.AdminGuardService(this);
+        adminGuard.start();
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
+        register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
                 new InspectService(this), market, profiles);
 

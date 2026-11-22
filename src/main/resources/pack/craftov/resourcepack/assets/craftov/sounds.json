@@ -987,6 +987,11 @@
     "name": "craftov:gun/p18/mid_2",
     "attenuation_distance": 16,
     "preload": true
+   },
+   {
+    "name": "craftov:gun/p18/mid_3",
+    "attenuation_distance": 16,
+    "preload": true
    }
   ]
  },
@@ -1132,6 +1137,11 @@
    },
    {
     "name": "craftov:gun/d50/mid_2",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/d50/mid_3",
     "attenuation_distance": 16,
     "preload": true
    }
@@ -1375,6 +1385,11 @@
     "name": "craftov:gun/sv9/x3_fp_1",
     "attenuation_distance": 16,
     "preload": true
+   },
+   {
+    "name": "craftov:gun/sv9/x3_fp_2",
+    "attenuation_distance": 16,
+    "preload": true
    }
   ]
  },
@@ -1387,6 +1402,11 @@
    },
    {
     "name": "craftov:gun/sv9/x3_near_1",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/sv9/x3_near_2",
     "attenuation_distance": 16,
     "preload": true
    }
@@ -1634,6 +1654,11 @@
     "name": "craftov:gun/v57/x3_fp_1",
     "attenuation_distance": 16,
     "preload": true
+   },
+   {
+    "name": "craftov:gun/v57/x3_fp_2",
+    "attenuation_distance": 16,
+    "preload": true
    }
   ]
  },
@@ -1646,6 +1671,11 @@
    },
    {
     "name": "craftov:gun/v57/x3_near_1",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/v57/x3_near_2",
     "attenuation_distance": 16,
     "preload": true
    }
@@ -1797,6 +1827,11 @@
    },
    {
     "name": "craftov:gun/k47/mid_2",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/k47/mid_3",
     "attenuation_distance": 16,
     "preload": true
    }
@@ -2091,6 +2126,11 @@
    },
    {
     "name": "craftov:gun/m4c/mid_2",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/m4c/mid_3",
     "attenuation_distance": 16,
     "preload": true
    }
@@ -2499,6 +2539,11 @@
     "name": "craftov:gun/dm14/mid_2",
     "attenuation_distance": 16,
     "preload": true
+   },
+   {
+    "name": "craftov:gun/dm14/mid_3",
+    "attenuation_distance": 16,
+    "preload": true
    }
   ]
  },
@@ -2644,6 +2689,11 @@
    },
    {
     "name": "craftov:gun/awr/mid_2",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/awr/mid_3",
     "attenuation_distance": 16,
     "preload": true
    }

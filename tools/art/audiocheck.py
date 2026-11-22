@@ -105,6 +105,21 @@ def round_starts_ms(x, sr):
     return starts
 
 
+def dealable(rows):
+    """Whether the variants (each a list of recorded shots, one per round) have a cyclic order in
+    which no variant starts on the shot the one before it ended on: then they can be dealt round
+    after round without a recorded shot following itself."""
+    import itertools
+    n = len(rows)
+    if n < 2:
+        return True
+    for rest in itertools.permutations(range(1, n)):
+        order = (0,) + rest
+        if all(rows[order[(i + 1) % n]][0] != rows[order[i]][-1] for i in range(n)):
+            return True
+    return False
+
+
 def peak_db(x):
     p = np.max(np.abs(x))
     return 20 * np.log10(p) if p > 0 else -120.0

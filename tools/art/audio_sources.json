@@ -275,6 +275,22 @@
     }
    ]
   },
+  "gun/awr/mid_3": {
+   "loudness": -20.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "1917/B_16P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 5.9715
+    }
+   ]
+  },
   "gun/awr/mid_s_0": {
    "loudness": -28.5,
    "cut_from": [
@@ -640,6 +656,22 @@
      "shot": 0,
      "channel": 1,
      "at": 1.5419
+    }
+   ]
+  },
+  "gun/d50/mid_3": {
+   "loudness": -21.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "1911/A_34P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 6.6548
     }
    ]
   },
@@ -1011,6 +1043,22 @@
     }
    ]
   },
+  "gun/dm14/mid_3": {
+   "loudness": -21.11,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Tikka/W_24P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 5.3768
+    }
+   ]
+  },
   "gun/dm14/mid_s_0": {
    "loudness": -29.0,
    "cut_from": [
@@ -1376,6 +1424,22 @@
      "shot": 0,
      "channel": 1,
      "at": 0.3377
+    }
+   ]
+  },
+  "gun/k47/mid_3": {
+   "loudness": -21.59,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "AK-47/C_31P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 4.401
     }
    ]
   },
@@ -1869,9 +1933,9 @@
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
      "file": "AK-47/C_29P.wav",
-     "shot": 0,
+     "shot": 1,
      "channel": 1,
-     "at": 1.3434
+     "at": 5.7912
     }
    ]
   },
@@ -2112,6 +2176,22 @@
      "shot": 0,
      "channel": 1,
      "at": 0.5484
+    }
+   ]
+  },
+  "gun/m4c/mid_3": {
+   "loudness": -22.01,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "AR-15/D_24P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 3.9096
     }
    ]
   },
@@ -2427,7 +2507,7 @@
    ]
   },
   "gun/m4c/x2_fp_s_1": {
-   "loudness": -25.18,
+   "loudness": -25.16,
    "cut_from": [
     {
      "source": "mgsil",
@@ -2446,10 +2526,10 @@
      "author": "YannSauvin",
      "page": "https://freesound.org/people/YannSauvin/sounds/779237/",
      "license": "CC0-1.0",
-     "shot": 0,
+     "shot": 1,
      "channel": 0,
-     "at": 1.2126,
-     "rate": 1.0441
+     "at": 4.5857,
+     "rate": 1.0812
     }
    ]
   },
@@ -2535,7 +2615,7 @@
    ]
   },
   "gun/m4c/x2_mid_s_1": {
-   "loudness": -26.76,
+   "loudness": -26.88,
    "cut_from": [
     {
      "source": "mgsil",
@@ -2554,10 +2634,10 @@
      "author": "YannSauvin",
      "page": "https://freesound.org/people/YannSauvin/sounds/779237/",
      "license": "CC0-1.0",
-     "shot": 0,
+     "shot": 1,
      "channel": 0,
-     "at": 1.2126,
-     "rate": 1.0441
+     "at": 4.5857,
+     "rate": 1.0812
     }
    ]
   },
@@ -2697,7 +2777,7 @@
    ]
   },
   "gun/m4c/x2_near_s_1": {
-   "loudness": -26.68,
+   "loudness": -26.65,
    "cut_from": [
     {
      "source": "mgsil",
@@ -2716,10 +2796,10 @@
      "author": "YannSauvin",
      "page": "https://freesound.org/people/YannSauvin/sounds/779237/",
      "license": "CC0-1.0",
-     "shot": 0,
+     "shot": 1,
      "channel": 0,
-     "at": 1.2126,
-     "rate": 1.0441
+     "at": 4.5857,
+     "rate": 1.0812
     }
    ]
   },
@@ -2912,6 +2992,22 @@
      "shot": 0,
      "channel": 1,
      "at": 1.0849
+    }
+   ]
+  },
+  "gun/p18/mid_3": {
+   "loudness": -23.0,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Walther PPQ/X_31P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 5.2421
     }
    ]
   },
@@ -3908,7 +4004,7 @@
    ]
   },
   "gun/sv9/fp_3": {
-   "loudness": -20.84,
+   "loudness": -21.13,
    "cut_from": [
     {
      "source": "ffsl",
@@ -3916,10 +4012,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 0,
-     "channel": "both, swapped",
-     "at": 0.3099
+     "channel": "both",
+     "at": 0.6421
     }
    ]
   },
@@ -4060,10 +4156,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 3.5009
+     "channel": 0,
+     "at": 4.4601
     }
    ]
   },
@@ -4076,10 +4172,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 2,
-     "channel": 1,
-     "at": 6.7274
+     "channel": 0,
+     "at": 8.207
     }
    ]
   },
@@ -4092,10 +4188,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 0,
-     "channel": 1,
-     "at": 0.3099
+     "channel": 0,
+     "at": 0.6437
     }
    ]
   },
@@ -4108,10 +4204,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 3.5009
+     "channel": 0,
+     "at": 4.4601
     }
    ]
   },
@@ -4124,15 +4220,15 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 2,
-     "channel": 1,
-     "at": 6.7274
+     "channel": 0,
+     "at": 8.207
     }
    ]
   },
   "gun/sv9/near_3": {
-   "loudness": -22.0,
+   "loudness": -22.09,
    "cut_from": [
     {
      "source": "ffsl",
@@ -4140,11 +4236,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
-     "shot": 0,
-     "channel": 1,
-     "at": 0.3099,
-     "rate": 1.03
+     "file": "Carl Gustav M45/G_35P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 6.2501
     }
    ]
   },
@@ -4311,7 +4406,7 @@
    ]
   },
   "gun/sv9/x3_fp_1": {
-   "loudness": -17.91,
+   "loudness": -18.28,
    "cut_from": [
     {
      "source": "ffsl",
@@ -4319,10 +4414,59 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 0,
-     "channel": "both, swapped",
-     "at": 0.3099
+     "channel": "both",
+     "at": 0.6421
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_33P.wav",
+     "shot": 1,
+     "channel": "both",
+     "at": 4.4585
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_33P.wav",
+     "shot": 2,
+     "channel": "both",
+     "at": 8.2054
+    }
+   ]
+  },
+  "gun/sv9/x3_fp_2": {
+   "loudness": -18.21,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_35P.wav",
+     "shot": 0,
+     "channel": "both",
+     "at": 1.0634
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_35P.wav",
+     "shot": 1,
+     "channel": "both",
+     "at": 6.2484
     },
     {
      "source": "ffsl",
@@ -4334,17 +4478,6 @@
      "shot": 1,
      "channel": "both, swapped",
      "at": 3.5009
-    },
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
-     "shot": 2,
-     "channel": "both, swapped",
-     "at": 6.7274
     }
    ]
   },
@@ -4577,7 +4710,7 @@
    ]
   },
   "gun/sv9/x3_muff_0": {
-   "loudness": -19.0,
+   "loudness": -19.03,
    "cut_from": [
     {
      "source": "ffsl",
@@ -4585,10 +4718,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 3.5009
+     "channel": 0,
+     "at": 4.4601
     },
     {
      "source": "ffsl",
@@ -4596,10 +4729,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 2,
-     "channel": 1,
-     "at": 6.7274
+     "channel": 0,
+     "at": 8.207
     },
     {
      "source": "ffsl",
@@ -4607,11 +4740,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
-     "shot": 0,
-     "channel": 1,
-     "at": 0.3099,
-     "rate": 1.03
+     "file": "Carl Gustav M45/G_35P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 6.2501
     }
    ]
   },
@@ -4654,8 +4786,57 @@
    ]
   },
   "gun/sv9/x3_near_0": {
-   "loudness": -18.99,
+   "loudness": -19.05,
    "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_33P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.6437
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_33P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 4.4601
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_33P.wav",
+     "shot": 2,
+     "channel": 0,
+     "at": 8.207
+    }
+   ]
+  },
+  "gun/sv9/x3_near_1": {
+   "loudness": -19.05,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_35P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 6.2501
+    },
     {
      "source": "ffsl",
      "title": "The Free Firearm Sound Library, Prepared SFX Library",
@@ -4677,7 +4858,12 @@
      "shot": 1,
      "channel": 1,
      "at": 3.5009
-    },
+    }
+   ]
+  },
+  "gun/sv9/x3_near_2": {
+   "loudness": -19.13,
+   "cut_from": [
     {
      "source": "ffsl",
      "title": "The Free Firearm Sound Library, Prepared SFX Library",
@@ -4688,23 +4874,6 @@
      "shot": 2,
      "channel": 1,
      "at": 6.7274
-    }
-   ]
-  },
-  "gun/sv9/x3_near_1": {
-   "loudness": -19.01,
-   "cut_from": [
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
-     "shot": 0,
-     "channel": 1,
-     "at": 0.3099,
-     "rate": 1.03
     },
     {
      "source": "ffsl",
@@ -4712,10 +4881,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_35P.wav",
      "shot": 0,
      "channel": 1,
-     "at": 0.3099
+     "at": 1.0634
     },
     {
      "source": "ffsl",
@@ -4723,10 +4892,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
      "channel": 1,
-     "at": 3.5009
+     "at": 4.4585
     }
    ]
   },
@@ -4879,10 +5048,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 0,
-     "channel": 1,
-     "at": 0.3099
+     "channel": 0,
+     "at": 0.6437
     }
    ]
   },
@@ -4895,10 +5064,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 3.5009
+     "channel": 0,
+     "at": 4.4601
     }
    ]
   },
@@ -4911,10 +5080,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 0,
-     "channel": 1,
-     "at": 0.3099
+     "channel": 0,
+     "at": 0.6437
     }
    ]
   },
@@ -4927,10 +5096,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "Carl Gustav M45/G_31P.wav",
+     "file": "Carl Gustav M45/G_33P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 3.5009
+     "channel": 0,
+     "at": 4.4601
     }
    ]
   },
@@ -5303,7 +5472,7 @@
    ]
   },
   "gun/v57/muff_1": {
-   "loudness": -22.05,
+   "loudness": -22.09,
    "cut_from": [
     {
      "source": "ffsl",
@@ -5311,10 +5480,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
+     "file": "PPSh/P_32P.wav",
      "shot": 0,
-     "channel": 1,
-     "at": 0.9684
+     "channel": 0,
+     "at": 0.8907
     }
    ]
   },
@@ -5351,7 +5520,7 @@
    ]
   },
   "gun/v57/near_2": {
-   "loudness": -22.0,
+   "loudness": -22.17,
    "cut_from": [
     {
      "source": "ffsl",
@@ -5359,10 +5528,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
+     "file": "PPSh/P_32P.wav",
      "shot": 0,
-     "channel": 1,
-     "at": 0.9684
+     "channel": 0,
+     "at": 0.8907
     }
    ]
   },
@@ -5375,10 +5544,10 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
+     "file": "PPSh/P_32P.wav",
      "shot": 1,
-     "channel": 1,
-     "at": 4.3868
+     "channel": 0,
+     "at": 4.445
     }
    ]
   },
@@ -5575,10 +5744,48 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
+     "file": "PPSh/P_32P.wav",
      "shot": 0,
+     "channel": "both",
+     "at": 0.8891
+    }
+   ]
+  },
+  "gun/v57/x3_fp_2": {
+   "loudness": -18.53,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_32P.wav",
+     "shot": 1,
+     "channel": "both",
+     "at": 4.4435
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_34P.wav",
+     "shot": 0,
+     "channel": "both",
+     "at": 0.8062
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_30P.wav",
+     "shot": 1,
      "channel": "both, swapped",
-     "at": 0.9684
+     "at": 4.3868
     }
    ]
   },
@@ -5811,7 +6018,7 @@
    ]
   },
   "gun/v57/x3_muff_0": {
-   "loudness": -19.09,
+   "loudness": -19.17,
    "cut_from": [
     {
      "source": "ffsl",
@@ -5823,6 +6030,44 @@
      "shot": 2,
      "channel": 0,
      "at": 8.2434
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_32P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.8907
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_32P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 4.445
+    }
+   ]
+  },
+  "gun/v57/x3_muff_1": {
+   "loudness": -19.06,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_34P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.8077
     },
     {
      "source": "ffsl",
@@ -5842,47 +6087,9 @@
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
      "file": "PPSh/P_30P.wav",
-     "shot": 1,
-     "channel": 1,
-     "at": 4.3868
-    }
-   ]
-  },
-  "gun/v57/x3_muff_1": {
-   "loudness": -18.99,
-   "cut_from": [
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
-     "shot": 2,
-     "channel": 1,
-     "at": 8.2422
-    },
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
      "shot": 3,
      "channel": 1,
      "at": 11.4209
-    },
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
-     "shot": 4,
-     "channel": 1,
-     "at": 15.0897
     }
    ]
   },
@@ -5917,6 +6124,44 @@
      "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
+     "file": "PPSh/P_32P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.8907
+    }
+   ]
+  },
+  "gun/v57/x3_near_1": {
+   "loudness": -19.94,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_32P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 4.445
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_34P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.8077
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
      "file": "PPSh/P_30P.wav",
      "shot": 0,
      "channel": 1,
@@ -5924,8 +6169,8 @@
     }
    ]
   },
-  "gun/v57/x3_near_1": {
-   "loudness": -19.03,
+  "gun/v57/x3_near_2": {
+   "loudness": -19.04,
    "cut_from": [
     {
      "source": "ffsl",
@@ -5934,9 +6179,20 @@
      "page": "https://opengameart.org/content/the-free-firearm-sound-library",
      "license": "CC0-1.0",
      "file": "PPSh/P_30P.wav",
-     "shot": 1,
+     "shot": 3,
      "channel": 1,
-     "at": 4.3868
+     "at": 11.4209
+    },
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "PPSh/P_30P.wav",
+     "shot": 4,
+     "channel": 1,
+     "at": 15.0897
     },
     {
      "source": "ffsl",
@@ -5948,17 +6204,6 @@
      "shot": 2,
      "channel": 1,
      "at": 8.2422
-    },
-    {
-     "source": "ffsl",
-     "title": "The Free Firearm Sound Library, Prepared SFX Library",
-     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
-     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
-     "license": "CC0-1.0",
-     "file": "PPSh/P_30P.wav",
-     "shot": 3,
-     "channel": 1,
-     "at": 11.4209
     }
    ]
   },

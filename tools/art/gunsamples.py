@@ -24,7 +24,7 @@ How a recording becomes the files GunAudio.java plays:
             GunAudio plays it with each shot under a roof, alternating two keys (.in, .in2). Through
             a wall the listener gets the same room muffled like muff (.in_muff, .in_muff2).
   x<n>      automatic fire that does not fit the 50 ms server tick: n rounds at the gun's real
-            interval in one file (GROUPS).
+            interval in one file (GROUPS), no round the same recorded shot as the one before it.
 Loudness is set per gun class from the first 120 ms (where a gunshot's loudness is), then a
 look-ahead limiter holds every file to -1 dBTP. A pistol is a little quieter than an SMG, which is
 quieter than a rifle; GunAudio scales the rest by the gun's items.yml volume.
@@ -66,18 +66,22 @@ CLASSES = {
 
 # gun id -> recordings in the library (folder/file), what was recorded and how it is played back.
 # 'rate' below 1 plays the recording slower: lower and heavier. 'pick' last takes the last round of
-# each burst instead of the first shot. 'eq' is a list of peaking filters (Hz, dB, Q) for the gun's
-# takes. 'supp_rate' tunes the shared suppressed recording to the gun.
+# each burst instead of the first shot ('near_pick' for the near recordings only: a downrange shot's
+# crack and blast arrive apart and would count as two rounds). 'eq' is a list of peaking filters
+# (Hz, dB, Q) for the gun's takes. 'supp_rate' tunes the shared suppressed recording to the gun.
 GUNS = {
     # The PPQ's report is mostly crack; a little more body keeps it from sounding like a cap gun.
     'p18': dict(cls='pistol', model='Walther PPQ, 9x19', eq=[(500, 3.0, .8)],
                 near=['Walther PPQ/X_39P.wav'], mid=['Walther PPQ/X_31P.wav'], supp_rate=1.06),
     'd50': dict(cls='heavy_pistol', model='Colt 1911, .45 ACP, played 6 % lower', rate=0.94,
                 near=['1911/A_42P.wav'], mid=['1911/A_34P.wav'], supp_rate=0.94),
-    'sv9': dict(cls='smg', model='Carl Gustav M45, 9x19',
-                near=['Carl Gustav M45/G_31P.wav'], mid=['Carl Gustav M45/G_20P.wav'], supp_rate=1.0),
-    'v57': dict(cls='smg', model='PPSh-41, 7.62x25 Tokarev',
-                near=['PPSh/P_30P.wav'], mid=['PPSh/P_16P.wav'], supp_rate=1.1),
+    # The automatic guns also take the last round of each near burst: their full auto has to hold
+    # many rounds, and three single shots are too few.
+    'sv9': dict(cls='smg', model='Carl Gustav M45, 9x19', near_pick='last',
+                near=['Carl Gustav M45/G_31P.wav', 'Carl Gustav M45/G_33P.wav', 'Carl Gustav M45/G_35P.wav'],
+                mid=['Carl Gustav M45/G_20P.wav'], supp_rate=1.0),
+    'v57': dict(cls='smg', model='PPSh-41, 7.62x25 Tokarev', near_pick='last',
+                near=['PPSh/P_30P.wav', 'PPSh/P_32P.wav', 'PPSh/P_34P.wav'], mid=['PPSh/P_16P.wav'], supp_rate=1.1),
     'k47': dict(cls='rifle', model='AK-47, 7.62x39',
                 near=['AK-47/C_28P.wav'], mid=['AK-47/C_31P.wav'], supp_rate=1.0),
     'kl7': dict(cls='rifle', model='AK-47 bursts (last round), 7.62x39, played 3 % lower', rate=0.97, pick='last',
@@ -94,13 +98,17 @@ GUNS = {
                 near=['Nova/O_21P.wav', 'Model 12/K_22P.wav'], mid=['Nova/O_17P.wav', 'Model 12/K_17P.wav'], supp_rate=0.85),
 }
 
-# Variants per band and the rate each band is stored at. GunAudio.java reads the counts back from
-# sounds.json to pick variants itself.
+# Variants per band (see variant_count) and the rate each band is stored at. GunAudio.java reads the
+# counts back from sounds.json to pick variants itself.
 BANDS = {
     'fp': (4, SR), 'near': (4, SR), 'mid': (3, 32000), 'far': (2, 22050), 'muff': (2, 22050),
     'fp_s': (3, SR), 'near_s': (3, 32000), 'mid_s': (2, 22050),
 }
 GROUP_BANDS = {'fp': 2, 'near': 2, 'mid': 2, 'far': 2, 'muff': 2, 'fp_s': 2, 'near_s': 2, 'mid_s': 2}
+# Where the recordings have enough shots, a third sample for what the shooter and those close by hear,
+# so full auto has no fixed cycle. The AR-15 has two near shots in all: the M4C's samples are those
+# two in turn, which is as varied as two shots can be without one following itself.
+GROUP_EXTRA = {'sv9': ('fp', 'near'), 'v57': ('fp', 'near')}
 
 # Indoor tails: which gun's recording each family's room sound is made from.
 TAIL_FAMILY = {'p18': 'light', 'sv9': 'light', 'v57': 'light', 'd50': 'rifle', 'm4c': 'rifle', 'k47': 'heavy',
@@ -444,11 +452,11 @@ def tail_muff(family, v):
 
 # ---------------------------------------------------------------- takes per gun
 
-def gun_takes(gid, files, length, **kw):
+def gun_takes(gid, files, length, pick=None, **kw):
     g = GUNS[gid]
     out = []
     for rel in files:
-        out += takes('ffsl', rel, length, g.get('rate', 1.0), g.get('pick', 'first'), **kw)
+        out += takes('ffsl', rel, length, g.get('rate', 1.0), pick or g.get('pick', 'first'), **kw)
     for t in out:
         for f, db, q in g.get('eq', ()):
             t.data = peaking(t.data, f, db, q)
@@ -479,12 +487,14 @@ def near_takes(gid):
     """Near takes, the clean ones first (in interleaved order), so the variants are clean while
     there are enough of them."""
     g = GUNS[gid]
-    pool = gun_takes(gid, g['near'], CLASSES[g['cls']]['length'])
+    pool = gun_takes(gid, g['near'], CLASSES[g['cls']]['length'], g.get('near_pick'))
     mark = len(SHORT)
     good = [t for t in pool if clean(gid, t)]
     del SHORT[mark:]
     if not good:
         raise ValueError(gid + ': no near take passes audiocheck')
+    # Interleaved again: a shot whose first channel failed still comes in the first row.
+    good = interleave(good)
     # Too few clean takes for the variants: the clean ones again, played 3 % higher and lower.
     count = BANDS['near'][0]
     for k in range(count - len(good)):
@@ -499,7 +509,7 @@ def stereo_takes(gid):
     g = GUNS[gid]
     length = CLASSES[g['cls']]['length']
     out = []
-    for t in gun_takes(gid, g['near'], length, stereo=True):
+    for t in gun_takes(gid, g['near'], length, g.get('near_pick'), stereo=True):
         out.append(t)
         # The same shot with the ears swapped is another variant.
         out.append(Take(t.data[:, ::-1].copy(), dict(t.origin, channel='both, swapped')))
@@ -530,8 +540,9 @@ def pick(pool, v):
 
 # ---------------------------------------------------------------- catalogue
 
+@lru_cache(maxsize=None)
 def band(gid, name, v):
-    """(samples, origin) of variant v of a band."""
+    """(samples, origin) of variant v of a band (shared: callers must not change the samples)."""
     if name == 'fp':
         t = pick(stereo_takes(gid), v)
         return first_person(gid, t), t.origin
@@ -556,11 +567,51 @@ def band(gid, name, v):
     raise ValueError(name)
 
 
-def rounds(gid, name, v, n, ticks):
-    """n rounds of a band at the interval n rounds take in ticks server ticks, as one sample. Each
-    round is another variant; overlapping rounds are held to the level of one."""
+def shot_id(origin):
+    """What makes two takes the same recorded shot: the recording and the shot in it, whichever
+    channel, ear order or speed it is played with."""
+    return '%s/%s#%s' % (origin['source'], origin.get('file', ''), origin['shot'])
+
+
+@lru_cache(maxsize=None)
+def ring(gid, name, length):
+    """`length` variants of a band in a ring: none is the same recorded shot as the one before it,
+    the last included before the first. The multi-round samples are cut from it one after another,
+    so their rounds never repeat a shot, and neither does dealing the samples in the ring's order.
+    A band cut from one recorded shot (the suppressed pistol) takes its variants as they come."""
+    parts = []
+    k = 0
+    while len(parts) < length and k < 4 * length + 8:
+        part = band(gid, name, k)
+        k += 1
+        if parts and shot_id(part[1]) == shot_id(parts[-1][1]):
+            continue
+        if 0 < len(parts) == length - 1 and shot_id(part[1]) == shot_id(parts[0][1]):
+            continue
+        parts.append(part)
+    if len(parts) < length:
+        parts = [band(gid, name, k) for k in range(length)]
+    return parts
+
+
+def variant_count(gid, name, count):
+    """A band's variants: its usual count, or one more where that many cannot be dealt without a
+    recorded shot following itself (three takes of two shots: the second shot would have to come
+    between both takes of the first every time)."""
+    import audiocheck
+    for c in (count, count + 1):
+        ids = {}
+        rows = [[ids.setdefault(shot_id(band(gid, name, v)[1]), len(ids))] for v in range(c)]
+        if len(ids) < 2 or audiocheck.dealable(rows):
+            return c
+    return count
+
+
+def rounds(gid, name, v, n, ticks, count):
+    """Sample v of `count`: n rounds of a band at the interval n rounds take in ticks server ticks.
+    Each round is another variant (see ring); overlapping rounds are held to the level of one."""
     interval = ticks * .05 / n
-    parts = [band(gid, name, v * n + i) for i in range(n)]
+    parts = ring(gid, name, n * count)[v * n:(v + 1) * n]
     shots_ = [p[0] for p in parts]
     starts = [int(round(i * interval * SR)) for i in range(n)]
     out = np.zeros((max(a + len(x) for a, x in zip(starts, shots_)),) + shots_[0].shape[1:])
@@ -583,13 +634,16 @@ def catalogue():
     for gid in GUNS:
         base = 'gun/%s/' % gid
         for name, (count, sr) in BANDS.items():
+            count = variant_count(gid, name, count)
             files = [add('', '%s%s_%d' % (base, name, v), band(gid, name, v), sr) for v in range(count)]
             out.append(('gun.%s.%s' % (gid, name), files, 16))
         if gid in GROUPS:
             n, ticks = GROUPS[gid]
             for name, count in GROUP_BANDS.items():
+                count += 1 if name in GROUP_EXTRA.get(gid, ()) else 0
                 sr = BANDS[name][1]
-                files = [add('', '%sx%d_%s_%d' % (base, n, name, v), rounds(gid, name, v, n, ticks), sr) for v in range(count)]
+                files = [add('', '%sx%d_%s_%d' % (base, n, name, v), rounds(gid, name, v, n, ticks, count), sr)
+                         for v in range(count)]
                 out.append(('gun.%s.x%d.%s' % (gid, n, name), files, 16))
     for family in TAIL_SOURCE:
         files = [add('', 'gun/tail/%s_in_%d' % (family, v), tail(family, v), 32000) for v in range(2)]

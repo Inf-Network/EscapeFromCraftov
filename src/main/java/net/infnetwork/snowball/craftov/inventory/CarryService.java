@@ -526,7 +526,12 @@ public final class CarryService {
 
     // ------------------------------------------------------------------ snapshots
 
-    /** Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. */
+    /**
+     * Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. The
+     * gun in hand counts the rounds really in its magazine, which live in memory and reach the stack
+     * only when it could move: after a reload the stack still holds the old count while the rounds
+     * have already left the inventory.
+     */
     public Map<Integer, ItemRecord> snapshot(Player player) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
@@ -537,6 +542,7 @@ public final class CarryService {
             }
             ItemRecord record = items.toRecord(stack);
             if (record != null) {
+                plugin.weapons().liveMagazine(player, record);
                 out.put(slot, record);
             }
         }

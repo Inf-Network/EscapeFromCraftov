@@ -24,6 +24,10 @@
 //           server measured for most strafing shots is within 10% of what the bot really walked, strafing
 //           hip fire is at least 1.8x as wide as standing and strafing aimed fire at least 2.5x;
 //           standing shots count no movement at all, and neither do 10 shots strafing while sneaking.
+//   magazine Solo on the proving ground: a K47 loaded with PS switched to AP (sneak+Q) leaves the 价值
+//           on the HUD where it was, and so does writing the magazine to the stack after: the new
+//           magazine is in memory, the stack still says 30 PS, the inventory has the PS back and 30 AP
+//           fewer, and the inventory's value counts the magazine in memory.
 //   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
 //           弹匣 穿透) and the line under them; a gun with the better number never has the shorter
 //           bar; in the gunsmith the vertical grip's button previews a longer accuracy bar (green), and
@@ -46,7 +50,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move']
+const scenarios = wanted.length ? wanted : ['lobby', 'magazine', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -273,6 +277,68 @@ async function lobby () {
   const c = cools(ev)
   check('lobby: the trigger held in the lobby fires and kicks nothing', shots.length === 0 && c.length === 0,
     `${shots.length} shots, cooldowns ${c.join(',')}`)
+}
+
+// ---------------------------------------------------------------- magazine
+/** The HUD's top bar (BetterHud's boss bar) as plain text, as last sent. */
+let hudText = ''
+bot._client.on('boss_bar', p => {
+  if (!p.title) return
+  const parts = []
+  const walk = n => {
+    if (n === null || n === undefined) return
+    if (typeof n === 'string') { parts.push(n); return }
+    if (Array.isArray(n)) { n.forEach(walk); return }
+    if (typeof n === 'object') { if (typeof n.text === 'string') parts.push(n.text); if (typeof n[''] === 'string') parts.push(n['']); walk(n.extra) }
+  }
+  try { walk(require('prismarine-nbt').simplify(p.title)) } catch (e) { return }
+  hudText = parts.join('')
+})
+/** The 价值 the raid HUD shows, in coins (it rounds to 100 past 10 000), or NaN. */
+function raidValue () {
+  const m = hudText.match(/价值 ([0-9.]+)(万|亿)?/)
+  return m ? Number(m[1]) * (m[2] === '亿' ? 1e8 : m[2] === '万' ? 1e4 : 1) : NaN
+}
+
+async function magazine () {
+  bot.chat('/cv queue proving NORMAL SOLO')
+  const by = Date.now() + 150000
+  while (Date.now() < by && !inRaid(worldName)) await sleep(500)
+  if (!inRaid(worldName)) throw new Error('not in a raid: ' + worldName)
+  await sleep(7000) // the insertion camera and spawn protection
+  try {
+    await rcon(`clear ${name}`) // no other 7.62x39 rounds for sneak+Q to pick
+    await sleep(500)
+    await rcon(`cv give ${name} k47`) // loaded with 30 PS
+    await rcon(`cv give ${name} ammo_762_ap 60`)
+    await sleep(1000)
+    hold('k47')
+    await sleep(2500) // the draw, and the HUD catching up
+    const before = raidValue()
+    bot.setControlState('sneak', true)
+    await sleep(300)
+    dig(4) // sneak+Q: the next ammo type, AP
+    await sleep(300)
+    bot.setControlState('sneak', false)
+    await sleep(5000) // the reload
+    const after = raidValue()
+    const ap = bot.inventory.items().filter(i => itemId(i) && itemId(i).includes('ammo_762_ap')).reduce((n, i) => n + i.count, 0)
+    log('magazine: HUD', (hudText.match(/价值 [^撤]*/) || [hudText.slice(0, 60)])[0], '· AP left in the inventory', ap)
+    check('magazine: the reload to AP took 30 rounds from the inventory', ap === 30, `${ap} AP left`)
+    check('magazine: switching the K47 to AP keeps the 价值 on the HUD (within its rounding)', before > 0 && Math.abs(after - before) <= 100,
+      `${before} before, ${after} after`)
+    bot.setQuickBarSlot((hotbar('k47') - 36 + 1) % 9) // away and back: the magazine is written to the stack
+    await sleep(600)
+    hold('k47')
+    await sleep(2000)
+    const written = raidValue()
+    check('magazine: and once the magazine is written to the stack it is still the same', Math.abs(written - before) <= 100, `${written}`)
+  } finally {
+    await rcon(`kill ${name}`)
+    const out = Date.now() + 20000
+    while (Date.now() < out && inRaid(worldName)) await sleep(500)
+    await sleep(3000)
+  }
 }
 
 // ---------------------------------------------------------------- recoil
@@ -626,6 +692,7 @@ async function ads (spot) {
   for (const scenario of scenarios) {
     log('---', scenario)
     if (scenario === 'lobby') { await lobby(); continue }
+    if (scenario === 'magazine') { await magazine(); spot = null; continue }
     if (scenario === 'feed') { await feed(); spot = null; continue }
     if (scenario === 'lore') { await lore(); spot = null; continue }
     if (!spot || (await rcon(`data get entity ${name} Dimension`)).indexOf('craftov_range') < 0) {

@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -430,6 +431,19 @@ public final class WeaponService implements Listener {
                 || ItemFactory.mode(stack) != state.mode) {
             ItemFactory.setMode(stack, state.mode);
             plugin.items().setAmmo(stack, state.ammo, state.ammo > 0 ? state.ammoType : state.ammoType);
+        }
+    }
+
+    /**
+     * Puts the magazine in memory into a record of the player's bound gun (by its uid), so a snapshot
+     * of the inventory counts the rounds really loaded without writing the stack, which would lower
+     * and raise the gun in the hand.
+     */
+    public void liveMagazine(Player player, ItemRecord record) {
+        GunState state = states.get(player.getUniqueId());
+        if (state != null && state.uid.equals(record.uid)) {
+            record.ammo = state.ammo;
+            record.ammoType = state.ammoType;
         }
     }
 

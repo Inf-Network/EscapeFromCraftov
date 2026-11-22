@@ -797,7 +797,7 @@ craftov_alert:
     '1':
       name: craftov_pixel
       pattern: '[craftov_alert]'
-      x: 110
+      x: 150
       y: 10
       scale: 1.0
       align: center

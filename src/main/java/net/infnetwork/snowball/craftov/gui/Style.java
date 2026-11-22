@@ -52,6 +52,17 @@ public final class Style {
         return "<" + hex + ">";
     }
 
+    /** The same MiniMessage with the token tags spelled as hex, for text that BetterHud parses. */
+    public static String hex(String miniMessage) {
+        String out = miniMessage;
+        String[][] tokens = {{"text", TEXT}, {"muted", MUTED}, {"dim", DIM}, {"accent", ACCENT}, {"ok", OK}, {"danger", DANGER},
+                {"info", INFO}};
+        for (String[] t : tokens) {
+            out = out.replace("<" + t[0] + ">", "<" + t[1] + ">").replace("</" + t[0] + ">", "</" + t[1] + ">");
+        }
+        return out;
+    }
+
     public static TextColor color(String hex) {
         return TextColor.fromHexString(hex);
     }

@@ -75,7 +75,7 @@ public final class RaidEvents {
             plugin.bounties().announce(raid);
             if (raid.night) {
                 for (Player player : raid.online()) {
-                    player.sendMessage(Text.mm("<muted>🌙 <text>夜间行动：<muted>敌兵视野变短，但开着的战术手电会让你从更远处暴露。"));
+                    plugin.hud().alert(player, "<text>夜间行动 <muted>· 敌兵视野变短，开着手电会更早暴露", 160, null);
                 }
             }
         }, 20L * 14);
@@ -144,8 +144,8 @@ public final class RaidEvents {
                 Location from = plugin.drones().launch(raid);
                 if (from != null) {
                     for (Player player : raid.online()) {
-                        player.sendMessage(Text.mm("<danger>✈ 敌方侦察无人机已升空：<text>" + bearing(player.getLocation(), from)
-                                + "<muted>。被它看见会引来附近的敌兵，可以把它打下来。"));
+                        plugin.hud().alert(player, "<danger>✈ 侦察无人机升空 <text>" + bearing(player.getLocation(), from)
+                                + " <muted>· 被看见会引来敌兵", 160, net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
                     }
                 }
                 yield from != null;
@@ -183,8 +183,8 @@ public final class RaidEvents {
         long fire = 20L * 30;
         raid.world.playSound(centre, "craftov:event.siren", SoundCategory.MASTER, 6f, 1f);
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<danger>☢ 炮击预警！<text>" + bearing(player.getLocation(), centre)
-                    + " <muted>半径 " + (int) radius + " 米的区域 20 秒后遭到炮击，红色烟圈内立刻撤出。"));
+            plugin.hud().alert(player, "<danger>☢ 炮击预警 <text>" + bearing(player.getLocation(), centre)
+                    + " <muted>· 半径 " + (int) radius + " 米 · 20 秒后 · 离开红烟", 160, net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
         }
         running.add(new Running(raid) {
             long nextShell;
@@ -264,8 +264,8 @@ public final class RaidEvents {
         int count = 3 + ThreadLocalRandom.current().nextInt(2);
         if (plugin.ai().reinforce(raid, from, target, count) > 0) {
             for (Player player : raid.online()) {
-                player.sendMessage(Text.mm("<danger>⚑ 敌方增援已部署：<text>" + count + " 名士兵从" + bearing(player.getLocation(), from)
-                        + "<muted>赶来。"));
+                plugin.hud().alert(player, "<danger>⚑ 敌方增援 <text>" + count + " 名士兵从" + bearing(player.getLocation(), from)
+                        + "<muted>赶来", 160, net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             raid.world.playSound(from, "minecraft:event.raid.horn", SoundCategory.MASTER, 4f, 1f);
             return true;
@@ -283,8 +283,8 @@ public final class RaidEvents {
             return false;
         }
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<accent>✈ 空投正在投放：<text>" + bearing(player.getLocation(), at)
-                    + "<muted>，红烟处 20 秒后落地。"));
+            plugin.hud().alert(player, "<accent>✈ 空投 <text>" + bearing(player.getLocation(), at)
+                    + " <muted>· 红烟处 20 秒后落地", 160, net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
         }
         raid.world.playSound(at, "craftov:event.siren", SoundCategory.MASTER, 3f, 1.4f);
         running.add(new Running(raid) {
@@ -327,7 +327,7 @@ public final class RaidEvents {
             return false;
         }
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<danger>☠ 首领 " + Text.escape(boss) + " <text>正带着护卫转移，目的地在" + bearing(player.getLocation(), to) + "。"));
+            plugin.hud().alert(player, "<danger>☠ 首领 " + Text.escape(boss) + " <text>带护卫转移至" + bearing(player.getLocation(), to), 160, net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
         }
         return true;
     }
@@ -385,9 +385,10 @@ public final class RaidEvents {
         return "你" + names[index] + "方向 " + distance + " 米处";
     }
 
+    /** A raid event on everyone's alert banner, with the event's own sound. */
     private void broadcast(Raid raid, String message, String sound) {
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm(message));
+            plugin.hud().alert(player, message, 160, null);
             player.playSound(player.getLocation(), sound, SoundCategory.MASTER, 0.8f, 1f);
         }
     }

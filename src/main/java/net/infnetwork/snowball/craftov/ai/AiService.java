@@ -770,9 +770,6 @@ public final class AiService implements Listener {
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             Notify.info(killer, "<accent>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.headshot() ? " <danger>爆头" : ""));
-            if (bot.boss) {
-                plugin.raids().announce(raid, "<accent>" + Text.escape(killer.getName()) + " 击败了 <danger>" + Text.escape(bot.name) + "<accent>！");
-            }
         }
         dropBody(bot);
     }

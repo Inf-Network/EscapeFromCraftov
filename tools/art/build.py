@@ -585,7 +585,7 @@ HUD_IMAGES = {
     'craftov/panel_weapon.png': lambda: hudart.panel(124, 44, side='right'),
     'craftov/panel_info.png': lambda: hudart.panel(132, 44),
     'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
-    'craftov/alert_band.png': lambda: hudart.band(220, 14),
+    'craftov/alert_band.png': lambda: hudart.band(300, 14),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
     'craftov/hp_bar.png': lambda: hudart.bar(64, 3, rgb(palette.OK)),
     'craftov/armor_empty.png': lambda: hudart.bar(30, 2, (0, 0, 0, 0), empty=True),
@@ -785,7 +785,7 @@ def build_betterhud():
         } for i in (1, 2, 3, 4)},
         'craftov_alert': {
             'images': numbered([image('craftov_alert_band', 0, 0)]),
-            'texts': numbered([text('[craftov_alert]', 110, 1, align='center')]),
+            'texts': numbered([text('[craftov_alert]', 150, 1, align='center')]),
             'conditions': cond(('craftov_has_alert', 'true')),
         },
         'craftov_prompt': {
@@ -840,7 +840,7 @@ def build_betterhud():
         place('craftov_mate_1', 0, 0, 4, 51),
         place('craftov_mate_2', 0, 0, 4, 64),
         *[place('craftov_feed_%d' % i, 100, 0, -6, 4 + 12 * (i - 1)) for i in (1, 2, 3, 4)],
-        place('craftov_alert', 50, 0, -110, 30),
+        place('craftov_alert', 50, 0, -150, 30),
         place('craftov_prompt', 50, 50, -100, 14),
         place('craftov_extract', 50, 50, -60, 26),
         place('craftov_downed', 50, 50, -60, 40),

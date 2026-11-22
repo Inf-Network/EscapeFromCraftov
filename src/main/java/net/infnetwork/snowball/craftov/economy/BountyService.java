@@ -107,7 +107,7 @@ public final class BountyService {
         plugin.profiles().markDirty(by.getUniqueId());
         Player marked = Bukkit.getPlayer(target);
         if (marked != null) {
-            Notify.error(marked, "有人悬赏了你的人头，<muted>现在共计 <accent>◈" + Text.money(total(target)) + "<muted>。");
+            Notify.info(marked, "<danger>有人悬赏了你的人头，<muted>现在共计 <accent>◈" + Text.money(total(target)) + "<muted>。");
         }
         return null;
     }
@@ -122,7 +122,7 @@ public final class BountyService {
                         .append(" <accent>◈").append(Text.money(amount));
                 Player marked = Bukkit.getPlayer(rp.uuid);
                 if (marked != null) {
-                    Notify.error(marked, "你身上有 <accent>◈" + Text.money(amount) + " <danger>的悬赏，所有人都知道你在这局。");
+                    Notify.info(marked, "<danger>你身上有 <accent>◈" + Text.money(amount) + " <danger>的悬赏，所有人都知道你在这局。");
                 }
             }
         }

@@ -157,7 +157,7 @@ public final class DownedService implements Listener {
         for (RaidPlayer mate : raid.squadOf(rp)) {
             Player p = Bukkit.getPlayer(mate.uuid);
             if (p != null && p != player) {
-                p.sendMessage(Text.mm(Text.PREFIX + "<danger>队友 " + Text.escape(player.getName()) + " 倒地了！靠近后对准他按住右键救援。"));
+                plugin.hud().alert(p, "<danger>队友 " + Text.escape(player.getName()) + " 倒地 · <text>靠近后对准他按住右键救援", 100, null);
                 p.playSound(p.getLocation(), "craftov:status.mate_down", SoundCategory.MASTER, 1f, 1f);
             }
         }

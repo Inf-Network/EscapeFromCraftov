@@ -456,7 +456,7 @@ public final class MarketService implements Listener {
         // leave it both in the stash and on the market.
         plugin.profiles().saveNow(player.getUniqueId());
         save();
-        Notify.ok(player, "已上架 " + def.coloredName() + " ×" + record.amount + " <muted>售价 ◈" + Text.money(listing.price)
+        Text.send(player, "<ok>已上架 " + def.coloredName() + " ×" + record.amount + " <muted>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
             long virtual = virtualPrice(record);
@@ -672,7 +672,7 @@ public final class MarketService implements Listener {
         Player seller = Bukkit.getPlayer(listing.seller);
         if (seller != null) {
             ItemDef def = plugin.registry().get(listing.item.id);
-            Notify.ok(seller, "交易行：你的 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
+            Text.send(seller, "<ok>交易行：你的 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
                     + " 已被 " + Text.escape(buyerName) + " 买下，入账 ◈" + Text.money(payout) + " <muted>(税 ◈" + Text.money(tax) + ")");
             seller.playSound(seller.getLocation(), "craftov:ui.sell", 1f, 1.2f);
         }

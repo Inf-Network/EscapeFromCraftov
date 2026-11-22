@@ -60,8 +60,14 @@ public final class CollectionService {
         collect(carried, profile, fresh);
         if (!fresh.isEmpty()) {
             for (String name : fresh) {
-                Bukkit.broadcast(Text.mm(Text.PREFIX + "<danger>★ <white>" + Text.escape(player.getName())
-                        + "</white> 成功带出收藏品 <danger>" + Text.escape(name) + "</danger>！"));
+                // Lobby news only: nobody in a raid hears about someone else's haul.
+                net.kyori.adventure.text.Component line = Text.mm("<danger>★ <white>" + Text.escape(player.getName())
+                        + "</white> 成功带出收藏品 <danger>" + Text.escape(name) + "</danger>！");
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    if (!plugin.raids().isInRaid(online)) {
+                        online.sendMessage(line);
+                    }
+                }
             }
             checkMilestones(player, profile);
         }

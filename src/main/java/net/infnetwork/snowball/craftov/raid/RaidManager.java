@@ -324,8 +324,6 @@ public final class RaidManager implements Listener {
         for (int i = 0; i < raid.squads.size(); i++) {
             deploySquad(raid, i + 1, groups.isEmpty() ? 1 : groups.get(i % groups.size()));
         }
-        announce(raid, "<muted>行动开始。<white>" + raid.players.size() + "</white> 名干员已部署，限时 "
-                + raid.map.raidSeconds() / 60 + " 分钟。");
     }
 
     private void deploySquad(Raid raid, int squadNo, int group) {
@@ -487,8 +485,13 @@ public final class RaidManager implements Listener {
                 rp.extractTicks += 5;
                 int need = inside.def.seconds() * 20;
                 if (rp.extractTicks % 20 == 0) {
-                    player.playSound(player.getLocation(), "craftov:extract.beep", SoundCategory.MASTER, 0.7f,
-                            1f + rp.extractTicks / (float) need * 0.5f);
+                    if (need - rp.extractTicks <= 200) {
+                        // The last ten seconds of the countdown: a sharper tick.
+                        net.infnetwork.snowball.craftov.gui.UiSound.FINAL.play(player, 1f + rp.extractTicks / (float) need * 0.3f);
+                    } else {
+                        player.playSound(player.getLocation(), "craftov:extract.beep", SoundCategory.MASTER, 0.7f,
+                                1f + rp.extractTicks / (float) need * 0.5f);
+                    }
                 }
                 if (rp.extractTicks >= need) {
                     extract(raid, player, rp, inside);
@@ -598,7 +601,8 @@ public final class RaidManager implements Listener {
                         raid.bossSpawned = true;
                         if (ThreadLocalRandom.current().nextDouble() < boss.chance()) {
                             plugin.ai().spawnBoss(raid, boss);
-                            announce(raid, "<danger>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资。");
+                            announce(raid, "<danger>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资",
+                                    net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
                         }
                     }
                 }
@@ -615,16 +619,23 @@ public final class RaidManager implements Listener {
                 if (point.available && !point.announcedOpen && point.def.opensAt() > 0 && elapsed >= point.def.opensAt()) {
                     point.announcedOpen = true;
                     announce(raid, "<ok>撤离点 <white>" + Text.escape(point.def.name()) + "</white> 现已开放"
-                            + (point.def.capacity() > 0 ? "，仅限 " + point.def.capacity() + " 人" : "") + "。");
+                            + (point.def.capacity() > 0 ? "，仅限 " + point.def.capacity() + " 人" : ""),
+                            net.infnetwork.snowball.craftov.gui.UiSound.EXTRACT_OPEN);
                 }
             }
             if (remaining <= 300 && !raid.warned5) {
                 raid.warned5 = true;
-                announce(raid, "<accent>行动剩余 5 分钟，请尽快撤离！");
+                announce(raid, "<accent>行动剩余 5 分钟，请尽快撤离", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             if (remaining <= 60 && !raid.warned1) {
                 raid.warned1 = true;
-                announce(raid, "<danger>行动剩余 60 秒！超时未撤离将视为失踪。");
+                announce(raid, "<danger>行动剩余 60 秒 · 超时未撤离将视为失踪", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
+            }
+            if (remaining > 0 && remaining <= 10) {
+                // The last ten seconds tick for everyone still inside.
+                for (Player player : raid.online()) {
+                    net.infnetwork.snowball.craftov.gui.UiSound.FINAL.play(player, 0.9f + (10 - remaining) * 0.03f);
+                }
             }
             for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
                 if (rp.state == RaidPlayer.State.DISCONNECTED
@@ -719,7 +730,6 @@ public final class RaidManager implements Listener {
         plugin.escorts().settle(raid, rp, true);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
-        announce(raid, "<ok>" + Text.escape(player.getName()) + " 已从 " + Text.escape(point.def.name()) + " 撤离。");
         player.showTitle(Title.title(Text.mm("<ok><b>撤离成功"), Text.mm("<muted>带出价值 <accent>◈" + Text.money(total)
                 + " <muted>· 净收益 " + (profit >= 0 ? "<ok>+" : "<danger>") + Text.money(profit)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(3), Duration.ofMillis(600))));
@@ -992,7 +1002,7 @@ public final class RaidManager implements Listener {
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
-        announce(raid, "<muted>" + Text.escape(rp.name) + " 失去联络。");
+        squadFeed(raid, rp.squad, "<muted>队友 <white>" + Text.escape(rp.name) + " <muted>失去联络");
     }
 
     public void spawnCorpse(Raid raid, Location at, String name, List<ItemStack> items, @Nullable Player owner) {
@@ -1058,19 +1068,44 @@ public final class RaidManager implements Listener {
         raid.containers.put(container.id, container);
     }
 
+    /**
+     * The kill feed (HUD top right, chat without BetterHud) goes only to the squads of the killer and
+     * the victim: nobody else learns who died where, as in an extraction shooter.
+     */
     private void killFeed(Raid raid, DamageService.@Nullable LastHit hit, String victim) {
         String line = hit == null || hit.attacker() == null
                 ? "<muted>☠ <white>" + Text.escape(victim)
                 : "<danger>" + Text.escape(hit.attackerName()) + " <muted>[" + Text.escape(hit.weapon()) + "]"
                 + (hit.headshot() ? " <danger>⊕" : "") + " <muted>→ <white>" + Text.escape(victim);
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm(line));
+        java.util.Set<Integer> squads = new java.util.HashSet<>();
+        for (RaidPlayer rp : raid.players.values()) {
+            if (rp.name.equals(victim) || hit != null && hit.attacker() != null && rp.uuid.equals(hit.attacker())) {
+                squads.add(rp.squad);
+            }
+        }
+        for (int squad : squads) {
+            squadFeed(raid, squad, line);
         }
     }
 
+    /** A kill-feed line for one squad (dead squadmates watching included). */
+    private void squadFeed(Raid raid, int squad, String line) {
+        for (RaidPlayer rp : raid.players.values()) {
+            Player player = rp.squad == squad ? Bukkit.getPlayer(rp.uuid) : null;
+            if (player != null && player.getWorld() == raid.world) {
+                plugin.hud().feed(player, line);
+            }
+        }
+    }
+
+    /** A raid-wide notice on the alert banner under the compass (chat without BetterHud). */
     public void announce(Raid raid, String message) {
+        announce(raid, message, null);
+    }
+
+    public void announce(Raid raid, String message, net.infnetwork.snowball.craftov.gui.@Nullable UiSound sound) {
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm(Text.PREFIX + message));
+            plugin.hud().alert(player, message, 120, sound);
         }
     }
 
@@ -1844,7 +1879,7 @@ public final class RaidManager implements Listener {
         for (RaidPlayer mate : raid.players.values()) {
             Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
             if (p != null) {
-                Text.send(p, "<muted>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
+                plugin.hud().feed(p, "<muted>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局");
             }
         }
         plugin.escorts().onWithdraw(rp.uuid, rp.name, reason);
@@ -1865,7 +1900,7 @@ public final class RaidManager implements Listener {
                 for (RaidPlayer mate : raid.squadOf(rp)) {
                     Player p = Bukkit.getPlayer(mate.uuid);
                     if (p != null && p != player) {
-                        p.sendMessage(Text.mm(Text.PREFIX + "<muted>队友 " + Text.escape(player.getName()) + " 找到了 " + def.coloredName()));
+                        plugin.hud().feed(p, "<muted>队友 <white>" + Text.escape(player.getName()) + " <muted>找到了 " + def.coloredName());
                     }
                 }
             }

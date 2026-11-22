@@ -20,10 +20,11 @@ import java.util.UUID;
  * one waits), a lower one is dropped once the hold is over. Lines with a key (a countdown) replace
  * their own earlier version at once.
  * <p>
- * While a menu is open the action bar is hidden behind the window, so results go into the menu
- * instead: the clicked button's tooltip gets a red (or green) line for two seconds, or the title
- * does when the click was in the player's own inventory ({@link Menu#flash}). Errors always play
- * the interface error sound. Nothing here writes to chat.
+ * While a menu is open the action bar is hidden behind the window, so results also go into the
+ * menu: the clicked button's tooltip gets a red (or green) line for two seconds, or the title does
+ * when the click was in the player's own inventory ({@link Menu#flash}). Errors always play the
+ * interface error sound. Nothing here writes to chat: chat is for things that happen to a player
+ * without their doing (a sale, an insurance payout, a contract taken) and for the raid record.
  */
 public final class Notify {
 
@@ -98,10 +99,10 @@ public final class Notify {
     }
 
     private static void result(Player player, String miniMessage, @Nullable Boolean good) {
-        if (player.getOpenInventory().getTopInventory().getHolder() instanceof Menu menu
-                && menu.viewer() == player && menu.flash(miniMessage, good)) {
-            return;
+        if (player.getOpenInventory().getTopInventory().getHolder() instanceof Menu menu && menu.viewer() == player) {
+            menu.flash(miniMessage, good);
         }
+        // The action bar gets it as well: it is what the player sees on closing the menu right after.
         bar(player, Priority.RESULT, null, Text.mm(miniMessage));
     }
 

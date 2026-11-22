@@ -144,7 +144,9 @@ stamina:
 
 combat:
   friendly-fire: false
-  damage-numbers: true
+  # Floating damage numbers over whoever you hit. Off by default: an extraction shooter tells you a
+  # hit with the marker and the sound, not with arcade numbers.
+  damage-numbers: false
   flashbang:
     # A flashed player's screen goes white (then fades) and their ears ring: facing-ticks when they
     # looked at the blast, away-ticks when it was behind them, never less than min-ticks. No effect

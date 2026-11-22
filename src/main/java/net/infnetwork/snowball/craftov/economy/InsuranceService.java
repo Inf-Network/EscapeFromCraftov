@@ -132,7 +132,7 @@ public final class InsuranceService {
                 count++;
             }
         }
-        Notify.ok(player, "已为 " + count + " 件装备投保 <muted>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
+        Text.send(player, "<ok>已为 " + count + " 件装备投保 <muted>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
                 + Math.round((1 - lossChance()) * 100) + "% 的机会找回" + (returnMinutes() > 0 ? "，" + returnMinutes() + " 分钟后退回邮箱。" : "，退回邮箱。"));
         return fee;
     }
@@ -246,7 +246,7 @@ public final class InsuranceService {
                 String back = records.isEmpty() ? "<danger>投保装备全部没能找回"
                         : "<white>" + records.size() + " 件装备 <muted>" + (atOnce ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱")
                         + (spared ? "（行动中止，全部找回）" : "");
-                Notify.ok(player, "保险理赔：" + back
+                Text.send(player, "<ok>保险理赔：" + back
                         + (lost.isEmpty() || records.isEmpty() ? "" : "，<danger>" + lost.size() + " 件没能找回")
                         + "<muted>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
@@ -273,7 +273,7 @@ public final class InsuranceService {
                         p.mailbox.addAll(ready);
                     });
             plugin.profiles().saveNow(player.getUniqueId());
-            Notify.ok(player, "保险理赔到账：<white>" + ready.size() + " 件装备 <muted>已放入仓库邮箱");
+            Text.send(player, "<ok>保险理赔到账：<white>" + ready.size() + " 件装备 <muted>已放入仓库邮箱");
         }
     }
 

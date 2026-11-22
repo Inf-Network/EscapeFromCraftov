@@ -124,9 +124,14 @@ public final class EscortService {
         plugin.profiles().saveNow(client.getUniqueId());
         String id = Long.toHexString(ThreadLocalRandom.current().nextLong() & 0xFFFFFFL);
         contracts.put(id, new Contract(id, client.getUniqueId(), client.getName(), reward, note));
-        Notify.ok(client, "护航委托已发布，赏金 ◈" + Text.money(reward) + " 已托管。");
-        Bukkit.broadcast(Text.mm(Text.PREFIX + "<accent>" + Text.escape(client.getName()) + " 发布了护航委托，赏金 ◈"
-                + Text.money(reward) + " <muted>· 前往护航大厅接取"));
+        Text.send(client, "<ok>护航委托已发布，赏金 ◈" + Text.money(reward) + " 已托管。");
+        net.kyori.adventure.text.Component posted = Text.mm("<accent>" + Text.escape(client.getName()) + " 发布了护航委托，赏金 ◈"
+                + Text.money(reward) + " <muted>· 前往护航大厅接取");
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (!plugin.raids().isInRaid(online)) {
+                online.sendMessage(posted);
+            }
+        }
     }
 
     public void accept(Player escort, String id) {
@@ -161,8 +166,8 @@ public final class EscortService {
         }
         c.escorts.add(escort.getUniqueId());
         c.state = State.ACCEPTED;
-        Notify.ok(escort, "已接取 " + Text.escape(c.clientName) + " 的护航委托。保护老板安全撤离即可获得 ◈" + Text.money(c.reward));
-        Notify.ok(client, "" + Text.escape(escort.getName()) + " 接取了你的护航委托！");
+        Text.send(escort, "<ok>已接取 " + Text.escape(c.clientName) + " 的护航委托。保护老板安全撤离即可获得 ◈" + Text.money(c.reward));
+        Text.send(client, "<ok>" + Text.escape(escort.getName()) + " 接取了你的护航委托！");
     }
 
     public void cancel(Player client) {

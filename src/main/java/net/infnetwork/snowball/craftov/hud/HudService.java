@@ -57,6 +57,8 @@ public final class HudService {
     private static final int FEED_TICKS = 100;
     private final Map<UUID, Timed> alerts = new HashMap<>();
     private final Map<UUID, java.util.ArrayDeque<Timed>> feeds = new HashMap<>();
+    /** The last kill-feed lines each player was sent, kept after they fade, for `cv hud`. */
+    private final Map<UUID, java.util.ArrayDeque<String>> feedLog = new HashMap<>();
 
     public HudService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -83,6 +85,7 @@ public final class HudService {
         snapshots.keySet().retainAll(online);
         alerts.keySet().retainAll(online);
         feeds.keySet().retainAll(online);
+        feedLog.keySet().retainAll(online);
     }
 
     private HudExtra extra(Player player, boolean inLobby) {
@@ -121,17 +124,22 @@ public final class HudService {
             player.sendMessage(Text.mm(text));
             return;
         }
-        alerts.put(player.getUniqueId(), new Timed(text, Bukkit.getCurrentTick() + ticks));
+        alerts.put(player.getUniqueId(), new Timed(net.infnetwork.snowball.craftov.gui.Style.hex(text), Bukkit.getCurrentTick() + ticks));
     }
 
     /** A kill-feed line (top right, five seconds, four at most); chat without BetterHud. */
     public void feed(Player player, String text) {
+        java.util.ArrayDeque<String> log = feedLog.computeIfAbsent(player.getUniqueId(), k -> new java.util.ArrayDeque<>());
+        log.addFirst(Text.plain(Text.mm(text)));
+        while (log.size() > 8) {
+            log.removeLast();
+        }
         if (!betterHud) {
             player.sendMessage(Text.mm(text));
             return;
         }
         java.util.ArrayDeque<Timed> lines = feeds.computeIfAbsent(player.getUniqueId(), k -> new java.util.ArrayDeque<>());
-        lines.addFirst(new Timed(text, Bukkit.getCurrentTick() + FEED_TICKS));
+        lines.addFirst(new Timed(net.infnetwork.snowball.craftov.gui.Style.hex(text), Bukkit.getCurrentTick() + FEED_TICKS));
         while (lines.size() > FEED_LINES) {
             lines.removeLast();
         }
@@ -146,7 +154,8 @@ public final class HudService {
                 + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | time=" + s.time() + "@" + e.timeState()
                 + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
                 + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
-                .map(m -> Text.plain(Text.mm(m))).toList());
+                .map(m -> Text.plain(Text.mm(m))).toList())
+                + " | feedlog=" + String.join(" / ", feedLog.getOrDefault(player.getUniqueId(), new java.util.ArrayDeque<>()));
     }
 
     /** Thread-safe: safe to call from BetterHud worker threads. */

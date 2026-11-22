@@ -86,7 +86,7 @@ public final class MatchService {
         invites.put(target.getUniqueId(), leader.getUniqueId());
         inviteExpiry.put(target.getUniqueId(), System.currentTimeMillis() + 60_000);
         Text.send(leader, "<muted>已邀请 <white>" + Text.escape(target.getName()) + "</white> 加入小队。");
-        target.sendMessage(Text.mm(Text.PREFIX + "<white>" + Text.escape(leader.getName()) + "</white> <muted>邀请你加入小队 ")
+        target.sendMessage(Text.mm("<white>" + Text.escape(leader.getName()) + "</white> <muted>邀请你加入小队 ")
                 .append(Text.mm("<ok><b>[接受]</b>").clickEvent(ClickEvent.runCommand("/cv party accept"))));
         target.playSound(target.getLocation(), "craftov:ui.invite", 1f, 1f);
     }

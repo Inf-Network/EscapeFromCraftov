@@ -399,7 +399,7 @@ public final class DamageService implements Listener {
             shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
             plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, outcome);
         }
-        if (!plugin.getConfig().getBoolean("combat.damage-numbers", true)) {
+        if (!plugin.getConfig().getBoolean("combat.damage-numbers", false)) {
             return;
         }
         Location at = victim.getEyeLocation().add((ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6, 0.35,

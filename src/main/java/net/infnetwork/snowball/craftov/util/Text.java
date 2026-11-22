@@ -18,7 +18,6 @@ import java.util.List;
  */
 public final class Text {
 
-    public static final String PREFIX = "<dim>[</dim><accent>Craftov</accent><dim>]</dim> ";
     private static final MiniMessage MM = MiniMessage.builder()
             .tags(TagResolver.resolver(TagResolver.standard(), Style.tags())).build();
     private static final DecimalFormat MONEY = new DecimalFormat("#,###");
@@ -46,8 +45,9 @@ public final class Text {
         return PlainTextComponentSerializer.plainText().serialize(component);
     }
 
+    /** A chat line. No "[Craftov]" in front: in a Chinese game it was noise on every line. */
     public static void send(CommandSender sender, String miniMessage) {
-        sender.sendMessage(mm(PREFIX + miniMessage));
+        sender.sendMessage(mm(miniMessage));
     }
 
     public static String money(long amount) {

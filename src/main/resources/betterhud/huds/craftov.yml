@@ -94,7 +94,7 @@ craftov_hud:
         x: 50
         y: 0
       pixel:
-        x: -110
+        x: -150
         y: 30
     '13':
       name: craftov_prompt

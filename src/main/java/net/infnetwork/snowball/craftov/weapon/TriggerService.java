@@ -126,6 +126,12 @@ public final class TriggerService implements Listener {
         return c != null && c.held;
     }
 
+    /** True while capture cells are out for this player: a right-click may land on one instead of what is behind it. */
+    public boolean capturing(Player player) {
+        Capture c = captures.get(player.getUniqueId());
+        return c != null && !c.cells.isEmpty();
+    }
+
     private boolean holdingGun(Player player) {
         ItemDef def = plugin.items().defOf(player.getInventory().getItemInMainHand());
         return def != null && def.isGun();

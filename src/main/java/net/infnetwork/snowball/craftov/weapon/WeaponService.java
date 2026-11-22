@@ -4,11 +4,14 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,6 +21,7 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -25,8 +29,11 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -220,6 +227,10 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
     /** Last tick each player was sprinting: the gun takes a moment to come back up afterwards. */
     private final Map<UUID, Long> lastSprint = new HashMap<>();
+    /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
+    private final Map<UUID, Long> lastEntityUse = new HashMap<>();
+    /** How far a right-click reaches an entity: vanilla's entity interaction range. */
+    private static final double USE_REACH = 3.0;
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -1191,6 +1202,9 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
+        if (useEntityBehindCell(player)) {
+            return; // opened a box or a rack: no aiming at it
+        }
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
                 && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()
                 && event.getClickedBlock().getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
@@ -1203,6 +1217,35 @@ public final class WeaponService implements Listener {
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
         setAds(player, true);
+    }
+
+    /**
+     * The trigger keeps client-only cobweb in front of whatever the crosshair is on (see
+     * {@link TriggerService}), so a right-click at a loot box, a body or a weapon rack lands on the
+     * cobweb and reaches the server as a click on air. Within reach and with nothing solid in the way,
+     * this passes it on to the entity as the click it would have been. True if something took it.
+     */
+    private boolean useEntityBehindCell(Player player) {
+        long now = Bukkit.getCurrentTick();
+        if (!plugin.triggers().capturing(player) || now - lastEntityUse.getOrDefault(player.getUniqueId(), -100L) <= 1) {
+            // The client already clicked it (or the block click of this same press did): once is enough.
+            return false;
+        }
+        Location eye = player.getEyeLocation();
+        RayTraceResult hit = player.getWorld().rayTrace(eye, eye.getDirection(), USE_REACH, FluidCollisionMode.NEVER, false, 0.0,
+                entity -> entity != player && (entity instanceof Interaction
+                        || "container".equals(entity.getPersistentDataContainer().get(Keys.ENTITY_ROLE, PersistentDataType.STRING))));
+        if (hit == null || hit.getHitEntity() == null) {
+            return false;
+        }
+        PlayerInteractEntityEvent click = new PlayerInteractEntityEvent(player, hit.getHitEntity(), EquipmentSlot.HAND);
+        Bukkit.getPluginManager().callEvent(click);
+        return click.isCancelled();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityUse(PlayerInteractEntityEvent event) {
+        lastEntityUse.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
     }
 
     /** Clicking straight at a close entity sends an attack, not a dig; it still pulls the trigger. */
@@ -1319,5 +1362,6 @@ public final class WeaponService implements Listener {
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());
+        lastEntityUse.remove(event.getPlayer().getUniqueId());
     }
 }

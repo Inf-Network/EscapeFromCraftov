@@ -98,6 +98,11 @@ public final class WeaponService implements Listener {
          */
         long drawStart;
         long readyAt;
+        /**
+         * The gun's stack carries the draw mark (ItemFactory.setDrawing) until the draw is over: its model
+         * neither aims nor flashes meanwhile.
+         */
+        boolean drawMarked;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -372,6 +377,14 @@ public final class WeaponService implements Listener {
                     player.getName(), def.id(), now, state.readyAt, state.nextShotTick, state.bloom));
         }
         states.put(player.getUniqueId(), state);
+        if (state.drawing()) {
+            ItemFactory.setDrawing(held, true);
+            state.drawMarked = true;
+        } else {
+            // A mark that left the inventory mid-draw (put in a box) would keep a gun with no draw
+            // time (weapons.draw-ticks 0) from ever aiming: it comes off whenever the gun is bound.
+            ItemFactory.setDrawing(held, false);
+        }
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -404,18 +417,7 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
-        PlayerInventory inv = player.getInventory();
-        ItemStack stack = inv.getItem(state.slot);
-        if (!state.uid.equals(ItemFactory.uid(stack))) {
-            stack = null;
-            for (int i = 0; i < inv.getSize(); i++) {
-                ItemStack candidate = inv.getItem(i);
-                if (state.uid.equals(ItemFactory.uid(candidate))) {
-                    stack = candidate;
-                    break;
-                }
-            }
-        }
+        ItemStack stack = stackOf(player, state);
         if (stack == null) {
             return;
         }
@@ -424,6 +426,22 @@ public final class WeaponService implements Listener {
             ItemFactory.setMode(stack, state.mode);
             plugin.items().setAmmo(stack, state.ammo, state.ammo > 0 ? state.ammoType : state.ammoType);
         }
+    }
+
+    /** The live stack of the state's gun in the player's inventory (its slot first), or null once it left. */
+    private @Nullable ItemStack stackOf(Player player, GunState state) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack stack = inv.getItem(state.slot);
+        if (state.uid.equals(ItemFactory.uid(stack))) {
+            return stack;
+        }
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack candidate = inv.getItem(i);
+            if (state.uid.equals(ItemFactory.uid(candidate))) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     /** Drops cached state entirely (raid transitions, death). */
@@ -446,8 +464,30 @@ public final class WeaponService implements Listener {
         if (now < state.nextShotTick || state.bloom > 0) {
             stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
         }
+        unmark(player, state);
         stopReloadAnimation(player, state);
         return state;
+    }
+
+    /** Takes the draw mark off the gun's stack, if it is still in the inventory. */
+    private void unmark(Player player, GunState state) {
+        if (!state.drawMarked) {
+            return;
+        }
+        state.drawMarked = false;
+        ItemStack stack = stackOf(player, state);
+        if (stack != null) {
+            ItemFactory.setDrawing(stack, false);
+        }
+    }
+
+    /** The gun is up: its model may aim and flash again. */
+    private void drawn(Player player, GunState state, long now) {
+        unmark(player, state);
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s up %s tick=%d aim=%b",
+                    player.getName(), state.def.id(), now, isAiming(player)));
+        }
     }
 
     // ------------------------------------------------------------------ tick
@@ -467,6 +507,9 @@ public final class WeaponService implements Listener {
                 continue;
             }
             settle(player, state, now);
+            if (state.drawMarked && !state.drawing()) {
+                drawn(player, state, now);
+            }
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
                     finishReload(player, state);
@@ -1411,6 +1454,7 @@ public final class WeaponService implements Listener {
         if (fromInventoryScreen) {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
+                ItemFactory.setDrawing(dropped, false);
                 event.getItemDrop().setItemStack(dropped);
                 stow(player);
             }

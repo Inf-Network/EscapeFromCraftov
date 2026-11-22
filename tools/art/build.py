@@ -170,6 +170,7 @@ def build_items(item_defs):
             # Pose trees, all picked on the client from held keys (no packet, no delay): right mouse aims
             # down sights; left mouse kicks the gun back and flashes the muzzle; sprinting carries it low
             # and canted; strafing leans it. Scoped guns hide the gun while aiming, so they keep plain ADS.
+            # A gun still coming up after a switch ignores right and left mouse.
             def posed_aim(name, hip, ads, hip_display, ads_display):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
@@ -207,7 +208,13 @@ def build_items(item_defs):
                     ads_idle = strafe(model_ref(ads), ap)
                     ads_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
                         ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, ads_idle), ads_idle)
-                return key('key.use', ads_tree, hip_tree)
+                # While the gun comes up after a switch the server marks it with damage 1 (ItemFactory
+                # .setDrawing): it neither aims nor fires yet, so neither key changes the pose. Damage is
+                # the one component the client swaps in without playing the lower-and-raise animation
+                # again; not normalized, so a stack without max_damage reads 0.
+                draw_tree = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
+                        'entries': [{'threshold': 0.5, 'model': draw_tree}], 'fallback': key('key.use', ads_tree, hip_tree)}
             # While the gun's reload cooldown runs, the client steps through the reload frames itself.
             def reloading(normal, optic_frames=None):
                 entries = []

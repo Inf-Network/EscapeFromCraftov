@@ -46,9 +46,10 @@ public final class ItemFactory {
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
     /**
      * Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit
-     * mark. 5: gun lore shows the new rates of the V57, KL7 and SCR.
+     * mark. 5: gun lore shows the new rates of the V57, KL7 and SCR. 6: guns carry max_damage and
+     * unbreakable for the draw mark (see {@link #setDrawing}).
      */
-    public static final int VERSION = 5;
+    public static final int VERSION = 6;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -232,7 +233,8 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(def.model()));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(def.coloredName()));
         stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay()
-                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK)
+                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK,
+                        DataComponentTypes.UNBREAKABLE)
                 .build());
         GunSpec gun = def.gun();
         MedSpec med = def.med();
@@ -247,6 +249,11 @@ public final class ItemFactory {
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
             stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
                     .type(SwingAnimation.Animation.NONE).duration(1).build());
+            // Room for the draw mark (damage 1, see setDrawing). Unbreakable, so it is never worn down,
+            // shows no durability bar and no tooltip line; a damageable item may not stack.
+            stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
+            stack.setData(DataComponentTypes.MAX_DAMAGE, 1);
+            stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
                             AttributeModifier.Operation.MULTIPLY_SCALAR_1), EquipmentSlotGroup.MAINHAND)
@@ -516,6 +523,22 @@ public final class ItemFactory {
         }
         cmd.addString(ammo(stack) <= 0 ? "dry" : "");
         stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
+    }
+
+    /**
+     * Marks a gun as still coming up after a switch, or clears the mark: its item model then ignores
+     * right and left mouse, so the client shows neither the aimed pose (on a scoped gun, no gun at all)
+     * nor the muzzle flash and kick while the server lets it do neither. The mark is damage 1 of the
+     * gun's max_damage 1 because damage is the only component the vanilla client swaps in on a held
+     * item without playing the lower-and-raise animation again; custom_model_data would dip the gun
+     * just as it comes up.
+     */
+    public static void setDrawing(ItemStack stack, boolean drawing) {
+        if (drawing) {
+            stack.setData(DataComponentTypes.DAMAGE, 1);
+        } else if (stack.hasData(DataComponentTypes.DAMAGE)) {
+            stack.resetData(DataComponentTypes.DAMAGE);
+        }
     }
 
     public void setDura(ItemStack stack, double dura) {

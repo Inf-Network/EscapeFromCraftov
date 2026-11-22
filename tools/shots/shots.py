@@ -783,10 +783,10 @@ class Session:
                 return
         candidates = {rid: n for rid, n in self.raid_players().items() if rid in raids}
         if len(candidates) != 1 or next(iter(candidates.values())) != 1:
-            rows = ', '.join(f'{rid} ({n} players)' for rid, n in sorted(candidates.items())) or 'none found'
+            rows = ', '.join(f'{rid} with {n} in it' for rid, n in sorted(candidates.items())) or 'none'
             raise Fail(f'{self.name} could not reach the extract and is still in the raid. Ending a raid makes '
-                       'everyone in it missing in action, and no new raid has it alone inside '
-                       f'(new raids: {rows}), so nothing was ended; end its raid by hand (`cv end <id>`)')
+                       'everyone in it missing in action, so only a single new raid with one player is ended, '
+                       f'and the new raids are: {rows}. Nothing was ended; end its raid by hand (`cv end <id>`)')
         raid = next(iter(candidates))
         log(f'no extract worked; ending {raid}, where {self.name} is alone')
         self.rcon(f'cv end {raid}')

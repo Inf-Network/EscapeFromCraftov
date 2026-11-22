@@ -47,10 +47,11 @@ public final class ItemFactory {
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
     /**
      * Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit
-     * mark. 5: armour lore says it weakens when worn. 6: knife lore gives damage and penetration, not
-     * hits to kill. 7: the self-revive injector's lore no longer calls it instant.
+     * mark. 5: med lore, and armour lore says it weakens when worn. 6: gun prices, and knife lore gives
+     * damage and penetration. 7: weights, and the self-revive injector's lore no longer calls it instant.
+     * 8: both lines of changes above together (#22 economy and the #26-#29 combat fixes each used 5-7).
      */
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");

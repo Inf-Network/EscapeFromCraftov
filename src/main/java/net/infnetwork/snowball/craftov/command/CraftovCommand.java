@@ -339,6 +339,11 @@ public final class CraftovCommand implements TabExecutor {
                             + Text.escape(shown.length() > 300 ? shown.substring(0, 300) + "…" : shown));
                     Text.send(sender, "<#9AA0A6>配置、掉落与地图已重新加载，完整错误见服务器日志。");
                 }
+                for (CraftovPlugin.OutdatedData old : plugin.outdatedData()) {
+                    Text.send(sender, "<#FFC23D>" + old.file() + " 比插件自带的旧（revision " + old.local() + "，插件 " + old.bundled()
+                            + "）：价格和掉落仍按旧文件。<#9AA0A6>备份后换成插件自带的版本（或把改动合并进去并改成 revision: "
+                            + old.bundled() + "），再 /cv reload。");
+                }
             }
             default -> help(sender);
         }

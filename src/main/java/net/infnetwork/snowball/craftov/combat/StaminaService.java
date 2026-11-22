@@ -4,6 +4,7 @@ import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
@@ -19,12 +20,13 @@ import java.util.UUID;
 /**
  * Stamina and carry weight. Sprinting and jumping cost stamina, it regenerates after a short pause,
  * and at zero the player cannot sprint until it recovers. Weight above the comfortable load drains
- * stamina faster and slows the player down.
+ * stamina faster and slows the player down; above the overload limit sprinting is impossible (the
+ * client is held at food level 6, as for a broken leg, see HealthService.updateFood) and every
+ * further kilogram slows them much more. Numbers are in config.yml under stamina.
  */
 public final class StaminaService implements Listener {
 
     public static final double MAX = 100.0;
-    private static final double COMFORT_KG = 25.0;
     private static final double RECOVER_AT = 30.0;
 
     private static final class State {
@@ -33,6 +35,7 @@ public final class StaminaService implements Listener {
         long lastSpend;
         double weight;
         long weightTick = -100;
+        boolean overloaded;
     }
 
     private final CraftovPlugin plugin;
@@ -96,30 +99,77 @@ public final class StaminaService implements Listener {
         return total;
     }
 
-    /** Speed lost to an overweight load: 1% per kilogram over the comfortable load, at most 25%. */
+    private double setting(String key, double fallback) {
+        return plugin.getConfig().getDouble("stamina." + key, fallback);
+    }
+
+    /** Load (kg) above which weight starts to slow the player and drain stamina faster. */
+    public double comfortKg() {
+        return setting("comfort-kg", 25);
+    }
+
+    /** Load (kg) above which the player cannot sprint at all. */
+    public double overloadKg() {
+        return setting("overload-kg", 40);
+    }
+
+    /** True while the player carries more than {@link #overloadKg()}: no sprinting. */
+    public boolean overloaded(Player player) {
+        return weight(player) > overloadKg();
+    }
+
+    /**
+     * Speed lost to the load: penalty-per-kg (1%) for each kilogram over the comfortable load up to
+     * the overload limit, overload-penalty-per-kg (2.5%) for each one beyond it, at most max-penalty
+     * (50%). It used to stop at 25%, so a pack of gold bars and statues at 57 kg was barely slower.
+     */
     public double overweightPenalty(Player player) {
-        return Math.min(0.25, Math.max(0, weight(player) - COMFORT_KG) * 0.01);
+        double weight = weight(player);
+        double comfort = comfortKg();
+        double overload = Math.max(comfort, overloadKg());
+        double penalty = Math.max(0, Math.min(weight, overload) - comfort) * setting("penalty-per-kg", 0.01)
+                + Math.max(0, weight - overload) * setting("overload-penalty-per-kg", 0.025);
+        return Math.min(setting("max-penalty", 0.5), penalty);
     }
 
     private double drainFactor(Player player) {
-        return 1.0 + Math.max(0, weight(player) - COMFORT_KG) / 50.0;
+        return 1.0 + Math.max(0, weight(player) - comfortKg()) / 30.0;
+    }
+
+    /** Tells the player when the load crosses the overload limit, and stops or allows sprinting. */
+    private void checkOverload(Player player, State s, boolean inRaid) {
+        boolean now = inRaid && overloaded(player);
+        if (now == s.overloaded) {
+            return;
+        }
+        s.overloaded = now;
+        plugin.health().updateFood(player);
+        if (now) {
+            player.sendActionBar(Text.mm("<#FF8A80>负重 " + Math.round(s.weight) + "kg，超过 " + Math.round(overloadKg())
+                    + "kg：无法冲刺，移动很慢"));
+            player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.5f, 0.8f);
+        } else if (inRaid) {
+            player.sendActionBar(Text.mm("<#5BD16B>负重降到 " + Math.round(overloadKg()) + "kg 以下，可以冲刺了"));
+        }
     }
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
             State s = state(player);
-            if (!plugin.raids().isInRaid(player) || plugin.health().adrenaline(player)) {
+            boolean inRaid = plugin.raids().isInRaid(player);
+            checkOverload(player, s, inRaid);
+            if (!inRaid || plugin.health().adrenaline(player)) {
                 if (s.stamina < MAX || s.exhausted) {
                     refill(player);
                 }
                 continue;
             }
             if (player.isSprinting()) {
-                s.stamina = Math.max(0, s.stamina - 0.22 * drainFactor(player));
+                s.stamina = Math.max(0, s.stamina - setting("sprint-drain", 0.3) * drainFactor(player));
                 s.lastSpend = now;
             } else if (now - s.lastSpend > 15) {
-                s.stamina = Math.min(MAX, s.stamina + (player.isSneaking() ? 0.75 : 0.6));
+                s.stamina = Math.min(MAX, s.stamina + (player.isSneaking() ? setting("regen-sneaking", 0.5) : setting("regen", 0.4)));
             }
             if (!s.exhausted && s.stamina <= 0) {
                 s.exhausted = true;
@@ -139,7 +189,7 @@ public final class StaminaService implements Listener {
             return;
         }
         State s = state(player);
-        s.stamina = Math.max(0, s.stamina - 4 * drainFactor(player));
+        s.stamina = Math.max(0, s.stamina - setting("jump-cost", 5) * drainFactor(player));
         s.lastSpend = Bukkit.getCurrentTick();
     }
 

@@ -443,6 +443,13 @@ public final class DamageService implements Listener {
      * and a helmet takes the cut, and a bare head goes down in as many cuts as a bare chest.
      */
     private void melee(Player player, LivingEntity victim, ItemDef def) {
+        // The swing's own event is cancelled before the friendly-fire handler sees it, so ask the same
+        // questions a bullet does here: a player still under insertion protection (or anyone else a
+        // bullet would pass through) gets no hit marker, no death-report entry and no last hit.
+        if (!plugin.raids().canDamage(player, victim)
+                || (victim instanceof Player target && !plugin.raids().canBeShot(target))) {
+            return;
+        }
         net.infnetwork.snowball.craftov.weapon.MeleeSpec spec = def.melee();
         long now = Bukkit.getCurrentTick();
         Location eye = player.getEyeLocation();

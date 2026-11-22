@@ -114,7 +114,9 @@ public final class HudData {
         if (plugin.stamina().exhausted(p)) {
             sb.append(sb.isEmpty() ? "" : " ").append("力竭");
         }
-        if (plugin.stamina().overweightPenalty(p) > 0) {
+        if (plugin.stamina().overloaded(p)) {
+            sb.append(sb.isEmpty() ? "" : " ").append("过载禁跑");
+        } else if (plugin.stamina().overweightPenalty(p) > 0) {
             sb.append(sb.isEmpty() ? "" : " ").append("超重");
         }
         return sb.toString();

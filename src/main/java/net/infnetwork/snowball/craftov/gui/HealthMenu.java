@@ -55,8 +55,12 @@ final class HealthMenu extends Menu {
         List<String> status = new ArrayList<>();
         status.add("<#8A8F98>生命 <white>" + hp + " / 100");
         status.add("<#8A8F98>体力 <white>" + Math.round(plugin.stamina().stamina(viewer)) + (plugin.stamina().exhausted(viewer) ? " <#FF8A80>力竭" : ""));
-        status.add("<#8A8F98>负重 <white>" + String.format("%.1f", plugin.stamina().weight(viewer)) + "kg"
-                + (plugin.stamina().overweightPenalty(viewer) > 0 ? " <#FFB74D>超重，移动变慢" : ""));
+        var stamina = plugin.stamina();
+        double penalty = stamina.overweightPenalty(viewer);
+        status.add("<#8A8F98>负重 <white>" + String.format("%.1f", stamina.weight(viewer)) + "kg"
+                + " <#5F6368>/ " + Math.round(stamina.comfortKg()) + " / " + Math.round(stamina.overloadKg()) + "kg"
+                + (stamina.overloaded(viewer) ? " <#FF8A80>严重超重：无法冲刺，移速 -" + Math.round(penalty * 100) + "%"
+                : penalty > 0 ? " <#FFB74D>超重，移速 -" + Math.round(penalty * 100) + "%" : ""));
         if (plugin.health().painkilled(viewer)) {
             status.add("<#7FE0D0>止痛中 " + plugin.health().painkillerSeconds(viewer) + "s <#8A8F98>（骨折暂不影响行动）");
         }
@@ -69,7 +73,8 @@ final class HealthMenu extends Menu {
                 "<#FF2D2D>大出血 <#9AA0A6>掉血很快，用止血敷料或军用医疗箱",
                 "<#FFB74D>腿部骨折 <#9AA0A6>移动变慢、无法冲刺、跳不高",
                 "<#FFB74D>手臂骨折 <#9AA0A6>射击扩散和后坐力变大、换弹变慢",
-                "<#9AA0A6>夹板治疗一处骨折，手术包处理全身伤势",
+                "<#9AA0A6>夹板治疗一处骨折，手术包每次处理伤得最重的一个部位",
+                "<#9AA0A6>急救包、医疗箱、手术包每处理一处伤口都消耗治疗量",
                 "<#9AA0A6>止痛药暂时屏蔽骨折影响，但不会治好它")));
 
         List<Integer> meds = new ArrayList<>();

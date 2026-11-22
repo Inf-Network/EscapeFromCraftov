@@ -6,6 +6,7 @@ import com.google.gson.reflect.TypeToken;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.item.Rarity;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.AtomicFiles;
@@ -24,7 +25,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -38,12 +38,15 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
- * players or to simulated buyers when priced near the anchor price, and return on expiry.
+ * players or to simulated buyers when priced low enough, and return on expiry.
  *
  * <p>The anchor is the item's own value (durability, attachments, loaded ammo and stack size
  * included) times {@code market.reference-multiplier}. It comes from items.yml, so no sale can
- * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
- * 1.15 × buy price, and buying from the trader to resell never pays.
+ * move it. System buyers keep the market working on a small server, but they are a cheap outlet,
+ * not a second trader at full price: they pay at most {@code market.virtual-max-value} (0.7) of
+ * the item's value, take nothing above purple, and take at most {@code market.virtual-daily-cap}
+ * listings of one item from one seller a day. After fee and tax that is about 0.65 of value,
+ * a little more than the trader's 0.55, far below its 1.15 buy price.
  *
  * <p>Every trade queues the market and the profiles it touched for writing straight away, all on
  * the profile writer thread ({@link ProfileService#queueWrite}), so they reach the disk in the
@@ -72,6 +75,12 @@ public final class MarketService implements Listener {
         public Map<String, Double> reference = new HashMap<>();
         /** Recent sale prices per plain unit, any buyer, newest last. */
         public Map<String, List<Long>> history = new HashMap<>();
+        /**
+         * Listings system buyers took on {@link #virtualDay}, per "seller uuid:item id"
+         * (market.virtual-daily-cap). Saved, so a restart does not hand out a fresh quota.
+         */
+        public Map<String, Integer> virtualSales = new HashMap<>();
+        public long virtualDay = -1;
     }
 
     /**
@@ -92,14 +101,6 @@ public final class MarketService implements Listener {
     private Data data = new Data();
     private boolean dirty;
     private boolean closed;
-    /**
-     * When system buyers took each seller's listings of each item in the last hour, oldest first
-     * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
-     */
-    private final Map<SaleKey, ArrayDeque<Long>> virtualSales = new HashMap<>();
-
-    private record SaleKey(UUID seller, String itemId) {
-    }
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -127,6 +128,7 @@ public final class MarketService implements Listener {
         if (data.listings == null) data.listings = new ArrayList<>();
         if (data.reference == null) data.reference = new HashMap<>();
         if (data.history == null) data.history = new HashMap<>();
+        if (data.virtualSales == null) data.virtualSales = new HashMap<>();
         if (data.version < DATA_VERSION) {
             migrate();
         }
@@ -274,28 +276,80 @@ public final class MarketService implements Listener {
         return Math.max(1, Math.round(reference(record.id) * ratio * Math.max(1, record.amount)));
     }
 
+    // ------------------------------------------------------------------ system buyers
+
     private int virtualCap() {
-        return plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
+        return plugin.getConfig().getInt("market.virtual-daily-cap", 10);
     }
 
-    /** True when system buyers have taken their hourly quota of {@code seller}'s {@code itemId} and will wait. */
+    /** Share of an item's value system buyers pay at most (market.virtual-max-value). */
+    public double virtualMaxValue() {
+        return plugin.getConfig().getDouble("market.virtual-max-value", 0.7);
+    }
+
+    private Rarity virtualMaxRarity() {
+        try {
+            return Rarity.parse(plugin.getConfig().getString("market.virtual-max-rarity", "PURPLE"));
+        } catch (IllegalArgumentException ex) {
+            return Rarity.PURPLE;
+        }
+    }
+
+    /** "系统买家只收「稀有」及以下品质的物品" in the configured rarity's colour (MiniMessage). */
+    public String virtualRarityNote() {
+        Rarity max = virtualMaxRarity();
+        return "系统买家只收" + max.tag() + "「" + max.displayName() + "」</" + max.hex() + ">及以下品质的物品";
+    }
+
+    /**
+     * Most a system buyer pays for {@code record} (its value with wear, attachments, loaded rounds
+     * and stack size, times market.virtual-max-value), or 0 when they never buy it: anything rarer
+     * than market.virtual-max-rarity, so gold and red finds only sell to players or the trader.
+     */
+    public long virtualPrice(ItemRecord record) {
+        ItemDef def = plugin.registry().get(record.id);
+        if (def == null || def.rarity().ordinal() > virtualMaxRarity().ordinal()) {
+            return 0;
+        }
+        return Math.round(plugin.items().value(record) * virtualMaxValue());
+    }
+
+    /**
+     * Chance a system buyer takes a listing of {@code record} at {@code price} in one round (every
+     * ten seconds): 0.3 at up to 85% of {@link #virtualPrice}, 0.12 up to 93%, 0.04 up to it, and
+     * never above it.
+     */
+    public double virtualChance(ItemRecord record, long price) {
+        long cap = virtualPrice(record);
+        if (cap <= 0 || price > cap) {
+            return 0;
+        }
+        double ratio = price / (double) cap;
+        return ratio <= 0.85 ? 0.3 : ratio <= 0.93 ? 0.12 : 0.04;
+    }
+
+    private static String saleKey(UUID seller, String itemId) {
+        return seller + ":" + itemId;
+    }
+
+    /** Starts a new quota day (04:00, like the market day) when the stored one is over. */
+    private void rollVirtualDay() {
+        long day = today();
+        if (data.virtualDay != day) {
+            data.virtualDay = day;
+            data.virtualSales.clear();
+            dirty = true;
+        }
+    }
+
+    /** True when system buyers have taken today's quota of {@code seller}'s {@code itemId} and will wait. */
     public boolean virtualCapped(UUID seller, String itemId) {
         int cap = virtualCap();
         if (cap <= 0) {
             return false;
         }
-        ArrayDeque<Long> times = virtualSales.get(new SaleKey(seller, itemId));
-        return times != null && times.size() >= cap;
-    }
-
-    /** Forgets system-buyer sales older than an hour, and sellers' items with none left. */
-    private void pruneVirtualSales(long now) {
-        virtualSales.values().removeIf(times -> {
-            while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
-                times.pollFirst();
-            }
-            return times.isEmpty();
-        });
+        rollVirtualDay();
+        return data.virtualSales.getOrDefault(saleKey(seller, itemId), 0) >= cap;
     }
 
     public List<Long> history(String itemId) {
@@ -369,6 +423,12 @@ public final class MarketService implements Listener {
             Text.send(player, "<#FF8A80>请先清空胸挂/背包再上架。");
             return false;
         }
+        if (profile.level < minBuyLevel() && virtualPrice(record) <= 0) {
+            // Only system buyers take a low-level seller's listings, and they never take this one.
+            Text.send(player, "<#FF8A80>账号等级 " + minBuyLevel() + " 前只有系统买家会收购你的商品，而" + virtualRarityNote()
+                    + "<#FF8A80>。<#9AA0A6>可以卖给商人，或升到 " + minBuyLevel() + " 级再上架。");
+            return false;
+        }
         long cap = maxPrice(record);
         if (price > cap) {
             Text.send(player, "<#FF8A80>售价不能超过参考价的 " + Text.decimal(maxPriceMultiplier()) + " 倍（最高 ◈" + Text.money(cap) + "）。");
@@ -398,7 +458,11 @@ public final class MarketService implements Listener {
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
-            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购。");
+            long virtual = virtualPrice(record);
+            // Allowed (the seller may reach the level while it is listed), but said plainly.
+            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购"
+                    + (listing.price > virtual ? "，而这个售价高于系统收购价 ◈" + Text.money(virtual) + "：升到 " + minBuyLevel()
+                    + " 级前不会卖出，可以下架后重新定价。" : "。"));
         }
         return true;
     }
@@ -650,7 +714,7 @@ public final class MarketService implements Listener {
         boolean npc = plugin.getConfig().getBoolean("market.virtual-buyers", true);
         long minAge = plugin.getConfig().getLong("market.virtual-min-age-seconds", 45) * 1000L;
         boolean counting = virtualCap() > 0;
-        pruneVirtualSales(now);
+        rollVirtualDay();
         for (Listing listing : new ArrayList<>(data.listings)) {
             // An item items.yml has since made untradeable (the machete and the karambit) goes back
             // to its seller like an expired listing instead of staying buyable until it expires.
@@ -670,13 +734,12 @@ public final class MarketService implements Listener {
             if (!npc || now - listing.created < minAge || virtualCapped(listing.seller, listing.item.id)) {
                 continue;
             }
-            // Measured against the fixed anchor, never the trade-driven reference: otherwise each
-            // overpriced sale would raise the bar for the next one.
-            double ratio = listing.price / (double) anchorFor(listing.item);
-            double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
+            // Measured against the item's own value, never the trade-driven reference: otherwise
+            // each sale would move the bar for the next one.
+            double chance = virtualChance(listing.item, listing.price);
             if (ThreadLocalRandom.current().nextDouble() < chance && plugin.profiles().canEdit(listing.seller)) {
                 if (counting) {
-                    virtualSales.computeIfAbsent(new SaleKey(listing.seller, listing.item.id), k -> new ArrayDeque<>()).addLast(now);
+                    data.virtualSales.merge(saleKey(listing.seller, listing.item.id), 1, Integer::sum);
                 }
                 complete(listing, "系统买家", false);
             }

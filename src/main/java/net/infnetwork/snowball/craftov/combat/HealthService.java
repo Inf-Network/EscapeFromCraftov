@@ -214,34 +214,85 @@ public final class HealthService implements Listener {
         forceSpeedUpdate(player);
     }
 
+    /** One treated wound: e.g. "左腿骨折", and how much of the item's healing pool it used. */
+    public record Treated(String label, double cost) {
+    }
+
     /**
-     * Treats up to {@code count} wounds the item can handle, most dangerous first. Returns a short
-     * description of each treated wound, e.g. "左腿骨折".
+     * Healing pool a medkit or surgery kit uses up to treat one wound of this kind
+     * (medical.wound-cost). Treating used to be free, so a surgery kit at full health cleared every
+     * fracture and bleed on the body and stayed in the pocket.
      */
-    public List<String> treat(Player player, Set<Injury> cures, int count) {
-        List<String> done = new ArrayList<>();
+    public double woundCost(Injury injury) {
+        double fallback = switch (injury) {
+            case LIGHT_BLEED -> 15;
+            case HEAVY_BLEED, FRACTURE -> 40;
+        };
+        return Math.max(0, plugin.getConfig().getDouble("medical.wound-cost." + injury.name(), fallback));
+    }
+
+    private static boolean treatable(Set<Injury> cures, Injury injury) {
+        return cures.contains(injury) || (injury == Injury.LIGHT_BLEED && cures.contains(Injury.HEAVY_BLEED));
+    }
+
+    /**
+     * Treats up to {@code med.cureCount()} wounds the item can handle, most dangerous first, and
+     * only on the worst body part for a one-part item. An item with a healing pool pays for each
+     * wound out of {@code pool} (what is left in it) and stops once that is spent; the last wound
+     * may take the rest. Returns each treated wound with what it cost.
+     */
+    public List<Treated> treat(Player player, MedSpec med, double pool) {
+        List<Treated> done = new ArrayList<>();
         EnumMap<BodyPart, EnumSet<Injury>> map = wounds.get(player.getUniqueId());
         if (map == null) {
             return done;
         }
+        BodyPart only = med.onePart() ? worstPart(map, med.cures()) : null;
+        double left = pool;
         for (Injury injury : List.of(Injury.HEAVY_BLEED, Injury.LIGHT_BLEED, Injury.FRACTURE)) {
-            boolean treatable = cures.contains(injury) || (injury == Injury.LIGHT_BLEED && cures.contains(Injury.HEAVY_BLEED));
-            if (!treatable) {
+            if (!treatable(med.cures(), injury)) {
                 continue;
             }
             for (BodyPart part : injury == Injury.FRACTURE ? FRACTURE_ORDER : BLEED_ORDER) {
-                if (done.size() >= count) {
+                if (done.size() >= med.cureCount() || (med.pool() > 0 && left <= 0.5)) {
                     break;
+                }
+                if (only != null && part != only) {
+                    continue;
                 }
                 EnumSet<Injury> set = map.get(part);
                 if (set != null && set.remove(injury)) {
-                    done.add(part.displayName() + injury.displayName());
+                    double cost = med.pool() > 0 ? Math.min(left, woundCost(injury)) : 0;
+                    left -= cost;
+                    done.add(new Treated(part.displayName() + injury.displayName(), cost));
                 }
             }
         }
         updateFood(player);
         forceSpeedUpdate(player);
         return done;
+    }
+
+    /** The body part whose wounds {@code cures} can treat cost the most to treat (most urgent first on a tie). */
+    private @Nullable BodyPart worstPart(EnumMap<BodyPart, EnumSet<Injury>> map, Set<Injury> cures) {
+        BodyPart worst = null;
+        double most = 0;
+        for (BodyPart part : BLEED_ORDER) {
+            EnumSet<Injury> set = map.get(part);
+            double total = 0;
+            if (set != null) {
+                for (Injury injury : set) {
+                    if (treatable(cures, injury)) {
+                        total += woundCost(injury) + 1; // +1: a wound counts even when it costs nothing
+                    }
+                }
+            }
+            if (total > most) {
+                most = total;
+                worst = part;
+            }
+        }
+        return worst;
     }
 
     /** HUD colour state: 0 ok, 1 light bleed, 2 heavy bleed, 3 fracture, 4 fracture and bleeding. */
@@ -313,10 +364,13 @@ public final class HealthService implements Listener {
         player.setHealth(Math.min(MAX_HP, player.getHealth() + amount));
     }
 
-    /** Sprinting is impossible with an untreated broken leg or no stamina (food at 6 disables it). */
+    /**
+     * Sprinting is impossible with an untreated broken leg, no stamina or an overloaded pack (food
+     * at 6 disables it: the vanilla client has no other switch for it).
+     */
     public void updateFood(Player player) {
         boolean noSprint = plugin.raids().isInRaid(player)
-                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player));
+                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player));
         int food = noSprint ? 6 : 20;
         if (player.getFoodLevel() != food) {
             player.setFoodLevel(food);
@@ -572,7 +626,11 @@ public final class HealthService implements Listener {
         medUse.remove(player.getUniqueId());
         MedSpec med = def.med();
         boolean consumed = true;
-        List<String> treated = treat(player, med.cures(), med.cureCount());
+        double remaining = med.pool() > 0 ? ItemFactory.dura(stack, med.pool()) : 0;
+        List<Treated> treated = treat(player, med, remaining);
+        for (Treated t : treated) {
+            remaining -= t.cost();
+        }
         switch (med.effect()) {
             case PAINKILLER -> painkillerUntil.put(player.getUniqueId(), System.currentTimeMillis() + med.effectSeconds() * 1000L);
             case ADRENALINE -> {
@@ -585,12 +643,12 @@ public final class HealthService implements Listener {
         }
         StringBuilder msg = new StringBuilder();
         if (!treated.isEmpty()) {
-            msg.append("<#5BD16B>已处理 ").append(String.join("、", treated));
+            msg.append("<#5BD16B>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
         }
         if (med.pool() > 0) {
-            double remaining = ItemFactory.dura(stack, med.pool());
+            // Whatever the wounds left of the pool heals, up to the item's per-use amount.
             double missing = MAX_HP - player.getHealth();
-            double heal = Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining);
+            double heal = Math.max(0, Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining));
             heal *= plugin.operators().healMultiplier(player);
             heal(player, heal);
             remaining -= heal;

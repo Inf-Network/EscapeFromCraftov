@@ -796,7 +796,7 @@ public final class AiService implements Listener {
         }
         ContainerType crate = plugin.loot().type(bot.boss ? "vault" : "parcel");
         if (crate != null) {
-            items.addAll(plugin.loot().roll(crate, bot.raid.tier.lootShift() + (bot.boss ? 1 : 0)));
+            items.addAll(plugin.loot().roll(crate, bot.raid.tier.shift(bot.boss ? 1 : 0)));
         }
         if (rng.nextDouble() < 0.35) {
             ItemDef med = plugin.loot().pick(Category.MEDICAL, Rarity.GREEN, rng);

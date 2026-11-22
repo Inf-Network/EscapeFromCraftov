@@ -1543,8 +1543,8 @@ public final class RaidManager implements Listener {
             return;
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
-            // The cursor item stays in the raid: back into the inventory, or on the ground here.
-            plugin.carry().spill(player, plugin.carry().reclaimCursor(player));
+            // The cursor item is already back in the inventory (or on the ground here): CarryListener
+            // settles it first, at the lowest priority.
             // During the entry flight (DEPLOYING) lastLocation already holds the insertion point:
             // the usual reconnect window applies and a timeout leaves the body there. The copies keep
             // insurance marks and armory items for a rejoin; armory items never reach a saved loadout.

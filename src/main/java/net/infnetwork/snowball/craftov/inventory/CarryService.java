@@ -234,26 +234,29 @@ public final class CarryService {
     /**
      * Puts the item held on the cursor (inventory screen open) back into the carry cells; a packed
      * rig or backpack is worn again if its slot is free. The cursor is empty afterwards. Returns what
-     * did not fit, or null.
+     * did not fit, or null. The one way the cursor is settled: on closing the inventory and on
+     * logging off (CarryListener), before an extraction is counted, on the way home from a raid and
+     * before an explicit lobby loadout capture. Calling it again finds the cursor empty.
      */
     public @Nullable ItemStack reclaimCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();
         if (cursor.isEmpty()) {
             return null;
         }
+        ItemStack moving = cursor.clone();
         player.setItemOnCursor(null);
-        if (ItemFactory.isUi(cursor)) {
+        if (ItemFactory.isUi(moving)) {
             return null;
         }
-        ItemDef def = items.defOf(cursor);
-        if (def != null && def.isContainer() && ItemFactory.hasContents(cursor)) {
+        ItemDef def = items.defOf(moving);
+        if (def != null && def.isContainer() && ItemFactory.hasContents(moving)) {
             ItemStack worn = player.getInventory().getItem(containerSlot(def.category()));
             if (worn == null || worn.isEmpty()) {
-                equip(player, cursor);
+                equip(player, moving);
                 return null;
             }
         }
-        return give(player, cursor, false);
+        return give(player, moving, false);
     }
 
     /**

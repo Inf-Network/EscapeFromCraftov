@@ -352,30 +352,11 @@ public final class CarryListener implements Listener {
      * on the range and while downed, and for a gun even by a raider who is up (a throw that does not
      * come from a click is a reload), and a refused throw is put back with addItem, which deletes
      * whatever has no room. A packed rig or backpack must not land in a cell either. So the cursor is
-     * always settled here: a packed container goes back on when its slot is free, anything else goes
-     * into a free cell, and what has no room is spilled (mailed outside a raid, dropped at the
-     * player's feet in one).
+     * always settled here ({@link CarryService#reclaimCursor}): a packed container goes back on when
+     * its slot is free, anything else goes into a free cell, and what has no room is spilled (mailed
+     * outside a raid, dropped at the player's feet in one).
      */
     private void settleCursor(Player player) {
-        ItemStack cursor = player.getItemOnCursor();
-        if (cursor.isEmpty()) {
-            return;
-        }
-        if (ItemFactory.isUi(cursor)) {
-            player.setItemOnCursor(null);
-            return;
-        }
-        boolean packed = ItemFactory.hasContents(cursor);
-        ItemStack moving = cursor.clone();
-        player.setItemOnCursor(null);
-        ItemDef def = items.defOf(moving);
-        if (packed && def != null && def.isContainer()) {
-            ItemStack worn = player.getInventory().getItem(CarryService.containerSlot(def.category()));
-            if (worn == null || worn.isEmpty()) {
-                carry.equip(player, moving);
-                return;
-            }
-        }
-        carry.give(player, moving, true);
+        carry.spill(player, carry.reclaimCursor(player));
     }
 }

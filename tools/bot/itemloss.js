@@ -482,7 +482,7 @@ async function preset () {
   await prepare(name, p => { p.loadout = loadout; p.presets = []; p.stash = [] })
   let bot = await make(name)
   let menu = await openWindow(bot, () => bot.chat('/cv'))
-  const presets = await openWindow(bot, () => bot.clickWindow(19, 0, 0))
+  const presets = await openWindow(bot, () => bot.clickWindow(21, 0, 0))
   await bot.clickWindow(10, 0, 0) // save the current loadout
   await sleep(600)
   bot.closeWindow(presets || menu)
@@ -497,7 +497,7 @@ async function preset () {
   writeProfile(name, p0)
   bot = await make(name)
   menu = await openWindow(bot, () => bot.chat('/cv'))
-  const again = await openWindow(bot, () => bot.clickWindow(19, 0, 0))
+  const again = await openWindow(bot, () => bot.clickWindow(21, 0, 0))
   await bot.clickWindow(10, 0, 0) // load it
   await sleep(800)
   bot.closeWindow(again || menu)
@@ -523,7 +523,7 @@ async function season () {
   })
   const bot = await make(name)
   await openWindow(bot, () => bot.chat('/cv'))
-  const pass = await openWindow(bot, () => bot.clickWindow(33, 0, 0))
+  const pass = await openWindow(bot, () => bot.clickWindow(24, 0, 0))
   await bot.clickWindow(20, 0, 0) // tier 12: two military med cases
   await sleep(600)
   bot.closeWindow(pass)

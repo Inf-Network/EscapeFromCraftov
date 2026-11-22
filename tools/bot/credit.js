@@ -249,12 +249,12 @@ function nextWindow (bot, action) {
   })
 }
 
-/** `payer`, in the lobby, puts a bounty on `target`: main menu, 悬赏榜 (slot 32), the target's head. */
+/** `payer`, in the lobby, puts a bounty on `target`: main menu, 悬赏榜 (slot 25), the target's head. */
 async function placeBounty (payer, target) {
   await rcon(`cv money ${payer.username} 20000`)
   const main = await nextWindow(payer, () => payer.chat('/cv menu'))
   if (!main) return false
-  const board = await nextWindow(payer, () => payer.clickWindow(32, 0, 0))
+  const board = await nextWindow(payer, () => payer.clickWindow(25, 0, 0))
   if (!board) return false
   await sleep(300)
   const slot = board.slots.findIndex((s, i) => i >= 9 && i < 36 && s && JSON.stringify(s.components || '').includes(target.username))

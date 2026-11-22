@@ -192,7 +192,7 @@ async function kit () {
   await sleep(1500)
   let w = await openWith(k, () => k.chat('/cv'))
   let mark = k.msgs.length
-  await k.clickWindow(25, 0, 0)
+  await k.clickWindow(30, 0, 0)
   check('kit: new account without gear (about ◈180,000 left) can claim the free kit', !!await heard(k, /已领取免费补给/, mark))
   k.closeWindow(w)
   await sleep(500)
@@ -240,7 +240,7 @@ async function kit () {
   await sleep(1500)
   w = await openWith(r, () => r.chat('/cv'))
   mark = r.msgs.length
-  await r.clickWindow(25, 0, 0)
+  await r.clickWindow(30, 0, 0)
   const refused = await heard(r, /总资产|已领取免费补给/, mark)
   check('kit: an account with a stash worth over ◈1,000,000 is refused, with the reason', /总资产/.test(refused || ''), refused)
   r.closeWindow(w)
@@ -370,7 +370,7 @@ async function overfull () {
   await sleep(1500)
   const w = await openWith(o, () => o.chat('/cv'))
   const mark = o.msgs.length
-  await o.clickWindow(25, 0, 0)
+  await o.clickWindow(30, 0, 0)
   const line = await heard(o, /已领取免费补给|仓库空间不足|不能领取|总资产/, mark)
   check('overfull: with the stash over capacity and nothing to store, the free kit is handed out', /已领取免费补给/.test(line || ''), line)
   o.closeWindow(w)

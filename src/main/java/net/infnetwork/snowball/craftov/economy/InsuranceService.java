@@ -184,13 +184,15 @@ public final class InsuranceService {
     /**
      * Sends home everything in the stack that is insured for this raid. Returns what stays behind:
      * the stack itself when nothing was, a rebuilt one when only something packed inside it was, and
-     * null when all of it went.
+     * null when all of it went. The stack is read in its in-raid form, so a proving-ground armory
+     * rig or backpack (which has no stored form) is searched too, and what stays behind keeps its
+     * armory items and marks.
      */
     private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
         if (stack == null || stack.isEmpty()) {
             return stack;
         }
-        ItemRecord record = plugin.items().toRecord(stack);
+        ItemRecord record = plugin.items().packRecord(stack);
         if (record == null || !insuredIn(raid, record)) {
             return stack;
         }
@@ -211,8 +213,8 @@ public final class InsuranceService {
             record.contents.removeIf(child -> claim(raid, child, returns) == null);
         }
         UUID owner = owner(raid, record.insured);
-        if (owner == null) {
-            return record;
+        if (owner == null || record.isTest()) {
+            return record; // not insured here; an armory item never leaves its raid, mark or not
         }
         limitTo(record, record.insuredAs);
         record.uninsure(); // no mark goes to the mailbox

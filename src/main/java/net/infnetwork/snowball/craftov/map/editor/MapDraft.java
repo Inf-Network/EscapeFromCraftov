@@ -14,6 +14,8 @@ final class MapDraft {
     String template;
     int raidMinutes = 25;
     String time = "day";
+    /** Test map: hidden from players without test access. */
+    boolean test;
     Pos camera;
     double minX = Double.NaN, minZ = Double.NaN, maxX = Double.NaN, maxZ = Double.NaN;
     final List<MapDef.SpawnDef> spawns = new ArrayList<>();
@@ -32,6 +34,7 @@ final class MapDraft {
         d.template = def.template();
         d.raidMinutes = Math.max(5, def.raidSeconds() / 60);
         d.time = def.timeOfDay();
+        d.test = def.test();
         d.camera = def.camera();
         if (def.minX() > -9000) {
             d.minX = def.minX();
@@ -84,6 +87,6 @@ final class MapDraft {
         Pos cam = camera != null ? camera : new Pos((x0 + x1) / 2, 120, (z0 + z1) / 2, 0);
         return new MapDef(id, name, description, template, raidMinutes * 60, cam, List.copyOf(spawns), List.copyOf(extracts),
                 List.copyOf(containers), List.copyOf(ai), List.copyOf(bosses), List.copyOf(doors), List.copyOf(switches),
-                x0, z0, x1, z1, time);
+                x0, z0, x1, z1, time, test);
     }
 }

@@ -203,6 +203,10 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能存入仓库"));
                 continue;
             }
+            if (ItemFactory.isTest(current)) {
+                viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能存入仓库"));
+                continue;
+            }
             ItemRecord record = plugin.items().toRecord(current);
             if (record == null) {
                 continue;

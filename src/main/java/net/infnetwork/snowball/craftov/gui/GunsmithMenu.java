@@ -114,7 +114,7 @@ final class GunsmithMenu extends Menu {
             ItemStack stack = inv.getItem(slot);
             ItemDef def = plugin.items().defOf(stack);
             String why = misfit(spec, def);
-            boolean sameKind = ItemFactory.isRange(stack) == ItemFactory.isRange(gun);
+            boolean sameKind = kind(stack) == kind(gun);
             ItemStack icon = stack.clone();
             icon.setAmount(1);
             List<String> note = new ArrayList<>();
@@ -122,7 +122,7 @@ final class GunsmithMenu extends Menu {
             if (why != null) {
                 note.add("<#FF8A80>" + why);
             } else if (!sameKind) {
-                note.add(ItemFactory.isRange(gun) ? "<#FF8A80>靶场武器只能装靶场的配件" : "<#FF8A80>靶场配件只能装在靶场武器上");
+                note.add("<#FF8A80>" + mixNote(gun, stack));
             } else {
                 note.add("<#5BD16B>点击安装");
             }
@@ -163,8 +163,8 @@ final class GunsmithMenu extends Menu {
             viewer.sendActionBar(Text.mm("<#FF8A80>" + Text.escape(partDef.name()) + " " + why));
             return;
         }
-        if (ItemFactory.isRange(gun) != ItemFactory.isRange(part)) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器和自己的配件不能混装"));
+        if (kind(gun) != kind(part)) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>" + mixNote(gun, part)));
             return;
         }
         plugin.weapons().reset(viewer);
@@ -173,7 +173,7 @@ final class GunsmithMenu extends Menu {
         part.setAmount(part.getAmount() - 1);
         inv.setItem(partSlot, part.getAmount() > 0 ? part : null);
         inv.setItem(selected, refit(gun, slot, partDef.id()));
-        giveBack(old, ItemFactory.isRange(gun));
+        giveBack(old, gun);
         viewer.playSound(viewer.getLocation(), "craftov:gun.reload_done", 0.8f, 1.2f);
         viewer.sendActionBar(Text.mm("<#5BD16B>已安装 " + partDef.coloredName()));
         plugin.tutorial().done(viewer, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.GUNSMITH);
@@ -189,7 +189,7 @@ final class GunsmithMenu extends Menu {
         }
         plugin.weapons().reset(viewer);
         inv.setItem(selected, refit(gun, slot, null));
-        giveBack(old, ItemFactory.isRange(gun));
+        giveBack(old, gun);
         viewer.playSound(viewer.getLocation(), "craftov:gun.mode", 0.8f, 1f);
         redraw();
     }
@@ -207,18 +207,40 @@ final class GunsmithMenu extends Menu {
             plugin.items().setAmmo(out, capacity, type);
             ItemStack spare = type == null || ItemFactory.isRange(out) ? null : plugin.items().create(type, ammo - capacity);
             if (spare != null) {
-                plugin.carry().give(viewer, spare, true);
+                plugin.carry().give(viewer, ItemFactory.isTest(out) ? plugin.items().markTest(spare) : spare, true);
             }
         }
         return out;
     }
 
-    private void giveBack(@Nullable String partId, boolean range) {
+    /** A part taken off a gun is of the gun's kind: kinds never mix, so that is what was fitted. */
+    private void giveBack(@Nullable String partId, ItemStack gun) {
         ItemDef def = plugin.registry().get(partId);
         if (def == null) {
             return;
         }
         ItemStack stack = plugin.items().create(def, 1);
-        plugin.carry().give(viewer, range ? plugin.items().markRange(stack) : stack, true);
+        if (ItemFactory.isRange(gun)) {
+            plugin.items().markRange(stack);
+        } else if (ItemFactory.isTest(gun)) {
+            plugin.items().markTest(stack);
+        }
+        plugin.carry().give(viewer, stack, true);
+    }
+
+    /**
+     * Range loaners, proving-ground armory items and the player's own items only take parts of their own
+     * kind. Otherwise a part fitted to a loaner would be lost with it, and an armory part fitted to an own
+     * gun would leave the raid inside it.
+     */
+    private static int kind(@Nullable ItemStack stack) {
+        return ItemFactory.isRange(stack) ? 1 : ItemFactory.isTest(stack) ? 2 : 0;
+    }
+
+    private static String mixNote(ItemStack gun, ItemStack part) {
+        if (ItemFactory.isRange(gun) || ItemFactory.isRange(part)) {
+            return ItemFactory.isRange(gun) ? "靶场武器只能装靶场的配件" : "靶场配件只能装在靶场武器上";
+        }
+        return ItemFactory.isTest(gun) ? "试验场武器只能装试验场的配件" : "试验场配件只能装在试验场武器上";
     }
 }

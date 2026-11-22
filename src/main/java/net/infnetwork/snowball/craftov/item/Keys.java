@@ -23,6 +23,8 @@ public final class Keys {
     public static final NamespacedKey INSURED = key("insured");
     /** Shooting-range loaner: never stored, sold or carried out of the range. */
     public static final NamespacedKey RANGE = key("range");
+    /** Proving-ground armory item: usable in its raid, never stored, sold or carried home. */
+    public static final NamespacedKey TEST = key("test");
     /** Marks UI-only stacks (locked slots, menu buttons) that must never leave their slot. */
     public static final NamespacedKey UI = key("ui");
     /** Marks Craftov-managed entities (containers, corpses, AI) with their role. */

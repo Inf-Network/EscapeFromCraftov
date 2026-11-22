@@ -85,7 +85,9 @@ public final class CraftovCommand implements TabExecutor {
             case "queue" -> {
                 if (player != null && args.length >= 3) {
                     RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
-                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]), true);
+                    // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]
+                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
+                            args.length < 6 || Boolean.parseBoolean(args[5]));
                 }
             }
             default -> {
@@ -240,6 +242,11 @@ public final class CraftovCommand implements TabExecutor {
             case "end" -> {
                 for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
                     if (args.length < 2 || raid.id.equalsIgnoreCase(args[1])) {
+                        if (raid.state != Raid.State.RUNNING) {
+                            // Deploying sets startTick, which would undo this.
+                            Text.send(sender, "<#FF8A80>" + raid.id + " 还在加载，稍后再试。");
+                            continue;
+                        }
                         raid.startTick = Bukkit.getCurrentTick() - raid.map.raidSeconds() * 20L;
                         Text.send(sender, "<#FFC23D>已结束 " + raid.id);
                     }
@@ -283,7 +290,7 @@ public final class CraftovCommand implements TabExecutor {
                         Text.send(p, "<#F2E6C8>地图编辑器");
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|camera <值>"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|test|camera <值>"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard"));
                     }
                 }
@@ -365,7 +372,7 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("start")) {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
-            out.addAll(List.of("name", "description", "minutes", "time", "camera"));
+            out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         }

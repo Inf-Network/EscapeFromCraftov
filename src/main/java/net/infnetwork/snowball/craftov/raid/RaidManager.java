@@ -841,7 +841,7 @@ public final class RaidManager implements Listener {
             if (kr != null) {
                 kr.kills++;
                 plugin.tasks().onPlayerKill(killer);
-                plugin.bounties().onKill(killer, player, raid);
+                plugin.bounties().onKill(killer, rp, raid);
                 killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(player.getName())));
             }
         }

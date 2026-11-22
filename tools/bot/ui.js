@@ -12,7 +12,9 @@
 //              chat line anyone gets starts with "[Craftov]", and no two action bars (countdowns
 //              aside) come less than 10 ticks apart.
 //   settle     the extracting bot gets the black-curtain title, then the world change, then the
-//              settlement screen ("行动结算") within 3 s of arriving.
+//              settlement screen ("行动结算") within 3 s of arriving. Entering the raid, the curtain
+//              comes before the world change too, and no other title replaces it within its 28 ticks
+//              (the map's name waits until it has lifted).
 //   squad      two bots in a party deploy as a trio: each one's squad bar (`cv hud`) lists the other
 //              with their health; when one goes down the other's alert banner says so, and the
 //              squad bar shows "倒地".
@@ -135,10 +137,20 @@ async function channels () {
   const [A, B, C] = [await join('UiA'), await join('UiB'), await join('UiC')]
   const all = [A, B, C]
   const before = all.map(b => b.worldChanges)
+  const entryMark = A.events.length
   for (const b of all) b.chat('/cv queue proving NORMAL SOLO')
   const inRaid = await waitFor(() => all.every((b, i) => b.worldChanges > before[i] && b.game.gameMode === 'adventure'), 120000)
   check('three solo bots land in one proving-ground raid', inRaid)
   if (!inRaid) { all.forEach(b => b.quit()); return }
+  // Entering: the curtain comes before the jump into the raid world and stays its full time (in 4,
+  // hold 14, out 10 ticks) before any other title takes its place.
+  const entry = A.events.slice(entryMark)
+  const cur = entry.findIndex(e => e.kind === 'title' && /|\\ue0ff/i.test(e.text))
+  const jump = entry.findIndex((e, i) => i > cur && e.kind === 'world')
+  const after = entry.findIndex((e, i) => i > cur && e.kind === 'title')
+  check('entering: curtain, then the jump into the raid world', cur >= 0 && jump > cur, entry.map(e => e.kind))
+  check('entering: no other title cuts the curtain short', cur >= 0 && after > cur && entry[after].at - entry[cur].at >= 1350,
+    cur >= 0 && after > cur ? `${entry[after].at - entry[cur].at} ms` : 'no title after the curtain')
   await sleep(4000) // spawn protection
   const barsFrom = A.bars.length
   // B dies (no killer: Craftov cancels a bare player-on-player hit, and credit.js covers the killer's feed).

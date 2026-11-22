@@ -32,6 +32,17 @@ public final class Cinematic {
 
     private static final int DURATION = 130;
     private static final int STEP = 2;
+    /** The black curtain over the jump into the raid world: fade in, hold and fade out, in ticks. */
+    private static final int CURTAIN_IN = 4;
+    private static final int CURTAIN_STAY = 14;
+    private static final int CURTAIN_OUT = 10;
+    /**
+     * The flight step at which the map's name comes up: once the curtain is gone, since a new title
+     * replaces the one on screen and the curtain is a title. A multiple of STEP.
+     */
+    private static final int NAME_AT = CURTAIN_IN + CURTAIN_STAY + CURTAIN_OUT;
+    /** The squad line, as the map's name fades out. */
+    private static final int SQUAD_AT = 86;
 
     private Cinematic() {
     }
@@ -59,7 +70,7 @@ public final class Cinematic {
         });
         for (Player player : players) {
             // A black curtain over the jump into the raid world, so its loading never shows.
-            net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, 4, 14, 10);
+            net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, CURTAIN_IN, CURTAIN_STAY, CURTAIN_OUT);
             player.setGameMode(GameMode.SPECTATOR);
             player.teleport(camera.getLocation());
         }
@@ -135,11 +146,11 @@ public final class Cinematic {
                 if (player.getSpectatorTarget() != camera) {
                     player.setSpectatorTarget(camera);
                 }
-                if (now == 4) {
+                if (now == NAME_AT) {
                     player.showTitle(Title.title(Text.mm("<b><text>" + Text.escape(raid.map.name())),
-                            Text.mm(tierLine + (isRanked(raid, player) ? " · <accent>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2600), Duration.ofMillis(600))));
+                            Text.mm(tierLine + (isRanked(raid, player) ? " · <accent>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2000), Duration.ofMillis(600))));
                     player.playSound(player.getLocation(), "craftov:ui.cinematic", SoundCategory.MASTER, 1f, 1f);
-                } else if (now == 70) {
+                } else if (now == SQUAD_AT) {
                     player.showTitle(Title.title(Text.mm(""), Text.mm("<muted>第 " + squadNumber + " 小队 · 正在接近渗透点"),
                             Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(300))));
                 }

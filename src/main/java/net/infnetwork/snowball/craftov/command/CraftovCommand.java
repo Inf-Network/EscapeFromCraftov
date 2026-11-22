@@ -288,7 +288,7 @@ public final class CraftovCommand implements TabExecutor {
                         Text.send(p, "<#F2E6C8>地图编辑器");
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|camera <值>"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|test|camera <值>"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard"));
                     }
                 }
@@ -342,7 +342,7 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("start")) {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
-            out.addAll(List.of("name", "description", "minutes", "time", "camera"));
+            out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         }

@@ -1064,9 +1064,12 @@ public final class RaidManager implements Listener {
                     plugin.lobby().captureLoadout(player);
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
+                    // Own items from an armory rig or backpack that find no free pocket go to the mailbox.
+                    List<ItemRecord> homeless = new ArrayList<>();
+                    Map<Integer, ItemRecord> inv = CarryService.persistent(rp.disconnectedInventory, homeless);
                     plugin.profiles().edit(rp.uuid, profile -> {
-                        profile.loadout = new HashMap<>(inv);
+                        profile.loadout = inv;
+                        profile.mailbox.addAll(homeless);
                         profile.secure = new ArrayList<>(rp.secure);
                         profile.activeRaid = null;
                     });
@@ -1282,12 +1285,13 @@ public final class RaidManager implements Listener {
     }
 
     private void useKey(Player player, Raid raid, String doorKey, Block door, String lock) {
+        // A free proving-ground armory copy of the key wears out before the player's own one does.
         ItemStack key = null;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
-            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())) {
+            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())
+                    && (key == null || ItemFactory.isTest(stack) && !ItemFactory.isTest(key))) {
                 key = stack;
-                break;
             }
         }
         if (key == null) {
@@ -1394,7 +1398,8 @@ public final class RaidManager implements Listener {
             return;
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
-            rp.disconnectedInventory = plugin.carry().snapshot(player);
+            // Armory items are kept for a rejoin; they still never reach the saved loadout.
+            rp.disconnectedInventory = plugin.carry().raidSnapshot(player);
             rp.lastLocation = rp.state == RaidPlayer.State.ALIVE ? player.getLocation() : null;
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();

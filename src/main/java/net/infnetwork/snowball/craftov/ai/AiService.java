@@ -704,6 +704,12 @@ public final class AiService implements Listener {
             }
             return;
         }
+        if (bot.lastSeen != null) {
+            // The chase is over. A rival operator kept lastSeen for the rest of the raid and never
+            // looted or followed its leader again; now it picks its next container afresh.
+            bot.lastSeen = null;
+            bot.looting = null;
+        }
         if (bot.alertPos != null && now < bot.alertUntil) {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 Location toward = bot.alertPos.clone();

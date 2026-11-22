@@ -272,18 +272,22 @@ async function cut (attacker, sel, part, height, filter) {
     const share = { head: 0.92, chest: 0.64, leg: 0.2 }[part]
     await attacker.lookAt(entity.position.offset(0, height * share, 0), true)
   }
+  // The look wanted, kept now: placeAttacker's tp turns the bot level (pitch 0), and when its
+  // position packet reaches the bot after the look above, the bot's own pitch is level again.
+  const want = { yaw: attacker.entity.yaw, pitch: attacker.entity.pitch }
   await sleep(250)
-  // The cut lands where the server thinks the attacker looks. placeAttacker's tp turns it level
-  // (pitch 0), and a look sent too soon after can be lost, which turns a chest cut into a head cut:
-  // wait until the server has the pitch (Minecraft's pitch is down-positive, mineflayer's up-positive).
-  const pitch = -attacker.entity.pitch * 180 / Math.PI
+  // The cut lands where the server thinks the attacker looks, and a look sent too soon after the tp
+  // can be lost, which turns a chest cut into a head cut: wait until the server has the pitch wanted
+  // (Minecraft's pitch is down-positive, mineflayer's up-positive), sending that look again if not.
+  const pitch = -want.pitch * 180 / Math.PI
   let seen = null
-  for (let n = 0; n < 8; n++) {
+  // Up to 3 s: until the bot confirms the tp the server ignores its looks.
+  for (let n = 0; n < 20; n++) {
     seen = await dataNumber(attacker.username, 'Rotation[1]')
     if (seen !== null && Math.abs(seen - pitch) < 1.5) break
     log(`  the server has pitch ${rd(seen)}, the look is ${rd(pitch)}: sending it again`)
-    await attacker.look(attacker.entity.yaw, attacker.entity.pitch, true)
-    attacker.entity.pitch += 1e-4 // a changed angle makes mineflayer send the look again
+    // A slightly changed angle makes mineflayer send the look even if it thinks it is there.
+    await attacker.look(want.yaw, want.pitch + (n + 1) * 1e-4, true)
     await sleep(150)
   }
   const before = await health(sel)

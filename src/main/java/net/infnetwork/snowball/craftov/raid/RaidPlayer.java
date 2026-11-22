@@ -68,6 +68,10 @@ public final class RaidPlayer {
     public int containersSearched;
     /** Personal luck in this raid: containers searched, hand-outs (LuckService). */
     public final LuckSession luck = new LuckSession();
+    /** Squadmates this player revived (the luck behaviour score counts it as cooperation). */
+    public int revives;
+    /** Deployed as an escort on someone else's contract (not as its client). */
+    public boolean escorting;
 
     public RaidPlayer(UUID uuid, String name, int squad, boolean ranked) {
         this.uuid = uuid;

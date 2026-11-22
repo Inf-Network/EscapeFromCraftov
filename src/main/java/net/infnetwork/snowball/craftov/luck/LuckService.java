@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.item.Rarity;
 import net.infnetwork.snowball.craftov.loot.LootService;
@@ -18,10 +19,15 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -37,19 +43,29 @@ import java.util.concurrent.ThreadLocalRandom;
  *       raids ({@code luck.jackpot}): after {@code hard-raids} raids without one, the first container
  *       of the next raid that can hold a red item hands it out. Finding one in any way (searched,
  *       picked up or handed out), carried out or not, starts its count again.</li>
+ *   <li>A <b>quota pool</b> (工资, {@code luck.quota}) that every qualifying raid pays into by time
+ *       and searches, times the tier's factor and a behaviour multiplier from the last qualifying
+ *       raids ({@code luck.behaviour}: profit against losses, kills against deaths and how often a
+ *       red came out slow it down, cooperation speeds it up). Once it covers a gold or red item the
+ *       container could hold, a search may hand that out and take its value. It is capped and wastes
+ *       away while the player stays away.</li>
  * </ul>
  *
  * <p>A hand-out is one item more, put hidden into the container being searched so it is revealed
- * like the rest; at most one per container. A container counts once per player, and only when it
- * still had something hidden when they opened it. The proving ground (test maps) counts for
- * nothing, and neither does the range, which is no raid. A raid counts for raid-based pity only
- * when the player spent {@code luck.qualify.min-seconds} in it and searched
- * {@code luck.qualify.min-searches} containers. Every hand-out is logged.
+ * like the rest; at most one per container. One its player does not carry out themselves (death,
+ * missing) pays {@code luck.quota.refund} of its value back into their quota when the raid closes,
+ * unless someone else carried it out. A container counts once per player, and only when it still
+ * had something hidden when they opened it. The proving ground (test maps) counts for nothing,
+ * and neither does the range, which is no raid. A raid pays into the quota, counts for raid-based
+ * pity and joins the behaviour history only when the player spent {@code luck.qualify.min-seconds}
+ * in it and searched {@code luck.qualify.min-searches} containers. Every hand-out and refund is
+ * logged.
  */
 public final class LuckService {
 
     /** Rarities with a pity count, the rarest first (the order hand-outs are tried in). */
     private static final List<Rarity> PITY = List.of(Rarity.RED, Rarity.GOLD);
+    private static final long DAY = 24L * 60 * 60 * 1000;
 
     private final CraftovPlugin plugin;
 
@@ -84,6 +100,14 @@ public final class LuckService {
         return Math.max(1, cfg().getInt("luck.jackpot.hard-raids", 1000));
     }
 
+    public long quotaCap() {
+        return Math.max(0, cfg().getLong("luck.quota.cap", 1500000));
+    }
+
+    private long minItemValue() {
+        return Math.max(1, cfg().getLong("luck.quota.min-item-value", 100000));
+    }
+
     /**
      * Chance that a search hands out a rarity whose pity count (this search included) is
      * {@code count}: none up to soft, then rising in step to certain at hard.
@@ -114,10 +138,108 @@ public final class LuckService {
         return cfg().getDouble("luck.jackpot.soft-chance", 0.02) * (raids - soft + 1) / (hard - soft);
     }
 
-    /** A raid counts for raid-based pity only with this much time and this many own searches in it. */
+    private int seconds(RaidPlayer rp) {
+        return (int) ((Bukkit.getCurrentTick() - rp.startTick) / 20);
+    }
+
+    /** A raid counts for the quota, raid-based pity and the behaviour score only with this much in it. */
     public boolean qualifies(RaidPlayer rp) {
-        int seconds = (int) ((Bukkit.getCurrentTick() - rp.startTick) / 20);
-        return seconds >= cfg().getInt("luck.qualify.min-seconds", 240) && rp.luck.searches >= cfg().getInt("luck.qualify.min-searches", 3);
+        return seconds(rp) >= cfg().getInt("luck.qualify.min-seconds", 240) && rp.luck.searches >= cfg().getInt("luck.qualify.min-searches", 3);
+    }
+
+    // ------------------------------------------------------------------ quota
+
+    /** Adds to the quota up to the cap; a pool an admin set above the cap is never cut back by it. */
+    public void addQuota(Profile.Luck luck, long amount) {
+        luck.quota = Math.max(luck.quota, Math.min(quotaCap(), luck.quota + Math.max(0, amount)));
+    }
+
+    /**
+     * Takes idle decay off the quota: after luck.quota.decay-after-days without a raid that counts,
+     * it loses decay-per-day of itself a day (prorated), up to {@code now}.
+     */
+    public void decay(Profile.Luck luck, long now) {
+        if (luck.quota > 0 && luck.playedAt > 0) {
+            long idleFrom = luck.playedAt + Math.round(cfg().getDouble("luck.quota.decay-after-days", 3) * DAY);
+            long from = Math.max(idleFrom, luck.quotaAt);
+            double rate = Math.max(0, Math.min(1, cfg().getDouble("luck.quota.decay-per-day", 0.1)));
+            if (now > from && rate > 0) {
+                luck.quota = Math.round(luck.quota * Math.pow(1 - rate, (now - from) / (double) DAY));
+            }
+        }
+        luck.quotaAt = Math.max(luck.quotaAt, now);
+    }
+
+    /**
+     * The behaviour score over the last luck.behaviour.raids qualifying raids and the multiplier it
+     * gives the quota income. Each part is within -1..1 (cooperation 0..1); with no raids yet all
+     * are 0 and the multiplier is 1.
+     */
+    public record Behaviour(int raids, long gains, long losses, int kills, int deaths, int reds, int coop,
+                            double profit, double kd, double red, double cooperation, double multiplier) {
+    }
+
+    public Behaviour behaviour(Profile.Luck luck) {
+        int limit = Math.max(1, cfg().getInt("luck.behaviour.raids", 20));
+        int raids = 0;
+        long gains = 0;
+        long losses = 0;
+        int kills = 0;
+        int deaths = 0;
+        int reds = 0;
+        int coop = 0;
+        for (Profile.LuckRaid raid : luck.raids) {
+            if (!raid.qualified) {
+                continue;
+            }
+            if (raids >= limit) {
+                break;
+            }
+            raids++;
+            gains += Math.max(0, raid.net);
+            losses += Math.max(0, -raid.net);
+            kills += raid.kills;
+            deaths += raid.deaths;
+            reds += raid.red ? 1 : 0;
+            coop += raid.coop;
+        }
+        if (raids == 0) {
+            return new Behaviour(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+        }
+        double base = Math.max(1, cfg().getDouble("luck.behaviour.profit-base", 50000));
+        double profit = clamp(log2((gains + base) / (losses + base)) / Math.max(0.01, cfg().getDouble("luck.behaviour.profit-scale", 2.0)), -1, 1);
+        double kd = clamp(log2((kills + 1.0) / (deaths + 1.0)) / Math.max(0.01, cfg().getDouble("luck.behaviour.kd-scale", 2.0)), -1, 1);
+        double red = clamp((reds / (double) raids - cfg().getDouble("luck.behaviour.red-baseline", 0.15))
+                / Math.max(0.01, cfg().getDouble("luck.behaviour.red-scale", 0.3)), -1, 1);
+        double cooperation = clamp(coop / (double) raids / Math.max(0.01, cfg().getDouble("luck.behaviour.coop-target", 1.0)), 0, 1);
+        double m = 1 - cfg().getDouble("luck.behaviour.profit-weight", 0.4) * profit
+                - cfg().getDouble("luck.behaviour.kd-weight", 0.15) * kd
+                - cfg().getDouble("luck.behaviour.red-weight", 0.3) * red
+                + cfg().getDouble("luck.behaviour.coop-weight", 0.25) * cooperation;
+        double min = cfg().getDouble("luck.behaviour.min", 0.3);
+        double max = Math.max(min, cfg().getDouble("luck.behaviour.max", 2.0));
+        return new Behaviour(raids, gains, losses, kills, deaths, reds, coop, profit, kd, red, cooperation, clamp(m, min, max));
+    }
+
+    /**
+     * What a qualifying raid pays into the quota: (minutes x per-minute + own searches x per-search),
+     * each capped, times the tier's factor (luck.quota.tier, else 1 + 0.5 x its loot shift) and the
+     * behaviour multiplier.
+     */
+    public long income(Raid raid, int seconds, int searches, double multiplier) {
+        double minutes = Math.min(seconds / 60.0, cfg().getDouble("luck.quota.max-minutes", 30));
+        int counted = Math.min(searches, cfg().getInt("luck.quota.max-searches", 30));
+        double tier = cfg().getDouble("luck.quota.tier." + raid.tier.id(), 1.0 + 0.5 * raid.tier.lootShift());
+        double base = minutes * cfg().getDouble("luck.quota.per-minute", 1500) + counted * cfg().getDouble("luck.quota.per-search", 1200);
+        return Math.max(0, Math.round(base * tier * multiplier));
+    }
+
+    private static double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    private static double log2(double v) {
+        return Math.log(v) / Math.log(2);
     }
 
     // ------------------------------------------------------------------ searching
@@ -149,6 +271,7 @@ public final class LuckService {
         if (finds.isEmpty()) {
             return;
         }
+        decay(luck, System.currentTimeMillis());
         Random rng = ThreadLocalRandom.current();
         Choice choice = choose(luck, container, finds, rng);
         if (choice != null) {
@@ -179,6 +302,20 @@ public final class LuckService {
                 return new Choice(pool.get(rng.nextInt(pool.size())), "pity-" + rarity.name());
             }
         }
+        long min = minItemValue();
+        if (luck.quota >= min && rng.nextDouble() < cfg().getDouble("luck.quota.chance", 0.25)) {
+            List<ItemDef> affordable = new ArrayList<>();
+            for (List<ItemDef> pool : finds.values()) {
+                for (ItemDef def : pool) {
+                    if (def.value() >= min && def.value() <= luck.quota) {
+                        affordable.add(def);
+                    }
+                }
+            }
+            if (!affordable.isEmpty()) {
+                return new Choice(affordable.get(rng.nextInt(affordable.size())), "quota");
+            }
+        }
         return null;
     }
 
@@ -197,13 +334,16 @@ public final class LuckService {
             uid = fresh;
         }
         if (!container.addHidden(stack)) {
-            return; // full: nothing handed out
+            return; // full: nothing handed out, nothing spent
+        }
+        if (choice.source().equals("quota")) {
+            luck.quota -= def.value();
         }
         rp.luck.payouts.add(new LuckSession.Payout(uid, def.id(), choice.source(), def.value()));
         found(rp.luck, luck, def);
         plugin.getLogger().info("[luck] " + player.getName() + " is handed " + def.id() + " (◈" + def.value() + ", "
-                + choice.source() + ") in " + container.type.id() + " of raid " + raid.id + " (" + raid.map.id() + " "
-                + raid.tier.id() + ")");
+                + choice.source() + (choice.source().equals("quota") ? ", quota left ◈" + luck.quota : "") + ") in "
+                + container.type.id() + " of raid " + raid.id + " (" + raid.map.id() + " " + raid.tier.id() + ")");
     }
 
     /**
@@ -236,18 +376,133 @@ public final class LuckService {
     // ------------------------------------------------------------------ settlement
 
     /**
-     * The player's raid is over for them (extracted, dead or missing): a qualifying raid adds one to
-     * the raid count of every jackpot they did not find in it. {@code profile} may be an offline one
-     * being edited (missing).
+     * How the raid went for one player.
+     *
+     * @param net  change in what they own: what they carried out (or kept, dying) less what they
+     *             brought in, fees and a paid extraction
+     * @param red  carried out a red item they did not bring in
+     * @param coop revives given, extracting beside a squadmate, an escort job
+     * @param kept instance ids of everything they carried out or kept (secure container)
      */
-    public void settle(Raid raid, RaidPlayer rp, Profile profile) {
-        if (!counts(raid) || !qualifies(rp)) {
+    public record Outcome(boolean extracted, long net, boolean red, int coop, Set<String> kept) {
+    }
+
+    /**
+     * The player's raid is over for them (extracted, dead or missing). It joins their history; a
+     * qualifying one pays into the quota and adds one to the raid count of every jackpot they did
+     * not find in it. Hand-outs they did not carry out wait for the raid to close ({@link #closeRaid}).
+     * {@code profile} may be an offline one being edited (missing).
+     */
+    public void settle(Raid raid, RaidPlayer rp, Profile profile, Outcome outcome) {
+        if (!counts(raid)) {
             return;
         }
-        for (String id : plugin.loot().jackpots()) {
-            if (!rp.luck.jackpotsFound.contains(id)) {
-                profile.luck.jackpots.merge(id, 1, Integer::sum);
+        Profile.Luck luck = profile.luck;
+        long now = System.currentTimeMillis();
+        decay(luck, now);
+        raid.luck.kept.addAll(outcome.kept());
+        for (LuckSession.Payout payout : rp.luck.payouts) {
+            if (!outcome.kept().contains(payout.uid())) {
+                raid.luck.pending.add(new RaidLuck.Pending(rp.uuid, rp.name, payout));
             }
         }
+        boolean qualified = qualifies(rp);
+        Profile.LuckRaid line = new Profile.LuckRaid();
+        line.time = now;
+        line.tier = raid.tier.id();
+        line.net = outcome.net();
+        line.kills = rp.kills;
+        line.deaths = outcome.extracted() ? 0 : 1;
+        line.coop = outcome.coop();
+        line.red = outcome.red();
+        line.qualified = qualified;
+        luck.raids.add(0, line);
+        prune(luck, now);
+        if (qualified) {
+            for (String id : plugin.loot().jackpots()) {
+                if (!rp.luck.jackpotsFound.contains(id)) {
+                    luck.jackpots.merge(id, 1, Integer::sum);
+                }
+            }
+            addQuota(luck, income(raid, seconds(rp), rp.luck.searches, behaviour(luck).multiplier()));
+        }
+        luck.playedAt = now;
+    }
+
+    /** Keeps every raid within the loss window and the last luck.behaviour.raids qualifying ones. */
+    private void prune(Profile.Luck luck, long now) {
+        long window = Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000);
+        int keep = Math.max(1, cfg().getInt("luck.behaviour.raids", 20));
+        int qualified = 0;
+        for (Iterator<Profile.LuckRaid> it = luck.raids.iterator(); it.hasNext(); ) {
+            Profile.LuckRaid raid = it.next();
+            boolean recent = raid.time >= now - window;
+            boolean wanted = raid.qualified && qualified < keep;
+            if (raid.qualified) {
+                qualified++;
+            }
+            if (!recent && !wanted) {
+                it.remove();
+            }
+        }
+    }
+
+    /** Ids of things carried out: recorded somewhere in {@code records} (rig and backpack contents included). */
+    public Set<String> uids(Collection<ItemRecord> records) {
+        Set<String> out = new HashSet<>();
+        collectUids(records, out);
+        return out;
+    }
+
+    private static void collectUids(@Nullable Collection<ItemRecord> records, Set<String> out) {
+        if (records == null) {
+            return;
+        }
+        for (ItemRecord record : records) {
+            if (record.uid != null) {
+                out.add(record.uid);
+            }
+            collectUids(record.contents, out);
+        }
+    }
+
+    /** Whether {@code out} holds a red item (no rounds) whose instance id was not among {@code broughtIn}. */
+    public boolean redOut(Collection<ItemRecord> out, Set<String> broughtIn) {
+        for (ItemRecord record : out) {
+            ItemDef def = plugin.registry().get(record.id);
+            if (counted(def, Rarity.RED) && (record.uid == null || !broughtIn.contains(record.uid))) {
+                return true;
+            }
+            if (record.contents != null && redOut(record.contents, broughtIn)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Things carried home from a voided raid (evacuated, server stop): nobody gets a refund for them. */
+    public void keep(Raid raid, Collection<ItemRecord> records) {
+        collectUids(records, raid.luck.kept);
+    }
+
+    /**
+     * The raid is over: hand-outs their player did not carry out and nobody else did either pay
+     * luck.quota.refund of their value back into that player's quota.
+     */
+    public void closeRaid(Raid raid) {
+        double share = Math.max(0, cfg().getDouble("luck.quota.refund", 0.5));
+        for (RaidLuck.Pending pending : raid.luck.pending) {
+            LuckSession.Payout payout = pending.payout();
+            long back = Math.round(payout.value() * share);
+            if (raid.luck.kept.contains(payout.uid()) || back <= 0) {
+                continue;
+            }
+            plugin.profiles().edit(pending.player(), () -> "luck refund for " + payout.item() + " (" + payout.source()
+                    + ") not carried out of raid " + raid.id + ": luck.quota +" + back + " (up to luck.quota.cap)",
+                    profile -> addQuota(profile.luck, back));
+            plugin.getLogger().info("[luck] " + pending.name() + " did not carry out " + payout.item() + " (" + payout.source()
+                    + ") from raid " + raid.id + ": ◈" + back + " back into the quota");
+        }
+        raid.luck.pending.clear();
     }
 }

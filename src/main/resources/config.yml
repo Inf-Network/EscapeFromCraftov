@@ -469,8 +469,9 @@ search:
 # container; every hand-out is logged. Test maps (the proving ground) and the range count for nothing.
 luck:
   enabled: true
-  # A raid counts for the jackpot raid count only when the player was in it this long (seconds from
-  # deploy) and searched this many containers themselves: going in and out at once counts for nothing.
+  # A raid pays into the quota, counts for the jackpot raid count and joins the behaviour history only
+  # when the player was in it this long (seconds from deploy) and searched this many containers
+  # themselves: going in and out at once counts for nothing.
   qualify:
     min-seconds: 240
     min-searches: 3
@@ -491,6 +492,48 @@ luck:
     soft-raids: 700
     hard-raids: 1000
     soft-chance: 0.02
+  # Quota pool (工资). Each qualifying raid pays in (minutes x per-minute + own searches x
+  # per-search, each capped) x the tier's factor x the behaviour multiplier, never above cap (an admin
+  # can set more). Once it covers a gold or red item worth at least min-item-value that the container
+  # could hold, each search hands one out with this chance and takes its value. A hand-out (pity or
+  # quota) its player does not carry out pays refund x its value back in when the raid is over,
+  # unless someone else carried it out. After decay-after-days without a raid it loses decay-per-day
+  # of itself a day.
+  quota:
+    per-minute: 1500
+    per-search: 1200
+    max-minutes: 30
+    max-searches: 30
+    tier: { NORMAL: 1.0, CONFIDENTIAL: 1.5, SECRET: 2.0 }
+    min-item-value: 100000
+    chance: 0.25
+    refund: 0.5
+    cap: 1500000
+    decay-after-days: 3
+    decay-per-day: 0.1
+  # Behaviour score over the last `raids` qualifying raids, which the quota income is multiplied by:
+  #   1 - profit-weight x P - kd-weight x K - red-weight x R + coop-weight x C, held within min..max
+  #   P = log2((gains + profit-base) / (losses + profit-base)) / profit-scale, from each raid's net
+  #       result (what the player owns afterwards less before, fees included)
+  #   K = log2((player kills + 1) / (deaths + 1)) / kd-scale
+  #   R = (share of raids a red item they did not bring was carried out - red-baseline) / red-scale
+  #   C = (revives + getting out beside a squadmate + escort jobs) per raid / coop-target
+  # P, K and R are held within -1..1 and C within 0..1: unlucky, losing players earn up to 2x the
+  # base income, ones who keep making money and carrying out reds as little as 0.3x.
+  behaviour:
+    raids: 20
+    min: 0.3
+    max: 2.0
+    profit-weight: 0.4
+    profit-base: 50000
+    profit-scale: 2.0
+    kd-weight: 0.15
+    kd-scale: 2.0
+    red-weight: 0.3
+    red-baseline: 0.15
+    red-scale: 0.3
+    coop-weight: 0.25
+    coop-target: 1.0
 
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item

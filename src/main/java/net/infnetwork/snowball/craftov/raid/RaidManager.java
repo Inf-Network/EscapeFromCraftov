@@ -395,6 +395,7 @@ public final class RaidManager implements Listener {
         rp.startValue = plugin.carry().carriedValue(player) + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
+        rp.escorting = rp.escortContract != null && !plugin.escorts().isClient(rp.escortContract, player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
         player.closeInventory();
         plugin.health().setupPlayer(player, true);
@@ -714,7 +715,9 @@ public final class RaidManager implements Listener {
         long xp = Math.round((extractXp(rp) + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         plugin.tasks().onExtract(player, raid, profit);
-        plugin.luck().settle(raid, rp, profile);
+        long exitCost = point.def.type() == ExtractType.PAID ? point.def.cost() : 0;
+        plugin.luck().settle(raid, rp, profile, new net.infnetwork.snowball.craftov.luck.LuckService.Outcome(true,
+                profit - rp.fees - exitCost, plugin.luck().redOut(out, rp.gearUids), coop(raid, rp, player), plugin.luck().uids(out)));
         Profile.RaidReport report = report(raid, rp, "撤离成功 · " + point.def.name(), Math.max(0, profit), 0, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -747,6 +750,32 @@ public final class RaidManager implements Listener {
         double base = plugin.getConfig().getDouble("rank.extract-xp", 150);
         long min = plugin.getConfig().getLong("rank.extract-xp-min-gear", 15000);
         return min <= 0 ? base : base * Math.min(1.0, rp.gearValue / (double) min);
+    }
+
+    /**
+     * Cooperation in this raid for the luck behaviour score: revives given, an escort job, and
+     * getting out beside a squadmate (one already out, or one still in it within 16 blocks).
+     */
+    private int coop(Raid raid, RaidPlayer rp, Player player) {
+        int coop = rp.revives + (rp.escorting ? 1 : 0);
+        for (RaidPlayer mate : raid.squadOf(rp)) {
+            Player p = mate == rp ? null : Bukkit.getPlayer(mate.uuid);
+            if (mate != rp && (mate.state == RaidPlayer.State.EXTRACTED || mate.active() && p != null
+                    && p.getWorld() == player.getWorld() && p.getLocation().distanceSquared(player.getLocation()) <= 256)) {
+                return coop + 1;
+            }
+        }
+        return coop;
+    }
+
+    /**
+     * How a raid went for luck when the player died or went missing: they keep the secure container
+     * and the melee weapon, so what they own changed by that less what they brought in and paid.
+     */
+    private net.infnetwork.snowball.craftov.luck.LuckService.Outcome deathOutcome(RaidPlayer rp, @Nullable ItemStack melee) {
+        long kept = recordsValue(rp.secure) + (plugin.carry().isMelee(melee) ? plugin.items().value(melee) : 0);
+        return new net.infnetwork.snowball.craftov.luck.LuckService.Outcome(false, kept - rp.startValue - rp.fees, false,
+                rp.revives, plugin.luck().uids(rp.secure));
     }
 
     // ------------------------------------------------------------------ death
@@ -821,7 +850,7 @@ public final class RaidManager implements Listener {
         int rankDelta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
         long xp = Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
-        plugin.luck().settle(raid, rp, profile);
+        plugin.luck().settle(raid, rp, profile, deathOutcome(rp, melee));
         Profile.RaidReport report = report(raid, rp, reason, 0, lost, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -1001,7 +1030,7 @@ public final class RaidManager implements Listener {
             int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
             profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
             trimReports(profile);
-            plugin.luck().settle(raid, rp, profile);
+            plugin.luck().settle(raid, rp, profile, deathOutcome(rp, melee));
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
@@ -1351,6 +1380,7 @@ public final class RaidManager implements Listener {
     private void close(Raid raid) {
         raid.state = Raid.State.CLOSED;
         plugin.insurance().settle(raid);
+        plugin.luck().closeRaid(raid);
         spectators.values().removeIf(entry -> entry.getKey() == raid);
         for (Player player : raid.world.getPlayers()) {
             byPlayer.remove(player.getUniqueId());
@@ -1385,6 +1415,7 @@ public final class RaidManager implements Listener {
         out.addAll(plugin.carry().snapshot(player).values());
         out.addAll(rp.secure);
         rp.carriedOut = stackCounts(out);
+        plugin.luck().keep(raid, out);
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;
@@ -1423,6 +1454,12 @@ public final class RaidManager implements Listener {
                 }
             }
             raid.state = Raid.State.CLOSED;
+            try {
+                // Luck hand-outs the dead did not carry out, and that nobody took home, are refunded.
+                plugin.luck().closeRaid(raid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle luck refunds for raid " + raid.id, ex);
+            }
             try {
                 // As when a raid closes: insured gear still on bodies, in containers or on the ground
                 // goes back to its owners (all of it, at once, to those still in the raid). The world
@@ -1466,6 +1503,7 @@ public final class RaidManager implements Listener {
             if (flyingIn) {
                 profile.money += rp.fees;
             }
+            plugin.luck().keep(raid, plugin.carry().snapshot(player).values());
             plugin.lobby().enterLobbyKeepInventory(player);
             plugin.lobby().captureLoadout(player);
             Text.send(player, flyingIn && rp.fees > 0
@@ -1476,6 +1514,8 @@ public final class RaidManager implements Listener {
             // no free pocket go to the mailbox.
             List<ItemRecord> homeless = new ArrayList<>();
             Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
+            plugin.luck().keep(raid, inv.values());
+            plugin.luck().keep(raid, homeless);
             // Dropped out during the entry camera: like those still watching it, they never
             // landed, so the fees come back too.
             long refund = rp.inFlight ? rp.fees : 0;

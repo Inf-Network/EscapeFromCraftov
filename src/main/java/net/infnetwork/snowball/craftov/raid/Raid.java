@@ -50,6 +50,8 @@ public final class Raid {
     public boolean night;
     /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
     public long blackoutUntil;
+    /** Luck hand-outs carried out or waiting for a refund (LuckService). */
+    public final net.infnetwork.snowball.craftov.luck.RaidLuck luck = new net.infnetwork.snowball.craftov.luck.RaidLuck();
 
     public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;

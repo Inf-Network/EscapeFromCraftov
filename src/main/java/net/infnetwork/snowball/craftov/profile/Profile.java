@@ -141,6 +141,33 @@ public final class Profile {
         public Map<String, Integer> pity = new HashMap<>();
         /** Jackpot item id -> qualifying raids since the player last found it. */
         public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota pool (◈): what the player is owed as gold and red items. */
+        public long quota;
+        /** Time (epoch millis) up to which idle decay has been taken off the quota. */
+        public long quotaAt;
+        /** When the player last finished a raid that counts for luck (epoch millis). */
+        public long playedAt;
+        /**
+         * Raids that counted for luck, newest first: every one within the loss window
+         * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.
+         */
+        public List<LuckRaid> raids = new ArrayList<>();
+    }
+
+    /** One raid as luck remembers it (LuckService). */
+    public static final class LuckRaid {
+        public long time;
+        public String tier = "";
+        /** Change in what the player owns: carried out or kept, less brought in, fees and paid exits. */
+        public long net;
+        public int kills;
+        public int deaths;
+        /** Revives given, extracting beside a squadmate, escort jobs. */
+        public int coop;
+        /** Carried out a red item they did not bring in. */
+        public boolean red;
+        /** Long enough and with enough searches to count for the quota and the behaviour score. */
+        public boolean qualified;
     }
 
     /** A hideout production: recipe id and when it is done (epoch millis). */

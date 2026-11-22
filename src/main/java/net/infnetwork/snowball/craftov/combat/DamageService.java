@@ -55,8 +55,12 @@ public final class DamageService implements Listener {
     /** Default durability lost per point of a hit's damage, times the round's armor-damage. */
     private static final double WEAR = 0.3;
 
-    /** What the armour covering a part did to one hit. */
-    private record ArmorHit(double damageMult, boolean penetrated) {
+    /**
+     * What the armour covering a part did to one hit: the share of its damage that gets through,
+     * whether it reached the body (for bleeding), and whether there was armour to strike at all.
+     */
+    private record ArmorHit(double damageMult, boolean penetrated, boolean armored) {
+        static final ArmorHit NONE = new ArmorHit(1.0, true, false);
     }
 
     /** Who last hurt an entity, for kill credit and kill feed. */
@@ -122,13 +126,7 @@ public final class DamageService implements Listener {
                          @Nullable AmmoSpec ammo, double distance, String weaponName) {
         HitZone zone = part.zone();
         if (plugin.ai().shieldBlocks(victim, shooter, part)) {
-            // A ballistic shield takes it: sparks and a ring of steel, nothing gets through.
-            org.bukkit.Location face = victim.getEyeLocation().subtract(0, 0.5, 0)
-                    .add(victim.getLocation().getDirection().setY(0).normalize().multiply(0.45));
-            victim.getWorld().spawnParticle(org.bukkit.Particle.ELECTRIC_SPARK, face, 8, 0.15, 0.2, 0.15, 0.3);
-            victim.getWorld().playSound(face, "craftov:impact.metal", org.bukkit.SoundCategory.PLAYERS, 1f,
-                    0.9f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.2f);
-            plugin.ai().onBotHurt(victim, shooter);
+            shieldHit(victim, shooter);
             return 0;
         }
         double falloff = 1.0;
@@ -138,12 +136,10 @@ public final class DamageService implements Listener {
         }
         double base = gun.damage() * (ammo == null ? 1.0 : ammo.damageMult()) * falloff;
         double zoneMult = zoneMultiplier(part, gun);
-        ArmorHit armorHit = armor(victim, part, base, ammo);
-        double armorMult = armorHit == null ? 1.0 : armorHit.damageMult();
-        boolean penetrated = armorHit == null || armorHit.penetrated();
-        plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, armorHit != null, penetrated);
-        double damage = base * zoneMult * armorMult;
-        if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {
+        ArmorHit armorHit = armor(victim, part, base, ammo == null ? 1 : ammo.penetration(),
+                ammo == null ? 1.0 : ammo.armorDamage());
+        double damage = base * zoneMult * armorHit.damageMult();
+        if (victim instanceof Player target && armorHit.penetrated() && zone != HitZone.HEAD) {
             plugin.health().rollInjuries(target, part, damage);
         }
         recordHit(victim, shooter, weaponName, part);
@@ -162,29 +158,47 @@ public final class DamageService implements Listener {
         return damage;
     }
 
+    /** A ballistic shield takes the hit: sparks and a ring of steel, nothing gets through. */
+    private void shieldHit(LivingEntity victim, @Nullable LivingEntity attacker) {
+        Location face = victim.getEyeLocation().subtract(0, 0.5, 0)
+                .add(victim.getLocation().getDirection().setY(0).normalize().multiply(0.45));
+        victim.getWorld().spawnParticle(org.bukkit.Particle.ELECTRIC_SPARK, face, 8, 0.15, 0.2, 0.15, 0.3);
+        victim.getWorld().playSound(face, "craftov:impact.metal", SoundCategory.PLAYERS, 1f,
+                0.9f + ThreadLocalRandom.current().nextFloat() * 0.2f);
+        plugin.ai().onBotHurt(victim, attacker);
+    }
+
     /**
-     * Runs one hit through the helmet (head) or vest (chest, stomach) covering the part and wears
-     * it. Returns null when nothing, or only broken armour, covers the part.
+     * Runs one hit of {@code base} damage with penetration {@code pen} through the helmet (head) or
+     * vest (chest, stomach) covering the part, wears the armour by {@code armorDamage}, and plays the
+     * impact: armour, flesh, or both when it gets through. Bullets and knives share it.
      */
-    private @Nullable ArmorHit armor(LivingEntity victim, BodyPart part, double base, @Nullable AmmoSpec ammo) {
+    private ArmorHit armor(LivingEntity victim, BodyPart part, double base, int pen, double armorDamage) {
+        ArmorHit hit = wearArmor(victim, part, base, pen, armorDamage);
+        plugin.weapons().audio().bodyImpact(victim, part == BodyPart.HEAD, hit.armored(), hit.penetrated());
+        return hit;
+    }
+
+    /** {@link #armor} without the sound; {@link ArmorHit#NONE} when nothing, or only broken armour, covers the part. */
+    private ArmorHit wearArmor(LivingEntity victim, BodyPart part, double base, int pen, double armorDamage) {
         boolean head = part == BodyPart.HEAD;
         EntityEquipment equipment = victim.getEquipment();
         if (equipment == null || !(head || part.armored())) {
-            return null;
+            return ArmorHit.NONE;
         }
         ItemStack armorStack = head ? equipment.getHelmet() : equipment.getChestplate();
         ItemDef armor = plugin.items().defOf(armorStack);
         if (armor == null || !armor.isArmor()) {
-            return null;
+            return ArmorHit.NONE;
         }
         double dura = ItemFactory.dura(armorStack, armor.durability());
         if (dura <= 0) {
-            return null;
+            return ArmorHit.NONE;
         }
-        int diff = (ammo == null ? 1 : ammo.penetration()) - armor.armorClass();
+        int diff = pen - armor.armorClass();
         boolean overmatched = diff >= 0;
         double wear = plugin.getConfig().getDouble(overmatched ? "combat.armor.wear-penetrated" : "combat.armor.wear-blocked", WEAR);
-        double loss = base * (ammo == null ? 1.0 : ammo.armorDamage()) * wear;
+        double loss = base * armorDamage * wear;
         if (victim instanceof Player p) {
             loss *= plugin.operators().armorWearMultiplier(p);
         }
@@ -205,7 +219,7 @@ public final class DamageService implements Listener {
         if (newDura <= 0 && victim instanceof Player p) {
             p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);
         }
-        return new ArmorHit(damageMult, penetrated);
+        return new ArmorHit(damageMult, penetrated, true);
     }
 
     /**

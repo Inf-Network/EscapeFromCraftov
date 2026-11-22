@@ -4,6 +4,9 @@
 //                 each opens a crate in the same raid. G gets a gold item (handed out, or one already in the
 //                 crate) and its gold count goes to 0; J is handed the jackpot and its count goes to 0. J dies
 //                 without it: half its value comes back into the quota and the short raid leaves the count at 0.
+//   quota         Q (luck.qualify.min-seconds 30 for the run) searches five containers, stays 40 s and
+//                 extracts: the raid joins the history, every jackpot count goes to 1 and the quota earns
+//                 (minutes x per-minute + searches x per-search) x the behaviour multiplier `/cv luck` shows.
 //   compensation  A loses its starter kit in a 常规 raid, more than luck.compensation.threshold.NORMAL
 //                 (20,000 for the run); B goes in with nothing, so it loses nothing. `/cv luck` then shows
 //                 BOOST raids of compensation for A and none for B. In each raid (A and B always share it,
@@ -23,7 +26,7 @@
 //                 map) and dies there: nothing is handed out, and pity, quota, history and the loss window
 //                 are as before after each.
 //
-//   node luck.js [all|pity|compensation|refund|proving]
+//   node luck.js [all|pity|quota|compensation|refund|proving]
 //   env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=../../server/run BOOST=4
 //
 // SERVER_DIR is read for maps/rustport.yml, maps/proving.yml, items.yml and loot.yml (with python3 and its
@@ -423,6 +426,46 @@ async function pity () {
   await sleep(2000)
 }
 
+/**
+ * Q (luck.qualify.min-seconds 30 for the run) searches five containers, stays past the qualifying time
+ * and extracts: the raid joins the history, every jackpot count goes to 1 and the quota earns
+ * (minutes x per-minute + searches x per-search) x the behaviour multiplier /cv luck shows.
+ */
+async function quota () {
+  await useConfig([[/^( {4}min-seconds:) *\d+/m, '$1 30'], ...NO_HANDOUTS])
+  markLog()
+  const Q = await spawnBot('LkQ')
+  const name = Q.username
+  if (!await deploy([Q], 'rustport')) { check('quota: deployed on rustport', false); return }
+  const landed = Date.now()
+  let searched = 0
+  for (const c of containers('rustport')) {
+    if (searched >= 5) break
+    if (c.type === 'body_bag') continue
+    const r = await search(Q, c)
+    if (!r) continue
+    searched++
+    Q.closeWindow(r.window)
+    await sleep(100)
+  }
+  await waitFor(() => Date.now() - landed > 40000, 60000)
+  await rcon(`execute as ${name} at @s run tp @s 89.5 65 3.5`)
+  check('quota: extracts at 北门检查站', await waitFor(() => inLobby(Q), 40000))
+  const seconds = (Date.now() - landed) / 1000
+  await sleep(1500)
+  const l = await luck(name)
+  log(name, l.text)
+  const m = Number((l.text.match(/行为系数 ×([\d.]+)/) || [0, NaN])[1])
+  const cfg = yamlFile(CONFIG).luck.quota
+  const expected = (seconds / 60 * cfg['per-minute'] + searched * cfg['per-search']) * m
+  check(`quota: the raid qualifies and joins the history (${searched} searches, ${seconds.toFixed(0)} s)`, searched === 5 && l.raids === 1, l.text)
+  check(`quota: earns about ◈${Math.round(expected)} (x${m})`, Math.abs(l.quota - expected) <= 300 + 0.03 * expected, l.quota)
+  const jackpots = Object.keys(yamlFile(path.join(DATA, 'loot.yml')).jackpots || {})
+  check('quota: every jackpot count is 1', jackpots.every(j => new RegExp(ITEMS[j].name + ' 1\\b').test(l.text)), l.text)
+  Q.quit()
+  await sleep(2000)
+}
+
 async function proving () {
   await useConfig([])
   markLog()
@@ -472,6 +515,7 @@ async function proving () {
   try {
     if (scenario === 'all' || scenario === 'proving') await proving()
     if (scenario === 'all' || scenario === 'pity') await pity()
+    if (scenario === 'all' || scenario === 'quota') await quota()
     if (scenario === 'all' || scenario === 'refund') await refund()
     if (scenario === 'all' || scenario === 'compensation') await compensation()
   } catch (e) {

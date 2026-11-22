@@ -31,8 +31,33 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Ballistic damage: falloff, hit zones, armor penetration, durability and injuries. */
+/**
+ * Ballistic damage: falloff, hit zones, armor penetration, durability and injuries.
+ *
+ * <p>A helmet covers the head and a vest the chest and stomach. How much of a hit gets through
+ * depends on the round's penetration minus the armour's class ({@code combat.armor.damage-taken}):
+ * armour always takes something off, even against a stronger round, and a weaker round is mostly
+ * stopped. Every hit wears the armour, and worn armour protects less: above half its durability
+ * ({@code combat.armor.full-protection-above}) it works fully, below that its protection fades
+ * linearly to nothing, and the part of a hit that wears more than the durability left goes straight
+ * through. A round the class stops cannot wound (bleed or break bones) while the armour is at full
+ * strength; once it is giving way, it may.
+ */
 public final class DamageService implements Listener {
+
+    /**
+     * Damage multipliers by penetration minus armour class when armour is at full strength: +1 or
+     * more, 0, -1, -2, -3 or less. {@code combat.armor.damage-taken} overrides it.
+     */
+    private static final double[] DAMAGE_TAKEN = {0.85, 0.6, 0.4, 0.25, 0.15};
+    /** Default share of durability above which armour protects fully. */
+    public static final double FULL_PROTECTION_ABOVE = 0.5;
+    /** Default durability lost per point of a hit's damage, times the round's armor-damage. */
+    private static final double WEAR = 0.3;
+
+    /** What the armour covering a part did to one hit. */
+    private record ArmorHit(double damageMult, boolean penetrated) {
+    }
 
     /** Who last hurt an entity, for kill credit and kill feed. */
     public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick) {
@@ -119,43 +144,10 @@ public final class DamageService implements Listener {
             case LEFT_ARM, RIGHT_ARM -> 0.65;
             case LEFT_LEG, RIGHT_LEG -> 0.7;
         };
-        int pen = ammo == null ? 1 : ammo.penetration();
-        boolean armorSounded = false;
-        double armorMult = 1.0;
-        boolean penetrated = true;
-        EntityEquipment equipment = victim.getEquipment();
-        if (equipment != null && (zone == HitZone.HEAD || part.armored())) {
-            ItemStack armorStack = zone == HitZone.HEAD ? equipment.getHelmet() : equipment.getChestplate();
-            ItemDef armor = plugin.items().defOf(armorStack);
-            if (armor != null && armor.isArmor()) {
-                double dura = ItemFactory.dura(armorStack, armor.durability());
-                if (dura > 0) {
-                    int diff = pen - armor.armorClass();
-                    armorMult = diff >= 1 ? 1.0 : diff == 0 ? 0.8 : diff == -1 ? 0.5 : diff == -2 ? 0.3 : 0.18;
-                    penetrated = diff >= 0;
-                    double loss = base * (ammo == null ? 1.0 : ammo.armorDamage()) * (penetrated ? 0.3 : 0.2);
-                    if (victim instanceof Player p) {
-                        loss *= plugin.operators().armorWearMultiplier(p);
-                    }
-                    double newDura = Math.max(0, dura - loss);
-                    ItemStack updated = armorStack.clone();
-                    plugin.items().setDura(updated, newDura);
-                    if (zone == HitZone.HEAD) {
-                        equipment.setHelmet(updated);
-                    } else {
-                        equipment.setChestplate(updated);
-                    }
-                    if (newDura <= 0 && victim instanceof Player p) {
-                        p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);
-                    }
-                    plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, true, penetrated);
-                    armorSounded = true;
-                }
-            }
-        }
-        if (!armorSounded) {
-            plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, false, true);
-        }
+        ArmorHit armorHit = armor(victim, part, base, ammo);
+        double armorMult = armorHit == null ? 1.0 : armorHit.damageMult();
+        boolean penetrated = armorHit == null || armorHit.penetrated();
+        plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, armorHit != null, penetrated);
         double damage = base * zoneMult * armorMult;
         if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {
             plugin.health().rollInjuries(target, part, damage);
@@ -174,6 +166,75 @@ public final class DamageService implements Listener {
             feedback(player, victim, damage, zone);
         }
         return damage;
+    }
+
+    /**
+     * Runs one hit through the helmet (head) or vest (chest, stomach) covering the part and wears
+     * it. Returns null when nothing, or only broken armour, covers the part.
+     */
+    private @Nullable ArmorHit armor(LivingEntity victim, BodyPart part, double base, @Nullable AmmoSpec ammo) {
+        boolean head = part == BodyPart.HEAD;
+        EntityEquipment equipment = victim.getEquipment();
+        if (equipment == null || !(head || part.armored())) {
+            return null;
+        }
+        ItemStack armorStack = head ? equipment.getHelmet() : equipment.getChestplate();
+        ItemDef armor = plugin.items().defOf(armorStack);
+        if (armor == null || !armor.isArmor()) {
+            return null;
+        }
+        double dura = ItemFactory.dura(armorStack, armor.durability());
+        if (dura <= 0) {
+            return null;
+        }
+        int diff = (ammo == null ? 1 : ammo.penetration()) - armor.armorClass();
+        boolean overmatched = diff >= 0;
+        double wear = plugin.getConfig().getDouble(overmatched ? "combat.armor.wear-penetrated" : "combat.armor.wear-blocked", WEAR);
+        double loss = base * (ammo == null ? 1.0 : ammo.armorDamage()) * wear;
+        if (victim instanceof Player p) {
+            loss *= plugin.operators().armorWearMultiplier(p);
+        }
+        double strength = armorStrength(dura, armor.durability(), loss,
+                plugin.getConfig().getDouble("combat.armor.full-protection-above", FULL_PROTECTION_ABOVE));
+        double damageMult = 1.0 - (1.0 - damageTaken(diff)) * strength;
+        // A round the class stops can still wound through armour that is giving way.
+        boolean penetrated = overmatched || ThreadLocalRandom.current().nextDouble() >= strength;
+
+        double newDura = Math.max(0, dura - loss);
+        ItemStack updated = armorStack.clone();
+        plugin.items().setDura(updated, newDura);
+        if (head) {
+            equipment.setHelmet(updated);
+        } else {
+            equipment.setChestplate(updated);
+        }
+        if (newDura <= 0 && victim instanceof Player p) {
+            p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);
+        }
+        return new ArmorHit(damageMult, penetrated);
+    }
+
+    /**
+     * How much of its protection a piece of armour still gives, 0..1: all of it above {@code fullAbove}
+     * of its durability, fading linearly to none at 0, and only the share of this hit's {@code wear}
+     * that the durability left can absorb (the rest goes straight through).
+     */
+    public static double armorStrength(double dura, double maxDura, double wear, double fullAbove) {
+        if (dura <= 0 || maxDura <= 0) {
+            return 0;
+        }
+        double condition = fullAbove <= 0 ? 1.0 : Math.min(1.0, dura / maxDura / fullAbove);
+        double absorbed = wear <= 0 ? 1.0 : Math.min(1.0, dura / wear);
+        return condition * absorbed;
+    }
+
+    /** Damage multiplier of full-strength armour for this penetration minus class (combat.armor.damage-taken). */
+    private double damageTaken(int diff) {
+        int index = Math.max(0, 1 - diff);
+        java.util.List<Double> table = plugin.getConfig().getDoubleList("combat.armor.damage-taken");
+        double value = table.isEmpty() ? DAMAGE_TAKEN[Math.min(index, DAMAGE_TAKEN.length - 1)]
+                : table.get(Math.min(index, table.size() - 1));
+        return Math.max(0, Math.min(1, value));
     }
 
     /** Deals raw damage without knockback or invulnerability frames. */

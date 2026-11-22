@@ -117,6 +117,22 @@ combat:
     # a second). In first person the opaque white hides the fog, and the effect is lifted before the
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
+  # Helmets cover the head, vests the chest and stomach.
+  armor:
+    # Share of a hit's damage that gets through armour at full strength, by the round's penetration
+    # minus the armour's class: +1 or more, 0, -1, -2, -3 or less (the first and last entries also
+    # cover everything beyond them). Armour always takes something off, even against a stronger round.
+    damage-taken: [0.85, 0.6, 0.4, 0.25, 0.15]
+    # Armour protects fully above this share of its durability; below it, its protection fades
+    # linearly to none at 0. The part of a hit that wears more durability than is left goes straight
+    # through. A round the class stops can still wound (bleed, fracture) through armour below full
+    # strength, with the chance growing as the protection fades.
+    full-protection-above: 0.5
+    # Durability a hit wears off: the round's damage (after range falloff, before the hit zone) x its
+    # armor-damage x this; wear-blocked when the class stops the round, wear-penetrated when it does
+    # not. The engineer's passive takes a quarter off.
+    wear-blocked: 0.3
+    wear-penetrated: 0.3
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

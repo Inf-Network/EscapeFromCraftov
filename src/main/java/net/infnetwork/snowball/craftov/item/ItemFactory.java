@@ -44,8 +44,11 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
-    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark. */
-    public static final int VERSION = 4;
+    /**
+     * Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit
+     * mark. 5: armour lore says it weakens when worn.
+     */
+    public static final int VERSION = 5;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -674,6 +677,11 @@ public final class ItemFactory {
             double dura = dura(stack, def.durability());
             lore.add(Text.mm("<#8A8F98>防护等级 <white>" + def.armorClass() + "  <#8A8F98>耐久 <white>"
                     + fmt(dura) + "/" + fmt(def.durability())));
+            double fullAbove = net.infnetwork.snowball.craftov.CraftovPlugin.get().getConfig()
+                    .getDouble("combat.armor.full-protection-above", net.infnetwork.snowball.craftov.combat.DamageService.FULL_PROTECTION_ABOVE);
+            if (fullAbove > 0) {
+                lore.add(Text.mm("<#8A8F98>耐久低于 " + Math.round(Math.min(1, fullAbove) * 100) + "% 时防护下降"));
+            }
         }
         if (def.isContainer()) {
             int stored = hasContents(stack) ? contents(stack).size() : 0;

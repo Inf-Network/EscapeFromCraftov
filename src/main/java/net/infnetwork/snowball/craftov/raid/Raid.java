@@ -51,6 +51,12 @@ public final class Raid {
     public boolean night;
     /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
     public long blackoutUntil;
+    /**
+     * Instance ids of everything that has left the raid with a player (extracted, or sent home
+     * with what they carried). Gear among it that someone else brought in is not handed back to
+     * them as well should the server stop void their raid (RaidManager.voidRaid).
+     */
+    public final java.util.Set<String> takenOut = new java.util.HashSet<>();
 
     public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;

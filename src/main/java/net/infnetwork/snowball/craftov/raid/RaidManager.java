@@ -787,7 +787,9 @@ public final class RaidManager implements Listener {
         if (player == null) {
             if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
                 // As far as other players' profit goes, they went home with all of it (see held).
-                rp.carriedOut = stackCounts(homeOffline(raid, rp, rp.fees, "raid " + raid.id + " ended during the entry camera"));
+                List<ItemRecord> home = homeOffline(raid, rp, rp.fees, "raid " + raid.id + " ended during the entry camera");
+                rp.carriedOut = stackCounts(home);
+                instanceIds(home, raid.takenOut);
                 rp.disconnectedInventory = null;
             }
             // Otherwise (not expected: leaving turns DEPLOYING into DISCONNECTED in onQuit) the next
@@ -853,6 +855,7 @@ public final class RaidManager implements Listener {
         out.addAll(rp.secure);
         long handed = othersGear(raid, rp, out);
         rp.carriedOut = stackCounts(out);
+        instanceIds(out, raid.takenOut);
         long profit = total - handed - rp.startValue;
         profile.secure = new ArrayList<>(rp.secure);
         profile.addStat("extracts", 1);
@@ -1829,6 +1832,7 @@ public final class RaidManager implements Listener {
         out.addAll(plugin.carry().snapshot(player).values());
         out.addAll(rp.secure);
         rp.carriedOut = stackCounts(out);
+        instanceIds(out, raid.takenOut);
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.leaveRaid();
@@ -1944,7 +1948,7 @@ public final class RaidManager implements Listener {
         if (raidOf(player) != null) {
             return;
         }
-        if (voidRaid(player.getUniqueId(), player.getName(), null, true) != null) {
+        if (voidRaid(player.getUniqueId(), player.getName(), null, Set.of(), true) != null) {
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废。<#9AA0A6>出发前的装备和安全箱已退回，"
                     + "入场费和保险费已退还，补偿邮件已发到仓库邮箱。");
         }
@@ -1959,7 +1963,7 @@ public final class RaidManager implements Listener {
         rp.disconnectedInventory = null;
         byPlayer.remove(rp.uuid, raid);
         plugin.escorts().callOff(rp);
-        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, false);
+        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, raid.takenOut, false);
         if (player == null) {
             return;
         }
@@ -1986,23 +1990,32 @@ public final class RaidManager implements Listener {
      * one change that also clears it, so a raid is voided once only ({@code known}, the copy kept
      * with the raid, only describes the change should the profile be unreadable). A profile that
      * still names a raid but has no record (left by an older build) gets the letter and keeps its
-     * loadout, which a raid never changes. Returns the letter, or null when there was nothing to
-     * void (or it went to the journal of an unreadable profile).
+     * loadout, which a raid never changes. Gear that went in with them but has since left the raid
+     * with someone else ({@code gone}: instance ids taken out by extraction) does not come back to
+     * them as well. Returns the letter, or null when there was nothing to void (or it went to the
+     * journal of an unreadable profile).
      */
-    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
+    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, Set<String> gone,
+                                            boolean crash) {
         long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
         Profile.Mail[] sent = new Profile.Mail[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
         String cause = (crash ? "raid lost when the server went down" : "server stopped during the raid") + ", voided for " + name;
-        plugin.profiles().edit(uuid, () -> describeVoid(cause, known, voidLetter(known, compensation, crash)), p -> {
+        plugin.profiles().edit(uuid, () -> {
+            int[] lost = new int[1];
+            Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, gone, lost);
+            List<ItemRecord> secure = known == null ? List.of() : without(known.secure, gone, lost);
+            return describeVoid(cause, known, loadout, secure, voidLetter(known, lost[0], compensation, crash));
+        }, p -> {
             Profile.Deployment d = p.deployment;
             if (p.activeRaid == null && d == null || known != null && d != null && !d.raid.equals(known.raid)) {
                 return; // settled already (or, never expected, another raid's record)
             }
             // Everything is worked out before the profile is touched, so it changes all at once.
-            Profile.Mail letter = voidLetter(d, compensation, crash);
-            Map<Integer, ItemRecord> loadout = d == null ? p.loadout : copies(d.loadout);
-            List<ItemRecord> secure = d == null ? p.secure : copies(d.secure);
+            int[] lost = new int[1];
+            Map<Integer, ItemRecord> loadout = d == null ? p.loadout : without(d.loadout, gone, lost);
+            List<ItemRecord> secure = d == null ? p.secure : without(d.secure, gone, lost);
+            Profile.Mail letter = voidLetter(d, lost[0], compensation, crash);
             List<Profile.TaskState> tasks = new ArrayList<>();
             if (d != null) {
                 d.tasks.forEach(task -> tasks.add(task.copy()));
@@ -2059,12 +2072,13 @@ public final class RaidManager implements Listener {
     }
 
     /** The voided raid's change to the profile in the journal's terms, for a profile that cannot be read. */
-    private static String describeVoid(String cause, Profile.@Nullable Deployment d, Profile.Mail letter) {
+    private static String describeVoid(String cause, Profile.@Nullable Deployment d, Map<Integer, ItemRecord> loadout,
+                                       List<ItemRecord> secure, Profile.Mail letter) {
         StringBuilder sb = new StringBuilder(cause).append(": ");
         if (d != null) {
             long money = d.entryFee + d.premium - d.earned;
-            sb.append("loadout = ").append(ProfileService.json(d.loadout))
-                    .append(", secure = ").append(ProfileService.json(d.secure))
+            sb.append("loadout = ").append(ProfileService.json(loadout))
+                    .append(", secure = ").append(ProfileService.json(secure))
                     .append(", money ").append(money >= 0 ? "+" : "").append(money);
             d.stats.forEach((key, delta) -> sb.append(", stats.").append(key).append(' ').append(-delta >= 0 ? "+" : "").append(-delta));
             sb.append(", taskDay = ").append(d.taskDay).append(", tasks = ").append(ProfileService.json(d.tasks))
@@ -2079,10 +2093,13 @@ public final class RaidManager implements Listener {
     }
 
     /** The letter that tells a player their raid was voided, with the compensation attached. */
-    private static Profile.Mail voidLetter(Profile.@Nullable Deployment d, long compensation, boolean crash) {
+    private static Profile.Mail voidLetter(Profile.@Nullable Deployment d, int lost, long compensation, boolean crash) {
         StringBuilder body = new StringBuilder(crash ? "服务器意外中断时" : "服务器维护时");
         body.append(d == null ? "你还在行动中" : "你还在「" + d.map + "」（" + d.tier + "）的行动中").append("，这局行动已作废。\n")
                 .append("出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
+        if (lost > 0) {
+            body.append("\n其中 ").append(lost).append(" 件装备已被其他干员带出本局，不再退回。");
+        }
         if (d != null && d.entryFee + d.premium > 0) {
             body.append("\n已退还").append(d.entryFee > 0 ? "入场费 ◈" + Text.money(d.entryFee) : "")
                     .append(d.entryFee > 0 && d.premium > 0 ? "、" : "").append(d.premium > 0 ? "保险费 ◈" + Text.money(d.premium) : "")
@@ -2094,16 +2111,54 @@ public final class RaidManager implements Listener {
         return MailService.letter("服务器维护补偿", body.toString(), compensation, List.of());
     }
 
-    private static Map<Integer, ItemRecord> copies(Map<Integer, ItemRecord> records) {
+    /**
+     * Copies of the records, leaving out (packed contents included) everything whose instance id
+     * is in {@code gone}; {@code lost[0]} counts what was left out.
+     */
+    private static Map<Integer, ItemRecord> without(Map<Integer, ItemRecord> records, Set<String> gone, int[] lost) {
         Map<Integer, ItemRecord> out = new HashMap<>();
-        records.forEach((slot, record) -> out.put(slot, record.copy()));
+        records.forEach((slot, record) -> {
+            ItemRecord kept = without(record, gone, lost);
+            if (kept != null) {
+                out.put(slot, kept);
+            }
+        });
         return out;
     }
 
-    private static List<ItemRecord> copies(List<ItemRecord> records) {
+    private static List<ItemRecord> without(List<ItemRecord> records, Set<String> gone, int[] lost) {
         List<ItemRecord> out = new ArrayList<>();
-        records.forEach(record -> out.add(record.copy()));
+        for (ItemRecord record : records) {
+            ItemRecord kept = without(record, gone, lost);
+            if (kept != null) {
+                out.add(kept);
+            }
+        }
         return out;
+    }
+
+    private static @Nullable ItemRecord without(ItemRecord record, Set<String> gone, int[] lost) {
+        if (record.uid != null && gone.contains(record.uid)) {
+            lost[0]++;
+            return null;
+        }
+        ItemRecord copy = record.copy();
+        if (copy.contents != null) {
+            copy.contents = without(record.contents, gone, lost);
+        }
+        return copy;
+    }
+
+    /** Adds the instance ids of these records (packed contents too) to {@code into}. */
+    private static void instanceIds(Collection<ItemRecord> records, Set<String> into) {
+        for (ItemRecord record : records) {
+            if (record.uid != null) {
+                into.add(record.uid);
+            }
+            if (record.contents != null) {
+                instanceIds(record.contents, into);
+            }
+        }
     }
 
     /**

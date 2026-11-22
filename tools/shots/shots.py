@@ -265,8 +265,10 @@ def setup_server(cfg):
     log('setting up the test server in', run_dir)
     env = dict(os.environ, RUN_DIR=str(run_dir))
     subprocess.run([str(ROOT / 'server' / 'setup.sh'), '--local', '--port', str(cfg.port)], env=env, check=True)
+    # Loopback only: the client, the puppet, RCON and the pack download all come from this machine,
+    # and an offline-mode server with a known RCON password must not be reachable from outside.
     set_properties(run_dir / 'server.properties', {
-        'server-port': cfg.port, 'enable-rcon': 'true', 'rcon.port': cfg.rcon_port,
+        'server-ip': '127.0.0.1', 'server-port': cfg.port, 'enable-rcon': 'true', 'rcon.port': cfg.rcon_port,
         'rcon.password': cfg.rcon_password, 'white-list': 'false', 'online-mode': 'false',
     })
     # A fresh server starts from the plugin's full default config. Writing only the two keys that

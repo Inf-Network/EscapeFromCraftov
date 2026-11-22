@@ -35,6 +35,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 
 - 开发在远程服务器上（这台机器的 `java` 就是 25，`./gradlew` 直接能用），真人测试服在用户的 Mac 上，见下面「测试服运维」。
 - 没有单元测试目录；验证靠编译 + 部署 + `tools/bot/` 里的 mineflayer 脚本（`node test.js <名字> [场景]`，以及 fire / meds / revive / squad / doors / econ 等专项脚本）。bot 只能连这台机器上的本地测试服（Mac 的 25565 从这边连不到），用离线模式连 `127.0.0.1`，跑之前要临时加白名单，名字用随机的，否则会重连进旧对局。
+- 画面相关的改动（枪模、开镜、动作、界面、HUD、特效）用 `tools/shots/shots.py` 在这台机器上跑真客户端截图，见下面「真客户端截图」。
 - 改完 `tools/art/build.py` 后，它每次都会重新编码音效、产生无意义的 diff：提交前用 `git checkout -- src/main/resources/pack/craftov/resourcepack/assets/*/sounds/` 还原没改过的音效。
 - 生成的 BetterHud yml 和资源包文件不要手改，改 `tools/art/` 里的生成器，否则下次构建会被覆盖。
 
@@ -53,9 +54,36 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - **扩展本身**：Mac 上的 `~/.local/libexec/remote-gate/craftov` 会在每次 `sync`（包括 `deploy`）之后自动换成同步过去的 `tools/mac/craftov`，所以改扩展只要提交再 `deploy`；没提交时用 `tools/mac/mac selfupdate` 直接推工作区里的版本。替换前新版本必须在 Mac 上跑通 `selfupdate --check`，否则保留旧的，所以**新版本必须保留 `selfupdate` 指令**，不然以后就只能请用户手动装（`ssh mac put craftov < tools/mac/craftov`，用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`）。门卫 `~/.local/bin/remote-gate` 不会自动更新，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库，改它要用户手动装。
 - **本机无头测试服**（给 bot 用）：在这台机器上 `server/setup.sh --local` 生成 `server/run/`，`server/run/start.sh` 开服；控制台命令用 `cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（需要在 `server.properties` 里打开 RCON，密码和 `tools/bot/rcon.js` 一致）。
 
+## 真客户端截图（`tools/shots/`）
+
+mineflayer 不渲染画面。要看「长什么样」时，`tools/shots/shots.py` 在这台机器上跑真正的 1.21.11 原版客户端：Xvfb 虚拟显示 + Mesa llvmpipe 软件渲染，离线账号 `ShotCam`（客户端在线期间临时 op，服务器开着白名单时也临时加进去，关客户端时收回；被踢、被封或进不去时直接报出服务器给的原因），Quick Play 直接进本地测试服；`servers.dat` 里给这个地址设了 `acceptTextures`，资源包不弹提示直接加载（客户端日志里最后一次 `Reloading ResourceManager` 带着 `server/...` 并且拼好了贴图集才算进服完成；资源包下载失败或重载失败被客户端回滚成原版时直接报错，不会拿原版贴图去截图）。
+
+```bash
+tools/shots/shots.py run                         # 默认场景：lobby gun inventory deploy raid，约 100 秒
+tools/shots/shots.py run gun:k47 inventory       # 指定场景，冒号后是参数（这里是枪的物品 ID）
+tools/shots/shots.py run --build --fresh raid    # 先构建插件并重启测试服；把 ShotCam 重置成新玩家（新手物资）
+tools/shots/shots.py up | down | status          # 服务器和客户端常驻，反复调场景时省掉每次约 30 秒的启动
+tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/RemoteShare/shots/ 并打开；run --send 发本次全部
+```
+
+- **一条 `run` 走完全程**：测试服没开就开（`--server-dir` 默认 `server/run`，不存在时先 `setup`：`server/setup.sh --local` + 只监听 127.0.0.1 + 打开 RCON + 从 jar 取完整的 `config.yml` 再改 `test.enabled: true` 和 `match.wait-seconds: 5`）→ 开虚拟显示和客户端进服 → 跑场景 → 截图存到 `tools/shots/out/<名字>.png` → 只关掉这次自己开的东西（`--keep` 都留着）。端口用 `--port` 或 `SHOTS_PORT`（默认 25565，RCON 默认是端口 +10）。同一个检出一次只跑一个。
+- **端口上的服务器必须就是 `--server-dir` 里的那个**（按监听进程的工作目录判断），否则直接拒绝：在 `.claude/worktrees/` 里一定要给自己的 `--port`（例如 `--port 25951`），不然会撞上主检出的测试服。已有的服务器目录 `server.properties` 里端口 / RCON 对不上时开服前就报错（`shots.py setup --port N` 会写好），开服超时会把它关掉而不是留在后台。`--build` 只会重启 shots 自己开的服务器，别人开的会被拒绝；局内场景撤离失败时只结束 ShotCam 独自一人的那局，否则留着并报错。
+- 第一次运行在 `tools/shots/.cache/` 建 venv（`minecraft-launcher-lib`，BSD-2-Clause）并下载客户端（约 550 MB，用系统的 JDK 25 启动）。`.cache/` 和 `out/` 都被 gitignore；客户端日志在 `tools/shots/.cache/game/logs/latest.log`。
+- **场景**是 `tools/shots/scenes/<名字>.py` 里的 `run(s)`，几行就能写：`s.rcon(...)`、`s.cmd('cv deploy')`（在客户端聊天栏打指令）、`s.hold('m4c')`（没有就发一把并选中）、`s.key('F5')`、`with s.mouse(3):`（按住右键）、`s.park_mouse()`（界面打开后把鼠标挪到角落，免得出现物品提示）、`s.clear_chat()`、`s.extract('proving', raids)`、`s.shot('名字')`；要画面里有另一个玩家时用 `with s.puppet() as mate:`（`tools/bot/puppet.js` 的 mineflayer 假人，`mate.hold('m4c')`、`mate.tp(...)`、`mate.orbit(角度)` 让镜头绕着它看）。内置场景：大厅；手持枪腰射 / 开镜 / 第三人称背面和正面；背包；部署菜单；试验场局内 HUD + 开火 + 换弹（最后从常驻撤离点撤离，保住装备，下次不会重连进旧对局）。另有 `others`：别的玩家眼里的双手持枪姿势（自己的第三人称看不到装备包改写），需要 `tools/bot/node_modules`，所以不在默认场景里。
+- 截完**自己先看一遍**（Read 能直接看 PNG），画面确实是场景说的样子再发给服主。
+
+## 协作方式
+
+- **分工：功能测试由假人自测，服主只看外观。** 伤害、经济、匹配、流程这些能用 `tools/bot/` 验证的，自己跑完再交付，不要请服主测；只有画面和手感需要服主，而且最好直接给截图（`tools/shots/shots.py run <场景> --send`），而不是让服主自己进游戏去找。
+- **服主只负责策划和最终测试，合并由 Claude 操作。** 问题都记成 GitHub issue（`Inf-Network/EscapeFromCraftov`，标签：`P0-严重`…`P3-低`、`用户反馈` / `审查发现`、模块）。每个 issue 一个分支和一个 PR，不直接往 `main` 推。
+- PR 测试（编译 + `tools/bot/` 无头场景）和独立审查都通过后，由 Claude 用**普通合并提交**合进 `main`（不要 squash：后面叠着的分支要能干净接上）。PR 的目标分支是别的分支时，合并前先改成 `main`；**不要在还有 PR 以它为目标分支时删除这个分支**，GitHub 会直接关掉那些 PR。
+- PR 不是以 `main` 为目标时，`Closes #N` 不会生效，合并后要手动关掉对应 issue 并注明 PR 编号。
+- 合并后 `tools/mac/mac deploy` 部署到 Mac 测试服（items.yml / loot.yml 有改动时先 `yml diff` 再 `yml copy`），再把「需要进游戏确认」的清单整理给服主，**告诉服主具体测什么**（画面类的附上截图），而不是只说"已修复"。
+- 几个修复并行写时会互相重叠（同一个问题修两遍、关服 / 存档 / 保险 / 护航等路径改到同一处）。合并前要按依赖顺序整合成一条线，并专门检查同一件事有没有被执行两次。
+
 ## 提交规范
 
-- **每做完一个小模块就提交并 `git push origin main`**，不用等用户要求。一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
+- 一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
 - **提交信息和 PR 里不加任何 Co-Authored-By / AI 署名**（用户明确要求过，优先于默认的署名设置）。
 - 格式：英文 Conventional Commits 前缀（`feat:` / `fix:` / `tune:` / `docs:` / `refactor:` / `chore:`），主题行小写、描述玩家能感知到的行为（例如 `feat: bounties on players`、`fix: no flash on an empty gun, and a tactical light you can see`）。正文用几句完整的英文解释做了什么、数值是多少，约 75 列换行。
 - 新功能要同步更新 `README.md`（中文，玩法表 / 操作 / 指令 / 配置），可以和功能放在同一个提交里。

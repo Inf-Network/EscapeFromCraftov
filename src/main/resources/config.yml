@@ -28,8 +28,9 @@ starter:
     - "armor_1"
 
 # Free basic kit for players whose loadout is nearly worthless (claimed from the main menu).
-# max-value caps what they carry; max-assets caps everything they own (money, stash, mailbox,
-# carried gear, secure container, market listings and an escrowed escort reward).
+# max-value caps their gear value (what they carry, the melee weapon left out, as the HUD shows it);
+# max-assets caps everything they own at item value (money, stash, mailbox, carried gear with the
+# knife, secure container, market listings and an escrowed escort reward).
 free-kit:
   max-value: 15000
   max-assets: 200000
@@ -46,12 +47,21 @@ free-kit:
     - "medkit_s"
 
 # Difficulty tiers shown in the deploy menu (first entry is the default).
+# min-value is the gear value (战备值) every squad member needs to queue: what they carry, without
+# the melee slot or any melee weapon, which is never lost and so puts nothing at stake.
+# loot-shift is where every loot roll of the raid starts; a container's tier on the map (and the
+# boss, supply drops) add to it, never above max-shift (loot.yml shift-bonus says what a shift does).
+# entry-fee is charged on deploy (checked when queueing). A server config.yml without max-shift or
+# entry-fee takes them from the plugin's own config.yml for the same tier (one shift above
+# loot-shift, at most 2, and no fee for a tier the plugin does not ship).
 tiers:
   NORMAL:
     name: "常规"
     color: "#5BD16B"
     min-value: 0
+    entry-fee: 0
     loot-shift: 0
+    max-shift: 1
     ai-count: 0.8
     ai-accuracy: 0.55
     ai-gear: 0
@@ -61,7 +71,9 @@ tiers:
     name: "机密"
     color: "#4FA3FF"
     min-value: 60000
+    entry-fee: 8000
     loot-shift: 1
+    max-shift: 2
     ai-count: 1.0
     ai-accuracy: 0.75
     ai-gear: 1
@@ -71,7 +83,9 @@ tiers:
     name: "绝密"
     color: "#FF4D4D"
     min-value: 250000
+    entry-fee: 20000
     loot-shift: 2
+    max-shift: 2
     ai-count: 1.25
     ai-accuracy: 0.95
     ai-gear: 2
@@ -95,9 +109,41 @@ downed:
   first-seconds: 60
   second-seconds: 30
   revive-seconds: 5
+  # A teammate revives by holding right click on the downed player: within revive-range blocks,
+  # feet less than revive-max-height apart (a stair or a slab, not a ledge or the floor above), and
+  # with a clear line from their eyes to the downed player.
+  revive-range: 2.2
+  revive-max-height: 1.0
+  # The revive starts over when the reviver walks more than this many blocks from where they began,
+  # or takes damage (their own bleeding aside).
+  revive-max-move: 0.5
+  # A lethal hit knocks a player down (below max-downs) while a squadmate is still up to revive
+  # them, or while they carry a self-revive injector: solo, or the last of the squad standing, they
+  # then bleed out as usual and can use it. Without either, the hit kills.
   max-downs: 2
-  # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
-  solo: false
+
+medical:
+  # Healing pool a medkit or surgery kit (items.yml med.pool) uses up per wound it treats; what is
+  # left heals, up to the item's per-use amount. Bandages, hemostats and splints are used up whole.
+  wound-cost: { LIGHT_BLEED: 15, HEAVY_BLEED: 40, FRACTURE: 40 }
+
+stamina:
+  # Stamina runs from 0 to 100. Sprinting drains sprint-drain a tick and a jump costs jump-cost,
+  # both times the load factor below; after 0.75 s without either it comes back at regen a tick
+  # (regen-sneaking while sneaking). At 0 sprinting stops until it is back at 30. With these
+  # numbers a full bar lasts about 17 s of sprinting and takes about 13 s to refill.
+  sprint-drain: 0.3
+  jump-cost: 5
+  regen: 0.4
+  regen-sneaking: 0.5
+  # Load (kg, items.yml weight). Above comfort-kg every kilogram slows by penalty-per-kg and drains
+  # stamina 1/30 faster. Above overload-kg sprinting is impossible and every further kilogram slows
+  # by overload-penalty-per-kg. The slowdown never goes past max-penalty.
+  comfort-kg: 25
+  overload-kg: 40
+  penalty-per-kg: 0.01
+  overload-penalty-per-kg: 0.025
+  max-penalty: 0.5
 
 combat:
   friendly-fire: false
@@ -153,6 +199,42 @@ combat:
     enabled: true
     extra-ms: 200
     max-ms: 300
+  # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
+  # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take
+  # combat.melee.zone-multipliers on the arms and legs). Arms and legs share the one 100-point health
+  # pool with the torso and are about half the hitbox (legs alone 40%), and no armour covers them:
+  # lowering arm and leg (0.5 each makes a K47 with PS need six leg hits instead of four) is the
+  # short-term way to keep limb shots from downing a player in any armour.
+  zone-multipliers:
+    chest: 1.0
+    stomach: 0.95
+    arm: 0.65
+    leg: 0.7
+  # Helmets cover the head, vests the chest and stomach, against bullets and knives alike (a knife
+  # is a round with its own damage, pen and armor-damage from items.yml).
+  armor:
+    # Share of a hit's damage that gets through armour at full strength, by the round's penetration
+    # minus the armour's class: +1 or more, 0, -1, -2, -3 or less (the first and last entries also
+    # cover everything beyond them). Armour always takes something off, even against a stronger round.
+    damage-taken: [0.85, 0.6, 0.4, 0.25, 0.15]
+    # Armour protects fully above this share of its durability; below it, its protection fades
+    # linearly to none at 0. The part of a hit that wears more durability than is left goes straight
+    # through. A round the class stops can still make the chest or stomach bleed through a vest
+    # below full strength, with the chance growing as the protection fades.
+    full-protection-above: 0.5
+    # Durability a hit wears off: the round's damage (after range falloff, before the hit zone) x its
+    # armor-damage x this; wear-blocked when the class stops the round, wear-penetrated when it does
+    # not. The engineer's passive takes a quarter off.
+    wear-blocked: 0.3
+    wear-penetrated: 0.3
+  melee:
+    # Knife damage multiplier on the arms and legs, in place of zone-multipliers (the chest and
+    # stomach are the same as for a bullet). No armour covers the limbs: at a bullet's 0.65 / 0.7 the
+    # machete (52) downed a player in any armour with three limb cuts; at 0.6 it takes four, as many
+    # as a K47 with PS takes in the legs. tools/combat/melee.py prints and checks the hits.
+    zone-multipliers:
+      arm: 0.6
+      leg: 0.6
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
@@ -226,9 +308,9 @@ trader:
   buy-multiplier: 1.15
   sell-multiplier: 0.55
   # Share of an armour piece's value charged per full bar of missing durability. Repairing raises
-  # the value by 0.75 of it, and the market's system buyers pay at most ~0.99 of value after fee and
-  # tax (they judge listings by item value, never by past sales), so below ~0.74 repairing worn
-  # armour to sell it is profit (tools/econ/repair.py checks).
+  # the value by 0.75 of it, and the market's system buyers pay at most market.virtual-max-value of
+  # value (~0.65 after fee and tax; they judge listings by item value, never by past sales), so below
+  # ~0.49 repairing worn armour to sell it would be profit (tools/econ/repair.py checks).
   repair-rate: 0.75
   # Rarest tier the trader sells (GOLD and RED only come from raids and the market).
   max-rarity: PURPLE
@@ -238,18 +320,23 @@ market:
   listing-fee: 0.02
   sale-tax: 0.05
   max-listings: 12
-  # Simulated buyers purchase listings priced near the reference price, so the market works on small servers.
+  # Simulated buyers take cheap listings, so the market works on small servers. They are a quick
+  # outlet a little better than the trader, not a buyer at full price: they pay at most
+  # virtual-max-value x the item's value (durability, attachments, loaded ammo and stack size
+  # included; ~0.65 after fee and tax against the trader's 0.55), nothing rarer than
+  # virtual-max-rarity, and at most virtual-daily-cap listings of one item per seller per day
+  # (04:00 reset; per seller, so one player cannot use it up for everyone else; 0 = no cap). Each
+  # round (10 s) a listing at up to 85% / 93% / 100% of their price sells with chance 0.3 / 0.12 /
+  # 0.04, so one at their full price takes about four minutes.
   virtual-buyers: true
   virtual-min-age-seconds: 45
+  virtual-max-value: 0.7
+  virtual-max-rarity: PURPLE
+  virtual-daily-cap: 10
   # Reference price = item value (durability, attachments, loaded ammo and stack size included) x this.
-  # It is fixed by items.yml: system buyers and the pricing screen judge listings against it, and no
-  # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
-  # than the trader's buy-multiplier, so reselling trader stock never pays.
+  # It is fixed by items.yml: the pricing screen and the trade-price band judge listings against it,
+  # and no sale moves it.
   reference-multiplier: 0.85
-  # Most listings of one item the system buyers take from one seller per hour (0 = no cap). A safety
-  # valve should a config change ever make reselling to them profitable again; per seller, so one
-  # player cannot use it up for everyone else.
-  virtual-hourly-cap: 40
   # Listings priced above this multiple of the reference price are refused (stops one colluding sale
   # at an absurd price from moving money between accounts).
   max-price-multiplier: 3.0
@@ -281,10 +368,16 @@ market:
 rank:
   min-level: 3
   # Flat experience for extracting (times the tier's xp), in full with at least extract-xp-min-gear
-  # of gear brought in and in proportion below that, so a naked run gets none of it. Profit
-  # (1 per ◈800) and kills earn their own experience on top.
+  # of gear value brought in (the knife does not count) and in proportion below that, so a naked
+  # run gets none of it. Profit (1 per ◈800) and kills earn their own experience on top.
   extract-xp: 150
   extract-xp-min-gear: 15000
+
+hideout:
+  # Intel centre income per hour by level (level 0 first); at most 24 hours of it add up between
+  # collections. Workbench and med station recipes are set in HideoutService (tools/econ/balance.py
+  # checks they save money against the trader without selling for more than they cost).
+  intel-income: [0, 1000, 2000, 4000]
 
 tasks:
   # Cost of swapping an unfinished daily contract, and the bonus for finishing all three.
@@ -309,7 +402,7 @@ season:
 bounty:
   # Price of one bounty step placed from the lobby, and the house bounty on the top-ranked player.
   # The house bounty only pays when the top player queued for ranked and deployed with at least
-  # champion-min-value of gear, and at most once a day.
+  # champion-min-value of gear value (the knife does not count), and at most once a day.
   step: 10000
   champion: 20000
   champion-min-value: 60000
@@ -328,8 +421,15 @@ backup:
   keep-shutdown: 5
 
 insurance:
-  # Share of the insured gear's value charged on deploy.
+  # Share of the insured gear's value charged on deploy; rarity-rate overrides it per rarity.
   rate: 0.08
+  rarity-rate: { GOLD: 0.12, RED: 0.16 }
+  # Chance each insured item left behind is gone anyway when the raid closes (someone else took
+  # it), so dying among soldiers with nobody else around is no longer a full refund.
+  loss-chance: 0.3
+  # Minutes before what comes back reaches the mailbox (0 = at once). The time runs while the
+  # owner is offline too; it arrives the next time they are online after that.
+  return-minutes: 30
 
 events:
   # Share of raids fought at night (dark; soldiers see half as far but spot lit tactical lights from afar).

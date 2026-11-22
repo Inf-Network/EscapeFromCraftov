@@ -133,8 +133,10 @@ public final class TraderService {
     }
 
     /**
-     * Everything the player owns, at item value: money, stash, mailbox, what they carry, the secure
-     * container, their market listings and an escrowed escort reward. The escrow is read from the
+     * Everything the player owns, at item value: money, stash, mailbox, insurance claims on their
+     * way, what they carry, the secure container, their market listings and an escrowed escort
+     * reward. A carried knife counts here, unlike in gear value: one in the stash counts too, and
+     * moving it between the two must not change the answer. The escrow is read from the
      * profile, where EscortService records it with the deduction: that also covers a contract lost
      * in a crash whose reward has not been handed back yet.
      */
@@ -145,6 +147,9 @@ public final class TraderService {
             for (ItemRecord record : records) {
                 total += plugin.items().value(record);
             }
+        }
+        for (Profile.Claim claim : profile.claims) {
+            total += plugin.items().value(claim.item); // insured gear on its way to the mailbox
         }
         for (MarketService.Listing listing : plugin.market().mine(player.getUniqueId())) {
             total += plugin.items().value(listing.item);
@@ -159,7 +164,8 @@ public final class TraderService {
      */
     public void claimFreeKit(Player player) {
         Profile profile = plugin.profiles().get(player);
-        long value = plugin.carry().carriedValue(player);
+        // The carry limit is the gear value the player sees (no knife); assets() counts the knife.
+        long value = plugin.carry().gearValue(player);
         long max = plugin.getConfig().getLong("free-kit.max-value", 15000);
         if (value > max) {
             Text.send(player, "<#FF8A80>你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");
@@ -168,7 +174,7 @@ public final class TraderService {
         long assets = assets(player);
         long maxAssets = freeKitMaxAssets();
         if (assets > maxAssets) {
-            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
+            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、理赔途中的装备、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
                     + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<#9AA0A6>可以从仓库取出装备或到商人处购买。");
             return;
         }
@@ -302,9 +308,9 @@ public final class TraderService {
 
     /**
      * Share of an armour piece's value charged per full bar of missing durability. A repair raises
-     * the item's value by 0.75 of its value per full bar (ItemFactory.value), so below about 0.74
-     * (0.75 times what the market's system buyers pay at most after fee and tax) repairing worn
-     * armour and selling it made money; tools/econ/repair.py checks every piece in items.yml.
+     * the item's value by 0.75 of its value per full bar (ItemFactory.value), so below about 0.49
+     * (0.75 times what the market's system buyers pay at most after fee and tax, 0.7 x 0.93) repairing
+     * worn armour and selling it would make money; tools/econ/repair.py checks every piece in items.yml.
      */
     public double repairRate() {
         return plugin.getConfig().getDouble("trader.repair-rate", 0.75);

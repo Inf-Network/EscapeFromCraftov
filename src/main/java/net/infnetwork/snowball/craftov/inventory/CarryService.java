@@ -663,10 +663,31 @@ public final class CarryService {
         }
     }
 
+    /**
+     * Everything the player carries at item value, the melee weapon included. Raid profit and the
+     * free kit's asset check go by this: profit counts the knife at deploy and at extraction alike,
+     * so one brought in cancels out and one found in the raid is profit.
+     */
     public long carriedValue(Player player) {
         long total = 0;
         for (ItemRecord record : snapshot(player).values()) {
             total += items.value(record);
+        }
+        return total;
+    }
+
+    /**
+     * Gear value (战备值): what the player carries, without the melee slot and without any melee
+     * weapon. The difficulty gates, the deploy screen, the main menu, the HUD and the free kit's
+     * carry limit go by this. The knife is never lost on death, so it puts nothing at stake: a
+     * ◈95,000 karambit alone used to clear 机密's requirement.
+     */
+    public long gearValue(Player player) {
+        long total = 0;
+        for (Map.Entry<Integer, ItemRecord> entry : snapshot(player).entrySet()) {
+            if (entry.getKey() != MELEE_SLOT) {
+                total += items.gearValue(entry.getValue());
+            }
         }
         return total;
     }

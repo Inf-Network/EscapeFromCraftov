@@ -1,0 +1,43 @@
+name: 问题反馈
+description: 游戏里出现了不对的地方（显示、手感、规则、报错）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        刷物品、刷钱、越权、让服务器崩溃的漏洞请不要在这里提，按 [安全政策](https://github.com/Inf-Network/EscapeFromCraftov/blob/main/SECURITY.md) 私下报告。
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 你看到了什么，哪里不对。
+      placeholder: 例如：开 3 倍镜和红点时放大倍率看起来一样。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 一步一步写，越具体越好（地图、难度、手里的物品、做了什么操作）。
+      placeholder: |
+        1. 在锈港常规难度单排
+        2. 手持 M4C，装上 3 倍镜
+        3. 按住右键开镜
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的样子
+      description: 你觉得应该是什么样（可以参考三角洲行动、逃离塔科夫等游戏）。
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      description: 客户端分辨率、界面尺寸、视场角和「视场角效果」设置、是否装了模组；服务器是哪一台。
+      placeholder: 2560×1440，界面尺寸 3，视场角 70，视场角效果 100%，原版客户端
+  - type: textarea
+    id: media
+    attributes:
+      label: 截图 / 录屏 / 日志
+      description: 直接拖进来。客户端日志在 .minecraft/logs/latest.log。

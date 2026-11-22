@@ -144,7 +144,7 @@ public final class Ballistics {
                 // The hit zone is read on the body the shooter saw (crouched or standing then); the wound
                 // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
-                BodyPart part = BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point());
+                BodyPart part = BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point(), dir);
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);

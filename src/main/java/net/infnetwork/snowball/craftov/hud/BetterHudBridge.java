@@ -82,6 +82,7 @@ public final class BetterHudBridge implements BetterHudHook {
         string(pm, "craftov_med_left", HudSnapshot::medLeft);
         number(pm, "craftov_med_pct", HudSnapshot::medPct);
         string(pm, "craftov_weapon_hint", HudSnapshot::weaponHint);
+        string(pm, "craftov_downed_hint", HudSnapshot::downedHint);
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

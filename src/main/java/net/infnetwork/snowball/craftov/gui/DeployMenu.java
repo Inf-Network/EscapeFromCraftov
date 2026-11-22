@@ -77,7 +77,7 @@ final class DeployMenu extends Menu {
 
     @Override
     protected void draw() {
-        long value = plugin.carry().carriedValue(viewer);
+        long value = plugin.carry().gearValue(viewer);
         map = validMap(map);
         int slot = 10;
         for (MapDef def : playable()) {
@@ -122,7 +122,7 @@ final class DeployMenu extends Menu {
             });
         }
         button(29, UiItems.button("craftov:ui/icon_solo", (mode == RaidMode.SOLO ? "<#F2C94C>▶ " : "<white>") + "单人行动",
-                List.of("<#9AA0A6>独自潜入，倒地即阵亡")), e -> {
+                List.of("<#9AA0A6>独自潜入，致命伤直接阵亡", "<#9AA0A6>带着自救注射器时会倒地，可自己救起")), e -> {
             mode = RaidMode.SOLO;
             redraw();
         });
@@ -144,12 +144,17 @@ final class DeployMenu extends Menu {
             redraw();
         });
         var profile = plugin.profiles().get(viewer);
-        long fee = plugin.insurance().quote(viewer);
+        var insurance = plugin.insurance();
+        long fee = insurance.quote(viewer);
+        long minutes = insurance.returnMinutes();
         button(34, UiItems.button("craftov:ui/icon_secure", (profile.autoInsure ? "<#5BD16B>● 装备保险" : "<#8A8F98>○ 装备保险"),
                 List.of("<#9AA0A6>出发时为枪械、护甲、胸挂和背包投保",
-                        "<#9AA0A6>费用为装备价值的 " + Math.round(plugin.insurance().rate() * 100) + "%，本次约 <#F2C94C>◈" + Text.money(fee),
-                        "<#9AA0A6>阵亡后没被别人带出的投保装备，",
-                        "<#9AA0A6>会在对局结束时退回仓库邮箱")), e -> {
+                        "<#9AA0A6>费用为装备价值的 " + percent(insurance.rate()) + "（<#FFC23D>金色<#9AA0A6> "
+                                + percent(insurance.rate(net.infnetwork.snowball.craftov.item.Rarity.GOLD)) + "、<#FF4D4D>红色<#9AA0A6> "
+                                + percent(insurance.rate(net.infnetwork.snowball.craftov.item.Rarity.RED)) + "），本次约 <#F2C94C>◈" + Text.money(fee),
+                        "<#9AA0A6>阵亡后没被别人带出的投保装备，对局结束时",
+                        "<#9AA0A6>每件有 " + percent(1 - insurance.lossChance()) + " 的机会找回，"
+                                + (minutes > 0 ? minutes + " 分钟后退回仓库邮箱" : "退回仓库邮箱"))), e -> {
             profile.autoInsure = !profile.autoInsure;
             plugin.profiles().markDirty(viewer.getUniqueId());
             redraw();
@@ -166,7 +171,7 @@ final class DeployMenu extends Menu {
         }
         set(38, UiItems.button("craftov:ui/icon_party", "<white>小队成员", partyLore));
         set(42, UiItems.button("craftov:ui/icon_value", "<white>战备值 <#F2C94C>◈" + Text.money(value),
-                List.of("<#9AA0A6>身上所有装备与物资的总价值", "<#9AA0A6>在仓库中调整配装后再出发")));
+                List.of("<#9AA0A6>身上装备与物资的总价值", "<#9AA0A6>近战武器不计入（死亡不会丢失）", "<#9AA0A6>在仓库中调整配装后再出发")));
         QueueEntry queued = plugin.match().queued(viewer.getUniqueId());
         if (queued != null) {
             button(40, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80><b>取消匹配", List.of("<#9AA0A6>正在匹配 " + queued.map() + " · " + queued.tier())),
@@ -182,5 +187,9 @@ final class DeployMenu extends Menu {
                 }
             });
         }
+    }
+
+    private static String percent(double share) {
+        return Math.round(share * 100) + "%";
     }
 }

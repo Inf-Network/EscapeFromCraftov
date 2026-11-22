@@ -71,7 +71,7 @@ public final class HitboxHistory {
      *
      * @param point     where the round met the (rewound) box: where the shooter saw it land
      * @param box       that box, which the hit zone is read from
-     *                  ({@link BodyPart#of(LivingEntity, BoundingBox, double, Vector)})
+     *                  ({@link BodyPart#of(LivingEntity, BoundingBox, double, Vector, Vector)})
      * @param eyeHeight how high above its feet the entity's eyes were then, which sets the head line
      * @param body      the same spot on the entity's box as it stands now, where the wound shows
      * @param distance  from the start of the ray to {@code point}

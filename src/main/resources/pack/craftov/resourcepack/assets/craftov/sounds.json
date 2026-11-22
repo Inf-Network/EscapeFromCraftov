@@ -48,6 +48,13 @@
    }
   ]
  },
+ "hit.knock": {
+  "sounds": [
+   {
+    "name": "craftov:hit/knock"
+   }
+  ]
+ },
  "loot.open": {
   "sounds": [
    {

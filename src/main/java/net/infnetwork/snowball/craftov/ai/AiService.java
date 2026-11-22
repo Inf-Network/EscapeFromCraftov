@@ -538,7 +538,10 @@ public final class AiService implements Listener {
         return name;
     }
 
-    /** A sleeping boss or guard saw someone or was shot: it and the rest of its group wake up. */
+    /**
+     * A sleeping boss or guard saw someone, was hurt, heard a fight right next to it or lost one of
+     * its group: it and the rest of its group wake up.
+     */
     private void wake(Bot bot) {
         if (!bot.dormant || bot.group == null) {
             return;
@@ -688,12 +691,22 @@ public final class AiService implements Listener {
         bot.nextShotTick = Math.max(bot.nextShotTick, now + plugin.getConfig().getLong("ai.dazzle.shot-delay-ticks", 10));
     }
 
-    /** Gunfire and explosions draw nearby soldiers. */
+    /**
+     * Gunfire and explosions draw nearby soldiers. A boss group asleep at its post ignores them
+     * farther off, but wakes when one goes off within ai.boss-wake-radius blocks of any of them
+     * (and within {@code radius}, so a suppressed shot has to be closer still).
+     */
     public void alert(Location at, double radius, @Nullable Entity source) {
         if (isAi(source)) {
             return;
         }
         long now = Bukkit.getCurrentTick();
+        double wakeRadius = Math.min(radius, plugin.getConfig().getDouble("ai.boss-wake-radius", 12));
+        for (Bot bot : bots.values()) {
+            if (bot.dormant && bot.mob.getWorld() == at.getWorld() && bot.mob.getLocation().distanceSquared(at) <= wakeRadius * wakeRadius) {
+                wake(bot);
+            }
+        }
         for (Bot bot : bots.values()) {
             if (bot.mob.getWorld() != at.getWorld() || bot.target != null || bot.dormant) {
                 continue;
@@ -1269,6 +1282,8 @@ public final class AiService implements Listener {
         if (bot == null) {
             return;
         }
+        // A sleeping guard killed outright (a grenade, one headshot) still wakes the rest of its group.
+        wake(bot);
         event.getDrops().clear();
         event.setDroppedExp(0);
         Raid raid = bot.raid;
@@ -1398,7 +1413,8 @@ public final class AiService implements Listener {
     }
 
     /**
-     * A player hit this soldier (or its shield). Someone it is fighting already changes nothing. A
+     * A player hit this soldier (or its shield) with a round, a blade or a grenade. A sleeping
+     * soldier wakes with its whole group. Someone it is fighting already changes nothing. A
      * hit from anyone else gives away roughly where it came from (within ai.threat.error-meters, less
      * close up) but not who: the soldier grows more aware of the shooter (+0.5, at most 0.9, so it
      * still has to see them to fight them), turns that way and for ai.threat.seconds fires bursts at

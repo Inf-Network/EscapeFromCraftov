@@ -103,6 +103,9 @@ public final class ThrowableService implements Listener {
             double damage = spec.damage() * Math.max(0.1, 1 - distance / spec.radius());
             plugin.damage().recordHit(entity, thrower, name, HitZone.TORSO);
             plugin.damage().deal(entity, entity == thrower ? null : thrower, damage);
+            // A soldier caught in the blast knows roughly where it came from, and a sleeping boss
+            // group wakes, as it would to a bullet.
+            plugin.ai().onBotHurt(entity, thrower);
             entity.setVelocity(entity.getVelocity().add(to.normalize().multiply(0.4)));
         }
     }

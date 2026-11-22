@@ -156,6 +156,10 @@ ai:
   threat:
     seconds: 8
     error-meters: 5
+  # A boss and its guards asleep at their post until their time ignore gunfire and explosions
+  # elsewhere, but wake (all of them) when one goes off within this many blocks of any of them, as
+  # they do when one of them sees a player, is hurt (bullet, blade or grenade) or falls.
+  boss-wake-radius: 12
   # What a fallen soldier leaves: its gun by difficulty (常规, 机密, 绝密; bosses always), and a
   # helmet or vest (45% each) at this share of full durability, never more than it had left.
   drop:

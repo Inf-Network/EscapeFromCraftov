@@ -4,6 +4,7 @@ import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
+import org.bukkit.entity.Mannequin;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
@@ -78,8 +79,18 @@ public final class RaidPlayer {
      * exactly as they were (insurance mark, fire mode, armory items).
      */
     public @Nullable Map<Integer, ItemStack> disconnectedInventory;
-    /** A disconnected player's skin, taken when they left, for their body should they not come back. */
+    /** A disconnected player's skin, taken when they left, for their stand-in and their body. */
     public @Nullable ResolvableProfile look;
+    /**
+     * What stays of a disconnected player where they stood (RaidManager.spawnStandIn): it can be
+     * shot, and a rejoin puts the player in its place. Null during the entry camera and once settled.
+     */
+    public @Nullable Mannequin standIn;
+    /**
+     * A disconnected player's health when they left. The stand-in carries it on from there; this
+     * is what counts whenever there is none.
+     */
+    public double offlineHealth;
     public @Nullable String escortContract;
     public int containersSearched;
 

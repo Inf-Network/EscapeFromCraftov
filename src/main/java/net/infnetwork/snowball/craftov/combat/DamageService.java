@@ -271,7 +271,7 @@ public final class DamageService implements Listener {
             };
             org.bukkit.attribute.AttributeInstance max = victim.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
             damage = (max == null ? victim.getHealth() : max.getValue()) / Math.max(1, hits) + 0.01;
-        } else if (victim instanceof Player) {
+        } else if (victim instanceof Player || plugin.raids().standInOwner(victim) != null) {
             damage = spec.playerDamage();
         } else {
             return;

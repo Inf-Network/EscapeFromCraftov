@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -35,9 +34,6 @@ import java.util.function.Consumer;
  * JSON-file profile storage. Profiles of online players stay cached; offline profiles are loaded
  * on demand (market payouts, escort settlements) and written straight back, and stay in memory
  * until that write has landed so the next change builds on this one.
- *
- * <p>Writes run on one IO thread, so a profile loaded again before its last write has reached
- * disk is taken from that write's copy, not from the older file (see {@link #queued}).
  */
 public final class ProfileService {
 
@@ -49,20 +45,14 @@ public final class ProfileService {
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
     /**
-     * The newest copy of each profile handed to the IO thread, until that write is on disk. An
-     * offline player edited twice in a row (shutdown restoring a disconnected player and then
-     * paying out their insurance, two market listings of one seller expiring in the same pass), or
-     * a player rejoining right after quitting, would otherwise be read from the older file, and the
-     * write of that stale copy would land last and undo the first change.
-     */
-    private final Map<UUID, Queued> queued = new ConcurrentHashMap<>();
-    /**
      * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, used instead
      * of the file while a write queued for them has not reached the disk. Without this, back-to-back
-     * edits (several market listings of one offline seller returned or sold in the same tick, or a
-     * sale right as the seller logs off) each re-read a file the previous write had not replaced
-     * yet, and all but one of the changes were lost. Once the writes have landed the file is read
-     * again, so a file edited by hand while its owner is offline still counts. Main thread only.
+     * edits (several market listings of one offline seller returned or sold in the same tick, a
+     * sale right as the seller logs off, or the shutdown restoring a player who disconnected
+     * mid-raid, paying out their insurance and refunding their escort contract one after another)
+     * each re-read a file the previous write had not replaced yet, and all but one of the changes
+     * were lost. Once the writes have landed the file is read again, so a file edited by hand
+     * while its owner is offline still counts. Main thread only.
      */
     private final Map<UUID, Pending> offline = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
@@ -77,15 +67,6 @@ public final class ProfileService {
 
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
                           long marketSales, long marketIncome) {
-    }
-
-    /** One write handed to the IO thread. Compared by identity, so a later write replaces it. */
-    private static final class Queued {
-        private final Profile profile;
-
-        private Queued(Profile profile) {
-            this.profile = profile;
-        }
     }
 
     public ProfileService(Plugin plugin) {
@@ -295,10 +276,6 @@ public final class ProfileService {
     // ------------------------------------------------------------------ io
 
     private @Nullable Profile load(UUID uuid) {
-        Queued pending = queued.get(uuid);
-        if (pending != null) {
-            return pending.profile;
-        }
         Path file = dir.resolve(uuid + ".json");
         if (!Files.exists(file)) {
             return null;
@@ -346,8 +323,6 @@ public final class ProfileService {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
-        Queued entry = new Queued(profile);
-        queued.put(uuid, entry);
         if (inFlight != null) {
             inFlight.incrementAndGet();
         }
@@ -358,8 +333,6 @@ public final class ProfileService {
                 if (inFlight != null) {
                     inFlight.decrementAndGet();
                 }
-                // Only if no newer write of the same profile was queued meanwhile.
-                queued.remove(uuid, entry);
             }
         });
     }

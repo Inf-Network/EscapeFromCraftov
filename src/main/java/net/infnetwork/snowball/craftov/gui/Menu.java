@@ -135,7 +135,7 @@ public abstract class Menu implements InventoryHolder {
         if (inventory == null || viewer.getOpenInventory().getTopInventory() != inventory) {
             return false;
         }
-        Component line = net.infnetwork.snowball.craftov.util.Text.mm((good == null ? "" : good ? "✔ " : "✖ ") + miniMessage);
+        Component line = net.infnetwork.snowball.craftov.util.Text.mm((good == null ? "" : good ? Style.MARK_OK : Style.MARK_FAIL) + miniMessage);
         flashLine = line;
         flashSlot = lastSlot >= 0 && inventory.getItem(lastSlot) != null ? lastSlot : -1;
         flashUntil = Bukkit.getCurrentTick() + 40;
@@ -204,6 +204,7 @@ public abstract class Menu implements InventoryHolder {
     protected void bigButton(int[] slots, String name, java.util.List<String> lore, Consumer<InventoryClickEvent> handler) {
         for (int slot : slots) {
             button(slot, UiItems.button("craftov:ui/blank", name, lore), handler);
+            sounds.put(slot, UiSound.CONFIRM); // the big buttons are the main action of their screen
         }
     }
 

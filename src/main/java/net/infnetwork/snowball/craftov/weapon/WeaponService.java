@@ -71,6 +71,11 @@ public final class WeaponService implements Listener {
         /** Rounds of the current three-round burst still to fire: they do, whether or not the trigger is held. */
         int burstLeft;
         /**
+         * Rounds a multi-round report already playing still holds (see {@link GunAudio#roundsPerSample}):
+         * they fire even if the trigger is let go, so what is heard is what is fired.
+         */
+        int sampleLeft;
+        /**
          * Time banked toward the next shot, in milliseconds times rpm: a tick adds 50 x rpm and a shot
          * costs 60000. Whole numbers keep the rhythm exact, where 66.67 ms steps would drift a tick.
          */
@@ -379,7 +384,10 @@ public final class WeaponService implements Listener {
             if (state.fireMode() != FireMode.BURST) {
                 state.burstLeft = 0;
             }
-            if (!state.triggerHeld && state.burstLeft <= 0) {
+            if (state.fireMode().singleAction()) {
+                state.sampleLeft = 0;
+            }
+            if (!state.triggerHeld && state.burstLeft <= 0 && state.sampleLeft <= 0) {
                 continue;
             }
             if (sprintLocked(player)) {
@@ -387,6 +395,7 @@ public final class WeaponService implements Listener {
                 sprintHint(player);
                 state.shotBudget = 0;
                 state.burstLeft = 0;
+                state.sampleLeft = 0;
                 continue;
             }
             if (state.pendingPress) {
@@ -406,11 +415,14 @@ public final class WeaponService implements Listener {
                         state.shotBudget = Math.min(state.shotBudget, SHOT_COST);
                         break;
                     }
+                } else if (!state.triggerHeld && state.sampleLeft <= 0) {
+                    break; // let go: automatic fire only finishes the rounds already heard
                 }
                 state.shotBudget -= SHOT_COST;
                 if (!shoot(player, state)) {
                     state.shotBudget = 0;
                     state.burstLeft = 0;
+                    state.sampleLeft = 0;
                     break;
                 }
             }
@@ -459,6 +471,11 @@ public final class WeaponService implements Listener {
     private void press(Player player, GunState state) {
         // A pull during a burst does nothing: the next burst needs a click after this one has fired.
         if (state.reloading() || state.needsRelease || state.burstLeft > 0) {
+            return;
+        }
+        if (state.sampleLeft > 0) {
+            // Pulled again while the rounds of the last report are still firing: the spray just goes on.
+            state.triggerHeld = true;
             return;
         }
         state.triggerHeld = true;
@@ -524,7 +541,7 @@ public final class WeaponService implements Listener {
         }
         Ballistics.muzzle(player, dir);
         Location muzzle = Ballistics.muzzlePoint(player, dir);
-        audio.shot(player, muzzle, gun, state.suppressed);
+        audio.shot(player, muzzle, gun, state.suppressed, reportRounds(state));
         if (!state.suppressed) {
             fx.muzzleLight(player, muzzle);
         }
@@ -547,6 +564,30 @@ public final class WeaponService implements Listener {
             player.playSound(player.getLocation(), "craftov:gun.empty", SoundCategory.PLAYERS, 0.6f, 1.2f);
         }
         return true;
+    }
+
+    /**
+     * Rounds the report of the shot just fired holds: 0 while a multi-round sample from an earlier shot
+     * still covers it; in automatic fire at a rate the pack has a sample for, that many rounds when that
+     * many will surely follow (the magazine holds them, a burst has them left; the trigger cannot cut
+     * them short, see tick); otherwise 1.
+     */
+    private static int reportRounds(GunState state) {
+        if (state.sampleLeft > 0) {
+            state.sampleLeft--;
+            return 0;
+        }
+        FireMode mode = state.fireMode();
+        if (mode != FireMode.AUTO && mode != FireMode.BURST) {
+            return 1;
+        }
+        int rounds = GunAudio.roundsPerSample(state.gun);
+        int coming = mode == FireMode.BURST ? state.burstLeft : Integer.MAX_VALUE;
+        if (rounds > 1 && state.ammo >= rounds - 1 && coming >= rounds - 1) {
+            state.sampleLeft = rounds - 1;
+            return rounds;
+        }
+        return 1;
     }
 
     /**
@@ -934,6 +975,7 @@ public final class WeaponService implements Listener {
         state.reloadType = type;
         state.triggerHeld = false;
         state.burstLeft = 0;
+        state.sampleLeft = 0;
         state.reloadEmpty = state.ammo == 0;
         reloadFoley(player, state, state.reloadEnd - now);
     }
@@ -1230,6 +1272,7 @@ public final class WeaponService implements Listener {
         }
         state.mode = (state.mode + 1) % state.gun.modes().size();
         state.burstLeft = 0;
+        state.sampleLeft = 0;
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, 1f);
         player.sendActionBar(Text.mm("<#F2C94C>射击模式: <white>" + state.fireMode().displayName()));
     }

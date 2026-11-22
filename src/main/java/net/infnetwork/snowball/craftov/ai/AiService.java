@@ -719,8 +719,9 @@ public final class AiService implements Listener {
             spread *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
         }
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
-        // A share of what a player deals with the same gun and ammo; nothing scales it again on the
-        // way (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
+        // A share of what a player deals with the same gun and ammo to the body and limbs (headshots
+        // get less: scaledGun halves the head multiplier); nothing scales it again on the way
+        // (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
         for (int i = 0; i < gun.pellets(); i++) {
             plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),

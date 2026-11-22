@@ -135,8 +135,11 @@ ai:
   # after a disconnect gives none of it: 2 s of protection (no damage, no attacks) and that is all;
   # soldiers who see the player aim through it and open fire the moment it ends.
   insertion-grace-ticks: 240
-  # A soldier's bullet does this share of what a player's would with the same gun and ammo, before
-  # armour (a boss: x1.15 on top). World difficulty never changes it: 0.65 is what players feel.
+  # A soldier's body or limb hit does this share of what a player's would with the same gun and
+  # ammo, before armour (a boss: x1.15 on top). Headshots are softer still: soldiers use half the
+  # gun's head multiplier (at least x1), so with the usual x2.0 a soldier's headshot does about a
+  # third of a player's. World difficulty never changes any of it. 0.65 is the designed value;
+  # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
   damage-multiplier: 0.65
   reaction-ticks: 14
   # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep

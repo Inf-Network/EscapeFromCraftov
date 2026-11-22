@@ -767,10 +767,10 @@ public final class AiService implements Listener {
             rp.aiKills++;
             // A knife kill is one the killing record says was a cut, not whatever is in hand now.
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
-            killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
+            killer.sendActionBar(Text.mm("<accent>✖ 击败 <white>" + Text.escape(bot.name)
+                    + (hit.headshot() ? " <danger>爆头" : "")));
             if (bot.boss) {
-                plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
+                plugin.raids().announce(raid, "<accent>" + Text.escape(killer.getName()) + " 击败了 <danger>" + Text.escape(bot.name) + "<accent>！");
             }
         }
         dropBody(bot);

@@ -147,56 +147,56 @@ public final class HudService {
             if (data.inRaid(player)) {
                 int extract = data.extractPercent(player);
                 if (extract > 0) {
-                    infoBar.name(Text.mm("<#5BD16B><b>撤离中</b> <white>" + String.format("%.1f", data.extractSecondsLeft(player)) + "s"));
+                    infoBar.name(Text.mm("<ok><b>撤离中</b> <white>" + String.format("%.1f", data.extractSecondsLeft(player)) + "s"));
                     infoBar.progress(extract / 100f);
                     infoBar.color(BossBar.Color.GREEN);
                 } else {
                     int total = Math.max(1, plugin.raids().raidOf(player).map.raidSeconds());
-                    infoBar.name(Text.mm("<#F2E6C8>" + Text.escape(data.mapName(player)) + " <#8A8F98>" + data.tierName(player)
-                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.carried(player))
-                            + "  <#9AA0A6>撤离 " + Text.escape(data.nearestExtract(player))));
+                    infoBar.name(Text.mm("<text>" + Text.escape(data.mapName(player)) + " <muted>" + data.tierName(player)
+                            + "  <white>⏱ " + data.time(player) + "  <accent>◈ " + Text.moneyShort(data.carried(player))
+                            + "  <muted>撤离 " + Text.escape(data.nearestExtract(player))));
                     infoBar.progress(Math.max(0f, Math.min(1f, data.remaining(player) / (float) total)));
                     infoBar.color(data.remaining(player) < 300 ? BossBar.Color.RED : BossBar.Color.YELLOW);
                 }
                 BossBar statusBar = bar(status, player);
                 StringBuilder sb = new StringBuilder();
                 int hp = data.hp(player);
-                String hpColor = hp > 60 ? "#5BD16B" : hp > 30 ? "#FFC23D" : "#FF4D4D";
+                String hpColor = hp > 60 ? "ok" : hp > 30 ? "accent" : "danger";
                 if (data.downed(player)) {
-                    sb.append("<#FF4D4D><b>倒地</b> ").append(data.downedPercent(player)).append('%');
+                    sb.append("<danger><b>倒地</b> ").append(data.downedPercent(player)).append('%');
                 } else {
                     sb.append('<').append(hpColor).append(">❤ ").append(hp);
                 }
                 int helmet = data.armorClass(player, CarryService.HEAD);
                 int armor = data.armorClass(player, CarryService.CHEST);
                 if (helmet > 0) {
-                    sb.append("  <#9AA0A6>⛑").append(roman(helmet)).append(' ').append(data.armorPercent(player, CarryService.HEAD)).append('%');
+                    sb.append("  <muted>⛑").append(roman(helmet)).append(' ').append(data.armorPercent(player, CarryService.HEAD)).append('%');
                 }
                 if (armor > 0) {
-                    sb.append("  <#9AA0A6>🛡").append(roman(armor)).append(' ').append(data.armorPercent(player, CarryService.CHEST)).append('%');
+                    sb.append("  <muted>🛡").append(roman(armor)).append(' ').append(data.armorPercent(player, CarryService.CHEST)).append('%');
                 }
                 String weapon = data.weaponName(player);
                 if (data.gun(player) != null) {
                     int reload = data.reloadPercent(player);
                     sb.append("  <white>").append(Text.escape(weapon)).append(' ')
-                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%"
-                                    : data.drawing(player) ? "<#C8CCD2>拔枪 " + data.drawPercent(player) + "%"
-                                    : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
-                                    + "<#8A8F98>/" + data.reserve(player) + " " + data.fireMode(player));
+                            .append(reload > 0 ? "<accent>换弹 " + reload + "%"
+                                    : data.drawing(player) ? "<text>拔枪 " + data.drawPercent(player) + "%"
+                                    : (data.ammo(player) == 0 ? "<danger>" : "<white>") + data.ammo(player)
+                                    + "<muted>/" + data.reserve(player) + " " + data.fireMode(player));
                 }
                 String injuries = data.injuries(player);
                 if (!injuries.isEmpty()) {
-                    sb.append("  <#FF8A80>").append(injuries);
+                    sb.append("  <danger>").append(injuries);
                 }
-                sb.append("  <#8A8F98>").append(Text.escape(data.skill(player)));
+                sb.append("  <muted>").append(Text.escape(data.skill(player)));
                 statusBar.name(Text.mm(sb.toString()));
                 statusBar.progress(Math.max(0f, Math.min(1f, (float) (player.getHealth() / 100.0))));
                 statusBar.color(hp > 60 ? BossBar.Color.GREEN : hp > 30 ? BossBar.Color.YELLOW : BossBar.Color.RED);
             } else if (plugin.lobby().isLobby(player.getWorld())) {
                 var profile = plugin.profiles().get(player);
-                infoBar.name(Text.mm("<#F2C94C>◈ " + Text.money(profile.money) + "  <#9AA0A6>Lv." + profile.level + "  "
-                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().carriedValue(player))
-                        + "  <#8A8F98>干员 " + plugin.operators().of(player).name()));
+                infoBar.name(Text.mm("<accent>◈ " + Text.money(profile.money) + "  <muted>Lv." + profile.level + "  "
+                        + plugin.ranks().tierName(profile.rankPoints) + "  <muted>战备值 <white>◈" + Text.moneyShort(plugin.carry().carriedValue(player))
+                        + "  <muted>干员 " + plugin.operators().of(player).name()));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);
             }
@@ -229,9 +229,9 @@ public final class HudService {
             return;
         }
         String mark = switch (outcome) {
-            case KILLED -> "<#FF4D4D><b>✖</b>";
-            case DOWNED -> "<#FF9A3C><b>⊗</b>";
-            case HIT -> head ? "<#FFC23D>✕" : "<white>✕";
+            case KILLED -> "<danger><b>✖</b>";
+            case DOWNED -> "<accent><b>⊗</b>";
+            case HIT -> head ? "<accent>✕" : "<white>✕";
         };
         shooter.sendTitlePart(TitlePart.TIMES, Title.Times.times(Duration.ZERO, Duration.ofMillis(150), Duration.ofMillis(100)));
         shooter.sendTitlePart(TitlePart.SUBTITLE, Text.mm(mark));

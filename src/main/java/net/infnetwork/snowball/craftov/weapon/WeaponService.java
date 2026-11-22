@@ -392,8 +392,8 @@ public final class WeaponService implements Listener {
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
-            player.sendActionBar(Text.mm("<white>左键<#9AA0A6> 开火  <white>右键<#9AA0A6> 瞄准  <white>Q<#9AA0A6> 换弹  "
-                    + "<white>潜行+Q<#9AA0A6> 换弹种  <white>F<#9AA0A6> 射击模式"));
+            player.sendActionBar(Text.mm("<white>左键<muted> 开火  <white>右键<muted> 瞄准  <white>Q<muted> 换弹  "
+                    + "<white>潜行+Q<muted> 换弹种  <white>F<muted> 射击模式"));
         }
         return state;
     }
@@ -613,7 +613,7 @@ public final class WeaponService implements Listener {
             return;
         }
         if (state.reloading()) {
-            hint(player, "<#FFB74D>换弹中…");
+            hint(player, "<accent>换弹中…");
             return;
         }
         press(player, state);
@@ -664,7 +664,7 @@ public final class WeaponService implements Listener {
         if (state.drawing()) {
             // Likewise while the gun comes up after a switch: no shot until it is up.
             state.pendingPress = true;
-            hint(player, "<#9AA0A6>拔枪中…");
+            hint(player, "<muted>拔枪中…");
             return;
         }
         firstShot(player, state);
@@ -697,7 +697,7 @@ public final class WeaponService implements Listener {
             if (reserve(player, state) > 0) {
                 startReload(player, state, false);
             } else {
-                hint(player, "<#FF8A80>没有 " + gun.caliber() + " 弹药 <#9AA0A6>· 去商人买或在物资箱里找");
+                hint(player, "<danger>没有 " + gun.caliber() + " 弹药 <muted>· 去商人买或在物资箱里找");
             }
             return false;
         }
@@ -1129,8 +1129,8 @@ public final class WeaponService implements Listener {
         }
         if (types.isEmpty()) {
             boolean otherKind = !ammoTypesCarried(player, gun, !state.test).isEmpty();
-            player.sendActionBar(Text.mm("<#FF8A80>没有 " + gun.caliber() + " 口径的弹药" + (!otherKind ? ""
-                    : state.test ? " <#9AA0A6>· 试验场武器只能用试验场弹药" : " <#9AA0A6>· 试验场弹药只能装进试验场武器")));
+            player.sendActionBar(Text.mm("<danger>没有 " + gun.caliber() + " 口径的弹药" + (!otherKind ? ""
+                    : state.test ? " <muted>· 试验场武器只能用试验场弹药" : " <muted>· 试验场弹药只能装进试验场武器")));
             return;
         }
         String type;
@@ -1141,7 +1141,7 @@ public final class WeaponService implements Listener {
             type = state.ammoType != null && types.contains(state.ammoType) ? state.ammoType : bestType(types);
         }
         if (type.equals(state.ammoType) && state.ammo >= gun.magazine()) {
-            player.sendActionBar(Text.mm("<#9AA0A6>弹匣已满  <#8A8F98>(潜行+Q 切换弹种)"));
+            player.sendActionBar(Text.mm("<muted>弹匣已满  <muted>(潜行+Q 切换弹种)"));
             return;
         }
         setAds(player, false);
@@ -1336,7 +1336,7 @@ public final class WeaponService implements Listener {
 
     private void sprintHint(Player player) {
         if (sprinting(player)) {
-            hint(player, "<#9AA0A6>冲刺时不能开火");
+            hint(player, "<muted>冲刺时不能开火");
         }
     }
 
@@ -1346,15 +1346,15 @@ public final class WeaponService implements Listener {
             return null;
         }
         if (plugin.lobby().isLobby(player.getWorld())) {
-            return "<#9AA0A6>大厅里不能开火，请到靶场入口进入个人靶场";
+            return "<muted>大厅里不能开火，请到靶场入口进入个人靶场";
         }
         if (plugin.downed().isReviving(player)) {
-            return "<#9AA0A6>救援时不能开火";
+            return "<muted>救援时不能开火";
         }
         if (plugin.raids().isInRaid(player)) {
-            return "<#9AA0A6>现在不能开火";
+            return "<muted>现在不能开火";
         }
-        return "<#9AA0A6>只能在行动或靶场中开火";
+        return "<muted>只能在行动或靶场中开火";
     }
 
     // ------------------------------------------------------------------ input events
@@ -1501,7 +1501,7 @@ public final class WeaponService implements Listener {
         state.burstLeft = 0;
         state.sampleLeft = 0;
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, 1f);
-        player.sendActionBar(Text.mm("<#F2C94C>射击模式: <white>" + state.fireMode().displayName()));
+        player.sendActionBar(Text.mm("<accent>射击模式: <white>" + state.fireMode().displayName()));
     }
 
     @EventHandler
@@ -1509,7 +1509,7 @@ public final class WeaponService implements Listener {
         flush(event.getPlayer());
         GunState state = stow(event.getPlayer());
         if (state != null && state.reloading()) {
-            event.getPlayer().sendActionBar(Text.mm("<#9AA0A6>换弹已中断"));
+            event.getPlayer().sendActionBar(Text.mm("<muted>换弹已中断"));
         }
         setAds(event.getPlayer(), false);
     }

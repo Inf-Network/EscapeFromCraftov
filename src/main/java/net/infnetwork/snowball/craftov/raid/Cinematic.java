@@ -58,7 +58,7 @@ public final class Cinematic {
             player.setGameMode(GameMode.SPECTATOR);
             player.teleport(camera.getLocation());
         }
-        String tierLine = raid.tier.tag() + " <#8A8F98>· " + (players.size() <= 1 ? "单人行动" : players.size() + " 人小队");
+        String tierLine = raid.tier.tag() + " <muted>· " + (players.size() <= 1 ? "单人行动" : players.size() + " 人小队");
         new BukkitRunnable() {
             int tick;
 
@@ -100,11 +100,11 @@ public final class Cinematic {
                         player.setSpectatorTarget(camera);
                     }
                     if (tick == 4) {
-                        player.showTitle(Title.title(Text.mm("<b><#F2E6C8>" + Text.escape(raid.map.name())),
-                                Text.mm(tierLine + (isRanked(raid, player) ? " · <#FFC23D>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2600), Duration.ofMillis(600))));
+                        player.showTitle(Title.title(Text.mm("<b><text>" + Text.escape(raid.map.name())),
+                                Text.mm(tierLine + (isRanked(raid, player) ? " · <accent>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2600), Duration.ofMillis(600))));
                         player.playSound(player.getLocation(), "craftov:ui.cinematic", SoundCategory.MASTER, 1f, 1f);
                     } else if (tick == 70) {
-                        player.showTitle(Title.title(Text.mm(""), Text.mm("<#9AA0A6>第 " + squadNumber + " 小队 · 正在接近渗透点"),
+                        player.showTitle(Title.title(Text.mm(""), Text.mm("<muted>第 " + squadNumber + " 小队 · 正在接近渗透点"),
                                 Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(300))));
                     }
                 }

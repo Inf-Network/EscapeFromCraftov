@@ -60,8 +60,8 @@ public final class CollectionService {
         collect(carried, profile, fresh);
         if (!fresh.isEmpty()) {
             for (String name : fresh) {
-                Bukkit.broadcast(Text.mm(Text.PREFIX + "<#FF4D4D>★ <white>" + Text.escape(player.getName())
-                        + "</white> 成功带出收藏品 <#FF4D4D>" + Text.escape(name) + "</#FF4D4D>！"));
+                Bukkit.broadcast(Text.mm(Text.PREFIX + "<danger>★ <white>" + Text.escape(player.getName())
+                        + "</white> 成功带出收藏品 <danger>" + Text.escape(name) + "</danger>！"));
             }
             checkMilestones(player, profile);
         }
@@ -85,7 +85,7 @@ public final class CollectionService {
         for (int i = 0; i < MILESTONES.length; i++) {
             if (percent >= MILESTONES[i] && profile.collectionRewards.add(MILESTONES[i])) {
                 profile.money += REWARDS[i];
-                Text.send(player, "<#FFC23D>收藏室完成度达到 " + MILESTONES[i] + "%！奖励 ◈" + Text.money(REWARDS[i]));
+                Text.send(player, "<accent>收藏室完成度达到 " + MILESTONES[i] + "%！奖励 ◈" + Text.money(REWARDS[i]));
             }
         }
     }

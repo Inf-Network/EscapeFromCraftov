@@ -170,7 +170,7 @@ public final class MarketService implements Listener {
     /** Tells the player the market is shut and returns true, or returns false when it is open. */
     public boolean refuseIfClosed(Player player) {
         if (closed) {
-            Text.send(player, "<#FF8A80>交易行数据读取失败，暂停开放，请联系管理员。");
+            Text.send(player, "<danger>交易行数据读取失败，暂停开放，请联系管理员。");
         }
         return closed;
     }
@@ -406,37 +406,37 @@ public final class MarketService implements Listener {
         }
         int max = plugin.getConfig().getInt("market.max-listings", 12);
         if (mine(player.getUniqueId()).size() >= max) {
-            Text.send(player, "<#FF8A80>最多同时上架 " + max + " 件物品。");
+            Text.send(player, "<danger>最多同时上架 " + max + " 件物品。");
             return false;
         }
         ItemRecord record = profile.stash.get(stashIndex);
         ItemDef def = plugin.registry().get(record.id);
         if (def == null || !def.tradeable()) {
-            Text.send(player, "<#FF8A80>该物品无法上架。");
+            Text.send(player, "<danger>该物品无法上架。");
             return false;
         }
         if (record.isKit()) {
-            Text.send(player, "<#FF8A80>免费补给的物品不能上架交易行。");
+            Text.send(player, "<danger>免费补给的物品不能上架交易行。");
             return false;
         }
         if (record.hasContents()) {
-            Text.send(player, "<#FF8A80>请先清空胸挂/背包再上架。");
+            Text.send(player, "<danger>请先清空胸挂/背包再上架。");
             return false;
         }
         if (profile.level < minBuyLevel() && virtualPrice(record) <= 0) {
             // Only system buyers take a low-level seller's listings, and they never take this one.
-            Text.send(player, "<#FF8A80>账号等级 " + minBuyLevel() + " 前只有系统买家会收购你的商品，而" + virtualRarityNote()
-                    + "<#FF8A80>。<#9AA0A6>可以卖给商人，或升到 " + minBuyLevel() + " 级再上架。");
+            Text.send(player, "<danger>账号等级 " + minBuyLevel() + " 前只有系统买家会收购你的商品，而" + virtualRarityNote()
+                    + "<danger>。<muted>可以卖给商人，或升到 " + minBuyLevel() + " 级再上架。");
             return false;
         }
         long cap = maxPrice(record);
         if (price > cap) {
-            Text.send(player, "<#FF8A80>售价不能超过参考价的 " + Text.decimal(maxPriceMultiplier()) + " 倍（最高 ◈" + Text.money(cap) + "）。");
+            Text.send(player, "<danger>售价不能超过参考价的 " + Text.decimal(maxPriceMultiplier()) + " 倍（最高 ◈" + Text.money(cap) + "）。");
             return false;
         }
         long deposit = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));
         if (profile.money < deposit) {
-            Text.send(player, "<#FF8A80>上架手续费不足（◈" + Text.money(deposit) + "）");
+            Text.send(player, "<danger>上架手续费不足（◈" + Text.money(deposit) + "）");
             return false;
         }
         profile.money -= deposit;
@@ -455,12 +455,12 @@ public final class MarketService implements Listener {
         // leave it both in the stash and on the market.
         plugin.profiles().saveNow(player.getUniqueId());
         save();
-        Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
+        Text.send(player, "<ok>已上架 " + def.coloredName() + " ×" + record.amount + " <muted>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
             long virtual = virtualPrice(record);
             // Allowed (the seller may reach the level while it is listed), but said plainly.
-            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购"
+            Text.send(player, "<accent>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购"
                     + (listing.price > virtual ? "，而这个售价高于系统收购价 ◈" + Text.money(virtual) + "：升到 " + minBuyLevel()
                     + " 级前不会卖出，可以下架后重新定价。" : "。"));
         }
@@ -473,33 +473,33 @@ public final class MarketService implements Listener {
         }
         Listing listing = find(listingId);
         if (listing == null) {
-            Text.send(player, "<#FF8A80>该商品已售出或下架。");
+            Text.send(player, "<danger>该商品已售出或下架。");
             return false;
         }
         if (listing.seller.equals(player.getUniqueId())) {
-            Text.send(player, "<#FF8A80>不能购买自己的商品，可在“我的上架”中下架。");
+            Text.send(player, "<danger>不能购买自己的商品，可在“我的上架”中下架。");
             return false;
         }
         if (!tradeable(listing.item)) {
-            Text.send(player, "<#FF8A80>这件物品已经不能在交易行买卖，会退回卖家。");
+            Text.send(player, "<danger>这件物品已经不能在交易行买卖，会退回卖家。");
             return false;
         }
         Profile buyer = plugin.profiles().get(player);
         String blocked = tradeBlock(player, buyer, listing);
         if (blocked != null) {
-            Text.send(player, "<#FF8A80>" + blocked);
+            Text.send(player, "<danger>" + blocked);
             return false;
         }
         if (buyer.money < listing.price) {
-            Text.send(player, "<#FF8A80>块币不足。");
+            Text.send(player, "<danger>块币不足。");
             return false;
         }
         if (buyer.stashUsed() + listing.item.footprint() > buyer.stashCapacity) {
-            Text.send(player, "<#FF8A80>仓库空间不足。");
+            Text.send(player, "<danger>仓库空间不足。");
             return false;
         }
         if (!plugin.profiles().canEdit(listing.seller)) {
-            Text.send(player, "<#FF8A80>卖家的档案暂时无法读取，这件商品暂停出售。");
+            Text.send(player, "<danger>卖家的档案暂时无法读取，这件商品暂停出售。");
             return false;
         }
         addTradeGain(buyer, bargain(listing));
@@ -509,8 +509,8 @@ public final class MarketService implements Listener {
         commit(player.getUniqueId());
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
         ItemDef def = plugin.registry().get(listing.item.id);
-        Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
-                + " <#8A8F98>（已存入仓库）-◈" + Text.money(listing.price));
+        Text.send(player, "<ok>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
+                + " <muted>（已存入仓库）-◈" + Text.money(listing.price));
         return true;
     }
 
@@ -637,7 +637,7 @@ public final class MarketService implements Listener {
         Profile profile = plugin.profiles().get(player);
         profile.mailbox.add(listing.item);
         plugin.profiles().saveNow(player.getUniqueId());
-        Text.send(player, "<#9AA0A6>已下架，物品已退回仓库邮箱。");
+        Text.send(player, "<muted>已下架，物品已退回仓库邮箱。");
         return true;
     }
 
@@ -671,8 +671,8 @@ public final class MarketService implements Listener {
         Player seller = Bukkit.getPlayer(listing.seller);
         if (seller != null) {
             ItemDef def = plugin.registry().get(listing.item.id);
-            Text.send(seller, "<#5BD16B>交易行：你的 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
-                    + " 已被 " + Text.escape(buyerName) + " 买下，入账 ◈" + Text.money(payout) + " <#8A8F98>(税 ◈" + Text.money(tax) + ")");
+            Text.send(seller, "<ok>交易行：你的 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
+                    + " 已被 " + Text.escape(buyerName) + " 买下，入账 ◈" + Text.money(payout) + " <muted>(税 ◈" + Text.money(tax) + ")");
             seller.playSound(seller.getLocation(), "craftov:ui.sell", 1f, 1.2f);
         }
     }

@@ -79,7 +79,7 @@ public final class SeasonService {
         profile.seasonXp += xp;
         int after = tier(profile);
         if (after > before) {
-            Text.send(player, "<#FFC23D>赛季通行证升至第 " + after + " 级！<#9AA0A6>到大厅菜单「赛季通行证」领取奖励。");
+            Text.send(player, "<accent>赛季通行证升至第 " + after + " 级！<muted>到大厅菜单「赛季通行证」领取奖励。");
             player.playSound(player.getLocation(), "craftov:ui.levelup", SoundCategory.MASTER, 0.8f, 1.2f);
         }
     }

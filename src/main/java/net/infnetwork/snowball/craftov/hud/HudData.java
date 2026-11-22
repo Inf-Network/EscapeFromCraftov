@@ -5,6 +5,7 @@ import net.infnetwork.snowball.craftov.combat.BodyPart;
 import net.infnetwork.snowball.craftov.combat.DownedService;
 import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.Injury;
+import net.infnetwork.snowball.craftov.gui.Style;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -150,24 +151,24 @@ public final class HudData {
         }
         if (s.reloading()) {
             double left = s.reloadSecondsLeft();
-            return "<#FFB74D>换弹中 " + String.format("%.1f", left) + "s";
+            return Style.tag(Style.ACCENT) + "换弹中 " + String.format("%.1f", left) + "s";
         }
         if (s.drawing()) {
-            return "<#C8CCD2>拔枪中 " + String.format("%.1f", s.drawSecondsLeft()) + "s";
+            return Style.tag(Style.MUTED) + "拔枪中 " + String.format("%.1f", s.drawSecondsLeft()) + "s";
         }
         int reserve = reserve(p);
         int mag = s.gun().magazine();
         if (s.ammo() == 0 && reserve == 0) {
-            return "<#FF8A80>无弹药";
+            return Style.tag(Style.DANGER) + "无弹药";
         }
         if (s.ammo() == 0) {
-            return "<#FF8A80>弹匣空 <white>[Q]<#FF8A80> 换弹";
+            return Style.tag(Style.DANGER) + "弹匣空 <white>[Q]" + Style.tag(Style.DANGER) + " 换弹";
         }
         if (s.ammo() <= Math.max(1, mag * 0.3) && reserve > 0) {
-            return "<#FFB74D>弹药不足 <white>[Q]<#FFB74D> 换弹";
+            return Style.tag(Style.ACCENT) + "弹药不足 <white>[Q]" + Style.tag(Style.ACCENT) + " 换弹";
         }
         if (plugin.weapons().isAiming(p)) {
-            return "<#7FE0D0>瞄准中";
+            return Style.tag(Style.OK) + "瞄准中";
         }
         return "";
     }

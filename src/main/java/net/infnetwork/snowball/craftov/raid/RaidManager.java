@@ -208,7 +208,7 @@ public final class RaidManager implements Listener {
         World world = plugin.worlds().createRaidWorld(map);
         if (world == null) {
             for (List<Player> squad : squads) {
-                squad.forEach(p -> Text.send(p, "<#FF8A80>创建行动地图失败，请联系管理员。"));
+                squad.forEach(p -> Text.send(p, "<danger>创建行动地图失败，请联系管理员。"));
             }
             return;
         }
@@ -225,7 +225,7 @@ public final class RaidManager implements Listener {
                 raid.players.put(player.getUniqueId(), rp);
                 byPlayer.put(player.getUniqueId(), raid);
                 members.add(player.getUniqueId());
-                player.showTitle(Title.title(Text.mm("<#F2C94C>匹配成功"), Text.mm("<#9AA0A6>正在部署 " + Text.escape(map.name()) + " …"),
+                player.showTitle(Title.title(Text.mm("<accent>匹配成功"), Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
                         Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
                 player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
             }
@@ -274,8 +274,8 @@ public final class RaidManager implements Listener {
             Player player = Bukkit.getPlayer(rp.uuid);
             if (entryFee > 0 && player != null && plugin.profiles().get(player).money < entryFee) {
                 withdraw(raid, rp, "付不起入场费");
-                Text.send(player, "<#FF8A80>未能出发：块币不足以支付" + raid.tier.name() + "的入场费 ◈" + Text.money(entryFee)
-                        + "（匹配成功后花掉了），已退出本局。<#9AA0A6>装备和安全箱都没有动。");
+                Text.send(player, "<danger>未能出发：块币不足以支付" + raid.tier.name() + "的入场费 ◈" + Text.money(entryFee)
+                        + "（匹配成功后花掉了），已退出本局。<muted>装备和安全箱都没有动。");
             }
         }
         if (raid.players.isEmpty()) {
@@ -323,7 +323,7 @@ public final class RaidManager implements Listener {
         for (int i = 0; i < raid.squads.size(); i++) {
             deploySquad(raid, i + 1, groups.isEmpty() ? 1 : groups.get(i % groups.size()));
         }
-        announce(raid, "<#9AA0A6>行动开始。<white>" + raid.players.size() + "</white> 名干员已部署，限时 "
+        announce(raid, "<muted>行动开始。<white>" + raid.players.size() + "</white> 名干员已部署，限时 "
                 + raid.map.raidSeconds() / 60 + " 分钟。");
     }
 
@@ -411,7 +411,7 @@ public final class RaidManager implements Listener {
         rp.state = RaidPlayer.State.ALIVE;
         rp.protectedUntil = Bukkit.getCurrentTick() + 60L;
         plugin.carry().refreshLocks(player);
-        player.showTitle(Title.title(Text.mm("<#F2C94C><b>行动开始"), Text.mm("<#9AA0A6>搜索物资，活着撤离"),
+        player.showTitle(Title.title(Text.mm("<accent><b>行动开始"), Text.mm("<muted>搜索物资，活着撤离"),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
         player.playSound(player.getLocation(), "craftov:ui.deploy", SoundCategory.MASTER, 1f, 1f);
         plugin.hud().onRaidStart(player);
@@ -454,7 +454,7 @@ public final class RaidManager implements Listener {
                 }
                 if (inside == null) {
                     if (rp.extracting != null) {
-                        player.sendActionBar(Text.mm("<#FF8A80>已离开撤离区域"));
+                        player.sendActionBar(Text.mm("<danger>已离开撤离区域"));
                     }
                     rp.extracting = null;
                     rp.extractTicks = 0;
@@ -464,13 +464,13 @@ public final class RaidManager implements Listener {
                 if (blocked != null) {
                     rp.extracting = null;
                     rp.extractTicks = 0;
-                    player.sendActionBar(Text.mm("<#FF8A80>" + blocked));
+                    player.sendActionBar(Text.mm("<danger>" + blocked));
                     continue;
                 }
                 if (inside.def.type() == ExtractType.SWITCH) {
                     // Lever extracts leave all at once when the departure countdown ends (see tickSecond).
                     long left = (raid.switchUntil.getOrDefault(inside.def.switchId(), 0L) - now) / 20 + 1;
-                    player.sendActionBar(Text.mm("<#5BD16B>撤离倒计时 <white>" + left + "s <#9AA0A6>· 留在区域内即可撤离"));
+                    player.sendActionBar(Text.mm("<ok>撤离倒计时 <white>" + left + "s <muted>· 留在区域内即可撤离"));
                     rp.extracting = inside.def.id();
                     continue;
                 }
@@ -479,8 +479,8 @@ public final class RaidManager implements Listener {
                     rp.extractTicks = 0;
                     player.playSound(player.getLocation(), "craftov:extract.start", SoundCategory.MASTER, 0.9f, 1f);
                     if (inside.def.type() == ExtractType.PAID) {
-                        Text.send(player, "<#FFC23D>付费撤离：<white>撤离完成时自动从账户扣除 ◈" + Text.money(inside.def.cost())
-                                + "</white> <#9AA0A6>(当前余额 ◈" + Text.money(plugin.profiles().get(player).money) + "，离开区域即取消)");
+                        Text.send(player, "<accent>付费撤离：<white>撤离完成时自动从账户扣除 ◈" + Text.money(inside.def.cost())
+                                + "</white> <muted>(当前余额 ◈" + Text.money(plugin.profiles().get(player).money) + "，离开区域即取消)");
                     }
                 }
                 rp.extractTicks += 5;
@@ -597,7 +597,7 @@ public final class RaidManager implements Listener {
                         raid.bossSpawned = true;
                         if (ThreadLocalRandom.current().nextDouble() < boss.chance()) {
                             plugin.ai().spawnBoss(raid, boss);
-                            announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资。");
+                            announce(raid, "<danger>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资。");
                         }
                     }
                 }
@@ -613,17 +613,17 @@ public final class RaidManager implements Listener {
             for (ExtractPoint point : raid.extracts) {
                 if (point.available && !point.announcedOpen && point.def.opensAt() > 0 && elapsed >= point.def.opensAt()) {
                     point.announcedOpen = true;
-                    announce(raid, "<#5BD16B>撤离点 <white>" + Text.escape(point.def.name()) + "</white> 现已开放"
+                    announce(raid, "<ok>撤离点 <white>" + Text.escape(point.def.name()) + "</white> 现已开放"
                             + (point.def.capacity() > 0 ? "，仅限 " + point.def.capacity() + " 人" : "") + "。");
                 }
             }
             if (remaining <= 300 && !raid.warned5) {
                 raid.warned5 = true;
-                announce(raid, "<#FFC23D>行动剩余 5 分钟，请尽快撤离！");
+                announce(raid, "<accent>行动剩余 5 分钟，请尽快撤离！");
             }
             if (remaining <= 60 && !raid.warned1) {
                 raid.warned1 = true;
-                announce(raid, "<#FF4D4D>行动剩余 60 秒！超时未撤离将视为失踪。");
+                announce(raid, "<danger>行动剩余 60 秒！超时未撤离将视为失踪。");
             }
             for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
                 if (rp.state == RaidPlayer.State.DISCONNECTED
@@ -718,14 +718,14 @@ public final class RaidManager implements Listener {
         plugin.escorts().settle(raid, rp, true);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
-        announce(raid, "<#5BD16B>" + Text.escape(player.getName()) + " 已从 " + Text.escape(point.def.name()) + " 撤离。");
-        player.showTitle(Title.title(Text.mm("<#5BD16B><b>撤离成功"), Text.mm("<#9AA0A6>带出价值 <#F2C94C>◈" + Text.money(total)
-                + " <#8A8F98>· 净收益 " + (profit >= 0 ? "<#5BD16B>+" : "<#FF8A80>") + Text.money(profit)),
+        announce(raid, "<ok>" + Text.escape(player.getName()) + " 已从 " + Text.escape(point.def.name()) + " 撤离。");
+        player.showTitle(Title.title(Text.mm("<ok><b>撤离成功"), Text.mm("<muted>带出价值 <accent>◈" + Text.money(total)
+                + " <muted>· 净收益 " + (profit >= 0 ? "<ok>+" : "<danger>") + Text.money(profit)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(3), Duration.ofMillis(600))));
         player.playSound(player.getLocation(), "craftov:extract.success", SoundCategory.MASTER, 1f, 1f);
         if (handed > 0) {
-            Text.send(player, "<#9AA0A6>其他玩家带进本局的装备 <#F2C94C>◈" + Text.money(handed)
-                    + " <#9AA0A6>归你所有，但不计入净收益（排位分、经验和任务）。");
+            Text.send(player, "<muted>其他玩家带进本局的装备 <accent>◈" + Text.money(handed)
+                    + " <muted>归你所有，但不计入净收益（排位分、经验和任务）。");
         }
         // Inventory stays as the new lobby loadout.
         plugin.lobby().enterLobbyKeepInventory(player);
@@ -826,12 +826,12 @@ public final class RaidManager implements Listener {
                 kr.kills++;
                 plugin.tasks().onPlayerKill(killer);
                 plugin.bounties().onKill(killer, player, raid);
-                killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(player.getName())));
+                killer.sendActionBar(Text.mm("<danger>✖ 击杀 <white>" + Text.escape(player.getName())));
             }
         }
         killFeed(raid, hit, player.getName());
         player.setGameMode(GameMode.SPECTATOR);
-        player.showTitle(Title.title(Text.mm("<#FF4D4D><b>行动失败"), Text.mm("<#9AA0A6>" + Text.escape(reason)),
+        player.showTitle(Title.title(Text.mm("<danger><b>行动失败"), Text.mm("<muted>" + Text.escape(reason)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(600))));
         player.playSound(player.getLocation(), "craftov:ui.death", SoundCategory.MASTER, 1f, 1f);
         UUID uuid = player.getUniqueId();
@@ -866,7 +866,7 @@ public final class RaidManager implements Listener {
                 spectators.put(player.getUniqueId(), Map.entry(raid, rp));
                 player.setGameMode(GameMode.SPECTATOR);
                 player.setSpectatorTarget(target);
-                player.sendActionBar(Text.mm("<#9AA0A6>正在观战队友 <white>" + Text.escape(target.getName()) + " <#9AA0A6>· 按 <white>Shift</white> 返回大厅"));
+                player.sendActionBar(Text.mm("<muted>正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white>Shift</white> 返回大厅"));
                 return true;
             }
         }
@@ -991,7 +991,7 @@ public final class RaidManager implements Listener {
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
-        announce(raid, "<#8A8F98>" + Text.escape(rp.name) + " 失去联络。");
+        announce(raid, "<muted>" + Text.escape(rp.name) + " 失去联络。");
     }
 
     public void spawnCorpse(Raid raid, Location at, String name, List<ItemStack> items, @Nullable Player owner) {
@@ -1037,8 +1037,8 @@ public final class RaidManager implements Listener {
             m.setPersistent(false);
             m.setAI(false);
             m.setSilent(true);
-            m.setDescription(Text.mm("<#8A8F98>☠ " + Text.escape(title)));
-            m.customName(Text.mm("<#8A8F98>☠ " + Text.escape(title)));
+            m.setDescription(Text.mm("<muted>☠ " + Text.escape(title)));
+            m.customName(Text.mm("<muted>☠ " + Text.escape(title)));
             m.setCustomNameVisible(false);
             if (helmet != null && !helmet.isEmpty()) {
                 m.getEquipment().setHelmet(helmet.clone());
@@ -1059,9 +1059,9 @@ public final class RaidManager implements Listener {
 
     private void killFeed(Raid raid, DamageService.@Nullable LastHit hit, String victim) {
         String line = hit == null || hit.attacker() == null
-                ? "<#8A8F98>☠ <white>" + Text.escape(victim)
-                : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
+                ? "<muted>☠ <white>" + Text.escape(victim)
+                : "<danger>" + Text.escape(hit.attackerName()) + " <muted>[" + Text.escape(hit.weapon()) + "]"
+                + (hit.headshot() ? " <danger>⊕" : "") + " <muted>→ <white>" + Text.escape(victim);
         for (Player player : raid.online()) {
             player.sendMessage(Text.mm(line));
         }
@@ -1096,22 +1096,22 @@ public final class RaidManager implements Listener {
     }
 
     private void sendReport(Player player, Profile.RaidReport r, List<String> collectibles) {
-        player.sendMessage(Text.mm("<#3A3F47>━━━━━━━━━━ <#F2E6C8>行动报告</#F2E6C8> ━━━━━━━━━━"));
-        player.sendMessage(Text.mm("<#8A8F98>地图 <white>" + Text.escape(r.map) + " <#8A8F98>· " + Text.escape(r.tier)
-                + " <#8A8F98>· 用时 <white>" + Text.duration(r.seconds)));
-        player.sendMessage(Text.mm("<#8A8F98>结果 <white>" + Text.escape(r.outcome)));
+        player.sendMessage(Text.mm("<dim>━━━━━━━━━━ <text>行动报告</text> ━━━━━━━━━━"));
+        player.sendMessage(Text.mm("<muted>地图 <white>" + Text.escape(r.map) + " <muted>· " + Text.escape(r.tier)
+                + " <muted>· 用时 <white>" + Text.duration(r.seconds)));
+        player.sendMessage(Text.mm("<muted>结果 <white>" + Text.escape(r.outcome)));
         if (r.extractedValue > 0) {
-            player.sendMessage(Text.mm("<#8A8F98>净收益 <#5BD16B>+◈" + Text.money(r.extractedValue)));
+            player.sendMessage(Text.mm("<muted>净收益 <ok>+◈" + Text.money(r.extractedValue)));
         }
         if (r.lostValue > 0) {
-            player.sendMessage(Text.mm("<#8A8F98>损失 <#FF8A80>-◈" + Text.money(r.lostValue)));
+            player.sendMessage(Text.mm("<muted>损失 <danger>-◈" + Text.money(r.lostValue)));
         }
-        player.sendMessage(Text.mm("<#8A8F98>击败干员 <white>" + r.kills + " <#8A8F98>· 击败敌兵 <white>" + r.aiKills
-                + " <#8A8F98>· 经验 <white>+" + r.xp + (r.rankDelta != 0 ? " <#8A8F98>· 排位分 " + (r.rankDelta > 0 ? "<#5BD16B>+" : "<#FF8A80>") + r.rankDelta : "")));
+        player.sendMessage(Text.mm("<muted>击败干员 <white>" + r.kills + " <muted>· 击败敌兵 <white>" + r.aiKills
+                + " <muted>· 经验 <white>+" + r.xp + (r.rankDelta != 0 ? " <muted>· 排位分 " + (r.rankDelta > 0 ? "<ok>+" : "<danger>") + r.rankDelta : "")));
         for (String c : collectibles) {
-            player.sendMessage(Text.mm("<#FF4D4D>★ 新收藏品入册：<white>" + Text.escape(c)));
+            player.sendMessage(Text.mm("<danger>★ 新收藏品入册：<white>" + Text.escape(c)));
         }
-        player.sendMessage(Text.mm("<#3A3F47>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"));
+        player.sendMessage(Text.mm("<dim>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"));
     }
 
     /** Who hurt the player, where and how badly: one line per attacker and weapon. */
@@ -1121,7 +1121,7 @@ public final class RaidManager implements Listener {
         }
         if (killing != null && killing.attacker() != null) {
             DamageService.HitRecord last = hits.get(hits.size() - 1);
-            player.sendMessage(Text.mm("<#FF4D4D>致命一击 <white>" + Text.escape(killing.attackerName()) + " <#8A8F98>· "
+            player.sendMessage(Text.mm("<danger>致命一击 <white>" + Text.escape(killing.attackerName()) + " <muted>· "
                     + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m"));
         }
         java.util.Map<String, java.util.Map<net.infnetwork.snowball.craftov.combat.BodyPart, double[]>> byAttacker = new java.util.LinkedHashMap<>();
@@ -1131,11 +1131,11 @@ public final class RaidManager implements Listener {
             acc[0] += 1;
             acc[1] += h.damage();
         }
-        player.sendMessage(Text.mm("<#8A8F98>受到的伤害"));
+        player.sendMessage(Text.mm("<muted>受到的伤害"));
         byAttacker.forEach((who, parts) -> {
-            StringBuilder sb = new StringBuilder("<white>" + Text.escape(who) + " <#8A8F98>→ ");
-            parts.forEach((part, acc) -> sb.append("<#C8CCD2>").append(part.displayName()).append(" ×").append((int) acc[0])
-                    .append(" <#FF8A80>").append(Math.round(acc[1])).append("  "));
+            StringBuilder sb = new StringBuilder("<white>" + Text.escape(who) + " <muted>→ ");
+            parts.forEach((part, acc) -> sb.append("<text>").append(part.displayName()).append(" ×").append((int) acc[0])
+                    .append(" <danger>").append(Math.round(acc[1])).append("  "));
             player.sendMessage(Text.mm(sb.toString().trim()));
         });
     }
@@ -1379,7 +1379,7 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
         plugin.lobby().enterLobbyKeepInventory(player);
         plugin.lobby().captureLoadout(player);
-        Text.send(player, "<#FFC23D>" + message);
+        Text.send(player, "<accent>" + message);
     }
 
     /**
@@ -1455,8 +1455,8 @@ public final class RaidManager implements Listener {
             plugin.lobby().enterLobbyKeepInventory(player);
             plugin.lobby().captureLoadout(player);
             Text.send(player, flyingIn && rp.fees > 0
-                    ? "<#FFC23D>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
-                    : "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
+                    ? "<accent>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
+                    : "<accent>服务器维护：本次行动已中止，你携带的物资已保留。");
         } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
             // Armory items are left out; own items from an armory rig or backpack that find
             // no free pocket go to the mailbox.
@@ -1499,7 +1499,7 @@ public final class RaidManager implements Listener {
             rp.state = RaidPlayer.State.DEPLOYING;
             player.setGameMode(GameMode.SPECTATOR);
             plugin.match().teamFor(raid, rp, player);
-            Text.send(player, "<#5BD16B>已重新连接到行动，正在随小队前往渗透点。");
+            Text.send(player, "<ok>已重新连接到行动，正在随小队前往渗透点。");
             return true;
         }
         rp.state = RaidPlayer.State.ALIVE;
@@ -1509,7 +1509,7 @@ public final class RaidManager implements Listener {
         plugin.match().teamFor(raid, rp, player);
         // LobbyService.onJoin skips the lobby HUD for a rejoin, so the raid HUD is shown here.
         plugin.hud().onRaidStart(player);
-        Text.send(player, "<#5BD16B>已重新连接到行动。");
+        Text.send(player, "<ok>已重新连接到行动。");
         return true;
     }
 
@@ -1667,11 +1667,11 @@ public final class RaidManager implements Listener {
             event.setCancelled(true);
             long dark = (raid.blackoutUntil - Bukkit.getCurrentTick()) / 20;
             if (dark > 0) {
-                player.sendActionBar(Text.mm("<#FFC23D>⚡ 电网故障，电闸暂时无法使用 <#9AA0A6>(" + dark + "s)"));
+                player.sendActionBar(Text.mm("<accent>⚡ 电网故障，电闸暂时无法使用 <muted>(" + dark + "s)"));
                 return;
             }
             if (raid.switchActive(sw.id())) {
-                player.sendActionBar(Text.mm("<#9AA0A6>" + Text.escape(sw.name()) + " 已经开启"));
+                player.sendActionBar(Text.mm("<muted>" + Text.escape(sw.name()) + " 已经开启"));
                 return;
             }
             int countdown = plugin.getConfig().getInt("extract.switch-countdown-seconds", 60);
@@ -1682,7 +1682,7 @@ public final class RaidManager implements Listener {
                 block.setBlockData(powerable, false);
             }
             raid.world.playSound(block.getLocation(), "craftov:world.switch", SoundCategory.BLOCKS, 3f, 1f);
-            announce(raid, "<#FFC23D>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
+            announce(raid, "<accent>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (block.getBlockData() instanceof Powerable powerable) {
                     powerable.setPowered(false);
@@ -1706,7 +1706,7 @@ public final class RaidManager implements Listener {
             String needed = plugin.registry().all().stream()
                     .filter(d -> d.category() == Category.KEY && lock.equals(d.lockId()))
                     .map(ItemDef::name).findFirst().orElse("对应的钥匙");
-            player.sendActionBar(Text.mm("<#FF8A80>门被锁住了，需要 <white>" + Text.escape(needed)));
+            player.sendActionBar(Text.mm("<danger>门被锁住了，需要 <white>" + Text.escape(needed)));
             player.playSound(player.getLocation(), "minecraft:block.iron_door.close", 0.6f, 1.6f);
             return;
         }
@@ -1714,10 +1714,10 @@ public final class RaidManager implements Listener {
         double uses = ItemFactory.dura(key, def.durability()) - 1;
         if (uses <= 0) {
             key.setAmount(key.getAmount() - 1);
-            player.sendActionBar(Text.mm("<#FFC23D>已解锁 · " + Text.escape(def.name()) + " 已用尽"));
+            player.sendActionBar(Text.mm("<accent>已解锁 · " + Text.escape(def.name()) + " 已用尽"));
         } else {
             plugin.items().setDura(key, uses);
-            player.sendActionBar(Text.mm("<#5BD16B>已解锁 · " + Text.escape(def.name()) + " <#8A8F98>剩余 " + (int) Math.round(uses) + " 次"));
+            player.sendActionBar(Text.mm("<ok>已解锁 · " + Text.escape(def.name()) + " <muted>剩余 " + (int) Math.round(uses) + " 次"));
         }
         raid.lockedDoors.remove(doorKey);
         raid.unlockedDoors.add(doorKey);
@@ -1780,7 +1780,7 @@ public final class RaidManager implements Listener {
                     }
                     player.playSound(player.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
                 } else {
-                    player.sendActionBar(Text.mm("<#9AA0A6>潜行拾取可直接替换当前的" + def.category().displayName()));
+                    player.sendActionBar(Text.mm("<muted>潜行拾取可直接替换当前的" + def.category().displayName()));
                 }
             }
             return;
@@ -1843,7 +1843,7 @@ public final class RaidManager implements Listener {
         for (RaidPlayer mate : raid.players.values()) {
             Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
             if (p != null) {
-                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
+                Text.send(p, "<muted>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
             }
         }
         plugin.escorts().onWithdraw(rp.uuid, rp.name, reason);
@@ -1864,7 +1864,7 @@ public final class RaidManager implements Listener {
                 for (RaidPlayer mate : raid.squadOf(rp)) {
                     Player p = Bukkit.getPlayer(mate.uuid);
                     if (p != null && p != player) {
-                        p.sendMessage(Text.mm(Text.PREFIX + "<#9AA0A6>队友 " + Text.escape(player.getName()) + " 找到了 " + def.coloredName()));
+                        p.sendMessage(Text.mm(Text.PREFIX + "<muted>队友 " + Text.escape(player.getName()) + " 找到了 " + def.coloredName()));
                     }
                 }
             }

@@ -25,8 +25,8 @@ public final class LootMenu extends Menu {
     private int seenVersion = -1;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
-        super(viewer, container.type.rows(), Text.mm("<#E8E8E8>" + Text.escape(container.title)
-                + (container.hiddenCount() > 0 ? "  <#8A8F98>搜索中…" : "")));
+        super(viewer, container.type.rows(), Text.mm("<text>" + Text.escape(container.title)
+                + (container.hiddenCount() > 0 ? "  <muted>搜索中…" : "")));
         this.plugin = plugin;
         this.container = container;
     }
@@ -45,15 +45,15 @@ public final class LootMenu extends Menu {
             } else if (slot == next) {
                 set(slot, searching());
             } else {
-                set(slot, UiItems.button("craftov:ui/search_hidden", "<#6B7079>未搜索", List.of(), "search"));
+                set(slot, UiItems.button("craftov:ui/search_hidden", "<dim>未搜索", List.of(), "search"));
             }
         }
     }
 
     private ItemStack searching() {
         double speed = plugin.operators().searchMultiplier(viewer);
-        return UiItems.button("craftov:ui/search_active", "<#F2C94C>搜索中… <white>" + String.format("%.1f", container.secondsLeft(speed)) + "s",
-                List.of("<#8A8F98>品质越高搜索越久，保持界面打开以继续"), "search");
+        return UiItems.button("craftov:ui/search_active", "<accent>搜索中… <white>" + String.format("%.1f", container.secondsLeft(speed)) + "s",
+                List.of("<muted>品质越高搜索越久，保持界面打开以继续"), "search");
     }
 
     @Override
@@ -145,7 +145,7 @@ public final class LootMenu extends Menu {
         }
         ItemStack left = carry.give(viewer, stack, false);
         if (left != null && left.getAmount() == stack.getAmount()) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>携行空间不足"));
+            viewer.sendActionBar(Text.mm("<danger>携行空间不足"));
             viewer.playSound(viewer.getLocation(), "minecraft:block.note_block.bass", 0.6f, 0.6f);
             return;
         }
@@ -163,7 +163,7 @@ public final class LootMenu extends Menu {
         }
         int target = container.firstEmpty();
         if (target < 0) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>容器已满"));
+            viewer.sendActionBar(Text.mm("<danger>容器已满"));
             return;
         }
         plugin.weapons().flush(viewer);

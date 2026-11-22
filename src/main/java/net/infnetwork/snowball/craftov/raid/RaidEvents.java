@@ -75,7 +75,7 @@ public final class RaidEvents {
             plugin.bounties().announce(raid);
             if (raid.night) {
                 for (Player player : raid.online()) {
-                    player.sendMessage(Text.mm("<#9AA0A6>🌙 <#C8CCD2>夜间行动：<#9AA0A6>敌兵视野变短，但开着的战术手电会让你从更远处暴露。"));
+                    player.sendMessage(Text.mm("<muted>🌙 <text>夜间行动：<muted>敌兵视野变短，但开着的战术手电会让你从更远处暴露。"));
                 }
             }
         }, 20L * 14);
@@ -144,8 +144,8 @@ public final class RaidEvents {
                 Location from = plugin.drones().launch(raid);
                 if (from != null) {
                     for (Player player : raid.online()) {
-                        player.sendMessage(Text.mm("<#FF8A80>✈ 敌方侦察无人机已升空：<#C8CCD2>" + bearing(player.getLocation(), from)
-                                + "<#9AA0A6>。被它看见会引来附近的敌兵，可以把它打下来。"));
+                        player.sendMessage(Text.mm("<danger>✈ 敌方侦察无人机已升空：<text>" + bearing(player.getLocation(), from)
+                                + "<muted>。被它看见会引来附近的敌兵，可以把它打下来。"));
                     }
                 }
                 yield from != null;
@@ -169,7 +169,7 @@ public final class RaidEvents {
     private boolean blackout(Raid raid) {
         int seconds = plugin.getConfig().getInt("events.blackout-seconds", 180);
         raid.blackoutUntil = Bukkit.getCurrentTick() + seconds * 20L;
-        broadcast(raid, "<#FFC23D>⚡ 电网故障！<#9AA0A6>需拉闸的撤离点在 " + seconds / 60 + " 分钟内无法启用。", "minecraft:block.beacon.deactivate");
+        broadcast(raid, "<accent>⚡ 电网故障！<muted>需拉闸的撤离点在 " + seconds / 60 + " 分钟内无法启用。", "minecraft:block.beacon.deactivate");
         return true;
     }
 
@@ -183,8 +183,8 @@ public final class RaidEvents {
         long fire = 20L * 30;
         raid.world.playSound(centre, "craftov:event.siren", SoundCategory.MASTER, 6f, 1f);
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<#FF4D4D>☢ 炮击预警！<#C8CCD2>" + bearing(player.getLocation(), centre)
-                    + " <#9AA0A6>半径 " + (int) radius + " 米的区域 20 秒后遭到炮击，红色烟圈内立刻撤出。"));
+            player.sendMessage(Text.mm("<danger>☢ 炮击预警！<text>" + bearing(player.getLocation(), centre)
+                    + " <muted>半径 " + (int) radius + " 米的区域 20 秒后遭到炮击，红色烟圈内立刻撤出。"));
         }
         running.add(new Running(raid) {
             long nextShell;
@@ -264,8 +264,8 @@ public final class RaidEvents {
         int count = 3 + ThreadLocalRandom.current().nextInt(2);
         if (plugin.ai().reinforce(raid, from, target, count) > 0) {
             for (Player player : raid.online()) {
-                player.sendMessage(Text.mm("<#FF8A80>⚑ 敌方增援已部署：<#C8CCD2>" + count + " 名士兵从" + bearing(player.getLocation(), from)
-                        + "<#9AA0A6>赶来。"));
+                player.sendMessage(Text.mm("<danger>⚑ 敌方增援已部署：<text>" + count + " 名士兵从" + bearing(player.getLocation(), from)
+                        + "<muted>赶来。"));
             }
             raid.world.playSound(from, "minecraft:event.raid.horn", SoundCategory.MASTER, 4f, 1f);
             return true;
@@ -283,8 +283,8 @@ public final class RaidEvents {
             return false;
         }
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<#F2C94C>✈ 空投正在投放：<#C8CCD2>" + bearing(player.getLocation(), at)
-                    + "<#9AA0A6>，红烟处 20 秒后落地。"));
+            player.sendMessage(Text.mm("<accent>✈ 空投正在投放：<text>" + bearing(player.getLocation(), at)
+                    + "<muted>，红烟处 20 秒后落地。"));
         }
         raid.world.playSound(at, "craftov:event.siren", SoundCategory.MASTER, 3f, 1.4f);
         running.add(new Running(raid) {
@@ -327,7 +327,7 @@ public final class RaidEvents {
             return false;
         }
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<#FF4D4D>☠ 首领 " + Text.escape(boss) + " <#C8CCD2>正带着护卫转移，目的地在" + bearing(player.getLocation(), to) + "。"));
+            player.sendMessage(Text.mm("<danger>☠ 首领 " + Text.escape(boss) + " <text>正带着护卫转移，目的地在" + bearing(player.getLocation(), to) + "。"));
         }
         return true;
     }

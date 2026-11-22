@@ -58,7 +58,7 @@ public final class TutorialService {
             profile.tutorialDone = true;
             long bonus = plugin.getConfig().getLong("tutorial.reward", 20_000);
             profile.money += bonus;
-            Text.send(player, "<#5BD16B><b>新手指引完成！</b> <#F2C94C>奖励 ◈" + Text.money(bonus) + " <#9AA0A6>· 之后可以试试每日任务和藏身处。");
+            Text.send(player, "<ok><b>新手指引完成！</b> <accent>奖励 ◈" + Text.money(bonus) + " <muted>· 之后可以试试每日任务和藏身处。");
         } else {
             show(player, profile);
         }
@@ -70,7 +70,7 @@ public final class TutorialService {
             return;
         }
         Step step = Step.values()[profile.tutorialStep];
-        Text.send(player, "<#F2C94C>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<#C8CCD2>" + step.hint);
+        Text.send(player, "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint);
     }
 
     private void remind() {
@@ -78,7 +78,7 @@ public final class TutorialService {
             Profile profile = plugin.profiles().get(player);
             if (active(profile) && profile.tutorialStep < Step.values().length && profile.stat("extracts") == 0) {
                 Step step = Step.values()[profile.tutorialStep];
-                player.sendActionBar(Text.mm("<#F2C94C>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<#C8CCD2>" + step.hint));
+                player.sendActionBar(Text.mm("<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint));
             }
         }
     }

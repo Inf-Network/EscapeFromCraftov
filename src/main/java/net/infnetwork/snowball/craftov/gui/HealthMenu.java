@@ -32,7 +32,7 @@ final class HealthMenu extends Menu {
     private int lastHash;
 
     HealthMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>伤势"));
+        super(viewer, 6, Text.mm("<text>伤势"));
         this.plugin = plugin;
     }
 
@@ -53,29 +53,29 @@ final class HealthMenu extends Menu {
 
         int hp = (int) Math.ceil(viewer.getHealth());
         List<String> status = new ArrayList<>();
-        status.add("<#8A8F98>生命 <white>" + hp + " / 100");
-        status.add("<#8A8F98>体力 <white>" + Math.round(plugin.stamina().stamina(viewer)) + (plugin.stamina().exhausted(viewer) ? " <#FF8A80>力竭" : ""));
+        status.add("<muted>生命 <white>" + hp + " / 100");
+        status.add("<muted>体力 <white>" + Math.round(plugin.stamina().stamina(viewer)) + (plugin.stamina().exhausted(viewer) ? " <danger>力竭" : ""));
         var stamina = plugin.stamina();
         double penalty = stamina.overweightPenalty(viewer);
-        status.add("<#8A8F98>负重 <white>" + String.format("%.1f", stamina.weight(viewer)) + "kg"
-                + " <#5F6368>/ " + Math.round(stamina.comfortKg()) + " / " + Math.round(stamina.overloadKg()) + "kg"
-                + (stamina.overloaded(viewer) ? " <#FF8A80>严重超重：无法冲刺，移速 -" + Math.round(penalty * 100) + "%"
-                : penalty > 0 ? " <#FFB74D>超重，移速 -" + Math.round(penalty * 100) + "%" : ""));
+        status.add("<muted>负重 <white>" + String.format("%.1f", stamina.weight(viewer)) + "kg"
+                + " <dim>/ " + Math.round(stamina.comfortKg()) + " / " + Math.round(stamina.overloadKg()) + "kg"
+                + (stamina.overloaded(viewer) ? " <danger>严重超重：无法冲刺，移速 -" + Math.round(penalty * 100) + "%"
+                : penalty > 0 ? " <accent>超重，移速 -" + Math.round(penalty * 100) + "%" : ""));
         if (plugin.health().painkilled(viewer)) {
-            status.add("<#7FE0D0>止痛中 " + plugin.health().painkillerSeconds(viewer) + "s <#8A8F98>（骨折暂不影响行动）");
+            status.add("<ok>止痛中 " + plugin.health().painkillerSeconds(viewer) + "s <muted>（骨折暂不影响行动）");
         }
         if (plugin.health().adrenaline(viewer)) {
-            status.add("<#FF9F43>肾上腺素生效中");
+            status.add("<accent>肾上腺素生效中");
         }
-        set(7, UiItems.button("craftov:ui/icon_profile", "<#F2E6C8><b>身体状况", status));
-        set(16, UiItems.button("craftov:ui/icon_help", "<#C8CCD2><b>伤势说明", List.of(
-                "<#FF8A80>出血 <#9AA0A6>持续掉血，用绷带 / 止血敷料 / 医疗箱",
-                "<#FF2D2D>大出血 <#9AA0A6>掉血很快，用止血敷料或军用医疗箱",
-                "<#FFB74D>腿部骨折 <#9AA0A6>移动变慢、无法冲刺、跳不高",
-                "<#FFB74D>手臂骨折 <#9AA0A6>射击扩散和后坐力变大、换弹变慢",
-                "<#9AA0A6>夹板治疗一处骨折，手术包每次处理伤得最重的一个部位",
-                "<#9AA0A6>急救包、医疗箱、手术包每处理一处伤口都消耗治疗量",
-                "<#9AA0A6>止痛药暂时屏蔽骨折影响，但不会治好它")));
+        set(7, UiItems.button("craftov:ui/icon_profile", "<text><b>身体状况", status));
+        set(16, UiItems.button("craftov:ui/icon_help", "<text><b>伤势说明", List.of(
+                "<danger>出血 <muted>持续掉血，用绷带 / 止血敷料 / 医疗箱",
+                "<danger>大出血 <muted>掉血很快，用止血敷料或军用医疗箱",
+                "<accent>腿部骨折 <muted>移动变慢、无法冲刺、跳不高",
+                "<accent>手臂骨折 <muted>射击扩散和后坐力变大、换弹变慢",
+                "<muted>夹板治疗一处骨折，手术包每次处理伤得最重的一个部位",
+                "<muted>急救包、医疗箱、手术包每处理一处伤口都消耗治疗量",
+                "<muted>止痛药暂时屏蔽骨折影响，但不会治好它")));
 
         List<Integer> meds = new ArrayList<>();
         PlayerInventory inv = viewer.getInventory();
@@ -94,7 +94,7 @@ final class HealthMenu extends Menu {
             button(45 + i, stack, e -> takeInHand(slot));
         }
         if (meds.isEmpty()) {
-            set(49, UiItems.button("craftov:ui/icon_cancel_small", "<#9AA0A6>身上没有医疗物品", List.of()));
+            set(49, UiItems.button("craftov:ui/icon_cancel_small", "<muted>身上没有医疗物品", List.of()));
         }
         lastHash = wounds.hashCode() * 31 + hp;
     }
@@ -104,17 +104,17 @@ final class HealthMenu extends Menu {
         Set<Injury> set = wounds.getOrDefault(part, Set.of());
         List<String> lore = new ArrayList<>();
         if (set.isEmpty()) {
-            lore.add("<#5BD16B>正常");
+            lore.add("<ok>正常");
         } else {
             for (Injury injury : set) {
-                lore.add("<" + injury.hex() + ">● " + injury.displayName() + " <#9AA0A6>" + switch (injury) {
+                lore.add("<" + injury.hex() + ">● " + injury.displayName() + " <muted>" + switch (injury) {
                     case LIGHT_BLEED -> "→ 绷带 / 止血敷料 / 急救包";
                     case HEAVY_BLEED -> "→ 止血敷料 / 军用医疗箱 / 手术包";
                     case FRACTURE -> "→ 夹板 / 手术包";
                 });
             }
         }
-        ItemStack icon = UiItems.button("craftov:ui/body_" + shape, (set.isEmpty() ? "<#C8CCD2>" : "<#FF8A80>") + "<b>" + part.displayName(), lore);
+        ItemStack icon = UiItems.button("craftov:ui/body_" + shape, (set.isEmpty() ? "<text>" : "<danger>") + "<b>" + part.displayName(), lore);
         icon.setData(DataComponentTypes.DYED_COLOR, DyedItemColor.dyedItemColor(Color.fromRGB(STATE_COLORS[state])));
         icon.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay().addHiddenComponents(DataComponentTypes.DYED_COLOR).build());
         set(slot, icon);
@@ -136,7 +136,7 @@ final class HealthMenu extends Menu {
             inv.setItem(from, current);
         }
         viewer.closeInventory();
-        viewer.sendActionBar(Text.mm("<#7FE0D0>按住右键使用"));
+        viewer.sendActionBar(Text.mm("<ok>按住右键使用"));
     }
 
     @Override

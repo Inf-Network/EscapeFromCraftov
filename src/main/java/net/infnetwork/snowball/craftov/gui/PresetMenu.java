@@ -24,7 +24,7 @@ final class PresetMenu extends Menu {
     private final CraftovPlugin plugin;
 
     PresetMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 3, Text.mm("<#F2E6C8>配装方案"));
+        super(viewer, 3, Text.mm("<text>配装方案"));
         this.plugin = plugin;
     }
 
@@ -41,29 +41,29 @@ final class PresetMenu extends Menu {
                 for (Map.Entry<Integer, String> e : preset.slots.entrySet()) {
                     ItemDef def = plugin.registry().get(e.getValue());
                     int amount = preset.amounts.getOrDefault(e.getKey(), 1);
-                    String count = amount > 1 ? " <#8A8F98>×" + amount : "";
+                    String count = amount > 1 ? " <muted>×" + amount : "";
                     if (def == null) {
-                        lore.add("<#8A8F98>· <#9AA0A6>未知物品 " + Text.escape(e.getValue()) + count);
+                        lore.add("<muted>· <muted>未知物品 " + Text.escape(e.getValue()) + count);
                         continue;
                     }
-                    lore.add("<#8A8F98>· " + def.coloredName() + count);
+                    lore.add("<muted>· " + def.coloredName() + count);
                     if (sold(def)) {
                         cost += plugin.traders().buyPrice(def) * amount;
                     }
                 }
                 if (lore.size() > 12) {
                     lore = new ArrayList<>(lore.subList(0, 12));
-                    lore.add("<#8A8F98>……");
+                    lore.add("<muted>……");
                 }
                 lore.add("");
-                lore.add("<#8A8F98>商人有售的部分全部购买约 ◈" + Text.money(cost) + "（优先使用仓库中的物品）");
-                lore.add("<#5BD16B>左键 一键配装  <#FF8A80>潜行右键 删除  <#FFC23D>右键 覆盖保存");
-                button(slot, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8><b>" + Text.escape(preset.name), lore), e -> {
+                lore.add("<muted>商人有售的部分全部购买约 ◈" + Text.money(cost) + "（优先使用仓库中的物品）");
+                lore.add("<ok>左键 一键配装  <danger>潜行右键 删除  <accent>右键 覆盖保存");
+                button(slot, UiItems.button("craftov:ui/icon_stash", "<text><b>" + Text.escape(preset.name), lore), e -> {
                     if (e.isShiftClick() && e.isRightClick()) {
                         p.presets.remove(index);
                     } else if (e.isRightClick()) {
                         p.presets.set(index, capture(preset.name));
-                        Text.send(viewer, "<#5BD16B>已覆盖配装方案 " + Text.escape(preset.name));
+                        Text.send(viewer, "<ok>已覆盖配装方案 " + Text.escape(preset.name));
                     } else {
                         apply(preset);
                     }
@@ -71,18 +71,18 @@ final class PresetMenu extends Menu {
                     redraw();
                 });
             } else {
-                button(slot, UiItems.button("craftov:ui/icon_upgrade", "<#8A8F98>空方案 " + (i + 1),
-                        List.of("<#9AA0A6>点击把当前身上的配装保存为方案")), e -> {
+                button(slot, UiItems.button("craftov:ui/icon_upgrade", "<muted>空方案 " + (i + 1),
+                        List.of("<muted>点击把当前身上的配装保存为方案")), e -> {
                     p.presets.add(capture("方案 " + (p.presets.size() + 1)));
                     plugin.profiles().markDirty(viewer.getUniqueId());
-                    Text.send(viewer, "<#5BD16B>已保存当前配装。");
+                    Text.send(viewer, "<ok>已保存当前配装。");
                     redraw();
                 });
             }
         }
         set(22, UiItems.button("craftov:ui/icon_help", "<white>说明", List.of(
-                "<#9AA0A6>一键配装会把身上的物品先存回仓库，", "<#9AA0A6>再按方案从仓库取出或向商人购买。",
-                "<#9AA0A6>商人不出售的物品（金色/红色）只能从仓库取。")));
+                "<muted>一键配装会把身上的物品先存回仓库，", "<muted>再按方案从仓库取出或向商人购买。",
+                "<muted>商人不出售的物品（金色/红色）只能从仓库取。")));
     }
 
     private Profile.Preset capture(String name) {
@@ -102,7 +102,7 @@ final class PresetMenu extends Menu {
         List<ItemRecord> current = new ArrayList<>(plugin.carry().snapshot(viewer).values());
         int footprint = current.stream().mapToInt(ItemRecord::footprint).sum();
         if (p.stashUsed() + footprint > p.stashCapacity) {
-            Text.send(viewer, "<#FF8A80>仓库空间不足，无法暂存当前装备。");
+            Text.send(viewer, "<danger>仓库空间不足，无法暂存当前装备。");
             return;
         }
         p.stash.addAll(current);
@@ -154,13 +154,13 @@ final class PresetMenu extends Menu {
         plugin.carry().refreshLocks(viewer);
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
-        Text.send(viewer, "<#5BD16B>已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
+        Text.send(viewer, "<ok>已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
         if (!missing.isEmpty()) {
             Map<String, Integer> counted = new java.util.LinkedHashMap<>();
             missing.forEach(item -> counted.merge(item, 1, Integer::sum));
             List<String> lines = new ArrayList<>();
             counted.forEach((item, n) -> lines.add(n > 1 ? item + " ×" + n : item));
-            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足、缺少胸挂/背包或物品表里没有）：" + Text.escape(String.join("、", lines)));
+            Text.send(viewer, "<accent>没有放上（仓库没有、商人不卖、块币不足、缺少胸挂/背包或物品表里没有）：" + Text.escape(String.join("、", lines)));
         }
     }
 

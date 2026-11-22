@@ -3,6 +3,8 @@ package net.infnetwork.snowball.craftov.util;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.infnetwork.snowball.craftov.gui.Style;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.command.CommandSender;
 
@@ -10,11 +12,15 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 
-/** MiniMessage helpers. Every component built here has italics disabled so item lore stays clean. */
+/**
+ * MiniMessage helpers. Every component built here has italics disabled so item lore stays clean,
+ * and the design tokens of {@link Style} work as tags ({@code <muted>}, {@code <accent>} ...).
+ */
 public final class Text {
 
-    public static final String PREFIX = "<#3A3F47>[</#3A3F47><gradient:#F2C94C:#F2994A>Craftov</gradient><#3A3F47>]</#3A3F47> ";
-    private static final MiniMessage MM = MiniMessage.miniMessage();
+    public static final String PREFIX = "<dim>[</dim><accent>Craftov</accent><dim>]</dim> ";
+    private static final MiniMessage MM = MiniMessage.builder()
+            .tags(TagResolver.resolver(TagResolver.standard(), Style.tags())).build();
     private static final DecimalFormat MONEY = new DecimalFormat("#,###");
 
     private Text() {
@@ -78,7 +84,7 @@ public final class Text {
         return String.format("%02d:%02d", seconds / 60, seconds % 60);
     }
 
-    /** Text progress bar such as ▮▮▮▮▯▯▯. */
+    /** Text progress bar such as ▮▮▮▮▯▯▯; colours are token tag names ({@code ok}, {@code dim}) or {@code #RRGGBB}. */
     public static String bar(double fraction, int width, String filledColor, String emptyColor) {
         fraction = Math.max(0, Math.min(1, fraction));
         int filled = (int) Math.round(fraction * width);

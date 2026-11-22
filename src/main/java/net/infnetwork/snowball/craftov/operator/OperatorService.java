@@ -69,7 +69,7 @@ public final class OperatorService implements Listener {
         plugin.profiles().get(player).operator = id;
         plugin.profiles().markDirty(player.getUniqueId());
         OperatorDef def = OPERATORS.get(id);
-        Text.send(player, "<#9AA0A6>已选择干员 <" + def.color() + ">" + def.name() + " <#8A8F98>(" + def.role() + ")");
+        Text.send(player, "<muted>已选择干员 <" + def.color() + ">" + def.name() + " <muted>(" + def.role() + ")");
     }
 
     public int cooldownLeft(Player player) {
@@ -122,12 +122,12 @@ public final class OperatorService implements Listener {
         RaidPlayer rp = plugin.raids().session(player);
         Raid raid = plugin.raids().raidOf(player);
         if (rp == null || raid == null || rp.state != RaidPlayer.State.ALIVE) {
-            player.sendActionBar(Text.mm("<#9AA0A6>技能只能在行动中使用"));
+            player.sendActionBar(Text.mm("<muted>技能只能在行动中使用"));
             return;
         }
         int left = cooldownLeft(player);
         if (left > 0) {
-            player.sendActionBar(Text.mm("<#FF8A80>技能冷却中 " + left + "s"));
+            player.sendActionBar(Text.mm("<danger>技能冷却中 " + left + "s"));
             return;
         }
         OperatorDef def = of(player);
@@ -165,7 +165,7 @@ public final class OperatorService implements Listener {
             plugin.health().cure(p, Injury.HEAVY_BLEED);
             p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, p.getLocation().add(0, 1, 0), 14, 0.4, 0.5, 0.4);
             if (p != player) {
-                p.sendActionBar(Text.mm("<#5BD16B>" + Text.escape(player.getName()) + " 的急救脉冲 +30"));
+                p.sendActionBar(Text.mm("<ok>" + Text.escape(player.getName()) + " 的急救脉冲 +30"));
             }
         }
         Location c = player.getLocation();
@@ -197,7 +197,7 @@ public final class OperatorService implements Listener {
             }
             marked++;
             TextDisplay marker = entity.getWorld().spawn(entity.getLocation().add(0, entity.getHeight() + 0.6, 0), TextDisplay.class, d -> {
-                d.text(Text.mm("<#FF4D4D><b>◆</b>"));
+                d.text(Text.mm("<danger><b>◆</b>"));
                 d.setBillboard(Display.Billboard.CENTER);
                 d.setSeeThrough(true);
                 d.setPersistent(false);
@@ -212,7 +212,7 @@ public final class OperatorService implements Listener {
             }
             Bukkit.getScheduler().runTaskLater(plugin, marker::remove, 120L);
         }
-        player.sendActionBar(Text.mm("<#4FA3FF>声呐：标记了 " + marked + " 个目标"));
+        player.sendActionBar(Text.mm("<info>声呐：标记了 " + marked + " 个目标"));
     }
 
     private void shield(Player player) {
@@ -240,7 +240,7 @@ public final class OperatorService implements Listener {
             }
         }, 20L * 15);
         if (placed.isEmpty()) {
-            player.sendActionBar(Text.mm("<#9AA0A6>前方空间不足"));
+            player.sendActionBar(Text.mm("<muted>前方空间不足"));
         }
     }
 

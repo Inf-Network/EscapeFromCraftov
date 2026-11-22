@@ -94,7 +94,7 @@ public final class RankService {
             profile.level++;
             long reward = 5000L * profile.level;
             profile.money += reward;
-            Text.send(player, "<#FFC23D>账号升级至 Lv." + profile.level + "！<#9AA0A6>奖励 ◈" + Text.money(reward));
+            Text.send(player, "<accent>账号升级至 Lv." + profile.level + "！<muted>奖励 ◈" + Text.money(reward));
             player.playSound(player.getLocation(), "craftov:ui.levelup", 1f, 1f);
         }
     }

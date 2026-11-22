@@ -111,7 +111,7 @@ public final class InsuranceService {
             return 0;
         }
         if (profile.money < fee) {
-            Text.send(player, "<#FF8A80>块币不足，本局装备未投保（需要 ◈" + Text.money(fee) + "）");
+            Text.send(player, "<danger>块币不足，本局装备未投保（需要 ◈" + Text.money(fee) + "）");
             return 0;
         }
         profile.money -= fee;
@@ -131,7 +131,7 @@ public final class InsuranceService {
                 count++;
             }
         }
-        Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
+        Text.send(player, "<ok>已为 " + count + " 件装备投保 <muted>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
                 + Math.round((1 - lossChance()) * 100) + "% 的机会找回" + (returnMinutes() > 0 ? "，" + returnMinutes() + " 分钟后退回邮箱。" : "，退回邮箱。"));
         return fee;
     }
@@ -242,12 +242,12 @@ public final class InsuranceService {
                     + " returned" + (spared ? " (raid called off)" : "") + ", " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
-                String back = records.isEmpty() ? "<#FF8A80>投保装备全部没能找回"
-                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (atOnce ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱")
+                String back = records.isEmpty() ? "<danger>投保装备全部没能找回"
+                        : "<white>" + records.size() + " 件装备 <muted>" + (atOnce ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱")
                         + (spared ? "（行动中止，全部找回）" : "");
-                Text.send(player, "<#5BD16B>保险理赔：" + back
-                        + (lost.isEmpty() || records.isEmpty() ? "" : "，<#FF8A80>" + lost.size() + " 件没能找回")
-                        + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
+                Text.send(player, "<ok>保险理赔：" + back
+                        + (lost.isEmpty() || records.isEmpty() ? "" : "，<danger>" + lost.size() + " 件没能找回")
+                        + "<muted>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
         });
     }
@@ -272,7 +272,7 @@ public final class InsuranceService {
                         p.mailbox.addAll(ready);
                     });
             plugin.profiles().saveNow(player.getUniqueId());
-            Text.send(player, "<#5BD16B>保险理赔到账：<white>" + ready.size() + " 件装备 <#9AA0A6>已放入仓库邮箱");
+            Text.send(player, "<ok>保险理赔到账：<white>" + ready.size() + " 件装备 <muted>已放入仓库邮箱");
         }
     }
 

@@ -112,14 +112,14 @@ public final class CarryListener implements Listener {
                 if (held != null && held.isContainer() && CarryService.containerSlot(held.category()) == armorSlot) {
                     // The one in hand belongs in that same slot; a packed one could then go nowhere but
                     // the mailbox, which would make the mailbox free stash space.
-                    Text.send(player, "<#FF8A80>请先把手上的" + held.category().displayName() + "装备上或放下。");
+                    Text.send(player, "<danger>请先把手上的" + held.category().displayName() + "装备上或放下。");
                 } else if (equipped == null || equipped.isEmpty()) {
                     ItemStack moving = current.clone();
                     player.getInventory().setItem(slot, null);
                     carry.equip(player, moving);
                     player.updateInventory();
                 } else {
-                    Text.send(player, "<#FF8A80>请先卸下当前的" + def.category().displayName() + "。");
+                    Text.send(player, "<danger>请先卸下当前的" + def.category().displayName() + "。");
                 }
                 return;
             }
@@ -128,7 +128,7 @@ public final class CarryListener implements Listener {
         if (slot < CarryService.FEET && ItemFactory.hasContents(cursor)
                 && (event.getAction().name().startsWith("PLACE") || event.getAction() == InventoryAction.SWAP_WITH_CURSOR)) {
             event.setCancelled(true);
-            Text.send(player, "<#FF8A80>装有物品的胸挂/背包不能放进携行格，请直接装备或放进箱子。");
+            Text.send(player, "<danger>装有物品的胸挂/背包不能放进携行格，请直接装备或放进箱子。");
         }
     }
 
@@ -210,7 +210,7 @@ public final class CarryListener implements Listener {
         for (int i = 0; i < cap; i++) {
             ItemStack cell = inv.getItem(start + i);
             if (cell != null && !cell.isEmpty() && !ItemFactory.isUi(cell)) {
-                Text.send(player, "<#FF8A80>里面还有物品，请用鼠标直接拿起再放进箱子或丢弃。");
+                Text.send(player, "<danger>里面还有物品，请用鼠标直接拿起再放进箱子或丢弃。");
                 return;
             }
         }
@@ -233,9 +233,9 @@ public final class CarryListener implements Listener {
         RaidPlayer rp = plugin.raids().session(player);
         if (rp == null || rp.state != RaidPlayer.State.ALIVE) {
             String what = (slot == CarryService.LEGS ? Category.RIG : Category.BACKPACK).displayName();
-            Text.send(player, rp == null ? "<#FF8A80>只有在对局中才能丢弃" + what + "。"
-                    : rp.state == RaidPlayer.State.DOWNED ? "<#FF8A80>倒地时不能丢弃" + what + "。"
-                    : "<#FF8A80>现在不能丢弃" + what + "。");
+            Text.send(player, rp == null ? "<danger>只有在对局中才能丢弃" + what + "。"
+                    : rp.state == RaidPlayer.State.DOWNED ? "<danger>倒地时不能丢弃" + what + "。"
+                    : "<danger>现在不能丢弃" + what + "。");
             return;
         }
         ItemStack removed = carry.unequip(player, slot);

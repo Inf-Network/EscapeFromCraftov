@@ -27,7 +27,8 @@ public final class LootMenu extends Menu {
     private boolean searchingTitle;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
-        super(viewer, container.type.rows(), title(container, container.hiddenCount() > 0));
+        super(viewer, container.type.rows(), "loot_" + Math.max(1, Math.min(6, container.type.rows())),
+                title(container, container.hiddenCount() > 0));
         this.plugin = plugin;
         this.container = container;
         this.searchingTitle = container.hiddenCount() > 0;

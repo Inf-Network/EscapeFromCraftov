@@ -2,7 +2,7 @@
 
 Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战斗 · 撤离」玩法：带装备进入地图，搜索物资、对抗 AI 敌兵与其他小队，活着撤离后战利品才真正属于你。
 
-地图、物品、界面、贴图与音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://opengameart.org/content/low-poly-guns-pack)（CC0 公有领域）转换而来：`tools/art/meshvox.py` 把网格体素化并合并成 Minecraft 能用的方块元素，结果保存在 `tools/art/voxguns/`。
+地图、物品、界面、贴图与音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。界面和 HUD 的中文用 10 像素点阵字体 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）绘制，`tools/art/pixelfont.py` 把用到的字形烘焙进 `tools/art/fonts/`。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://opengameart.org/content/low-poly-guns-pack)（CC0 公有领域）转换而来：`tools/art/meshvox.py` 把网格体素化并合并成 Minecraft 能用的方块元素，结果保存在 `tools/art/voxguns/`。
 
 ## 一键开服（玩家输入 IP 即可游玩）
 
@@ -43,6 +43,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 |---|---|
 | 新手指引 | 新玩家进服后按顺序引导：打开战术终端 → 进入个人靶场 → 在改枪台装配件 → 开始行动 → 成功撤离，完成奖励 ◈20,000（已撤离过的老玩家不会看到）。 |
 | 大厅 | 作战机库：开始行动、仓库、商人、交易行、干员、护航大厅、收藏室、排行榜站点，以及一个靶场。快捷栏第 9 格是战术终端（右键打开菜单，或 `/cv`）。 |
+| 界面 | 所有箱子类菜单和物品栏都换成深色战术风格（深色窗体、凹陷的格子、琥珀色标题标记），胸挂 / 背包 / 护甲 / 头盔格有各自的空槽剪影，用不到的 2×2 合成区画成斜纹。菜单标题用 10 像素点阵字体，任何界面尺寸下都清晰。战术终端分「行动 / 备战 / 成长 / 社交」四区，「开始行动」是一个占 2×3 格的大按钮，底栏固定是说明、个人信息和关闭；部署、仓库、商人、搜索箱子、伤势、改枪台各有设计过的背景（伤势页是人形布局，改枪台把选中的枪放在展台上），翻页、切换商人分页、搜索完成时标题原地更新，界面不重开。每个按钮和分页都有自己的图标。 |
 | 配装 | 你在大厅的物品栏就是下一局的出战装备。物品栏第 2 行是**胸挂格**、第 3–4 行是**背包格**，装备胸挂/背包才会解锁。卸下胸挂/背包时里面的东西会跟着装进去。对局中存活时，在物品栏里把鼠标停在已装备的胸挂/背包上按 Q，会连同里面的东西一起丢出；大厅里和倒地时不能丢，在窗口外点击也不会丢出鼠标上的东西。关上物品栏（或断线）时鼠标上的东西会放回身上，拿起的胸挂/背包会重新装备。身上放不下的物品（比如领取或拆下的东西）在大厅里会放进仓库邮箱，在对局里掉在脚下。用鼠标拿在手上的物品也算携带：阵亡时进遗体，撤离时放回身上（放不下的进仓库邮箱）。 |
 | 战备值 | 身上所有装备与物资的总价值。常规 / 机密 / 绝密 三档难度要求不同战备值（0 / ◈60,000 / ◈250,000），机密和绝密出发时另收入场费（◈8,000 / ◈20,000，`tiers.*.entry-fee`，排队时余额不足会被拒绝；匹配成功后、地图加载完前掉线不扣，这段时间把块币花到付不起入场费的会退出本局）。难度越高物资越好、敌兵越强、首领出没。开箱的品质加成 = 难度本身的加成（常规 0、机密 1、绝密 2）+ 箱子在地图上的等级，但常规最多 1 档、机密和绝密最多 2 档（`tiers.*.max-shift`）；每档加成让红色和金色的权重多 100% 和 50%、紫色多 30%，白色少 25%（`loot.yml` 的 `shift-bonus`）。某类物品在抽到的品质上没有货时只往更低的品质找（找不到就少一件），不会变成更稀有的东西。 |
 | 匹配 | 每张图、每档难度一个匹配池，同一时段排队的所有小队进同一局，互为敌人。单人或三人小队；三人模式可自动补位。排位赛只决定是否计排位分，不影响匹配。凑满小队数（默认 4，不超过地图出生点组数）立即出发，否则最早排队的人等满 30 秒后带上池中所有人出发；多出的小队直接开下一局。开局后不再加人。 |
@@ -191,6 +192,7 @@ Copyright (C) 2026 Inf Network 及贡献者。
 | 内容 | 来源 | 许可 |
 |---|---|---|
 | 枪械网格（转换为 `tools/art/voxguns/`） | [Quaternius · Ultimate Gun Pack](https://opengameart.org/content/low-poly-guns-pack) | CC0（公有领域） |
+| 点阵字体（烘焙为 `tools/art/fonts/pixel10.png`，随资源包分发） | [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font) 10px（含 Ark Pixel、Galmuri、Boutique Bitmap 9x9 的字形） | SIL Open Font License 1.1（`tools/art/fonts/OFL.txt`、`LICENSES/`） |
 | 运行依赖（不随本项目分发） | [Paper](https://papermc.io/)、[CraftEngine](https://modrinth.com/plugin/craftengine)、[BetterHud](https://modrinth.com/plugin/betterhud2) | 各自的许可 |
 | 开发工具（不随本项目分发） | [mineflayer](https://github.com/PrismarineJS/mineflayer)（`tools/bot/`）、[minecraft-launcher-lib](https://pypi.org/project/minecraft-launcher-lib/)（`tools/shots/`） | MIT、BSD-2-Clause |
 

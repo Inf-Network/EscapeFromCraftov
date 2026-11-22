@@ -131,6 +131,123 @@
     "鹕鹚鹜鹤鹦鹫鹬鹭鹰鹱鹳鹾鹿麂麇麈麋麒麓麝麟麦麴麸麻麽麾黄黉黍黎黏黑黔默黛黜黝黠黢黥黩黯黹黻黼鼋鼎鼐鼓鼙鼠鼬鼯鼹鼻鼾齐齿龄龇龊龋龌",
     "龙龚龛龟龠！＂＃％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
    ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/main.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/deploy.png",
+   "height": 107,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/deploy_queued.png",
+   "height": 107,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/stash.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/trader.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_1.png",
+   "height": 35,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_2.png",
+   "height": 53,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_3.png",
+   "height": 71,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_4.png",
+   "height": 89,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_5.png",
+   "height": 107,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_6.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/health.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/gunsmith.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
   }
  ]
 }

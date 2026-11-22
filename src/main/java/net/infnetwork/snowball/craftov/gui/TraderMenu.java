@@ -25,13 +25,14 @@ final class TraderMenu extends Menu {
     private TraderService.Tab tab = TraderService.Tab.WEAPON;
 
     TraderMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<text>商人 · 军需处"));
+        super(viewer, 6, "trader", Text.mm("商人 · 军需处"));
         this.plugin = plugin;
     }
 
     @Override
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
+        restyle("trader", Text.mm("商人 · 军需处 <muted>· " + tab.label));
         if (tab == TraderService.Tab.SERVICE) {
             drawServices(p);
         } else {

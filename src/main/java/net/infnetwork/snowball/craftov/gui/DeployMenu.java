@@ -24,6 +24,9 @@ import java.util.UUID;
  */
 final class DeployMenu extends Menu {
 
+    /** The cells of the start button drawn by the "deploy" screen. */
+    private static final int[] START = {39, 40, 41};
+
     /** Last choice per player (map, tier, mode, ranked), until the server restarts. */
     private static final Map<UUID, String[]> LAST = new HashMap<>();
 
@@ -35,7 +38,7 @@ final class DeployMenu extends Menu {
     private boolean fill = true;
 
     DeployMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 5, Text.mm("<text>部署行动"));
+        super(viewer, 5, "deploy", Text.mm("部署行动"));
         this.plugin = plugin;
         String[] last = LAST.get(viewer.getUniqueId());
         this.map = validMap(last != null ? last[0] : null);
@@ -173,14 +176,18 @@ final class DeployMenu extends Menu {
         set(42, UiItems.button("craftov:ui/icon_value", "<white>战备值 <accent>◈" + Text.money(value),
                 List.of("<muted>身上所有装备与物资的总价值", "<muted>在仓库中调整配装后再出发")));
         QueueEntry queued = plugin.match().queued(viewer.getUniqueId());
+        backButton(36, () -> plugin.menus().openMain(viewer));
+        // The start button spans 39-41 on the screen; 40 is the slot players and bots have always used.
+        // While queued the screen shows the cancel button in its place.
+        restyle(queued != null ? "deploy_queued" : "deploy", Text.mm(queued != null ? "部署行动 <muted>· 匹配中" : "部署行动"));
         if (queued != null) {
-            button(40, UiItems.button("craftov:ui/icon_cancel", "<danger><b>取消匹配", List.of("<muted>正在匹配 " + queued.map() + " · " + queued.tier())),
+            bigButton(START, "<danger><b>取消匹配", List.of("<muted>正在匹配 " + queued.map() + " · " + queued.tier()),
                     e -> {
                         plugin.match().cancelQueue(viewer.getUniqueId(), "");
                         redraw();
                     });
         } else {
-            button(40, UiItems.button("craftov:ui/icon_start", "<ok><b>开始匹配", List.of("<muted>出发前请确认配装与弹药")), e -> {
+            bigButton(START, "<accent><b>开始匹配", List.of("<muted>出发前请确认配装与弹药"), e -> {
                 LAST.put(viewer.getUniqueId(), new String[]{map, tier, mode.name(), Boolean.toString(ranked)});
                 if (plugin.match().enqueue(viewer, map, tier, mode, ranked, fill)) {
                     viewer.closeInventory();

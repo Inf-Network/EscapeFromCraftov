@@ -187,5 +187,198 @@ def slot_xy(index):
     return 7 + (index % 9) * 18, 17 + (index // 9) * 18
 
 
+def cells(r0, c0, r1, c1):
+    """Pixel box (x0, y0, x1, y1) covering the cells of rows r0..r1 and columns c0..c1."""
+    return 7 + c0 * 18, 17 + r0 * 18, 7 + (c1 + 1) * 18 - 1, 17 + (r1 + 1) * 18 - 1
+
+
+def slots(r0, c0, r1, c1):
+    return [r * 9 + c for r in range(r0, r1 + 1) for c in range(c0, c1 + 1)]
+
+
+class Screen:
+    """The top part of a chest window (title band and slot area, rows*18+17 px), drawn from scratch:
+    wells only where the menu puts something, label bands, big buttons and frames elsewhere. The
+    client draws it over the plain skin and under the items."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.img = Image.new('RGBA', (W, rows * 18 + 17), (0, 0, 0, 0))
+        window(self.img, 0, 0, W - 1, rows * 18 + 17 + 3)
+        title_marker(self.img, 4, 6)
+        self.d = ImageDraw.Draw(self.img)
+
+    def wells(self, indices):
+        for i in indices:
+            well(self.img, *slot_xy(i))
+        return self
+
+    def band(self, r, c0, c1, text, color=P.MUTED, tick=P.ACCENT):
+        """A label strip across a row of cells that holds no items: a tick, the text, a hairline."""
+        x0, y0, x1, y1 = cells(r, c0, r, c1)
+        self.d.rectangle([x0, y0 + 2, x1, y1 - 2], fill=rgb(P.RAISED))
+        self.d.line([x0, y1 - 2, x1, y1 - 2], fill=rgb(P.LINE))
+        self.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tick))
+        label(self.img, x0 + 5, y0 + 4, text, color)
+        return self
+
+    def big(self, r0, c0, r1, c1, lines, icon=None, accent=True, color=P.ACCENT):
+        """A button spanning several cells; the menu fills those slots with one invisible item each,
+        all running the same action."""
+        x0, y0, x1, y1 = cells(r0, c0, r1, c1)
+        edge = rgb(color) if accent else rgb(P.LINE)
+        self.d.rectangle([x0, y0, x1, y1], fill=WELL_DARK)
+        self.d.rectangle([x0 + 1, y0 + 1, x1 - 1, y1 - 1], fill=mix(rgb(P.RAISED), edge, 0.12))
+        self.d.rectangle([x0 + 1, y0 + 1, x1 - 1, y1 - 1], outline=edge)
+        self.d.line([x0 + 2, y0 + 2, x1 - 2, y0 + 2], fill=mix(rgb(P.RAISED), rgb('#FFFFFF'), 0.08))
+        block_h = (icon.height + 3 if icon is not None else 0) + len(lines) * 11
+        y = y0 + (y1 - y0 + 1 - block_h) // 2
+        if icon is not None:
+            self.img.alpha_composite(icon, ((x0 + x1 + 1 - icon.width) // 2, y))
+            y += icon.height + 3
+        for line in lines:
+            label(self.img, (x0 + x1 + 1 - pixelfont.width(line)) // 2, y - 1, line, color if accent else P.TEXT)
+            y += 11
+        return self
+
+    def toolbar(self, r):
+        """A raised strip behind a row of buttons, set off from the slots above by a divider."""
+        x0, y0, x1, y1 = cells(r, 0, r, 8)
+        self.d.rectangle([3, y0 - 1, W - 4, y1 + 1], fill=rgb(P.RAISED))
+        self.d.line([3, y0 - 1, W - 4, y0 - 1], fill=rgb(P.LINE))
+        return self
+
+    def group(self, r0, c0, r1, c1):
+        """A faint frame round a block of cells (drawn in the gutter just outside them)."""
+        x0, y0, x1, y1 = cells(r0, c0, r1, c1)
+        self.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], outline=rgb(P.LINE))
+        return self
+
+    def hazard(self, x0, y0, x1, y1):
+        """Amber and black warning stripes (the loot screen's title band)."""
+        tile = Image.new('RGBA', (x1 - x0 + 1, y1 - y0 + 1), rgb('#1A1508'))
+        td = ImageDraw.Draw(tile)
+        for i in range(-tile.height, tile.width, 6):
+            td.polygon([(i, tile.height), (i + 3, tile.height), (i + 3 + tile.height, 0), (i + tile.height, 0)],
+                       fill=mix(rgb(P.ACCENT), rgb(P.PANEL), 0.45))
+        self.img.alpha_composite(tile, (x0, y0))
+        return self
+
+    def done(self):
+        return self.img, 0, 0
+
+
+def mini(kind):
+    """Small pictograms drawn into screens (not items)."""
+    img = Image.new('RGBA', (14, 14), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    a = rgb(P.ACCENT)
+    if kind == 'deploy':
+        d.ellipse([2, 2, 11, 11], outline=a)
+        d.line([7, 0, 7, 13], fill=a)
+        d.line([0, 7, 13, 7], fill=a)
+        d.rectangle([6, 6, 7, 7], fill=rgb(P.TEXT))
+    return img
+
+
+def main_screen():
+    """Tactical terminal, four sections under labelled bands: operations (the big deploy button),
+    preparation, progress and social, with help, profile and close in the bottom bar."""
+    s = Screen(6)
+    s.band(0, 0, 1, '行动').band(0, 2, 4, '备战').band(0, 5, 6, '成长').band(0, 7, 8, '社交')
+    s.big(1, 0, 3, 1, ['开始', '行动'], mini('deploy'))
+    s.wells([36, 37]).wells(slots(1, 2, 2, 4) + [29, 30]).wells(slots(1, 5, 3, 6)).wells([16, 17, 25])
+    s.toolbar(5).wells([45, 49, 53])
+    return s.done()
+
+
+def deploy_screen(queued=False):
+    """Deploy: the map row under its band, then a labelled row each for difficulty and squad (the
+    labels take the first two cells), and the bottom row with back, party, the start button and the
+    gear value. The slots are the ones bots and players already know (insurance 34, start 40)."""
+    s = Screen(5)
+    s.band(0, 0, 8, '选择地图').wells(slots(1, 1, 1, 7))
+    s.band(2, 0, 1, '难度').wells([20, 22, 24])
+    s.band(3, 0, 1, '编队').wells([29, 30]).wells([32, 33, 34])
+    s.toolbar(4).wells([36, 38, 42])
+    if queued:
+        s.big(4, 3, 4, 5, ['取消匹配'], color=P.DANGER)
+    else:
+        s.big(4, 3, 4, 5, ['开始匹配'])
+    return s.done()
+
+
+def stash_screen():
+    """Stash: five rows of stored items and the control bar."""
+    s = Screen(6)
+    s.wells(slots(0, 0, 4, 8))
+    s.toolbar(5).wells(slots(5, 0, 5, 8))
+    return s.done()
+
+
+def trader_screen():
+    """Trader: goods above, the category tabs as a tab strip below."""
+    s = Screen(6)
+    s.wells(slots(0, 0, 4, 8))
+    s.toolbar(5)
+    for i in slots(5, 0, 5, 8):
+        x, y = slot_xy(i)
+        s.d.rectangle([x, y, x + 17, y + 17], fill=WELL_DARK)
+        s.d.rectangle([x + 1, y, x + 16, y + 16], fill=rgb(P.PANEL))
+        s.d.line([x + 1, y, x + 16, y], fill=rgb(P.LINE))
+    return s.done()
+
+
+def loot_screen(rows):
+    def make():
+        s = Screen(rows)
+        s.wells(slots(0, 0, rows - 1, 8))
+        s.hazard(W - 44, 4, W - 6, 13)
+        return s.done()
+    return make
+
+
+def health_screen():
+    """Health: the body parts laid out as a figure, status and help on the right, meds below."""
+    s = Screen(6)
+    # A silhouette behind the part slots (head, arms, torso, legs), so the grid reads as a body.
+    body = rgb('#1D252E')
+    hx, hy = slot_xy(4)
+    s.d.ellipse([hx - 3, hy - 2, hx + 20, hy + 19], fill=body)
+    x0, y0, _, _ = cells(1, 3, 1, 3)
+    _, _, x1, y1 = cells(2, 5, 2, 5)
+    s.d.rounded_rectangle([x0 - 3, y0 - 2, x1 + 3, y1 + 2], 5, fill=body)
+    for c in (3, 5):
+        lx0, ly0, lx1, ly1 = cells(3, c, 4, c)
+        s.d.rounded_rectangle([lx0 - 2, ly0 - 2, lx1 + 2, ly1 + 1], 4, fill=body)
+    s.wells([4, 12, 13, 14, 21, 22, 23, 30, 32, 39, 41])
+    s.group(0, 7, 1, 7).wells([7, 16])
+    s.toolbar(5).wells(slots(5, 0, 5, 8))
+    return s.done()
+
+
+def gunsmith_screen():
+    """Gunsmith: carried guns on top, the chosen gun on a display plate with its five attachment
+    slots, and the carried attachments at the bottom."""
+    s = Screen(6)
+    s.wells(slots(0, 0, 0, 8))
+    s.band(1, 0, 8, '已选枪械 · 配件位')
+    x0, y0, x1, y1 = cells(2, 2, 3, 6)
+    s.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=rgb('#11151A'), outline=rgb(P.ACCENT))
+    s.wells([22]).wells(slots(3, 2, 3, 6))
+    s.band(4, 0, 8, '身上的配件 · 点击安装')
+    s.wells(slots(5, 0, 5, 8))
+    return s.done()
+
+
 # Screen id -> function returning (image, pixels it reaches left of the window, pixels above it).
-SCREENS = {}
+SCREENS = {
+    'main': main_screen,
+    'deploy': deploy_screen,
+    'deploy_queued': lambda: deploy_screen(True),
+    'stash': stash_screen,
+    'trader': trader_screen,
+    **{'loot_%d' % r: loot_screen(r) for r in range(1, 7)},
+    'health': health_screen,
+    'gunsmith': gunsmith_screen,
+}

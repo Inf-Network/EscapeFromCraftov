@@ -644,6 +644,32 @@ class Session:
         self.mouse_to(1, 1)
         time.sleep(0.3)
 
+    def gui_scale(self):
+        """The GUI scale the client uses: --gui-scale, or what "auto" picks for this window."""
+        width, height = (int(v) for v in self.cfg.size.split('x'))
+        if self.cfg.gui_scale:
+            return self.cfg.gui_scale
+        scale = 1
+        while width // (scale + 1) >= 320 and height // (scale + 1) >= 240:
+            scale += 1
+        return scale
+
+    def slot_center(self, index, rows):
+        """Screen pixel at the middle of slot `index` of an open chest menu with `rows` rows."""
+        width, height = (int(v) for v in self.cfg.size.split('x'))
+        scale = self.gui_scale()
+        gw, gh = -(-width // scale), -(-height // scale)
+        left, top = (gw - 176) // 2, (gh - (114 + rows * 18)) // 2
+        x, y = left + 8 + (index % 9) * 18 + 8, top + 18 + (index // 9) * 18 + 8
+        return x * scale, y * scale
+
+    def click_slot(self, index, rows, button=1):
+        """Clicks a slot of the open chest menu (1 left, 3 right)."""
+        self.mouse_to(*self.slot_center(index, rows))
+        time.sleep(0.2)
+        self.xdo('click', str(button))
+        time.sleep(0.6)
+
     def type(self, text):
         self.focus()
         self.xdo('type', '--delay', '30', text)

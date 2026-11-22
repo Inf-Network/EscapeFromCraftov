@@ -32,7 +32,7 @@ final class StashMenu extends Menu {
     private final List<Integer> visible = new ArrayList<>();
 
     StashMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<text>仓库"));
+        super(viewer, 6, "stash", Text.mm("仓库"));
         this.plugin = plugin;
     }
 
@@ -52,6 +52,8 @@ final class StashMenu extends Menu {
         }
         int pages = Math.max(1, (visible.size() + 44) / 45);
         page = Math.min(page, pages - 1);
+        // Page and filter live in the title, changed in place as the player pages through.
+        restyle("stash", Text.mm("仓库 <muted>· " + (page + 1) + "/" + pages + (filter == null ? "" : " · " + filter.displayName())));
         for (int slot = 0; slot < 45; slot++) {
             int index = page * 45 + slot;
             if (index >= visible.size()) {

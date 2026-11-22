@@ -1,1 +1,67 @@
-{}
+{
+ "main": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "deploy": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "deploy_queued": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "stash": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "trader": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_1": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_2": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_3": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_4": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_5": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "loot_6": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "health": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "gunsmith": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ }
+}

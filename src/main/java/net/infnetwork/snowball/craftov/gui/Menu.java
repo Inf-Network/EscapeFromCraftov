@@ -24,7 +24,7 @@ public abstract class Menu implements InventoryHolder {
 
     protected final Player viewer;
     private final int rows;
-    private final @Nullable String screen;
+    private @Nullable String screen;
     private Component title;
     private @Nullable Inventory inventory;
     private final Map<Integer, Consumer<InventoryClickEvent>> handlers = new HashMap<>();
@@ -44,8 +44,16 @@ public abstract class Menu implements InventoryHolder {
     protected abstract void draw();
 
     public void open() {
+        String screenBefore = screen;
+        Component titleBefore = title;
         inventory = Bukkit.createInventory(this, rows * 9, UiFont.title(screen, title));
         redraw();
+        if (!java.util.Objects.equals(screenBefore, screen) || !titleBefore.equals(title)) {
+            // draw() picked another screen or title (restyle): a title is fixed once the window exists.
+            Inventory built = inventory;
+            inventory = Bukkit.createInventory(this, rows * 9, UiFont.title(screen, title));
+            inventory.setContents(built.getContents());
+        }
         viewer.openInventory(inventory);
     }
 
@@ -63,15 +71,25 @@ public abstract class Menu implements InventoryHolder {
      * only if that is not possible.
      */
     public void retitle(Component newTitle) {
-        if (newTitle.equals(title)) {
+        restyle(screen, newTitle);
+    }
+
+    /**
+     * Switches screen background and title together (a tab, a page, a state such as queued). While
+     * the menu is being built for opening, the new values simply go into the window it opens.
+     */
+    protected void restyle(@Nullable String newScreen, Component newTitle) {
+        if (newTitle.equals(title) && java.util.Objects.equals(newScreen, screen)) {
             return;
         }
         this.title = newTitle;
-        if (inventory != null && viewer.getOpenInventory().getTopInventory() == inventory
-                && net.infnetwork.snowball.craftov.util.Nms.retitle(viewer, UiFont.title(screen, title))) {
+        this.screen = newScreen;
+        if (inventory == null || viewer.getOpenInventory().getTopInventory() != inventory) {
             return;
         }
-        open();
+        if (!net.infnetwork.snowball.craftov.util.Nms.retitle(viewer, UiFont.title(screen, title))) {
+            open();
+        }
     }
 
     protected void set(int slot, ItemStack stack) {
@@ -83,6 +101,28 @@ public abstract class Menu implements InventoryHolder {
     protected void button(int slot, ItemStack stack, Consumer<InventoryClickEvent> handler) {
         set(slot, stack);
         handlers.put(slot, handler);
+    }
+
+    /**
+     * A button drawn by the screen background across several slots: each slot gets an invisible item
+     * carrying the same name and lore, and all of them run the one action.
+     */
+    protected void bigButton(int[] slots, String name, java.util.List<String> lore, Consumer<InventoryClickEvent> handler) {
+        for (int slot : slots) {
+            button(slot, UiItems.button("craftov:ui/blank", name, lore), handler);
+        }
+    }
+
+    /** The fixed close button of a screen's bottom bar. */
+    protected void closeButton(int slot) {
+        button(slot, UiItems.button("craftov:ui/icon_cancel", "<text><b>关闭", java.util.List.of("<muted>也可以按 Esc")),
+                e -> viewer.closeInventory());
+    }
+
+    /** The fixed back button of a screen's bottom bar: returns to the lobby terminal. */
+    protected void backButton(int slot, Runnable back) {
+        button(slot, UiItems.button("craftov:ui/arrow_left", "<text><b>返回", java.util.List.of("<muted>回到战术终端")),
+                e -> back.run());
     }
 
     protected void fillRow(int row, ItemStack stack) {

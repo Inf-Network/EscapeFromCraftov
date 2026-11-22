@@ -32,7 +32,7 @@ final class HealthMenu extends Menu {
     private int lastHash;
 
     HealthMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<text>伤势"));
+        super(viewer, 6, "health", Text.mm("伤势"));
         this.plugin = plugin;
     }
 

@@ -29,7 +29,7 @@ final class GunsmithMenu extends Menu {
     private int selected = -1;
 
     GunsmithMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<text>改枪台"));
+        super(viewer, 6, "gunsmith", Text.mm("改枪台"));
         this.plugin = plugin;
     }
 

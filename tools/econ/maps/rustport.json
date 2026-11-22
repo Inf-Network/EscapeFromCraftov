@@ -1,0 +1,38 @@
+{
+ "id": "rustport",
+ "source": "containers, soldiers and bosses of maps/rustport.yml as RustPortGenerator writes it (fixed seed)",
+ "containers": [
+  {"type": "airdrop", "tier": 2, "count": 1},
+  {"type": "ammo_box", "tier": 0, "count": 8},
+  {"type": "ammo_box", "tier": 1, "count": 3},
+  {"type": "computer", "tier": 0, "count": 1},
+  {"type": "computer", "tier": 1, "count": 6},
+  {"type": "computer", "tier": 2, "count": 3},
+  {"type": "crate", "tier": 0, "count": 27},
+  {"type": "crate", "tier": 1, "count": 6},
+  {"type": "filing_cabinet", "tier": 0, "count": 1},
+  {"type": "filing_cabinet", "tier": 1, "count": 4},
+  {"type": "locker", "tier": 0, "count": 6},
+  {"type": "locker", "tier": 1, "count": 2},
+  {"type": "med_box", "tier": 0, "count": 4},
+  {"type": "med_box", "tier": 1, "count": 1},
+  {"type": "parcel", "tier": 0, "count": 12},
+  {"type": "parcel", "tier": 1, "count": 3},
+  {"type": "safe", "tier": 1, "count": 8},
+  {"type": "safe", "tier": 2, "count": 3},
+  {"type": "toolbox", "tier": 0, "count": 2},
+  {"type": "toolbox", "tier": 1, "count": 1},
+  {"type": "vault", "tier": 2, "count": 2},
+  {"type": "weapon_case", "tier": 0, "count": 3},
+  {"type": "weapon_case", "tier": 1, "count": 5},
+  {"type": "weapon_case", "tier": 2, "count": 1}
+ ],
+ "ai": [
+  {"kind": "guard", "count": 13},
+  {"kind": "patrol", "count": 17},
+  {"kind": "sniper", "count": 2}
+ ],
+ "bosses": [
+  {"id": "commander", "guards": 3, "chance": 1.0}
+ ]
+}

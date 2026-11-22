@@ -50,18 +50,20 @@ public final class Ballistics {
     }
 
     /**
-     * Fires one pellet from {@code eye} along {@code dir}. Returns the entity hit, if any.
+     * Fires one pellet from {@code eye} along {@code dir}. Returns the entity hit, if any. A soldier's
+     * round stops in a fellow soldier (shield and all) without hurting it, rather than passing through.
      */
     public @Nullable LivingEntity fire(LivingEntity shooter, Location eye, Vector dir, GunSpec gun,
                                        @Nullable AmmoSpec ammo, String weaponName, boolean tracer) {
         World world = eye.getWorld();
+        boolean soldier = plugin.ai().isAi(shooter);
         Predicate<Entity> filter = entity -> entity instanceof LivingEntity living
                 && entity != shooter
                 && !living.isDead()
                 && !(entity instanceof org.bukkit.entity.ArmorStand)
                 && !entity.getPersistentDataContainer().has(Keys.ENTITY_ROLE)
                 && !(entity instanceof Player p && (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || !plugin.raids().canBeShot(p)))
-                && plugin.raids().canDamage(shooter, living);
+                && (plugin.raids().canDamage(shooter, living) || soldier && plugin.ai().isAi(living));
         RayTraceResult result = world.rayTrace(eye, dir, gun.maxRange(), FluidCollisionMode.NEVER, true, 0.0, filter);
         Location end;
         LivingEntity hitEntity = null;
@@ -69,7 +71,9 @@ public final class Ballistics {
             end = eye.clone().add(dir.clone().multiply(Math.min(gun.maxRange(), 60)));
         } else {
             end = result.getHitPosition().toLocation(world);
-            if (result.getHitEntity() instanceof LivingEntity living) {
+            boolean friendly = result.getHitEntity() instanceof LivingEntity living && !plugin.raids().canDamage(shooter, living);
+            // A fellow soldier in the line of fire: the round ends there and does nothing.
+            if (!friendly && result.getHitEntity() instanceof LivingEntity living) {
                 hitEntity = living;
                 BodyPart part = BodyPart.of(living, result.getHitPosition());
                 double distance = eye.toVector().distance(result.getHitPosition());

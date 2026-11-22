@@ -37,6 +37,7 @@ import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -106,6 +107,8 @@ public final class AiService implements Listener {
         final Map<UUID, Double> awareness = new HashMap<>();
         /** What got through to the current target's head, chest and pelvis on the last look, or null. */
         double @Nullable [] targetLines;
+        /** No new sidestep for a clear shot before this. */
+        long nextMoveTick;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -963,13 +966,23 @@ public final class AiService implements Listener {
             boolean auto = gun.modes().contains(net.infnetwork.snowball.craftov.weapon.FireMode.AUTO);
             bot.burstLeft = auto ? ThreadLocalRandom.current().nextInt(3, 7) : 1;
         }
+        Location eye = bot.mob.getEyeLocation();
+        Vector point = aimPoint(target, bot.targetLines);
+        if (point == null) {
+            // Nothing of the target shows from here (it ducked behind cover): move, do not shoot the wall.
+            reposition(bot, target, now);
+            return;
+        }
+        point.add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)));
+        if (friendlyInLine(bot, eye, point)) {
+            // A fellow soldier in the way: step aside instead of shooting into its back.
+            bot.nextShotTick = now + 6;
+            reposition(bot, target, now);
+            return;
+        }
         bot.burstLeft--;
         bot.ammoLeft--;
-        Location eye = bot.mob.getEyeLocation();
-        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
-        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
-                .add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)))
-                .subtract(eye.toVector()).normalize();
+        Vector aim = point.clone().subtract(eye.toVector()).normalize();
         double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
         double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
         double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
@@ -1005,6 +1018,52 @@ public final class AiService implements Listener {
             interval += ThreadLocalRandom.current().nextInt(12, 30);
         }
         bot.nextShotTick = now + interval;
+    }
+
+    /**
+     * Where to aim at {@code target}: the chest if it shows (misses then land on the body or past it,
+     * rarely the head), else the head (someone crouched behind low cover), else the pelvis (under
+     * something). Null if none of them shows. {@code lines} is what got through to head, chest and
+     * pelvis on the last look; without it the chest.
+     */
+    private static @Nullable Vector aimPoint(Player target, double @Nullable [] lines) {
+        double[] heights = aimHeights(target);
+        Vector feet = target.getLocation().toVector();
+        if (lines == null) {
+            return feet.add(new Vector(0, heights[1], 0));
+        }
+        for (int part : new int[]{1, 0, 2}) {
+            if (lines[part] > 0) {
+                return feet.add(new Vector(0, heights[part], 0));
+            }
+        }
+        return null;
+    }
+
+    /** Whether a fellow soldier stands in the line of fire from {@code eye} to {@code point}. */
+    private boolean friendlyInLine(Bot bot, Location eye, Vector point) {
+        Vector line = point.clone().subtract(eye.toVector());
+        double length = line.length();
+        if (length < 1) {
+            return false;
+        }
+        RayTraceResult hit = eye.getWorld().rayTraceEntities(eye, line.multiply(1 / length), length - 0.5, 0.3,
+                entity -> entity != bot.mob && isAi(entity));
+        return hit != null;
+    }
+
+    /** A couple of steps to the side, to get a clear shot at {@code target}. */
+    private void reposition(Bot bot, Player target, long now) {
+        if ("sniper".equals(bot.kind) || now < bot.nextMoveTick || bot.mob.getPathfinder().hasPath()) {
+            return;
+        }
+        bot.nextMoveTick = now + 30;
+        Vector dir = target.getLocation().toVector().subtract(bot.mob.getLocation().toVector()).setY(0);
+        if (dir.lengthSquared() < 0.01) {
+            return;
+        }
+        Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
+        go(bot, bot.mob.getLocation().add(side), 1.0, now);
     }
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {

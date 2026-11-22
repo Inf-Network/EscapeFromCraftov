@@ -1,7 +1,8 @@
 // Gun feel (issue #8), on the private range unless said otherwise.
 //
 //   lobby   The trigger held in the lobby, off the range, fires nothing and kicks nothing.
-//   feed    With a second bot, solo on the proving ground (test mode, test.enabled: true): two
+//   feed    With a second bot, solo on the proving ground (test mode, test.enabled: true): the feed
+//           starts empty (after magazine, nothing of the bot's death there). Two
 //           soldiers frozen at 1 health and the second bot at 3 health, shot dead one after the
 //           other within 6 s. The shooter's kill feed (/cv feed) holds three lines, the bot last, and
 //           a streak of 3; the shooter hears kill.1, kill.2 and kill.3 and no plain kill sound; no kill
@@ -598,6 +599,8 @@ async function feed () {
     while (Date.now() < until && !(inRaid(worldName) && inRaid(victimWorld))) await sleep(500)
     if (!(inRaid(worldName) && worldName === victimWorld)) throw new Error(`not in one raid: ${worldName} / ${victimWorld}`)
     await sleep(7000) // the insertion camera and spawn protection
+    const fresh = await feedOf(name)
+    check('feed: the raid starts with an empty feed (nothing from an earlier raid)', fresh.some(l => l.includes('击杀栏是空的')), fresh)
     const at = `execute at ${name} run`
     await rcon(`${at} fill 39 64 85 52 64 100 minecraft:stone`)
     await rcon(`${at} fill 39 65 85 52 79 100 minecraft:air`)

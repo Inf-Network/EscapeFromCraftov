@@ -370,6 +370,7 @@ public final class RaidManager implements Listener {
     private void prepare(Raid raid, Player player, RaidPlayer rp) {
         plugin.weapons().reset(player);
         plugin.damage().forget(player.getUniqueId());
+        plugin.killFeed().clear(player);
         plugin.stamina().refill(player);
         plugin.lobby().stripRangeItems(player);
         plugin.lobby().captureLoadout(player);

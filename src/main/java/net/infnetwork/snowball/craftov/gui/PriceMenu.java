@@ -45,8 +45,8 @@ final class PriceMenu extends Menu {
         double ratio = price / (double) reference;
         double chance = plugin.market().virtualChance(record, price);
         String hint = virtual <= 0 ? "<#FF4D4D>系统买家不会收购<#8A8F98>（" + plugin.market().virtualRarityNote() + "<#8A8F98>）"
-                : chance <= 0 ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
                 : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>今天系统买家已收满你的这种物品，明天再来"
+                : chance <= 0 ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
                 : chance >= 0.3 ? "<#5BD16B>系统买家很快收购" : chance >= 0.12 ? "<#5BD16B>系统买家较快收购"
                 : "<#FFC23D>系统买家可能要等几分钟";
         long fee = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));

@@ -389,8 +389,10 @@ public final class RaidManager implements Listener {
         List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
         takenIn.addAll(rp.secure);
         rp.broughtIn = stackCounts(takenIn);
-        rp.gearValue = plugin.carry().carriedValue(player);
-        rp.startValue = rp.gearValue + recordsValue(rp.secure);
+        rp.gearValue = plugin.carry().gearValue(player);
+        // Profit is measured on everything, the knife included, as extraction counts it: a knife
+        // brought in cancels out and one found in the raid is profit.
+        rp.startValue = plugin.carry().carriedValue(player) + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
@@ -736,8 +738,9 @@ public final class RaidManager implements Listener {
 
     /**
      * The flat experience for getting out: in full for players who brought in gear worth at least
-     * rank.extract-xp-min-gear, in proportion below that. Walking out naked earned 150 a run with
-     * nothing at stake; profit and kills still earn their own experience.
+     * rank.extract-xp-min-gear (gear value, so a knife alone earns none of it), in proportion below
+     * that. Walking out naked earned 150 a run with nothing at stake; profit and kills still earn
+     * their own experience.
      */
     private double extractXp(RaidPlayer rp) {
         double base = plugin.getConfig().getDouble("rank.extract-xp", 150);

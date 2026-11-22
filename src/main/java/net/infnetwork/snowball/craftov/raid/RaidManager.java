@@ -778,11 +778,13 @@ public final class RaidManager implements Listener {
         plugin.escorts().settle(raid, rp, false);
         // Your own grenade is no kill: it would count for the daily contract and pay the top player
         // his own house bounty. Nor is a squadmate's, with friendly fire on: a squad could otherwise
-        // cash in its own member's bounty.
+        // cash in its own member's bounty. Nor does a killer who has already died or got out get one
+        // (a wound of theirs bleeding out later, say): their kills were counted and saved when they
+        // left, so a late one would pay the bounty and the contract but never reach their stats.
         if (hit != null && hit.attacker() != null && !hit.attacker().equals(player.getUniqueId())) {
             Player killer = Bukkit.getPlayer(hit.attacker());
             RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
-            if (kr != null && kr.squad != rp.squad) {
+            if (kr != null && kr.active() && kr.squad != rp.squad) {
                 kr.kills++;
                 plugin.tasks().onPlayerKill(killer);
                 plugin.bounties().onKill(killer, player, raid);

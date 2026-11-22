@@ -752,13 +752,12 @@ public final class AiService implements Listener {
         Raid raid = bot.raid;
         DamageService.LastHit hit = plugin.damage().lastHit(bot.mob.getUniqueId());
         Player killer = hit == null || hit.attacker() == null ? null : Bukkit.getPlayer(hit.attacker());
-        if (killer != null) {
-            RaidPlayer rp = raid.player(killer.getUniqueId());
-            if (rp != null) {
-                rp.aiKills++;
-                plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(),
-                        plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
-            }
+        RaidPlayer rp = killer == null ? null : raid.player(killer.getUniqueId());
+        // Only a killer still in the raid: one who has died or got out had their kills saved then.
+        if (killer != null && rp != null && rp.active()) {
+            rp.aiKills++;
+            plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(),
+                    plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
             if (bot.boss) {

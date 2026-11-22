@@ -119,7 +119,7 @@ public final class AiService implements Listener {
         @Nullable UUID lastFought;
         /** What it saw of the current target's head, chest and pelvis on the last look, or null. */
         @Nullable Look targetLook;
-        /** No new sidestep for a clear shot before this. */
+        /** A sidestep is under way until then: no new one, and it does not stop to shoot before it. */
         long nextMoveTick;
         /** Roughly where a shot from someone it had not spotted came from, who fired it, and until when it reacts. */
         @Nullable Location threatPos;
@@ -767,13 +767,11 @@ public final class AiService implements Listener {
                 if (away.lengthSquared() > 0.01) {
                     mob.getPathfinder().moveTo(mob.getLocation().add(away.normalize().multiply(4)), 1.0);
                 }
-            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && ThreadLocalRandom.current().nextBoolean()) {
-                Vector dir = target.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
-                if (dir.lengthSquared() > 0.01) {
-                    Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
-                    mob.getPathfinder().moveTo(mob.getLocation().add(side), 1.0);
-                }
-            } else if (distance <= preferred) {
+            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
+                sidestep(bot, target, now);
+            } else if (distance <= preferred && now >= bot.nextMoveTick) {
+                // It holds its ground to shoot, but lets a sidestep under way finish: stopping here
+                // every look cut each one off after a tenth of a block.
                 mob.getPathfinder().stopPathfinding();
             }
             shoot(bot, target, distance, now);
@@ -1220,13 +1218,21 @@ public final class AiService implements Listener {
         if ("sniper".equals(bot.kind) || now < bot.nextMoveTick || bot.mob.getPathfinder().hasPath()) {
             return;
         }
+        sidestep(bot, target, now);
+    }
+
+    /**
+     * Three blocks to one side of the line to {@code target}, chosen at random; for the next 1.5 s it
+     * neither stops nor starts another step, so it gets there.
+     */
+    private void sidestep(Bot bot, Player target, long now) {
         bot.nextMoveTick = now + 30;
         Vector dir = target.getLocation().toVector().subtract(bot.mob.getLocation().toVector()).setY(0);
         if (dir.lengthSquared() < 0.01) {
             return;
         }
         Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
-        go(bot, bot.mob.getLocation().add(side), 1.0, now);
+        bot.mob.getPathfinder().moveTo(bot.mob.getLocation().add(side), 1.0);
     }
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {

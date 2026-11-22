@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.ai;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -767,8 +768,8 @@ public final class AiService implements Listener {
             rp.aiKills++;
             // A knife kill is one the killing record says was a cut, not whatever is in hand now.
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
-            killer.sendActionBar(Text.mm("<accent>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.headshot() ? " <danger>爆头" : "")));
+            Notify.info(killer, "<accent>✖ 击败 <white>" + Text.escape(bot.name)
+                    + (hit.headshot() ? " <danger>爆头" : ""));
             if (bot.boss) {
                 plugin.raids().announce(raid, "<accent>" + Text.escape(killer.getName()) + " 击败了 <danger>" + Text.escape(bot.name) + "<accent>！");
             }

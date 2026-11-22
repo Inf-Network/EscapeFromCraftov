@@ -146,7 +146,27 @@ SOUNDS = {
     'ui/invite': lambda: norm(chord((880, 1320), 0.4, 0.08, 0.12)) * 0.8,
     'ui/buy': lambda: norm(mixdown((metal((2600, 3900), 0.06, 0.25), 0), (metal((3100, 4600), 0.07, 0.3), 0.06))) * 0.7,
     'ui/sell': lambda: norm(mixdown((metal((3100, 4600), 0.06, 0.25), 0), (metal((2600, 3900), 0.07, 0.3), 0.06))) * 0.7,
-    'ui/levelup': lambda: norm(chord((523, 659, 784, 1046, 1319), 1.2, 0.08, 0.35)),
+    # Interface kit (gui/Menu.java, util/Notify.java): one timbre throughout, a short band-passed
+    # tick with a soft sine body, so menus sound like one device; pitch and shape tell them apart.
+    'ui/open': lambda: norm(mixdown((swish(0.12, 700, 3500) * 0.6, 0), (env(sine(lambda tt: 520 + tt * 900, 0.09), 0.002, 0.03), 0.02),
+                                    (click(2600, 0.02, 0.6), 0.07))) * 0.55,
+    'ui/close': lambda: norm(mixdown((click(2200, 0.02, 0.6), 0), (env(sine(lambda tt: 700 - tt * 1200, 0.09), 0.002, 0.03), 0.02),
+                                     (swish(0.1, 600, 2800) * 0.5, 0.03))) * 0.5,
+    'ui/click': lambda: norm(mixdown((click(2800, 0.018), 0), (env(sine(1400, 0.04), 0.001, 0.012) * 0.5, 0))) * 0.5,
+    'ui/tab': lambda: norm(mixdown((click(3300, 0.016), 0), (click(2500, 0.016, 0.7), 0.045),
+                                   (env(sine(1650, 0.05), 0.001, 0.012) * 0.4, 0))) * 0.5,
+    'ui/confirm': lambda: norm(mixdown((click(2800, 0.018, 0.7), 0), (tone(880, 0.12, 0.04, (1, 0.25)), 0.0),
+                                       (tone(1319, 0.18, 0.06, (1, 0.25)), 0.07))) * 0.6,
+    'ui/error': lambda: norm(mixdown((env(np.tanh(2.5 * sine(311, 0.11)), 0.002, 0.05), 0),
+                                     (env(np.tanh(2.5 * sine(233, 0.16)), 0.002, 0.07), 0.1))) * 0.55,
+    'ui/reward': lambda: norm(mixdown((click(3000, 0.018, 0.6), 0), (chord((784, 988, 1175, 1568), 0.7, 0.05, 0.2), 0.02))) * 0.7,
+    # Raid alerts (RaidManager): an extract opening, the raid clock running low, the last ten seconds
+    # of an extraction.
+    'extract/open': lambda: norm(mixdown((env(bp(noise(0.18), 1200, 4000), 0.003, 0.05) * 0.4, 0),
+                                         (tone(784, 0.16, 0.05), 0.12), (tone(1175, 0.3, 0.09), 0.26))) * 0.8,
+    'extract/final': lambda: norm(mixdown((tone(1568, 0.09, 0.03, (1, 0.3)), 0), (click(3600, 0.015, 0.6), 0))) * 0.75,
+    'raid/warning': lambda: norm(mixdown(*[(tone(f, 0.22, 0.07, (1, 0.5, 0.2)), 0.26 * i) for i, f in enumerate((988, 740, 988, 740))])) * 0.8,
+    'ui/levelup':lambda: norm(chord((523, 659, 784, 1046, 1319), 1.2, 0.08, 0.35)),
     'status/injury': lambda: norm(mixdown((env(sine(70, 0.25), 0.002, 0.06), 0), (env(sine(60, 0.25), 0.002, 0.06), 0.14))) * 0.8,
     'status/downed': lambda: norm(mixdown((env(sine(lambda tt: 90 - tt * 40, 0.8), 0.001, 0.25), 0), (env(sine(3800, 2.5), 0.05, 1.0) * 0.18, 0.1))),
     'status/mate_down': lambda: norm(mixdown((tone(440, 0.2, 0.06), 0), (tone(330, 0.3, 0.08), 0.18))) * 0.8,

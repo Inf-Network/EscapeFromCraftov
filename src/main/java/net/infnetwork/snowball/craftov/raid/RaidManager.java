@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -454,7 +455,7 @@ public final class RaidManager implements Listener {
                 }
                 if (inside == null) {
                     if (rp.extracting != null) {
-                        player.sendActionBar(Text.mm("<danger>已离开撤离区域"));
+                        Notify.critical(player, "extract", "<danger>已离开撤离区域");
                     }
                     rp.extracting = null;
                     rp.extractTicks = 0;
@@ -464,13 +465,13 @@ public final class RaidManager implements Listener {
                 if (blocked != null) {
                     rp.extracting = null;
                     rp.extractTicks = 0;
-                    player.sendActionBar(Text.mm("<danger>" + blocked));
+                    Notify.critical(player, "extract", "<danger>" + blocked);
                     continue;
                 }
                 if (inside.def.type() == ExtractType.SWITCH) {
                     // Lever extracts leave all at once when the departure countdown ends (see tickSecond).
                     long left = (raid.switchUntil.getOrDefault(inside.def.switchId(), 0L) - now) / 20 + 1;
-                    player.sendActionBar(Text.mm("<ok>撤离倒计时 <white>" + left + "s <muted>· 留在区域内即可撤离"));
+                    Notify.critical(player, "extract", "<ok>撤离倒计时 <white>" + left + "s <muted>· 留在区域内即可撤离");
                     rp.extracting = inside.def.id();
                     continue;
                 }
@@ -826,7 +827,7 @@ public final class RaidManager implements Listener {
                 kr.kills++;
                 plugin.tasks().onPlayerKill(killer);
                 plugin.bounties().onKill(killer, player, raid);
-                killer.sendActionBar(Text.mm("<danger>✖ 击杀 <white>" + Text.escape(player.getName())));
+                Notify.info(killer, "<danger>✖ 击杀 <white>" + Text.escape(player.getName()));
             }
         }
         killFeed(raid, hit, player.getName());
@@ -866,7 +867,7 @@ public final class RaidManager implements Listener {
                 spectators.put(player.getUniqueId(), Map.entry(raid, rp));
                 player.setGameMode(GameMode.SPECTATOR);
                 player.setSpectatorTarget(target);
-                player.sendActionBar(Text.mm("<muted>正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white>Shift</white> 返回大厅"));
+                Notify.hint(player, "正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white>Shift</white> 返回大厅");
                 return true;
             }
         }
@@ -1667,11 +1668,11 @@ public final class RaidManager implements Listener {
             event.setCancelled(true);
             long dark = (raid.blackoutUntil - Bukkit.getCurrentTick()) / 20;
             if (dark > 0) {
-                player.sendActionBar(Text.mm("<accent>⚡ 电网故障，电闸暂时无法使用 <muted>(" + dark + "s)"));
+                Notify.info(player, "<accent>⚡ 电网故障，电闸暂时无法使用 <muted>(" + dark + "s)");
                 return;
             }
             if (raid.switchActive(sw.id())) {
-                player.sendActionBar(Text.mm("<muted>" + Text.escape(sw.name()) + " 已经开启"));
+                Notify.hint(player, "<muted>" + Text.escape(sw.name()) + " 已经开启");
                 return;
             }
             int countdown = plugin.getConfig().getInt("extract.switch-countdown-seconds", 60);
@@ -1706,7 +1707,7 @@ public final class RaidManager implements Listener {
             String needed = plugin.registry().all().stream()
                     .filter(d -> d.category() == Category.KEY && lock.equals(d.lockId()))
                     .map(ItemDef::name).findFirst().orElse("对应的钥匙");
-            player.sendActionBar(Text.mm("<danger>门被锁住了，需要 <white>" + Text.escape(needed)));
+            Notify.error(player, "门被锁住了，需要 <white>" + Text.escape(needed));
             player.playSound(player.getLocation(), "minecraft:block.iron_door.close", 0.6f, 1.6f);
             return;
         }
@@ -1714,10 +1715,10 @@ public final class RaidManager implements Listener {
         double uses = ItemFactory.dura(key, def.durability()) - 1;
         if (uses <= 0) {
             key.setAmount(key.getAmount() - 1);
-            player.sendActionBar(Text.mm("<accent>已解锁 · " + Text.escape(def.name()) + " 已用尽"));
+            Notify.info(player, "<accent>已解锁 · " + Text.escape(def.name()) + " 已用尽");
         } else {
             plugin.items().setDura(key, uses);
-            player.sendActionBar(Text.mm("<ok>已解锁 · " + Text.escape(def.name()) + " <muted>剩余 " + (int) Math.round(uses) + " 次"));
+            Notify.ok(player, "已解锁 · " + Text.escape(def.name()) + " <muted>剩余 " + (int) Math.round(uses) + " 次");
         }
         raid.lockedDoors.remove(doorKey);
         raid.unlockedDoors.add(doorKey);
@@ -1780,7 +1781,7 @@ public final class RaidManager implements Listener {
                     }
                     player.playSound(player.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
                 } else {
-                    player.sendActionBar(Text.mm("<muted>潜行拾取可直接替换当前的" + def.category().displayName()));
+                    Notify.hint(player, "潜行拾取可直接替换当前的" + def.category().displayName());
                 }
             }
             return;

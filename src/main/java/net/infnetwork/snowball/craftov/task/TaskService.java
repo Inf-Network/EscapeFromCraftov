@@ -247,7 +247,7 @@ public final class TaskService {
         plugin.profiles().markDirty(player.getUniqueId());
         player.sendMessage(Text.mm("<ok><b>[每日任务完成]</b> <white>" + describe(task)
                 + " <accent>+◈" + Text.money(task.reward) + " <muted>+" + task.xp + " 经验"));
-        player.playSound(player.getLocation(), "minecraft:entity.player.levelup", SoundCategory.PLAYERS, 0.7f, 1.4f);
+        net.infnetwork.snowball.craftov.gui.UiSound.REWARD.play(player);
         boolean all = true;
         for (Profile.TaskState t : profile.tasks) {
             all &= t.done;

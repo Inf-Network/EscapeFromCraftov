@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -46,22 +47,22 @@ final class RangeMenu extends Menu {
         });
         button(42, UiItems.button("craftov:ui/icon_cancel", "<danger><b>归还全部靶场武器", List.of()), e -> {
             int n = plugin.lobby().stripRangeItems(viewer);
-            viewer.sendActionBar(Text.mm("<muted>已归还 " + n + " 件靶场武器"));
+            Notify.ok(viewer, "已归还 " + n + " 件靶场武器");
         });
     }
 
     private void take(ItemDef def) {
         if (!plugin.lobby().inRange(viewer)) {
-            viewer.sendActionBar(Text.mm("<danger>请先从大厅的靶场入口进入个人靶场"));
+            Notify.error(viewer, "请先从大厅的靶场入口进入个人靶场");
             return;
         }
         ItemStack stack = def.isGun() ? plugin.items().sample(def) : plugin.items().create(def, 1);
         ItemStack left = plugin.carry().give(viewer, plugin.items().markRange(stack), false);
         if (left != null) {
-            viewer.sendActionBar(Text.mm("<danger>身上放不下了"));
+            Notify.error(viewer, "身上放不下了");
             return;
         }
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.7f, 1f);
-        viewer.sendActionBar(Text.mm("<ok>领取 " + def.coloredName() + " <muted>· 靶场内子弹无限"));
+        Notify.ok(viewer, "领取 " + def.coloredName() + " <muted>· 靶场内子弹无限");
     }
 }

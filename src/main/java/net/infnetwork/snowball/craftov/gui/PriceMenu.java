@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
@@ -112,7 +113,7 @@ final class PriceMenu extends Menu {
         if (delta > 0 && price >= cap) {
             String why = "已达最高售价 ◈" + Text.money(cap) + "（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）";
             button(slot, UiItems.button("craftov:ui/arrow_right", "<muted>" + label, List.of("<accent>" + why)),
-                    e -> viewer.sendActionBar(Text.mm("<accent>" + why)));
+                    e -> Notify.info(viewer, "<accent>" + why));
             return;
         }
         // At least one coin per click, so +1% still moves a cheap item towards the cap.

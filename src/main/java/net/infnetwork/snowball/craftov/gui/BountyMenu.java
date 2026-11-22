@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -52,7 +53,7 @@ final class BountyMenu extends Menu {
             head.setData(DataComponentTypes.LORE, io.papermc.paper.datacomponent.item.ItemLore.lore(lore));
             button(slot++, head, e -> {
                 String why = plugin.bounties().place(viewer, target.getUniqueId());
-                viewer.sendActionBar(Text.mm(why == null ? "<ok>已追加悬赏" : "<danger>" + why));
+                Notify.info(viewer, why == null ? "<ok>已追加悬赏" : "<danger>" + why);
                 if (why == null) {
                     viewer.playSound(viewer.getLocation(), "craftov:ui.buy", SoundCategory.MASTER, 0.8f, 1f);
                 }

@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.escort;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.match.Party;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -110,12 +111,12 @@ public final class EscortService {
 
     public void create(Player client, long reward, String note) {
         if (involving(client.getUniqueId()) != null) {
-            Text.send(client, "<danger>你已经有一份进行中的护航委托。");
+            Notify.error(client, "你已经有一份进行中的护航委托。");
             return;
         }
         Profile profile = plugin.profiles().get(client);
         if (profile.money < reward) {
-            Text.send(client, "<danger>块币不足以托管 ◈" + Text.money(reward));
+            Notify.error(client, "块币不足以托管 ◈" + Text.money(reward));
             return;
         }
         profile.money -= reward;
@@ -123,7 +124,7 @@ public final class EscortService {
         plugin.profiles().saveNow(client.getUniqueId());
         String id = Long.toHexString(ThreadLocalRandom.current().nextLong() & 0xFFFFFFL);
         contracts.put(id, new Contract(id, client.getUniqueId(), client.getName(), reward, note));
-        Text.send(client, "<ok>护航委托已发布，赏金 ◈" + Text.money(reward) + " 已托管。");
+        Notify.ok(client, "护航委托已发布，赏金 ◈" + Text.money(reward) + " 已托管。");
         Bukkit.broadcast(Text.mm(Text.PREFIX + "<accent>" + Text.escape(client.getName()) + " 发布了护航委托，赏金 ◈"
                 + Text.money(reward) + " <muted>· 前往护航大厅接取"));
     }
@@ -131,11 +132,11 @@ public final class EscortService {
     public void accept(Player escort, String id) {
         Contract c = contracts.get(id);
         if (c == null || c.state == State.IN_RAID) {
-            Text.send(escort, "<danger>该委托已不可接取。");
+            Notify.error(escort, "该委托已不可接取。");
             return;
         }
         if (c.client.equals(escort.getUniqueId())) {
-            Text.send(escort, "<danger>不能接取自己的委托。");
+            Notify.error(escort, "不能接取自己的委托。");
             return;
         }
         Contract held = involving(escort.getUniqueId());
@@ -145,12 +146,12 @@ public final class EscortService {
             return;
         }
         if (c.escorts.size() >= 2) {
-            Text.send(escort, "<danger>该委托护航名额已满。");
+            Notify.error(escort, "该委托护航名额已满。");
             return;
         }
         Player client = Bukkit.getPlayer(c.client);
         if (client == null) {
-            Text.send(escort, "<danger>委托人不在线。");
+            Notify.error(escort, "委托人不在线。");
             return;
         }
         Party party = plugin.match().ensureParty(client);
@@ -160,8 +161,8 @@ public final class EscortService {
         }
         c.escorts.add(escort.getUniqueId());
         c.state = State.ACCEPTED;
-        Text.send(escort, "<ok>已接取 " + Text.escape(c.clientName) + " 的护航委托。保护老板安全撤离即可获得 ◈" + Text.money(c.reward));
-        Text.send(client, "<ok>" + Text.escape(escort.getName()) + " 接取了你的护航委托！");
+        Notify.ok(escort, "已接取 " + Text.escape(c.clientName) + " 的护航委托。保护老板安全撤离即可获得 ◈" + Text.money(c.reward));
+        Notify.ok(client, "" + Text.escape(escort.getName()) + " 接取了你的护航委托！");
     }
 
     public void cancel(Player client) {
@@ -171,7 +172,7 @@ public final class EscortService {
             return;
         }
         if (c.state == State.IN_RAID) {
-            Text.send(client, "<danger>行动进行中，无法取消。");
+            Notify.error(client, "行动进行中，无法取消。");
             return;
         }
         contracts.remove(c.id);

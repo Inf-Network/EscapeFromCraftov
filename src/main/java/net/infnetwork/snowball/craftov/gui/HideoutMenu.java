@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.economy.HideoutService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.profile.Profile;
@@ -56,9 +57,9 @@ final class HideoutMenu extends Menu {
                 String why = hideout.upgrade(viewer, f);
                 if (why == null) {
                     viewer.playSound(viewer.getLocation(), "craftov:ui.levelup", SoundCategory.MASTER, 0.8f, 1f);
-                    viewer.sendActionBar(Text.mm("<ok>" + f.name() + " 升级到 Lv." + hideout.level(profile, f.id())));
+                    Notify.ok(viewer, "" + f.name() + " 升级到 Lv." + hideout.level(profile, f.id()));
                 } else {
-                    viewer.sendActionBar(Text.mm("<danger>" + why));
+                    Notify.error(viewer, "" + why);
                 }
                 redraw();
             });
@@ -78,7 +79,7 @@ final class HideoutMenu extends Menu {
                 long got = hideout.claimIntel(viewer);
                 if (got > 0) {
                     viewer.playSound(viewer.getLocation(), "craftov:ui.sell", SoundCategory.MASTER, 0.8f, 1f);
-                    viewer.sendActionBar(Text.mm("<ok>领取情报收益 ◈" + Text.money(got)));
+                    Notify.ok(viewer, "领取情报收益 ◈" + Text.money(got));
                 }
                 redraw();
             });
@@ -134,7 +135,7 @@ final class HideoutMenu extends Menu {
             }
             button(slot++, withLore(icon, lore), e -> {
                 String why = hideout.start(viewer, f, r);
-                viewer.sendActionBar(Text.mm(why == null ? "<ok>开始制作 " + Text.escape(out.name()) : "<danger>" + why));
+                Notify.info(viewer, why == null ? "<ok>开始制作 " + Text.escape(out.name()) : "<danger>" + why);
                 if (why == null) {
                     recipes = null;
                 }

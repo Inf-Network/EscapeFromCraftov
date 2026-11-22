@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
@@ -63,7 +64,7 @@ final class PresetMenu extends Menu {
                         p.presets.remove(index);
                     } else if (e.isRightClick()) {
                         p.presets.set(index, capture(preset.name));
-                        Text.send(viewer, "<ok>已覆盖配装方案 " + Text.escape(preset.name));
+                        Notify.ok(viewer, "已覆盖配装方案 " + Text.escape(preset.name));
                     } else {
                         apply(preset);
                     }
@@ -75,7 +76,7 @@ final class PresetMenu extends Menu {
                         List.of("<muted>点击把当前身上的配装保存为方案")), e -> {
                     p.presets.add(capture("方案 " + (p.presets.size() + 1)));
                     plugin.profiles().markDirty(viewer.getUniqueId());
-                    Text.send(viewer, "<ok>已保存当前配装。");
+                    Notify.ok(viewer, "已保存当前配装。");
                     redraw();
                 });
             }
@@ -102,7 +103,7 @@ final class PresetMenu extends Menu {
         List<ItemRecord> current = new ArrayList<>(plugin.carry().snapshot(viewer).values());
         int footprint = current.stream().mapToInt(ItemRecord::footprint).sum();
         if (p.stashUsed() + footprint > p.stashCapacity) {
-            Text.send(viewer, "<danger>仓库空间不足，无法暂存当前装备。");
+            Notify.error(viewer, "仓库空间不足，无法暂存当前装备。");
             return;
         }
         p.stash.addAll(current);
@@ -154,7 +155,7 @@ final class PresetMenu extends Menu {
         plugin.carry().refreshLocks(viewer);
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
-        Text.send(viewer, "<ok>已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
+        Notify.ok(viewer, "已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
         if (!missing.isEmpty()) {
             Map<String, Integer> counted = new java.util.LinkedHashMap<>();
             missing.forEach(item -> counted.merge(item, 1, Integer::sum));

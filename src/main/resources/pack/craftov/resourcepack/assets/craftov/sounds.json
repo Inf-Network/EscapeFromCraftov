@@ -181,6 +181,76 @@
    }
   ]
  },
+ "ui.open": {
+  "sounds": [
+   {
+    "name": "craftov:ui/open"
+   }
+  ]
+ },
+ "ui.close": {
+  "sounds": [
+   {
+    "name": "craftov:ui/close"
+   }
+  ]
+ },
+ "ui.click": {
+  "sounds": [
+   {
+    "name": "craftov:ui/click"
+   }
+  ]
+ },
+ "ui.tab": {
+  "sounds": [
+   {
+    "name": "craftov:ui/tab"
+   }
+  ]
+ },
+ "ui.confirm": {
+  "sounds": [
+   {
+    "name": "craftov:ui/confirm"
+   }
+  ]
+ },
+ "ui.error": {
+  "sounds": [
+   {
+    "name": "craftov:ui/error"
+   }
+  ]
+ },
+ "ui.reward": {
+  "sounds": [
+   {
+    "name": "craftov:ui/reward"
+   }
+  ]
+ },
+ "extract.open": {
+  "sounds": [
+   {
+    "name": "craftov:extract/open"
+   }
+  ]
+ },
+ "extract.final": {
+  "sounds": [
+   {
+    "name": "craftov:extract/final"
+   }
+  ]
+ },
+ "raid.warning": {
+  "sounds": [
+   {
+    "name": "craftov:raid/warning"
+   }
+  ]
+ },
  "ui.levelup": {
   "sounds": [
    {

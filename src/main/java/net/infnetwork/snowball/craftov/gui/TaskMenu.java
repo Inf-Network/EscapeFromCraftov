@@ -52,7 +52,7 @@ final class TaskMenu extends Menu {
             int index = i;
             button(SLOTS[i], UiItems.button(task.done ? "craftov:ui/report_ok" : "craftov:ui/icon_tasks", name, lore), event -> {
                 if (event.getClick() == ClickType.RIGHT && plugin.tasks().reroll(viewer, index)) {
-                    viewer.playSound(viewer.getLocation(), "minecraft:ui.button.click", SoundCategory.MASTER, 0.6f, 1.2f);
+                    UiSound.TAB.play(viewer);
                     redraw();
                 }
             });

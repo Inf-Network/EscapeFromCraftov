@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.match;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -359,8 +360,8 @@ public final class MatchService {
             for (UUID uuid : entry.members()) {
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null) {
-                    p.sendActionBar(Text.mm("<accent>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
-                            + " <muted>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发"));
+                    Notify.critical(p, "queue", "<accent>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
+                            + " <muted>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发");
                 }
             }
         }

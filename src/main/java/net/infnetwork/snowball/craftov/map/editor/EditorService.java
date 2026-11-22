@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.map.editor;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -306,7 +307,7 @@ public final class EditorService implements Listener {
         if (player.isSneaking() && action == Action.RIGHT_CLICK_AIR) {
             session.option.merge(tool, 1, Integer::sum);
             player.getInventory().setItemInMainHand(toolItem(session, tool));
-            player.sendActionBar(Text.mm("<accent>" + tool.label + " · " + optionLabel(session, tool)));
+            Notify.info(player, "<accent>" + tool.label + " · " + optionLabel(session, tool));
             return;
         }
         if (action != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) {
@@ -372,7 +373,7 @@ public final class EditorService implements Listener {
             }
             case REMOVE -> {
                 if (!removeNear(d, block.getLocation().add(0.5, 1, 0.5))) {
-                    player.sendActionBar(Text.mm("<danger>附近 3 格内没有标记"));
+                    Notify.error(player, "附近 3 格内没有标记");
                     return;
                 }
             }

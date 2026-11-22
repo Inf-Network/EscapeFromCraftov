@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -75,7 +76,7 @@ final class SecureMenu extends Menu {
         ItemStack left = plugin.carry().give(viewer, stack, false);
         int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
         if (moved <= 0) {
-            viewer.sendActionBar(Text.mm("<danger>携行空间不足"));
+            Notify.error(viewer, "携行空间不足");
             return;
         }
         // Only what was handed over leaves the record (one above the stack size builds a single stack).
@@ -95,16 +96,16 @@ final class SecureMenu extends Menu {
         }
         ItemDef def = plugin.items().defOf(stack);
         if (ItemFactory.isTest(stack)) {
-            viewer.sendActionBar(Text.mm("<danger>试验场物资不能放入安全箱"));
+            Notify.error(viewer, "试验场物资不能放入安全箱");
             return;
         }
         if (def == null || def.isGun() || def.isArmor() || def.isContainer() || def.category() == Category.WEAPON) {
-            viewer.sendActionBar(Text.mm("<danger>该物品无法放入安全箱"));
+            Notify.error(viewer, "该物品无法放入安全箱");
             return;
         }
         List<ItemRecord> items = contents();
         if (items.size() >= capacity()) {
-            viewer.sendActionBar(Text.mm("<danger>安全箱已满"));
+            Notify.error(viewer, "安全箱已满");
             return;
         }
         ItemRecord record = plugin.items().toRecord(stack);

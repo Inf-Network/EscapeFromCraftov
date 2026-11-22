@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -163,7 +164,7 @@ public final class DownedService implements Listener {
         if (cause != null && cause.attacker() != null) {
             Player attacker = Bukkit.getPlayer(cause.attacker());
             if (attacker != null) {
-                attacker.sendActionBar(Text.mm("<accent>击倒 <white>" + Text.escape(player.getName())));
+                Notify.info(attacker, "<accent>击倒 <white>" + Text.escape(player.getName()));
             }
         }
         crawl(player, state);
@@ -202,7 +203,7 @@ public final class DownedService implements Listener {
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1500), Duration.ofMillis(300))));
         player.playSound(player.getLocation(), "craftov:status.revived", SoundCategory.MASTER, 1f, 1f);
         if (reviver != null) {
-            reviver.sendActionBar(Text.mm("<ok>救援成功"));
+            Notify.ok(reviver, "救援成功");
         }
     }
 
@@ -295,8 +296,8 @@ public final class DownedService implements Listener {
                 reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
                 String note = Bukkit.getCurrentTick() - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
-                reviver.sendActionBar(Text.mm(note + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim")));
-                player.sendActionBar(Text.mm(note + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim")));
+                Notify.critical(reviver, "revive", note + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim"));
+                Notify.critical(player, "revive", note + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim"));
                 if (state.reviveTicks >= state.reviveNeeded) {
                     stopReviving(reviver);
                     revive(player, reviver);
@@ -317,8 +318,8 @@ public final class DownedService implements Listener {
                         Material.REDSTONE_BLOCK.createBlockData());
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
             }
-            player.sendActionBar(Text.mm("<danger>倒地 " + Text.bar(state.fraction(), 24, "danger", "dim")
-                    + " <muted>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <accent>没有队友能救你，使用自救注射器")));
+            Notify.critical(player, "downed", "<danger>倒地 " + Text.bar(state.fraction(), 24, "danger", "dim")
+                    + " <muted>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <accent>没有队友能救你，使用自救注射器"));
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
             }
@@ -449,7 +450,7 @@ public final class DownedService implements Listener {
             }
             String blocked = reviveBlocker(p, downedPlayer);
             if (blocked != null) {
-                p.sendActionBar(Text.mm("<danger>" + blocked));
+                Notify.critical(p, "revive", "<danger>" + blocked);
                 continue;
             }
             if (p.getUniqueId().equals(state.reviver)) {

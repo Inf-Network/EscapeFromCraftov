@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -189,7 +190,7 @@ public final class HealthService implements Listener {
                     sources.put(part, source);
                 }
             }
-            player.sendActionBar(Text.mm("<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName()));
+            Notify.info(player, "<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName());
             player.playSound(player.getLocation(), "craftov:status.injury", SoundCategory.PLAYERS, 0.8f, 1f);
             updateFood(player);
             forceSpeedUpdate(player);
@@ -552,18 +553,18 @@ public final class HealthService implements Listener {
         }
         if (plugin.downed().isReviving(player)) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm("<muted>救援时不能使用医疗物品"));
+            Notify.hint(player, "救援时不能使用医疗物品");
             return;
         }
         boolean downed = plugin.downed().isDowned(player);
         if (med.effect() == MedSpec.Effect.SELF_REVIVE ? !downed : downed) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm(downed ? "<danger>倒地时只能使用自救注射器" : "<muted>只有倒地时才能使用"));
+            Notify.info(player, downed ? "<danger>倒地时只能使用自救注射器" : "<muted>只有倒地时才能使用");
             return;
         }
         if (!useful(player, def)) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm("<muted>当前不需要使用 " + Text.escape(def.name())));
+            Notify.hint(player, "当前不需要使用 " + Text.escape(def.name()));
             return;
         }
         if (event.useItemInHand() == org.bukkit.event.Event.Result.DENY) {
@@ -664,7 +665,7 @@ public final class HealthService implements Listener {
         } else if (msg.isEmpty()) {
             msg.append("<ok>已使用 ").append(Text.escape(def.name()));
         }
-        player.sendActionBar(Text.mm(msg.toString()));
+        Notify.info(player, msg.toString());
         if (consumed) {
             replaceOne(player, event.getHand(), stack, null);
         }

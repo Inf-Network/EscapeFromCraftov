@@ -45,7 +45,7 @@ final class MarketMenu extends Menu {
         for (Category c : TABS) {
             boolean selected = view == View.BROWSE && c == category;
             String label = c == null ? "全部" : c.displayName();
-            button(slot++, UiItems.button("craftov:ui/tab_market", (selected ? "<accent>▶ " : "<white>") + label, List.of()), e -> {
+            tabButton(slot++, UiItems.button("craftov:ui/tab_market", (selected ? "<accent>▶ " : "<white>") + label, List.of()), e -> {
                 view = View.BROWSE;
                 category = c;
                 redraw();

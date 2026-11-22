@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.replay;
 
 import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
@@ -441,7 +442,7 @@ public final class ReplayService implements Listener {
         }
         playback.lastShotTick = Math.max(playback.lastShotTick, now);
         if ((long) playback.recorded % 20 == 0) {
-            viewer.sendActionBar(Text.mm("<danger>击杀回放 <muted>· 按 <white>Shift</white> 跳过"));
+            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white>Shift</white> 跳过");
         }
     }
 

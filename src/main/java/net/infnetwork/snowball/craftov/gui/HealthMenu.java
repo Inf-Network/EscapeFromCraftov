@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.DyedItemColor;
 import io.papermc.paper.datacomponent.item.TooltipDisplay;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
@@ -136,7 +137,7 @@ final class HealthMenu extends Menu {
             inv.setItem(from, current);
         }
         viewer.closeInventory();
-        viewer.sendActionBar(Text.mm("<ok>按住右键使用"));
+        Notify.ok(viewer, "按住右键使用");
     }
 
     @Override

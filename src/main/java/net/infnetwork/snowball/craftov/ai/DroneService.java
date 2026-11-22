@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.ai;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.map.MapDef;
@@ -196,7 +197,7 @@ public final class DroneService implements Listener {
             world.playSound(eye, "craftov:extract.beep", SoundCategory.HOSTILE, 2f, 1.6f);
             if (last == null || now - last > 20L * 20) {
                 drone.spotted.put(player.getUniqueId(), now);
-                player.sendActionBar(Text.mm("<danger>⚠ 你被侦察无人机发现了！<muted>附近的敌兵正赶过来"));
+                Notify.info(player, "<danger>⚠ 你被侦察无人机发现了！<muted>附近的敌兵正赶过来");
                 player.playSound(player.getLocation(), "craftov:ai.spotted", SoundCategory.MASTER, 1f, 1.2f);
             }
             return;
@@ -223,7 +224,7 @@ public final class DroneService implements Listener {
         at.getWorld().playSound(at, "craftov:throw.explode", SoundCategory.HOSTILE, 2f, 1.5f);
         Player killer = event.getEntity().getKiller();
         if (killer != null) {
-            killer.sendActionBar(Text.mm("<ok>✈ 击落侦察无人机"));
+            Notify.ok(killer, "✈ 击落侦察无人机");
         }
     }
 

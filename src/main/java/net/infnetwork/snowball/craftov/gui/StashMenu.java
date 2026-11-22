@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -77,11 +78,11 @@ final class StashMenu extends Menu {
             button(slot, display, e -> clickStash(stashIndex, record));
         }
         fillRow(5, UiItems.filler());
-        button(45, UiItems.button("craftov:ui/arrow_left", "<white>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(45, UiItems.button("craftov:ui/arrow_left", "<white>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.max(0, page - 1);
             redraw();
         });
-        button(53, UiItems.button("craftov:ui/arrow_right", "<white>下一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(53, UiItems.button("craftov:ui/arrow_right", "<white>下一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.min(pages - 1, page + 1);
             redraw();
         });
@@ -89,7 +90,7 @@ final class StashMenu extends Menu {
             sort(p);
             redraw();
         });
-        button(47, UiItems.button("craftov:ui/icon_filter", "<white>筛选：" + (filter == null ? "全部" : filter.displayName()),
+        tabButton(47, UiItems.button("craftov:ui/icon_filter", "<white>筛选：" + (filter == null ? "全部" : filter.displayName()),
                 List.of("<muted>点击切换类别")), e -> {
             Category[] all = Category.values();
             filter = filter == null ? all[0] : filter.ordinal() + 1 < all.length ? all[filter.ordinal() + 1] : null;
@@ -101,7 +102,7 @@ final class StashMenu extends Menu {
             case SELL -> "<accent>出售给商人";
             case LIST -> "<info>交易行上架";
         };
-        button(48, UiItems.button("craftov:ui/icon_mode", "<white>模式：" + modeName, List.of("<muted>点击切换：取出 / 出售 / 上架",
+        tabButton(48, UiItems.button("craftov:ui/icon_mode", "<white>模式：" + modeName, List.of("<muted>点击切换：取出 / 出售 / 上架",
                 "<muted>点击下方背包中的物品可存入仓库", "<muted>潜行点击可存入同类全部")), e -> {
             mode = Mode.values()[(mode.ordinal() + 1) % Mode.values().length];
             redraw();
@@ -152,7 +153,7 @@ final class StashMenu extends Menu {
                     int slot = CarryService.containerSlot(def.category());
                     ItemStack equipped = viewer.getInventory().getItem(slot);
                     if (equipped != null && !equipped.isEmpty()) {
-                        viewer.sendActionBar(Text.mm("<danger>请先卸下当前的" + def.category().displayName()));
+                        Notify.error(viewer, "请先卸下当前的" + def.category().displayName());
                         return;
                     }
                     p.stash.remove(stashIndex);
@@ -161,7 +162,7 @@ final class StashMenu extends Menu {
                     ItemStack left = plugin.carry().give(viewer, stack, false);
                     int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
                     if (moved <= 0) {
-                        viewer.sendActionBar(Text.mm("<danger>背包空间不足"));
+                        Notify.error(viewer, "背包空间不足");
                         return;
                     }
                     // Only what was handed over leaves the record: a record above the stack size
@@ -176,11 +177,11 @@ final class StashMenu extends Menu {
             case SELL -> {
                 p.stash.remove(stashIndex);
                 long price = plugin.traders().sell(viewer, record);
-                viewer.sendActionBar(Text.mm("<accent>已出售，获得 ◈" + Text.money(price)));
+                Notify.info(viewer, "<accent>已出售，获得 ◈" + Text.money(price));
             }
             case LIST -> {
                 if (record.isKit()) {
-                    viewer.sendActionBar(Text.mm("<danger>免费补给的物品不能上架交易行"));
+                    Notify.error(viewer, "免费补给的物品不能上架交易行");
                     return;
                 }
                 if (!plugin.market().refuseIfClosed(viewer)) {
@@ -216,11 +217,11 @@ final class StashMenu extends Menu {
         for (int slot : slots) {
             ItemStack current = event.getClickedInventory().getItem(slot);
             if (ItemFactory.isRange(current)) {
-                viewer.sendActionBar(Text.mm("<danger>靶场武器不能存入仓库"));
+                Notify.error(viewer, "靶场武器不能存入仓库");
                 continue;
             }
             if (ItemFactory.isTest(current)) {
-                viewer.sendActionBar(Text.mm("<danger>试验场物资不能存入仓库"));
+                Notify.error(viewer, "试验场物资不能存入仓库");
                 continue;
             }
             ItemRecord record = plugin.items().toRecord(current);
@@ -228,7 +229,7 @@ final class StashMenu extends Menu {
                 continue;
             }
             if (p.stashUsed() + record.footprint() > p.stashCapacity) {
-                viewer.sendActionBar(Text.mm("<danger>仓库已满，可在仓库中扩容"));
+                Notify.error(viewer, "仓库已满，可在仓库中扩容");
                 break;
             }
             deposit(p, record);
@@ -292,7 +293,7 @@ final class StashMenu extends Menu {
         while (!p.mailbox.isEmpty()) {
             ItemRecord record = p.mailbox.get(0);
             if (p.stashUsed() + record.footprint() > p.stashCapacity) {
-                viewer.sendActionBar(Text.mm("<danger>仓库空间不足"));
+                Notify.error(viewer, "仓库空间不足");
                 break;
             }
             p.mailbox.remove(0);
@@ -300,7 +301,7 @@ final class StashMenu extends Menu {
             claimed++;
         }
         if (claimed > 0) {
-            viewer.sendActionBar(Text.mm("<ok>已领取 " + claimed + " 件物品"));
+            Notify.ok(viewer, "已领取 " + claimed + " 件物品");
         }
         plugin.profiles().markDirty(viewer.getUniqueId());
     }

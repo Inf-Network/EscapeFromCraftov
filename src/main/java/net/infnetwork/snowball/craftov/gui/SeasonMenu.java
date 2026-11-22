@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.rank.SeasonService;
@@ -63,7 +64,7 @@ final class SeasonMenu extends Menu {
             int t2 = t;
             button(9 + (t - 1), icon, e -> {
                 String why = season.claim(viewer, t2);
-                viewer.sendActionBar(Text.mm(why == null ? "<ok>已领取第 " + t2 + " 级奖励" : "<danger>" + why));
+                Notify.info(viewer, why == null ? "<ok>已领取第 " + t2 + " 级奖励" : "<danger>" + why);
                 if (why == null) {
                     viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.MASTER, 0.8f, 1f);
                 }

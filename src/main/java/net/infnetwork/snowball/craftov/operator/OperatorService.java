@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.operator;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.Injury;
 import net.infnetwork.snowball.craftov.item.Keys;
@@ -122,12 +123,12 @@ public final class OperatorService implements Listener {
         RaidPlayer rp = plugin.raids().session(player);
         Raid raid = plugin.raids().raidOf(player);
         if (rp == null || raid == null || rp.state != RaidPlayer.State.ALIVE) {
-            player.sendActionBar(Text.mm("<muted>技能只能在行动中使用"));
+            Notify.hint(player, "技能只能在行动中使用");
             return;
         }
         int left = cooldownLeft(player);
         if (left > 0) {
-            player.sendActionBar(Text.mm("<danger>技能冷却中 " + left + "s"));
+            Notify.error(player, "技能冷却中 " + left + "s");
             return;
         }
         OperatorDef def = of(player);
@@ -141,7 +142,7 @@ public final class OperatorService implements Listener {
             }
         }
         cooldownUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + def.cooldownSeconds() * 20L);
-        player.sendActionBar(Text.mm("<" + def.color() + ">技能 · " + def.skillName()));
+        Notify.info(player, "<" + def.color() + ">技能 · " + def.skillName());
     }
 
     private void sprint(Player player) {
@@ -165,7 +166,7 @@ public final class OperatorService implements Listener {
             plugin.health().cure(p, Injury.HEAVY_BLEED);
             p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, p.getLocation().add(0, 1, 0), 14, 0.4, 0.5, 0.4);
             if (p != player) {
-                p.sendActionBar(Text.mm("<ok>" + Text.escape(player.getName()) + " 的急救脉冲 +30"));
+                Notify.ok(p, "" + Text.escape(player.getName()) + " 的急救脉冲 +30");
             }
         }
         Location c = player.getLocation();
@@ -212,7 +213,7 @@ public final class OperatorService implements Listener {
             }
             Bukkit.getScheduler().runTaskLater(plugin, marker::remove, 120L);
         }
-        player.sendActionBar(Text.mm("<info>声呐：标记了 " + marked + " 个目标"));
+        Notify.info(player, "<info>声呐：标记了 " + marked + " 个目标");
     }
 
     private void shield(Player player) {
@@ -240,7 +241,7 @@ public final class OperatorService implements Listener {
             }
         }, 20L * 15);
         if (placed.isEmpty()) {
-            player.sendActionBar(Text.mm("<muted>前方空间不足"));
+            Notify.hint(player, "前方空间不足");
         }
     }
 

@@ -114,6 +114,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
+        net.infnetwork.snowball.craftov.util.Notify.start(this);
         saveDefaultConfig();
         saveResourceIfMissing("items.yml");
         saveResourceIfMissing("loot.yml");

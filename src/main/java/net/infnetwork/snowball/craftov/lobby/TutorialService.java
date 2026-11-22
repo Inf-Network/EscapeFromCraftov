@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -78,7 +79,7 @@ public final class TutorialService {
             Profile profile = plugin.profiles().get(player);
             if (active(profile) && profile.tutorialStep < Step.values().length && profile.stat("extracts") == 0) {
                 Step step = Step.values()[profile.tutorialStep];
-                player.sendActionBar(Text.mm("<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint));
+                Notify.info(player, "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint);
             }
         }
     }

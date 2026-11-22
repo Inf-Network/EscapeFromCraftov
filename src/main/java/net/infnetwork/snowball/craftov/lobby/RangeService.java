@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -139,7 +140,7 @@ public final class RangeService implements Listener {
             return;
         }
         plugin.lobby().enterLobby(player);
-        player.sendActionBar(Text.mm("<muted>已离开靶场，原有装备已归还"));
+        Notify.hint(player, "已离开靶场，原有装备已归还");
     }
 
     /**

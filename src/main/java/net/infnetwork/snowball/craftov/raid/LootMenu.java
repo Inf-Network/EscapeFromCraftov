@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.Menu;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -160,7 +161,7 @@ public final class LootMenu extends Menu {
         }
         ItemStack left = carry.give(viewer, stack, false);
         if (left != null && left.getAmount() == stack.getAmount()) {
-            viewer.sendActionBar(Text.mm("<danger>携行空间不足"));
+            Notify.error(viewer, "携行空间不足");
             viewer.playSound(viewer.getLocation(), "minecraft:block.note_block.bass", 0.6f, 0.6f);
             return;
         }
@@ -178,7 +179,7 @@ public final class LootMenu extends Menu {
         }
         int target = container.firstEmpty();
         if (target < 0) {
-            viewer.sendActionBar(Text.mm("<danger>容器已满"));
+            Notify.error(viewer, "容器已满");
             return;
         }
         plugin.weapons().flush(viewer);

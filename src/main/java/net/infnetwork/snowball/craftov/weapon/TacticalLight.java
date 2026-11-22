@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -76,7 +77,7 @@ public final class TacticalLight implements Listener {
     private void cycle(Player player) {
         WeaponService.GunState state = plugin.weapons().state(player);
         if (state == null || state.light() == null) {
-            player.sendActionBar(Text.mm("<muted>这把枪没有装战术手电 <dim>(改枪台 · 战术位)"));
+            Notify.hint(player, "这把枪没有装战术手电 <dim>(改枪台 · 战术位)");
             return;
         }
         Mode next = switch (mode(player)) {
@@ -89,11 +90,11 @@ public final class TacticalLight implements Listener {
             clear(player.getUniqueId());
         }
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, next == Mode.OFF ? 0.8f : 1.3f);
-        player.sendActionBar(Text.mm("<text>战术手电 " + switch (next) {
+        Notify.info(player, "<text>战术手电 " + switch (next) {
             case OFF -> "<muted>关";
             case STEADY -> "<accent>常亮";
             case STROBE -> "<danger>爆闪";
-        }));
+        });
     }
 
     private void tick() {

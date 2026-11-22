@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -398,7 +399,7 @@ public final class LobbyService implements Listener {
     private void tickRange() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!inRange(player) && stripRangeItems(player) > 0) {
-                player.sendActionBar(Text.mm("<accent>已离开靶场，靶场武器已收回"));
+                Notify.info(player, "<accent>已离开靶场，靶场武器已收回");
             }
         }
     }
@@ -521,6 +522,7 @@ public final class LobbyService implements Listener {
         }
         plugin.match().onQuit(player);
         plugin.hud().onQuit(player);
+        net.infnetwork.snowball.craftov.util.Notify.forget(player);
         player.getInventory().clear();
         plugin.profiles().unload(player.getUniqueId());
         lastMenuClick.remove(player.getUniqueId());

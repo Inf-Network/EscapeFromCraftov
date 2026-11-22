@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.economy.TraderService;
@@ -67,7 +68,7 @@ final class TraderMenu extends Menu {
         int slot = 45;
         for (TraderService.Tab t : TraderService.Tab.values()) {
             boolean selected = t == tab;
-            button(slot++, UiItems.button("craftov:ui/tab_" + t.name().toLowerCase(), (selected ? "<accent>▶ " : "<white>") + t.label,
+            tabButton(slot++, UiItems.button("craftov:ui/tab_" + t.name().toLowerCase(), (selected ? "<accent>▶ " : "<white>") + t.label,
                     List.of("<muted>块币 ◈" + Text.money(p.money), "<muted>潜行点击下方背包物品可直接出售")), e -> {
                 tab = t;
                 redraw();
@@ -150,7 +151,7 @@ final class TraderMenu extends Menu {
             viewer.getInventory().setItem(slot, null);
         }
         plugin.lobby().captureLoadout(viewer);
-        viewer.sendActionBar(Text.mm(count == 0 ? "<muted>没有可出售的物资" : "<accent>出售 " + count + " 件物资，获得 ◈" + Text.money(total)));
+        Notify.info(viewer, count == 0 ? "<muted>没有可出售的物资" : "<accent>出售 " + count + " 件物资，获得 ◈" + Text.money(total));
     }
 
     @Override
@@ -161,11 +162,11 @@ final class TraderMenu extends Menu {
         }
         plugin.weapons().flush(viewer);
         if (ItemFactory.isRange(event.getClickedInventory().getItem(event.getSlot()))) {
-            viewer.sendActionBar(Text.mm("<danger>靶场武器不能出售"));
+            Notify.error(viewer, "靶场武器不能出售");
             return;
         }
         if (ItemFactory.isTest(event.getClickedInventory().getItem(event.getSlot()))) {
-            viewer.sendActionBar(Text.mm("<danger>试验场物资不能出售"));
+            Notify.error(viewer, "试验场物资不能出售");
             return;
         }
         ItemRecord record = plugin.items().toRecord(event.getClickedInventory().getItem(event.getSlot()));
@@ -173,18 +174,18 @@ final class TraderMenu extends Menu {
             return;
         }
         if (plugin.registry().get(record.id) == null) {
-            viewer.sendActionBar(Text.mm("<danger>物品表里暂时没有这件物品，不能出售"));
+            Notify.error(viewer, "物品表里暂时没有这件物品，不能出售");
             return;
         }
         long price = plugin.traders().sellPrice(record);
         if (!event.isShiftClick()) {
-            viewer.sendActionBar(Text.mm("<muted>商人收购价 <accent>◈" + Text.money(price) + " <muted>· 潜行点击出售"));
+            Notify.info(viewer, "<muted>商人收购价 <accent>◈" + Text.money(price) + " <muted>· 潜行点击出售");
             return;
         }
         event.getClickedInventory().setItem(event.getSlot(), null);
         plugin.traders().sell(viewer, record);
         plugin.lobby().captureLoadout(viewer);
-        viewer.sendActionBar(Text.mm("<accent>已出售，获得 ◈" + Text.money(price)));
+        Notify.info(viewer, "<accent>已出售，获得 ◈" + Text.money(price));
         redraw();
     }
 }

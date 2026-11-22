@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -160,11 +161,11 @@ final class GunsmithMenu extends Menu {
         }
         String why = misfit(gunDef.gun(), partDef);
         if (why != null) {
-            viewer.sendActionBar(Text.mm("<danger>" + Text.escape(partDef.name()) + " " + why));
+            Notify.error(viewer, "" + Text.escape(partDef.name()) + " " + why);
             return;
         }
         if (kind(gun) != kind(part)) {
-            viewer.sendActionBar(Text.mm("<danger>" + mixNote(gun, part)));
+            Notify.error(viewer, "" + mixNote(gun, part));
             return;
         }
         plugin.weapons().reset(viewer);
@@ -175,7 +176,7 @@ final class GunsmithMenu extends Menu {
         inv.setItem(selected, refit(gun, slot, partDef.id()));
         giveBack(old, gun);
         viewer.playSound(viewer.getLocation(), "craftov:gun.reload_done", 0.8f, 1.2f);
-        viewer.sendActionBar(Text.mm("<ok>已安装 " + partDef.coloredName()));
+        Notify.ok(viewer, "已安装 " + partDef.coloredName());
         plugin.tutorial().done(viewer, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.GUNSMITH);
         redraw();
     }

@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.Injury;
 import net.infnetwork.snowball.craftov.item.Category;
@@ -63,20 +64,20 @@ final class CatalogMenu extends Menu {
                     plugin.carry().give(viewer, plugin.items().sample(def), true);
                 }
                 viewer.playSound(viewer.getLocation(), "minecraft:entity.item.pickup", 0.6f, 1.2f);
-                viewer.sendActionBar(Text.mm("<ok>已领取 " + def.coloredName() + " <muted>×" + copies));
+                Notify.ok(viewer, "已领取 " + def.coloredName() + " <muted>×" + copies);
             });
         }
         button(45, UiItems.button("craftov:ui/icon_value", "<accent><b>+ ◈1,000,000", List.of("<muted>测试用块币")), e -> {
             Profile p = plugin.profiles().get(viewer);
             p.money += 1_000_000;
             plugin.profiles().markDirty(viewer.getUniqueId());
-            viewer.sendActionBar(Text.mm("<ok>余额 ◈" + Text.money(p.money)));
+            Notify.ok(viewer, "余额 ◈" + Text.money(p.money));
         });
         button(46, UiItems.button("craftov:ui/icon_repair", "<ok><b>满血并清除伤病", List.of("<muted>生命回满，清除出血和骨折")), e -> {
             plugin.health().clear(viewer);
             plugin.health().heal(viewer, HealthService.MAX_HP);
             plugin.health().forceSpeedUpdate(viewer);
-            viewer.sendActionBar(Text.mm("<ok>状态已恢复"));
+            Notify.ok(viewer, "状态已恢复");
         });
         button(47, UiItems.button("craftov:ui/icon_cancel", "<danger><b>模拟受伤", List.of("<muted>生命降到 40：胸部出血、左腿和右臂骨折",
                 "<muted>用来测试绷带、夹板和急救包")), e -> {

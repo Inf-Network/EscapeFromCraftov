@@ -23,6 +23,7 @@ import skins  # noqa: E402
 import soldiers  # noqa: E402
 import sounds  # noqa: E402
 import gunaudio  # noqa: E402
+import oggenc  # noqa: E402
 import ui  # noqa: E402
 from px import gradient_bg, rgb  # noqa: E402
 
@@ -485,13 +486,10 @@ def build_sounds():
         entries[key] = entry
     # Gunfire, bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its
     # variants; the client picks one at random per play. GunAudio.java sets the level per listener.
-    import soundfile
     for key, variants, attenuation in gunaudio.catalogue():
         listed = []
         for path, data, sr in variants:
-            out = os.path.join(CV, 'sounds', path + '.ogg')
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            soundfile.write(out, np.clip(gunaudio.resample(data, sr), -1, 1).astype(np.float32), sr, format='OGG', subtype='VORBIS')
+            oggenc.write(os.path.join(CV, 'sounds', path + '.ogg'), gunaudio.resample(data, sr), sr)
             listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation})
         entries[key] = {'sounds': listed}
     write_json(os.path.join(CV, 'sounds.json'), entries)

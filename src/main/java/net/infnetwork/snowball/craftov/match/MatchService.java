@@ -361,7 +361,7 @@ public final class MatchService {
             for (UUID uuid : entry.members()) {
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null) {
-                    Notify.critical(p, "queue", "<accent>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
+                    Notify.status(p, "queue", "<accent>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
                             + " <muted>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发");
                 }
             }

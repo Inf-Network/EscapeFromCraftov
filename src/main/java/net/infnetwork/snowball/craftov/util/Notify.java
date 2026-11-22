@@ -15,10 +15,12 @@ import java.util.UUID;
 /**
  * One channel per kind of message. Short feedback goes to the action bar, which holds one line at
  * a time, so lines have a priority: critical (downed, revive, extraction countdowns) over results
- * (what a click or a key just did) over hints. A line stays up at least {@link #HOLD} ticks before
- * one of the same or lower priority may replace it; a later line waits its turn (only the newest
- * one waits), a lower one is dropped once the hold is over. Lines with a key (a countdown) replace
- * their own earlier version at once.
+ * (what a click or a key just did) over hints over status lines (the matchmaking timer). A line
+ * stays up at least {@link #HOLD} ticks before one of the same or lower priority may replace it; a
+ * later line waits its turn (only the newest one waits), a lower one is dropped once the hold is
+ * over. Lines with a key (a countdown) replace their own earlier version at once. A status line is
+ * sent again and again and never waits: anything else takes the bar from it at once, and while
+ * something else is up it is simply skipped until its next update.
  * <p>
  * While a menu is open the action bar is hidden behind the window, so results also go into the
  * menu: the clicked button's tooltip gets a red (or green) line for two seconds, or the title does
@@ -32,7 +34,7 @@ import java.util.UUID;
  */
 public final class Notify {
 
-    public enum Priority { HINT, RESULT, CRITICAL }
+    public enum Priority { STATUS, HINT, RESULT, CRITICAL }
 
     /** Minimum time on screen before a line of the same or lower priority may replace it. */
     public static final int HOLD = 30;
@@ -73,7 +75,15 @@ public final class Notify {
         WAITING.remove(player.getUniqueId());
     }
 
-    /** A passing hint (how to do something, why nothing happened); the least important line. */
+    /**
+     * A standing display that the caller refreshes (the matchmaking timer, every second): the least
+     * important line, which gives way to everything and comes back on its next refresh.
+     */
+    public static void status(Player player, String key, String miniMessage) {
+        bar(player, Priority.STATUS, key, Text.mm(miniMessage));
+    }
+
+    /** A passing hint (how to do something, why nothing happened). */
     public static void hint(Player player, String miniMessage) {
         bar(player, Priority.HINT, null, Text.mm("<muted>" + miniMessage));
     }
@@ -123,7 +133,8 @@ public final class Notify {
             return;
         }
         // A critical line keeps the bar until it stops updating; nothing waits behind it for long.
-        if (shown.priority() == Priority.CRITICAL && priority != Priority.CRITICAL) {
+        // A status line never waits: its next refresh comes soon enough.
+        if (shown.priority() == Priority.CRITICAL && priority != Priority.CRITICAL || priority == Priority.STATUS) {
             return;
         }
         Line waiting = WAITING.get(id);

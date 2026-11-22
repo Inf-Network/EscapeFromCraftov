@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.ai.AiService;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.combat.DownedService;
 import net.infnetwork.snowball.craftov.combat.HealthService;
+import net.infnetwork.snowball.craftov.combat.HitboxHistory;
 import net.infnetwork.snowball.craftov.combat.StaminaService;
 import net.infnetwork.snowball.craftov.command.CraftovCommand;
 import net.infnetwork.snowball.craftov.economy.MarketService;
@@ -72,6 +73,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private MapRegistry maps;
     private WorldService worlds;
     private DamageService damage;
+    private HitboxHistory hitboxes;
     private HealthService health;
     private StaminaService stamina;
     private TriggerService triggers;
@@ -147,6 +149,7 @@ public final class CraftovPlugin extends JavaPlugin {
         worlds.cleanupStale();
         cleanupTeams();
         damage = new DamageService(this);
+        hitboxes = new HitboxHistory(this);
         health = new HealthService(this);
         stamina = new StaminaService(this);
         downed = new DownedService(this);
@@ -200,6 +203,7 @@ public final class CraftovPlugin extends JavaPlugin {
         range.start();
         stance.start();
         lights.start();
+        hitboxes.start();
         backups = new net.infnetwork.snowball.craftov.util.Backups(this);
         backups.start();
         market.start();
@@ -363,6 +367,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public MapRegistry maps() { return maps; }
     public WorldService worlds() { return worlds; }
     public DamageService damage() { return damage; }
+    public HitboxHistory hitboxes() { return hitboxes; }
     public HealthService health() { return health; }
     public StaminaService stamina() { return stamina; }
     public TriggerService triggers() { return triggers; }

@@ -1120,11 +1120,15 @@ public final class RaidManager implements Listener {
                     // no free pocket go to the mailbox.
                     List<ItemRecord> homeless = new ArrayList<>();
                     Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
+                    // Dropped out during the entry camera: like those still watching it, they never
+                    // landed, so the fees come back too.
+                    long refund = rp.inFlight ? rp.fees : 0;
                     plugin.profiles().edit(rp.uuid, profile -> {
                         profile.loadout = inv;
                         profile.mailbox.addAll(homeless);
                         profile.secure = new ArrayList<>(rp.secure);
                         profile.activeRaid = null;
+                        profile.money += refund;
                     });
                 }
             }

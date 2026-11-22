@@ -782,8 +782,7 @@ public final class RaidManager implements Listener {
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
         Location at = player.getLocation();
-        long lost = plugin.carry().carriedValue(player);
-        // Body with everything the player carried.
+        // Body with everything the player carried but the melee weapon, which is kept.
         List<ItemStack> drop = new ArrayList<>();
         ItemStack melee = player.getInventory().getItem(CarryService.MELEE_SLOT);
         for (int slot = 0; slot <= CarryService.HEAD; slot++) {
@@ -796,7 +795,12 @@ public final class RaidManager implements Listener {
         ItemStack cursor = player.getItemOnCursor();
         if (!cursor.isEmpty() && !ItemFactory.isUi(cursor) && !plugin.carry().isMelee(cursor)) {
             drop.add(cursor.clone());
-            lost += plugin.items().value(cursor);
+        }
+        // What was lost is what the body holds, as in missing(). The kept knife used to count too,
+        // so a karambit made every death cost more rank points and showed in the report's loss.
+        long lost = 0;
+        for (ItemStack stack : drop) {
+            lost += plugin.items().value(stack);
         }
         spawnCorpse(raid, at, player.getName(), drop, player);
         player.getInventory().clear();

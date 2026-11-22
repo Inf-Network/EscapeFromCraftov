@@ -699,7 +699,9 @@ public final class AiService implements Listener {
         bot.ammoLeft--;
         Location eye = bot.mob.getEyeLocation();
         // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
-        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
+        // The middle of the box follows the pose: 0.9 up standing, 0.75 crouched, 0.3 crawling (a
+        // fixed 0.95 aimed over the 0.6 box of a player in a one-block gap).
+        Vector aim = target.getLocation().toVector().setY(target.getBoundingBox().getCenterY())
                 .add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)))
                 .subtract(eye.toVector()).normalize();
         double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;

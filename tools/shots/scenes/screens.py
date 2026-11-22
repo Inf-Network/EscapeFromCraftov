@@ -1,6 +1,6 @@
-"""Every designed lobby screen (#6): terminal, deploy, stash, trader and gunsmith, plus a hovered
-button so the tooltip style shows. Shots: screen-main, screen-main-hover, screen-deploy,
-screen-stash, screen-trader, screen-trader-tab, screen-gunsmith."""
+"""Every designed lobby screen (#6): terminal, deploy, stash, trader, gunsmith and the mailbox, plus a
+hovered button so the tooltip style shows. Shots: screen-main, screen-main-hover, screen-deploy,
+screen-stash, screen-trader, screen-trader-tab, screen-gunsmith, screen-mail."""
 
 
 def open_menu(s, command, name, rows=6, hover=None):
@@ -39,6 +39,11 @@ def run(s):
         s.key('Escape')
     try:
         open_menu(s, 'mod', 'gunsmith')
+    finally:
+        s.key('Escape')
+        s.wait(0.5)
+    try:
+        open_menu(s, 'mail', 'mail')
     finally:
         s.key('Escape')
         s.wait(0.5)

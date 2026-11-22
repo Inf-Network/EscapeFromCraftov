@@ -259,7 +259,7 @@ public final class MatchService {
                 return false;
             }
             plugin.lobby().captureLoadout(member);
-            long value = plugin.carry().carriedValue(member);
+            long value = plugin.carry().gearValue(member);
             if (value < tier.minValue()) {
                 Text.send(player, "<#FF8A80>" + Text.escape(member.getName()) + " 的战备值 ◈" + Text.money(value)
                         + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue()));
@@ -476,7 +476,7 @@ public final class MatchService {
             // Test mode switched off (or admin rights taken away) while waiting.
             return "不能进入" + map.name() + "（只在测试模式开放）";
         }
-        long value = plugin.carry().carriedValue(player);
+        long value = plugin.carry().gearValue(player);
         if (value < tier.minValue()) {
             return "的战备值 ◈" + Text.money(value) + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue());
         }

@@ -378,14 +378,16 @@ public final class CraftovCommand implements TabExecutor {
     }
 
     /**
-     * The running raid an admin command means: the one named, else the sender's own, else the only
-     * one running. Null (with the reason told) if that does not pick exactly one.
+     * The running raid an admin command means: the one named (by id or world name), else the
+     * sender's own, else the only one running. Null (with the reason told) if that does not pick
+     * exactly one.
      */
     private @org.jspecify.annotations.Nullable Raid pickRaid(CommandSender sender, @org.jspecify.annotations.Nullable String id) {
         List<Raid> running = plugin.raids().raids().stream().filter(r -> r.state == Raid.State.RUNNING).toList();
         if (id != null) {
             for (Raid raid : running) {
-                if (raid.id.equalsIgnoreCase(id)) {
+                // The world name works too, which is all a test client knows about its raid.
+                if (raid.id.equalsIgnoreCase(id) || raid.world.getName().equalsIgnoreCase(id)) {
                     return raid;
                 }
             }

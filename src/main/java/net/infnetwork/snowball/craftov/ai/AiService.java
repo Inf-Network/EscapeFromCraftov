@@ -1112,14 +1112,15 @@ public final class AiService implements Listener {
             reposition(bot, target, now);
             return;
         }
-        point.add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)));
         if (friendlyInLine(bot, eye, point)) {
             // A fellow soldier in the way: step aside instead of shooting into its back.
             bot.nextShotTick = now + 6;
             reposition(bot, target, now);
             return;
         }
-        double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
+        // Rounds are hitscan, so there is nothing to lead. Bukkit's velocity of a walking player reads
+        // zero (and about -0.08 straight down when it stands), so what it is doing comes from its keys.
+        double moving = moving(target) ? 1.4 : 1.0;
         double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
         fireRound(bot, eye, point, aimError(bot) * moving * settle, now);
     }

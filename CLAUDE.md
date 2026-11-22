@@ -67,7 +67,7 @@ tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/Remote
 ```
 
 - **一条 `run` 走完全程**：测试服没开就开（`--server-dir` 默认 `server/run`，不存在时先 `setup`：`server/setup.sh --local` + 打开 RCON + `test.enabled: true` + `match.wait-seconds: 5`）→ 开虚拟显示和客户端进服 → 跑场景 → 截图存到 `tools/shots/out/<名字>.png` → 只关掉这次自己开的东西（`--keep` 都留着）。端口用 `--port` 或 `SHOTS_PORT`（默认 25565，RCON 默认是端口 +10）。同一个检出一次只跑一个。
-- **端口上的服务器必须就是 `--server-dir` 里的那个**（按监听进程的工作目录判断），否则直接拒绝：在 `.claude/worktrees/` 里一定要给自己的 `--port`（例如 `--port 25951`），不然会撞上主检出的测试服。`--build` 只会重启 shots 自己开的服务器，别人开的会被拒绝；局内场景撤离失败时只结束 ShotCam 独自一人的那局，否则留着并报错。
+- **端口上的服务器必须就是 `--server-dir` 里的那个**（按监听进程的工作目录判断），否则直接拒绝：在 `.claude/worktrees/` 里一定要给自己的 `--port`（例如 `--port 25951`），不然会撞上主检出的测试服。已有的服务器目录 `server.properties` 里端口 / RCON 对不上时开服前就报错（`shots.py setup --port N` 会写好），开服超时会把它关掉而不是留在后台。`--build` 只会重启 shots 自己开的服务器，别人开的会被拒绝；局内场景撤离失败时只结束 ShotCam 独自一人的那局，否则留着并报错。
 - 第一次运行在 `tools/shots/.cache/` 建 venv（`minecraft-launcher-lib`，BSD-2-Clause）并下载客户端（约 550 MB，用系统的 JDK 25 启动）。`.cache/` 和 `out/` 都被 gitignore；客户端日志在 `tools/shots/.cache/game/logs/latest.log`。
 - **场景**是 `tools/shots/scenes/<名字>.py` 里的 `run(s)`，几行就能写：`s.rcon(...)`、`s.cmd('cv deploy')`（在客户端聊天栏打指令）、`s.hold('m4c')`（没有就发一把并选中）、`s.key('F5')`、`with s.mouse(3):`（按住右键）、`s.park_mouse()`（界面打开后把鼠标挪到角落，免得出现物品提示）、`s.clear_chat()`、`s.extract('proving', raids)`、`s.shot('名字')`；要画面里有另一个玩家时用 `with s.puppet() as mate:`（`tools/bot/puppet.js` 的 mineflayer 假人，`mate.hold('m4c')`、`mate.tp(...)`、`mate.orbit(角度)` 让镜头绕着它看）。内置场景：大厅；手持枪腰射 / 开镜 / 第三人称背面和正面；背包；部署菜单；试验场局内 HUD + 开火 + 换弹（最后从常驻撤离点撤离，保住装备，下次不会重连进旧对局）。另有 `others`：别的玩家眼里的双手持枪姿势（自己的第三人称看不到装备包改写），需要 `tools/bot/node_modules`，所以不在默认场景里。
 - 截完**自己先看一遍**（Read 能直接看 PNG），画面确实是场景说的样子再发给服主。

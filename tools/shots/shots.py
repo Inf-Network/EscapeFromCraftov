@@ -58,6 +58,7 @@ SCENES = HERE / 'scenes'
 VERSION = '1.21.11'
 LAUNCHER_LIB = 'minecraft-launcher-lib==8.0'
 DEFAULT_SCENES = ['lobby', 'gun', 'inventory', 'deploy', 'raid']
+START_TIMEOUT = 240  # seconds for the test server to start and answer RCON
 
 # Client options forced on every launch. The first-run screens (accessibility onboarding,
 # multiplayer warning, tutorial toasts) would sit in front of the game, and a client that pauses on
@@ -286,27 +287,74 @@ def setup_server(cfg):
     log('test server ready: port', cfg.port, 'rcon', cfg.rcon_port)
 
 
+def read_properties(path):
+    props = {}
+    with contextlib.suppress(OSError):
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                key, value = line.split('=', 1)
+                props[key.strip()] = value.strip()
+    return props
+
+
+def property_problems(cfg):
+    """What in --server-dir's server.properties would keep shots from reaching that server."""
+    props = read_properties(cfg.server_dir / 'server.properties')
+    problems = []
+    for key, want, default in (('server-port', str(cfg.port), '25565'), ('enable-rcon', 'true', 'false'),
+                               ('rcon.port', str(cfg.rcon_port), '25575')):
+        have = props.get(key) or default
+        if have != want:
+            problems.append(f'{key}={have} (shots uses {want})')
+    if props.get('rcon.password', '') != cfg.rcon_password:
+        problems.append('rcon.password is not the one shots uses (--rcon-password)')
+    return problems
+
+
 def start_server(cfg):
+    """Starts the server in --server-dir and returns its pid once RCON answers. A server that does
+    not get that far is stopped again, so nothing is left running that `down` would not know."""
     run_dir = cfg.server_dir
-    if not (run_dir / 'start.sh').exists():
-        setup_server(cfg)
+    problems = property_problems(cfg)
+    if problems:
+        raise Fail(f'{run_dir / "server.properties"} does not fit: {"; ".join(problems)}. Pass the ports it uses, '
+                   'or let `shots.py setup` (same --port) write the screenshot settings')
     console = run_dir / 'console.log'
     offset = console.stat().st_size if console.exists() else 0
     log('starting the test server in', run_dir)
     with open(console, 'ab') as out:
         proc = subprocess.Popen(['./start.sh'], cwd=run_dir, stdout=out, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, start_new_session=True)
-    end = time.time() + 240
-    while time.time() < end:
-        if proc.poll() is not None:
-            raise Fail(f'the server exited ({proc.returncode}); see {console}')
-        with open(console, 'rb') as f:
-            f.seek(offset)
-            if b'Done (' in f.read() and rcon_alive(cfg):
+    done = False
+    try:
+        end = time.time() + START_TIMEOUT
+        while time.time() < end:
+            if proc.poll() is not None:
+                raise Fail(f'the server exited ({proc.returncode}); see {console}')
+            if not done:
+                with open(console, 'rb') as f:
+                    f.seek(offset)
+                    done = b'Done (' in f.read()
+            if done and rcon_alive(cfg):
                 log('server up')
                 return proc.pid
-        time.sleep(1)
-    raise Fail(f'the server did not finish starting; see {console}')
+            time.sleep(1)
+        if done:
+            raise Fail(f'the server started but RCON on port {cfg.rcon_port} does not answer; see {console}')
+        raise Fail(f'the server did not finish starting in {START_TIMEOUT} s; see {console}')
+    except BaseException:
+        # Still our unreaped child, so the pid cannot belong to anything else yet.
+        if proc.poll() is None:
+            log('stopping the server that did not come up')
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(60)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+        raise
 
 
 def stop_server(cfg, pid, rcon_port):
@@ -811,10 +859,13 @@ def restart_server(cfg, state):
 
 def wait_rcon(cfg, pid):
     """Waits for RCON on a server from --server-dir that is up or still starting."""
-    end = time.time() + 240
+    end = time.time() + START_TIMEOUT
     while not rcon_alive(cfg):
         if not pid_alive(pid):
             raise Fail(f'the server in {cfg.server_dir} stopped; see {cfg.server_dir / "logs" / "latest.log"}')
+        problems = property_problems(cfg)
+        if problems:
+            raise Fail(f'the server in {cfg.server_dir} (pid {pid}) does not answer RCON: {"; ".join(problems)}')
         if time.time() > end:
             raise Fail(f'the server in {cfg.server_dir} (pid {pid}) does not answer RCON on port {cfg.rcon_port}; '
                        'check enable-rcon, rcon.port and rcon.password in its server.properties')

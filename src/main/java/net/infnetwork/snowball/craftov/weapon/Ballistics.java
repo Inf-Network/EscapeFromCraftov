@@ -125,6 +125,8 @@ public final class Ballistics {
                 break;
             }
             if (result == null) {
+                // Into the open, perhaps through glass on the way: it lands nowhere.
+                hitAnything = false;
                 end = from.clone().add(dir.clone().multiply(Math.max(0, Math.min(left, 60 - travelled))));
                 break;
             }

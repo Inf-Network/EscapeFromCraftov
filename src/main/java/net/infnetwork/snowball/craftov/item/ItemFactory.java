@@ -53,10 +53,14 @@ public final class ItemFactory {
      * 9: the weapon-handling line (#32-#34, which used 5-6) on top: gun lore shows the new rates of the
      * V57, KL7 and SCR, and guns carry max_damage and unbreakable for the draw mark (see
      * {@link #setDrawing}).
+     * 10: knives carry the inspect cooldown group (#82).
+     * 11: both of the above together (the #82 line used 10 while main moved to 9).
      */
-    public static final int VERSION = 9;
+    public static final int VERSION = 11;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
+    /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
+    public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
@@ -265,6 +269,10 @@ public final class ItemFactory {
                     .addModifier(Attribute.ATTACK_SPEED, new AttributeModifier(GUN_ATTACK, 100.0,
                             AttributeModifier.Operation.ADD_NUMBER), EquipmentSlotGroup.MAINHAND)
                     .build());
+        } else if (def.isMelee()) {
+            // Knives have no use action either: only F (InspectService) sets this cooldown, and the
+            // client plays the inspect frames of the item model while it counts down.
+            stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(INSPECT_GROUP).build());
         } else if (med != null) {
             ItemUseAnimation animation;
             try {

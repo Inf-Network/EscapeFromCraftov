@@ -114,6 +114,20 @@ public final class EscortService {
         }
     }
 
+    /**
+     * The server stopped with the client still in the raid, which voids it: the contract is
+     * called off like a cancel, the whole reward goes back to the client and no escort is paid.
+     * (After a crash the contract is gone and {@link #reclaim} returns the reward instead.)
+     */
+    public void callOff(RaidPlayer rp) {
+        Contract c = rp.escortContract == null ? null : contracts.get(rp.escortContract);
+        if (c == null || !c.client.equals(rp.uuid)) {
+            return;
+        }
+        contracts.remove(c.id);
+        refund(c);
+    }
+
     public void create(Player client, long reward, String note) {
         if (involving(client.getUniqueId()) != null) {
             Text.send(client, "<#FF8A80>你已经有一份进行中的护航委托。");

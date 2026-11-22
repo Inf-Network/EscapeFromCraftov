@@ -76,7 +76,7 @@ if [[ ! -f "$RUN/server.properties" ]]; then
 server-port=$PORT
 online-mode=$([[ $LOCAL == 1 ]] && echo false || echo true)
 motd=§6Craftov §7· §f搜打撤射击
-difficulty=hard
+difficulty=normal
 pvp=true
 spawn-protection=0
 allow-flight=true

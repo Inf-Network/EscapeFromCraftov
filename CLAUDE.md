@@ -44,7 +44,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - 开发在远程服务器上（这台机器的 `java` 就是 25，`./gradlew` 直接能用），真人测试服在用户的 Mac 上，见下面「测试服运维」。
 - 没有单元测试目录；验证靠编译 + 部署 + `tools/bot/` 里的 mineflayer 脚本（`node test.js <名字> [场景]`，以及 fire / meds / revive / squad / doors / econ 等专项脚本）。bot 只能连这台机器上的本地测试服（Mac 的 25565 从这边连不到），用离线模式连 `127.0.0.1`，跑之前要临时加白名单，名字用随机的，否则会重连进旧对局。
 - 画面相关的改动（枪模、开镜、动作、界面、HUD、特效）用 `tools/shots/shots.py` 在这台机器上跑真客户端截图，见下面「真客户端截图」。
-- 改完 `tools/art/build.py` 后，它每次都会重新编码音效、产生无意义的 diff：提交前用 `git checkout -- src/main/resources/pack/craftov/resourcepack/assets/*/sounds/` 还原没改过的音效。
+- `tools/art/build.py` 的音效编码是可复现的（同样的采样总得到同样的 .ogg，按内容哈希缓存在 `tools/art/.cache/ogg/`），没改过的音效不会出现在 diff 里，不用再还原 sounds 目录。贴图和模型 JSON 在别的 Pillow / numpy 版本下可能字节不同：没改它们时，提交前用 `git checkout --` 还原这些无关的生成文件。枪声录音要先由 `tools/art/fetch_audio.py` 下载（build.py 会自动调用），需要 `soundfile` 和 `7z`。
 - 生成的 BetterHud yml 和资源包文件不要手改，改 `tools/art/` 里的生成器，否则下次构建会被覆盖。
 
 ## 测试服运维

@@ -83,7 +83,7 @@ final class MainMenu extends Menu {
                 "<white>左键 <#9AA0A6>开火（按住连发）",
                 "<white>右键 <#9AA0A6>按住开镜瞄准，松开即腰射",
                 "<white>Q <#9AA0A6>换弹  <white>潜行+Q <#9AA0A6>切换弹种",
-                "<white>F <#9AA0A6>切换射击模式  <white>潜行+F <#9AA0A6>干员技能",
+                "<white>F <#9AA0A6>切换射击模式（拿刀时检视）  <white>潜行+F <#9AA0A6>干员技能",
                 "<white>右键物资箱 <#9AA0A6>搜索  <white>对准倒地队友按住右键 <#9AA0A6>救援",
                 "<white>医疗品 <#9AA0A6>拿在手上按住右键使用，终端里可查看伤势",
                 "<#9AA0A6>物品栏第 2 行是胸挂格，第 3、4 行是背包格")), e -> {

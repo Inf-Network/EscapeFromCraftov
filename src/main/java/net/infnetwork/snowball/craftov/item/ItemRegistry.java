@@ -141,7 +141,6 @@ public final class ItemRegistry {
                     g.getInt("zoom", 1),
                     g.getInt("pellets", 1),
                     g.getDouble("head", 2.0),
-                    g.getString("sound", "craftov:gun.rifle"),
                     (float) g.getDouble("volume", 4.0),
                     g.getDouble("move-speed", 0.95),
                     g.getString("mount", "PRIMARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "rifle" : "pistol"),

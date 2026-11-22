@@ -1,4 +1,4 @@
-"""Synthesised sound effects (all original). Produces mono 44.1 kHz Ogg Vorbis files via ffmpeg."""
+"""Synthesised sound effects (all original). Mono 44.1 kHz Ogg Vorbis, encoded by oggenc.py."""
 import os
 import numpy as np
 from scipy import signal
@@ -187,6 +187,5 @@ SOUNDS = {
 
 
 def write_ogg(data, path):
-    import soundfile
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    soundfile.write(path, np.clip(data, -1, 1).astype(np.float32), SR, format='OGG', subtype='VORBIS')
+    import oggenc
+    oggenc.write(path, data, SR)

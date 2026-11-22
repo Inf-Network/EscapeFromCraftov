@@ -31,6 +31,7 @@ import net.infnetwork.snowball.craftov.raid.RaidManager;
 import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
+import net.infnetwork.snowball.craftov.weapon.InspectService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
 import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
@@ -72,6 +73,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private ItemRegistry registry;
     private ItemFactory items;
     private ProfileService profiles;
+    private net.infnetwork.snowball.craftov.profile.MailService mail;
     private CarryService carry;
     private LootService loot;
     private MapRegistry maps;
@@ -148,6 +150,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
+        mail = new net.infnetwork.snowball.craftov.profile.MailService(this);
         carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
@@ -190,7 +193,8 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market, profiles);
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
+                new InspectService(this), market, profiles);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -206,6 +210,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         worlds.ensureBuiltins();
         maps.load();
+        maps.warnCloseSpawns();
         lobby.start();
         range.start();
         stance.start();
@@ -431,6 +436,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public ItemRegistry registry() { return registry; }
     public ItemFactory items() { return items; }
     public ProfileService profiles() { return profiles; }
+    public net.infnetwork.snowball.craftov.profile.MailService mail() { return mail; }
     public CarryService carry() { return carry; }
     public LootService loot() { return loot; }
     public MapRegistry maps() { return maps; }

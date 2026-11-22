@@ -131,10 +131,11 @@ weapons:
     sneak: 0.7
     airborne: 2.5
   recoil:
-    # Recovery: this many ticks after the gun stops firing, the camera drifts back toward where the
-    # spray began, return-per-tick of the kick each tick, until the gun's recoil-return share
-    # (items.yml, default 0.7) is given back. What the player pulled down themselves is not given back
-    # again, and it never drifts past the starting crosshair.
+    # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
+    # drifts back toward where the spray began, return-per-tick (0..1, 0 = no recovery) of the kick
+    # each tick, until the gun's recoil-return share (items.yml, default 0.7) is given back. What the
+    # player pulled down themselves is not given back again, and it never drifts past the crosshair
+    # the spray started from.
     return-delay-ticks: 3
     return-per-tick: 0.1
     # This share of every kick lifts only the bullets, not the camera, up to muzzle-max degrees above

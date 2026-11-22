@@ -8,8 +8,9 @@
 //            a trigger held through the end of the sprint fires once the gun is back up.
 //   recoil   M4C on full auto, 30 rounds without touching the mouse: a second after letting go the
 //            camera must have come back down at least half of the climb, and not past where it
-//            started; pulling all or half of the climb down while firing is not pulled further.
-//            The bullets' own climb starts at 0, stays within 3 degrees, lifts the rounds of a
+//            started; pulling all or half of the climb down while firing is not pulled further. A
+//            second spray 0.3 s after a pulled-down one, turned 8 degrees up or 9 down to another
+//            target, recovers toward its own crosshair and not past it. The bullets' own climb starts at 0, stays within 3 degrees, lifts the rounds of a
 //            client that ignores the camera kick, and is gone a moment after the spray.
 //   ai       (not in the default run, about 3 minutes) a solo raid on the proving ground: hits
 //            per soldier shot while standing still versus strafing, in alternating 7 s phases.
@@ -253,15 +254,10 @@ async function sprint (spot) {
 const lookPitch = deg => bot.look(bot.entity.yaw, conv.fromNotchianPitch(deg), true)
 
 /**
- * One 30-round M4C spray from a level crosshair. `pull` is how much of the climb the bot pulls back
- * down itself while firing (0 none, 1 all of it). Returns pitches in degrees (negative = up).
+ * Fires `count` rounds on full auto from wherever the bot looks. `pull` is how much of the climb the bot
+ * pulls back down itself while firing (0 none, 1 all of it). Returns pitches in degrees (negative = up).
  */
-async function spray (spot, pull) {
-  await home(spot)
-  dropKey()
-  await sleep(3500)
-  await lookPitch(0)
-  await sleep(500)
+async function fire (count, pull, settleMs = 1000) {
   const start = pitchDeg()
   const from = logSize()
   shots = 0
@@ -269,7 +265,7 @@ async function spray (spot, pull) {
   const began = Date.now()
   let peak = start
   let seen = start
-  while (shots < 30 && Date.now() - began < 5000) {
+  while (shots < count && Date.now() - began < 5000) {
     await sleep(50)
     // The modified client keeps telling the server it is still looking where it was.
     if (deaf) bot._client.write('look', { yaw: conv.toNotchianYaw(bot.entity.yaw), pitch: pitchDeg(), flags: { onGround: true, hasHorizontalCollision: false } })
@@ -283,15 +279,41 @@ async function spray (spot, pull) {
   release()
   const fired = shots
   const atRelease = pitchDeg()
-  await sleep(1000)
+  await sleep(settleMs)
   const settled = pitchDeg()
   const lines = shotLines(from)
   // Where the last round went: the reported crosshair raised by the bullets' own climb.
   const last = lines[lines.length - 1] || { pitch: 0, climb: 0 }
   const shotPitch = last.pitch - last.climb
-  log(`spray pull=${pull}${deaf ? ' (ignoring the kick)' : ''}: ${fired} shots (${lines.length} logged), pitch start ${start.toFixed(2)} at release ${atRelease.toFixed(2)}`,
-    `highest ${peak.toFixed(2)} a second later ${settled.toFixed(2)}; last round climb ${last.climb.toFixed(2)} went at pitch ${shotPitch.toFixed(2)}`)
+  log(`${count} rounds pull=${pull}${deaf ? ' (ignoring the kick)' : ''}: ${fired} shots (${lines.length} logged), pitch start ${start.toFixed(2)} at release ${atRelease.toFixed(2)}`,
+    `highest ${peak.toFixed(2)} ${settleMs} ms later ${settled.toFixed(2)}; last round climb ${last.climb.toFixed(2)} went at pitch ${shotPitch.toFixed(2)}`)
   return { start, atRelease, peak, settled, fired, lines, shotPitch }
+}
+
+/** One 30-round M4C spray from a level crosshair with a full magazine. */
+async function spray (spot, pull) {
+  await home(spot)
+  dropKey()
+  await sleep(3500)
+  await lookPitch(0)
+  await sleep(500)
+  return fire(30, pull)
+}
+
+/**
+ * Two 10-round sprays back to back: the first fully pulled down, then 0.3 s later the bot turns `turn`
+ * degrees (negative = up) to another target and fires the second without pulling.
+ */
+async function pair (spot, turn) {
+  await home(spot)
+  dropKey()
+  await sleep(3500)
+  await lookPitch(0)
+  await sleep(500)
+  await fire(10, 1, 300)
+  await lookPitch(pitchDeg() + turn)
+  await sleep(100)
+  return fire(10, 0, 1500)
 }
 
 async function recoil (spot) {
@@ -314,6 +336,19 @@ async function recoil (spot) {
   check('recoil: a half compensated spray climbs about half as far', left > 0.3 * climb && left < 0.7 * climb, `${left.toFixed(2)} of ${climb.toFixed(2)} degrees`)
   check('recoil: and settles between there and the starting crosshair', half.settled <= half.start + 0.2 && half.settled - half.atRelease >= 0.5 * left,
     `start ${half.start.toFixed(2)} at release ${half.atRelease.toFixed(2)} settled ${half.settled.toFixed(2)}`)
+
+  // A second spray at another target 0.3 s after a pulled-down one recovers toward its own crosshair:
+  // not past it after turning up, and still some of the way after turning down.
+  const up = await pair(spot, -8)
+  const upClimb = up.start - up.atRelease
+  check('recoil: turning up 8 degrees for a second spray, it settles above where that spray began',
+    up.settled <= up.start + 0.2 && up.settled - up.atRelease >= 0.5 * upClimb,
+    `second spray ${up.start.toFixed(2)} -> ${up.atRelease.toFixed(2)}, settled ${up.settled.toFixed(2)}`)
+  const down = await pair(spot, 9)
+  const downClimb = down.start - down.atRelease
+  check('recoil: turning down 9 degrees for a second spray, that spray still comes back',
+    down.settled <= down.start + 0.2 && down.settled - down.atRelease >= 0.5 * downClimb,
+    `second spray ${down.start.toFixed(2)} -> ${down.atRelease.toFixed(2)}, settled ${down.settled.toFixed(2)}`)
 
   // Part of the climb lifts only the bullets, capped, and is gone again a second after the spray.
   const climbs = free.lines.map(l => l.climb)

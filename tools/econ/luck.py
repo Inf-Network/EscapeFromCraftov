@@ -7,8 +7,10 @@ past the soft mark it may hand one out and at the hard mark it does; jackpots co
 raids; qualifying raids pay into the quota pool by minutes and searches, times the tier's factor
 and the behaviour multiplier of the last raids; once the pool covers a gold or red item worth at
 least min-item-value the container could hold, a search hands one out with luck.quota.chance; a
-net loss over the tier's threshold within the window boosts gold and red weights for a few raids.
-Hand-outs the player dies with pay luck.quota.refund of their value back into the pool. All
+net loss over the tier's threshold within the window gives a few compensated raids, in which each
+search may hand out one more gold or red item with (multiplier - 1) times the container's own
+rate, the container's roll staying as it is. Pity and quota hand-outs the player dies with pay
+luck.quota.refund of their value back into the pool. All
 numbers come from config.yml (luck, tiers), loot.yml and items.yml of the checkout.
 
   python3 tools/econ/luck.py                     # players of three kinds, 300 raids each, per tier
@@ -19,8 +21,9 @@ numbers come from config.yml (luck, tiers), loot.yml and items.yml of the checko
 every container) and one who never finds a jackpot, and verifies that the red is handed out no
 later than the hard-th container that can hold one, the jackpot in the raid after hard-raids
 raids, and that both counts start again from zero afterwards. It also checks that quota
-hand-outs never spend more than the pool holds and that a loss over the threshold boosts the
-next raids.
+hand-outs never spend more than the pool holds, that a loss over the threshold sets off the
+compensation and that a compensated player finds about multiplier times as many gold and red
+items while the containers' own rolls stay the same.
 
 A player of each kind searches --containers containers a raid (picked at random from the map,
 fully searched, so every natural gold and red is found), is in the raid --minutes minutes and gets
@@ -141,26 +144,18 @@ class Settings:
 
 
 class Loot:
-    """Container rolls as item ids (ev.Data has the probabilities), with an optional rarity boost."""
+    """Container rolls as item ids (ev.Data has the probabilities), shared by everyone."""
 
     def __init__(self, data):
         self.d = data
         self.cache = {}
+        self.rates = {}
 
-    def dist(self, type_id, shift, boost):
-        key = (type_id, shift, tuple(sorted(boost.items())) if boost else None)
+    def dist(self, type_id, shift):
+        key = (type_id, shift)
         if key not in self.cache:
             d = self.d
-            ctype = d.containers[type_id]
-            cats = {c.upper(): float(w) for c, w in (ctype.get("categories") or {}).items() if w > 0}
-            rars = {r: w * (boost or {}).get(r, 1.0) for r, w in d.rarity_weights(ctype, shift).items() if w > 0}
-            ct, rt = sum(cats.values()), sum(rars.values())
-            out = {}
-            for c, cw in cats.items():
-                for r, rw in rars.items():
-                    found = d.candidates(c, r)
-                    for it in found:
-                        out[it.id] = out.get(it.id, 0) + cw / ct * rw / rt / len(found)
+            out = d.item_distribution(type_id, shift)
             ids = list(out)
             weights = [out[i] for i in ids]
             nothing = max(0.0, 1 - sum(weights))
@@ -168,12 +163,25 @@ class Loot:
             self.cache[key] = (ids + [None], weights + [nothing], counts, d.jackpot_chances(type_id, shift))
         return self.cache[key]
 
-    def roll(self, type_id, shift, boost, rng):
-        ids, weights, counts, jackpots = self.dist(type_id, shift, boost)
+    def roll(self, type_id, shift, rng):
+        ids, weights, counts, jackpots = self.dist(type_id, shift)
         k = rng.choices([c for c, _ in counts], [p for _, p in counts])[0]
         picks = [i for i in rng.choices(ids, weights, k=k) if i is not None]
         picks += [i for i, c in jackpots.items() if rng.random() < c]
         return picks
+
+    def rate(self, type_id, shift, rarity):
+        """LootService.rate: how many single, non-ammo, non-jackpot items of `rarity` a roll holds on average."""
+        key = (type_id, shift, rarity)
+        if key not in self.rates:
+            d = self.d
+            if not d.finds(type_id, shift, rarity):
+                self.rates[key] = 0.0
+            else:
+                per_item = sum(p for i, p in d.item_distribution(type_id, shift).items()
+                               if d.items[i].rarity == rarity and d.items[i].stack == 1 and d.items[i].category != "AMMO")
+                self.rates[key] = per_item * sum(k * p for k, p in d.counts(type_id, shift))
+        return self.rates[key]
 
 
 class Player:
@@ -208,10 +216,10 @@ def pick(data, type_id, pool, rng):
     return rng.choice(by_cat[cat])
 
 
-def search(player, loot, data, type_id, shift, boost, rng, no_red=False):
+def search(player, loot, data, type_id, shift, boosted, rng, no_red=False):
     """One container: (natural item ids, hand-out (id, source) or None). Mirrors LuckService.onSearch."""
     s = player.s
-    items = loot.roll(type_id, shift, boost, rng)
+    items = loot.roll(type_id, shift, rng)
     if no_red:
         items = [i for i in items if data.items[i].rarity != "RED"]
     finds = {r: data.finds(type_id, shift, r) for r in PITY}
@@ -234,6 +242,11 @@ def search(player, loot, data, type_id, shift, boost, rng, no_red=False):
                 if rng.random() < s.pity_chance(r, player.pity[r]):
                     pool = finds[r]
                     choice = (pick(data, type_id, pool, rng).id, "pity-" + r)
+                    break
+        if choice is None and boosted:
+            for r in PITY:
+                if r in finds and rng.random() < (s.boost[r] - 1) * loot.rate(type_id, shift, r):
+                    choice = (pick(data, type_id, finds[r], rng).id, "boost-" + r)
                     break
         if choice is None and player.quota >= s.min_value and rng.random() < s.quota_chance:
             pool = [it for f in finds.values() for it in f if s.min_value <= it.value <= player.quota]
@@ -264,29 +277,28 @@ def play_raid(player, loot, data, tier_id, kind, args, rng, raid_no, no_red=Fals
     tier = data.tiers[tier_id]
     extract_p, kills_p, coop_p = KINDS[kind]
     boosted = player.boost_raids > 0
-    boost = s.boost if boosted else None
     player.found_jackpots = set()
     values, handouts = [], []
     for type_id, bonus in rng.sample(data.map, args.containers):
         shift = data.shift(tier_id, bonus)
-        items, choice = search(player, loot, data, type_id, shift, boost, rng, no_red)
+        items, choice = search(player, loot, data, type_id, shift, boosted, rng, no_red)
         if no_jackpot:
             items = [i for i in items if i not in data.jackpots]
         for i in items:
-            values.append((data.mean_value(data.items[i]), i, False))
+            values.append((data.mean_value(data.items[i]), i, ""))
         if choice:
             item = data.items[choice[0]]
             player.stats["handouts"][choice[1]] = player.stats["handouts"].get(choice[1], 0) + 1
             player.stats["handout_value"] += item.value
             if choice[1] == "pity-RED":
                 player.stats["red_payout_at"].append(raid_no)
-            values.append((item.value, choice[0], True))
+            values.append((item.value, choice[0], choice[1]))
     values.sort(reverse=True)
     carried = values[:args.cells]
     extracted = rng.random() < extract_p
     fee = tier.get("entry-fee", 0)
     kit = KITS.get(tier_id, 55000)
-    natural = sum(v for v, _, h in carried if not h)
+    natural = sum(v for v, _, source in carried if not source)
     player.stats["natural_value"] += natural if extracted else 0
     if extracted:
         net = sum(v for v, _, _ in carried) - fee
@@ -294,8 +306,8 @@ def play_raid(player, loot, data, tier_id, kind, args, rng, raid_no, no_red=Fals
     else:
         net = -kit - fee
         red = False
-        for v, i, h in carried:
-            if h:
+        for v, i, source in carried:
+            if source and not source.startswith("boost-"):  # compensation hand-outs pay nothing back
                 back = round(v * s.refund)
                 player.quota = max(player.quota, min(s.cap, player.quota + back))
                 player.stats["refund"] += back
@@ -398,7 +410,7 @@ def check(args):
                 continue
             eligible += 1
             p.jackpots = {j: 0 for j in data.jackpots}  # keep jackpots out of this check
-            _, choice = search(p, loot, data, type_id, shift, None, rng, no_red=True)
+            _, choice = search(p, loot, data, type_id, shift, False, rng, no_red=True)
             if choice and data.items[choice[0]].rarity == "RED":
                 got = True
                 worst = max(worst, eligible)
@@ -436,23 +448,38 @@ def check(args):
     for _ in range(500):
         type_id, bonus = rng.choice(data.map)
         before = p.quota
-        _, choice = search(p, loot, data, type_id, data.shift("NORMAL", bonus), None, rng)
+        _, choice = search(p, loot, data, type_id, data.shift("NORMAL", bonus), False, rng)
         if choice and choice[1] == "quota":
             spent_ok = spent_ok and data.items[choice[0]].value <= before and p.quota >= 0
     ok("quota hand-outs never cost more than the pool holds", spent_ok)
 
-    # 4. A loss over the threshold boosts the next raids, and the boost raises gold and red finds.
+    # 4. A loss over the threshold sets off the compensation; a compensated player finds about
+    # multiplier times as many gold and red single items, the containers' own rolls unchanged.
     p = Player(s)
     t = s.thresholds["NORMAL"]
     p.raids = [{"net": -t, "kills": 0, "deaths": 1, "red": False, "coop": 0, "qualified": True, "tier": "NORMAL", "raid": 0}]
     ok("a loss of the threshold within the window sets off the compensation", p.loss_score(1, args.window) >= 1)
-    base = boosted = 0
-    for _ in range(20000):
-        type_id, bonus = rng.choice(data.map)
-        shift = data.shift("NORMAL", bonus)
-        base += sum(1 for i in loot.roll(type_id, shift, None, rng) if data.items[i].rarity in ("GOLD", "RED"))
-        boosted += sum(1 for i in loot.roll(type_id, shift, s.boost, rng) if data.items[i].rarity in ("GOLD", "RED"))
-    ok("boosted containers hold clearly more gold and red items", boosted > base * 1.3, f"{boosted} against {base} in 20000 rolls")
+    single = lambda i: data.items[i].stack == 1 and data.items[i].category != "AMMO" and i not in data.jackpots  # noqa: E731
+    finds = {False: {r: 0 for r in PITY}, True: {r: 0 for r in PITY}}
+    rolled = {False: {r: 0 for r in PITY}, True: {r: 0 for r in PITY}}
+    for boosted in (False, True):
+        p = Player(s)
+        p.pity = {r: -10 ** 9 for r in PITY}  # pity out of the way; the quota is empty
+        for _ in range(40000):
+            type_id, bonus = rng.choice(data.map)
+            shift = data.shift("NORMAL", bonus)
+            items, choice = search(p, loot, data, type_id, shift, boosted, rng)
+            p.pity = {r: -10 ** 9 for r in PITY}
+            for r in PITY:
+                n = sum(1 for i in items if data.items[i].rarity == r and single(i))
+                rolled[boosted][r] += n
+                finds[boosted][r] += n + (1 if choice and data.items[choice[0]].rarity == r else 0)
+    for r in PITY:
+        ratio = finds[True][r] / max(1, finds[False][r])
+        ok(f"a compensated player finds about x{s.boost[r]} the {r.lower()} items", abs(ratio - s.boost[r]) <= 0.2 * s.boost[r],
+           f"{finds[True][r]} against {finds[False][r]} in 40000 searches, x{ratio:.2f}")
+        rr = rolled[True][r] / max(1, rolled[False][r])
+        ok(f"the containers' own {r.lower()} rolls stay the same", abs(rr - 1) <= 0.1, f"{rolled[True][r]} against {rolled[False][r]}, x{rr:.2f}")
     return failures
 
 

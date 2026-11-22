@@ -51,15 +51,18 @@ import java.util.concurrent.ThreadLocalRandom;
  *       container could hold, a search may hand that out and take its value. It is capped and wastes
  *       away while the player stays away.</li>
  *   <li><b>Loss compensation</b> (高爆率局, {@code luck.compensation}): a net loss within the window
- *       (a day) over the tier's threshold boosts the gold and red weights of the containers the
- *       player rolls (opens first) for the next few raids. Matchmaking does not change and nobody
- *       else in the raid is affected; whether the player is told is up to {@code notify}.</li>
+ *       (a day) over the tier's threshold makes the player find gold and red items about
+ *       {@code multiplier} times as often for the next few raids: each container they search may
+ *       hand out one more, with (multiplier - 1) times the chance the container itself has of
+ *       holding one. The containers' own rolls stay as they are, shared by everyone, so nobody
+ *       else in the raid finds more; matchmaking does not change either. Whether the player is
+ *       told is up to {@code notify}.</li>
  * </ul>
  *
  * <p>A hand-out is one item more, put hidden into the container being searched so it is revealed
- * like the rest; at most one per container. One its player does not carry out themselves (death,
- * missing) pays {@code luck.quota.refund} of its value back into their quota when the raid closes,
- * unless someone else carried it out. A container counts once per player, and only when it still
+ * like the rest; at most one per container. A pity or quota hand-out its player does not carry out
+ * themselves (death, missing) pays {@code luck.quota.refund} of its value back into their quota
+ * when the raid closes, unless someone else carried it out. A container counts once per player, and only when it still
  * had something hidden when they opened it. The proving ground (test maps) counts for nothing,
  * and neither does the range, which is no raid. A raid pays into the quota, counts for raid-based
  * pity and joins the behaviour history only when the player spent {@code luck.qualify.min-seconds}
@@ -282,20 +285,9 @@ public final class LuckService {
         return score;
     }
 
-    /** Gold and red weights of a boosted roll (luck.compensation.multiplier). */
-    public Map<Rarity, Double> boostWeights() {
-        Map<Rarity, Double> out = new EnumMap<>(Rarity.class);
-        out.put(Rarity.GOLD, Math.max(1, cfg().getDouble("luck.compensation.multiplier.GOLD", 2.0)));
-        out.put(Rarity.RED, Math.max(1, cfg().getDouble("luck.compensation.multiplier.RED", 2.5)));
-        return out;
-    }
-
-    /**
-     * The rarity boost for a container {@code rp} is the first to open, or null: only while their
-     * loss compensation runs, and only for their own rolls, never anyone else's.
-     */
-    public @Nullable Map<Rarity, Double> boost(Raid raid, RaidPlayer rp) {
-        return counts(raid) && rp.luck.boosted ? boostWeights() : null;
+    /** How many times as often a compensated player finds gold or red (luck.compensation.multiplier). */
+    public double boostMultiplier(Rarity rarity) {
+        return Math.max(1, cfg().getDouble("luck.compensation.multiplier." + rarity.name(), rarity == Rarity.RED ? 2.5 : 2.0));
     }
 
     private boolean notifyBoost() {
@@ -378,7 +370,7 @@ public final class LuckService {
         }
         decay(luck, System.currentTimeMillis());
         Random rng = ThreadLocalRandom.current();
-        Choice choice = choose(luck, container, finds, rng);
+        Choice choice = choose(luck, rp.luck.boosted, container, finds, rng);
         if (choice != null) {
             handOut(player, raid, rp, luck, container, choice);
         }
@@ -387,7 +379,8 @@ public final class LuckService {
     private record Choice(ItemDef def, String source) {
     }
 
-    private @Nullable Choice choose(Profile.Luck luck, LootContainer container, Map<Rarity, List<ItemDef>> finds, Random rng) {
+    private @Nullable Choice choose(Profile.Luck luck, boolean boosted, LootContainer container, Map<Rarity, List<ItemDef>> finds,
+                                    Random rng) {
         LootService loot = plugin.loot();
         if (finds.containsKey(Rarity.RED)) {
             for (String id : loot.jackpots()) {
@@ -405,6 +398,16 @@ public final class LuckService {
             }
             if (rng.nextDouble() < pityChance(rarity, luck.pity.getOrDefault(rarity.name(), 0))) {
                 return new Choice(pick(container, pool, rng), "pity-" + rarity.name());
+            }
+        }
+        if (boosted) {
+            // One more for the compensated player alone, as often as (multiplier - 1) times the
+            // container holds one by itself: what they search holds about multiplier times as many.
+            for (Rarity rarity : PITY) {
+                List<ItemDef> pool = finds.get(rarity);
+                if (pool != null && rng.nextDouble() < (boostMultiplier(rarity) - 1) * loot.rate(container.type, container.shift, rarity)) {
+                    return new Choice(pick(container, pool, rng), "boost-" + rarity.name());
+                }
             }
         }
         long min = minItemValue();
@@ -617,15 +620,16 @@ public final class LuckService {
     }
 
     /**
-     * The raid is over: hand-outs their player did not carry out and nobody else did either pay
-     * luck.quota.refund of their value back into that player's quota.
+     * The raid is over: pity and quota hand-outs their player did not carry out and nobody else did
+     * either pay luck.quota.refund of their value back into that player's quota. Compensation
+     * hand-outs pay nothing back: they cost the player nothing.
      */
     public void closeRaid(Raid raid) {
         double share = Math.max(0, cfg().getDouble("luck.quota.refund", 0.5));
         for (RaidLuck.Pending pending : raid.luck.pending) {
             LuckSession.Payout payout = pending.payout();
             long back = Math.round(payout.value() * share);
-            if (raid.luck.kept.contains(payout.uid()) || back <= 0) {
+            if (raid.luck.kept.contains(payout.uid()) || payout.source().startsWith("boost-") || back <= 0) {
                 continue;
             }
             plugin.profiles().edit(pending.player(), () -> "luck refund for " + payout.item() + " (" + payout.source()

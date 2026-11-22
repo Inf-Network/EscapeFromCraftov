@@ -30,7 +30,7 @@ import java.util.logging.Logger;
  * for whoever opens it. Jackpot items (loot.yml {@code jackpots}, the top collectibles) are never
  * drawn by the rarity rolls; instead every container that can hold a red item has their own, very
  * low chance of holding one more. A player's personal luck (pity, quota, loss compensation) works on
- * top of this in LuckService.
+ * top of this in LuckService, as items handed out to that player alone, never by changing a roll.
  */
 public final class LootService {
 
@@ -123,14 +123,6 @@ public final class LootService {
      * @param shift quality shift: map difficulty plus container hotness (0 = baseline)
      */
     public List<ItemStack> roll(ContainerType type, int shift) {
-        return roll(type, shift, null);
-    }
-
-    /**
-     * {@link #roll(ContainerType, int)} with each rarity weight (after the shift) multiplied by
-     * {@code boost}: a player's loss compensation, for the containers they open first.
-     */
-    public List<ItemStack> roll(ContainerType type, int shift, @Nullable Map<Rarity, Double> boost) {
         if (!type.allOf().isEmpty()) {
             List<ItemStack> out = new ArrayList<>();
             for (Category category : type.allOf()) {
@@ -146,11 +138,6 @@ public final class LootService {
         int count = type.minItems() + rng.nextInt(Math.max(1, type.maxItems() - type.minItems() + 1));
         count += shift > 1 ? rng.nextInt(2) : 0;
         Map<Rarity, Double> weights = shifted(type.rarities(), shift);
-        if (boost != null && !boost.isEmpty()) {
-            Map<Rarity, Double> boosted = new EnumMap<>(Rarity.class);
-            weights.forEach((r, w) -> boosted.put(r, w * Math.max(0, boost.getOrDefault(r, 1.0))));
-            weights = boosted;
-        }
         List<ItemStack> out = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             Category category = weighted(type.categories(), rng);
@@ -200,6 +187,46 @@ public final class LootService {
         return out;
     }
 
+    /**
+     * How many of {@link #finds} one roll of this container holds on average: items per roll times
+     * the chance that a drawn item is one of them, walking down from a rarer roll as {@link #pick}
+     * does. A player's loss compensation hands out one more with (multiplier - 1) times this, so
+     * the containers they search hold about multiplier times as many.
+     */
+    public double rate(ContainerType type, int shift, Rarity rarity) {
+        if (!type.allOf().isEmpty() || finds(type, shift, rarity).isEmpty()) {
+            return 0;
+        }
+        Map<Rarity, Double> weights = shifted(type.rarities(), shift);
+        double rarityTotal = 0;
+        for (double w : weights.values()) {
+            rarityTotal += Math.max(0, w);
+        }
+        double categoryTotal = 0;
+        for (double w : type.categories().values()) {
+            categoryTotal += Math.max(0, w);
+        }
+        if (rarityTotal <= 0 || categoryTotal <= 0) {
+            return 0;
+        }
+        double perItem = 0;
+        for (Map.Entry<Category, Double> c : type.categories().entrySet()) {
+            if (c.getValue() <= 0 || c.getKey() == Category.AMMO) {
+                continue;
+            }
+            for (Map.Entry<Rarity, Double> r : weights.entrySet()) {
+                List<ItemDef> drawn = candidates(c.getKey(), r.getKey());
+                if (r.getValue() <= 0 || drawn.isEmpty() || drawn.get(0).rarity() != rarity) {
+                    continue;
+                }
+                long singles = drawn.stream().filter(def -> def.maxStack() == 1).count();
+                perItem += c.getValue() / categoryTotal * r.getValue() / rarityTotal * singles / drawn.size();
+            }
+        }
+        double items = (type.minItems() + Math.max(type.minItems(), type.maxItems())) / 2.0 + (shift > 1 ? 0.5 : 0);
+        return items * perItem;
+    }
+
     public ItemStack stackFor(ItemDef def, Random rng) {
         int amount = 1;
         if (def.category() == Category.AMMO) {
@@ -228,6 +255,12 @@ public final class LootService {
      * every white key roll into a blue key. Never a jackpot either: those have their own chance.
      */
     public @Nullable ItemDef pick(Category category, Rarity rarity, Random rng) {
+        List<ItemDef> candidates = candidates(category, rarity);
+        return candidates.isEmpty() ? null : candidates.get(rng.nextInt(candidates.size()));
+    }
+
+    /** What {@link #pick} chooses between (all of one rarity), or an empty list when it finds nothing. */
+    private List<ItemDef> candidates(Category category, Rarity rarity) {
         Rarity[] all = Rarity.values();
         for (int index = rarity.ordinal(); index >= 0; index--) {
             List<ItemDef> candidates = new ArrayList<>();
@@ -237,10 +270,10 @@ public final class LootService {
                 }
             }
             if (!candidates.isEmpty()) {
-                return candidates.get(rng.nextInt(candidates.size()));
+                return candidates;
             }
         }
-        return null;
+        return List.of();
     }
 
     private static Map<Rarity, Double> shifted(Map<Rarity, Double> base, int shift) {

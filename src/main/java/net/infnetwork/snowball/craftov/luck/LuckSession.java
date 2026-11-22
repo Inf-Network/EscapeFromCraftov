@@ -9,10 +9,12 @@ import java.util.Set;
 public final class LuckSession {
 
     /**
-     * An item handed out by pity or the quota pool, put hidden into the container being searched.
+     * An item handed out by pity, the quota pool or loss compensation, put hidden into the container
+     * being searched.
      *
      * @param uid    instance id on the item, which tells whether it was carried out
-     * @param source what paid for it: {@code jackpot}, {@code pity-GOLD}, {@code pity-RED} or {@code quota}
+     * @param source what paid for it: {@code jackpot}, {@code pity-GOLD}, {@code pity-RED}, {@code quota},
+     *               {@code boost-GOLD} or {@code boost-RED}
      * @param value  the item's value
      */
     public record Payout(String uid, String item, String source, long value) {
@@ -25,6 +27,6 @@ public final class LuckSession {
     public final List<Payout> payouts = new ArrayList<>();
     /** Jackpots found in this raid: their raid count starts again after it, not with it. */
     public final Set<String> jackpotsFound = new HashSet<>();
-    /** Loss compensation was on when this raid started: it boosts the containers this player rolls. */
+    /** Loss compensation was on when this raid started: the containers this player searches may hand out more. */
     public boolean boosted;
 }

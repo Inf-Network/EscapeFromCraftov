@@ -1667,8 +1667,7 @@ public final class RaidManager implements Listener {
         plugin.weapons().flush(player);
         boolean fresh = !container.generated();
         if (fresh) {
-            // Rolled for whoever opens it first: their loss compensation, if any, boosts it.
-            container.generate(plugin.loot().roll(container.type, container.shift, plugin.luck().boost(raid, rp)));
+            container.generate(plugin.loot().roll(container.type, container.shift));
             rp.containersSearched++;
             plugin.tasks().onSearch(player);
         }

@@ -15,7 +15,8 @@
 //      M watches the kill replay, and M's report shows no player kills;
 //   8. S, at 20 health, blows itself up: "阵亡（破片手雷）", and its report shows the two kills only.
 // solo: four solo bots A (the shooter), B, C and D; D first puts a bounty on C from the lobby:
-//   9. A shoots C, who carries an injector, down; C quits 32 s later: A gets "✖ 击杀" and the bounty;
+//   9. A shoots C, who carries an injector, down; C quits 32 s later: A gets "✖ 击杀" and the bounty
+//      (its line on A's feed, none on B's);
 //  10. A shoots D, D's wounds are cleared and it gets a heavy bleed nobody made: it bleeds out over
 //      30 s after the shot as nobody's kill ("阵亡（失血）", "☠ D");
 //  11. A shoots B, B's wounds are cleared and it gets a light bleed of A's; A is killed, then B bleeds
@@ -116,6 +117,8 @@ const feedOf = async bot => {
   const m = String(out).match(/feedlog=([^|]*)/)
   return m ? m[1].split(' / ').map(l => l.trim()).filter(Boolean) : []
 }
+// A bounty taken is a feed line too, for the same two squads.
+const bountyFed = async (bot, victim) => (await feedOf(bot)).some(l => l.includes('领取了') && l.includes(victim))
 
 async function dataNumber (target, path) {
   const out = await rcon(`data get entity ${target} ${path}`)
@@ -428,7 +431,7 @@ async function squad () {
   check('S gets "✖ 击杀" for V, M does not', barsSince(S, since).some(b => b.includes('✖ 击杀') && b.includes(V.username))
     && !barsSince(M, since).some(b => b.includes('✖ 击杀')), { S: barsSince(S, since).filter(b => b.includes('击杀')), M: barsSince(M, since).filter(b => b.includes('击杀')) })
   check('V\'s death title names S', titled(V, `被 ${S.username} 击杀`), V.titles.slice(-2))
-  check('no bounty is claimed for V', !chatHas(S, '领取了', V.username))
+  check('no bounty is claimed for V', !chatHas(S, '领取了', V.username) && !await bountyFed(S, V.username))
   await sleep(2000)
   check('V gets no kill replay: S, still in the raid, last hit it 30 s before', !titled(V, '击杀回放'), V.titles.slice(-3))
 
@@ -465,7 +468,7 @@ async function squad () {
   await waitFor(() => S.chatLines.some(l => l.includes('击败干员')), 30000)
   const sReport = S.chatLines.find(l => l.includes('击败干员'))
   check('S\'s report: the two kills, V and M, and not itself', /击败干员 2\b/.test(sReport || ''), sReport)
-  check('S\'s own death claims no bounty', !chatHas(S, '领取了', S.username))
+  check('S\'s own death claims no bounty', !chatHas(S, '领取了', S.username) && !await bountyFed(S, S.username))
   return 0
 }
 
@@ -541,8 +544,10 @@ async function solo () {
   await sleep(500)
   check('C quits 32 s after A downed it: A gets "✖ 击杀"', barsSince(A, quitAt).some(b => b.includes('✖ 击杀') && b.includes(C.username)),
     barsSince(A, quitAt).filter(b => b.includes('击')))
-  check('A claims the bounty on C', chatHas(A, '领取了', C.username), A.chatLines.filter(l => l.includes('悬赏')).slice(-2))
   const aFeed = await feedOf(A)
+  check('A claims the bounty on C (on A\'s feed)', await bountyFed(A, C.username), aFeed)
+  const bFeed = await feedOf(B)
+  check('the other squads do not hear who took the bounty', !bFeed.some(l => l.includes('领取了')) && !B.chatLines.some(l => l.includes('领取了')), bFeed)
   check('the kill feed gives C to A', aFeed.some(l => l.startsWith(A.username) && l.includes('→') && l.includes(C.username)), aFeed)
 
   // 10. D bleeds out from the wound nobody made, over 30 s after A's shot: nobody's kill.

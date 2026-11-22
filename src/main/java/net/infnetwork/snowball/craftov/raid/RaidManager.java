@@ -1675,6 +1675,20 @@ public final class RaidManager implements Listener {
         }
     }
 
+    /** A kill-feed line for the squads of these players only (a bounty taken, say). */
+    public void feedSquadsOf(Raid raid, String line, UUID... players) {
+        java.util.Set<Integer> squads = new java.util.HashSet<>();
+        for (UUID id : players) {
+            RaidPlayer rp = raid.player(id);
+            if (rp != null) {
+                squads.add(rp.squad);
+            }
+        }
+        for (int squad : squads) {
+            squadFeed(raid, squad, line);
+        }
+    }
+
     /** A kill-feed line for one squad (dead squadmates watching included). */
     private void squadFeed(Raid raid, int squad, String line) {
         for (RaidPlayer rp : raid.players.values()) {

@@ -171,9 +171,9 @@ public final class BountyService {
         }
         plugin.profiles().markDirty(killer.getUniqueId());
         killer.playSound(killer.getLocation(), "craftov:ui.sell", SoundCategory.MASTER, 1f, 1f);
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<accent>☠ " + Text.escape(killer.getName()) + " 领取了 " + Text.escape(rp.name)
-                    + " 的悬赏 ◈" + Text.money(amount)));
-        }
+        // Like the kill itself, only the killer's and the victim's squads learn of it: everyone else
+        // knew there was a price on that head, not who took it or where.
+        plugin.raids().feedSquadsOf(raid, "<accent>☠ " + Text.escape(killer.getName()) + " 领取了 " + Text.escape(rp.name)
+                + " 的悬赏 ◈" + Text.money(amount), killer.getUniqueId(), rp.uuid);
     }
 }

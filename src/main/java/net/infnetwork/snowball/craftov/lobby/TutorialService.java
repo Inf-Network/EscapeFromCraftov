@@ -130,8 +130,18 @@ public final class TutorialService {
         return "<#F2C94C>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<#C8CCD2>" + step.hint;
     }
 
+    /**
+     * Repeats the hint on the action bar now and then, outside raids only. In a raid it would cover
+     * the short messages that matter there (a kill, an injury, a med used), and the deploy already
+     * pointed out the extract in chat; someone dead and watching a squadmate is still in the raid's
+     * world. The matchmaking queue keeps the action bar for its countdown.
+     */
     private void remind() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            if (plugin.raids().raidOf(player) != null || plugin.raids().raidIn(player.getWorld()) != null
+                    || plugin.match().queued(player.getUniqueId()) != null) {
+                continue;
+            }
             Step step = next(player, plugin.profiles().get(player));
             if (step != null) {
                 player.sendActionBar(Text.mm(line(step)));

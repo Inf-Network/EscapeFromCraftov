@@ -242,6 +242,19 @@ weapons:
     muzzle-soft: 0.5
     muzzle-max: 6.0
     muzzle-return-ticks: 6
+  audio:
+    # Volume the shooter hears their own gun at: the gun's items.yml volume from 3.5 (pistols) to 7
+    # (the AWR) maps linearly onto this range (0..1), so a pistol is clearly quieter than a sniper.
+    shooter-volume: [0.55, 1.0]
+    # Distance bands in blocks: the near report crossfades into the mid one between the first pair,
+    # mid into far between the second. In between both play, their weights adding up to 1.
+    # Suppressed guns crossfade near_s into mid_s over near-mid.
+    near-mid: [20, 32]
+    mid-far: [70, 110]
+    # Behind a wall: the muffled report at this share of the level, plus the open report at
+    # muffled-dry so it still sounds like a gunshot.
+    muffled: 0.75
+    muffled-dry: 0.2
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

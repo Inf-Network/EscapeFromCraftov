@@ -25,8 +25,10 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Gunfire as each listener should hear it. The shooter gets a wide stereo first-person shot; everyone
- * else gets a near, mid or far version picked by distance, a muffled one through walls, arriving
+ * Gunfire as each listener should hear it. The shooter gets a wide stereo first-person shot, as loud
+ * as the gun is (a pistol well under a sniper rifle); everyone else gets the near, mid and far
+ * versions crossfaded by distance (both of a pair play across a band edge, their weights adding up
+ * to one), and behind a wall a muffled version with a little of the open one under it, arriving
  * after the speed-of-sound delay. Loudness follows our own curve instead of Minecraft's linear
  * roll-off: the sound is placed a few blocks from the listener in the shooter's direction, which
  * keeps the stereo direction while the volume is set exactly. The reports are recordings that carry
@@ -53,6 +55,13 @@ public final class GunAudio {
     /** Room sound under a roof, as a share of the shot's level (suppressed shots barely excite it). */
     private static final double ROOM = 0.8;
     private static final double ROOM_SUPPRESSED = 0.2;
+    /** Quietest sound worth a packet. */
+    private static final double AUDIBLE = 0.012;
+    /** items.yml volumes that map to the ends of weapons.audio.shooter-volume. */
+    private static final double QUIETEST_GUN = 3.5;
+    private static final double LOUDEST_GUN = 7.0;
+    private static final String[] OPEN = {".near", ".mid", ".far"};
+    private static final String[] SUPPRESSED = {".near_s", ".mid_s"};
 
     /** A multi-round sample: this many rounds, one every ticks / rounds ticks. */
     private record Rounds(int rounds, int ticks) {
@@ -105,16 +114,24 @@ public final class GunAudio {
         float pitch = 0.97f + rng.nextFloat() * 0.06f;
         String set = "craftov:gun." + gun.audio() + (rounds > 1 ? ".x" + rounds : "");
         double loudness = gun.soundVolume() / 5.0;
+        var config = plugin.getConfig();
         // Under a roof the room answers in the same tick as the shot, for everyone who hears it.
         @Nullable String room = indoor(shooter, muzzle) ? "craftov:gun.tail." + tailFamily(gun) + ".in" : null;
         double roomShare = suppressed ? ROOM * ROOM_SUPPRESSED : ROOM;
         float roomPitch = 0.98f + rng.nextFloat() * 0.04f;
         if (shooter instanceof Player player) {
-            player.playSound(player, set + (suppressed ? ".fp_s" : ".fp"), SoundCategory.PLAYERS, suppressed ? 0.8f : 1f, pitch);
+            // The suppressed recordings are already that much quieter: the level is the gun's own.
+            double own = shooterVolume(gun, pair(config, "weapons.audio.shooter-volume", 0.55, 1.0));
+            player.playSound(player, set + (suppressed ? ".fp_s" : ".fp"), SoundCategory.PLAYERS, (float) own, pitch);
             if (room != null) {
-                schedule(now, player, muzzle, roomKey(player, room), roomShare * 0.8, roomPitch, true);
+                schedule(now, player, muzzle, roomKey(player, room), own * roomShare * 0.8, roomPitch, true);
             }
         }
+        double[] nearMid = pair(config, "weapons.audio.near-mid", 20, 32);
+        double[] midFar = pair(config, "weapons.audio.mid-far", 70, 110);
+        double muffled = config.getDouble("weapons.audio.muffled", 0.75);
+        double muffledDry = config.getDouble("weapons.audio.muffled-dry", 0.2);
+        String[] bands = suppressed ? SUPPRESSED : OPEN;
         // Private range plots share one world; nobody else should hear another plot's shots.
         boolean range = plugin.range().isRangeWorld(world);
         for (Player listener : world.getPlayers()) {
@@ -124,30 +141,66 @@ public final class GunAudio {
             Location ear = listener.getEyeLocation();
             double d = ear.distance(muzzle);
             double gain = gain(d, loudness, suppressed);
-            if (gain < 0.012) {
+            if (gain < AUDIBLE) {
                 continue;
             }
             long arrives = now + Math.round(d / SOUND_SPEED);
             // Beyond 90 blocks the far report already carries its echoes.
-            if (room != null && d < 90 && gain * roomShare >= 0.012) {
+            if (room != null && d < 90 && gain * roomShare >= AUDIBLE) {
                 schedule(arrives, listener, muzzle, roomKey(listener, room), gain * roomShare, roomPitch, true);
             }
-            String band;
-            if (suppressed) {
-                band = ".near_s";
-            } else {
-                band = d < 26 ? ".near" : d < 90 ? ".mid" : ".far";
-            }
+            double open = 1.0;
             if (d > 2 && d < 90 && occluded(ear, muzzle)) {
-                if (suppressed) {
-                    gain *= 0.5;
-                } else {
-                    band = ".muff";
-                    gain *= 0.8;
+                // Through a wall: dull, but with a little of the open report under it so it is still
+                // a gunshot. Suppressed reports are dull already and only lose level.
+                open = suppressed ? 0.4 : muffledDry;
+                if (!suppressed) {
+                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled, pitch, false);
                 }
             }
-            schedule(arrives, listener, muzzle, set + band, gain, pitch, false);
+            double[] weights = bandWeights(d, nearMid, midFar);
+            for (int i = 0; i < bands.length; i++) {
+                // Suppressed reports have no far band: mid_s takes the far weight too.
+                double w = suppressed && i == bands.length - 1 ? 1 - weights[0] : weights[i];
+                // Equal power: two different recordings played together add up in energy.
+                double level = gain * open * Math.sqrt(w);
+                if (w > 0 && level >= AUDIBLE / 2) {
+                    schedule(arrives, listener, muzzle, set + bands[i], level, pitch, false);
+                }
+            }
         }
+    }
+
+    /**
+     * Share of the near, mid and far reports at distance d (they add up to 1 and change continuously):
+     * near fades into mid between nearMid[0] and nearMid[1] blocks, mid into far between midFar[0]
+     * and midFar[1].
+     */
+    static double[] bandWeights(double d, double[] nearMid, double[] midFar) {
+        double toMid = ramp(d, nearMid[0], nearMid[1]);
+        double toFar = ramp(d, Math.max(midFar[0], nearMid[1]), Math.max(midFar[1], nearMid[1]));
+        return new double[]{1 - toMid, toMid * (1 - toFar), toMid * toFar};
+    }
+
+    private static double ramp(double d, double from, double to) {
+        if (to <= from) {
+            return d < from ? 0 : 1;
+        }
+        return Math.clamp((d - from) / (to - from), 0.0, 1.0);
+    }
+
+    /**
+     * How loud the shooter hears their own gun: the items.yml volume from 3.5 (pistols) to 7 (the
+     * AWR), linear onto the configured range, so a pistol is a pop next to a rifle.
+     */
+    static double shooterVolume(GunSpec gun, double[] range) {
+        double t = Math.clamp((gun.soundVolume() - QUIETEST_GUN) / (LOUDEST_GUN - QUIETEST_GUN), 0.0, 1.0);
+        return Math.clamp(range[0] + t * (range[1] - range[0]), 0.0, 1.0);
+    }
+
+    private static double[] pair(org.bukkit.configuration.Configuration config, String path, double a, double b) {
+        List<Double> values = config.getDoubleList(path);
+        return values.size() >= 2 ? new double[]{values.get(0), values.get(1)} : new double[]{a, b};
     }
 
     /** Level at distance d: loud guns carry far, suppressed ones die out within ~50 blocks. */

@@ -105,6 +105,8 @@ public final class AiService implements Listener {
         long holdUntil;
         /** How close it is to having spotted each player it might have noticed, 0..1 (see acquire). */
         final Map<UUID, Double> awareness = new HashMap<>();
+        /** The last player it fought (seen at lastSeenTick); unlike target it is not let go after 2 s. */
+        @Nullable UUID lastFought;
         /** What got through to the current target's head, chest and pelvis on the last look, or null. */
         double @Nullable [] targetLines;
         /** No new sidestep for a clear shot before this. */
@@ -909,7 +911,8 @@ public final class AiService implements Listener {
                 continue;
             }
             double d = Math.sqrt(d2);
-            boolean recent = id.equals(bot.target) && now - bot.lastSeenTick < 20L * 10;
+            // bot.target lets go 2 s after it lost sight; whoever it fought stays in mind for 10 s.
+            boolean recent = id.equals(bot.lastFought) && now - bot.lastSeenTick < 20L * 10;
             boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
             // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
             boolean moving = moving(player);
@@ -965,6 +968,7 @@ public final class AiService implements Listener {
                 bot.engagedSince = now;
             }
             bot.target = best.getUniqueId();
+            bot.lastFought = bot.target;
             bot.lastSeen = best.getLocation();
             bot.lastSeenTick = now;
         } else if (now - bot.lastSeenTick > 40) {

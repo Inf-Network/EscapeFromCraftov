@@ -659,7 +659,7 @@ async function bounty () {
     const before = await money(hunterName)
     hunter.setQuickBarSlot(2) // knife
     const dead = champ.worldChanges
-    for (let i = 0; i < 40 && champ.worldChanges === dead && !champ.msgs.slice(champMark).some(m => /结果 被/.test(m)); i++) {
+    for (let i = 0; i < 40 && champ.worldChanges === dead && !champ.msgs.slice(champMark).some(m => /行动失败 · 被/.test(m)); i++) {
       await cmd(`execute at ${champName} as ${hunterName} run tp @s ~1 ~ ~ facing entity ${champName} eyes`)
       await sleep(150)
       const target = hunter.nearestEntity(e => e.type === 'player' && e.username === champName)
@@ -670,7 +670,7 @@ async function bounty () {
     const paid = (await money(hunterName)) - before
     await extract(hunter)
     // The champion watches the kill replay, then is back in the lobby.
-    await waitFor(() => champ.msgs.slice(champMark).some(m => /结果 被/.test(m)), 5000)
+    await waitFor(() => champ.msgs.slice(champMark).some(m => /行动失败 · 被/.test(m)), 5000)
     await sleep(12000)
     return { paid, announced }
   }

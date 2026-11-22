@@ -371,6 +371,35 @@ def gunsmith_screen():
     return s.done()
 
 
+def settlement_screen(extracted):
+    """After a raid: the result in the middle of the top row, a row of figures, the ten most valuable
+    items taken out (or lost) on a plate, and back, stash and "again" in the bottom bar."""
+    def make():
+        s = Screen(6)
+        tone = P.OK if extracted else P.DANGER
+        # The outcome across the top row; the report itself (hover for map, time, cause) in its last cell.
+        x0, y0, x1, y1 = cells(0, 0, 0, 7)
+        s.d.rectangle([x0, y0 + 1, x1, y1 - 1], fill=mix(rgb(P.RAISED), rgb(tone), 0.18))
+        s.d.line([x0, y1 - 1, x1, y1 - 1], fill=rgb(tone))
+        s.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tone))
+        label(s.img, x0 + 5, y0 + 4, '撤离成功' if extracted else '行动失败', tone)
+        s.wells([8])
+        s.wells(slots(1, 0, 1, 8))
+        s.band(2, 0, 8, '带出的物品 · 价值最高的 10 件' if extracted else '损失的物品 · 价值最高的 10 件', tick=tone)
+        x0, y0, x1, y1 = cells(3, 2, 4, 6)
+        s.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=rgb('#11151A'), outline=rgb(tone))
+        s.wells(slots(3, 2, 4, 6))
+        s.toolbar(5).wells([45, 49])
+        s.big(5, 6, 5, 8, ['再来一局'])
+        return s.done()
+    return make
+
+
+def blackout():
+    """The transition curtain: one black glyph that a title (drawn at 4x) stretches over the screen."""
+    return Image.new('RGBA', (64, 16), (0, 0, 0, 255))
+
+
 # Screen id -> function returning (image, pixels it reaches left of the window, pixels above it).
 SCREENS = {
     'main': main_screen,
@@ -381,6 +410,8 @@ SCREENS = {
     **{'loot_%d' % r: loot_screen(r) for r in range(1, 7)},
     'health': health_screen,
     'gunsmith': gunsmith_screen,
+    'settlement_ok': settlement_screen(True),
+    'settlement_fail': settlement_screen(False),
 }
 
 

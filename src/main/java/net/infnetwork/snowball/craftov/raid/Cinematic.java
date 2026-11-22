@@ -55,6 +55,8 @@ public final class Cinematic {
             d.setViewRange(0f);
         });
         for (Player player : players) {
+            // A black curtain over the jump into the raid world, so its loading never shows.
+            net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, 4, 14, 10);
             player.setGameMode(GameMode.SPECTATOR);
             player.teleport(camera.getLocation());
         }

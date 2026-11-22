@@ -248,6 +248,33 @@
    "chars": [
     ""
    ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_ok.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_fail.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/blackout.png",
+   "height": 192,
+   "ascent": 93,
+   "chars": [
+    ""
+   ]
   }
  ]
 }

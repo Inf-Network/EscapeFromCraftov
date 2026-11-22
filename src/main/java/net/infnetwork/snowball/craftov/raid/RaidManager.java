@@ -2,6 +2,8 @@ package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
+import net.infnetwork.snowball.craftov.gui.SettlementMenu;
+import net.infnetwork.snowball.craftov.gui.UiFont;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -730,10 +732,19 @@ public final class RaidManager implements Listener {
         plugin.escorts().settle(raid, rp, true);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
-        player.showTitle(Title.title(Text.mm("<ok><b>撤离成功"), Text.mm("<muted>带出价值 <accent>◈" + Text.money(total)
-                + " <muted>· 净收益 " + (profit >= 0 ? "<ok>+" : "<danger>") + Text.money(profit)),
-                Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(3), Duration.ofMillis(600))));
         player.playSound(player.getLocation(), "craftov:extract.success", SoundCategory.MASTER, 1f, 1f);
+        List<ItemStack> outStacks = new ArrayList<>();
+        for (ItemRecord record : out) {
+            ItemStack stack = plugin.items().fromRecord(record);
+            if (stack != null) {
+                outStacks.add(stack);
+            }
+        }
+        SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
+                true, report.outcome, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
+                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null);
+        // Black curtain over the trip home, so the world loading never shows.
+        UiFont.blackout(player, 6, 16, 10);
         if (handed > 0) {
             Text.send(player, "<muted>其他玩家带进本局的装备 <accent>◈" + Text.money(handed)
                     + " <muted>归你所有，但不计入净收益（排位分、经验和任务）。");
@@ -742,7 +753,27 @@ public final class RaidManager implements Listener {
         plugin.lobby().enterLobbyKeepInventory(player);
         plugin.lobby().captureLoadout(player);
         plugin.profiles().saveNow(player.getUniqueId());
-        sendReport(player, report, newCollectibles);
+        settle(player, settlement);
+    }
+
+    /** Results waiting for a dead player who is still watching a squadmate. */
+    private final Map<UUID, SettlementMenu.Settlement> pendingSettlements = new HashMap<>();
+
+    /**
+     * The raid is over for this player, who is back in the lobby: one summary line in chat, and the
+     * settlement screen once the curtain has lifted (unless another menu is up by then).
+     */
+    private void settle(Player player, SettlementMenu.Settlement settlement) {
+        player.sendMessage(Text.mm(settlement.summary()));
+        UUID uuid = player.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p == null || raidOf(p) != null || isSpectating(p)
+                    || p.getOpenInventory().getTopInventory().getHolder() instanceof net.infnetwork.snowball.craftov.gui.Menu) {
+                return;
+            }
+            new SettlementMenu(plugin, p, settlement).open();
+        }, plugin.getConfig().getLong("raid.settlement-delay-ticks", 30L));
     }
 
     /**
@@ -847,16 +878,23 @@ public final class RaidManager implements Listener {
         player.playSound(player.getLocation(), "craftov:ui.death", SoundCategory.MASTER, 1f, 1f);
         UUID uuid = player.getUniqueId();
         List<DamageService.HitRecord> hits = plugin.damage().hitsTaken(uuid);
+        SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
+                false, reason, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
+                recordsValue(rp.secure), -lost, SettlementMenu.top(plugin, drop, 10), List.of(),
+                hit == null || hit.attacker() == null ? null : hit.attackerName());
         // The kill replay (if there is a killer to follow) plays first, then the report and spectating.
         plugin.replays().afterDeath(player, raid, hit, () -> {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
-                sendReport(p, report, List.of());
                 sendDamageLog(p, hit, hits);
                 if (!spectateMate(p, raid, rp)) {
                     plugin.match().leaveTeam(p);
+                    UiFont.blackout(p, 6, 16, 10);
                     plugin.lobby().enterLobby(p);
+                    settle(p, settlement);
+                } else {
+                    pendingSettlements.put(uuid, settlement);
                 }
             }
         });
@@ -888,7 +926,12 @@ public final class RaidManager implements Listener {
     private void stopSpectating(Player player) {
         spectators.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
+        UiFont.blackout(player, 6, 16, 10);
         plugin.lobby().enterLobby(player);
+        SettlementMenu.Settlement settlement = pendingSettlements.remove(player.getUniqueId());
+        if (settlement != null) {
+            settle(player, settlement);
+        }
     }
 
     /** Shift leaves the camera; a target that died, extracted or left hands over to the next mate. */
@@ -920,6 +963,7 @@ public final class RaidManager implements Listener {
             Map.Entry<Raid, RaidPlayer> entry = spectators.get(uuid);
             if (player == null) {
                 spectators.remove(uuid);
+                pendingSettlements.remove(uuid);
                 continue;
             }
             org.bukkit.entity.Entity target = player.getSpectatorTarget();
@@ -1129,25 +1173,6 @@ public final class RaidManager implements Listener {
         while (profile.reports.size() > 20) {
             profile.reports.remove(profile.reports.size() - 1);
         }
-    }
-
-    private void sendReport(Player player, Profile.RaidReport r, List<String> collectibles) {
-        player.sendMessage(Text.mm("<dim>━━━━━━━━━━ <text>行动报告</text> ━━━━━━━━━━"));
-        player.sendMessage(Text.mm("<muted>地图 <white>" + Text.escape(r.map) + " <muted>· " + Text.escape(r.tier)
-                + " <muted>· 用时 <white>" + Text.duration(r.seconds)));
-        player.sendMessage(Text.mm("<muted>结果 <white>" + Text.escape(r.outcome)));
-        if (r.extractedValue > 0) {
-            player.sendMessage(Text.mm("<muted>净收益 <ok>+◈" + Text.money(r.extractedValue)));
-        }
-        if (r.lostValue > 0) {
-            player.sendMessage(Text.mm("<muted>损失 <danger>-◈" + Text.money(r.lostValue)));
-        }
-        player.sendMessage(Text.mm("<muted>击败干员 <white>" + r.kills + " <muted>· 击败敌兵 <white>" + r.aiKills
-                + " <muted>· 经验 <white>+" + r.xp + (r.rankDelta != 0 ? " <muted>· 排位分 " + (r.rankDelta > 0 ? "<ok>+" : "<danger>") + r.rankDelta : "")));
-        for (String c : collectibles) {
-            player.sendMessage(Text.mm("<danger>★ 新收藏品入册：<white>" + Text.escape(c)));
-        }
-        player.sendMessage(Text.mm("<dim>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"));
     }
 
     /** Who hurt the player, where and how badly: one line per attacker and weapon. */
@@ -1377,6 +1402,11 @@ public final class RaidManager implements Listener {
         for (Player player : raid.world.getPlayers()) {
             byPlayer.remove(player.getUniqueId());
             plugin.lobby().enterLobby(player);
+            // The dead who were still watching a squadmate get their results now.
+            SettlementMenu.Settlement settlement = pendingSettlements.remove(player.getUniqueId());
+            if (settlement != null) {
+                settle(player, settlement);
+            }
         }
         plugin.ai().clear(raid);
         for (LootContainer container : raid.containers.values()) {

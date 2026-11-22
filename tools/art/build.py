@@ -488,6 +488,10 @@ def build_screens():
         box = img.getchannel('A').getbbox()
         # The client advances a bitmap glyph by its inked width plus one.
         meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left}
+    # U+E0FF: the black transition curtain (UiFont.blackout). A title draws at 4x and centres its text,
+    # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
+    save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
+    providers.append({'type': 'bitmap', 'file': 'craftov:font/blackout.png', 'height': 192, 'ascent': 93, 'chars': ['']})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
 

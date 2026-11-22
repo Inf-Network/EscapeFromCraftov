@@ -63,5 +63,15 @@
   "char": "",
   "advance": 177,
   "left": 0
+ },
+ "settlement_ok": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "settlement_fail": {
+  "char": "",
+  "advance": 177,
+  "left": 0
  }
 }

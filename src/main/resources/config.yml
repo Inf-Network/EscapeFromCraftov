@@ -100,6 +100,9 @@ match:
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
   reconnect-seconds: 120
+  # Ticks between arriving back in the lobby and the settlement screen opening (the black curtain
+  # over the trip home lasts about 32 ticks).
+  settlement-delay-ticks: 30
 
 downed:
   # Bleed-out time (s) of the first and second knock-down. A third lethal hit kills.

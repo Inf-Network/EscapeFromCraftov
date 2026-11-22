@@ -73,6 +73,17 @@ public final class UiFont {
         return sb.toString();
     }
 
+    /**
+     * A black curtain over the whole screen, shown as a title around a teleport so the world loading
+     * never shows: in for {@code in} ticks, held {@code stay}, out over {@code out}.
+     */
+    public static void blackout(org.bukkit.entity.Player player, int in, int stay, int out) {
+        player.showTitle(net.kyori.adventure.title.Title.title(
+                Component.text("", NamedTextColor.WHITE).font(FONT), Component.empty(),
+                net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(in * 50L),
+                        java.time.Duration.ofMillis(stay * 50L), java.time.Duration.ofMillis(out * 50L))));
+    }
+
     public static boolean has(@Nullable String screen) {
         return screen != null && SCREENS.containsKey(screen);
     }

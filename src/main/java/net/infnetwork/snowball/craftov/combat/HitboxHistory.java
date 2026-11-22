@@ -40,15 +40,17 @@ import java.util.function.Predicate;
  */
 public final class HitboxHistory {
 
-    /** Samples kept per entity: a second, well past the longest rewind. */
-    static final int SAMPLES = 20;
+    /** Samples kept per entity, one a tick: past the longest rewind allowed. */
+    static final int SAMPLES = 24;
+    /** The longest rewind, whatever max-ms says: the history kept covers no more. */
+    static final int LONGEST_MS = 1000;
     /** Farther than this between two samples is a teleport, not movement to blend across. */
     private static final double TELEPORT = 4.0;
     /**
-     * How far outside the ray's own reach a rewound box is still looked for, by where the entity is now:
-     * past what a sprint-jump covers in the longest rewind.
+     * Blocks a second that a rewound box is looked for beyond the ray's own reach, by where the entity
+     * is now: past a sprint-jump (about 7) with some speed to spare.
      */
-    private static final double REACH = 4.0;
+    private static final double REACH_PER_SECOND = 10.0;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Track> tracks = new HashMap<>();
@@ -96,14 +98,14 @@ public final class HitboxHistory {
     }
 
     /**
-     * How far back {@code shooter}'s shots look: {@code ping + extra-ms}, at most {@code max-ms}, in
-     * milliseconds. 0 for soldiers and with compensation off.
+     * How far back {@code shooter}'s shots look: {@code ping + extra-ms}, at most {@code max-ms} (and at
+     * most {@link #LONGEST_MS}), in milliseconds. 0 for soldiers and with compensation off.
      */
     public int rewindMillis(LivingEntity shooter) {
         if (!(shooter instanceof Player player) || !plugin.getConfig().getBoolean("combat.lag-compensation.enabled", true)) {
             return 0;
         }
-        int max = Math.max(0, plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300));
+        int max = Math.max(0, Math.min(LONGEST_MS, plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300)));
         int extra = plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 150);
         return Math.max(0, Math.min(max, player.getPing() + extra));
     }
@@ -121,7 +123,9 @@ public final class HitboxHistory {
         long now = System.nanoTime();
         BoundingBox span = BoundingBox.of(from, from).expandDirectional(direction.clone().multiply(maxDistance));
         if (rewind > 0) {
-            span.expand(REACH);
+            // Whoever the shooter saw on the line may have moved off it since: look as far around it as
+            // anyone can run in the rewind.
+            span.expand(1.0 + REACH_PER_SECOND * rewindMillis / 1000.0);
         }
         Hit best = null;
         for (Entity entity : world.getNearbyEntities(span, filter)) {

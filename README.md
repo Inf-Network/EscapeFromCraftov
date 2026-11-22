@@ -133,7 +133,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 
 `plugins/Craftov/` 下：
 
-- `config.yml`：新手装备、难度档、匹配、倒地时长、移动 / 下蹲 / 跳跃对扩散的影响（`weapons.spread`）、冲刺停下后枪要多少 tick 才端起来能开火（`weapons.sprint-recovery-ticks`）、切枪后各类枪的拔枪时间（`weapons.draw-ticks`，按 items.yml 里枪的 `action` 分类，单位 tick）、后坐回落与连射时只作用在子弹上的那部分后坐（`weapons.recoil`）、AI 强度（`ai.dazzle` 是敌兵被爆闪 / 震撼弹晃到后的失准）、震撼弹白屏时长与全白期间的失明（`combat.flashbang`）、子弹打碎玻璃后保留的伤害和能打穿的方块（`combat.penetration`）、命中判定的延迟补偿（`combat.lag-compensation`：回溯 ping + `extra-ms`，最多 `max-ms`）、商人/交易行费率、免费补给等。
+- `config.yml`：新手装备、难度档、匹配、倒地时长、移动 / 下蹲 / 跳跃对扩散的影响（`weapons.spread`）、冲刺停下后枪要多少 tick 才端起来能开火（`weapons.sprint-recovery-ticks`）、切枪后各类枪的拔枪时间（`weapons.draw-ticks`，按 items.yml 里枪的 `action` 分类，单位 tick）、后坐回落与连射时只作用在子弹上的那部分后坐（`weapons.recoil`）、AI 强度（`ai.dazzle` 是敌兵被爆闪 / 震撼弹晃到后的失准）、震撼弹白屏时长与全白期间的失明（`combat.flashbang`）、子弹打碎玻璃后保留的伤害和能打穿的方块（`combat.penetration`）、命中判定的延迟补偿（`combat.lag-compensation`：回溯 ping + `extra-ms`，最多 `max-ms`，`max-ms` 超过 1000 按 1000 算）、商人/交易行费率、免费补给等。
 - `items.yml`：全部物品（名称、品质、价值、枪械参数、弹药穿透、护甲等级、医疗效果……）。枪的 `recoil-return` 是停火后还回的后坐比例（0–1，默认 0.7）。
 - `loot.yml`：每种物资箱的类别与品质权重。
 - `data/`：玩家档案与交易行数据（JSON）。旧版本的 `market.json` 在开服时会自动清空成交均价和成交记录（旧版本的参考价可能被刷高过），售价超过参考价 3 倍的挂单退回卖家邮箱（手续费不退）。

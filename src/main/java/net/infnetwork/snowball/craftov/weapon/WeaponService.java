@@ -366,7 +366,7 @@ public final class WeaponService implements Listener {
                 }
             }
             if (!held && state.triggerHeld) {
-                release(state);
+                release(state, !plugin.triggers().stale(player));
             }
             state.bloom = Math.max(0, state.bloom - 0.08);
             if (!state.triggerHeld) {
@@ -424,16 +424,23 @@ public final class WeaponService implements Listener {
         press(player, state);
     }
 
-    public void triggerUp(Player player) {
+    /**
+     * Left mouse went up. {@code letGo} is false when the trigger only timed out (no abort packet, see
+     * {@link TriggerService}): the gun stops, but a semi-automatic does not take the swings that a lag
+     * spike delivers late as a fresh pull.
+     */
+    public void triggerUp(Player player, boolean letGo) {
         GunState state = states.get(player.getUniqueId());
         if (state != null) {
-            release(state);
+            release(state, letGo);
         }
     }
 
-    private void release(GunState state) {
+    private void release(GunState state, boolean letGo) {
         state.triggerHeld = false;
-        state.needsRelease = false;
+        if (letGo) {
+            state.needsRelease = false;
+        }
         state.pendingPress = false;
         state.burstLeft = 0;
     }

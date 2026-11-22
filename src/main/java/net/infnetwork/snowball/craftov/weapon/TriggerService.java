@@ -46,12 +46,20 @@ import java.util.UUID;
  * via the resource pack, no collision, never breaks because guns zero the break speed) is kept in
  * the air cells about three blocks in front of the crosshair. Holding left-click then produces an
  * arm swing every tick and an abort packet on release, which is exactly a trigger.
+ *
+ * <p>The abort is what says the button went up. Swings only show the client is still there: a lag
+ * spike stops them for a moment and then delivers them all at once, so a hold only times out after
+ * a full second without one, and that kind of release does not count as letting go of a
+ * semi-automatic trigger.
  */
 public final class TriggerService implements Listener {
 
     private static final double DISTANCE = 3.2;
-    /** Ticks without a swing before the trigger counts as released (covers lost abort packets). */
-    private static final int SWING_TIMEOUT = 4;
+    /**
+     * Ticks without a swing before a hold over a block counts as released anyway. Only a fallback: the
+     * abort packet is the release, and lag spikes stall swings for longer than a few ticks.
+     */
+    private static final int SWING_TIMEOUT = 20;
     /** A single click on air (no capture block in reach) fires this long. */
     private static final int TAP_TICKS = 2;
 
@@ -62,11 +70,19 @@ public final class TriggerService implements Listener {
         boolean protectedChannel;
         long lastInput = -100;
         long abortTick = -100;
+        long abortCell;
         long tapUntil = -100;
         /** Swings until this tick come from Q, right-clicks or inventory use, not from the trigger. */
         long muteUntil = -100;
         boolean mining;
+        /** The block the client said it started digging (see {@link #key}); its abort only counts in reach. */
+        long digCell;
         boolean held;
+        /**
+         * The hold timed out without an abort: the gun was told the trigger went up, but not that it was
+         * let go, so a semi-automatic will not fire again until the abort (or a fresh click) comes.
+         */
+        boolean stale;
         /** The server resent real blocks (it does after every right-click on a block): resend all cells. */
         boolean dirty;
     }
@@ -113,17 +129,48 @@ public final class TriggerService implements Listener {
             } else if (!c.cells.isEmpty()) {
                 clearCells(player, c);
             }
+            if (c.mining && outOfReach(player, c.digCell)) {
+                // The server drops an abort for a block out of reach before any event sees it (a fall or a
+                // shove with the button held), and the client cannot still be digging a block that far off.
+                c.mining = false;
+            }
             boolean wasHeld = c.held;
-            boolean swinging = now - c.lastInput <= SWING_TIMEOUT;
+            boolean heard = now - c.lastInput <= SWING_TIMEOUT;
             // Moving the crosshair to another block sends abort + start together; give that one tick.
             boolean digging = c.mining || now == c.abortTick;
-            c.held = active && ((swinging && digging) || now <= c.tapUntil);
+            if (c.stale && !digging) {
+                // The abort a timed-out hold was waiting for: the trigger has really been let go now.
+                c.stale = false;
+                plugin.weapons().triggerUp(player, true);
+            }
+            c.held = active && ((heard && digging) || now <= c.tapUntil);
             if (c.held && !wasHeld) {
                 plugin.weapons().triggerDown(player);
             } else if (!c.held && wasHeld) {
-                plugin.weapons().triggerUp(player);
+                c.stale = active && digging && now > c.tapUntil;
+                plugin.weapons().triggerUp(player, !c.stale);
             }
         }
+    }
+
+    /** Mirrors the server's reach check on dig packets: block interaction range plus one, eye to block. */
+    private static boolean outOfReach(Player player, long cell) {
+        var attribute = player.getAttribute(org.bukkit.attribute.Attribute.BLOCK_INTERACTION_RANGE);
+        double reach = (attribute == null ? 4.5 : attribute.getValue()) + 1.0;
+        Vector eye = player.getEyeLocation().toVector();
+        int x = kx(cell);
+        int y = ky(cell);
+        int z = kz(cell);
+        double dx = Math.max(Math.max(x - eye.getX(), eye.getX() - (x + 1)), 0);
+        double dy = Math.max(Math.max(y - eye.getY(), eye.getY() - (y + 1)), 0);
+        double dz = Math.max(Math.max(z - eye.getZ(), eye.getZ() - (z + 1)), 0);
+        return dx * dx + dy * dy + dz * dz >= reach * reach;
+    }
+
+    /** True while a hold timed out and the gun still waits for the trigger to be let go. */
+    public boolean stale(Player player) {
+        Capture c = captures.get(player.getUniqueId());
+        return c != null && c.stale;
     }
 
     private void updateCells(Player player, Capture c) {
@@ -238,6 +285,7 @@ public final class TriggerService implements Listener {
             clearCells(player, c);
             c.held = false;
             c.mining = false;
+            c.stale = false;
             c.lastInput = -100;
             c.tapUntil = -100;
         }
@@ -276,6 +324,16 @@ public final class TriggerService implements Listener {
             event.setUseItemInHand(Event.Result.DENY);
             event.setUseInteractedBlock(Event.Result.DENY);
             c.mining = true;
+            if (event.getClickedBlock() != null) {
+                Block block = event.getClickedBlock();
+                c.digCell = key(block.getX(), block.getY(), block.getZ());
+                if (c.stale && c.abortTick == now && c.abortCell == c.digCell) {
+                    // Let go and pressed again on the same block: a real click, even if it arrives in
+                    // the same burst of late packets as the abort (moving the crosshair names a new block).
+                    c.stale = false;
+                    plugin.weapons().triggerUp(player, true);
+                }
+            }
             c.lastInput = now;
         } else if (event.getAction() == Action.LEFT_CLICK_AIR) {
             if (now <= c.muteUntil) {
@@ -320,6 +378,7 @@ public final class TriggerService implements Listener {
         Capture c = captures.get(event.getPlayer().getUniqueId());
         if (c != null) {
             c.abortTick = Bukkit.getCurrentTick();
+            c.abortCell = key(event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
             c.mining = false;
         }
     }
@@ -383,6 +442,8 @@ public final class TriggerService implements Listener {
         if (c != null) {
             c.cells.clear();
             c.world = null;
+            // Whatever the client was digging is in the old world; its abort will not name a block here.
+            c.mining = false;
         }
     }
 

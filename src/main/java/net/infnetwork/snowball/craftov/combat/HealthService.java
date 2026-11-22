@@ -459,8 +459,7 @@ public final class HealthService implements Listener {
                 } finally {
                     bleeding = false;
                 }
-                player.getWorld().spawnParticle(Particle.DUST, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2, 0,
-                        new Particle.DustOptions(org.bukkit.Color.fromRGB(88, 8, 10), 0.9f));
+                bleedDrops(player);
             }
             updateFood(player);
         }
@@ -812,5 +811,19 @@ public final class HealthService implements Listener {
         vignettes.remove(id);
         lastSpeed.remove(id);
         lastJump.remove(id);
+    }
+
+    /**
+     * Dark drops round a bleeding player, for everyone else: at the bleeder's own body they filled
+     * the lower half of their screen with big maroon squares (the HUD already shows them bleeding).
+     */
+    private static void bleedDrops(Player player) {
+        org.bukkit.Location at = player.getLocation().add(0, 0.8, 0);
+        Particle.DustOptions dust = new Particle.DustOptions(org.bukkit.Color.fromRGB(88, 8, 10), 0.9f);
+        for (Player other : player.getWorld().getPlayers()) {
+            if (other != player && other.getLocation().distanceSquared(at) < 48 * 48) {
+                other.spawnParticle(Particle.DUST, at, 6, 0.2, 0.3, 0.2, 0, dust);
+            }
+        }
     }
 }

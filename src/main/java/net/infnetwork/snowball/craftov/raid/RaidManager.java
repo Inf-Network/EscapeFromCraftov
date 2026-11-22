@@ -239,6 +239,18 @@ public final class RaidManager implements Listener {
     }
 
     private void deploy(Raid raid) {
+        // The fee was checked at launch, but the squads stay in the lobby while the map loads and
+        // can spend money meanwhile: whoever can no longer pay drops out here instead of starting
+        // the raid in debt.
+        long entryFee = Math.max(0, raid.tier.entryFee());
+        for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+            Player player = Bukkit.getPlayer(rp.uuid);
+            if (entryFee > 0 && player != null && plugin.profiles().get(player).money < entryFee) {
+                withdraw(raid, rp, "付不起入场费");
+                Text.send(player, "<#FF8A80>未能出发：块币不足以支付" + raid.tier.name() + "的入场费 ◈" + Text.money(entryFee)
+                        + "（匹配成功后花掉了），已退出本局。<#9AA0A6>装备和安全箱都没有动。");
+            }
+        }
         if (raid.players.isEmpty()) {
             // Everyone dropped out while the map loaded (see onQuit): nothing to deploy. tickSecond
             // closes it in a moment; unloading the world right away cuts off chunk generation the
@@ -1741,7 +1753,7 @@ public final class RaidManager implements Listener {
             // Still in the lobby and nothing charged or taken yet (prepare runs at deployment):
             // the player just drops out of this raid. LobbyService.onQuit then saves the real
             // inventory as the loadout; the secure container is never touched.
-            withdraw(raid, rp);
+            withdraw(raid, rp, "在部署前断开连接");
             return;
         }
         plugin.weapons().reset(player);
@@ -1770,8 +1782,8 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
     }
 
-    /** Takes a player out of a raid that has not deployed yet and tells their squad. */
-    private void withdraw(Raid raid, RaidPlayer rp) {
+    /** Takes a player out of a raid that has not deployed yet and tells their squad why ({@code reason}). */
+    private void withdraw(Raid raid, RaidPlayer rp, String reason) {
         raid.players.remove(rp.uuid);
         // Squad lists keep their place even when emptied: their index is the squad number.
         for (List<UUID> squad : raid.squads) {
@@ -1781,10 +1793,10 @@ public final class RaidManager implements Listener {
         for (RaidPlayer mate : raid.players.values()) {
             Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
             if (p != null) {
-                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> 在部署前断开连接，已退出本局。");
+                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
             }
         }
-        plugin.escorts().onWithdraw(rp.uuid, rp.name);
+        plugin.escorts().onWithdraw(rp.uuid, rp.name, reason);
     }
 
     /** Called by loot menus so systems (escort, stats) can react to looting. */

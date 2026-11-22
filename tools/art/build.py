@@ -18,6 +18,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))
 import hudart  # noqa: E402
 import icons  # noqa: E402
+import knife_inspect  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
@@ -260,6 +261,19 @@ def build_items(item_defs):
                     'type': 'minecraft:select', 'property': 'minecraft:display_context',
                     'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}},
                     f, separators=(',', ':'))
+        elif item_id in knife_inspect.KEYS:
+            # F with the knife in hand runs its craftov:inspect cooldown (InspectService), and the client
+            # steps through the inspect frames while it counts down, as for the gun reload.
+            entries = []
+            for k, (right, threshold) in enumerate(zip(knife_inspect.frames(item_id), knife_inspect.thresholds())):
+                path = 'knife_inspect/%s/%d' % (item_id, k)
+                write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
+                entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+            write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
+                'type': 'minecraft:select', 'property': 'minecraft:display_context',
+                'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}],
+                'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
+                             'entries': entries, 'fallback': model_ref(held)}}})
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))

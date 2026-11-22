@@ -336,6 +336,10 @@ public final class LobbyService implements Listener {
         plugin.downed().clear(player);
         plugin.weapons().reset(player);
         plugin.hud().onLobby(player);
+        // The raid's camera holds (RaidManager and ReplayService, onStopSpectating) may refuse this
+        // for someone still on the entry camera or the death view. The game mode change below lets
+        // go of any camera all the same: Paper switches the mode first and then drops the camera,
+        // and the holds only keep spectators. Keep the two together.
         if (player.getGameMode() == GameMode.SPECTATOR) {
             player.setSpectatorTarget(null);
         }

@@ -352,6 +352,9 @@ public final class Profile {
         public long lostValue;
         public int kills;
         public int aiKills;
+        /** Rounds fired, and how many of them with movement costing no accuracy (see RaidPlayer). */
+        public int shots;
+        public int stillShots;
         public int seconds;
         public int rankDelta;
         public long xp;

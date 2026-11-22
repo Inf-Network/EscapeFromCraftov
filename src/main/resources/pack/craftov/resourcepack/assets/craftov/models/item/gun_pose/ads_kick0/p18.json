@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_ads/p18",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    1.02,
+    90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.7,
+    0.1
+   ],
+   "scale": [
+    0.72,
+    0.72,
+    0.72
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    1.02,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.7,
+    0.1
+   ],
+   "scale": [
+    0.72,
+    0.72,
+    0.72
+   ]
+  }
+ }
+}

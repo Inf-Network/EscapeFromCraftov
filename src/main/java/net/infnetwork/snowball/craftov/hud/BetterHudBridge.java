@@ -83,6 +83,13 @@ public final class BetterHudBridge implements BetterHudHook {
         number(pm, "craftov_med_pct", HudSnapshot::medPct);
         string(pm, "craftov_weapon_hint", HudSnapshot::weaponHint);
         string(pm, "craftov_downed_hint", HudSnapshot::downedHint);
+        for (int i = 1; i <= KillFeedService.LINES; i++) {
+            int line = i;
+            string(pm, "craftov_feed_" + line, s -> s.feedLine(line));
+        }
+        string(pm, "craftov_streak", HudSnapshot::streak);
+        bool(pm, "craftov_has_streak", s -> !s.streak().isEmpty());
+        number(pm, "craftov_crosshair", HudSnapshot::crosshair);
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

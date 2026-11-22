@@ -281,18 +281,81 @@ def posed(display, view=(0, 0, 0), roll=0.0, shift=(0, 0, 0), left=False):
 
 
 # First-person poses picked on the client from held keys (no server round trip). Values are tuned
-# with fpview.py: sprint carries the gun low and canted, strafing leans it, firing kicks it back.
+# with fpview.py: sprint carries the gun low and canted, strafing leans it.
 HIP_POSES = {
     'sprint': dict(view=(-30, 40, 20), roll=40, shift=(-0.5, -1.5, 0.5)),
     'left': dict(view=(0, 0, 5), roll=0, shift=(-0.4, 0, 0)),
     'right': dict(view=(0, 0, -5), roll=0, shift=(0.4, 0, 0)),
-    'fire': dict(view=(2.2, 0, 0), roll=0, shift=(0, 0.25, 1.4)),
 }
 ADS_POSES = {
     'left': dict(view=(0, 0, 2), roll=0, shift=(0, 0, 0)),
     'right': dict(view=(0, 0, -2), roll=0, shift=(0, 0, 0)),
-    'fire': dict(view=(0.9, 0, 0), roll=0, shift=(0, 0.1, 0.7)),
 }
+
+# The kick of one shot at full strength: muzzle up (degrees) and the gun pushed back toward the camera.
+# The server starts the gun's cooldown on every shot it really fires (WeaponService.shoot), and the
+# item model steps through these poses as the client counts that cooldown down: the gun snaps back
+# with the flash, then settles over the rest of the shot's kick time.
+HIP_KICK = dict(view=(3.4, 0, 0), roll=0, shift=(0, 0.3, 1.6))
+ADS_KICK = dict(view=(1.2, 0, 0), roll=0, shift=(0, 0.12, 0.8))
+# Kick strengths there are poses for (fractions of the full kick). The curve is sampled onto these.
+KICK_LEVELS = (1.0, 0.6, 0.3, 0.1)
+# Longest kick, in ticks: a slow gun (bolt, pump, heavy pistol) settles in 0.3 s, not over its whole
+# cycle. WeaponService uses the same rule (GunSpec.kickTicks).
+KICK_MAX_TICKS = 6
+# The flash shows for the first tick of a shot, about 50 ms.
+FLASH_TICKS = 1.0
+
+
+def kick_pose(kind, level, strength=1.0):
+    """The kick pose at a fraction of full strength, scaled by how hard the gun kicks."""
+    base = HIP_KICK if kind == 'hip' else ADS_KICK
+    k = level * strength
+    return dict(view=tuple(round(v * k, 3) for v in base['view']), roll=0, shift=tuple(round(v * k, 3) for v in base['shift']))
+
+
+def kick_strength(recoil):
+    """How hard this gun's kick looks, from its camera recoil per shot (items.yml recoil, degrees)."""
+    return max(0.7, min(1.5, 0.55 + 0.25 * recoil))
+
+
+def kick_ticks(rpm):
+    """Ticks one shot's kick lasts: the time between shots, at least 2 and at most KICK_MAX_TICKS."""
+    between = max(1, int(math.floor(1200.0 / rpm + 0.5)))
+    return max(2, min(KICK_MAX_TICKS, between))
+
+
+def kick_curve(t, ticks):
+    """Kick strength t ticks after a shot: full for the first tick, then easing back to nothing."""
+    if t < 1.0:
+        return 1.0
+    return max(0.0, (ticks - t) / max(1e-6, ticks - 1.0)) ** 1.6
+
+
+def kick_frames(rpm, step=0.25):
+    """(cooldown threshold, kick level index, flash) for each part of a shot, the first part first.
+
+    The client's cooldown runs from 1 down to 0 over kick_ticks; a range dispatch picks the entry with
+    the highest threshold at or below it. A part showing no kick is left out: below the last threshold
+    the item model falls back to the gun at rest.
+    """
+    ticks = kick_ticks(rpm)
+    out = []
+    t = 0.0
+    while t < ticks - 1e-9:
+        mid = t + step / 2
+        k = kick_curve(mid, ticks)
+        threshold = max(1e-4, round(1 - (t + step) / ticks, 5))
+        if k < 0.05:
+            break
+        level = min(range(len(KICK_LEVELS)), key=lambda i: abs(KICK_LEVELS[i] - k))
+        flash = mid < FLASH_TICKS
+        if out and out[-1][1] == level and out[-1][2] == flash:
+            out[-1] = (threshold, level, flash)
+        else:
+            out.append((threshold, level, flash))
+        t += step
+    return out
 
 
 def muzzle_point(gid):
@@ -311,8 +374,7 @@ HIDDEN = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
 def flash_model(gid, display_r, display_l):
     """Muzzle flash posed with the gun: two crossed jets along the barrel and a star facing the camera.
 
-    The textures animate on their own (bright / off / medium / off every tick), so holding the
-    trigger flickers the flash at about the cadence of automatic fire.
+    Shown only for the first tick of a shot the server really fired (see kick_frames).
     """
     mx, my, mz = muzzle_point(gid)
     length = round(min(8.5, 31.7 - mx), 2)

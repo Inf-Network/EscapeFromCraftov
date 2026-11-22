@@ -110,6 +110,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private CollectionService collection;
     private EscortService escorts;
     private HudService hud;
+    private net.infnetwork.snowball.craftov.hud.KillFeedService killFeed;
     private MenuService menus;
     private net.infnetwork.snowball.craftov.map.editor.EditorService editor;
     private BetterHudHook betterHud = BetterHudHook.NONE;
@@ -188,13 +189,14 @@ public final class CraftovPlugin extends JavaPlugin {
         tasks = new net.infnetwork.snowball.craftov.task.TaskService(this);
         luck = new net.infnetwork.snowball.craftov.luck.LuckService(this);
         hud = new HudService(this);
+        killFeed = new net.infnetwork.snowball.craftov.hud.KillFeedService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
-                new InspectService(this), market, profiles);
+                new InspectService(this), market, profiles, killFeed);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -485,6 +487,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public net.infnetwork.snowball.craftov.task.TaskService tasks() { return tasks; }
     public net.infnetwork.snowball.craftov.luck.LuckService luck() { return luck; }
     public HudService hud() { return hud; }
+    public net.infnetwork.snowball.craftov.hud.KillFeedService killFeed() { return killFeed; }
     public MenuService menus() { return menus; }
     public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }
     public BetterHudHook betterHud() { return betterHud; }

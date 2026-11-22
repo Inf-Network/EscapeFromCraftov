@@ -469,6 +469,7 @@ public final class RaidManager implements Listener {
     private void prepare(Raid raid, Player player, RaidPlayer rp) {
         plugin.weapons().reset(player);
         plugin.damage().forget(player.getUniqueId());
+        plugin.killFeed().clear(player);
         plugin.stamina().refill(player);
         plugin.lobby().stripRangeItems(player);
         plugin.lobby().captureLoadout(player);
@@ -1083,8 +1084,8 @@ public final class RaidManager implements Listener {
         plugin.profiles().saveNow(player.getUniqueId());
         leftWith(raid, rp, keptThroughDeath(rp, melee, List.of()));
         plugin.escorts().settle(raid, rp, false);
-        creditKill(raid, hit, rp);
-        killFeed(raid, hit, player.getName());
+        Player credited = creditKill(raid, hit, rp);
+        plugin.killFeed().playerDied(raid, hit, rp, credited);
         player.setGameMode(GameMode.SPECTATOR);
         player.showTitle(Title.title(Text.mm("<#FF4D4D><b>行动失败"), Text.mm("<#9AA0A6>" + Text.escape(reason)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(600))));
@@ -1113,10 +1114,12 @@ public final class RaidManager implements Listener {
      * its own member's bounty. Nor does a killer who has already died or got out get one (a wound of
      * theirs bleeding out later, say): their kills were counted and saved when they left, so a late
      * one would pay the bounty and the contract but never reach their stats.
+     *
+     * @return the player the kill counts for (the kill feed adds it to their streak), or null
      */
-    private void creditKill(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim) {
+    private @Nullable Player creditKill(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim) {
         if (hit == null || hit.attacker() == null || hit.attacker().equals(victim.uuid)) {
-            return;
+            return null;
         }
         Player killer = Bukkit.getPlayer(hit.attacker());
         RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
@@ -1125,7 +1128,9 @@ public final class RaidManager implements Listener {
             plugin.tasks().onPlayerKill(killer);
             plugin.bounties().onKill(killer, victim, raid);
             killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(victim.name)));
+            return killer;
         }
+        return null;
     }
 
     /** Dead players watching a squadmate: spectator -> (raid, own raid record). */
@@ -1322,8 +1327,8 @@ public final class RaidManager implements Listener {
             return;
         }
         lostOffline(raid, rp, "断线后" + deathReason(hit), "killed while offline in raid " + raid.id, true);
-        creditKill(raid, hit, rp);
-        killFeed(raid, hit, rp.name);
+        Player credited = creditKill(raid, hit, rp);
+        plugin.killFeed().playerDied(raid, hit, rp, credited);
     }
 
     /**
@@ -1657,16 +1662,6 @@ public final class RaidManager implements Listener {
         raid.containers.put(container.id, container);
     }
 
-    private void killFeed(Raid raid, DamageService.@Nullable LastHit hit, String victim) {
-        String line = hit == null || hit.attacker() == null
-                ? "<#8A8F98>☠ <white>" + Text.escape(victim)
-                : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm(line));
-        }
-    }
-
     public void announce(Raid raid, String message) {
         for (Player player : raid.online()) {
             player.sendMessage(Text.mm(Text.PREFIX + message));
@@ -1683,6 +1678,8 @@ public final class RaidManager implements Listener {
         report.lostValue = lost;
         report.kills = rp.kills;
         report.aiKills = rp.aiKills;
+        report.shots = rp.shots;
+        report.stillShots = rp.stillShots;
         report.seconds = (int) ((Bukkit.getCurrentTick() - rp.startTick) / 20);
         report.rankDelta = rankDelta;
         report.xp = xp;
@@ -1708,6 +1705,10 @@ public final class RaidManager implements Listener {
         }
         player.sendMessage(Text.mm("<#8A8F98>击败干员 <white>" + r.kills + " <#8A8F98>· 击败敌兵 <white>" + r.aiKills
                 + " <#8A8F98>· 经验 <white>+" + r.xp + (r.rankDelta != 0 ? " <#8A8F98>· 排位分 " + (r.rankDelta > 0 ? "<#5BD16B>+" : "<#FF8A80>") + r.rankDelta : "")));
+        if (r.shots > 0) {
+            player.sendMessage(Text.mm("<#8A8F98>开火 <white>" + r.shots + " <#8A8F98>发 · 急停射击 <white>" + r.stillShots
+                    + " <#8A8F98>发（" + Math.round(100.0 * r.stillShots / r.shots) + "%，停稳再开枪不受移动影响）"));
+        }
         for (String c : collectibles) {
             player.sendMessage(Text.mm("<#FF4D4D>★ 新收藏品入册：<white>" + Text.escape(c)));
         }

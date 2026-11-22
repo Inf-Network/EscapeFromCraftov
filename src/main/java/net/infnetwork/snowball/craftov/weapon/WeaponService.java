@@ -87,6 +87,14 @@ public final class WeaponService implements Listener {
         double recentRight;
         double lastUp;
         double lastRight;
+        /**
+         * Climb (degrees up, and right) that only the bullets get, on top of the crosshair: the camera
+         * never shows it, so a client that ignores the camera kick still cannot fire a straight line.
+         */
+        double climbUp;
+        double climbRight;
+        double climbStepUp;
+        double climbStepRight;
         /** Mounted optic, or the gun's built-in scope; null = iron sights. */
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
@@ -459,13 +467,15 @@ public final class WeaponService implements Listener {
         AmmoSpec ammo = ammoDef == null ? null : ammoDef.ammo();
         Location eye = player.getEyeLocation();
         Vector dir = eye.getDirection();
+        Vector bore = bore(eye, state);
         double spread = currentSpread(player, state);
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b",
-                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround()));
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f",
+                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
+                    eye.getPitch(), state.climbUp));
         }
         for (int i = 0; i < gun.pellets(); i++) {
-            Vector pellet = Ballistics.spread(dir, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
+            Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
@@ -523,12 +533,35 @@ public final class WeaponService implements Listener {
         return spread;
     }
 
+    /** Where the bullets go: the crosshair, raised by the climb only the bullets get. */
+    private static Vector bore(Location eye, GunState state) {
+        if (state.climbUp == 0 && state.climbRight == 0) {
+            return eye.getDirection();
+        }
+        Location raised = eye.clone();
+        raised.setPitch((float) Math.max(-90, eye.getPitch() - state.climbUp));
+        raised.setYaw((float) (eye.getYaw() + state.climbRight));
+        return raised.getDirection();
+    }
+
+    /**
+     * Kicks the camera, all but weapons.recoil.muzzle-share of the gun's recoil. That share goes to the
+     * bullets alone (up to muzzle-max degrees): the camera kick is only a packet the client may ignore,
+     * and this part still lifts the shots.
+     */
     private void recoil(Player player, GunState state) {
         GunSpec gun = state.gun;
+        var config = plugin.getConfig();
         double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
-        float pitchKick = (float) (gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3));
-        float yawKick = (float) ((ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale);
+        double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
+        double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
+        double share = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.muzzle-share", 0.2)));
+        double cap = config.getDouble("weapons.recoil.muzzle-max", 3.0);
+        state.climbUp = Math.min(cap, state.climbUp + up * share);
+        state.climbRight = Math.max(-cap, Math.min(cap, state.climbRight + right * share));
+        float pitchKick = (float) (up * (1 - share));
+        float yawKick = (float) (right * (1 - share));
         if (Float.isNaN(state.anchorPitch)) {
             state.anchorPitch = player.getPitch();
             state.anchorYaw = player.getYaw();
@@ -545,7 +578,8 @@ public final class WeaponService implements Listener {
      * camera drifts back toward where it pointed before the spray, return-per-tick of the kick each tick,
      * until the gun's recoil-return share of it is given back. What the player already pulled down
      * themselves is not given back again, and the drift never goes past the crosshair the spray started
-     * from, also when the player keeps pulling down while it runs.
+     * from, also when the player keeps pulling down while it runs. The bullets' own climb comes back to
+     * the crosshair along the same curve, all the way.
      */
     private void settle(Player player, GunState state, long now) {
         if (Float.isNaN(state.anchorPitch)) {
@@ -569,28 +603,36 @@ public final class WeaponService implements Listener {
             state.returnRight = owedRight * share;
             state.stepUp = owedUp * rate;
             state.stepRight = owedRight * rate;
+            state.climbStepUp = state.climbUp * rate;
+            state.climbStepRight = Math.abs(state.climbRight) * rate;
             state.recentUp = state.recentRight = state.lastUp = state.lastRight = 0;
         }
         double up = Math.max(0, Math.min(Math.min(state.stepUp, state.returnUp), above - state.recentUp));
         double back = Math.min(Math.abs(state.stepRight), Math.abs(state.returnRight));
         double room = state.returnRight >= 0 ? right - state.recentRight : state.recentRight - right;
         double side = Math.copySign(Math.max(0, Math.min(back, room)), state.returnRight);
-        if (up < 1e-3 && Math.abs(side) < 1e-3) {
+        if (up >= 1e-3 || Math.abs(side) >= 1e-3) {
+            Recoil.kick(player, (float) -side, (float) up);
+            state.returnUp -= up;
+            state.returnRight -= side;
+            state.kickUp -= up;
+            state.kickRight -= side;
+        } else {
             // All given back, or the player is already at (or below) the starting crosshair.
-            state.anchorPitch = Float.NaN;
-            state.kickUp = state.kickRight = 0;
-            state.settling = false;
-            return;
+            state.returnUp = state.returnRight = 0;
         }
-        Recoil.kick(player, (float) -side, (float) up);
-        state.returnUp -= up;
-        state.returnRight -= side;
-        state.kickUp -= up;
-        state.kickRight -= side;
         state.recentUp = state.lastUp + up;
         state.recentRight = state.lastRight + side;
         state.lastUp = up;
         state.lastRight = side;
+        state.climbUp = Math.max(0, state.climbUp - state.climbStepUp);
+        state.climbRight = Math.copySign(Math.max(0, Math.abs(state.climbRight) - state.climbStepRight), state.climbRight);
+        if (state.returnUp == 0 && state.returnRight == 0 && state.climbUp < 1e-3 && Math.abs(state.climbRight) < 1e-3) {
+            state.anchorPitch = Float.NaN;
+            state.kickUp = state.kickRight = 0;
+            state.climbUp = state.climbRight = 0;
+            state.settling = false;
+        }
     }
 
     private static double wrapDegrees(double degrees) {

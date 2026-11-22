@@ -137,6 +137,11 @@ weapons:
     # again, and it never drifts past the starting crosshair.
     return-delay-ticks: 3
     return-per-tick: 0.1
+    # This share of every kick lifts only the bullets, not the camera, up to muzzle-max degrees above
+    # the crosshair, and comes back along the same curve once firing stops. The camera kick is a packet
+    # the client could ignore; this part cannot be. Long sprays land slightly above the crosshair.
+    muzzle-share: 0.2
+    muzzle-max: 3.0
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

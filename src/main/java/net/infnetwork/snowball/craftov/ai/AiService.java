@@ -765,7 +765,15 @@ public final class AiService implements Listener {
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
                 Vector away = mob.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0);
                 if (away.lengthSquared() > 0.01) {
-                    mob.getPathfinder().moveTo(mob.getLocation().add(away.normalize().multiply(4)), 1.0);
+                    // Backs off 4 blocks, or 2, but never off a pier or a ledge.
+                    away.normalize();
+                    Location back = standable(bot.raid, mob.getLocation().add(away.clone().multiply(4)));
+                    if (back == null) {
+                        back = standable(bot.raid, mob.getLocation().add(away.clone().multiply(2)));
+                    }
+                    if (back != null) {
+                        mob.getPathfinder().moveTo(back, 1.0);
+                    }
                 }
             } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
                 sidestep(bot, target, now);
@@ -804,10 +812,13 @@ public final class AiService implements Listener {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 Location toward = bot.alertPos.clone();
                 if (toward.distanceSquared(bot.home) > Math.pow(bot.leash * 4, 2)) {
+                    // As far that way as its leash allows, if it can stand there.
                     Vector dir = toward.toVector().subtract(bot.home.toVector()).normalize().multiply(bot.leash * 3);
-                    toward = bot.home.clone().add(dir);
+                    toward = standable(bot.raid, bot.home.clone().add(dir));
                 }
-                go(bot, toward, 0.9, now);
+                if (toward != null) {
+                    go(bot, toward, 0.9, now);
+                }
             }
             return;
         }
@@ -1222,17 +1233,25 @@ public final class AiService implements Listener {
     }
 
     /**
-     * Three blocks to one side of the line to {@code target}, chosen at random; for the next 1.5 s it
-     * neither stops nor starts another step, so it gets there.
+     * Three blocks to one side of the line to {@code target}, chosen at random (the other side if it
+     * cannot stand there, see {@link #standable}); for the next 1.5 s it neither stops nor starts
+     * another step, so it gets there.
      */
     private void sidestep(Bot bot, Player target, long now) {
         bot.nextMoveTick = now + 30;
-        Vector dir = target.getLocation().toVector().subtract(bot.mob.getLocation().toVector()).setY(0);
+        Location at = bot.mob.getLocation();
+        Vector dir = target.getLocation().toVector().subtract(at.toVector()).setY(0);
         if (dir.lengthSquared() < 0.01) {
             return;
         }
         Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
-        bot.mob.getPathfinder().moveTo(bot.mob.getLocation().add(side), 1.0);
+        Location dest = standable(bot.raid, at.clone().add(side));
+        if (dest == null) {
+            dest = standable(bot.raid, at.clone().subtract(side));
+        }
+        if (dest != null) {
+            bot.mob.getPathfinder().moveTo(dest, 1.0);
+        }
     }
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
@@ -1455,8 +1474,8 @@ public final class AiService implements Listener {
                     // Nothing to hide behind: close in on the spot a few blocks at a time.
                     Vector toward = threat.toVector().subtract(mob.getLocation().toVector()).setY(0);
                     if (toward.lengthSquared() > 16) {
-                        Location step = mob.getLocation().add(toward.normalize().multiply(5));
-                        if (step.distanceSquared(bot.home) <= Math.pow(bot.leash * 4, 2)) {
+                        Location step = standable(bot.raid, mob.getLocation().add(toward.normalize().multiply(5)));
+                        if (step != null && step.distanceSquared(bot.home) <= Math.pow(bot.leash * 4, 2)) {
                             go(bot, step, 1.0, now);
                         }
                     }

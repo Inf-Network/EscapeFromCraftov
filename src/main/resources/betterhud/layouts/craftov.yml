@@ -648,6 +648,13 @@ craftov_hit_kill_layout:
       x: -1
       y: -1
   offset: left
+craftov_hit_knock_layout:
+  images:
+    '1':
+      name: craftov_hit_knock
+      x: -1
+      y: -1
+  offset: left
 craftov_damage_0_layout:
   images:
     '1':

@@ -517,6 +517,7 @@ HUD_IMAGES = {
     'craftov/hit.png': lambda: hudart.marker((240, 240, 240, 255)),
     'craftov/hit_head.png': lambda: hudart.marker(rgb('#FFC23D')),
     'craftov/hit_kill.png': lambda: hudart.marker(rgb('#FF4D4D'), 17, 3, 3),
+    'craftov/hit_knock.png': lambda: hudart.knock_marker(rgb('#FF9A3C')),
     **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
     'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
     'craftov/compass/s.png': lambda: hudart.glyph('S'),
@@ -578,6 +579,7 @@ def build_betterhud():
         'craftov_hit': {'type': 'single', 'file': 'craftov/hit.png'},
         'craftov_hit_head': {'type': 'single', 'file': 'craftov/hit_head.png'},
         'craftov_hit_kill': {'type': 'single', 'file': 'craftov/hit_kill.png'},
+        'craftov_hit_knock': {'type': 'single', 'file': 'craftov/hit_knock.png'},
         **{'craftov_damage_%d' % i: {'type': 'single', 'file': 'craftov/damage_%d.png' % i} for i in range(8)},
     }
 
@@ -668,6 +670,7 @@ def build_betterhud():
         'craftov_hit_layout': {'images': numbered([image('craftov_hit', 0, 0)])},
         'craftov_hit_head_layout': {'images': numbered([image('craftov_hit_head', 0, 0)])},
         'craftov_hit_kill_layout': {'images': numbered([image('craftov_hit_kill', -1, -1)])},
+        'craftov_hit_knock_layout': {'images': numbered([image('craftov_hit_knock', -1, -1)])},
         **{'craftov_damage_%d_layout' % i: {'images': numbered([image('craftov_damage_%d' % i, 0, 0)])} for i in range(8)},
     }
     # BetterHud centres a layout on its anchor by default; every position above is measured from the top-left corner.
@@ -692,7 +695,8 @@ def build_betterhud():
 
     popups = {}
     for name, layout, offset in (('craftov_hit', 'craftov_hit_layout', -7), ('craftov_hit_head', 'craftov_hit_head_layout', -7),
-                                 ('craftov_hit_kill', 'craftov_hit_kill_layout', -8)):
+                                 ('craftov_hit_kill', 'craftov_hit_kill_layout', -8),
+                                 ('craftov_hit_knock', 'craftov_hit_knock_layout', -9)):
         popups[name] = {'duration': 4, 'unique': True, 'group': 'craftov_hits',
                         'layouts': numbered([{'name': layout, 'gui': {'x': 50, 'y': 50}, 'pixel': {'x': offset, 'y': offset}}])}
     # Hit direction: one popup per eighth so hits from several sides show at once (HudService.damageFrom).

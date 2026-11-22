@@ -124,6 +124,9 @@ SOUNDS = {
     'hit/body': lambda: norm(mixdown((env(sine(lambda tt: 180 - tt * 300, 0.12), 0.001, 0.03), 0), (env(lp(noise(0.06), 1500), 0.001, 0.015) * 0.6, 0))) * 0.8,
     'hit/head': lambda: norm(mixdown((tone(2350, 0.35, 0.08, (1, 0.4, 0.15)), 0), (env(sine(160, 0.1), 0.001, 0.02) * 0.6, 0))),
     'hit/kill': lambda: norm(mixdown((tone(1760, 0.4, 0.1), 0), (tone(2637, 0.45, 0.12), 0.07))),
+    # A knock-down: a thud and two falling notes, lower than the rising kill chime.
+    'hit/knock': lambda: norm(mixdown((env(sine(lambda tt: 170 - tt * 300, 0.14), 0.001, 0.04) * 0.7, 0),
+                                      (tone(1319, 0.3, 0.07), 0), (tone(988, 0.4, 0.1), 0.08))),
     'loot/open': lambda: norm(mixdown((swish(0.3, 300, 2500), 0), (click(1200, 0.05), 0.25))) * 0.8,
     'loot/search_tick': lambda: norm(click(5000, 0.015)) * 0.35,
     'loot/reveal': lambda: norm(tone(880, 0.25, 0.07)) * 0.6,

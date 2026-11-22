@@ -119,12 +119,14 @@ combat:
     blind-while-white: true
   # Bullet damage multiplier by where it lands (head shots use each gun's own head multiplier, 2.0
   # unless items.yml says otherwise). Arms and legs share the one 100-point health pool with the
-  # torso and are about half the hitbox (legs alone 40%), and no armour covers them.
+  # torso and are about half the hitbox (legs alone 40%), and no armour covers them: lowering arm
+  # and leg (0.5 each makes a K47 with PS need six leg hits instead of four) is the short-term way
+  # to keep limb shots from downing a player in any armour.
   zone-multipliers:
     chest: 1.0
     stomach: 0.95
-    arm: 0.5
-    leg: 0.5
+    arm: 0.65
+    leg: 0.7
   # Helmets cover the head, vests the chest and stomach.
   armor:
     # Share of a hit's damage that gets through armour at full strength, by the round's penetration

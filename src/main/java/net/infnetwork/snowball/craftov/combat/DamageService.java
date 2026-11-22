@@ -224,7 +224,7 @@ public final class DamageService implements Listener {
 
     /**
      * Damage multiplier for where a round lands: the gun's own head multiplier, otherwise
-     * combat.zone-multipliers. Limbs take little because they share the one health pool with the
+     * combat.zone-multipliers. Limbs take less because they share the one health pool with the
      * torso and are a big, unarmoured share of the hitbox (legs alone are 40% of it).
      */
     private double zoneMultiplier(BodyPart part, GunSpec gun) {
@@ -232,8 +232,8 @@ public final class DamageService implements Listener {
             case HEAD -> gun.headMultiplier();
             case CHEST -> plugin.getConfig().getDouble("combat.zone-multipliers.chest", 1.0);
             case STOMACH -> plugin.getConfig().getDouble("combat.zone-multipliers.stomach", 0.95);
-            case LEFT_ARM, RIGHT_ARM -> plugin.getConfig().getDouble("combat.zone-multipliers.arm", 0.5);
-            case LEFT_LEG, RIGHT_LEG -> plugin.getConfig().getDouble("combat.zone-multipliers.leg", 0.5);
+            case LEFT_ARM, RIGHT_ARM -> plugin.getConfig().getDouble("combat.zone-multipliers.arm", 0.65);
+            case LEFT_LEG, RIGHT_LEG -> plugin.getConfig().getDouble("combat.zone-multipliers.leg", 0.7);
         };
     }
 

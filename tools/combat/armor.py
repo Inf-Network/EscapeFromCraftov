@@ -34,7 +34,7 @@ MAX_HP = 100.0
 DAMAGE_TAKEN = [0.85, 0.6, 0.4, 0.25, 0.15]
 FULL_ABOVE = 0.5
 WEAR = 0.3
-ZONES = {"chest": 1.0, "stomach": 0.95, "arm": 0.5, "leg": 0.5}
+ZONES = {"chest": 1.0, "stomach": 0.95, "arm": 0.65, "leg": 0.7}
 # Shares of a standing player's front hitbox (HitZone / BodyPart.of): head above (eye - 0.32) / 1.8,
 # legs below 0.40, the torso's outer 38% each side are arms, chest above 0.55.
 PARTS = {"head": 0.278, "leg": 0.40, "arm": 0.122, "chest": 0.2 * 0.172 / 0.322, "stomach": 0.2 * 0.150 / 0.322}

@@ -40,8 +40,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * stopped. Every hit wears the armour, and worn armour protects less: above half its durability
  * ({@code combat.armor.full-protection-above}) it works fully, below that its protection fades
  * linearly to nothing, and the part of a hit that wears more than the durability left goes straight
- * through. A round the class stops cannot wound (bleed or break bones) while the armour is at full
- * strength; once it is giving way, it may.
+ * through. A round the class stops cannot make the chest or stomach bleed while the vest is at
+ * full strength; once it is giving way, it may.
  */
 public final class DamageService implements Listener {
 

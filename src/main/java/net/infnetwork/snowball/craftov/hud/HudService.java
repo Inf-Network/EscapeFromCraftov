@@ -403,10 +403,28 @@ public final class HudService {
         }
     }
 
+    /**
+     * Puts a camera overlay on the player's own client through the head slot. The client-only item
+     * is a copy of the real helmet with the overlay added, so the helmet slot (the blood edge stays up
+     * for as long as health is low, inventory open or not) and the third-person view still show the
+     * helmet; with no helmet it is an invisible item without a tooltip.
+     */
     private static void cameraOverlay(Player player, String texture) {
-        ItemStack overlay = ItemStack.of(Material.PAPER);
-        overlay.setData(DataComponentTypes.EQUIPPABLE, Equippable.equippable(EquipmentSlot.HEAD)
-                .cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
+        ItemStack real = player.getInventory().getHelmet();
+        ItemStack overlay;
+        Equippable.Builder equippable;
+        if (real != null && !real.isEmpty()) {
+            overlay = real.clone();
+            Equippable worn = real.getData(DataComponentTypes.EQUIPPABLE);
+            equippable = worn != null && worn.slot() == EquipmentSlot.HEAD ? worn.toBuilder() : Equippable.equippable(EquipmentSlot.HEAD);
+        } else {
+            overlay = ItemStack.of(Material.PAPER);
+            overlay.setData(DataComponentTypes.ITEM_MODEL, Key.key("craftov", "ui/blank"));
+            overlay.setData(DataComponentTypes.TOOLTIP_DISPLAY,
+                    io.papermc.paper.datacomponent.item.TooltipDisplay.tooltipDisplay().hideTooltip(true).build());
+            equippable = Equippable.equippable(EquipmentSlot.HEAD);
+        }
+        overlay.setData(DataComponentTypes.EQUIPPABLE, equippable.cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
         player.sendEquipmentChange(player, EquipmentSlot.HEAD, overlay);
     }
 

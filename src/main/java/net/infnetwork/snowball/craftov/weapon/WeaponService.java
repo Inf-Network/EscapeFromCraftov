@@ -70,6 +70,23 @@ public final class WeaponService implements Listener {
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
+        /** Camera kick (degrees up, and right) of the current spray not given back yet. */
+        double kickUp;
+        double kickRight;
+        /** Where the crosshair was before the spray's first shot; NaN while no kick is owed. */
+        float anchorPitch = Float.NaN;
+        float anchorYaw;
+        /** The camera is drifting back: what is left to give back, and how much per tick. */
+        boolean settling;
+        double returnUp;
+        double returnRight;
+        double stepUp;
+        double stepRight;
+        /** What the last two ticks gave back, which the client may not have reported back yet. */
+        double recentUp;
+        double recentRight;
+        double lastUp;
+        double lastRight;
         /** Mounted optic, or the gun's built-in scope; null = iron sights. */
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
@@ -293,6 +310,7 @@ public final class WeaponService implements Listener {
             if (state == null) {
                 continue;
             }
+            settle(player, state, now);
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
                     finishReload(player, state);
@@ -511,7 +529,78 @@ public final class WeaponService implements Listener {
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         float pitchKick = (float) (gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3));
         float yawKick = (float) ((ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale);
+        if (Float.isNaN(state.anchorPitch)) {
+            state.anchorPitch = player.getPitch();
+            state.anchorYaw = player.getYaw();
+        }
+        // Firing again mid-recovery: what was not given back yet stays owed, toward the same crosshair.
+        state.settling = false;
+        state.kickUp += pitchKick;
+        state.kickRight += yawKick;
         Recoil.kick(player, yawKick, -pitchKick);
+    }
+
+    /**
+     * Recoil recovery. A few ticks after the gun stops firing (weapons.recoil.return-delay-ticks) the
+     * camera drifts back toward where it pointed before the spray, return-per-tick of the kick each tick,
+     * until the gun's recoil-return share of it is given back. What the player already pulled down
+     * themselves is not given back again, and the drift never goes past the crosshair the spray started
+     * from, also when the player keeps pulling down while it runs.
+     */
+    private void settle(Player player, GunState state, long now) {
+        if (Float.isNaN(state.anchorPitch)) {
+            return;
+        }
+        boolean spraying = state.triggerHeld && state.fireMode() == FireMode.AUTO && !state.reloading();
+        if (spraying || now - state.lastShotTick < plugin.getConfig().getInt("weapons.recoil.return-delay-ticks", 3)) {
+            return;
+        }
+        // Degrees the crosshair now sits above / right of where the spray began.
+        double above = state.anchorPitch - player.getPitch();
+        double right = wrapDegrees(player.getYaw() - state.anchorYaw);
+        if (!state.settling) {
+            double owedUp = Math.max(0, Math.min(state.kickUp, above));
+            double owedRight = state.kickRight >= 0 ? Math.max(0, Math.min(state.kickRight, right))
+                    : Math.min(0, Math.max(state.kickRight, right));
+            double share = state.gun.recoilReturn();
+            double rate = plugin.getConfig().getDouble("weapons.recoil.return-per-tick", 0.1);
+            state.settling = true;
+            state.returnUp = owedUp * share;
+            state.returnRight = owedRight * share;
+            state.stepUp = owedUp * rate;
+            state.stepRight = owedRight * rate;
+            state.recentUp = state.recentRight = state.lastUp = state.lastRight = 0;
+        }
+        double up = Math.max(0, Math.min(Math.min(state.stepUp, state.returnUp), above - state.recentUp));
+        double back = Math.min(Math.abs(state.stepRight), Math.abs(state.returnRight));
+        double room = state.returnRight >= 0 ? right - state.recentRight : state.recentRight - right;
+        double side = Math.copySign(Math.max(0, Math.min(back, room)), state.returnRight);
+        if (up < 1e-3 && Math.abs(side) < 1e-3) {
+            // All given back, or the player is already at (or below) the starting crosshair.
+            state.anchorPitch = Float.NaN;
+            state.kickUp = state.kickRight = 0;
+            state.settling = false;
+            return;
+        }
+        Recoil.kick(player, (float) -side, (float) up);
+        state.returnUp -= up;
+        state.returnRight -= side;
+        state.kickUp -= up;
+        state.kickRight -= side;
+        state.recentUp = state.lastUp + up;
+        state.recentRight = state.lastRight + side;
+        state.lastUp = up;
+        state.lastRight = side;
+    }
+
+    private static double wrapDegrees(double degrees) {
+        double d = degrees % 360.0;
+        if (d >= 180.0) {
+            d -= 360.0;
+        } else if (d < -180.0) {
+            d += 360.0;
+        }
+        return d;
     }
 
     // ------------------------------------------------------------------ reload

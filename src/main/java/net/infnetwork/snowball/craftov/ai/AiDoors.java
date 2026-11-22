@@ -12,7 +12,6 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.type.Door;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.util.BoundingBox;
@@ -113,11 +112,17 @@ final class AiDoors {
         return door.getHalf() == Bisected.Half.TOP ? block.getRelative(BlockFace.DOWN) : block;
     }
 
-    private static boolean occupied(Block lower) {
+    /**
+     * Whether a player or a soldier stands in the doorway. Bodies (mannequins), a disconnected
+     * player's stand-in and anything else lying there do not count: a body in the doorway kept the
+     * door open for the rest of the raid.
+     */
+    private boolean occupied(Block lower) {
         BoundingBox doorway = new BoundingBox(lower.getX() - 0.2, lower.getY(), lower.getZ() - 0.2,
                 lower.getX() + 1.2, lower.getY() + 2, lower.getZ() + 1.2);
-        return !lower.getWorld().getNearbyEntities(doorway, entity -> entity instanceof LivingEntity
-                && !(entity instanceof Player player && player.getGameMode() == org.bukkit.GameMode.SPECTATOR)).isEmpty();
+        return !lower.getWorld().getNearbyEntities(doorway, entity -> entity instanceof Player player
+                ? player.getGameMode() != org.bukkit.GameMode.SPECTATOR
+                : plugin.ai().isAi(entity)).isEmpty();
     }
 
     private static void sound(Block lower, Sound sound) {

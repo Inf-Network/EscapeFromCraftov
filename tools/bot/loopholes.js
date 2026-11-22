@@ -159,13 +159,17 @@ async function openArmory (bot) {
 }
 
 /** Puts everything the player carries in their cells into the stash (equipment stays on). */
+// The stash retitles itself when its page count changes (the window is sent again under the same
+// id), and mineflayer then hands out a new window object: read bot.currentWindow after every click.
 async function depositAll (bot, w) {
   for (let round = 0; round < 40; round++) {
     const i = findCarried(w, it => idOf(it) && idOf(it) !== 'knife_starter')
-    if (i < 0) return
+    if (i < 0) return w
     await bot.clickWindow(bottom(w, i), 0, 1) // shift-click: every stack of that item
     await sleep(350)
+    w = bot.currentWindow || w
   }
+  return w
 }
 
 /** Slot of the menu item whose components mention who (escort contract lists), or -1. */
@@ -251,7 +255,7 @@ async function kit () {
 async function stash () {
   const s = await make('Stash')
   let w = await openWith(s, () => s.chat('/cv stash'))
-  await depositAll(s, w)
+  w = await depositAll(s, w)
   let st = stashUsed(w)
   log('Stash', 'after deposit', st, 'free cells', freeCells(w))
   for (let round = 0; round < 20 && st && st.used < st.cap; round++) {
@@ -261,6 +265,7 @@ async function stash () {
     const i = findCarried(w, it => idOf(it) === 'armor_1')
     if (i >= 0) await s.clickWindow(bottom(w, i), 0, 1)
     await sleep(800)
+    w = s.currentWindow || w
     st = stashUsed(w)
   }
   log('Stash', 'filled', st)

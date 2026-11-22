@@ -63,19 +63,24 @@ public final class WorldService {
         world.setGameRule(GameRule.DO_MOB_LOOT, false);
         world.setGameRule(GameRule.RANDOM_TICK_SPEED, 0);
         world.setGameRule(GameRule.SPECTATORS_GENERATE_CHUNKS, false);
-        world.setDifficulty(Difficulty.HARD);
+        // Not HARD: vanilla multiplies damage from mobs to players by 1.5 there (after our own
+        // numbers, before EntityDamageEvent), which made soldiers hit half again harder than
+        // ai.damage-multiplier says. Hunger is pinned and mobs have no vanilla goals, so nothing
+        // else here depends on the difficulty.
+        world.setDifficulty(Difficulty.NORMAL);
         world.setStorm(false);
         world.setThundering(false);
         world.setAutoSave(!raid);
     }
 
+    /** @param migrate brings a saved definition up to date with markers the generator has since moved */
     private record Builtin(String id, String name, Function<World, MapGenerator> factory, int spawnX, int spawnY,
-                           int spawnZ) {
+                           int spawnZ, java.util.function.UnaryOperator<MapDef> migrate) {
     }
 
     private static final List<Builtin> BUILTINS = List.of(
-            new Builtin(RustPortGenerator.ID, "锈港", RustPortGenerator::new, 104, 66, 104),
-            new Builtin(ProvingGroundGenerator.ID, "试验场", ProvingGroundGenerator::new, 60, 65, 92));
+            new Builtin(RustPortGenerator.ID, "锈港", RustPortGenerator::new, 104, 66, 104, RustPortGenerator::migrate),
+            new Builtin(ProvingGroundGenerator.ID, "试验场", ProvingGroundGenerator::new, 60, 65, 92, def -> def));
 
     /** Generates every built-in map whose template or definition is missing. */
     public void ensureBuiltins() {
@@ -87,8 +92,19 @@ public final class WorldService {
     private void ensure(Builtin builtin) {
         String template = "craftov_tpl_" + builtin.id();
         File folder = new File(Bukkit.getWorldContainer(), template);
-        boolean haveDef = maps.get(builtin.id()) != null;
+        MapDef saved = maps.get(builtin.id());
+        boolean haveDef = saved != null;
         if (folder.exists() && haveDef) {
+            MapDef migrated = builtin.migrate().apply(saved);
+            if (migrated != saved) {
+                try {
+                    maps.save(migrated);
+                    plugin.getLogger().info("Moved soldier posts and spawn points in maps/" + builtin.id()
+                            + ".yml that were too close to each other");
+                } catch (IOException ex) {
+                    plugin.getLogger().severe("Could not update map definition: " + ex.getMessage());
+                }
+            }
             return;
         }
         if (maps.broken().contains(builtin.id())) {

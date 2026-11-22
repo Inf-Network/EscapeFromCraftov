@@ -29,7 +29,7 @@ public record HudSnapshot(
 
     static HudSnapshot of(HudData d, Player p, boolean inLobby, HudExtra extra) {
         boolean inRaid = d.inRaid(p);
-        long value = d.carried(p);
+        long value = d.gearValue(p);
         return new HudSnapshot(inRaid, inLobby, d.gun(p) != null, d.downed(p), d.reloadPercent(p) > 0, d.extractPercent(p) > 0,
                 d.hp(p), d.ammo(p), d.magazine(p), d.reserve(p), d.reloadPercent(p), d.remaining(p), d.extractPercent(p),
                 d.armorPercent(p, CarryService.HEAD), d.armorPercent(p, CarryService.CHEST),

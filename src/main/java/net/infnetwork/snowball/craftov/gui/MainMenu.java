@@ -29,7 +29,7 @@ final class MainMenu extends Menu {
     @Override
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
-        long value = plugin.carry().carriedValue(viewer);
+        long value = plugin.carry().gearValue(viewer);
         // Operations.
         bigButton(DEPLOY, "<accent><b>开始行动", List.of("<muted>选择地图、难度、单排或三排", "<muted>支持排位赛与自动补位"),
                 e -> plugin.menus().openDeploy(viewer));
@@ -93,7 +93,7 @@ final class MainMenu extends Menu {
                 "<white>左键 <muted>开火（按住连发）",
                 "<white>右键 <muted>按住开镜瞄准，松开即腰射",
                 "<white>Q <muted>换弹  <white>潜行+Q <muted>切换弹种",
-                "<white>F <muted>切换射击模式  <white>潜行+F <muted>干员技能",
+                "<white>F <muted>切换射击模式（拿刀时检视）  <white>潜行+F <muted>干员技能",
                 "<white>右键物资箱 <muted>搜索  <white>对准倒地队友按住右键 <muted>救援",
                 "<white>医疗品 <muted>拿在手上按住右键使用，终端里可查看伤势",
                 "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格")));

@@ -97,6 +97,13 @@ public final class MenuService {
         }
     }
 
+    /** The stash mailbox: system letters and the item mailbox. */
+    public void openMail(Player player) {
+        if (lobbyOnly(player)) {
+            new MailMenu(plugin, player).open();
+        }
+    }
+
     public void openTrader(Player player) {
         if (lobbyOnly(player)) {
             new TraderMenu(plugin, player).open();

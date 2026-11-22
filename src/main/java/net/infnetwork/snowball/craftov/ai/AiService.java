@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.ai;
 
+import com.destroystokyo.paper.entity.Pathfinder;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.DamageService;
@@ -37,6 +38,7 @@ import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -52,8 +54,29 @@ public final class AiService implements Listener {
 
     private static final String[] NAMES = {"港区巡逻兵", "雇佣兵", "守备队员", "武装分子"};
 
+    /** How long a soldier holds at the end of a path that cannot reach its goal before trying again. */
+    private static final long HOLD_TICKS = 20L * 4;
+    /** Blocks of smoke along a sight line that hide what is behind it. */
+    private static final double SMOKE_OPAQUE = 1.5;
+
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
+    private final AiDoors doors;
+    /** Smoke clouds soldiers cannot see through, in every raid world. */
+    private final List<Smoke> smokes = new ArrayList<>();
+
+    private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
+    }
+
+    /**
+     * What a soldier saw of a player on one look: how much of the sight lines to head, chest and
+     * pelvis got through (see {@link Sight}), and along which of them a round would get there.
+     */
+    private record Look(double[] seen, boolean[] open) {
+        double shown() {
+            return (seen[0] + seen[1] + seen[2]) / 3;
+        }
+    }
 
     static final class Bot {
         final Zombie mob;
@@ -89,6 +112,27 @@ public final class AiService implements Listener {
         @Nullable LootContainer looting;
         long lootUntil;
         @Nullable UUID leader;
+        /** Its path could not reach the goal (a locked door, a wall): it waits where it got to until then. */
+        long holdUntil;
+        /** How close it is to having spotted each player it might have noticed, 0..1 (see acquire). */
+        final Map<UUID, Double> awareness = new HashMap<>();
+        /** The last player it fought (seen at lastSeenTick); unlike target it is not let go after 2 s. */
+        @Nullable UUID lastFought;
+        /** What it saw of the current target's head, chest and pelvis on the last look, or null. */
+        @Nullable Look targetLook;
+        /** A sidestep is under way until then: no new one, and it does not stop to shoot before it. */
+        long nextMoveTick;
+        /** Roughly where a shot from someone it had not spotted came from, who fired it, and until when it reacts. */
+        @Nullable Location threatPos;
+        @Nullable UUID threatFrom;
+        long threatUntil;
+        /** Cover from that shot it is heading for or sitting in; it moves on at coverUntil (0: not there yet). */
+        @Nullable Location coverPos;
+        long coverUntil;
+        long nextCoverSearch;
+        /** A boss or boss guard asleep at its post until its time (see spawnBoss), and the boss it belongs to. */
+        boolean dormant;
+        @Nullable String group;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -108,6 +152,7 @@ public final class AiService implements Listener {
 
     public AiService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.doors = new AiDoors(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, 2L);
     }
 
@@ -120,7 +165,7 @@ public final class AiService implements Listener {
     public @Nullable String relocateBoss(Raid raid, Location to) {
         Bot boss = null;
         for (Bot bot : bots.values()) {
-            if (bot.raid == raid && bot.boss && bot.mob.isValid()) {
+            if (bot.raid == raid && bot.boss && bot.mob.isValid() && !bot.dormant) {
                 boss = bot;
             }
         }
@@ -206,6 +251,79 @@ public final class AiService implements Listener {
         return entity != null && bots.containsKey(entity.getUniqueId());
     }
 
+    /**
+     * One line per soldier of a raid for /cv ai: name, kind, position and facing, what it is doing,
+     * whom it is fighting and how aware it is of each player it has half noticed, and its UUID.
+     */
+    public List<String> describe(Raid raid) {
+        long now = Bukkit.getCurrentTick();
+        List<String> out = new ArrayList<>();
+        for (Bot bot : bots.values()) {
+            if (bot.raid != raid || !bot.mob.isValid()) {
+                continue;
+            }
+            Location at = bot.mob.getLocation();
+            StringBuilder line = new StringBuilder(String.format(java.util.Locale.ROOT, "%s %s %.1f %.1f %.1f 朝向 %.0f %s",
+                    bot.name, bot.kind, at.getX(), at.getY(), at.getZ(), at.getYaw(), state(bot, now)));
+            Player target = bot.target == null ? null : Bukkit.getPlayer(bot.target);
+            if (target != null && now - bot.lastSeenTick < 40) {
+                line.append(" 目标 ").append(target.getName());
+            }
+            if (!bot.awareness.isEmpty()) {
+                line.append(" 察觉");
+                bot.awareness.forEach((id, value) -> {
+                    Player p = Bukkit.getPlayer(id);
+                    line.append(' ').append(p == null ? id.toString().substring(0, 8) : p.getName())
+                            .append('=').append(String.format(java.util.Locale.ROOT, "%.2f", value));
+                });
+            }
+            out.add(line.append(' ').append(bot.mob.getUniqueId()).toString());
+        }
+        return out;
+    }
+
+    /** What a soldier is busy with, as /cv ai shows it. */
+    private static String state(Bot bot, long now) {
+        if (bot.dormant) {
+            return "休眠";
+        }
+        if (bot.target != null && now - bot.lastSeenTick < 40) {
+            return "交战";
+        }
+        if (bot.threatPos != null && now < bot.threatUntil) {
+            return bot.coverPos != null && bot.mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2 ? "掩护" : "受击";
+        }
+        if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
+            return "追击";
+        }
+        if (now < bot.holdUntil) {
+            return "守候";
+        }
+        if (bot.alertPos != null && now < bot.alertUntil) {
+            return "警戒";
+        }
+        if (bot.looting != null) {
+            return "搜刮";
+        }
+        return "巡逻";
+    }
+
+    /**
+     * Puts one soldier of {@code kind} (patrol, guard, sniper, shield or operator) at {@code at}, posted
+     * there, for testing (/cv ai spawn). Returns its name, or null if none could be made.
+     */
+    public @Nullable String spawnSoldier(Raid raid, Location at, String kind) {
+        String name = switch (kind) {
+            case "shield" -> "持盾突击手";
+            case "operator" -> "敌对干员 · 测试";
+            default -> NAMES[ThreadLocalRandom.current().nextInt(NAMES.length)];
+        };
+        int gear = "operator".equals(kind) ? Math.min(3, raid.tier.aiGear() + 1) : raid.tier.aiGear();
+        double leash = "guard".equals(kind) ? 4 : "patrol".equals(kind) ? 6 : 3;
+        Bot bot = spawn(raid, at, leash, kind, gear, false, name);
+        return bot == null ? null : bot.name;
+    }
+
     public int count(Raid raid) {
         int n = 0;
         for (Bot bot : bots.values()) {
@@ -240,13 +358,33 @@ public final class AiService implements Listener {
         List<Double> chances = plugin.getConfig().getDoubleList("ai.operator-chance");
         double chance = chances.isEmpty() ? 0.3 : chances.get(Math.min(chances.size() - 1, raid.tier.aiGear()));
         if (!raid.map.spawns().isEmpty() && rng.nextDouble() < chance) {
-            Location at = raid.map.spawns().get(rng.nextInt(raid.map.spawns().size())).pos().at(raid.world);
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (raid.state == Raid.State.RUNNING) {
-                    operatorSquad(raid, at);
-                }
-            }, 20L * plugin.getConfig().getInt("ai.operator-delay-seconds", 60));
+            operatorsLater(raid, 20L * plugin.getConfig().getInt("ai.operator-delay-seconds", 60), 4);
         }
+    }
+
+    /**
+     * A rival operator squad lands on a player spawn point in {@code delay} ticks: one with no player
+     * within 50 blocks (it used to pick any, right on top of a squad that had just landed there).
+     * With none clear it tries again 15 s later, {@code tries} times in all.
+     */
+    private void operatorsLater(Raid raid, long delay, int tries) {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (raid.state != Raid.State.RUNNING) {
+                return;
+            }
+            List<Location> clear = new ArrayList<>();
+            for (MapDef.SpawnDef spawn : raid.map.spawns()) {
+                Location at = spawn.pos().at(raid.world);
+                if (raid.online().stream().noneMatch(p -> p.getLocation().distanceSquared(at) < 50 * 50)) {
+                    clear.add(at);
+                }
+            }
+            if (!clear.isEmpty()) {
+                operatorSquad(raid, clear.get(ThreadLocalRandom.current().nextInt(clear.size())));
+            } else if (tries > 1) {
+                operatorsLater(raid, 20L * 15, tries - 1);
+            }
+        }, delay);
     }
 
     /** Idle rival operator: follow the squad leader, or walk to the next container and loot it. */
@@ -287,9 +425,14 @@ public final class AiService implements Listener {
         LootContainer target = bot.looting;
         if (mob.getLocation().distanceSquared(target.location) > 2.8 * 2.8) {
             if (!mob.getPathfinder().hasPath()) {
-                if (!mob.getPathfinder().moveTo(target.location, 1.0)) {
-                    bot.visited.add(target.id); // unreachable
+                Pathfinder.PathResult path = mob.getPathfinder().findPath(target.location);
+                if (path == null || !reaches(path, target.location, 2.5)) {
+                    // Unreachable (behind a locked door, up a ladder): walking to the end of a partial
+                    // path and planning it again would keep it there for the rest of the raid.
+                    bot.visited.add(target.id);
                     bot.looting = null;
+                } else {
+                    mob.getPathfinder().moveTo(path, 1.0);
                 }
             }
             return;
@@ -347,23 +490,70 @@ public final class AiService implements Listener {
         }
     }
 
-    public void spawnBoss(Raid raid, MapDef.BossDef def) {
+    /**
+     * A boss and its guards at the boss's post. {@code asleep}: they hold their posts without wandering
+     * or answering gunfire elsewhere until {@link #wakeBoss} (its time has come), though they still see
+     * whoever walks in on them and wake (all of them) when they spot someone or are shot.
+     */
+    public void spawnBoss(Raid raid, MapDef.BossDef def, boolean asleep) {
         Location at = def.pos().at(raid.world);
         Bot boss = spawn(raid, at, 10, "guard", 3, true, def.name());
         if (boss == null) {
             return;
         }
+        boss.dormant = asleep;
+        boss.group = def.id();
         for (int i = 0; i < def.guards(); i++) {
             Location g = at.clone().add(ThreadLocalRandom.current().nextDouble(-2, 2), 0, ThreadLocalRandom.current().nextDouble(-2, 2));
             if (!g.getBlock().isPassable()) {
                 g = at.clone();
             }
-            spawn(raid, g, 10, "guard", Math.min(3, raid.tier.aiGear() + 1), false, "指挥官护卫");
+            Bot guard = spawn(raid, g, 10, "guard", Math.min(3, raid.tier.aiGear() + 1), false, "指挥官护卫");
+            if (guard != null) {
+                guard.dormant = asleep;
+                guard.group = def.id();
+            }
         }
     }
 
-    private @Nullable Bot spawn(Raid raid, Location at, double leash, String kind, int gear, boolean boss, String name) {
+    /** Wakes the boss {@code id} of a raid and its guards; returns the boss's name if it is still alive, else null. */
+    public @Nullable String wakeBoss(Raid raid, String id) {
+        String name = null;
+        for (Bot bot : bots.values()) {
+            if (bot.raid == raid && id.equals(bot.group) && bot.mob.isValid()) {
+                bot.dormant = false;
+                if (bot.boss) {
+                    name = bot.name;
+                }
+            }
+        }
+        return name;
+    }
+
+    /**
+     * A sleeping boss or guard saw someone, was hurt, heard a fight right next to it or lost one of
+     * its group: it and the rest of its group wake up.
+     */
+    private void wake(Bot bot) {
+        if (!bot.dormant || bot.group == null) {
+            return;
+        }
+        for (Bot other : bots.values()) {
+            if (other.raid == bot.raid && bot.group.equals(other.group)) {
+                other.dormant = false;
+            }
+        }
+    }
+
+    private @Nullable Bot spawn(Raid raid, Location requested, double leash, String kind, int gear, boolean boss, String name) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
+        // Offsets around a post were only checked for a free block at the feet: next to a wall that
+        // put soldiers' heads in it, and nothing kept them out of the water or off the map.
+        Location at = standable(raid, requested);
+        if (at == null) {
+            at = spotNear(raid, requested, 2);
+        }
+        at.setYaw(requested.getYaw());
         String[] guns = switch (Math.min(3, gear)) {
             case 0 -> new String[]{"p18", "sv9", "r12", "k47", "sv9"};
             case 1 -> new String[]{"k47", "m4c", "sv9", "r12", "k47"};
@@ -443,6 +633,9 @@ public final class AiService implements Listener {
             z.getPersistentDataContainer().set(Keys.key("ai"), PersistentDataType.STRING, kind);
         });
         Bukkit.getMobGoals().removeAllGoals(mob);
+        // Paths may run through wooden doors; AiDoors opens them on the way (setCanBreakDoors(false)
+        // above turned this off again).
+        mob.getPathfinder().setCanOpenDoors(true);
         Bot bot = new Bot(mob, raid, at.clone(), Math.max(3, leash), kind, gun, ammo, name, boss, accuracy);
         bot.nextWanderTick = Bukkit.getCurrentTick() + rng.nextInt(40, 200);
         bots.put(mob.getUniqueId(), bot);
@@ -493,14 +686,24 @@ public final class AiService implements Listener {
         bot.nextShotTick = Math.max(bot.nextShotTick, now + plugin.getConfig().getLong("ai.dazzle.shot-delay-ticks", 10));
     }
 
-    /** Gunfire and explosions draw nearby soldiers. */
+    /**
+     * Gunfire and explosions draw nearby soldiers. A boss group asleep at its post ignores them
+     * farther off, but wakes when one goes off within ai.boss-wake-radius blocks of any of them
+     * (and within {@code radius}, so a suppressed shot has to be closer still).
+     */
     public void alert(Location at, double radius, @Nullable Entity source) {
         if (isAi(source)) {
             return;
         }
         long now = Bukkit.getCurrentTick();
+        double wakeRadius = Math.min(radius, plugin.getConfig().getDouble("ai.boss-wake-radius", 12));
         for (Bot bot : bots.values()) {
-            if (bot.mob.getWorld() != at.getWorld() || bot.target != null) {
+            if (bot.dormant && bot.mob.getWorld() == at.getWorld() && bot.mob.getLocation().distanceSquared(at) <= wakeRadius * wakeRadius) {
+                wake(bot);
+            }
+        }
+        for (Bot bot : bots.values()) {
+            if (bot.mob.getWorld() != at.getWorld() || bot.target != null || bot.dormant) {
                 continue;
             }
             if (bot.mob.getLocation().distanceSquared(at) <= radius * radius) {
@@ -512,6 +715,10 @@ public final class AiService implements Listener {
 
     // ------------------------------------------------------------------ brain
 
+    /**
+     * Every soldier thinks every 2 ticks, from whatever tick the plugin started on, so a check that
+     * should come round every N ticks tests {@code now % N < 2}: {@code == 0} may never be true.
+     */
     private void tick() {
         long now = Bukkit.getCurrentTick();
         List<UUID> dead = new ArrayList<>();
@@ -527,11 +734,24 @@ public final class AiService implements Listener {
             think(bot, now);
         }
         dead.forEach(bots::remove);
+        doors.tick(now);
+        smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
     }
 
     private void think(Bot bot, long now) {
         Zombie mob = bot.mob;
+        if (doors.ahead(mob, bot.raid, now) == AiDoors.Ahead.LOCKED) {
+            // A door it cannot open: it guards the doorway for a while instead of pushing at it.
+            mob.getPathfinder().stopPathfinding();
+            bot.holdUntil = now + HOLD_TICKS;
+        }
         Player target = acquire(bot, now);
+        if (bot.dormant) {
+            if (target == null) {
+                return; // asleep at its post: no wandering, no answering gunfire elsewhere
+            }
+            wake(bot);
+        }
         Location eye = mob.getEyeLocation();
         if (target != null) {
             double distance = eye.distance(target.getEyeLocation());
@@ -547,43 +767,66 @@ public final class AiService implements Listener {
             }
             double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
-                mob.getPathfinder().moveTo(target.getLocation(), 1.0);
+                if (!mob.getPathfinder().hasPath() || now % 10 < 2) {
+                    go(bot, target.getLocation(), 1.0, now);
+                }
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
                 Vector away = mob.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0);
                 if (away.lengthSquared() > 0.01) {
-                    mob.getPathfinder().moveTo(mob.getLocation().add(away.normalize().multiply(4)), 1.0);
+                    // Backs off 4 blocks, or 2, but never off a pier or a ledge.
+                    away.normalize();
+                    Location back = standable(bot.raid, mob.getLocation().add(away.clone().multiply(4)));
+                    if (back == null) {
+                        back = standable(bot.raid, mob.getLocation().add(away.clone().multiply(2)));
+                    }
+                    if (back != null) {
+                        mob.getPathfinder().moveTo(back, 1.0);
+                    }
                 }
-            } else if (now % 40 == 0 && !"sniper".equals(bot.kind) && ThreadLocalRandom.current().nextBoolean()) {
-                Vector dir = target.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
-                if (dir.lengthSquared() > 0.01) {
-                    Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
-                    mob.getPathfinder().moveTo(mob.getLocation().add(side), 1.0);
-                }
-            } else if (distance <= preferred) {
+            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
+                sidestep(bot, target, now);
+            } else if (distance <= preferred && now >= bot.nextMoveTick) {
+                // It holds its ground to shoot, but lets a sidestep under way finish: stopping here
+                // every look cut each one off after a tenth of a block.
                 mob.getPathfinder().stopPathfinding();
             }
             shoot(bot, target, distance, now);
             return;
         }
         bot.firstSeenTick = -1;
+        if (bot.threatPos != null && now < bot.threatUntil) {
+            respond(bot, now);
+            return;
+        }
+        bot.threatPos = null;
+        bot.coverPos = null;
         if ("operator".equals(bot.kind) && bot.lastSeen == null && (bot.alertPos == null || now >= bot.alertUntil)) {
             operate(bot, now);
             return;
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
-            if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
-                mob.getPathfinder().moveTo(bot.lastSeen, 0.9);
+            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 < 2 && !heading(mob, bot.lastSeen))) {
+                go(bot, bot.lastSeen, 0.9, now);
             }
             return;
+        }
+        if (bot.lastSeen != null) {
+            // The chase is over. A rival operator kept lastSeen for the rest of the raid and never
+            // looted or followed its leader again; now it picks its next container afresh.
+            bot.lastSeen = null;
+            bot.looting = null;
         }
         if (bot.alertPos != null && now < bot.alertUntil) {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 Location toward = bot.alertPos.clone();
                 if (toward.distanceSquared(bot.home) > Math.pow(bot.leash * 4, 2)) {
+                    // As far that way as its leash allows, if it can stand there.
                     Vector dir = toward.toVector().subtract(bot.home.toVector()).normalize().multiply(bot.leash * 3);
-                    toward = bot.home.clone().add(dir);
+                    toward = standable(bot.raid, bot.home.clone().add(dir));
                 }
-                mob.getPathfinder().moveTo(toward, 0.9);
+                if (toward != null) {
+                    go(bot, toward, 0.9, now);
+                }
             }
             return;
         }
@@ -591,8 +834,14 @@ public final class AiService implements Listener {
         if (now >= bot.nextWanderTick && !"sniper".equals(bot.kind)) {
             ThreadLocalRandom rng = ThreadLocalRandom.current();
             double radius = "guard".equals(bot.kind) ? Math.min(4, bot.leash) : bot.leash;
-            Location dest = bot.home.clone().add(rng.nextDouble(-radius, radius), 0, rng.nextDouble(-radius, radius));
-            mob.getPathfinder().moveTo(dest, 0.6);
+            // Only to somewhere it can stand: the dock patrol's walk used to reach 8 blocks out to sea.
+            Location dest = null;
+            for (int i = 0; i < 4 && dest == null; i++) {
+                dest = standable(bot.raid, bot.home.clone().add(rng.nextDouble(-radius, radius), 0, rng.nextDouble(-radius, radius)));
+            }
+            if (dest != null) {
+                mob.getPathfinder().moveTo(dest, 0.6);
+            }
             bot.nextWanderTick = now + rng.nextInt(80, 220);
         }
         if (bot.ammoLeft < bot.gun.gun().magazine()) {
@@ -600,70 +849,243 @@ public final class AiService implements Listener {
         }
     }
 
+    /**
+     * Heads for {@code dest}. A path that cannot get there (a locked or iron door, a wall) still
+     * takes the soldier as close as it gets, and it then holds there for a few seconds instead of
+     * planning the same dead end again every tick.
+     */
+    private void go(Bot bot, Location dest, double speed, long now) {
+        if (now < bot.holdUntil) {
+            return;
+        }
+        Pathfinder pathfinder = bot.mob.getPathfinder();
+        Pathfinder.PathResult path = pathfinder.findPath(dest);
+        if (path == null) {
+            bot.holdUntil = now + HOLD_TICKS;
+            return;
+        }
+        if (!reaches(path, dest, 2.5)) {
+            bot.holdUntil = now + HOLD_TICKS;
+        }
+        pathfinder.moveTo(path, speed);
+    }
+
+    /** Whether {@code path} ends within {@code slack} blocks of {@code dest}. */
+    private static boolean reaches(Pathfinder.PathResult path, Location dest, double slack) {
+        if (path.canReachFinalPoint()) {
+            return true;
+        }
+        Location end = path.getFinalPoint();
+        return end != null && end.getWorld() == dest.getWorld() && end.distanceSquared(dest) <= slack * slack;
+    }
+
+    /** Whether the soldier's current path already ends near {@code dest}. */
+    private static boolean heading(Zombie mob, Location dest) {
+        Pathfinder.PathResult path = mob.getPathfinder().getCurrentPath();
+        Location end = path == null ? null : path.getFinalPoint();
+        return end != null && end.getWorld() == dest.getWorld() && end.distanceSquared(dest) <= 2.5 * 2.5;
+    }
+
     private long reactionTicks(Bot bot) {
         double base = plugin.getConfig().getDouble("ai.reaction-ticks", 14);
         return Math.round(base / Math.max(0.3, bot.accuracy) + ThreadLocalRandom.current().nextInt(0, 8));
     }
 
+    /**
+     * Who the soldier has spotted, if anyone. Nobody is seen at once: each look (every 2 ticks) adds to
+     * the soldier's awareness of a player, faster the closer, the more of them shows (head, chest and
+     * pelvis are checked separately, see {@link Sight}), the more they move and the brighter they
+     * are lit, and only inside its field of view (120 degrees ahead, a little out to the sides,
+     * nothing behind; wider once it is alert). Out of sight it fades again. Half way there the
+     * soldier turns to look and comes over; at 1 it has spotted the player and fights. Someone it
+     * was fighting a moment ago is spotted again as soon as any of them shows.
+     */
     private @Nullable Player acquire(Bot bot, long now) {
         Zombie mob = bot.mob;
         Player best = null;
         double bestDist = Double.MAX_VALUE;
+        Look bestLook = null;
+        Player suspect = null;
+        double suspicion = 0;
         double sight = "sniper".equals(bot.kind) ? 90 : 48;
-        Vector facing = mob.getLocation().getDirection().setY(0);
+        Location from = mob.getLocation();
+        Vector facing = from.getDirection().setY(0);
+        boolean alerted = now < bot.alertUntil;
+        var config = plugin.getConfig();
+        double rate = config.getDouble("ai.awareness.rate", 2.0);
+        double fade = config.getDouble("ai.awareness.fade", 0.25) * 0.1;
+        java.util.Set<UUID> present = new java.util.HashSet<>();
         for (Player player : bot.raid.online()) {
             RaidPlayer rp = bot.raid.player(player.getUniqueId());
-            if (rp == null || rp.state != RaidPlayer.State.ALIVE || !plugin.raids().canBeShot(player)
-                    || now < rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240)) {
+            // A player who just rejoined is seen and aimed at through their 2 s of protection
+            // (shoot() holds fire until it ends), so soldiers fight on the moment it is over.
+            if (rp == null || rp.state != RaidPlayer.State.ALIVE || now < rp.aiGraceUntil) {
                 continue;
             }
+            UUID id = player.getUniqueId();
+            present.add(id);
+            double aware = bot.awareness.getOrDefault(id, 0.0);
             // At night soldiers see about half as far, but a lit tactical light gives you away from beyond
             // normal sight, whichever way they face.
             boolean lit = plugin.lights().mode(player) != net.infnetwork.snowball.craftov.weapon.TacticalLight.Mode.OFF;
             double range = lit ? sight * 1.3 : bot.raid.night ? sight * 0.55 : sight;
-            double d = mob.getLocation().distanceSquared(player.getLocation());
-            if (d > range * range || d >= bestDist) {
+            if (id.equals(bot.threatFrom) && now < bot.threatUntil) {
+                range *= 1.5; // it knows which way to look for whoever just shot it
+            }
+            double d2 = from.distanceSquared(player.getLocation());
+            if (d2 > range * range) {
+                bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
             }
-            boolean known = player.getUniqueId().equals(bot.target) && now - bot.lastSeenTick < 40;
-            if (lit && mob.hasLineOfSight(player)) {
-                known = true;
-            }
+            double d = Math.sqrt(d2);
+            // bot.target lets go 2 s after it lost sight; whoever it fought stays in mind for 10 s.
+            boolean recent = id.equals(bot.lastFought) && now - bot.lastSeenTick < 20L * 10;
+            boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
             // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
-            double heard = player.isSneaking() || !moving(player) ? 0 : player.isSprinting() ? 24 : 10;
-            boolean noisy = d < heard * heard;
-            if (!known && d > 64) {
-                Vector to = player.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
-                double dot = facing.lengthSquared() < 1e-4 || to.lengthSquared() < 1e-4 ? 1 : facing.normalize().dot(to.normalize());
-                if (dot < 0.2 && !noisy && now >= bot.alertUntil) {
-                    continue;
-                }
-                if (player.isSneaking() && d > 18 * 18) {
-                    continue;
-                }
+            boolean moving = moving(player);
+            double heard = player.isSneaking() || !moving ? 0 : player.isSprinting() ? 24 : 10;
+            boolean noisy = d < heard;
+            double view = view(facing, from, player.getLocation(), alerted);
+            if (noisy) {
+                view = Math.max(view, 0.8); // it turns towards the footsteps
             }
-            if (!mob.hasLineOfSight(player)) {
+            Look look = null;
+            double seen = 0;
+            if (view > 0 || known || lit) {
+                look = sightLines(bot, player);
+                seen = look.shown();
+            }
+            if (seen > 0 && (known || lit)) {
+                aware = 1;
+            } else if (seen > 0 && view > 0) {
+                double closeness = Math.pow(1 - d / range, 1.5) * (d < 6 && view >= 1 ? 3 : 1);
+                double stance = player.isSneaking() ? 0.5 : 1.0;
+                double motion = !moving ? 0.7 : player.isSprinting() ? 1.5 : 1.0;
+                double light = 0.3 + 0.7 * player.getEyeLocation().getBlock().getLightLevel() / 15.0;
+                aware = Math.min(1, aware + 0.1 * rate * closeness * stance * motion * light * view * seen * (alerted ? 1.5 : 1));
+            } else {
+                aware = Math.max(0, aware - fade);
                 if (noisy && bot.target == null) {
                     // Footsteps behind a wall: go and look.
                     bot.alertPos = player.getLocation();
                     bot.alertUntil = now + 20L * 6;
                 }
-                continue;
             }
-            best = player;
-            bestDist = d;
+            bot.awareness.put(id, aware);
+            boolean spotted = seen > 0 && (aware >= 1 || recent && aware >= 0.5);
+            if (spotted && d2 < bestDist) {
+                best = player;
+                bestDist = d2;
+                bestLook = look;
+            } else if (!spotted && seen > 0 && aware >= 0.4 && aware > suspicion) {
+                suspect = player;
+                suspicion = aware;
+            }
         }
+        bot.awareness.keySet().removeIf(id -> !present.contains(id) || bot.awareness.get(id) <= 0);
+        if (best == null && suspect != null && bot.target == null) {
+            // Something moved over there: it looks, and walks over to see what it was.
+            mob.lookAt(suspect.getEyeLocation());
+            bot.alertPos = suspect.getLocation();
+            bot.alertUntil = Math.max(bot.alertUntil, now + 20L * 4);
+        }
+        bot.targetLook = bestLook;
         if (best != null) {
             if (!best.getUniqueId().equals(bot.target) || now - bot.lastSeenTick > 60) {
                 bot.engagedSince = now;
             }
             bot.target = best.getUniqueId();
+            bot.lastFought = bot.target;
             bot.lastSeen = best.getLocation();
             bot.lastSeenTick = now;
         } else if (now - bot.lastSeenTick > 40) {
             bot.target = null;
+        } else if (bot.target != null && now - bot.lastSeenTick <= 30) {
+            // It saw where you went in the moment you vanished (round a corner, through a door it
+            // then has to open), so it follows you there rather than to the spot you left.
+            Player gone = Bukkit.getPlayer(bot.target);
+            if (gone != null && gone.getWorld() == mob.getWorld()) {
+                bot.lastSeen = gone.getLocation();
+            }
         }
         return best;
+    }
+
+    /**
+     * How well a soldier facing {@code facing} (flat) can see {@code to} from {@code from}: 1 inside
+     * the 120 degree cone ahead, 0.3 out to 100 degrees either side, 0 behind. Alert, it looks around:
+     * the whole half ahead counts fully and the sides up to 120 degrees partly.
+     */
+    private static double view(Vector facing, Location from, Location to, boolean alerted) {
+        Vector toward = to.toVector().subtract(from.toVector()).setY(0);
+        if (facing.lengthSquared() < 1e-4 || toward.lengthSquared() < 0.25) {
+            return 1;
+        }
+        double cos = facing.clone().normalize().dot(toward.normalize());
+        if (alerted) {
+            return cos >= 0 ? 1 : cos >= -0.5 ? 0.4 : 0;
+        }
+        return cos >= 0.5 ? 1 : cos >= -0.17 ? 0.3 : 0;
+    }
+
+    /**
+     * How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets
+     * through, and whether one of its rounds would: blocks as {@link Sight#look}, and smoke hides
+     * what is behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
+     */
+    private Look sightLines(Bot bot, Player player) {
+        Vector eye = bot.mob.getEyeLocation().toVector();
+        AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
+        int pen = ammo == null ? 1 : ammo.penetration();
+        Ballistics ballistics = plugin.weapons().ballistics();
+        Vector feet = player.getLocation().toVector();
+        double[] heights = aimHeights(player);
+        double[] seen = new double[heights.length];
+        boolean[] open = new boolean[heights.length];
+        for (int i = 0; i < heights.length; i++) {
+            Vector point = feet.clone().add(new Vector(0, heights[i], 0));
+            double smoke = smokeAlong(player.getWorld(), eye, point);
+            if (smoke > SMOKE_OPAQUE) {
+                continue;
+            }
+            Sight.Line line = Sight.look(player.getWorld(), eye, point, block -> ballistics.passes(block, pen));
+            seen[i] = line.seen() * (1 - 0.5 * smoke / SMOKE_OPAQUE);
+            open[i] = line.open();
+        }
+        return new Look(seen, open);
+    }
+
+    /**
+     * A smoke grenade went off at {@code at}: for {@code ticks} soldiers cannot see through its
+     * cloud, an upright ellipsoid a little smaller than the particles' spread ({@code radius} 6 makes
+     * one 4.8 blocks across and 2.5 up and down, its centre 0.8 above the grenade). It fills
+     * out over the first second and thins over the last three.
+     */
+    public void smoke(Location at, double radius, long ticks) {
+        long now = Bukkit.getCurrentTick();
+        smokes.add(new Smoke(at.getWorld(), at.toVector().add(new Vector(0, 0.8, 0)), radius * 0.8, 2.5, now, now + ticks));
+    }
+
+    /** Blocks of smoke a line from {@code from} to {@code to} passes through. */
+    private double smokeAlong(World world, Vector from, Vector to) {
+        long now = Bukkit.getCurrentTick();
+        double total = 0;
+        for (Smoke smoke : smokes) {
+            if (smoke.world() != world || now < smoke.from()) {
+                continue;
+            }
+            double grow = Math.min(1, (now - smoke.from() + 5) / 25.0);
+            double thin = Math.min(1, 0.5 + (smoke.until() - now) / 120.0);
+            double scale = Math.min(grow, thin);
+            total += Sight.chord(from, to, smoke.centre(), smoke.radius() * scale, smoke.height() * scale);
+        }
+        return total;
+    }
+
+    /** Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling. */
+    private static double[] aimHeights(Player player) {
+        double h = player.getHeight();
+        return new double[]{h - 0.2, h * 0.55, h * 0.33};
     }
 
     private static boolean moving(Player player) {
@@ -673,7 +1095,7 @@ public final class AiService implements Listener {
 
     private void alertSquadmates(Bot bot, Player target) {
         for (Bot other : bots.values()) {
-            if (other != bot && other.raid == bot.raid && other.target == null
+            if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant
                     && other.mob.getLocation().distanceSquared(bot.mob.getLocation()) < 24 * 24) {
                 other.alertPos = target.getLocation();
                 other.alertUntil = Bukkit.getCurrentTick() + 20L * 10;
@@ -683,51 +1105,114 @@ public final class AiService implements Listener {
 
     private void shoot(Bot bot, Player target, double distance, long now) {
         GunSpec gun = bot.gun.gun();
-        if (now < bot.reloadUntil || now < bot.nextShotTick) {
+        if (now < bot.reloadUntil || now < bot.nextShotTick || !plugin.raids().canBeShot(target)) {
             return;
         }
         if (bot.ammoLeft <= 0) {
-            bot.ammoLeft = gun.magazine();
-            bot.reloadUntil = now + gun.reloadTicks() + 10;
-            plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
+            reload(bot, now);
             return;
         }
         if (bot.burstLeft <= 0) {
-            boolean auto = gun.modes().contains(net.infnetwork.snowball.craftov.weapon.FireMode.AUTO);
-            bot.burstLeft = auto ? ThreadLocalRandom.current().nextInt(3, 7) : 1;
+            bot.burstLeft = burst(gun, distance, 3, 7);
         }
+        Location eye = bot.mob.getEyeLocation();
+        Vector point = aimPoint(target, bot.targetLook);
+        if (point == null) {
+            // It sees the target only through something that stops its rounds (a fence, say):
+            // move for a clear shot rather than empty the magazine into it. Snipers hold fire.
+            reposition(bot, target, now);
+            return;
+        }
+        if (friendlyInLine(bot, eye, point)) {
+            // A fellow soldier in the way: step aside instead of shooting into its back.
+            bot.nextShotTick = now + 6;
+            reposition(bot, target, now);
+            return;
+        }
+        // Rounds are hitscan, so there is nothing to lead: a moving target is just harder to hold on.
+        fireRound(bot, eye, point, aimError(bot) * movingFactor(target) * settle(bot, now), now, target);
+    }
+
+    /**
+     * How much wider a soldier's rounds land around a moving target: x1.4 at a walk, up to x1.52 at a
+     * sprint. Bukkit's velocity of a walking player reads zero (and about -0.08 straight down when it
+     * stands), so this uses the speed measured from its position each tick; a player pressing into a
+     * wall is standing still.
+     */
+    private double movingFactor(Player target) {
+        return 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
+                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
+    }
+
+    /** x2.6 on the first shot of a fight, settling to x1 over 3 s. */
+    private static double settle(Bot bot, long now) {
+        return 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
+    }
+
+    /**
+     * Rounds in the next burst: {@code min} to {@code max - 1} from an automatic gun, one or two past
+     * the gun's effective range (single aimed shots there), one from anything else.
+     */
+    private static int burst(GunSpec gun, double distance, int min, int max) {
+        if (!gun.modes().contains(net.infnetwork.snowball.craftov.weapon.FireMode.AUTO)) {
+            return 1;
+        }
+        return distance > gun.range() ? ThreadLocalRandom.current().nextInt(1, 3) : ThreadLocalRandom.current().nextInt(min, max);
+    }
+
+    /**
+     * How far from the point it aims at a soldier's rounds land, in metres at the target whatever the
+     * distance: ai.aim-error goes from its first value at the lowest accuracy (常规, 0.55) to its second
+     * at 1.0 and above (绝密 operators and bosses); snipers use ai.sniper-aim-error.
+     */
+    private double aimError(Bot bot) {
+        boolean sniper = "sniper".equals(bot.kind);
+        List<Double> range = plugin.getConfig().getDoubleList(sniper ? "ai.sniper-aim-error" : "ai.aim-error");
+        double worst = range.isEmpty() ? (sniper ? 0.2 : 0.6) : range.get(0);
+        double best = range.size() < 2 ? (sniper ? 0.1 : 0.25) : range.get(1);
+        double skill = Math.max(0, Math.min(1, (bot.accuracy - 0.55) / 0.45));
+        return worst + (best - worst) * skill;
+    }
+
+    /**
+     * One pull of the trigger at {@code point}: the rounds land within {@code error} metres of it
+     * (more when dazzled or shooting past smoke), with the muzzle flash, sound and casing, and the next
+     * shot timed by the gun's rate of fire and the burst. {@code target} is who it shoots at (null:
+     * a spot), for the debug log of soldier shots.
+     */
+    private void fireRound(Bot bot, Location eye, Vector point, double error, long now, @Nullable Player target) {
+        GunSpec gun = bot.gun.gun();
         bot.burstLeft--;
         bot.ammoLeft--;
-        Location eye = bot.mob.getEyeLocation();
-        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
-        // The middle of the box follows the pose: 0.9 up standing, 0.75 crouched, 0.3 crawling (a
-        // fixed 0.95 aimed over the 0.6 box of a player in a one-block gap). Rounds are hitscan, so
-        // there is no lead to give; a moving target is just harder to hold on (x1.4 at a walk).
-        // Bukkit's velocity reads zero while a player walks, so use the measured speed.
-        Vector aim = target.getLocation().toVector().setY(target.getBoundingBox().getCenterY())
-                .subtract(eye.toVector()).normalize();
-        double moving = 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
-                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
-        double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
-        double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
-        if ("sniper".equals(bot.kind)) {
-            spread *= 0.45;
-        }
+        double distance = Math.max(1, eye.toVector().distance(point));
+        Vector aim = point.clone().subtract(eye.toVector()).normalize();
         if (now < bot.dazzledUntil) {
-            spread *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
+            error *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
         }
+        // Shooting past the edge of a smoke cloud: it sees you only dimly and goes wide.
+        double haze = smokeAlong(eye.getWorld(), eye.toVector(), point);
+        if (haze > 0) {
+            error *= 1 + Math.min(SMOKE_OPAQUE, haze);
+        }
+        double spread = Math.toDegrees(Math.atan(error / distance));
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
+        // A share of what a player deals with the same gun and ammo to the body and limbs (headshots
+        // get less: scaledGun halves the head multiplier); nothing scales it again on the way
+        // (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
         int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
-            if (plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
-                    scaled, ammo, bot.gun.name(), i == 0) == target) {
+            LivingEntity hit = plugin.weapons().ballistics().fire(bot.mob, eye,
+                    Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)), scaled, ammo, bot.gun.name(), i == 0);
+            if (target != null && hit == target) {
                 hits++;
             }
         }
-        if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
-                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), moving, settle, spread, gun.pellets(), hits));
+        if (target != null && plugin.getConfig().getBoolean("debug", false)) {
+            // aim: how high above the target's feet it aimed (the chest, or the head over low cover).
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d aim=%.2f",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), movingFactor(target), settle(bot, now),
+                    spread, gun.pellets(), hits, point.getY() - target.getLocation().getY()));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);
@@ -741,6 +1226,68 @@ public final class AiService implements Listener {
             interval += ThreadLocalRandom.current().nextInt(12, 30);
         }
         bot.nextShotTick = now + interval;
+    }
+
+    /**
+     * Where to aim at {@code target}, among the parts it sees and a round would reach (not through a
+     * fence, say): the chest (misses then land on the body or past it, rarely the head),
+     * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
+     * none of them. {@code look} is the last look at the target; without one the chest.
+     */
+    private static @Nullable Vector aimPoint(Player target, @Nullable Look look) {
+        double[] heights = aimHeights(target);
+        Vector feet = target.getLocation().toVector();
+        if (look == null) {
+            return feet.add(new Vector(0, heights[1], 0));
+        }
+        for (int part : new int[]{1, 0, 2}) {
+            if (look.seen()[part] > 0 && look.open()[part]) {
+                return feet.add(new Vector(0, heights[part], 0));
+            }
+        }
+        return null;
+    }
+
+    /** Whether a fellow soldier stands in the line of fire from {@code eye} to {@code point}. */
+    private boolean friendlyInLine(Bot bot, Location eye, Vector point) {
+        Vector line = point.clone().subtract(eye.toVector());
+        double length = line.length();
+        if (length < 1) {
+            return false;
+        }
+        RayTraceResult hit = eye.getWorld().rayTraceEntities(eye, line.multiply(1 / length), length - 0.5, 0.3,
+                entity -> entity != bot.mob && isAi(entity));
+        return hit != null;
+    }
+
+    /** A couple of steps to the side, to get a clear shot at {@code target}. */
+    private void reposition(Bot bot, Player target, long now) {
+        if ("sniper".equals(bot.kind) || now < bot.nextMoveTick || bot.mob.getPathfinder().hasPath()) {
+            return;
+        }
+        sidestep(bot, target, now);
+    }
+
+    /**
+     * Three blocks to one side of the line to {@code target}, chosen at random (the other side if it
+     * cannot stand there, see {@link #standable}); for the next 1.5 s it neither stops nor starts
+     * another step, so it gets there.
+     */
+    private void sidestep(Bot bot, Player target, long now) {
+        bot.nextMoveTick = now + 30;
+        Location at = bot.mob.getLocation();
+        Vector dir = target.getLocation().toVector().subtract(at.toVector()).setY(0);
+        if (dir.lengthSquared() < 0.01) {
+            return;
+        }
+        Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
+        Location dest = standable(bot.raid, at.clone().add(side));
+        if (dest == null) {
+            dest = standable(bot.raid, at.clone().subtract(side));
+        }
+        if (dest != null) {
+            bot.mob.getPathfinder().moveTo(dest, 1.0);
+        }
     }
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
@@ -757,6 +1304,8 @@ public final class AiService implements Listener {
         if (bot == null) {
             return;
         }
+        // A sleeping guard killed outright (a grenade, one headshot) still wakes the rest of its group.
+        wake(bot);
         event.getDrops().clear();
         event.setDroppedExp(0);
         Raid raid = bot.raid;
@@ -783,7 +1332,11 @@ public final class AiService implements Listener {
         List<ItemStack> items = new ArrayList<>();
         EntityEquipment eq = bot.mob.getEquipment();
         ItemStack gun = eq.getItemInMainHand();
-        if (!gun.isEmpty() && rng.nextDouble() < (bot.boss ? 1.0 : 0.75)) {
+        var config = plugin.getConfig();
+        // Bodies are worth farming less the harder the raid: its guns are worth more there.
+        List<Double> gunChances = config.getDoubleList("ai.drop.gun-chance");
+        double gunChance = gunChances.isEmpty() ? 0.6 : gunChances.get(Math.min(gunChances.size() - 1, Math.max(0, bot.raid.tier.aiGear())));
+        if (!gun.isEmpty() && rng.nextDouble() < (bot.boss ? 1.0 : gunChance)) {
             ItemStack copy = gun.clone();
             plugin.items().setAmmo(copy, rng.nextInt(bot.gun.gun().magazine() / 2 + 1), bot.ammo == null ? null : bot.ammo.id());
             items.add(copy);
@@ -791,12 +1344,17 @@ public final class AiService implements Listener {
         if (bot.ammo != null) {
             items.add(plugin.items().create(bot.ammo, Math.min(bot.ammo.maxStack(), rng.nextInt(10, 40))));
         }
+        List<Double> wear = config.getDoubleList("ai.drop.armor-durability");
+        double least = wear.isEmpty() ? 0.3 : wear.get(0);
+        double most = wear.size() < 2 ? 0.7 : Math.max(least, wear.get(1));
         for (ItemStack armor : new ItemStack[]{eq.getHelmet(), eq.getChestplate()}) {
             if (armor != null && !armor.isEmpty() && rng.nextDouble() < 0.45) {
                 ItemStack copy = armor.clone();
                 ItemDef def = plugin.items().defOf(copy);
                 if (def != null) {
-                    plugin.items().setDura(copy, Math.max(1, def.durability() * rng.nextDouble(0.2, 0.7)));
+                    // Never better than it was when it fell (the fight wore it down).
+                    double left = def.durability() * (least + (most - least) * rng.nextDouble());
+                    plugin.items().setDura(copy, Math.max(1, Math.min(net.infnetwork.snowball.craftov.item.ItemFactory.dura(copy, def.durability()), left)));
                 }
                 items.add(copy);
             }
@@ -842,6 +1400,27 @@ public final class AiService implements Listener {
         }
     }
 
+    /**
+     * A soldier stays what it is: a zombie under water turns into a drowned and a husk into a zombie,
+     * and the new mob is no soldier (it would vanish without a body).
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onTransform(org.bukkit.event.entity.EntityTransformEvent event) {
+        if (isAi(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Nor does it choke in a wall or drown: dying of where it was put is no death a player caused. */
+    @EventHandler(ignoreCancelled = true)
+    public void onChoke(org.bukkit.event.entity.EntityDamageEvent event) {
+        var cause = event.getCause();
+        if ((cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.SUFFOCATION
+                || cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.DROWNING) && isAi(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onSpawn(CreatureSpawnEvent event) {
         World world = event.getLocation().getWorld();
@@ -851,14 +1430,211 @@ public final class AiService implements Listener {
         }
     }
 
+    /**
+     * A player hit this soldier (or its shield) with a round, a blade or a grenade. A sleeping
+     * soldier wakes with its whole group. Someone it is fighting already changes nothing. A
+     * hit from anyone else gives away roughly where it came from (within ai.threat.error-meters, less
+     * close up) but not who: the soldier grows more aware of the shooter (+0.5, at most 0.9, so it
+     * still has to see them to fight them), turns that way and for ai.threat.seconds fires bursts at
+     * the spot and works its way towards it from cover to cover (see {@link #respond}); soldiers within
+     * 24 blocks are called over to the spot.
+     */
     public void onBotHurt(LivingEntity victim, @Nullable LivingEntity attacker) {
         Bot bot = bots.get(victim.getUniqueId());
-        if (bot != null && attacker instanceof Player player) {
-            bot.target = player.getUniqueId();
-            bot.lastSeen = player.getLocation();
-            bot.lastSeenTick = Bukkit.getCurrentTick();
-            bot.alertPos = player.getLocation();
-            bot.alertUntil = Bukkit.getCurrentTick() + 200;
+        if (bot == null || !(attacker instanceof Player player) || player.getWorld() != victim.getWorld()) {
+            return;
         }
+        long now = Bukkit.getCurrentTick();
+        UUID id = player.getUniqueId();
+        wake(bot);
+        if (id.equals(bot.target) && now - bot.lastSeenTick < 40) {
+            return;
+        }
+        var config = plugin.getConfig();
+        bot.awareness.merge(id, 0.5, (old, add) -> Math.max(old, Math.min(0.9, old + add)));
+        Location from = player.getLocation();
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        double error = Math.min(config.getDouble("ai.threat.error-meters", 5), 1 + 0.1 * from.distance(victim.getLocation()));
+        double angle = rng.nextDouble(Math.PI * 2);
+        double off = error * Math.sqrt(rng.nextDouble());
+        Location guess = from.clone().add(Math.cos(angle) * off, 0, Math.sin(angle) * off);
+        boolean fresh = bot.threatPos == null || now >= bot.threatUntil;
+        bot.threatPos = guess;
+        bot.threatFrom = id;
+        bot.threatUntil = now + 20L * config.getLong("ai.threat.seconds", 8);
+        bot.alertPos = guess.clone();
+        bot.alertUntil = Math.max(bot.alertUntil, bot.threatUntil + 20L * 4);
+        if (fresh) {
+            bot.coverPos = null;
+            bot.coverUntil = 0;
+            bot.nextCoverSearch = 0;
+            bot.nextShotTick = Math.max(bot.nextShotTick, now + reactionTicks(bot));
+            if (rng.nextBoolean()) {
+                victim.getWorld().playSound(victim.getLocation(), "craftov:ai.spotted", SoundCategory.HOSTILE, 1.4f, 1f);
+            }
+        }
+        for (Bot other : bots.values()) {
+            if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant && other.mob.getWorld() == victim.getWorld()
+                    && other.mob.getLocation().distanceSquared(victim.getLocation()) < 24 * 24) {
+                other.alertPos = guess.clone();
+                other.alertUntil = Math.max(other.alertUntil, now + 20L * 10);
+            }
+        }
+    }
+
+    /**
+     * Under fire from someone it has not spotted: it looks where the shots came from, works its way
+     * there from cover to cover (2-4 s behind each; with no cover around it closes in a few blocks at
+     * a time; snipers stay put) and fires bursts at the spot whenever it has a line of fire.
+     */
+    private void respond(Bot bot, long now) {
+        Zombie mob = bot.mob;
+        Location threat = bot.threatPos;
+        if (threat == null || threat.getWorld() != mob.getWorld()) {
+            bot.threatUntil = 0;
+            return;
+        }
+        mob.lookAt(threat.clone().add(0, 1.5, 0));
+        if (!"sniper".equals(bot.kind)) {
+            boolean there = bot.coverPos != null && mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2;
+            if (there && bot.coverUntil == 0) {
+                bot.coverUntil = now + ThreadLocalRandom.current().nextInt(40, 80);
+                mob.getPathfinder().stopPathfinding();
+            }
+            if ((bot.coverPos == null || there && now >= bot.coverUntil) && now >= bot.nextCoverSearch) {
+                bot.nextCoverSearch = now + 30;
+                bot.coverPos = findCover(bot, threat);
+                bot.coverUntil = 0;
+                if (bot.coverPos == null && !mob.getPathfinder().hasPath()) {
+                    // Nothing to hide behind: close in on the spot a few blocks at a time.
+                    Vector toward = threat.toVector().subtract(mob.getLocation().toVector()).setY(0);
+                    if (toward.lengthSquared() > 16) {
+                        Location step = standable(bot.raid, mob.getLocation().add(toward.normalize().multiply(5)));
+                        if (step != null && step.distanceSquared(bot.home) <= Math.pow(bot.leash * 4, 2)) {
+                            go(bot, step, 1.0, now);
+                        }
+                    }
+                }
+            }
+            if (bot.coverPos != null && !there && !mob.getPathfinder().hasPath()) {
+                go(bot, bot.coverPos, 1.0, now);
+                if (now < bot.holdUntil) {
+                    bot.coverPos = null; // cannot get there: look for another
+                }
+            }
+        }
+        suppress(bot, threat, now);
+    }
+
+    /**
+     * A spot within 9 blocks where a wall hides a soldier's chest from {@code threat}, no farther
+     * from it than the soldier is now (it closes in rather than falls back) and within its leash:
+     * the one that gains most ground. Null if there is none.
+     */
+    private @Nullable Location findCover(Bot bot, Location threat) {
+        Location at = bot.mob.getLocation();
+        Vector shooter = threat.toVector().add(new Vector(0, 1.5, 0));
+        double current = at.distance(threat);
+        double reach = bot.leash * 4;
+        Location best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (int ring = 3; ring <= 9; ring += 2) {
+            for (int k = 0; k < 12; k++) {
+                double angle = Math.PI * 2 * k / 12 + ring;
+                Location spot = standable(bot.raid, at.clone().add(Math.cos(angle) * ring, 0, Math.sin(angle) * ring));
+                if (spot == null) {
+                    continue;
+                }
+                double toThreat = spot.distance(threat);
+                if (toThreat > current + 1 || spot.distanceSquared(bot.home) > reach * reach
+                        || Sight.through(at.getWorld(), shooter, spot.toVector().add(new Vector(0, 1.1, 0))) > 0) {
+                    continue;
+                }
+                double score = toThreat + 0.5 * spot.distance(at);
+                if (score < bestScore) {
+                    best = spot;
+                    bestScore = score;
+                }
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Suppressing fire: short bursts at {@code threat}, wider than aimed fire, while it has a line of
+     * fire there (not into the wall it hides behind, not through a fellow soldier). Snipers only shoot
+     * at what they see.
+     */
+    private void suppress(Bot bot, Location threat, long now) {
+        GunSpec gun = bot.gun.gun();
+        if ("sniper".equals(bot.kind) || now < bot.reloadUntil || now < bot.nextShotTick) {
+            return;
+        }
+        if (bot.ammoLeft <= 0) {
+            reload(bot, now);
+            return;
+        }
+        Location eye = bot.mob.getEyeLocation();
+        Vector point = threat.toVector().add(new Vector(0, 1.0, 0));
+        double distance = eye.toVector().distance(point);
+        if (distance < 1 || distance > gun.maxRange()) {
+            return;
+        }
+        Vector dir = point.clone().subtract(eye.toVector()).multiply(1 / distance);
+        RayTraceResult wall = eye.getWorld().rayTraceBlocks(eye, dir, distance, org.bukkit.FluidCollisionMode.NEVER, true);
+        if (wall != null && wall.getHitPosition().distance(eye.toVector()) < distance * 0.7 || friendlyInLine(bot, eye, point)) {
+            bot.nextShotTick = now + 10;
+            return;
+        }
+        if (bot.burstLeft <= 0) {
+            bot.burstLeft = burst(gun, distance, 2, 5);
+        }
+        fireRound(bot, eye, point, aimError(bot) * 2.5, now, null);
+        if (bot.burstLeft <= 0) {
+            bot.nextShotTick += ThreadLocalRandom.current().nextInt(20, 40);
+        }
+    }
+
+    private void reload(Bot bot, long now) {
+        GunSpec gun = bot.gun.gun();
+        bot.ammoLeft = gun.magazine();
+        bot.reloadUntil = now + gun.reloadTicks() + 10;
+        plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
+    }
+
+    /**
+     * A spot a soldier can stand on (see {@link #standable}) up to {@code spread} blocks from {@code
+     * base}, tried at random a few times; else {@code base} as it is.
+     */
+    private static Location spotNear(Raid raid, Location base, double spread) {
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        for (int i = 0; i < 8; i++) {
+            Location spot = standable(raid, base.clone().add(rng.nextDouble(-spread, spread), 0, rng.nextDouble(-spread, spread)));
+            if (spot != null) {
+                return spot;
+            }
+        }
+        return base.clone();
+    }
+
+    /**
+     * A spot a soldier can stand on at {@code at} or a block above or below it: two passable, dry
+     * blocks over solid ground, inside the map's bounds. Null if there is none.
+     */
+    private static @Nullable Location standable(Raid raid, Location at) {
+        if (!raid.map.inside(at.getX(), at.getZ())) {
+            return null;
+        }
+        for (int dy : new int[]{0, 1, -1}) {
+            Location spot = new Location(at.getWorld(), Math.floor(at.getX()) + 0.5, Math.floor(at.getY()) + dy, Math.floor(at.getZ()) + 0.5);
+            org.bukkit.block.Block feet = spot.getBlock();
+            org.bukkit.block.Block head = feet.getRelative(org.bukkit.block.BlockFace.UP);
+            org.bukkit.block.Block floor = feet.getRelative(org.bukkit.block.BlockFace.DOWN);
+            if (feet.isPassable() && !feet.isLiquid() && head.isPassable() && !head.isLiquid()
+                    && floor.getType().isSolid() && !floor.isLiquid()) {
+                return spot;
+            }
+        }
+        return null;
     }
 }

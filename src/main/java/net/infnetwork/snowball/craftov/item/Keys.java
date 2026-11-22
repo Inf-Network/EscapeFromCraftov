@@ -34,6 +34,11 @@ public final class Keys {
     /** Marks Craftov-managed entities (containers, corpses, AI) with their role. */
     public static final NamespacedKey ENTITY_ROLE = key("role");
     public static final NamespacedKey ENTITY_REF = key("ref");
+    /**
+     * A disconnected player's stand-in (RaidManager), holding the player's UUID. Deliberately not
+     * an {@link #ENTITY_ROLE}: bullets and grenades pass over entities that have one.
+     */
+    public static final NamespacedKey STAND_IN = key("stand_in");
 
     private Keys() {
     }

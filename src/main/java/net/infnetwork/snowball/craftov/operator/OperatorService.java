@@ -191,8 +191,11 @@ public final class OperatorService implements Listener {
             if (entity == player || entity.isDead()) {
                 continue;
             }
+            RaidPlayer standsFor = plugin.raids().standInOwner(entity);
+            // A disconnected enemy's stand-in shows up like the enemy would, or it would give itself away.
             boolean enemy = plugin.ai().isAi(entity)
-                    || (entity instanceof Player other && plugin.raids().isInRaid(other) && !plugin.raids().sameSquad(player, other));
+                    || (entity instanceof Player other && plugin.raids().isInRaid(other) && !plugin.raids().sameSquad(player, other))
+                    || (standsFor != null && standsFor.squad != rp.squad);
             if (!enemy) {
                 continue;
             }

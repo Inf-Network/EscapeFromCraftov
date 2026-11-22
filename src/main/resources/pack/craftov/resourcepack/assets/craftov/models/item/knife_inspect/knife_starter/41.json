@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_starter",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    11.136,
+    -25.876,
+    90.197
+   ],
+   "translation": [
+    -4.32,
+    6.316,
+    -5.313
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -168.864,
+    25.876,
+    89.803
+   ],
+   "translation": [
+    -4.32,
+    6.316,
+    -5.313
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

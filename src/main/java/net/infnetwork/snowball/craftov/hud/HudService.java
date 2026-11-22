@@ -245,7 +245,7 @@ public final class HudService {
                 } else {
                     int total = Math.max(1, plugin.raids().raidOf(player).map.raidSeconds());
                     infoBar.name(Text.mm("<text>" + Text.escape(data.mapName(player)) + " <muted>" + data.tierName(player)
-                            + "  <white>⏱ " + data.time(player) + "  <accent>◈ " + Text.moneyShort(data.carried(player))
+                            + "  <white>⏱ " + data.time(player) + "  <accent>◈ " + Text.moneyShort(data.gearValue(player))
                             + "  <muted>撤离 " + Text.escape(data.nearestExtract(player))));
                     infoBar.progress(Math.max(0f, Math.min(1f, data.remaining(player) / (float) total)));
                     infoBar.color(data.remaining(player) < 300 ? BossBar.Color.RED : BossBar.Color.YELLOW);
@@ -287,7 +287,7 @@ public final class HudService {
             } else if (plugin.lobby().isLobby(player.getWorld())) {
                 var profile = plugin.profiles().get(player);
                 infoBar.name(Text.mm("<accent>◈ " + Text.money(profile.money) + "  <muted>Lv." + profile.level + "  "
-                        + plugin.ranks().tierName(profile.rankPoints) + "  <muted>战备值 <white>◈" + Text.moneyShort(plugin.carry().carriedValue(player))
+                        + plugin.ranks().tierName(profile.rankPoints) + "  <muted>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
                         + "  <muted>干员 " + plugin.operators().of(player).name()));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);

@@ -568,6 +568,7 @@ class Session:
         self.display = display
         self.arg = None
         self.shots = []
+        self.raw = []  # (raw frame, PNG) of quick shots not written yet
         self.env = dict(os.environ, DISPLAY=display)
         self.window = self._window()
 
@@ -870,14 +871,26 @@ class Session:
 
     # -- output
 
-    def shot(self, name):
-        """Saves the whole virtual screen as tools/shots/out/<name>.png."""
+    def shot(self, name, quick=False):
+        """Saves the whole virtual screen as tools/shots/out/<name>.png. Writing the PNG takes about
+        0.7 s; `quick` grabs the raw frame (about 20 ms) and writes the PNG when the scene is done
+        (develop), for shots a fraction of a second apart such as the frames of an animation."""
         OUT.mkdir(parents=True, exist_ok=True)
         path = OUT / f'{name}.png'
-        subprocess.run(['import', '-window', 'root', '-display', self.display, str(path)], check=True)
+        target = path.with_suffix('.ppm') if quick else path
+        subprocess.run(['import', '-window', 'root', '-display', self.display, str(target)], check=True)
+        if quick:
+            self.raw.append((target, path))
         self.shots.append(name)
         log('shot', path.relative_to(ROOT))
         return path
+
+    def develop(self):
+        """Writes the PNGs of the quick shots taken so far."""
+        for raw, path in self.raw:
+            subprocess.run(['convert', str(raw), str(path)], check=True)
+            raw.unlink()
+        self.raw.clear()
 
 
 class Puppet:
@@ -1108,7 +1121,10 @@ def run_scenes(cfg, names):
         for spec, scene, arg in scenes:
             session.arg = arg
             log('scene', spec)
-            scene['run'](session)
+            try:
+                scene['run'](session)
+            finally:
+                session.develop()
     finally:
         if cfg.keep:
             log('left running (stop with `shots.py down`):', ', '.join(started) or 'nothing new')

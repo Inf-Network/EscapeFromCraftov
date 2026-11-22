@@ -19,10 +19,10 @@ import java.util.Locale;
 
 public final class CraftovCommand implements TabExecutor {
 
-    private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
+    private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "marketaudit");
+            "marketaudit", "ai", "lagcomp");
 
     private final CraftovPlugin plugin;
 
@@ -55,6 +55,9 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "stash" -> {
                 if (player != null) plugin.menus().openStash(player);
+            }
+            case "mail" -> {
+                if (player != null) plugin.menus().openMail(player);
             }
             case "trader" -> {
                 if (player != null) plugin.menus().openTrader(player);
@@ -145,7 +148,7 @@ public final class CraftovCommand implements TabExecutor {
     private void help(CommandSender sender) {
         Text.send(sender, "<text>Craftov 指令");
         sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
-        sender.sendMessage(Text.mm("<muted>/cv stash | trader | market | secure"));
+        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
@@ -153,7 +156,7 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量]"));
+                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id]"));
         }
     }
 
@@ -260,6 +263,41 @@ public final class CraftovCommand implements TabExecutor {
                     }
                 }
             }
+            case "ai" -> {
+                // /cv ai [raid id]: every soldier of a raid, what it is doing and whom it has noticed.
+                // /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [raid id]: one soldier posted there.
+                boolean spawn = args.length > 1 && args[1].equalsIgnoreCase("spawn");
+                if (spawn && args.length < 6) {
+                    Text.send(sender, "<#9AA0A6>/cv ai [对局ID] · /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [对局ID]");
+                    return;
+                }
+                Raid raid = pickRaid(sender, spawn ? (args.length > 6 ? args[6] : null) : (args.length > 1 ? args[1] : null));
+                if (raid == null) {
+                    return;
+                }
+                if (spawn) {
+                    String kind = args[2].toLowerCase(Locale.ROOT);
+                    if (!List.of("patrol", "guard", "sniper", "shield", "operator").contains(kind)) {
+                        Text.send(sender, "<#FF8A80>未知敌兵类型：" + Text.escape(args[2]));
+                        return;
+                    }
+                    org.bukkit.Location at;
+                    try {
+                        at = new org.bukkit.Location(raid.world, Double.parseDouble(args[3]), Double.parseDouble(args[4]), Double.parseDouble(args[5]));
+                    } catch (NumberFormatException ex) {
+                        Text.send(sender, "<#FF8A80>坐标无效。");
+                        return;
+                    }
+                    String name = plugin.ai().spawnSoldier(raid, at, kind);
+                    Text.send(sender, name == null ? "<#FF8A80>生成失败。" : "<#5BD16B>已在 " + raid.id + " 生成 " + Text.escape(name));
+                    return;
+                }
+                List<String> lines = plugin.ai().describe(raid);
+                Text.send(sender, "<#F2C94C>" + raid.id + " · 敌兵 " + lines.size());
+                for (String line : lines) {
+                    sender.sendMessage(Text.mm("<#9AA0A6>" + Text.escape(line)));
+                }
+            }
             case "end" -> {
                 for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
                     if (args.length < 2 || raid.id.equalsIgnoreCase(args[1])) {
@@ -344,11 +382,23 @@ public final class CraftovCommand implements TabExecutor {
                     sender.sendMessage(Text.mm("<muted>还没有人在交易行卖出过东西。"));
                 }
             }
+            case "lagcomp" -> {
+                // /cv lagcomp [on|off]: hit lag compensation, until the next /cv reload, to compare hits
+                // on moving targets with and without it.
+                boolean on = args.length < 2 ? !plugin.getConfig().getBoolean("combat.lag-compensation.enabled", true)
+                        : args[1].equalsIgnoreCase("on");
+                plugin.getConfig().set("combat.lag-compensation.enabled", on);
+                Text.send(sender, on
+                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
+                                + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
+                        : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
+            }
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
+                plugin.maps().warnCloseSpawns();
                 plugin.loadTiers();
                 if (itemError == null) {
                     Text.send(sender, "<ok>已重新加载配置、物品、掉落与地图。");
@@ -366,6 +416,34 @@ public final class CraftovCommand implements TabExecutor {
             }
             default -> help(sender);
         }
+    }
+
+    /**
+     * The running raid an admin command means: the one named (by id or world name), else the
+     * sender's own, else the only one running. Null (with the reason told) if that does not pick
+     * exactly one.
+     */
+    private @org.jspecify.annotations.Nullable Raid pickRaid(CommandSender sender, @org.jspecify.annotations.Nullable String id) {
+        List<Raid> running = plugin.raids().raids().stream().filter(r -> r.state == Raid.State.RUNNING).toList();
+        if (id != null) {
+            for (Raid raid : running) {
+                // The world name works too, which is all a test client knows about its raid.
+                if (raid.id.equalsIgnoreCase(id) || raid.world.getName().equalsIgnoreCase(id)) {
+                    return raid;
+                }
+            }
+            Text.send(sender, "<#FF8A80>没有进行中的对局 " + Text.escape(id));
+            return null;
+        }
+        Raid own = sender instanceof Player p ? plugin.raids().raidOf(p) : null;
+        if (own != null && own.state == Raid.State.RUNNING) {
+            return own;
+        }
+        if (running.size() == 1) {
+            return running.get(0);
+        }
+        Text.send(sender, running.isEmpty() ? "<#9AA0A6>没有进行中的行动。" : "<#FF8A80>有多个对局，请指定对局ID。");
+        return null;
     }
 
     private String firstAmmo(ItemDef gun) {
@@ -406,8 +484,15 @@ public final class CraftovCommand implements TabExecutor {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
             out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("lagcomp")) {
+            out.addAll(List.of("on", "off"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("ai")) {
+            out.add("spawn");
+            plugin.raids().raids().forEach(r -> out.add(r.id));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("ai") && args[1].equalsIgnoreCase("spawn")) {
+            out.addAll(List.of("patrol", "guard", "sniper", "shield", "operator"));
         }
         return filter(out, args[args.length - 1]);
     }

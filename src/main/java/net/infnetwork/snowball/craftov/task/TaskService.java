@@ -20,7 +20,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * Daily contracts: three objectives per player, refreshed at 04:00 server time. Progress counts the
  * moment it happens (kills and searches stay counted even if the raid is lost); extraction goals
  * count on a successful extraction. Rewards are paid on completion. An unfinished contract can be
- * swapped for a new one for a fee.
+ * swapped for a new one for a fee. A raid the server stops or crashes in counts for nothing: what
+ * it did to the contracts is undone (RaidManager.voidRaid).
  */
 public final class TaskService {
 
@@ -117,6 +118,7 @@ public final class TaskService {
             return false;
         }
         profile.money -= cost;
+        profile.earnedInRaid(-cost); // swapped from the raid terminal: a void raid hands it back
         Set<Kind> used = EnumSet.noneOf(Kind.class);
         for (Profile.TaskState t : tasks) {
             used.add(Kind.valueOf(t.kind));
@@ -242,7 +244,10 @@ public final class TaskService {
     private void complete(Player player, Profile profile, Profile.TaskState task) {
         task.done = true;
         profile.money += task.reward;
-        profile.addStat("tasks_done", 1);
+        // Done in a raid: a void raid takes the reward, the count and (through the snapshot of
+        // contracts, level and season pass at deploy) the progress and experience back.
+        profile.earnedInRaid(task.reward);
+        profile.statInRaid("tasks_done", 1);
         plugin.ranks().addXp(player, profile, task.xp);
         plugin.profiles().markDirty(player.getUniqueId());
         player.sendMessage(Text.mm("<ok><b>[每日任务完成]</b> <white>" + describe(task)
@@ -255,6 +260,7 @@ public final class TaskService {
         if (all) {
             long bonus = plugin.getConfig().getLong("tasks.all-done-bonus", 20000);
             profile.money += bonus;
+            profile.earnedInRaid(bonus);
             player.sendMessage(Text.mm("<accent><b>今日任务全部完成！</b> <accent>额外奖励 ◈" + Text.money(bonus)));
         }
     }

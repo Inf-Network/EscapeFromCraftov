@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.ai.AiService;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.combat.DownedService;
 import net.infnetwork.snowball.craftov.combat.HealthService;
+import net.infnetwork.snowball.craftov.combat.HitboxHistory;
 import net.infnetwork.snowball.craftov.combat.StaminaService;
 import net.infnetwork.snowball.craftov.command.CraftovCommand;
 import net.infnetwork.snowball.craftov.economy.MarketService;
@@ -30,6 +31,7 @@ import net.infnetwork.snowball.craftov.raid.RaidManager;
 import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
+import net.infnetwork.snowball.craftov.weapon.InspectService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
 import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
@@ -67,11 +69,13 @@ public final class CraftovPlugin extends JavaPlugin {
     private ItemRegistry registry;
     private ItemFactory items;
     private ProfileService profiles;
+    private net.infnetwork.snowball.craftov.profile.MailService mail;
     private CarryService carry;
     private LootService loot;
     private MapRegistry maps;
     private WorldService worlds;
     private DamageService damage;
+    private HitboxHistory hitboxes;
     private HealthService health;
     private StaminaService stamina;
     private TriggerService triggers;
@@ -141,6 +145,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
+        mail = new net.infnetwork.snowball.craftov.profile.MailService(this);
         carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
@@ -148,6 +153,7 @@ public final class CraftovPlugin extends JavaPlugin {
         worlds.cleanupStale();
         cleanupTeams();
         damage = new DamageService(this);
+        hitboxes = new HitboxHistory(this);
         health = new HealthService(this);
         stamina = new StaminaService(this);
         downed = new DownedService(this);
@@ -181,7 +187,8 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market, profiles);
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
+                new InspectService(this), market, profiles);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -197,10 +204,12 @@ public final class CraftovPlugin extends JavaPlugin {
 
         worlds.ensureBuiltins();
         maps.load();
+        maps.warnCloseSpawns();
         lobby.start();
         range.start();
         stance.start();
         lights.start();
+        hitboxes.start();
         backups = new net.infnetwork.snowball.craftov.util.Backups(this);
         backups.start();
         market.start();
@@ -359,11 +368,13 @@ public final class CraftovPlugin extends JavaPlugin {
     public ItemRegistry registry() { return registry; }
     public ItemFactory items() { return items; }
     public ProfileService profiles() { return profiles; }
+    public net.infnetwork.snowball.craftov.profile.MailService mail() { return mail; }
     public CarryService carry() { return carry; }
     public LootService loot() { return loot; }
     public MapRegistry maps() { return maps; }
     public WorldService worlds() { return worlds; }
     public DamageService damage() { return damage; }
+    public HitboxHistory hitboxes() { return hitboxes; }
     public HealthService health() { return health; }
     public StaminaService stamina() { return stamina; }
     public TriggerService triggers() { return triggers; }

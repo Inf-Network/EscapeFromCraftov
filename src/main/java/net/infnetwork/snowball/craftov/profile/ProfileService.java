@@ -136,15 +136,26 @@ public final class ProfileService implements Listener {
         Files.createDirectories(dir);
         AtomicFiles.cleanTemp(dir);
         File[] files = dir.toFile().listFiles((d, name) -> name.endsWith(".json"));
+        int inRaid = 0;
         if (files != null) {
             for (File file : files) {
                 Profile profile = read(file.toPath());
                 if (profile != null) {
                     index.put(profile.uuid, summarize(profile));
+                    if (profile.activeRaid != null || profile.deployment != null) {
+                        inRaid++;
+                    }
                 } else {
                     broken(file.toPath());
                 }
             }
+        }
+        if (inRaid > 0) {
+            // Raids are not saved: a profile still in one went down with the server (a crash, a
+            // kill, a power cut). RaidManager.voidLost settles it on the owner's next login.
+            plugin.getLogger().warning(inRaid + " player(s) were still in a raid when the server last went down without"
+                    + " stopping cleanly; each one's raid is voided when they next log in (gear and secure container as"
+                    + " they went in, fees refunded, a compensation letter).");
         }
         String[] journals = dir.toFile().list((d, name) -> name.endsWith(".json" + JOURNAL));
         if (journals != null && journals.length > 0) {
@@ -610,6 +621,14 @@ public final class ProfileService implements Listener {
         if (p.loadout == null) p.loadout = new HashMap<>();
         if (p.secure == null) p.secure = new ArrayList<>();
         if (p.mailbox == null) p.mailbox = new ArrayList<>();
+        if (p.mail == null) p.mail = new ArrayList<>();
+        p.mail.removeIf(java.util.Objects::isNull);
+        for (Profile.Mail m : p.mail) {
+            if (m.id == null) m.id = "";
+            if (m.title == null) m.title = "";
+            if (m.body == null) m.body = "";
+            if (m.items == null) m.items = new ArrayList<>();
+        }
         if (p.claims == null) p.claims = new ArrayList<>();
         p.claims.removeIf(c -> c == null || c.item == null);
         if (p.collected == null) p.collected = new java.util.LinkedHashSet<>();
@@ -623,6 +642,20 @@ public final class ProfileService implements Listener {
         }
         if (p.name == null) p.name = "";
         if (p.operator == null) p.operator = "vanguard";
+        Profile.Deployment d = p.deployment;
+        if (d != null) {
+            if (d.raid == null) d.raid = "";
+            if (d.map == null) d.map = "";
+            if (d.tier == null) d.tier = "";
+            if (d.seasonId == null) d.seasonId = "";
+            if (d.loadout == null) d.loadout = new HashMap<>();
+            if (d.secure == null) d.secure = new ArrayList<>();
+            if (d.stats == null) d.stats = new HashMap<>();
+            if (d.tasks == null) d.tasks = new ArrayList<>();
+            if (d.bounties == null) d.bounties = new ArrayList<>();
+            if (d.mailed == null) d.mailed = new ArrayList<>();
+            d.bounties.removeIf(claim -> claim == null || claim.victim == null);
+        }
     }
 
     private void writeAsync(Profile profile) {

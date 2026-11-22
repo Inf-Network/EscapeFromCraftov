@@ -279,7 +279,7 @@ public final class CarryService {
     }
 
     /**
-     * Settles the cursor on the way home from a raid (extraction, voided raid, server stop): back
+     * Settles the cursor on the way home from a raid (extraction, leaving the raid world): back
      * into the carry cells, or straight to the stash mailbox when it does not fit, since give's own
      * overflow would drop it in the raid world being left. A proving-ground armory item stays on
      * the cursor for {@link net.infnetwork.snowball.craftov.lobby.LobbyService#stripTestItems} to
@@ -404,7 +404,13 @@ public final class CarryService {
         // later raid and pay out an item nobody insured.
         record.uninsure();
         plugin.profiles().edit(player.getUniqueId(), () -> "no room on the player: add to mailbox " + ProfileService.json(record),
-                p -> p.mailbox.add(record));
+                p -> {
+                    p.mailbox.add(record);
+                    if (p.deployment != null) {
+                        // Sent from a raid: it comes out of the mailbox again should the raid be void.
+                        p.deployment.mailed.add(record.copy());
+                    }
+                });
         ItemDef def = items.registry().get(record.id);
         String amount = record.amount > 1 ? " <muted>×" + record.amount : "";
         Text.send(player, def == null
@@ -663,10 +669,31 @@ public final class CarryService {
         }
     }
 
+    /**
+     * Everything the player carries at item value, the melee weapon included. Raid profit and the
+     * free kit's asset check go by this: profit counts the knife at deploy and at extraction alike,
+     * so one brought in cancels out and one found in the raid is profit.
+     */
     public long carriedValue(Player player) {
         long total = 0;
         for (ItemRecord record : snapshot(player).values()) {
             total += items.value(record);
+        }
+        return total;
+    }
+
+    /**
+     * Gear value (战备值): what the player carries, without the melee slot and without any melee
+     * weapon. The difficulty gates, the deploy screen, the main menu, the HUD and the free kit's
+     * carry limit go by this. The knife is never lost on death, so it puts nothing at stake: a
+     * ◈95,000 karambit alone used to clear 机密's requirement.
+     */
+    public long gearValue(Player player) {
+        long total = 0;
+        for (Map.Entry<Integer, ItemRecord> entry : snapshot(player).entrySet()) {
+            if (entry.getKey() != MELEE_SLOT) {
+                total += items.gearValue(entry.getValue());
+            }
         }
         return total;
     }

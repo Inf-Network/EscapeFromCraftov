@@ -239,14 +239,14 @@ public final class LobbyService implements Listener {
 
     // ------------------------------------------------------------------ player flow
 
-    /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
+    /** Returns to the lobby with the items the player currently carries (extraction, called off, out of the raid world). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
         // The cursor item comes home too: back into the inventory, or the mailbox. An armory item on
         // it is left there, emptied of the player's own items, for stripTestItems to take.
         plugin.carry().reclaimCursorHome(player);
         int[] stripped = stripTestItems(player);
-        // Whatever comes home from a raid (extracted, voided, server stop) is no longer insured.
+        // Whatever comes home from a raid (extracted, called off, out of the raid world) is no longer insured.
         plugin.insurance().strip(player);
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);
@@ -337,6 +337,10 @@ public final class LobbyService implements Listener {
         plugin.downed().clear(player);
         plugin.weapons().reset(player);
         plugin.hud().onLobby(player);
+        // The raid's camera holds (RaidManager and ReplayService, onStopSpectating) may refuse this
+        // for someone still on the entry camera or the death view. The game mode change below lets
+        // go of any camera all the same: Paper switches the mode first and then drops the camera,
+        // and the holds only keep spectators. Keep the two together.
         if (player.getGameMode() == GameMode.SPECTATOR) {
             player.setSpectatorTarget(null);
         }
@@ -476,11 +480,10 @@ public final class LobbyService implements Listener {
         if (!profile.receivedStarter) {
             giveStarter(player, profile);
         }
-        if (profile.activeRaid != null && plugin.raids().raidOf(player) == null) {
-            // Server stopped mid-raid without a clean shutdown: the raid is voided, the last
-            // lobby loadout is restored.
-            profile.activeRaid = null;
-            Text.send(player, "<accent>上一次行动因服务器中断已作废，已恢复出发前的装备。");
+        if ((profile.activeRaid != null || profile.deployment != null) && plugin.raids().raidOf(player) == null) {
+            // The server went down mid-raid without a clean stop (or the stop could not void it):
+            // voided now, the way a stop voids it, before the lobby puts the loadout on them.
+            plugin.raids().voidLost(player);
         }
         if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {
             Text.send(player, "<danger>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))
@@ -490,6 +493,12 @@ public final class LobbyService implements Listener {
         plugin.health().setupPlayer(player, false);
         stripRangeItems(player);
         upgradeItems(player);
+        // A moment later, so it is not lost among the join messages.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                plugin.mail().remind(player);
+            }
+        }, 60L);
         if (plugin.raids().tryRejoin(player)) {
             return;
         }

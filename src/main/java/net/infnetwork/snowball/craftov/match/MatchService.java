@@ -11,6 +11,7 @@ import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
@@ -259,7 +260,7 @@ public final class MatchService {
                 return false;
             }
             plugin.lobby().captureLoadout(member);
-            long value = plugin.carry().carriedValue(member);
+            long value = plugin.carry().gearValue(member);
             if (value < tier.minValue()) {
                 Text.send(player, "<#FF8A80>" + Text.escape(member.getName()) + " 的战备值 ◈" + Text.money(value)
                         + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue()));
@@ -476,7 +477,7 @@ public final class MatchService {
             // Test mode switched off (or admin rights taken away) while waiting.
             return "不能进入" + map.name() + "（只在测试模式开放）";
         }
-        long value = plugin.carry().carriedValue(player);
+        long value = plugin.carry().gearValue(player);
         if (value < tier.minValue()) {
             return "的战备值 ◈" + Text.money(value) + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue());
         }
@@ -497,8 +498,28 @@ public final class MatchService {
     }
 
     public void teamFor(Raid raid, RaidPlayer rp, Player player) {
+        team(raid, rp.squad).addEntry(player.getName());
+    }
+
+    /**
+     * Puts an entity standing in for a squad member (a disconnected player's stand-in) on the
+     * squad's team, so its name tag shows to squadmates only, as the player's own did.
+     */
+    public void teamFor(Raid raid, RaidPlayer rp, Entity entity) {
+        team(raid, rp.squad).addEntry(entity.getUniqueId().toString());
+    }
+
+    public void leaveTeam(Entity entity) {
+        String entry = entity.getUniqueId().toString();
+        Team team = board().getEntryTeam(entry);
+        if (team != null && team.getName().startsWith("cv")) {
+            team.removeEntry(entry);
+        }
+    }
+
+    private Team team(Raid raid, int squad) {
         Scoreboard board = board();
-        String name = teamName(raid, rp.squad);
+        String name = teamName(raid, squad);
         Team team = board.getTeam(name);
         if (team == null) {
             team = board.registerNewTeam(name);
@@ -506,9 +527,9 @@ public final class MatchService {
             team.setCanSeeFriendlyInvisibles(true);
             team.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.FOR_OWN_TEAM);
             team.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.FOR_OWN_TEAM);
-            team.color(SQUAD_COLORS[(rp.squad - 1) % SQUAD_COLORS.length]);
+            team.color(SQUAD_COLORS[(squad - 1) % SQUAD_COLORS.length]);
         }
-        team.addEntry(player.getName());
+        return team;
     }
 
     public void leaveTeam(Player player) {

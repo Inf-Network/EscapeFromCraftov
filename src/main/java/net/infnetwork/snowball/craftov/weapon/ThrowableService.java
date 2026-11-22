@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.weapon;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.HitZone;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.Keys;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -43,16 +44,20 @@ public final class ThrowableService implements Listener {
         }
         event.setCancelled(true);
         Player player = event.getPlayer();
-        if (!plugin.raids().canFire(player) || plugin.lobby().isLobby(player.getWorld())) {
+        if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())) {
             return;
         }
         if (player.hasCooldown(event.getItem())) {
             return;
         }
+        plugin.raids().onAttack(player);
         ItemStack hand = player.getInventory().getItemInMainHand();
         ItemStack thrownStack = hand.clone();
         thrownStack.setAmount(1);
         hand.setAmount(hand.getAmount() - 1);
+        if (!ItemFactory.isTest(thrownStack)) {
+            plugin.raids().usedUp(player, def.id(), 1);
+        }
         player.setCooldown(thrownStack, 20);
         Vector velocity = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
         Item item = player.getWorld().dropItem(player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(0.4)), thrownStack, i -> {
@@ -109,12 +114,17 @@ public final class ThrowableService implements Listener {
             double damage = spec.damage() * Math.max(0.1, 1 - distance / spec.radius());
             plugin.damage().recordHit(entity, self ? null : thrower, name, HitZone.TORSO);
             plugin.damage().deal(entity, self ? null : thrower, damage);
+            // A soldier caught in the blast knows roughly where it came from, and a sleeping boss
+            // group wakes, as it would to a bullet.
+            plugin.ai().onBotHurt(entity, thrower);
             entity.setVelocity(entity.getVelocity().add(to.normalize().multiply(0.4)));
         }
     }
 
     private void smoke(Location at, ThrowableSpec spec) {
         at.getWorld().playSound(at, "craftov:throw.smoke", SoundCategory.PLAYERS, 2f, 1f);
+        // The cloud below lasts 15 s and its particles linger a few seconds more; soldiers cannot see through it.
+        plugin.ai().smoke(at, spec.radius(), 20L * 18);
         new BukkitRunnable() {
             int ticks;
 

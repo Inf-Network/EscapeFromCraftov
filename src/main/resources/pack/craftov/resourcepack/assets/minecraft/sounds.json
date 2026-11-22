@@ -1,5 +1,23 @@
 {
- "block.cobweb.hit": {
+ "block.sculk_vein.hit": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "block.sculk_vein.step": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:misc/silence",
+    "volume": 0.01
+   }
+  ]
+ },
+ "block.sculk_vein.fall": {
   "replace": true,
   "sounds": [
    {

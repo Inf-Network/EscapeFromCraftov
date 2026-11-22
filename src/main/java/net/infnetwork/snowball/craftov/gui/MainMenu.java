@@ -19,7 +19,7 @@ final class MainMenu extends Menu {
     @Override
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
-        long value = plugin.carry().carriedValue(viewer);
+        long value = plugin.carry().gearValue(viewer);
         set(4, UiItems.button("craftov:ui/icon_profile", "<#F2E6C8><b>" + Text.escape(viewer.getName()),
                 List.of("<#8A8F98>块币 <#F2C94C>◈ " + Text.money(p.money),
                         "<#8A8F98>等级 <white>Lv." + p.level + " <#8A8F98>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",

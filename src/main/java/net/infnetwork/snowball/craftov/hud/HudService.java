@@ -153,7 +153,7 @@ public final class HudService {
                 } else {
                     int total = Math.max(1, plugin.raids().raidOf(player).map.raidSeconds());
                     infoBar.name(Text.mm("<#F2E6C8>" + Text.escape(data.mapName(player)) + " <#8A8F98>" + data.tierName(player)
-                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.carried(player))
+                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.gearValue(player))
                             + "  <#9AA0A6>撤离 " + Text.escape(data.nearestExtract(player))));
                     infoBar.progress(Math.max(0f, Math.min(1f, data.remaining(player) / (float) total)));
                     infoBar.color(data.remaining(player) < 300 ? BossBar.Color.RED : BossBar.Color.YELLOW);
@@ -179,7 +179,9 @@ public final class HudService {
                 if (data.gun(player) != null) {
                     int reload = data.reloadPercent(player);
                     sb.append("  <white>").append(Text.escape(weapon)).append(' ')
-                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%" : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
+                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%"
+                                    : data.drawing(player) ? "<#C8CCD2>拔枪 " + data.drawPercent(player) + "%"
+                                    : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
                                     + "<#8A8F98>/" + data.reserve(player) + " " + data.fireMode(player));
                 }
                 String injuries = data.injuries(player);
@@ -193,7 +195,7 @@ public final class HudService {
             } else if (plugin.lobby().isLobby(player.getWorld())) {
                 var profile = plugin.profiles().get(player);
                 infoBar.name(Text.mm("<#F2C94C>◈ " + Text.money(profile.money) + "  <#9AA0A6>Lv." + profile.level + "  "
-                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().carriedValue(player))
+                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
                         + "  <#8A8F98>干员 " + plugin.operators().of(player).name()));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);

@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.Nullable;
 
 /** Ranked points, rank tiers and account levels. */
 public final class RankService {
@@ -86,7 +87,11 @@ public final class RankService {
         return Math.round(800 * Math.pow(level, 1.25));
     }
 
-    public void addXp(Player player, Profile profile, long xp) {
+    /**
+     * Grants experience, levelling up (and paying the level reward) as it goes. {@code player} is
+     * null for someone who is offline (died while disconnected): nobody is told then.
+     */
+    public void addXp(@Nullable Player player, Profile profile, long xp) {
         plugin.season().addXp(player, profile, xp);
         profile.xp += xp;
         while (profile.xp >= xpForLevel(profile.level) && profile.level < 60) {
@@ -94,8 +99,11 @@ public final class RankService {
             profile.level++;
             long reward = 5000L * profile.level;
             profile.money += reward;
-            Text.send(player, "<#FFC23D>账号升级至 Lv." + profile.level + "！<#9AA0A6>奖励 ◈" + Text.money(reward));
-            player.playSound(player.getLocation(), "craftov:ui.levelup", 1f, 1f);
+            profile.earnedInRaid(reward); // a level reached in a raid (a contract done) goes with a void raid
+            if (player != null) {
+                Text.send(player, "<#FFC23D>账号升级至 Lv." + profile.level + "！<#9AA0A6>奖励 ◈" + Text.money(reward));
+                player.playSound(player.getLocation(), "craftov:ui.levelup", 1f, 1f);
+            }
         }
     }
 }

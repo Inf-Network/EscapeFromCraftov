@@ -7,9 +7,9 @@ import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
+import net.infnetwork.snowball.craftov.weapon.Ballistics;
 import net.kyori.adventure.key.Key;
 import org.bukkit.Bukkit;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -25,7 +25,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -184,9 +183,8 @@ public final class DroneService implements Listener {
             if (dx * dx + dz * dz > SCAN_RANGE * SCAN_RANGE) {
                 continue;
             }
-            Vector to = target.toVector().subtract(eye.toVector());
-            RayTraceResult wall = world.rayTraceBlocks(eye, to.clone().normalize(), to.length() - 0.3, FluidCollisionMode.NEVER, true);
-            if (wall != null && wall.getHitBlock() != null) {
+            // Blocks as rounds and soldiers see them: over a railing, through glass and bars.
+            if (!Ballistics.sees(eye, target, false)) {
                 continue;
             }
             Long last = drone.spotted.get(player.getUniqueId());

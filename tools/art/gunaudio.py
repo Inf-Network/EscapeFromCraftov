@@ -222,6 +222,11 @@ TAIL_FAMILY = {'p18': 'light', 'sv9': 'light', 'v57': 'light', 'd50': 'rifle', '
                'scr': 'heavy', 'kl7': 'heavy', 'dm14': 'heavy', 'r12': 'heavy', 'awr': 'sniper'}
 TAIL_SOURCE = {'light': 'sv9', 'rifle': 'm4c', 'heavy': 'scr', 'sniper': 'awr'}
 
+# Automatic fire whose interval does not fit the 50 ms server tick plays one sample every few ticks
+# holding several rounds at the gun's real interval: gun id -> (rounds, ticks). GunAudio.java keeps
+# the same table and only uses a sample while the gun's rpm still matches it (rounds * 1200 / ticks).
+GROUPS = {'m4c': (2, 3), 'sv9': (3, 4), 'v57': (3, 4)}
+
 VARIANT_FREQ = [1.0, .955, 1.045, .985]
 VARIANT_TONE = [1.0, 1.12, .9, 1.05]
 
@@ -353,6 +358,21 @@ def third_person(gid, v, band, suppressed=False):
         y = y + reson(y, 120, 3) * .4
         return fade(peak(y, .85), .15)
     raise ValueError(band)
+
+
+def rounds(make, count, v, n, ticks):
+    """n shots from make(variant) at the interval n rounds take in ticks server ticks, as one sample.
+
+    Each round is a different round-robin variant. Overlapping rounds are brought back to the level of
+    the loudest single one, so a burst is no louder than a shot."""
+    interval = ticks * .05 / n
+    shots = [make((v + i) % count) for i in range(n)]
+    level = max(np.max(np.abs(x)) for x in shots)
+    starts = [int(round(i * interval * SR)) for i in range(n)]
+    out = np.zeros((max(a + len(x) for a, x in zip(starts, shots)),) + shots[0].shape[1:])
+    for a, x in zip(starts, shots):
+        out[a:a + len(x)] += x
+    return peak(out, level) if np.max(np.abs(out)) > level else out
 
 
 # ---------------------------------------------------------------- environment tails
@@ -608,6 +628,16 @@ def catalogue():
         out.append(('gun.%s.muff' % gid, files(base + 'muff', [lambda v=v: third_person(gid, v, 'muff') for v in range(2)], 22050), 16))
         out.append(('gun.%s.fp_s' % gid, files(base + 'fp_s', [lambda v=v: first_person(gid, v, True) for v in range(3)]), 16))
         out.append(('gun.%s.near_s' % gid, files(base + 'near_s', [lambda v=v: third_person(gid, v, 'near', True) for v in range(3)], 32000), 16))
+        if gid in GROUPS:
+            n, ticks = GROUPS[gid]
+            bands = (('fp', lambda v: first_person(gid, v), 4, SR), ('near', lambda v: third_person(gid, v, 'near'), 4, SR),
+                     ('mid', lambda v: third_person(gid, v, 'mid'), 3, 32000), ('far', lambda v: third_person(gid, v, 'far'), 2, 22050),
+                     ('muff', lambda v: third_person(gid, v, 'muff'), 2, 22050), ('fp_s', lambda v: first_person(gid, v, True), 3, SR),
+                     ('near_s', lambda v: third_person(gid, v, 'near', True), 3, 32000))
+            for band, make, count, sr in bands:
+                out.append(('gun.%s.x%d.%s' % (gid, n, band),
+                            files('%sx%d_%s' % (base, n, band), [lambda v=v, make=make, count=count: rounds(make, count, v, n, ticks)
+                                                                for v in range(2)], sr), 16))
     for family in TAIL_SOURCE:
         for environment in ('out', 'in'):
             out.append(('gun.tail.%s.%s' % (family, environment),

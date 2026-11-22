@@ -77,7 +77,7 @@ final class DeployMenu extends Menu {
 
     @Override
     protected void draw() {
-        long value = plugin.carry().carriedValue(viewer);
+        long value = plugin.carry().gearValue(viewer);
         map = validMap(map);
         int slot = 10;
         for (MapDef def : playable()) {
@@ -171,7 +171,7 @@ final class DeployMenu extends Menu {
         }
         set(38, UiItems.button("craftov:ui/icon_party", "<white>小队成员", partyLore));
         set(42, UiItems.button("craftov:ui/icon_value", "<white>战备值 <#F2C94C>◈" + Text.money(value),
-                List.of("<#9AA0A6>身上所有装备与物资的总价值", "<#9AA0A6>在仓库中调整配装后再出发")));
+                List.of("<#9AA0A6>身上装备与物资的总价值", "<#9AA0A6>近战武器不计入（死亡不会丢失）", "<#9AA0A6>在仓库中调整配装后再出发")));
         QueueEntry queued = plugin.match().queued(viewer.getUniqueId());
         if (queued != null) {
             button(40, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80><b>取消匹配", List.of("<#9AA0A6>正在匹配 " + queued.map() + " · " + queued.tier())),

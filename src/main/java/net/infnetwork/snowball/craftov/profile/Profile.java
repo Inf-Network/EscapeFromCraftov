@@ -55,6 +55,15 @@ public final class Profile {
     public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
+    /**
+     * Market gains from other players on {@link #marketDay} (MarketService daily cap): what they paid
+     * for this player's listings after tax, plus how far below the reference price this player
+     * bought theirs.
+     */
+    public long marketDay = -1;
+    public long marketIncome;
+    /** Last few login addresses, newest last (MarketService: same-address trades). */
+    public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

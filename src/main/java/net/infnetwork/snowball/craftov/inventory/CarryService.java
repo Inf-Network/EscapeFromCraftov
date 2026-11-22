@@ -258,7 +258,8 @@ public final class CarryService {
             if (cell == null || cell.isEmpty() || ItemFactory.isUi(cell)) {
                 continue;
             }
-            ItemRecord record = items.toRecord(cell);
+            // Proving-ground armory items stay test items inside the pack instead of disappearing.
+            ItemRecord record = items.packRecord(cell);
             if (record != null) {
                 packed.add(record);
             }
@@ -306,8 +307,20 @@ public final class CarryService {
 
     // ------------------------------------------------------------------ snapshots
 
-    /** Everything the player carries (excluding UI stacks), keyed by inventory slot. */
+    /** Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. */
     public Map<Integer, ItemRecord> snapshot(Player player) {
+        return snapshot(player, false);
+    }
+
+    /**
+     * Like {@link #snapshot(Player)} but keeps proving-ground armory items, for a player who disconnects
+     * mid-raid and may rejoin it. Never store it as a loadout without {@link #persistent}.
+     */
+    public Map<Integer, ItemRecord> raidSnapshot(Player player) {
+        return snapshot(player, true);
+    }
+
+    private Map<Integer, ItemRecord> snapshot(Player player, boolean keepTest) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot <= HEAD; slot++) {
@@ -315,7 +328,7 @@ public final class CarryService {
             if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
                 continue;
             }
-            ItemRecord record = items.toRecord(stack);
+            ItemRecord record = keepTest ? items.packRecord(stack) : items.toRecord(stack);
             if (record != null) {
                 out.put(slot, record);
             }
@@ -324,19 +337,63 @@ public final class CarryService {
     }
 
     /**
-     * Copies of the same stacks {@link #snapshot} records, keyed by slot. Unlike records they keep
-     * every component, such as a raid's insurance mark, so they can be handed back unchanged.
+     * Copies of the stacks the player carries, keyed by slot, for a player who disconnects mid-raid
+     * and may rejoin it. Unlike records they keep every component, such as a raid's insurance mark,
+     * and they keep proving-ground armory items as test items. Never store them as a loadout without
+     * {@link #persistent}.
      */
     public Map<Integer, ItemStack> copyCarried(Player player) {
         Map<Integer, ItemStack> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot <= HEAD; slot++) {
             ItemStack stack = inv.getItem(slot);
-            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack) && items.toRecord(stack) != null) {
+            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack) && items.packRecord(stack) != null) {
                 out.put(slot, stack.clone());
             }
         }
         return out;
+    }
+
+    /**
+     * A {@link #raidSnapshot} without its test items, fit to be saved as the loadout of a player who is
+     * offline. An armory rig or backpack is left out, so the player's own items in its cells would land
+     * in locked cells and be dropped on the lobby floor at the next login: they move to free pockets
+     * instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
+     */
+    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout, List<ItemRecord> homeless) {
+        boolean rigGone = isTestRecord(layout.get(LEGS));
+        boolean packGone = isTestRecord(layout.get(FEET));
+        Map<Integer, ItemRecord> out = new HashMap<>();
+        List<ItemRecord> orphans = new ArrayList<>();
+        layout.forEach((slot, record) -> {
+            ItemRecord kept = ItemFactory.persistent(record);
+            if (kept == null) {
+                return;
+            }
+            if (rigGone && isRigSlot(slot) || packGone && isPackSlot(slot)) {
+                orphans.add(kept);
+            } else {
+                out.put(slot, kept);
+            }
+        });
+        for (ItemRecord orphan : orphans) {
+            int free = -1;
+            for (int slot = 0; slot < TERMINAL_SLOT && free < 0; slot++) {
+                if (slot != MELEE_SLOT && !out.containsKey(slot)) {
+                    free = slot;
+                }
+            }
+            if (free < 0) {
+                homeless.add(orphan);
+            } else {
+                out.put(free, orphan);
+            }
+        }
+        return out;
+    }
+
+    private static boolean isTestRecord(@Nullable ItemRecord record) {
+        return record != null && record.isTest();
     }
 
     public List<ItemRecord> allRecords(Player player) {
@@ -405,13 +462,18 @@ public final class CarryService {
         return total;
     }
 
-    /** Removes up to {@code amount} of an item from carry cells; returns how many were removed. */
+    /** Removes up to {@code amount} of an item from carry cells (never test items); returns how many were removed. */
     public int takeItem(Player player, String id, int amount) {
+        return takeItem(player, id, amount, false);
+    }
+
+    /** Like {@link #takeItem(Player, String, int)}, but from proving-ground armory stacks only when {@code test}. */
+    public int takeItem(Player player, String id, int amount, boolean test) {
         PlayerInventory inv = player.getInventory();
         int removed = 0;
         for (int slot = 0; slot < 36 && removed < amount; slot++) {
             ItemStack stack = inv.getItem(slot);
-            if (id.equals(ItemFactory.idOf(stack))) {
+            if (id.equals(ItemFactory.idOf(stack)) && ItemFactory.isTest(stack) == test) {
                 int take = Math.min(amount - removed, stack.getAmount());
                 stack.setAmount(stack.getAmount() - take);
                 removed += take;

@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
+import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
@@ -40,10 +41,12 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.persistence.PersistentDataType;
 import org.jspecify.annotations.Nullable;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -238,17 +241,98 @@ public final class LobbyService implements Listener {
     /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
+        int[] stripped = stripTestItems(player);
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);
         enterLobby(player);
+        if (stripped[0] > 0) {
+            Text.send(player, "<#FFB74D>试验场物资已收回（" + stripped[0] + " 件），它们不能带出对局。"
+                    + (stripped[1] > 0 ? "<#9AA0A6>装在里面的 " + stripped[1] + " 件自己的物品放不下，已送到仓库邮箱。" : ""));
+        }
+    }
+
+    /**
+     * Proving-ground armory items never leave their raid: they are taken away on the way back to the
+     * lobby. Whatever the player packed into an armory rig or backpack is theirs and goes back into the
+     * inventory, or to the stash mailbox when it does not fit. Returns {armory items taken, items mailed}.
+     */
+    public int[] stripTestItems(Player player) {
+        PlayerInventory inv = player.getInventory();
+        List<ItemRecord> handBack = new ArrayList<>();
+        int taken = 0;
+        // An equipped armory rig or backpack is packed first, so its cells are emptied before they lock.
+        for (int slot : new int[]{CarryService.LEGS, CarryService.FEET}) {
+            if (ItemFactory.isTest(inv.getItem(slot))) {
+                ItemStack packed = plugin.carry().unequip(player, slot);
+                if (packed != null) {
+                    taken += 1 + splitTest(plugin.items().contents(packed), handBack);
+                }
+            }
+        }
+        for (int slot = 0; slot < inv.getSize(); slot++) {
+            ItemStack stack = inv.getItem(slot);
+            if (ItemFactory.isTest(stack)) {
+                if (slot == inv.getHeldItemSlot()) {
+                    plugin.weapons().reset(player);
+                }
+                taken += 1 + splitTest(plugin.items().contents(stack), handBack);
+                inv.setItem(slot, null);
+            } else if (ItemFactory.hasContents(stack)) {
+                // The player's own rig or backpack with armory items packed inside: keep it, minus those.
+                List<ItemRecord> own = new ArrayList<>();
+                int test = splitTest(plugin.items().contents(stack), own);
+                if (test > 0) {
+                    plugin.items().setContents(stack, own);
+                    taken += test;
+                }
+            }
+        }
+        ItemStack cursor = player.getItemOnCursor();
+        if (ItemFactory.isTest(cursor)) {
+            taken += 1 + splitTest(plugin.items().contents(cursor), handBack);
+            player.setItemOnCursor(null);
+        }
+        int mailed = 0;
+        if (!handBack.isEmpty()) {
+            Profile profile = plugin.profiles().get(player);
+            for (ItemRecord record : handBack) {
+                ItemStack stack = plugin.items().fromRecord(record);
+                ItemRecord rest = plugin.items().toRecord(stack == null ? null : plugin.carry().give(player, stack, false));
+                if (rest != null) {
+                    profile.mailbox.add(rest);
+                    mailed++;
+                }
+            }
+            plugin.profiles().markDirty(player.getUniqueId());
+        }
+        return new int[]{taken, mailed};
+    }
+
+    /** Copies the records that may be kept into {@code keep}; returns how many test items were left out. */
+    private static int splitTest(List<ItemRecord> records, List<ItemRecord> keep) {
+        int test = 0;
+        for (ItemRecord record : records) {
+            ItemRecord kept = ItemFactory.persistent(record);
+            if (kept == null) {
+                test++;
+            } else {
+                keep.add(kept);
+            }
+        }
+        return test;
     }
 
     public void enterLobby(Player player) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                plugin.tutorial().show(player, plugin.profiles().get(player));
-            }
-        }, 40L);
+        // onDisable sends everybody home from the raids and the range, and by then the plugin
+        // already counts as disabled: scheduling would throw and cut the shutdown short. The
+        // tutorial hint is not needed then anyway.
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    plugin.tutorial().show(player, plugin.profiles().get(player));
+                }
+            }, 40L);
+        }
         plugin.downed().clear(player);
         plugin.weapons().reset(player);
         plugin.hud().onLobby(player);
@@ -266,8 +350,14 @@ public final class LobbyService implements Listener {
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));
     }
 
-    /** Persists the lobby inventory as the next raid's loadout. */
+    /**
+     * Persists the lobby inventory as the next raid's loadout. Does nothing on the range: what the
+     * player holds there is loaners, and the loadout saved on entry has to survive until they leave.
+     */
     public void captureLoadout(Player player) {
+        if (plugin.range().isIn(player)) {
+            return;
+        }
         Profile profile = plugin.profiles().get(player);
         plugin.weapons().flush(player);
         profile.loadout = plugin.carry().snapshot(player);
@@ -406,6 +496,7 @@ public final class LobbyService implements Listener {
             captureLoadout(player);
         }
         plugin.match().onQuit(player);
+        plugin.hud().onQuit(player);
         player.getInventory().clear();
         plugin.profiles().unload(player.getUniqueId());
         lastMenuClick.remove(player.getUniqueId());

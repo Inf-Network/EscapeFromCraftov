@@ -18,6 +18,8 @@ public final class RaidPlayer {
     public final UUID uuid;
     public final String name;
     public final int squad;
+    /** Queued for ranked: this player wins or loses rank points. Ranked and casual players share raids. */
+    public final boolean ranked;
     public State state = State.DEPLOYING;
     public int kills;
     public int aiKills;
@@ -40,10 +42,11 @@ public final class RaidPlayer {
     public @Nullable String escortContract;
     public int containersSearched;
 
-    public RaidPlayer(UUID uuid, String name, int squad) {
+    public RaidPlayer(UUID uuid, String name, int squad, boolean ranked) {
         this.uuid = uuid;
         this.name = name;
         this.squad = squad;
+        this.ranked = ranked;
     }
 
     public boolean active() {

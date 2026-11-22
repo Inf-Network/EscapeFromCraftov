@@ -78,7 +78,10 @@ public final class AiService implements Listener {
         @Nullable Location alertPos;
         long alertUntil;
         long nextWanderTick;
-        long stunnedUntil;
+        /** Blinded by a strobe or a flashbang: still fights, but shoots later and much wider until then. */
+        long dazzledUntil;
+        /** After a dazzle wears off the soldier has its eyes back for a while and a strobe cannot blind it again. */
+        long dazzleImmuneUntil;
         /** Rival operators: what they have looted (dropped on death), the container they are on, squad leader. */
         final List<ItemStack> carried = new ArrayList<>();
         final java.util.Set<String> visited = new java.util.HashSet<>();
@@ -468,13 +471,31 @@ public final class AiService implements Listener {
         });
     }
 
-    public void stun(Location at, double radius, int ticks) {
-        for (Bot bot : bots.values()) {
-            if (bot.mob.getWorld() == at.getWorld() && bot.mob.getLocation().distanceSquared(at) <= radius * radius) {
-                bot.stunnedUntil = Bukkit.getCurrentTick() + ticks;
-                bot.mob.getPathfinder().stopPathfinding();
-            }
+    /**
+     * A strobe in the face: the soldier keeps moving and fighting, but its next shot is held back and
+     * its rounds go wide until the effect wears off. A soldier that is already dazzled, or has just
+     * got its eyes back, is not dazzled again, so holding a strobe on it cannot keep it blind.
+     */
+    public void dazzle(LivingEntity entity, int ticks) {
+        dazzle(entity, ticks, false);
+    }
+
+    /**
+     * Same as {@link #dazzle(LivingEntity, int)}; a flashbang ({@code overrideImmunity}) also works on a
+     * soldier that has just recovered, and extends a dazzle already running.
+     */
+    public void dazzle(LivingEntity entity, int ticks, boolean overrideImmunity) {
+        Bot bot = bots.get(entity.getUniqueId());
+        if (bot == null || ticks <= 0) {
+            return;
         }
+        long now = Bukkit.getCurrentTick();
+        if (!overrideImmunity && (now < bot.dazzledUntil || now < bot.dazzleImmuneUntil)) {
+            return;
+        }
+        bot.dazzledUntil = Math.max(bot.dazzledUntil, now + ticks);
+        bot.dazzleImmuneUntil = bot.dazzledUntil + plugin.getConfig().getLong("ai.dazzle.immune-ticks", 80);
+        bot.nextShotTick = Math.max(bot.nextShotTick, now + plugin.getConfig().getLong("ai.dazzle.shot-delay-ticks", 10));
     }
 
     /** Gunfire and explosions draw nearby soldiers. */
@@ -505,7 +526,7 @@ public final class AiService implements Listener {
                 dead.add(mob.getUniqueId());
                 continue;
             }
-            if (bot.raid.state != Raid.State.RUNNING || now < bot.stunnedUntil) {
+            if (bot.raid.state != Raid.State.RUNNING) {
                 continue;
             }
             think(bot, now);
@@ -692,6 +713,9 @@ public final class AiService implements Listener {
         double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
         if ("sniper".equals(bot.kind)) {
             spread *= 0.45;
+        }
+        if (now < bot.dazzledUntil) {
+            spread *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
         }
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));

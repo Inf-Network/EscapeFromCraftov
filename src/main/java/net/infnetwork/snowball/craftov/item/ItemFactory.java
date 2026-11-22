@@ -88,7 +88,21 @@ public final class ItemFactory {
         return build(gun, record);
     }
 
-    // ------------------------------------------------------------------ optics and range loaners
+    // ------------------------------------------------------------------ optics, range loaners, test items
+
+    public static boolean isTest(@Nullable ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.TEST);
+    }
+
+    /**
+     * Marks a stack as a proving-ground armory item: it works like any other in its raid, but has no
+     * value and is never stored, sold, collected or carried back to the lobby.
+     */
+    public ItemStack markTest(ItemStack stack) {
+        stack.editPersistentDataContainer(pdc -> pdc.set(Keys.TEST, PersistentDataType.BYTE, (byte) 1));
+        refreshLore(stack, defOf(stack));
+        return stack;
+    }
 
     public static boolean isRange(@Nullable ItemStack stack) {
         return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.RANGE);
@@ -120,7 +134,7 @@ public final class ItemFactory {
         return out;
     }
 
-    /** The gun with an attachment fitted in a slot (null empties it); magazine, mode and loaner flag are kept. */
+    /** The gun with an attachment fitted in a slot (null empties it); magazine, mode, loaner and test flags are kept. */
     public ItemStack withAttachment(ItemStack gun, String slot, @Nullable String id) {
         ItemRecord record = recordOf(gun);
         if (record == null) {
@@ -143,7 +157,7 @@ public final class ItemFactory {
         return range ? markRange(rebuilt) : rebuilt;
     }
 
-    /** The gun with a different optic mounted (null removes it); magazine, mode and loaner flag are kept. */
+    /** The gun with a different optic mounted (null removes it); magazine, mode, loaner and test flags are kept. */
     public ItemStack withOptic(ItemStack gun, @Nullable String opticId) {
         ItemRecord record = recordOf(gun);
         if (record == null) {
@@ -170,7 +184,7 @@ public final class ItemFactory {
             return null;
         }
         int mode = mode(stack);
-        ItemStack rebuilt = fromRecord(toRecord(stack));
+        ItemStack rebuilt = fromRecord(packRecord(stack));
         if (rebuilt != null) {
             setMode(rebuilt, mode);
         }
@@ -281,6 +295,9 @@ public final class ItemFactory {
                 record.attach.forEach((slot, id) -> fitted.append(fitted.isEmpty() ? "" : ";").append(slot).append('=').append(id));
                 pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
             }
+            if (record.isTest()) {
+                pdc.set(Keys.TEST, PersistentDataType.BYTE, (byte) 1);
+            }
         });
         if (def.isGun()) {
             applyModelData(stack);
@@ -325,9 +342,39 @@ public final class ItemFactory {
         return stack.getPersistentDataContainer().get(Keys.UI, PersistentDataType.STRING);
     }
 
-    /** Storable form of a stack, or null for non-Craftov stacks and shooting-range loaners (never persisted). */
+    /**
+     * Storable form of a stack, or null for non-Craftov stacks, shooting-range loaners and proving-ground
+     * armory items (never persisted). Armory items packed inside a rig or backpack are left out of it.
+     * Stash, traders, the market, the secure container, collection, raid value and the lobby loadout all
+     * read items through this, so test items count for nothing anywhere.
+     */
     public @Nullable ItemRecord toRecord(@Nullable ItemStack stack) {
+        return isRange(stack) ? null : persistent(recordOf(stack));
+    }
+
+    /**
+     * In-raid form of a stack: like {@link #toRecord} but keeps proving-ground armory items, flagged, so
+     * they survive being packed into a rig or backpack (or a disconnect) and come back as test items.
+     * Never store it; {@link #persistent} turns it into something that may be stored.
+     */
+    public @Nullable ItemRecord packRecord(@Nullable ItemStack stack) {
         return isRange(stack) ? null : recordOf(stack);
+    }
+
+    /** The record without proving-ground armory items: null if it is one, otherwise minus any packed inside. */
+    public static @Nullable ItemRecord persistent(@Nullable ItemRecord record) {
+        if (record == null || record.isTest()) {
+            return null;
+        }
+        if (record.contents == null || record.contents.stream().noneMatch(ItemRecord::isTest)) {
+            return record;
+        }
+        ItemRecord copy = record.copy();
+        copy.contents.removeIf(ItemRecord::isTest);
+        if (copy.contents.isEmpty()) {
+            copy.contents = null;
+        }
+        return copy;
     }
 
     private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
@@ -348,6 +395,7 @@ public final class ItemFactory {
         record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
         Map<String, String> attach = attachments(stack);
         record.attach = attach.isEmpty() ? null : attach;
+        record.test = isTest(stack) ? Boolean.TRUE : null;
         return record;
     }
 
@@ -454,7 +502,7 @@ public final class ItemFactory {
 
     public long value(ItemRecord record) {
         ItemDef def = registry.get(record.id);
-        if (def == null) {
+        if (def == null || record.isTest()) {
             return 0;
         }
         double unit = def.value();
@@ -593,6 +641,8 @@ public final class ItemFactory {
         lore.add(Text.mm("<#8A8F98>重量 <white>" + fmt(def.weight() * stack.getAmount()) + "kg"));
         if (isRange(stack)) {
             lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
+        } else if (isTest(stack)) {
+            lore.add(Text.mm("<#FFB74D>试验场物资 · 没有价值，不能带出对局，撤离时收回"));
         } else {
             long value = value(stack);
             lore.add(Text.mm("<#8A8F98>价值 <#F2C94C>◈ " + Text.money(value)));

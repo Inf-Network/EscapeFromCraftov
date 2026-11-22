@@ -22,8 +22,6 @@ public final class Raid {
     public final String id;
     public final MapDef map;
     public final Tier tier;
-    public final RaidMode mode;
-    public final boolean ranked;
     public final World world;
     public State state = State.LOADING;
     public long startTick;
@@ -48,17 +46,17 @@ public final class Raid {
     /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
     public long blackoutUntil;
 
-    public Raid(String id, MapDef map, Tier tier, RaidMode mode, boolean ranked, World world) {
+    public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;
         this.map = map;
         this.tier = tier;
-        this.mode = mode;
-        this.ranked = ranked;
         this.world = world;
     }
 
     public int elapsedSeconds() {
-        if (startTick <= 0) {
+        // Not startTick <= 0: `/cv end` moves startTick back a whole raid length, which goes
+        // negative on a server that has been up for less than that, and the raid then never ended.
+        if (state == State.LOADING) {
             return 0;
         }
         return (int) ((Bukkit.getCurrentTick() - startTick) / 20);

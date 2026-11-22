@@ -721,9 +721,16 @@ public final class AiService implements Listener {
         }
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
+        int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
-            plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
-                    scaled, ammo, bot.gun.name(), i == 0);
+            if (plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
+                    scaled, ammo, bot.gun.name(), i == 0) == target) {
+                hits++;
+            }
+        }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), moving, settle, spread, gun.pellets(), hits));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);

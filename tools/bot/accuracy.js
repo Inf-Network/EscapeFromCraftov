@@ -18,9 +18,12 @@
 //            fast as it cycles. Semi-auto rounds must not be lifted; automatic ones only a little,
 //            still creeping up at the end of the magazine.
 //   ai       (not in the default run, about 3 minutes) a solo raid on the proving ground: hits
-//            per soldier shot while standing still versus strafing, in alternating 7 s phases.
-//            Noisy: the rates swing with where the soldiers stand (seen 19% to 44% fewer hits when
-//            strafing), so rerun a single failure before believing it.
+//            per soldier shot while standing still versus strafing, in alternating 7 s phases. The
+//            overall rates swing with where the soldiers stand (seen 19% to 44% fewer hits when
+//            strafing): within 10 m nearly every round hits either way. So the check reads the
+//            server's log of soldier shots: against a strafing bot the cone must be about 1.4x as
+//            wide, and from 10 to 30 m the hit rate under 0.75x the standing one (skipped when the
+//            standing bot took fewer than 20 hits there: too few to tell).
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node accuracy.js [scenario ...]
 //
@@ -510,6 +513,7 @@ async function ai () {
   await rcon(`execute as ${name} at @s run tp @s 36.5 65 30.5 180 0`)
   await sleep(6000)
   // Short alternating phases, so both conditions see the same soldiers at the same distances.
+  const logFrom = logSize()
   const tally = { stand: { hits: 0, shots: 0 }, strafe: { hits: 0, shots: 0 } }
   for (let i = 0; i < 16; i++) {
     const phase = i % 2 ? 'strafe' : 'stand'
@@ -535,8 +539,34 @@ async function ai () {
   const rate = t => t.shots ? t.hits / t.shots : 0
   log('hit rate standing', rate(tally.stand).toFixed(3), tally.stand, 'strafing', rate(tally.strafe).toFixed(3), tally.strafe)
   check('ai: soldiers shot at us in both conditions', tally.stand.shots >= 20 && tally.strafe.shots >= 20, JSON.stringify(tally))
-  check('ai: soldiers hit a strafing player clearly less often', rate(tally.strafe) < 0.85 * rate(tally.stand),
-    `${rate(tally.strafe).toFixed(3)} vs ${rate(tally.stand).toFixed(3)}`)
+  // The server logs every soldier shot with the target's measured speed and whether it hit. Within
+  // 10 m most rounds hit either way (the body is wider than the cone), and how many shots come from
+  // there swings with where the soldiers stand, which is what makes the overall rates above noisy;
+  // from 10 to 30 m the 1.4x cone should cut hits to about half.
+  const shotsLogged = []
+  for (const line of logSince(logFrom)) {
+    const m = line.match(new RegExp(`\\[debug\\] ai \\S+ shot ${name} dist=([0-9.]+) speed=([0-9.]+) moving=([0-9.]+) settle=[0-9.]+ spread=([0-9.]+) pellets=\\d+ hits=(\\d+)`))
+    if (m) shotsLogged.push({ dist: Number(m[1]), speed: Number(m[2]), moving: Number(m[3]), spread: Number(m[4]), hit: Number(m[5]) > 0 })
+  }
+  const group = (still, lo, hi) => shotsLogged.filter(r => (still ? r.speed < 0.05 : r.speed >= 0.15) && r.dist >= lo && r.dist < hi)
+  const hitRate = rs => rs.length ? rs.filter(r => r.hit).length / rs.length : 0
+  for (const [lo, hi] of [[0, 10], [10, 30], [30, 200]]) {
+    const st = group(true, lo, hi)
+    const mv = group(false, lo, hi)
+    log(`soldier shots ${lo}-${hi} m: at us standing ${st.length}, hit ${hitRate(st).toFixed(3)}; strafing ${mv.length}, hit ${hitRate(mv).toFixed(3)},`,
+      `cone x${mv.length ? (mean(mv.map(r => r.moving))).toFixed(2) : '-'}`)
+  }
+  const st = group(true, 10, 30)
+  const mv = group(false, 10, 30)
+  check('ai: soldiers widen their cone about 1.4x against a strafing player', mv.length >= 20 && mean(mv.map(r => r.moving)) >= 1.3,
+    `${mv.length} shots, x${mean(mv.map(r => r.moving)).toFixed(2)}`)
+  const detail = `${hitRate(mv).toFixed(3)} (${mv.length} shots) vs ${hitRate(st).toFixed(3)} (${st.length} shots)`
+  if (st.filter(r => r.hit).length >= 20 && mv.length >= 50) {
+    check('ai: and from 10 to 30 m hit a strafing player clearly less often (under 0.75x)', hitRate(mv) < 0.75 * hitRate(st), detail)
+  } else {
+    // A handful of hits says nothing either way (one run had 12 standing hits at that range).
+    log(`SKIP ai: too few hits from 10 to 30 m to compare (needs 20 on the standing bot) :: ${detail}`)
+  }
   await rcon('cv end').catch(() => {})
 }
 

@@ -63,7 +63,11 @@ public final class WorldService {
         world.setGameRule(GameRule.DO_MOB_LOOT, false);
         world.setGameRule(GameRule.RANDOM_TICK_SPEED, 0);
         world.setGameRule(GameRule.SPECTATORS_GENERATE_CHUNKS, false);
-        world.setDifficulty(Difficulty.HARD);
+        // Not HARD: vanilla multiplies damage from mobs to players by 1.5 there (after our own
+        // numbers, before EntityDamageEvent), which made soldiers hit half again harder than
+        // ai.damage-multiplier says. Hunger is pinned and mobs have no vanilla goals, so nothing
+        // else here depends on the difficulty.
+        world.setDifficulty(Difficulty.NORMAL);
         world.setStorm(false);
         world.setThundering(false);
         world.setAutoSave(!raid);

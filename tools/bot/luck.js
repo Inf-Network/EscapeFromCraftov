@@ -13,10 +13,30 @@
 //                 no soldiers) A searches the even-numbered containers of the map and B the odd ones, every
 //                 item revealed. The share of gold and red items among what A finds in its compensated raids
 //                 is clearly above B's in the same raids and above everything rolled without the boost
-//                 (one-sided two-proportion z-test, p < 0.01); B's share in those raids does not differ from
-//                 the first, unboosted raid (two-sided, p > 0.01); A's compensation counts down to 0 and B's
-//                 never starts. Pity and quota hand-outs are switched off for this one, so only the boost
-//                 differs.
+//                 (one-sided two-proportion z-test, p < 0.01), and all of the difference is A's own
+//                 hand-outs (server log, boost-GOLD / boost-RED): without them A's share does not differ
+//                 from the unboosted rolls (two-sided, p > 0.01), so the containers themselves roll as for
+//                 anyone. B's share in those raids does not differ from the first, unboosted raid, B is
+//                 handed nothing, A's compensation counts down to 0 and B's never starts. Pity and quota
+//                 hand-outs are switched off for this one, so only the boost differs, and the multiplier is
+//                 3 for gold and red (luck.py checks the shipped ones exactly).
+//   handover      H and M deploy as a squad; H leaves its K47 and P18 in a crate, M takes them and both
+//                 extract. Once the raid closes the guns are credited back to H (server log) and neither
+//                 has lost anything (0% of the threshold, no compensation), where H used to book them as a
+//                 loss big enough to set off its compensation.
+//   enemy         X and Y deploy solo into the same raid and do the same: Y's extraction notes the guns as
+//                 another player's gear, and Y's luck books them as a gain (minus their value / threshold),
+//                 while X's loss sets off its compensation.
+//   insured       I deploys with auto insurance (loss-chance and return-minutes 0 for the run) and goes
+//                 missing (`/cv end`); once the raid closes the insured gear coming back is taken off I's
+//                 loss (server log), and what /cv luck shows follows from the settled net.
+//   void          V (luck.quota.chance 1, quota 1,000,000) is handed a quota item, leaves it and goes to the
+//                 lobby mid-raid (evacuated: the raid is voided for it): once the raid closes the quota is
+//                 1,000,000 again. S (the same) and J (1,000 raids on every jackpot) leave their hand-outs
+//                 and the server is stopped: after the restart S's quota is 1,000,000 and J's jackpot counts
+//                 are 1,000 again. C (the same as S) leaves a hand-out and the server is killed (SIGKILL,
+//                 Linux): when C logs in after the restart its quota is 1,000,000 again. This one restarts
+//                 the server with SERVER_DIR/start.sh (detached, output appended to console.log).
 //   refund        R starts with a quota of 1,000,000 and luck.quota.chance 1: the first container that can
 //                 hold gold or red hands out an item (server log). Left in the container, with R dying
 //                 (`/cv end`), half its value comes back into the quota once the raid closes. K does the
@@ -26,7 +46,7 @@
 //                 map) and dies there: nothing is handed out, and pity, quota, history and the loss window
 //                 are as before after each.
 //
-//   node luck.js [all|pity|quota|compensation|refund|proving]
+//   node luck.js [all|pity|quota|compensation|refund|proving|handover|enemy|insured|void]
 //   env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=../../server/run BOOST=4
 //
 // SERVER_DIR is read for maps/rustport.yml, maps/proving.yml, items.yml and loot.yml (with python3 and its
@@ -105,6 +125,8 @@ const NO_HANDOUTS = [
   [/^( {4}chance:) *[\d.]+(\n {4}refund:)/m, '$1 0$2']
 ]
 const QUOTA_FIRST = NO_HANDOUTS.slice(0, 4).concat([[/^( {4}chance:) *[\d.]+(\n {4}refund:)/m, '$1 1$2']])
+// As QUOTA_FIRST, with jackpot pity as configured.
+const VOID_CFG = NO_HANDOUTS.slice(0, 2).concat([[/^( {4}chance:) *[\d.]+(\n {4}refund:)/m, '$1 1$2']])
 
 async function useConfig (extra) {
   let s = original
@@ -143,8 +165,7 @@ function pbv (item, key) {
 const cid = item => pbv(item, 'id')
 const hidden = item => JSON.stringify(item ? item.components || '' : '').match(/search_(hidden|active)/)
 
-function spawnBot (prefix) {
-  const name = prefix + tag
+function spawnBot (prefix, name = prefix + tag) {
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.worldName = ''
@@ -178,13 +199,19 @@ function openWith (bot, fn, ms = 4000) {
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 const inLobby = bot => bot.worldName === 'craftov_lobby'
 
-/** Queues every bot for the map at once and waits until all of them have landed in the same raid. */
-async function deploy (bots, map) {
+/**
+ * Queues every bot for the map at once (or what queue() says each one types, null for nothing: a
+ * squad's leader queues for all of it) and waits until all of them have landed in the same raid.
+ */
+async function deploy (bots, map, queue = () => `/cv queue ${map} NORMAL SOLO`) {
   for (const b of bots) {
     if (!await waitFor(() => inLobby(b), 60000)) throw new Error(b.username + ' is not in the lobby')
   }
   await sleep(1500)
-  for (const b of bots) b.chat(`/cv queue ${map} NORMAL SOLO`)
+  for (const b of bots) {
+    const line = queue(b)
+    if (line) b.chat(line)
+  }
   const ok = await waitFor(() => bots.every(inRaid), 120000)
   await sleep(2000)
   const raids = await rcon('cv raids')
@@ -257,7 +284,10 @@ const share = (k, n) => `${k}/${n} = ${(100 * k / Math.max(1, n)).toFixed(1)}%`
 // ------------------------------------------------------------------ scenarios
 
 async function compensation () {
-  await useConfig(NO_HANDOUTS)
+  // x3 for gold and red: at the shipped x2 / x2.5 the share comes out about 18% against 11%, which
+  // a few hundred items tell apart from B's share in the same raids only now and then.
+  await useConfig(NO_HANDOUTS.concat([[/^( {4}multiplier: \{ GOLD:) *[\d.]+, RED: *[\d.]+/m, '$1 3.0, RED: 3.0']]))
+  markLog()
   const A = await spawnBot('LkA')
   const B = await spawnBot('LkB')
   await rcon(`clear ${B.username}`)
@@ -265,7 +295,9 @@ async function compensation () {
   const map = containers('rustport')
   const mine = (bot, i) => (bot === A ? i % 2 === 0 : i % 2 === 1)
   const found = { A: [], B: [] } // per raid: arrays of item lists
+  const handed = { A: [], B: [] } // per raid: boost hand-outs (server log)
   for (let raid = 0; raid <= BOOST; raid++) {
+    markLog()
     if (!await deploy([A, B], 'rustport')) { check(`raid ${raid}: A and B land in the same raid`, false); break }
     const run = async bot => {
       const items = []
@@ -285,6 +317,10 @@ async function compensation () {
     const [a, b] = await Promise.all([run(A), run(B)])
     found.A.push(a)
     found.B.push(b)
+    for (const [k, bot] of [['A', A], ['B', B]]) {
+      handed[k].push(logLines(new RegExp(`\\[luck\\] ${bot.username} is handed \\S+ \\(◈\\d+, boost-(GOLD|RED)\\)`)).length)
+    }
+    log(`boost hand-outs in raid ${raid}: A ${handed.A[raid]}, B ${handed.B[raid]}`)
     if (!await endRaid([A, B])) { check(`raid ${raid}: both back in the lobby`, false); break }
     await sleep(1500)
     const la = await luck(A.username)
@@ -304,9 +340,15 @@ async function compensation () {
   const zAB = z(gr(aBoost), aBoost.length, gr(bBoost), bBoost.length)
   const zAU = z(gr(aBoost), aBoost.length, gr(unboosted), unboosted.length)
   const zB0 = z(gr(bBoost), bBoost.length, gr(base0), base0.length)
-  log(`A compensated ${share(gr(aBoost), aBoost.length)}, B same raids ${share(gr(bBoost), bBoost.length)}, first raid ${share(gr(base0), base0.length)}`)
+  // A's compensated finds without its own hand-outs (every one is a gold or red item A revealed).
+  const extra = handed.A.slice(1).reduce((x, y) => x + y, 0)
+  const zAown = z(gr(aBoost) - extra, aBoost.length - extra, gr(unboosted), unboosted.length)
+  log(`A compensated ${share(gr(aBoost), aBoost.length)} (${extra} handed out), B same raids ${share(gr(bBoost), bBoost.length)}, first raid ${share(gr(base0), base0.length)}`)
   check(`A finds clearly more gold and red than B in the same raids (z ${zAB.toFixed(2)} > 2.33)`, zAB > 2.33)
   check(`A finds clearly more gold and red than everything unboosted (z ${zAU.toFixed(2)} > 2.33)`, zAU > 2.33)
+  check(`without its ${extra} hand-outs A's containers roll as everyone's (|z| ${Math.abs(zAown).toFixed(2)} < 2.58)`, extra > 0 && Math.abs(zAown) < 2.58)
+  check('A is handed nothing before its compensation starts', handed.A[0] === 0, handed.A)
+  check('B is handed nothing (no compensation)', handed.B.every(n => n === 0), handed.B)
   check(`B in A's compensated raids finds what the unboosted first raid had (|z| ${Math.abs(zB0).toFixed(2)} < 2.58)`, Math.abs(zB0) < 2.58)
   A.quit()
   B.quit()
@@ -452,6 +494,7 @@ async function quota () {
   await rcon(`execute as ${name} at @s run tp @s 89.5 65 3.5`)
   check('quota: extracts at 北门检查站', await waitFor(() => inLobby(Q), 40000))
   const seconds = (Date.now() - landed) / 1000
+  await raidsOver() // the quota is paid in when the raid closes
   await sleep(1500)
   const l = await luck(name)
   log(name, l.text)
@@ -511,6 +554,258 @@ async function proving () {
   await sleep(2000)
 }
 
+
+// ------------------------------------------------------------------ what a raid cost
+
+const GUNS = ['k47', 'p18']
+/** Window slot of player inventory index i (0-8 hotbar, 9-35 main) in an open container window. */
+const bottom = (w, i) => i < 9 ? w.inventoryStart + 27 + i : w.inventoryStart + i - 9
+
+async function extractAt (bot) {
+  await rcon(`execute as ${bot.username} at @s run tp @s 89.5 65 3.5`)
+  return waitFor(() => inLobby(bot), 40000)
+}
+const raidsOver = () => waitFor(async () => (await rcon('cv raids')).includes('没有进行中的行动'), 90000)
+
+/**
+ * giver opens the first crate of the map and leaves its K47 and P18 in it; taker opens it and takes
+ * them. Returns how many guns the taker carries afterwards (with the giver's instance ids).
+ */
+async function handGuns (giver, taker) {
+  const crate = containers('rustport').find(c => c.type === 'crate')
+  const g = await search(giver, crate)
+  if (!g) return 0
+  for (const id of GUNS) {
+    for (let i = 0; i < 36; i++) {
+      const it = g.window.slots[bottom(g.window, i)]
+      if (it && cid(it) === id) { await giver.clickWindow(bottom(g.window, i), 0, 0); await sleep(400); break }
+    }
+  }
+  giver.closeWindow(g.window)
+  await sleep(600)
+  const t = await search(taker, crate)
+  if (!t) return 0
+  const uids = []
+  for (let s = 0; s < t.window.inventoryStart; s++) {
+    const it = t.window.slots[s]
+    if (it && GUNS.includes(cid(it))) { uids.push(pbv(it, 'uid')); await taker.clickWindow(s, 0, 0); await sleep(400) }
+  }
+  taker.closeWindow(t.window)
+  await sleep(600)
+  return taker.inventory.slots.filter(it => it && uids.includes(pbv(it, 'uid'))).length
+}
+
+/** H leaves its guns to squadmate M, both extract: nobody's luck books a loss or a gain. */
+async function handover () {
+  await useConfig([])
+  markLog()
+  const H = await spawnBot('LkH')
+  const M = await spawnBot('LkM')
+  H.chat(`/cv party invite ${M.username}`)
+  await sleep(1200)
+  M.chat('/cv party accept')
+  await sleep(1200)
+  if (!await deploy([H, M], 'rustport', b => (b === H ? '/cv queue rustport NORMAL TRIO false false' : null))) {
+    check('handover: H and M land in the same raid as a squad', false)
+    return
+  }
+  check('handover: M takes both of H\'s guns out of the crate', await handGuns(H, M) === 2)
+  check('handover: H extracts', await extractAt(H))
+  check('handover: M extracts', await extractAt(M))
+  await raidsOver()
+  await sleep(1500)
+  const credit = logLines(new RegExp(`\\[luck\\] ${H.username}'s loss in raid \\S+ is ◈(\\d+) less \\(gear a squadmate carried out ◈(\\d+), insured gear coming back ◈0\\): net ◈(-?\\d+)`))
+  const m = credit[0] && credit[0].match(/is ◈(\d+) less \(gear a squadmate carried out ◈(\d+).*net ◈(-?\d+)/)
+  check('handover: the guns M carried out are credited back to H', !!m && Number(m[2]) >= 20000 && Number(m[3]) === 0, credit)
+  const h = await luck(H.username)
+  const mm = await luck(M.username)
+  log('H', h.text)
+  log('M', mm.text)
+  check('handover: H has lost nothing and gets no compensation', h.loss === 0 && h.boost === 0, h.text)
+  check('handover: M has gained nothing from them', mm.loss === 0 && mm.boost === 0, mm.text)
+  H.quit()
+  M.quit()
+  await sleep(2000)
+}
+
+/** X leaves its guns to Y, an enemy in the same raid: Y's luck books them as a gain, X's as a loss. */
+async function enemy () {
+  await useConfig([])
+  markLog()
+  const X = await spawnBot('LkX')
+  const Y = await spawnBot('LkY')
+  if (!await deploy([X, Y], 'rustport')) { check('enemy: X and Y land in the same raid', false); return }
+  check('enemy: Y takes both of X\'s guns out of the crate', await handGuns(X, Y) === 2)
+  const mark = Y.chatLog.length
+  check('enemy: X extracts', await extractAt(X))
+  check('enemy: Y extracts', await extractAt(Y))
+  await sleep(1500)
+  const note = Y.chatLog.slice(mark).find(c => c.includes('其他玩家带进本局的装备')) || ''
+  const value = Number((note.match(/◈([\d,]+)/) || ['', '0'])[1].replace(/,/g, ''))
+  check('enemy: Y\'s extraction leaves X\'s guns out of its profit (rank, experience)', value >= 20000, note)
+  await raidsOver()
+  await sleep(1500)
+  const x = await luck(X.username)
+  const y = await luck(Y.username)
+  log('X', x.text)
+  log('Y', y.text)
+  const want = -Math.round(value / 20000 * 100)
+  check(`enemy: Y's luck books the guns as a gain (${want}% of the threshold)`, y.loss === want && y.boost === 0, y.text)
+  check(`enemy: X's loss to an enemy sets off its compensation (${BOOST} raids)`, x.boost === BOOST, x.text)
+  X.quit()
+  Y.quit()
+  await sleep(2000)
+}
+
+/** I goes missing with insured gear: what insurance sends back is taken off I's loss. */
+async function insured () {
+  await useConfig([[/^( {2}loss-chance:) *[\d.]+/m, '$1 0'], [/^( {2}return-minutes:) *\d+/m, '$1 0']])
+  markLog()
+  const I = await spawnBot('LkI')
+  const w = await openWith(I, () => I.chat('/cv deploy'))
+  if (w) {
+    await I.clickWindow(34, 0, 0) // auto insurance on
+    await sleep(400)
+    I.closeWindow(w)
+  }
+  const mark = I.chatLog.length
+  if (!await deploy([I], 'rustport')) { check('insured: deployed on rustport', false); return }
+  check('insured: gear insured on deploy', I.chatLog.slice(mark).some(c => /件装备投保/.test(c)), I.chatLog.slice(mark))
+  check('insured: goes missing when the raid is ended', await endRaid([I]))
+  await sleep(1500)
+  const lines = logLines(new RegExp(`\\[luck\\] ${I.username}'s loss in raid`))
+  const m = lines[0] && lines[0].match(/is ◈(\d+) less \(gear a squadmate carried out ◈0, insured gear coming back ◈(\d+)\): net ◈(-?\d+)/)
+  check('insured: the insured gear coming back is taken off the loss', !!m && Number(m[1]) === Number(m[2]) && Number(m[2]) > 0, lines)
+  const l = await luck(I.username)
+  log('I', l.text)
+  if (m) {
+    const net = Number(m[3])
+    check(`insured: /cv luck follows the settled net (◈${net})`, net <= -20000 ? l.boost === BOOST
+      : l.boost === 0 && l.loss === Math.round(-net / 20000 * 100), l.text)
+  }
+  I.quit()
+  await sleep(2000)
+}
+
+// ------------------------------------------------------------------ voided raids
+
+const SERVER_REAL = fs.realpathSync(SERVER_DIR)
+function serverPids () {
+  const out = []
+  for (const pid of fs.readdirSync('/proc').filter(p => /^\d+$/.test(p))) {
+    try {
+      if (fs.readlinkSync(`/proc/${pid}/cwd`) === SERVER_REAL && fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('paper.jar')) out.push(pid)
+    } catch { }
+  }
+  return out
+}
+/** Stops the server (RCON stop, or SIGKILL when kill), starts it again with start.sh and waits for Done. */
+async function restart (kill) {
+  const oldLog = fs.existsSync(LOG) ? fs.statSync(LOG).ino : -1
+  if (kill) {
+    for (const pid of serverPids()) { log('SIGKILL', pid); process.kill(Number(pid), 'SIGKILL') }
+  } else {
+    await rcon('stop').catch(() => {})
+  }
+  const gone = await waitFor(() => serverPids().length === 0, 90000)
+  check(`the server ${kill ? 'is killed' : 'stops'}`, gone)
+  if (!gone) return false
+  await sleep(2000)
+  const out = fs.openSync(path.join(SERVER_DIR, 'console.log'), 'a')
+  require('child_process').spawn(path.join(SERVER_DIR, 'start.sh'), [], { cwd: SERVER_DIR, detached: true, stdio: ['ignore', out, out] }).unref()
+  // A new latest.log (the old one is rolled over at start) that says Done, and RCON answering.
+  const up = await waitFor(async () => fs.existsSync(LOG) && fs.statSync(LOG).ino !== oldLog && /Done \(/.test(fs.readFileSync(LOG, 'utf8'))
+    && await rcon('list').then(() => true, () => false), 180000)
+  check('the server is back', up)
+  await sleep(3000)
+  logFrom = 0 // a new latest.log
+  return up
+}
+
+/**
+ * Searches containers until the server log says bot was handed something by `source` (a regex part),
+ * leaving it where it is. Returns {item, value} or null.
+ */
+async function handedOut (bot, source) {
+  for (const c of containers('rustport')) {
+    if (c.type === 'body_bag') continue
+    const r = await search(bot, c)
+    if (!r) continue
+    bot.closeWindow(r.window)
+    await sleep(200)
+    const line = logLines(new RegExp(`\\[luck\\] ${bot.username} is handed (\\S+) \\(◈(\\d+), ${source}`))[0]
+    if (line) {
+      const m = line.match(/is handed (\S+) \(◈(\d+)/)
+      return { item: m[1], value: Number(m[2]) }
+    }
+  }
+  return null
+}
+
+async function voided () {
+  await useConfig(VOID_CFG)
+  const jackpots = Object.keys(yamlFile(path.join(DATA, 'loot.yml')).jackpots || {})
+  const counts = l => jackpots.map(j => { const m = l.text.match(new RegExp(ITEMS[j].name + ' (\\d+)')); return m ? Number(m[1]) : NaN })
+
+  // Evacuated: leaves the raid world with the hand-out left behind.
+  markLog()
+  const V = await spawnBot('LkV')
+  await rcon(`cv luck ${V.username} quota 1000000`)
+  if (!await deploy([V], 'rustport')) { check('void: V deployed', false); return }
+  const v = await handedOut(V, 'quota')
+  check('void: V is handed a quota item', !!v, v)
+  V.chat('/cv lobby')
+  check('void: V is back in the lobby (evacuated)', await waitFor(() => inLobby(V), 20000))
+  await rcon('cv end')
+  await raidsOver()
+  await sleep(1500)
+  const vl = await luck(V.username)
+  const back = logLines(new RegExp(`\\[luck\\] ${V.username}'s raid \\S+ was voided and \\S+ \\(quota\\) did not go home: ◈(\\d+) back`))
+  check('void: V\'s quota is 1,000,000 again once the raid closes', vl.quota === 1000000 && back.length === 1, `${vl.quota} ${back}`)
+  V.quit()
+
+  // Server stop: S leaves a quota hand-out, J a jackpot after 1,000 raids.
+  markLog()
+  const S = await spawnBot('LkS')
+  const J = await spawnBot('LkJ')
+  await rcon(`cv luck ${S.username} quota 1000000`)
+  for (const j of jackpots) await rcon(`cv luck ${J.username} pity ${j} 1000`)
+  if (!await deploy([S, J], 'rustport')) { check('void: S and J deployed', false); return }
+  const [sOut, jOut] = await Promise.all([handedOut(S, 'quota'), handedOut(J, 'jackpot')])
+  check('void: S is handed a quota item', !!sOut, sOut)
+  check('void: J is handed a jackpot', !!jOut && jackpots.includes(jOut.item), jOut)
+  const jMid = counts(await luck(J.username))
+  check('void: J\'s jackpot counts moved (one 0, the others back to soft-raids)', jMid.includes(0), jMid)
+  if (!await restart(false)) return
+  const sl = await luck(S.username)
+  const jl = await luck(J.username)
+  log('S', sl.text)
+  log('J', jl.text)
+  check('void: after the stop S\'s quota is 1,000,000 again', sl.quota === 1000000, sl.text)
+  check('void: after the stop J\'s jackpot counts are 1,000 again', counts(jl).every(n => n === 1000), counts(jl))
+
+  // Crash: C leaves a quota hand-out and the server is killed.
+  await useConfig(VOID_CFG) // still in the file after the restart: written again to be sure
+  markLog()
+  const name = 'LkC' + tag
+  let C = await spawnBot('LkC', name)
+  await rcon(`cv luck ${name} quota 1000000`)
+  if (!await deploy([C], 'rustport')) { check('void: C deployed', false); return }
+  const cOut = await handedOut(C, 'quota')
+  check('void: C is handed a quota item', !!cOut, cOut)
+  await sleep(11000) // the profile flush runs every 10 s: the spent quota is on disk
+  if (!await restart(true)) return
+  const before = await luck(name)
+  check('void: before C logs in its saved quota is less the hand-out', !!cOut && before.quota === 1000000 - cOut.value, before.text)
+  C = await spawnBot('LkC', name)
+  await sleep(2000)
+  check('void: C is told the raid was voided', C.chatLog.some(m => m.includes('因服务器中断已作废')))
+  const cl = await luck(name)
+  log('C', cl.text)
+  check('void: after the crash C\'s quota is 1,000,000 again', cl.quota === 1000000, cl.text)
+  C.quit()
+  await sleep(2000)
+}
 ;(async () => {
   try {
     if (scenario === 'all' || scenario === 'proving') await proving()
@@ -518,6 +813,10 @@ async function proving () {
     if (scenario === 'all' || scenario === 'quota') await quota()
     if (scenario === 'all' || scenario === 'refund') await refund()
     if (scenario === 'all' || scenario === 'compensation') await compensation()
+    if (scenario === 'all' || scenario === 'handover') await handover()
+    if (scenario === 'all' || scenario === 'enemy') await enemy()
+    if (scenario === 'all' || scenario === 'insured') await insured()
+    if (scenario === 'all' || scenario === 'void') await voided()
   } catch (e) {
     check('no error', false, e.stack)
   } finally {

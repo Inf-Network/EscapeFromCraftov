@@ -576,10 +576,12 @@ public final class LuckService {
 
     /**
      * The player's raid is over for them (extracted, dead or missing). It joins their history and
-     * uses up a compensated raid; a qualifying one pays into the quota and adds one to the raid
-     * count of every jackpot they did not find in it. Its net result, and with it whether the
-     * compensation starts, and hand-outs they did not carry out wait for the raid to close
-     * ({@link #closeRaid}). {@code profile} may be an offline one being edited (missing).
+     * uses up a compensated raid; a qualifying one adds one to the raid count of every jackpot they
+     * did not find in it. Its net result, and with it what a qualifying raid pays into the quota
+     * (the behaviour multiplier counts the raid itself) and whether the compensation starts, and
+     * hand-outs they did not carry out wait for the raid to close ({@link #closeRaid}); a crash
+     * before that leaves the net as booked and pays nothing in. {@code profile} may be an offline
+     * one being edited (missing).
      */
     public void settle(Raid raid, RaidPlayer rp, Profile profile, Outcome outcome) {
         if (!counts(raid)) {
@@ -612,14 +614,13 @@ public final class LuckService {
         if (rp.luck.boosted && luck.boostRaids > 0) {
             luck.boostRaids--;
         }
-        raid.luck.settled.put(rp.uuid, rp.name);
+        raid.luck.settled.put(rp.uuid, new RaidLuck.Settled(rp.name, seconds(rp), rp.luck.searches, qualified));
         if (qualified) {
             for (String id : plugin.loot().jackpots()) {
                 if (!rp.luck.jackpotsFound.contains(id)) {
                     luck.jackpots.merge(id, 1, Integer::sum);
                 }
             }
-            addQuota(luck, income(raid, seconds(rp), rp.luck.searches, behaviour(luck).multiplier()));
         }
         luck.playedAt = now;
     }
@@ -746,13 +747,15 @@ public final class LuckService {
                     + ") from raid " + raid.id + ": ◈" + back + " back into the quota");
         }
         raid.luck.pending.clear();
-        for (Map.Entry<UUID, String> e : raid.luck.settled.entrySet()) {
+        for (Map.Entry<UUID, RaidLuck.Settled> e : raid.luck.settled.entrySet()) {
             UUID uuid = e.getKey();
+            RaidLuck.Settled settled = e.getValue();
             long squad = raid.luck.credit.getOrDefault(uuid, 0L);
             long back = insured.getOrDefault(uuid, 0L);
             plugin.profiles().edit(uuid, () -> "luck: raid " + raid.id + " closed, its luck.raids line: net + up to " + (squad + back)
-                    + " (no more than its loss), open = false, then loss compensation checked",
-                    profile -> finish(raid, profile, squad, back));
+                    + " (no more than its loss), open = false" + (settled.qualified() ? ", luck.quota + its income (" + settled.seconds()
+                    + " s, " + settled.searches() + " searches, times the behaviour multiplier)" : "") + ", then loss compensation checked",
+                    profile -> finish(raid, profile, settled, squad, back));
         }
         raid.luck.settled.clear();
         raid.luck.credit.clear();
@@ -777,10 +780,12 @@ public final class LuckService {
     /**
      * Settles {@code profile}'s net result of the closed raid: what of their gear a squadmate
      * carried out ({@code squad}) or insurance sends back ({@code insured}) is not lost, up to what
-     * they lost (a stack can be counted for two squadmates), and the compensation may start.
+     * they lost (a stack can be counted for two squadmates). Then a qualifying raid pays into the
+     * quota, by a behaviour multiplier that counts it, and the compensation may start.
      */
-    private void finish(Raid raid, Profile profile, long squad, long insured) {
+    private void finish(Raid raid, Profile profile, RaidLuck.Settled settled, long squad, long insured) {
         long now = System.currentTimeMillis();
+        decay(profile.luck, now);
         for (Profile.LuckRaid line : profile.luck.raids) {
             if (!line.open || !raid.id.equals(line.raid)) {
                 continue;
@@ -794,6 +799,13 @@ public final class LuckService {
                         + "): net ◈" + line.net);
             }
             break;
+        }
+        if (settled.qualified()) {
+            double multiplier = behaviour(profile.luck).multiplier();
+            long income = income(raid, settled.seconds(), settled.searches(), multiplier);
+            addQuota(profile.luck, income);
+            plugin.getLogger().info("[luck] " + profile.name + " earns ◈" + income + " quota in raid " + raid.id + " ("
+                    + settled.seconds() + " s, " + settled.searches() + " searches, x" + fmt(multiplier) + "): ◈" + profile.luck.quota);
         }
         compensate(raid, profile, now);
     }

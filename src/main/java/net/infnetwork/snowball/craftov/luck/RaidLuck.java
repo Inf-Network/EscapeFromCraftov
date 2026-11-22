@@ -32,6 +32,12 @@ public final class RaidLuck {
     public final List<Pending> pending = new ArrayList<>();
     /** Player -> value of the gear they brought in that a squadmate carried out (or kept dying). */
     public final Map<UUID, Long> credit = new HashMap<>();
-    /** Players whose raid is over (extracted, dead, missing), by name: their result waits for the close. */
-    public final Map<UUID, String> settled = new LinkedHashMap<>();
+    /**
+     * A player whose raid is over (extracted, dead, missing): their net result, and the quota a
+     * qualifying raid pays in, wait for the close.
+     */
+    public record Settled(String name, int seconds, int searches, boolean qualified) {
+    }
+
+    public final Map<UUID, Settled> settled = new LinkedHashMap<>();
 }

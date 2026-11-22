@@ -31,6 +31,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * roll-off: the sound is placed a few blocks from the listener in the shooter's direction, which
  * keeps the stereo direction while the volume is set exactly. The environment's tail (outdoor echoes
  * or a room's boom) follows the last shot of a burst, so automatic fire stays crisp.
+ *
+ * <p>Shots go out on 50 ms server ticks, and a sound sent in a tick plays when the tick's packets
+ * arrive, so a gun whose interval does not fit the tick would sound uneven (the M4C's 75 ms comes
+ * out as 100, 50, 100, 50). Those guns play one sample every few ticks holding several rounds at
+ * their real interval instead; the bullets themselves still fire tick by tick.
  */
 public final class GunAudio {
 
@@ -47,6 +52,16 @@ public final class GunAudio {
                          UUID shooter) {
     }
 
+    /** A multi-round sample: this many rounds, one every ticks / rounds ticks. */
+    private record Rounds(int rounds, int ticks) {
+    }
+
+    /** Sound sets with multi-round samples for automatic fire (GROUPS in tools/art/gunaudio.py). */
+    private static final Map<String, Rounds> SAMPLES = Map.of(
+            "m4c", new Rounds(2, 3),
+            "sv9", new Rounds(3, 4),
+            "v57", new Rounds(3, 4));
+
     private final CraftovPlugin plugin;
     private final List<Delayed> queue = new ArrayList<>();
     private final Map<UUID, Burst> bursts = new HashMap<>();
@@ -59,13 +74,38 @@ public final class GunAudio {
 
     // ------------------------------------------------------------------ shots
 
+    /**
+     * Rounds in one automatic-fire sample of this gun: more than 1 only when the pack has a sample made
+     * for exactly its rate (a server owner may have changed the rpm in items.yml).
+     */
+    public static int roundsPerSample(GunSpec gun) {
+        Rounds sample = SAMPLES.get(gun.audio());
+        return sample != null && gun.rpm() * sample.ticks() == sample.rounds() * 1200 ? sample.rounds() : 1;
+    }
+
     /** One shot from {@code shooter}'s gun at {@code muzzle}. */
     public void shot(LivingEntity shooter, Location muzzle, GunSpec gun, boolean suppressed) {
+        shot(shooter, muzzle, gun, suppressed, 1);
+    }
+
+    /**
+     * A shot whose report holds {@code rounds} rounds (see {@link #roundsPerSample}); 0 for a round
+     * that a sample started by an earlier shot already played, which only holds back the tail.
+     */
+    public void shot(LivingEntity shooter, Location muzzle, GunSpec gun, boolean suppressed, int rounds) {
         World world = muzzle.getWorld();
         long now = Bukkit.getCurrentTick();
+        if (rounds <= 0) {
+            Burst burst = bursts.get(shooter.getUniqueId());
+            if (burst != null) {
+                bursts.put(shooter.getUniqueId(), new Burst(now, muzzle.clone(), burst.family(), burst.indoor(), burst.suppressed(),
+                        burst.loudness(), burst.shooter()));
+            }
+            return;
+        }
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         float pitch = 0.97f + rng.nextFloat() * 0.06f;
-        String set = "craftov:gun." + gun.audio();
+        String set = "craftov:gun." + gun.audio() + (rounds > 1 ? ".x" + rounds : "");
         double loudness = gun.soundVolume() / 5.0;
         if (shooter instanceof Player player) {
             player.playSound(player, set + (suppressed ? ".fp_s" : ".fp"), SoundCategory.PLAYERS, suppressed ? 0.8f : 1f, pitch);

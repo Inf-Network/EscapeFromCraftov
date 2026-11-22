@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
+import net.infnetwork.snowball.craftov.item.Rarity;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.raid.LootContainer;
@@ -25,16 +26,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Gear insurance. With it switched on, deploying charges a share of the value of your guns, armour,
- * rig and backpack and marks them as insured for that raid. Whoever extracts with a marked item
- * keeps it and the mark is gone (insurance used up, or lost to a looter). Insured items still lying
- * in bodies, containers or on the ground when the raid closes go back to their owner's mailbox,
- * as they were insured: rigs and backpacks come back empty, and guns with only the sight,
- * attachments and rounds they had at deploy. What was fitted or packed in the raid stays there.
- * A player whose raid the server stop voided gets their gear back as it went in, and nothing of
- * theirs is paid out on top.
+ * rig and backpack (more for gold and red pieces) and marks them as insured for that raid. Whoever
+ * extracts with a marked item keeps it and the mark is gone (insurance used up, or lost to a
+ * looter). Insured items still lying in bodies, containers or on the ground when the raid closes
+ * go back to their owner, as they were insured: rigs and backpacks come back empty, and guns with
+ * only the sight, attachments and rounds they had at deploy. What was fitted or packed in the raid
+ * stays there. A player whose raid the server stop voided gets their gear back as it went in, and
+ * nothing of theirs is paid out on top.
+ *
+ * <p>A claim is not a full refund: each item is gone anyway with {@code insurance.loss-chance}
+ * (someone else picked it up), so dying in a solo raid among soldiers no longer costs only the
+ * premium, and what comes back takes {@code insurance.return-minutes} to reach the mailbox.
  */
 public final class InsuranceService {
 
@@ -44,10 +50,36 @@ public final class InsuranceService {
 
     public InsuranceService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        Bukkit.getScheduler().runTaskTimer(plugin, this::deliver, 20L * 5, 20L * 10);
     }
 
+    /** Premium share for items without a rarity rate of their own (insurance.rate). */
     public double rate() {
         return plugin.getConfig().getDouble("insurance.rate", 0.08);
+    }
+
+    /** Premium share for items of {@code rarity}: insurance.rarity-rate for it, else {@link #rate()}. */
+    public double rate(Rarity rarity) {
+        double fallback = switch (rarity) {
+            case GOLD -> 0.12;
+            case RED -> 0.16;
+            default -> rate();
+        };
+        return plugin.getConfig().getDouble("insurance.rarity-rate." + rarity.name(), fallback);
+    }
+
+    public double rate(ItemDef def) {
+        return rate(def.rarity());
+    }
+
+    /** Chance each insured item left behind is gone anyway when the raid closes (insurance.loss-chance). */
+    public double lossChance() {
+        return Math.max(0, Math.min(1, plugin.getConfig().getDouble("insurance.loss-chance", 0.3)));
+    }
+
+    /** Minutes a claim takes to reach the mailbox (insurance.return-minutes; 0 = at once). */
+    public long returnMinutes() {
+        return Math.max(0, plugin.getConfig().getLong("insurance.return-minutes", 30));
     }
 
     private static boolean insurable(@Nullable ItemDef def) {
@@ -56,13 +88,14 @@ public final class InsuranceService {
 
     /** What insuring everything the player carries would cost. */
     public long quote(Player player) {
-        long value = 0;
+        long fee = 0;
         for (ItemStack stack : player.getInventory().getContents()) {
-            if (insurable(plugin.items().defOf(stack))) {
-                value += plugin.items().value(stack);
+            ItemDef def = plugin.items().defOf(stack);
+            if (insurable(def)) {
+                fee += Math.round(plugin.items().value(stack) * rate(def));
             }
         }
-        return Math.round(value * rate());
+        return fee;
     }
 
     /**
@@ -99,7 +132,8 @@ public final class InsuranceService {
                 count++;
             }
         }
-        Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后若没被别人带出，对局结束时退回邮箱。");
+        Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
+                + Math.round((1 - lossChance()) * 100) + "% 的机会找回" + (returnMinutes() > 0 ? "，" + returnMinutes() + " 分钟后退回邮箱。" : "，退回邮箱。"));
         return fee;
     }
 
@@ -150,7 +184,8 @@ public final class InsuranceService {
 
     /**
      * Raid closing: insured items left behind go home, also when they are packed inside a rig or
-     * backpack lying around.
+     * backpack lying around, each one unless the loss roll takes it. What comes back waits in the
+     * profile's claims until {@link #returnMinutes} have passed.
      */
     public void settle(Raid raid) {
         settle(raid, Set.of(), List.of());
@@ -160,7 +195,8 @@ public final class InsuranceService {
      * Raid closing, or the server stopping with players still in it. Those players' raid is void
      * ({@code voided}): their gear goes home as it went in, so nothing of theirs is paid out here
      * as well, wherever it lies. What they had on them ({@code carried}, copies) stays in the raid
-     * like anything lying around, and someone else's insured gear among it goes home to its owner.
+     * like anything lying around, and someone else's insured gear among it goes home to its owner,
+     * with the loss roll and the delay like any other claim.
      */
     public void settle(Raid raid, Set<UUID> voided, List<ItemStack> carried) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
@@ -185,16 +221,73 @@ public final class InsuranceService {
         for (ItemStack stack : carried) {
             claim(raid, stack, returns, voided);
         }
-        returns.forEach((owner, records) -> {
-            plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
-                    + ProfileService.json(records), p -> p.mailbox.addAll(records));
-            plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
+        double loss = lossChance();
+        long minutes = returnMinutes();
+        long readyAt = System.currentTimeMillis() + minutes * 60_000L;
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        returns.forEach((owner, claimed) -> {
+            List<ItemRecord> records = new ArrayList<>();
+            List<ItemRecord> lost = new ArrayList<>();
+            for (ItemRecord record : claimed) {
+                (rng.nextDouble() < loss ? lost : records).add(record);
+            }
+            if (!records.isEmpty()) {
+                if (minutes <= 0) {
+                    plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
+                            + ProfileService.json(records), p -> p.mailbox.addAll(records));
+                } else {
+                    List<Profile.Claim> claims = records.stream().map(r -> new Profile.Claim(r, readyAt)).toList();
+                    plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to claims "
+                            + ProfileService.json(claims), p -> p.claims.addAll(claims));
+                }
+                plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
+            }
+            plugin.getLogger().info("Insurance claim from raid " + raid.id + " for " + owner + ": " + records.size()
+                    + " returned, " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
-                Text.send(player, "<#5BD16B>保险理赔：<white>" + records.size() + " 件装备 <#9AA0A6>已退回仓库邮箱"
+                String back = records.isEmpty() ? "<#FF8A80>投保装备全部没能找回"
+                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (minutes <= 0 ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱");
+                Text.send(player, "<#5BD16B>保险理赔：" + back
+                        + (lost.isEmpty() || records.isEmpty() ? "" : "，<#FF8A80>" + lost.size() + " 件没能找回")
                         + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
         });
+    }
+
+    /** Moves claims that are ready into their online owners' mailboxes (every ten seconds). */
+    private void deliver() {
+        long now = System.currentTimeMillis();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            Profile profile = plugin.profiles().get(player);
+            List<ItemRecord> ready = new ArrayList<>();
+            for (Profile.Claim claim : profile.claims) {
+                if (claim.readyAt <= now) {
+                    ready.add(claim.item);
+                }
+            }
+            if (ready.isEmpty()) {
+                continue;
+            }
+            plugin.profiles().edit(player.getUniqueId(), () -> "insurance claims ready: move to mailbox " + ProfileService.json(ready),
+                    p -> {
+                        p.claims.removeIf(c -> c.readyAt <= now);
+                        p.mailbox.addAll(ready);
+                    });
+            plugin.profiles().saveNow(player.getUniqueId());
+            Text.send(player, "<#5BD16B>保险理赔到账：<white>" + ready.size() + " 件装备 <#9AA0A6>已放入仓库邮箱");
+        }
+    }
+
+    /** When the first of the profile's claims reaches the mailbox (epoch millis), 0 when none is on its way. */
+    public static long nextClaim(Profile profile) {
+        long first = 0;
+        for (Profile.Claim claim : profile.claims) {
+            if (first == 0 || claim.readyAt < first) {
+                first = claim.readyAt;
+            }
+        }
+        return first;
     }
 
     /**

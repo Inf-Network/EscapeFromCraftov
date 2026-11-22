@@ -25,6 +25,9 @@ craftov_hit_head:
 craftov_hit_kill:
   type: single
   file: craftov/hit_kill.png
+craftov_hit_knock:
+  type: single
+  file: craftov/hit_knock.png
 craftov_damage_0:
   type: single
   file: craftov/damage_0.png
@@ -88,6 +91,16 @@ craftov_reload_bar:
     listener:
       class: placeholder
       value: craftov_reload
+      max: '100'
+craftov_draw_bar:
+  type: listener
+  file: craftov/draw_bar.png
+  split: 25
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_draw
       max: '100'
 craftov_extract_bar:
   type: listener

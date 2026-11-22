@@ -12,6 +12,7 @@ import java.util.List;
  * @param adsSpread   cone half-angle in degrees when aiming
  * @param recoil      vertical camera kick per shot in degrees
  * @param recoilH     max horizontal kick per shot in degrees
+ * @param recoilReturn share (0..1) of a spray's camera kick that drifts back once the gun stops firing
  * @param reloadTicks reload duration
  * @param zoom        ADS zoom strength 0..3
  * @param soundVolume how loud the report is (3.5 pistol .. 7 sniper); sets audible range and level
@@ -31,6 +32,7 @@ public record GunSpec(
         double adsSpread,
         double recoil,
         double recoilH,
+        double recoilReturn,
         int reloadTicks,
         int zoom,
         int pellets,
@@ -62,5 +64,11 @@ public record GunSpec(
 
     public double millisBetweenShots() {
         return 60_000.0 / rpm;
+    }
+
+    /** The same gun with {@code damage} per pellet, for a round that lost some of its punch on the way. */
+    public GunSpec withDamage(double damage) {
+        return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, recoil, recoilH,
+                recoilReturn, reloadTicks, zoom, pellets, headMultiplier, sound, soundVolume, moveSpeed, mount, scope, audio, action);
     }
 }

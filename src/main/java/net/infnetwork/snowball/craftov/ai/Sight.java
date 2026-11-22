@@ -1,6 +1,9 @@
 package net.infnetwork.snowball.craftov.ai;
 
+import io.papermc.paper.raytracing.BlockCollisionMode;
+import io.papermc.paper.raytracing.RayTraceTarget;
 import org.bukkit.FluidCollisionMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.World;
@@ -8,16 +11,19 @@ import org.bukkit.block.Block;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
+import java.util.function.Predicate;
+
 /**
  * What gets through a soldier's line of sight. A solid block stops it; a block you can see
  * through (glass, panes, iron bars, fences, leaves) lets half of it through, so two of them in a
- * row leave a quarter and three hide you. Blocks without collision (grass, flowers, open air)
- * do not count. A round fired along the same line is another matter: everything with collision
- * stops it, and of the see-through blocks only glass gives way (the round that hits it breaks it,
- * see Ballistics), so a soldier can see you through a fence, bars or a hedge but not shoot you.
- * Both are block ray traces, which meet a block only inside its own cell: a fence or a wall counts
- * one block high (as it looks), not the 1.5 it is to walk into, so a head showing over a one-high
- * fence can be seen and shot.
+ * row leave a quarter and three hide you. Blocks a player walks through (grass, flowers, signs,
+ * open air) do not count. A round fired along the same line is another matter: every other block
+ * stops it, and of the see-through ones it gets through those the caller says it does (glass it
+ * shatters, and bars and leaves a round goes through, see Ballistics), so a soldier sees you
+ * through a fence but cannot shoot you there. Blocks are met where they are drawn (their outline),
+ * as rounds meet them: a fence or a wall counts one block high, not the 1.5 it is to walk into, so
+ * a head showing over a railing or a parapet can be seen and shot, as a player behind it can
+ * shoot.
  */
 final class Sight {
 
@@ -38,39 +44,46 @@ final class Sight {
 
     /** How much of a sight line from {@code from} to {@code to} gets through: 0 (none) to 1 (clear). */
     static double through(World world, Vector from, Vector to) {
-        return look(world, from, to).seen();
+        return look(world, from, to, block -> false).seen();
     }
 
-    /** What a sight line from {@code from} to {@code to} shows, and whether a round gets along it. */
-    static Line look(World world, Vector from, Vector to) {
+    /**
+     * What a sight line from {@code from} to {@code to} shows, and whether a round gets along it:
+     * through each see-through block on the way that {@code passes}.
+     */
+    static Line look(World world, Vector from, Vector to, Predicate<Block> passes) {
         Vector line = to.clone().subtract(from);
         double length = line.length();
         if (length < 1e-3) {
             return Line.CLEAR;
         }
         Vector dir = line.multiply(1 / length);
-        double left = 1;
+        double shown = 1;
         boolean open = true;
         double travelled = 0;
         for (int i = 0; i < 8 && travelled < length; i++) {
-            RayTraceResult hit = world.rayTraceBlocks(from.clone().add(dir.clone().multiply(travelled)).toLocation(world),
-                    dir, length - travelled, FluidCollisionMode.NEVER, true);
+            Location start = from.clone().add(dir.clone().multiply(travelled)).toLocation(world);
+            double left = length - travelled;
+            RayTraceResult hit = world.rayTrace(b -> b.start(start).direction(dir).maxDistance(left)
+                    .fluidCollisionMode(FluidCollisionMode.NEVER).blockCollisionMode(BlockCollisionMode.OUTLINE)
+                    .blockFilter(block -> !block.isPassable())
+                    .targets(RayTraceTarget.BLOCK));
             if (hit == null || hit.getHitBlock() == null) {
-                return new Line(left, open);
+                return new Line(shown, open);
             }
             Block block = hit.getHitBlock();
             if (!seeThrough(block.getType())) {
                 return Line.BLOCKED;
             }
-            open &= breaks(block.getType());
-            left *= 0.5;
-            if (left < OPAQUE) {
+            open &= passes.test(block);
+            shown *= 0.5;
+            if (shown < OPAQUE) {
                 return Line.BLOCKED;
             }
             // Carry on from where the line leaves this block.
             travelled = Math.max(travelled, exit(from, dir, block)) + 1e-3;
         }
-        return new Line(left, open);
+        return new Line(shown, open);
     }
 
     /**
@@ -106,11 +119,6 @@ final class Sight {
         String name = type.name();
         return name.contains("GLASS") || name.endsWith("_BARS") || name.equals("CHAIN") || name.endsWith("_CHAIN")
                 || Tag.LEAVES.isTagged(type) || Tag.FENCES.isTagged(type) || Tag.FENCE_GATES.isTagged(type);
-    }
-
-    /** Glass and panes, which the first round that hits them breaks (Ballistics.impact); tinted glass holds. */
-    static boolean breaks(Material type) {
-        return type != Material.TINTED_GLASS && type.name().contains("GLASS");
     }
 
     /** Distance along {@code dir} from {@code origin} at which the line leaves {@code block}'s cell. */

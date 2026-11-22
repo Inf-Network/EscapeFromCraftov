@@ -9,7 +9,8 @@
 //
 // insure: end = the raid ends normally; stop = the server stops after the owner died; offline = it
 // stops while the owner is disconnected; two = two raids are running when it stops. The three stop
-// variants leave the server stopped.
+// variants leave the server stopped. insure sets insurance.loss-chance and return-minutes to 0 in
+// config.yml while it runs, so every claim comes back at once, and puts the file back afterwards.
 //
 // Env: PORT / RCON_PORT / RCON_PASS of the local test server (default 25565 / 25575 / craftov-local),
 // CRAFTOV_DATA = its plugins/Craftov folder (default ../../server/run/plugins/Craftov). Profiles are
@@ -19,6 +20,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const pinInsurance = require('./insurance')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
@@ -331,7 +333,17 @@ async function stopServer () {
 
 const noMarks = records => records.every(r => !r.insured && !(r.contents || []).some(c => c.insured))
 
+/** Every insured item comes back at once for these checks (see insurance.js). */
 async function insure () {
+  const restore = await pinInsurance(DATA, rcon, log)
+  try {
+    await insureOne()
+  } finally {
+    await restore()
+  }
+}
+
+async function insureOne () {
   if (variant === 'two') return insureTwoRaids()
   const name = 'In' + tag
   const mate = 'Im' + tag

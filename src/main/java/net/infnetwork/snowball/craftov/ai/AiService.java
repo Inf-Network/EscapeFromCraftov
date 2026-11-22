@@ -231,15 +231,6 @@ public final class AiService implements Listener {
         return bot == null ? null : bot.gun;
     }
 
-    /** Melee class of an AI: "boss", "special" (guards, snipers, escorts) or "normal", or null if not AI. */
-    public @Nullable String meleeClass(Entity entity) {
-        Bot bot = bots.get(entity.getUniqueId());
-        if (bot == null) {
-            return null;
-        }
-        return bot.boss ? "boss" : "patrol".equals(bot.kind) ? "normal" : "special";
-    }
-
     /** True if a shield soldier stops this round: it comes from the front and hits the head, torso or arms. */
     public boolean shieldBlocks(LivingEntity victim, @Nullable LivingEntity shooter, net.infnetwork.snowball.craftov.combat.BodyPart part) {
         Bot bot = bots.get(victim.getUniqueId());
@@ -632,6 +623,9 @@ public final class AiService implements Listener {
             setAttr(z, Attribute.FOLLOW_RANGE, 48);
             setAttr(z, Attribute.KNOCKBACK_RESISTANCE, 0.8);
             setAttr(z, Attribute.SPAWN_REINFORCEMENTS, 0);
+            // Zombies, husks and drowned are born with 2 points of vanilla armour, which took 1.6%
+            // off every bullet and knife on top of the plugin's own armour.
+            setAttr(z, Attribute.ARMOR, 0);
             if (boss) {
                 setAttr(z, Attribute.SCALE, 1.12);
             }
@@ -957,7 +951,7 @@ public final class AiService implements Listener {
             Look look = null;
             double seen = 0;
             if (view > 0 || known || lit) {
-                look = sightLines(mob, player);
+                look = sightLines(bot, player);
                 seen = look.shown();
             }
             if (seen > 0 && (known || lit)) {
@@ -1035,11 +1029,14 @@ public final class AiService implements Listener {
 
     /**
      * How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets
-     * through, and whether a round would: blocks as {@link Sight#look}, and smoke hides what is
-     * behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
+     * through, and whether one of its rounds would: blocks as {@link Sight#look}, and smoke hides
+     * what is behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
      */
-    private Look sightLines(LivingEntity looker, Player player) {
-        Vector eye = looker.getEyeLocation().toVector();
+    private Look sightLines(Bot bot, Player player) {
+        Vector eye = bot.mob.getEyeLocation().toVector();
+        AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
+        int pen = ammo == null ? 1 : ammo.penetration();
+        Ballistics ballistics = plugin.weapons().ballistics();
         Vector feet = player.getLocation().toVector();
         double[] heights = aimHeights(player);
         double[] seen = new double[heights.length];
@@ -1050,7 +1047,7 @@ public final class AiService implements Listener {
             if (smoke > SMOKE_OPAQUE) {
                 continue;
             }
-            Sight.Line line = Sight.look(player.getWorld(), eye, point);
+            Sight.Line line = Sight.look(player.getWorld(), eye, point, block -> ballistics.passes(block, pen));
             seen[i] = line.seen() * (1 - 0.5 * smoke / SMOKE_OPAQUE);
             open[i] = line.open();
         }
@@ -1120,7 +1117,7 @@ public final class AiService implements Listener {
         Location eye = bot.mob.getEyeLocation();
         Vector point = aimPoint(target, bot.targetLook);
         if (point == null) {
-            // It sees the target only through something that stops rounds (a fence, bars, a hedge):
+            // It sees the target only through something that stops its rounds (a fence, say):
             // move for a clear shot rather than empty the magazine into it. Snipers hold fire.
             reposition(bot, target, now);
             return;
@@ -1131,11 +1128,24 @@ public final class AiService implements Listener {
             reposition(bot, target, now);
             return;
         }
-        // Rounds are hitscan, so there is nothing to lead. Bukkit's velocity of a walking player reads
-        // zero (and about -0.08 straight down when it stands), so what it is doing comes from its keys.
-        double moving = moving(target) ? 1.4 : 1.0;
-        double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
-        fireRound(bot, eye, point, aimError(bot) * moving * settle, now);
+        // Rounds are hitscan, so there is nothing to lead: a moving target is just harder to hold on.
+        fireRound(bot, eye, point, aimError(bot) * movingFactor(target) * settle(bot, now), now, target);
+    }
+
+    /**
+     * How much wider a soldier's rounds land around a moving target: x1.4 at a walk, up to x1.52 at a
+     * sprint. Bukkit's velocity of a walking player reads zero (and about -0.08 straight down when it
+     * stands), so this uses the speed measured from its position each tick; a player pressing into a
+     * wall is standing still.
+     */
+    private double movingFactor(Player target) {
+        return 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
+                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
+    }
+
+    /** x2.6 on the first shot of a fight, settling to x1 over 3 s. */
+    private static double settle(Bot bot, long now) {
+        return 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
     }
 
     /**
@@ -1166,9 +1176,10 @@ public final class AiService implements Listener {
     /**
      * One pull of the trigger at {@code point}: the rounds land within {@code error} metres of it
      * (more when dazzled or shooting past smoke), with the muzzle flash, sound and casing, and the next
-     * shot timed by the gun's rate of fire and the burst.
+     * shot timed by the gun's rate of fire and the burst. {@code target} is who it shoots at (null:
+     * a spot), for the debug log of soldier shots.
      */
-    private void fireRound(Bot bot, Location eye, Vector point, double error, long now) {
+    private void fireRound(Bot bot, Location eye, Vector point, double error, long now, @Nullable Player target) {
         GunSpec gun = bot.gun.gun();
         bot.burstLeft--;
         bot.ammoLeft--;
@@ -1188,9 +1199,19 @@ public final class AiService implements Listener {
         // get less: scaledGun halves the head multiplier); nothing scales it again on the way
         // (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
+        int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
-            plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
-                    scaled, ammo, bot.gun.name(), i == 0);
+            LivingEntity hit = plugin.weapons().ballistics().fire(bot.mob, eye,
+                    Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)), scaled, ammo, bot.gun.name(), i == 0);
+            if (target != null && hit == target) {
+                hits++;
+            }
+        }
+        if (target != null && plugin.getConfig().getBoolean("debug", false)) {
+            // aim: how high above the target's feet it aimed (the chest, or the head over low cover).
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d aim=%.2f",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), movingFactor(target), settle(bot, now),
+                    spread, gun.pellets(), hits, point.getY() - target.getLocation().getY()));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);
@@ -1208,7 +1229,7 @@ public final class AiService implements Listener {
 
     /**
      * Where to aim at {@code target}, among the parts it sees and a round would reach (not through a
-     * fence, bars or leaves): the chest (misses then land on the body or past it, rarely the head),
+     * fence, say): the chest (misses then land on the body or past it, rarely the head),
      * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
      * none of them. {@code look} is the last look at the target; without one the chest.
      */
@@ -1270,7 +1291,7 @@ public final class AiService implements Listener {
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
-                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
+                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.zoom(),
                 gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
     }
 
@@ -1289,15 +1310,14 @@ public final class AiService implements Listener {
         Raid raid = bot.raid;
         DamageService.LastHit hit = plugin.damage().lastHit(bot.mob.getUniqueId());
         Player killer = hit == null || hit.attacker() == null ? null : Bukkit.getPlayer(hit.attacker());
-        if (killer != null) {
-            RaidPlayer rp = raid.player(killer.getUniqueId());
-            if (rp != null) {
-                rp.aiKills++;
-                plugin.tasks().onAiKill(killer, bot.boss, hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD,
-                        plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
-            }
+        RaidPlayer rp = killer == null ? null : raid.player(killer.getUniqueId());
+        // Only a killer still in the raid: one who has died or got out had their kills saved then.
+        if (killer != null && rp != null && rp.active()) {
+            rp.aiKills++;
+            // A knife kill is one the killing record says was a cut, not whatever is in hand now.
+            plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>爆头" : "")));
+                    + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
             if (bot.boss) {
                 plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
             }
@@ -1343,7 +1363,7 @@ public final class AiService implements Listener {
         }
         ContainerType crate = plugin.loot().type(bot.boss ? "vault" : "parcel");
         if (crate != null) {
-            items.addAll(plugin.loot().roll(crate, bot.raid.tier.lootShift() + (bot.boss ? 1 : 0)));
+            items.addAll(plugin.loot().roll(crate, bot.raid.tier.shift(bot.boss ? 1 : 0)));
         }
         if (rng.nextDouble() < 0.35) {
             ItemDef med = plugin.loot().pick(Category.MEDICAL, Rarity.GREEN, rng);
@@ -1571,7 +1591,7 @@ public final class AiService implements Listener {
         if (bot.burstLeft <= 0) {
             bot.burstLeft = burst(gun, distance, 2, 5);
         }
-        fireRound(bot, eye, point, aimError(bot) * 2.5, now);
+        fireRound(bot, eye, point, aimError(bot) * 2.5, now, null);
         if (bot.burstLeft <= 0) {
             bot.nextShotTick += ThreadLocalRandom.current().nextInt(20, 40);
         }

@@ -53,9 +53,12 @@
 // running, with test mode on (test.enabled) so the bots can queue for the proving ground. After
 // each stop the script starts it again with SERVER_DIR/start.sh (detached, output appended to
 // SERVER_DIR/console.log); with NO_START=1 it only waits for somebody else (a restart loop) to bring
-// it back. Exits 0 when every check passes, 1 otherwise.
+// it back. Exits 0 when every check passes, 1 otherwise. For the run
+// SERVER_DIR/plugins/Craftov/config.yml gets insurance.loss-chance and return-minutes 0 (every
+// insured item back at once); the file is put back at the end.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const pinInsurance = require('./insurance')
 const fs = require('fs')
 const net = require('net')
 const path = require('path')
@@ -926,7 +929,11 @@ async function crashVoid () {
 }
 
 ;(async () => {
+  // Every insured item must come back at once for the checks above (insurance.js): pinned for the
+  // run, read again on the restart, and put back at the end.
+  let restoreInsurance = async () => {}
   try {
+    restoreInsurance = await pinInsurance(path.join(SERVER_DIR, 'plugins', 'Craftov'), rcon, log)
     if (await setup() && await stopAndRestart()) {
       await afterRestart()
       if (process.argv.includes('--crash')) {
@@ -938,6 +945,7 @@ async function crashVoid () {
   } catch (e) {
     check('scenario ran without errors', false, e.stack)
   }
+  await restoreInsurance()
   for (const bot of Object.values(bots)) { try { bot.quit() } catch { } }
   log(failures.length ? `FAILED ${failures.length}: ${failures.join('; ')}` : 'ALL PASSED')
   setTimeout(() => process.exit(failures.length ? 1 : 0), 500)

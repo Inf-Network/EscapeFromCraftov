@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.hud;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Equippable;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
@@ -152,7 +153,7 @@ public final class HudService {
                 } else {
                     int total = Math.max(1, plugin.raids().raidOf(player).map.raidSeconds());
                     infoBar.name(Text.mm("<#F2E6C8>" + Text.escape(data.mapName(player)) + " <#8A8F98>" + data.tierName(player)
-                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.carried(player))
+                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.gearValue(player))
                             + "  <#9AA0A6>撤离 " + Text.escape(data.nearestExtract(player))));
                     infoBar.progress(Math.max(0f, Math.min(1f, data.remaining(player) / (float) total)));
                     infoBar.color(data.remaining(player) < 300 ? BossBar.Color.RED : BossBar.Color.YELLOW);
@@ -178,7 +179,9 @@ public final class HudService {
                 if (data.gun(player) != null) {
                     int reload = data.reloadPercent(player);
                     sb.append("  <white>").append(Text.escape(weapon)).append(' ')
-                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%" : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
+                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%"
+                                    : data.drawing(player) ? "<#C8CCD2>拔枪 " + data.drawPercent(player) + "%"
+                                    : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
                                     + "<#8A8F98>/" + data.reserve(player) + " " + data.fireMode(player));
                 }
                 String injuries = data.injuries(player);
@@ -192,7 +195,7 @@ public final class HudService {
             } else if (plugin.lobby().isLobby(player.getWorld())) {
                 var profile = plugin.profiles().get(player);
                 infoBar.name(Text.mm("<#F2C94C>◈ " + Text.money(profile.money) + "  <#9AA0A6>Lv." + profile.level + "  "
-                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().carriedValue(player))
+                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
                         + "  <#8A8F98>干员 " + plugin.operators().of(player).name()));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);
@@ -212,12 +215,24 @@ public final class HudService {
         };
     }
 
-    public void hitMarker(Player shooter, boolean head, boolean kill) {
+    /**
+     * The marker at the crosshair for one hit: white, yellow for the head, an orange ring for a
+     * knock-down and a bold red cross for a kill.
+     */
+    public void hitMarker(Player shooter, boolean head, DamageService.Outcome outcome) {
         if (betterHud) {
-            plugin.betterHud().popup(shooter, kill ? "craftov_hit_kill" : head ? "craftov_hit_head" : "craftov_hit");
+            plugin.betterHud().popup(shooter, switch (outcome) {
+                case KILLED -> "craftov_hit_kill";
+                case DOWNED -> "craftov_hit_knock";
+                case HIT -> head ? "craftov_hit_head" : "craftov_hit";
+            });
             return;
         }
-        String mark = kill ? "<#FF4D4D><b>✖</b>" : head ? "<#FFC23D>✕" : "<white>✕";
+        String mark = switch (outcome) {
+            case KILLED -> "<#FF4D4D><b>✖</b>";
+            case DOWNED -> "<#FF9A3C><b>⊗</b>";
+            case HIT -> head ? "<#FFC23D>✕" : "<white>✕";
+        };
         shooter.sendTitlePart(TitlePart.TIMES, Title.Times.times(Duration.ZERO, Duration.ofMillis(150), Duration.ofMillis(100)));
         shooter.sendTitlePart(TitlePart.SUBTITLE, Text.mm(mark));
         shooter.sendTitlePart(TitlePart.TITLE, Text.mm(""));

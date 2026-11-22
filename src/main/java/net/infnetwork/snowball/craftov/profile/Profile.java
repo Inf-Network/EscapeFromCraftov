@@ -37,6 +37,8 @@ public final class Profile {
      * read and claimed in the stash mailbox. Oldest first.
      */
     public List<Mail> mail = new ArrayList<>();
+    /** Insured gear on its way back (InsuranceService): moves to the mailbox once it is ready. */
+    public List<Claim> claims = new ArrayList<>();
 
     public Set<String> collected = new LinkedHashSet<>();
     public Set<Integer> collectionRewards = new LinkedHashSet<>();
@@ -227,6 +229,20 @@ public final class Profile {
 
         public boolean hasAttachments() {
             return money > 0 || items != null && !items.isEmpty();
+        }
+    }
+
+    /** One insured item coming back: it reaches the mailbox once {@code readyAt} (epoch millis) has passed. */
+    public static final class Claim {
+        public ItemRecord item;
+        public long readyAt;
+
+        public Claim() {
+        }
+
+        public Claim(ItemRecord item, long readyAt) {
+            this.item = item;
+            this.readyAt = readyAt;
         }
     }
 

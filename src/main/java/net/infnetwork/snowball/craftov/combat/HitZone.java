@@ -19,12 +19,24 @@ public enum HitZone {
         return displayName;
     }
 
-    /** Classifies a hit by its height within the target's bounding box. */
+    /**
+     * Classifies a hit by its height within the target's bounding box. Only right for an upright
+     * target: {@link BodyPart#of} classifies a prone player along its body instead.
+     */
     public static HitZone of(LivingEntity target, Vector point) {
-        BoundingBox box = target.getBoundingBox();
+        return of(target.getBoundingBox(), target.getEyeHeight(), point);
+    }
+
+    /**
+     * Classifies a hit by its height within {@code box}, a body whose eyes are {@code eyeHeight} above
+     * its feet: the target's box as the shooter saw it, which lag compensation rewinds
+     * ({@link HitboxHistory}). The head line moves with the eyes, so a hit is read on the pose it was
+     * aimed at, not on the one the target has taken since (crouching moves it from 72% to 63% up).
+     */
+    public static HitZone of(BoundingBox box, double eyeHeight, Vector point) {
         double height = Math.max(0.1, box.getHeight());
         double rel = (point.getY() - box.getMinY()) / height;
-        double headLine = Math.max(0.0, (target.getEyeHeight() - 0.32) / height);
+        double headLine = Math.max(0.0, (eyeHeight - 0.32) / height);
         if (rel >= headLine) {
             return HEAD;
         }

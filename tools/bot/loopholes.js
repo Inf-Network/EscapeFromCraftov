@@ -6,12 +6,15 @@
 //                                                 insgun|profit|stacks|selfkill|rank|bounty|all]
 //
 // CRAFTOV_RUN points at the server directory (default ../../server/run) so the script can read
-// player profiles from plugins/Craftov/data/players. Bots use random names, so they start as new
-// accounts (starter loadout, ◈150,000). Prints PASS/FAIL lines and exits 1 on any failure.
+// player profiles from plugins/Craftov/data/players; insurance and insgun set insurance.loss-chance
+// and return-minutes to 0 in its config.yml while they run (insurance.js). Bots use random names, so
+// they start as new accounts (starter loadout, ◈150,000). Prints PASS/FAIL lines and exits 1 on any
+// failure.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rcon = require('./rcon')
+const pinInsurance = require('./insurance')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON_PORT = Number(process.env.RCON_PORT || 25575)
@@ -687,10 +690,15 @@ const scenarios = { kit, stash, overfull, escort, escortraid, insurance, insgun,
   const run = which === 'all' ? Object.keys(scenarios).filter(s => s !== 'bounty' && s !== 'rank') : which.split(',')
   for (const name of run) {
     log('====', name)
+    // These check what an insurance claim sends back, so every insured item must come back at once.
+    const restore = ['insurance', 'insgun'].includes(name)
+      ? await pinInsurance(path.join(RUN, 'plugins/Craftov'), cmd, (...a) => log(name, ...a)) : null
     try {
       await scenarios[name]()
     } catch (err) {
       check(`${name}: ran without errors`, false, err.stack)
+    } finally {
+      if (restore) await restore()
     }
     // No `cv end` here: on a server up for less than a raid's length it leaves the raid running
     // forever and open to backfill. Every scenario gets its bots out of the raid itself.

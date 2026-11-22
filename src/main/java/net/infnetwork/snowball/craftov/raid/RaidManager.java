@@ -151,7 +151,8 @@ public final class RaidManager implements Listener {
         }
         RaidPlayer rp = session(player);
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
-                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
+                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX)
+                && !plugin.downed().isReviving(player);
     }
 
     /**
@@ -188,7 +189,17 @@ public final class RaidManager implements Listener {
         return rp != null && rp.active() && Bukkit.getCurrentTick() >= rp.protectedUntil;
     }
 
+    /**
+     * Whether {@code attacker} may hurt {@code victim}: in a raid or on the range only a combatant can
+     * be hurt at all, players only by enemies in their own raid (or squadmates with friendly fire on),
+     * and soldiers never hurt each other. Bullets that may not hurt an entity fly through it.
+     */
     public boolean canDamage(LivingEntity attacker, LivingEntity victim) {
+        // Only where guns fire: the vanilla damage handler asks this too, and in an editor world an
+        // admin in creative must still be able to punch away a stray armour stand or mob.
+        if (!isCombatant(victim) && isCombatWorld(victim.getWorld())) {
+            return false;
+        }
         RaidPlayer standsFor = standInOwner(victim);
         if (attacker instanceof Player a && standsFor != null) {
             // A stand-in is its player: squadmates cannot hurt it without friendly fire.
@@ -243,6 +254,22 @@ public final class RaidManager implements Listener {
     private boolean inCombat(RaidPlayer rp, long now) {
         long window = plugin.getConfig().getLong("raid.combat-logout-seconds", 15) * 20L;
         return window > 0 && rp.lastCombatTick >= 0 && now - rp.lastCombatTick < window;
+    }
+
+    /**
+     * Players, the stand-ins of disconnected players, soldiers, drones and range dummies: the only
+     * living things that take hits in a raid or on the range. Anything else alive there is scenery
+     * (corpses, kill-replay stand-ins, whatever decoration comes next), so a shot passes through it
+     * instead of stopping in mid-air with a hit marker.
+     */
+    public boolean isCombatant(LivingEntity entity) {
+        return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
+                || plugin.lobby().isTarget(entity) || standInOwner(entity) != null;
+    }
+
+    /** Raid worlds and the private range: the only worlds where anyone can fire a gun. */
+    private boolean isCombatWorld(World world) {
+        return isRaidWorld(world) || plugin.range().isRangeWorld(world);
     }
 
     public boolean sameSquad(Player a, Player b) {
@@ -323,6 +350,18 @@ public final class RaidManager implements Listener {
     }
 
     private void deploy(Raid raid) {
+        // The fee was checked at launch, but the squads stay in the lobby while the map loads and
+        // can spend money meanwhile: whoever can no longer pay drops out here instead of starting
+        // the raid in debt.
+        long entryFee = Math.max(0, raid.tier.entryFee());
+        for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+            Player player = Bukkit.getPlayer(rp.uuid);
+            if (entryFee > 0 && player != null && plugin.profiles().get(player).money < entryFee) {
+                withdraw(raid, rp, "付不起入场费");
+                Text.send(player, "<#FF8A80>未能出发：块币不足以支付" + raid.tier.name() + "的入场费 ◈" + Text.money(entryFee)
+                        + "（匹配成功后花掉了），已退出本局。<#9AA0A6>装备和安全箱都没有动。");
+            }
+        }
         if (raid.players.isEmpty()) {
             // Everyone dropped out while the map loaded (see onQuit): nothing to deploy. tickSecond
             // closes it in a moment; unloading the world right away cuts off chunk generation the
@@ -340,7 +379,7 @@ public final class RaidManager implements Listener {
                 continue;
             }
             LootContainer container = new LootContainer(LootContainer.newId(), type, def.pos().at(world),
-                    raid.tier.lootShift() + def.tier(), type.name());
+                    raid.tier.shift(def.tier()), type.name());
             container.spawn(def.pos().yaw());
             raid.containers.put(container.id, container);
         }
@@ -454,8 +493,10 @@ public final class RaidManager implements Listener {
         List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
         takenIn.addAll(rp.secure);
         rp.broughtIn = stackCounts(takenIn);
-        rp.gearValue = plugin.carry().carriedValue(player);
-        rp.startValue = rp.gearValue + recordsValue(rp.secure);
+        rp.gearValue = plugin.carry().gearValue(player);
+        // Profit is measured on everything, the knife included, as extraction counts it: a knife
+        // brought in cancels out and one found in the raid is profit.
+        rp.startValue = plugin.carry().carriedValue(player) + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
@@ -900,8 +941,9 @@ public final class RaidManager implements Listener {
 
     /**
      * The flat experience for getting out: in full for players who brought in gear worth at least
-     * rank.extract-xp-min-gear, in proportion below that. Walking out naked earned 150 a run with
-     * nothing at stake; profit and kills still earn their own experience.
+     * rank.extract-xp-min-gear (gear value, so a knife alone earns none of it), in proportion below
+     * that. Walking out naked earned 150 a run with nothing at stake; profit and kills still earn
+     * their own experience.
      */
     private double extractXp(RaidPlayer rp) {
         double base = plugin.getConfig().getDouble("rank.extract-xp", 150);
@@ -943,8 +985,7 @@ public final class RaidManager implements Listener {
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
         Location at = player.getLocation();
-        long lost = plugin.carry().carriedValue(player);
-        // Body with everything the player carried.
+        // Body with everything the player carried but the melee weapon, which is kept.
         List<ItemStack> drop = new ArrayList<>();
         ItemStack melee = player.getInventory().getItem(CarryService.MELEE_SLOT);
         for (int slot = 0; slot <= CarryService.HEAD; slot++) {
@@ -954,10 +995,19 @@ public final class RaidManager implements Listener {
             }
         }
         // Whatever was held on the cursor (a picked-up backpack with everything in it, say) is carried too.
+        // A knife too: only the one in the melee slot is kept, so one on the cursor is a second knife and
+        // goes into the body like a second knife in a pocket. It used to be left out and then deleted by
+        // setItemOnCursor(null), while extracting or leaving mails it home. Nothing in normal play puts
+        // a knife there (the melee slot cannot be picked up and loot screens never use the cursor).
         ItemStack cursor = player.getItemOnCursor();
-        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor) && !plugin.carry().isMelee(cursor)) {
+        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor)) {
             drop.add(cursor.clone());
-            lost += plugin.items().value(cursor);
+        }
+        // What was lost is what the body holds, as in missing(). The kept knife used to count too,
+        // so a karambit made every death cost more rank points and showed in the report's loss.
+        long lost = 0;
+        for (ItemStack stack : drop) {
+            lost += plugin.items().value(stack);
         }
         spawnCorpse(raid, at, drop, player);
         player.getInventory().clear();
@@ -1003,8 +1053,12 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Credits a player's death to the player behind {@code hit}, if any. Your own grenade is no
-     * kill: it would count for the daily contract and pay the top player his own house bounty.
+     * Credits a player's death (in the raid or offline) to the player behind {@code hit}, if any.
+     * Your own grenade is no kill: it would count for the daily contract and pay the top player his
+     * own house bounty. Nor is a squadmate's, with friendly fire on: a squad could otherwise cash in
+     * its own member's bounty. Nor does a killer who has already died or got out get one (a wound of
+     * theirs bleeding out later, say): their kills were counted and saved when they left, so a late
+     * one would pay the bounty and the contract but never reach their stats.
      */
     private void creditKill(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim) {
         if (hit == null || hit.attacker() == null || hit.attacker().equals(victim.uuid)) {
@@ -1012,7 +1066,7 @@ public final class RaidManager implements Listener {
         }
         Player killer = Bukkit.getPlayer(hit.attacker());
         RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
-        if (kr != null) {
+        if (kr != null && kr.active() && kr.squad != victim.squad) {
             kr.kills++;
             plugin.tasks().onPlayerKill(killer);
             plugin.bounties().onKill(killer, victim, raid);
@@ -1445,15 +1499,18 @@ public final class RaidManager implements Listener {
 
     /**
      * A disconnected player's wounds bleed on (HealthService): out of their stand-in, which dies of
-     * it like the player would, or out of the health kept for them while they have none.
+     * it like the player would, or out of the health kept for them while they have none. As for a
+     * player, the bleeding of a wound the stand-in's last attacker made ({@code sources}) keeps
+     * their kill credit going.
      */
-    public void bleedOffline(Raid raid, RaidPlayer rp, double amount, net.infnetwork.snowball.craftov.combat.BodyPart worst) {
+    public void bleedOffline(Raid raid, RaidPlayer rp, double amount, net.infnetwork.snowball.craftov.combat.BodyPart worst,
+                             java.util.Set<UUID> sources) {
         if (rp.state != RaidPlayer.State.DISCONNECTED) {
             return;
         }
         Mannequin standIn = rp.standIn != null && rp.standIn.isValid() ? rp.standIn : null;
         if (standIn != null) {
-            plugin.damage().recordHit(standIn, null, "失血", worst);
+            plugin.damage().recordBleed(standIn, "失血", worst, sources);
             plugin.damage().deal(standIn, null, amount); // a lethal amount ends in onStandInDamage
             standIn.getWorld().spawnParticle(Particle.BLOCK, standIn.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                     Material.REDSTONE_BLOCK.createBlockData());
@@ -1461,7 +1518,8 @@ public final class RaidManager implements Listener {
         }
         rp.offlineHealth -= amount;
         if (rp.offlineHealth <= 0) {
-            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, Bukkit.getCurrentTick()));
+            long now = Bukkit.getCurrentTick();
+            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, now, false, now));
         }
     }
 
@@ -1546,7 +1604,7 @@ public final class RaidManager implements Listener {
         String line = hit == null || hit.attacker() == null
                 ? "<#8A8F98>☠ <white>" + Text.escape(victim)
                 : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
+                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
         for (Player player : raid.online()) {
             player.sendMessage(Text.mm(line));
         }
@@ -1806,12 +1864,16 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ voluntary exit / shutdown
 
-    /** Gives up the raid (counts as death). */
+    /**
+     * Gives up the raid (counts as death). Whoever hurt the player in the last 30 seconds, or
+     * knocked them down, still gets the kill: giving up from the terminal while crawling or about to
+     * die would otherwise deny them it and the bounty.
+     */
     public void surrender(Player player) {
         Raid raid = raidOf(player);
         RaidPlayer rp = session(player);
         if (raid != null && rp != null && rp.active()) {
-            die(raid, player, rp, "放弃行动", null);
+            die(raid, player, rp, "放弃行动", plugin.downed().killingHit(player));
         }
     }
 
@@ -2508,6 +2570,11 @@ public final class RaidManager implements Listener {
         }
         if (event.getFinalDamage() >= player.getHealth()) {
             event.setCancelled(true);
+            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                // Cancelled, so HealthService.onFallen never sees it: the legs still break, and the
+                // fall is named as the cause.
+                plugin.health().fallen(player, event.getDamage());
+            }
             DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
             if (hit == null && event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof LivingEntity living) {
                 plugin.damage().recordHit(player, living, "近战", net.infnetwork.snowball.craftov.combat.HitZone.TORSO);
@@ -2764,12 +2831,13 @@ public final class RaidManager implements Listener {
             // Still in the lobby and nothing charged or taken yet (prepare runs at deployment):
             // the player just drops out of this raid. LobbyService.onQuit then saves the real
             // inventory as the loadout; the secure container is never touched.
-            withdraw(raid, rp);
+            withdraw(raid, rp, "在部署前断开连接");
             return;
         }
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
-            die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
+            // As if bleeding out: the knocker keeps the kill and the bounty past the 30 seconds.
+            die(raid, player, rp, "倒地后断线", plugin.downed().killingHit(player));
             byPlayer.remove(player.getUniqueId());
             player.getInventory().clear();
             return;
@@ -2814,8 +2882,8 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
     }
 
-    /** Takes a player out of a raid that has not deployed yet and tells their squad. */
-    private void withdraw(Raid raid, RaidPlayer rp) {
+    /** Takes a player out of a raid that has not deployed yet and tells their squad why ({@code reason}). */
+    private void withdraw(Raid raid, RaidPlayer rp, String reason) {
         raid.players.remove(rp.uuid);
         // Squad lists keep their place even when emptied: their index is the squad number.
         for (List<UUID> squad : raid.squads) {
@@ -2825,10 +2893,10 @@ public final class RaidManager implements Listener {
         for (RaidPlayer mate : raid.players.values()) {
             Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
             if (p != null) {
-                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> 在部署前断开连接，已退出本局。");
+                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
             }
         }
-        plugin.escorts().onWithdraw(rp.uuid, rp.name);
+        plugin.escorts().onWithdraw(rp.uuid, rp.name, reason);
     }
 
     /** Called by loot menus so systems (escort, stats) can react to looting. */
@@ -2838,7 +2906,9 @@ public final class RaidManager implements Listener {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
-        if (def != null && (def.rarity().tier() >= 5)) {
+        // Gold and red finds are worth telling the squad about; ammo is not, even gold rounds, which
+        // come in several stacks and would send a line for each one taken.
+        if (def != null && def.rarity().tier() >= 5 && def.category() != Category.AMMO) {
             Raid raid = raidOf(player);
             if (raid != null) {
                 for (RaidPlayer mate : raid.squadOf(rp)) {

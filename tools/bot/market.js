@@ -1,20 +1,22 @@
-// Market price rules (issue #13), end to end through the GUIs:
-//  1. pricing screen: reference price = value x 0.85, the + buttons stop at 3x (vest, 60 rounds of 9mm);
-//  2. system buyers: a vest listed at 1.2x sells SALES times, relisted after every sale; the trade
-//     price never moves and the trader -> market round trip loses money;
+// Market price rules (issues #13 and #22), end to end through the GUIs:
+//  1. pricing screen: reference price = value x 0.85, the + buttons stop at 3x (vest, 60 rounds of 9mm),
+//     and system buyers never buy above their price (0.7x value);
+//  2. system buyers: a vest listed at 81% of their price sells SALES times (at most
+//     market.virtual-daily-cap, 10), relisted after every sale; the trade price never moves and the
+//     trader -> market round trip loses money;
 //  3. a scoped and suppressed M4C sold to a system buyer leaves the bare M4C's trade price alone and
 //     enters the price history per plain gun;
 //  4. player to player with two bots on one address: a level-1 buyer is refused. With SERVER_DIR set,
 //     the buyer is raised to level 3 in its profile file (it leaves and rejoins) to check that a
 //     level-1 seller is refused too, and the script switches market.min-buy-level / block-same-ip /
-//     daily-player-income-cap / virtual-hourly-cap in SERVER_DIR/plugins/Craftov/config.yml
+//     daily-player-income-cap / virtual-daily-cap in SERVER_DIR/plugins/Craftov/config.yml
 //     (restored at the end, then /cv reload) to check the same-address refusal, the daily cap on both
-//     sides (seller income, buyer bargain), that the hourly system-buyer quota is per seller, that a
+//     sides (seller income, buyer bargain), that the daily system-buyer quota is per seller, that a
 //     kitted M4C bought by a player keeps the bare M4C's trade price where it was, and that a sale at
 //     3x the reference price is ignored.
 //
 // node market.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(unset)
-//                         SALES=20 WAIT_MIN=25 LOG=/tmp/market.log
+//                         SALES=8 WAIT_MIN=25 LOG=/tmp/market.log
 // Exit code 0 when every check passed. Bots use fresh random names, so they start with the starter kit.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
@@ -24,7 +26,7 @@ const rconRaw = require('./rcon')
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
 const SERVER_DIR = process.env.SERVER_DIR || ''
-const SALES = Number(process.env.SALES || 20)
+const SALES = Number(process.env.SALES || 8)
 const WAIT_MIN = Number(process.env.WAIT_MIN || 25)
 const out = process.env.LOG || '/tmp/market.log'
 fs.writeFileSync(out, '')
@@ -223,13 +225,15 @@ async function main () {
   check('vest reference price is value x 0.85', line(pm, '参考价').startsWith('参考价 ◈51,000'), line(pm, '参考价'))
   check('vest highest price shown', info(pm).includes('最高售价 ◈153,000'), info(pm).join(' | '))
   check('pricing screen tells a level-1 seller only system buyers buy', info(pm).includes('账号等级 3 前只有系统买家会收购'), info(pm).join(' | '))
+  check('the system buyers\' price button offers 42,000 (0.7 x 60,000)', lore(pm.slots[20]).some(l => l.includes('最多出 ◈42,000')),
+    lore(pm.slots[20]).join(' | '))
   await click(S, 23)
-  check('x1.2 asks 61,200 and is hard to sell', priceOf(pm) === 61200 && line(pm, '预计').includes('较难售出'), line(pm, '预计'))
+  check('x1.2 asks 61,200, above what system buyers pay', priceOf(pm) === 61200 && line(pm, '预计').includes('高于系统收购价 ◈42,000'), line(pm, '预计'))
   for (let i = 0; i < 15; i++) await click(S, 16, 200)
   check('+10% stops at 3x the reference', priceOf(pm) === 153000, title(pm.slots[13]))
   check('price lore says the cap is reached', info(pm).some(l => l.includes('已达最高售价')), info(pm).join(' | '))
   check('+10% button explains the cap', lore(pm.slots[16]).some(l => l.includes('已达最高售价')), lore(pm.slots[16]).join(' | '))
-  check('above 1.25x system buyers never buy', line(pm, '预计').includes('系统买家不会收购'), line(pm, '预计'))
+  check('at 3x system buyers never buy', line(pm, '预计').includes('系统买家不会收购'), line(pm, '预计'))
   S.closeWindow(pm)
   await sleep(300)
 
@@ -241,7 +245,8 @@ async function main () {
   S.closeWindow(pm)
   await sleep(300)
 
-  // 2. System buyers at 1.2x: ten vests stay listed, relisted after every sale, until SALES sales.
+  // 2. System buyers at 81% of their price (42,000 -10% -10% = 34,020): ten vests stay listed,
+  // relisted after every sale, until SALES sales.
   const traderPrice = 69000 // 60,000 x trader.buy-multiplier 1.15
   const before = await balance(S)
   const soldRe = /陶瓷插板背心 ×1 已被 系统买家 买下，入账 ◈([\d,]+)/
@@ -257,9 +262,11 @@ async function main () {
       // The vest already in the stash is listed first; later ones come from /cv give.
       if (listed > 0) { await rcon(`cv give ${name} armor_4`); await sleep(300) }
       pm = await priceMenu(S, 'armor_4', { deposit: listed > 0 })
-      await click(S, 23)
-      if (priceOf(pm) !== 61200 || !line(pm, '参考价').startsWith('参考价 ◈51,000')) {
-        check(`listing ${listed + 1}: reference still 51,000 and x1.2 still 61,200`, false, line(pm, '参考价') + ' / ' + title(pm.slots[13]))
+      await click(S, 20)
+      await click(S, 10)
+      await click(S, 10)
+      if (priceOf(pm) !== 34020 || !line(pm, '参考价').startsWith('参考价 ◈51,000')) {
+        check(`listing ${listed + 1}: reference still 51,000 and the price still 34,020`, false, line(pm, '参考价') + ' / ' + title(pm.slots[13]))
       }
       await confirm(S)
       listed++
@@ -269,13 +276,13 @@ async function main () {
   }
   sold = S.chatLog.slice(chatFrom).filter(m => soldRe.test(m)).length
   const payouts = S.chatLog.slice(chatFrom).map(m => m.match(soldRe)).filter(Boolean).map(m => Number(m[1].replace(/,/g, '')))
-  const fees = S.chatLog.slice(chatFrom).map(m => m.match(/已上架 陶瓷插板背心 ×1 售价 ◈61,200 · 手续费 ◈([\d,]+)/))
+  const fees = S.chatLog.slice(chatFrom).map(m => m.match(/已上架 陶瓷插板背心 ×1 售价 ◈34,020 · 手续费 ◈([\d,]+)/))
     .filter(Boolean).map(m => Number(m[1].replace(/,/g, '')))
   const after = await balance(S)
-  // Per vest sold: payout - listing fee - what the trader charges for it (58,140 - 1,224 - 69,000).
+  // Per vest sold: payout - listing fee - what the trader charges for it (32,319 - 680 - 69,000).
   const net = payouts.reduce((a, b) => a + b, 0) - sold * ((fees[0] || 0) + traderPrice)
-  check(`system buyers bought ${SALES} vests at 1.2x`, sold >= SALES, `${sold} sold of ${listed} listed in ${((Date.now() - started) / 60000).toFixed(1)} min`)
-  check('every payout is 58,140 (61,200 - 5% tax)', payouts.length > 0 && payouts.every(p => p === 58140), payouts.join(','))
+  check(`system buyers bought ${SALES} vests at 34,020`, sold >= SALES, `${sold} sold of ${listed} listed in ${((Date.now() - started) / 60000).toFixed(1)} min`)
+  check('every payout is 32,319 (34,020 - 5% tax)', payouts.length > 0 && payouts.every(p => p === 32319), payouts.join(','))
   check('buying from the trader to sell to system buyers loses money', net < 0 && fees.length === listed,
     `${sold} round trips net ${net} (${Math.round(net / Math.max(1, sold))} each); balance ${before} -> ${after} with ${listed - sold} still listed`)
   await cancelAll(S)
@@ -305,11 +312,15 @@ async function main () {
   const kitRef = money(line(pm, '参考价'))
   log('kitted M4C reference', kitRef)
   check('attachments and loaded rounds count in the kitted reference', kitRef === Math.round((34000 + 30 * 32 + 26000 + 22000) * 0.85), kitRef)
-  await click(S, 21)
+  // 81% of the system buyers' price for the kitted gun.
+  await click(S, 20)
+  await click(S, 10)
+  await click(S, 10)
+  const m4Price = priceOf(pm)
   const m4From = S.chatLog.length
   await confirm(S)
   const m4Sold = await waitChat(S, /M4C 卡宾枪 ×1 已被 系统买家 买下/, 5 * 60000, m4From)
-  check('system buyer bought the kitted M4C at 0.9x', !!m4Sold, m4Sold || 'timed out')
+  check(`system buyer bought the kitted M4C at ${m4Price} (81% of 0.7x value)`, !!m4Sold, m4Sold || 'timed out')
   await rcon(`cv give ${name} m4c`)
   await sleep(300)
   pm = await priceMenu(S, 'm4c', { deposit: true })
@@ -317,7 +328,8 @@ async function main () {
   const lastSale = short(hist[hist.length - 1])
   check('a system sale leaves the bare M4C player trade price alone', line(pm, '玩家成交均价') === m4cTradeBefore,
     `${m4cTradeBefore || 'none'} -> ${line(pm, '玩家成交均价') || 'none'}`)
-  check('kitted sale enters history per plain M4C (0.9 x 28,900)', Math.abs(lastSale - 26010) <= 100, line(pm, '近期成交'))
+  const perPlain = Math.round(m4Price / kitRef * 28900)
+  check(`kitted sale enters history per plain M4C (${m4Price} / ${kitRef} x 28,900 = ${perPlain})`, Math.abs(lastSale - perPlain) <= 100, line(pm, '近期成交'))
   S.closeWindow(pm)
   await sleep(300)
 
@@ -375,21 +387,21 @@ async function main () {
       await setMarket({ 'daily-player-income-cap': 0 })
       await cancelAll(S)
 
-      // The hourly system-buyer quota is per seller: the seller sold SALES vests this hour, the buyer none.
-      await setMarket({ 'virtual-hourly-cap': SALES })
+      // The daily system-buyer quota is per seller: the seller sold SALES vests today, the buyer none.
+      await setMarket({ 'virtual-daily-cap': SALES })
       await rcon(`cv give ${name} armor_4`)
       await sleep(300)
       pm = await priceMenu(S, 'armor_4', { deposit: true })
-      check('seller who sold SALES vests this hour sees the quota reached', line(pm, '预计').includes('本小时系统买家已收满'), line(pm, '预计'))
+      check('seller who sold SALES vests today sees the quota reached', line(pm, '预计').includes('今天系统买家已收满'), line(pm, '预计'))
       S.closeWindow(pm)
       await sleep(300)
       await rcon(`cv give ${bName} armor_4`)
       await sleep(300)
       pm = await priceMenu(B, 'armor_4', { deposit: true })
-      check('another seller of the same item is not held back by that quota', !line(pm, '预计').includes('本小时系统买家已收满'), line(pm, '预计'))
+      check('another seller of the same item is not held back by that quota', !line(pm, '预计').includes('今天系统买家已收满'), line(pm, '预计'))
       B.closeWindow(pm)
       await sleep(300)
-      await setMarket({ 'virtual-hourly-cap': 40 })
+      await setMarket({ 'virtual-daily-cap': 10 })
 
       // A kitted M4C bought by a player at its reference price: the bare M4C's trade price stays.
       await rcon(`cv give ${name} m4c`)

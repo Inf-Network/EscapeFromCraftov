@@ -50,36 +50,38 @@ public final class HideoutService {
                     new Cost(15_000, items("screws", 4, "toolset", 1)),
                     new Cost(50_000, items("multimeter", 1, "circuit", 2)),
                     new Cost(120_000, items("optics", 1, "gpu", 1))), List.of(
-                    new Recipe("w_556", 1, new Cost(1_000, items("screws", 2)), "ammo_556_m855", 60, 20),
-                    new Recipe("w_762", 1, new Cost(1_000, items("screws", 2)), "ammo_762_ps", 60, 20),
-                    new Recipe("w_9", 1, new Cost(800, items("screws", 1)), "ammo_9_fmj", 90, 15),
-                    new Recipe("w_12", 1, new Cost(800, items("screws", 1)), "ammo_12_buck", 40, 15),
-                    new Recipe("w_556a1", 2, new Cost(4_000, items("circuit", 1)), "ammo_556_a1", 60, 40),
-                    new Recipe("w_762bp", 2, new Cost(4_000, items("circuit", 1)), "ammo_762_bp", 60, 40),
-                    new Recipe("w_9ap", 2, new Cost(3_000, items("circuit", 1)), "ammo_9_ap", 60, 30),
-                    new Recipe("w_m80", 2, new Cost(4_000, items("circuit", 1)), "ammo_308_m80", 40, 40),
-                    new Recipe("w_m995", 3, new Cost(12_000, items("battery_pack", 1)), "ammo_556_m995", 40, 90),
-                    new Recipe("w_762ap", 3, new Cost(12_000, items("battery_pack", 1)), "ammo_762_ap", 40, 90),
-                    new Recipe("w_m61", 3, new Cost(12_000, items("battery_pack", 1)), "ammo_308_m61", 30, 90),
-                    new Recipe("w_338", 3, new Cost(12_000, items("battery_pack", 1)), "ammo_338_fmj", 20, 90))),
+                    // What a recipe makes would cost about 1.45x its money and materials at the
+                    // trader, and never sells for more than they would (tools/econ/balance.py).
+                    new Recipe("w_556", 1, new Cost(900, items("screws", 2)), "ammo_556_m855", 60, 20),
+                    new Recipe("w_762", 1, new Cost(850, items("screws", 2)), "ammo_762_ps", 60, 20),
+                    new Recipe("w_9", 1, new Cost(450, items("screws", 1)), "ammo_9_fmj", 150, 15),
+                    new Recipe("w_12", 1, new Cost(400, items("screws", 1)), "ammo_12_buck", 40, 15),
+                    new Recipe("w_556a1", 2, new Cost(2_200, items("circuit", 1)), "ammo_556_a1", 60, 40),
+                    new Recipe("w_762bp", 2, new Cost(2_600, items("circuit", 1)), "ammo_762_bp", 60, 40),
+                    new Recipe("w_9ap", 2, new Cost(1_900, items("circuit", 1)), "ammo_9_ap", 120, 30),
+                    new Recipe("w_m80", 2, new Cost(1_900, items("circuit", 1)), "ammo_308_m80", 80, 40),
+                    new Recipe("w_m995", 3, new Cost(10_000, items("battery_pack", 1)), "ammo_556_m995", 100, 90),
+                    new Recipe("w_762ap", 3, new Cost(9_300, items("battery_pack", 1)), "ammo_762_ap", 100, 90),
+                    new Recipe("w_m61", 3, new Cost(9_100, items("battery_pack", 1)), "ammo_308_m61", 80, 90),
+                    new Recipe("w_338", 3, new Cost(8_000, items("battery_pack", 1)), "ammo_338_fmj", 60, 90))),
             new Facility("medstation", "医疗站", "craftov:ui/tab_medical", "用物资和块币制作药品", List.of(
                     new Cost(15_000, items("water_tabs", 3, "tape", 2)),
                     new Cost(50_000, items("reagent", 1, "ration", 2)),
                     new Cost(120_000, items("sample_case", 1))), List.of(
-                    new Recipe("m_bandage", 1, new Cost(300, items("tape", 1)), "bandage", 3, 10),
-                    new Recipe("m_hemostat", 1, new Cost(800, items("water_tabs", 2)), "hemostat", 2, 20),
-                    new Recipe("m_medkit", 2, new Cost(2_000, items("reagent", 1)), "medkit_s", 2, 30),
-                    new Recipe("m_painkiller", 2, new Cost(2_000, items("reagent", 1)), "painkiller", 2, 30),
-                    new Recipe("m_medkit_l", 3, new Cost(6_000, items("reagent", 2)), "medkit_l", 1, 60),
-                    new Recipe("m_surgery", 3, new Cost(6_000, items("reagent", 2)), "surgery", 1, 60),
-                    new Recipe("m_adrenaline", 3, new Cost(6_000, items("reagent", 2)), "adrenaline", 1, 60))),
+                    new Recipe("m_bandage", 1, new Cost(1_500, items("tape", 1)), "bandage", 3, 10),
+                    new Recipe("m_hemostat", 1, new Cost(3_300, items("water_tabs", 2)), "hemostat", 2, 20),
+                    new Recipe("m_medkit", 2, new Cost(6_000, items("reagent", 1)), "medkit_s", 4, 30),
+                    new Recipe("m_painkiller", 2, new Cost(9_000, items("reagent", 1)), "painkiller", 4, 30),
+                    new Recipe("m_medkit_l", 3, new Cost(13_800, items("reagent", 1)), "medkit_l", 2, 60),
+                    new Recipe("m_surgery", 3, new Cost(6_700, items("reagent", 1)), "surgery", 1, 60),
+                    new Recipe("m_adrenaline", 3, new Cost(9_000, items("reagent", 1)), "adrenaline", 2, 60))),
             new Facility("intel", "情报中心", "craftov:ui/icon_map", "每小时产出块币，最多累积 24 小时", List.of(
                     new Cost(30_000, items("radio", 1, "battery", 4)),
                     new Cost(80_000, items("laptop", 1, "sat_phone", 1)),
                     new Cost(200_000, items("server_drive", 1, "dossier", 1))), List.of()));
 
-    /** Intel centre income per hour by level. */
-    private static final long[] INCOME = {0, 2_000, 5_000, 10_000};
+    /** Intel centre income per hour by level when config.yml has no hideout.intel-income. */
+    private static final List<Long> INCOME = List.of(0L, 1_000L, 2_000L, 4_000L);
 
     private final CraftovPlugin plugin;
 
@@ -260,11 +262,24 @@ public final class HideoutService {
             return 0;
         }
         double hours = Math.min(24, (System.currentTimeMillis() - profile.intelSince) / 3_600_000.0);
-        return Math.round(INCOME[Math.min(level, INCOME.length - 1)] * hours);
+        return Math.round(income(level) * hours);
     }
 
     public long intelRate(Profile profile) {
-        return INCOME[Math.min(level(profile, "intel"), INCOME.length - 1)];
+        return income(level(profile, "intel"));
+    }
+
+    /**
+     * Intel centre income per hour at {@code level} (hideout.intel-income, level 0 first). At most
+     * a day's worth adds up: 96,000 at level 3, about two thirds of a median 常规 raid in
+     * tools/econ/ev.py, as the old 240,000 a day was of the old one (three fifths).
+     */
+    private long income(int level) {
+        List<Long> rates = plugin.getConfig().getLongList("hideout.intel-income");
+        if (rates.isEmpty()) {
+            rates = INCOME;
+        }
+        return rates.get(Math.max(0, Math.min(level, rates.size() - 1)));
     }
 
     public long claimIntel(Player player) {

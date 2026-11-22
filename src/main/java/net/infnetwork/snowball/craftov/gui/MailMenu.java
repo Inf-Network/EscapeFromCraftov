@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.economy.InsuranceService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.MailService;
@@ -68,8 +69,14 @@ final class MailMenu extends Menu {
             claimAll();
             redraw();
         });
-        button(49, UiItems.button("craftov:ui/icon_mail", "<white>物品邮箱 <#FFC23D>" + p.mailbox.size() + " 件",
-                List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品", "<#9AA0A6>点击全部领取到仓库")), e -> {
+        List<String> itemsLore = new ArrayList<>(List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品",
+                "<#9AA0A6>点击全部领取到仓库"));
+        long nextClaim = InsuranceService.nextClaim(p);
+        if (nextClaim > 0) {
+            long minutes = Math.max(1, (nextClaim - System.currentTimeMillis() + 59_999) / 60_000);
+            itemsLore.add("<#FFC23D>理赔途中 " + p.claims.size() + " 件，最早约 " + minutes + " 分钟后到账");
+        }
+        button(49, UiItems.button("craftov:ui/icon_mail", "<white>物品邮箱 <#FFC23D>" + p.mailbox.size() + " 件", itemsLore), e -> {
             claimItems(p);
             redraw();
         });

@@ -108,9 +108,15 @@ final class StashMenu extends Menu {
         set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
         int letters = MailService.unclaimed(p);
-        ItemStack mailbox = UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + (letters + p.mailbox.size()),
-                List.of("<#9AA0A6>系统邮件 <white>" + letters + "</white> 封未读", "<#9AA0A6>物品邮箱 <white>" + p.mailbox.size() + "</white> 件",
-                        "<#9AA0A6>点击打开"));
+        List<String> mailLore = new ArrayList<>(List.of("<#9AA0A6>系统邮件 <white>" + letters + "</white> 封未读",
+                "<#9AA0A6>物品邮箱 <white>" + p.mailbox.size() + "</white> 件"));
+        long nextClaim = net.infnetwork.snowball.craftov.economy.InsuranceService.nextClaim(p);
+        if (nextClaim > 0) {
+            long minutes = Math.max(1, (nextClaim - System.currentTimeMillis() + 59_999) / 60_000);
+            mailLore.add("<#FFC23D>理赔途中 " + p.claims.size() + " 件，最早约 " + minutes + " 分钟后到账");
+        }
+        mailLore.add("<#9AA0A6>点击打开");
+        ItemStack mailbox = UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + (letters + p.mailbox.size()), mailLore);
         if (letters > 0) {
             mailbox.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
         }

@@ -415,6 +415,15 @@ craftov_weapon:
           first: craftov_reloading
           second: 'true'
           operation: ==
+    '3':
+      name: craftov_draw_bar
+      x: 9
+      y: 44
+      conditions:
+        '1':
+          first: craftov_drawing
+          second: 'true'
+          operation: ==
   texts:
     '1':
       name: craftov_font
@@ -553,7 +562,7 @@ craftov_downed:
   texts:
     '1':
       name: craftov_font
-      pattern: <#FF4D4D>倒地 · 等待队友救援
+      pattern: <#FF4D4D>倒地 · [craftov_downed_hint]
       x: 60
       y: 0
       scale: 0.5
@@ -645,6 +654,13 @@ craftov_hit_kill_layout:
   images:
     '1':
       name: craftov_hit_kill
+      x: -1
+      y: -1
+  offset: left
+craftov_hit_knock_layout:
+  images:
+    '1':
+      name: craftov_hit_knock
       x: -1
       y: -1
   offset: left

@@ -629,6 +629,8 @@ public final class ProfileService implements Listener {
             if (m.body == null) m.body = "";
             if (m.items == null) m.items = new ArrayList<>();
         }
+        if (p.claims == null) p.claims = new ArrayList<>();
+        p.claims.removeIf(c -> c == null || c.item == null);
         if (p.collected == null) p.collected = new java.util.LinkedHashSet<>();
         if (p.collectionRewards == null) p.collectionRewards = new java.util.LinkedHashSet<>();
         if (p.stats == null) p.stats = new HashMap<>();

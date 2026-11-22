@@ -19,6 +19,7 @@ import net.infnetwork.snowball.craftov.combat.MedSpec;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.infnetwork.snowball.craftov.weapon.FireMode;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
+import net.infnetwork.snowball.craftov.weapon.MeleeSpec;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
@@ -44,8 +45,16 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
-    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark. */
-    public static final int VERSION = 4;
+    /**
+     * Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit
+     * mark. 5: med lore, and armour lore says it weakens when worn. 6: gun prices, and knife lore gives
+     * damage and penetration. 7: weights, and the self-revive injector's lore no longer calls it instant.
+     * 8: both lines of changes above together (#22 economy and the #26-#29 combat fixes each used 5-7).
+     * 9: the weapon-handling line (#32-#34, which used 5-6) on top: gun lore shows the new rates of the
+     * V57, KL7 and SCR, and guns carry max_damage and unbreakable for the draw mark (see
+     * {@link #setDrawing}).
+     */
+    public static final int VERSION = 9;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -229,7 +238,8 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(def.model()));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(def.coloredName()));
         stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay()
-                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK)
+                .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK,
+                        DataComponentTypes.UNBREAKABLE)
                 .build());
         GunSpec gun = def.gun();
         MedSpec med = def.med();
@@ -244,6 +254,11 @@ public final class ItemFactory {
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
             stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
                     .type(SwingAnimation.Animation.NONE).duration(1).build());
+            // Room for the draw mark (damage 1, see setDrawing). Unbreakable, so it is never worn down,
+            // shows no durability bar and no tooltip line; a damageable item may not stack.
+            stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
+            stack.setData(DataComponentTypes.MAX_DAMAGE, 1);
+            stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
                             AttributeModifier.Operation.MULTIPLY_SCALAR_1), EquipmentSlotGroup.MAINHAND)
@@ -515,6 +530,22 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
     }
 
+    /**
+     * Marks a gun as still coming up after a switch, or clears the mark: its item model then ignores
+     * right and left mouse, so the client shows neither the aimed pose (on a scoped gun, no gun at all)
+     * nor the muzzle flash and kick while the server lets it do neither. The mark is damage 1 of the
+     * gun's max_damage 1 because damage is the only component the vanilla client swaps in on a held
+     * item without playing the lower-and-raise animation again; custom_model_data would dip the gun
+     * just as it comes up.
+     */
+    public static void setDrawing(ItemStack stack, boolean drawing) {
+        if (drawing) {
+            stack.setData(DataComponentTypes.DAMAGE, 1);
+        } else if (stack.hasData(DataComponentTypes.DAMAGE)) {
+            stack.resetData(DataComponentTypes.DAMAGE);
+        }
+    }
+
     public void setDura(ItemStack stack, double dura) {
         stack.editPersistentDataContainer(pdc -> pdc.set(Keys.DURA, PersistentDataType.DOUBLE, dura));
         refreshLore(stack, defOf(stack));
@@ -539,7 +570,7 @@ public final class ItemFactory {
     }
 
     public long value(ItemRecord record) {
-        return value(record, false);
+        return value(record, false, false);
     }
 
     /**
@@ -548,12 +579,21 @@ public final class ItemFactory {
      * since they need not have come from the kit.
      */
     public long tradeValue(ItemRecord record) {
-        return value(record, true);
+        return value(record, true, false);
     }
 
-    private long value(ItemRecord record, boolean trade) {
+    /**
+     * What an item adds to gear value (战备值, see CarryService#gearValue): {@link #value(ItemRecord)},
+     * except that melee weapons count nothing, packed ones included. A knife is never lost, so it
+     * puts nothing at stake, and a ◈95,000 karambit alone must not open the higher tiers.
+     */
+    public long gearValue(ItemRecord record) {
+        return value(record, false, true);
+    }
+
+    private long value(ItemRecord record, boolean trade, boolean gear) {
         ItemDef def = registry.get(record.id);
-        if (def == null || record.isTest()) {
+        if (def == null || record.isTest() || gear && (def.isMelee() || def.category() == Category.MELEE)) {
             return 0;
         }
         double unit = trade && record.isKit() ? 0 : def.value();
@@ -571,7 +611,7 @@ public final class ItemFactory {
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                total += value(child, trade);
+                total += value(child, trade, gear);
             }
         }
         ItemDef optic = registry.get(record.optic);
@@ -670,10 +710,22 @@ public final class ItemFactory {
         if (def.ammo() != null) {
             lore.add(Text.mm("<#8A8F98>口径 <white>" + def.ammo().caliber() + "  <#8A8F98>穿透等级 <white>" + def.ammo().penetration()));
         }
+        MeleeSpec melee = def.melee();
+        if (melee != null) {
+            lore.add(Text.mm("<#8A8F98>伤害 <white>" + fmt(melee.damage()) + "  <#8A8F98>穿透等级 <white>" + melee.penetration()
+                    + (melee.headMultiplier() != 1.0 ? "  <#8A8F98>头部 <white>×" + fmt(melee.headMultiplier()) : "")));
+            lore.add(Text.mm("<#8A8F98>出手间隔 <white>" + fmt(melee.cooldownTicks() / 20.0) + "s  <#8A8F98>距离 <white>"
+                    + fmt(melee.reach()) + " 格"));
+        }
         if (def.isArmor()) {
             double dura = dura(stack, def.durability());
             lore.add(Text.mm("<#8A8F98>防护等级 <white>" + def.armorClass() + "  <#8A8F98>耐久 <white>"
                     + fmt(dura) + "/" + fmt(def.durability())));
+            double fullAbove = net.infnetwork.snowball.craftov.CraftovPlugin.get().getConfig()
+                    .getDouble("combat.armor.full-protection-above", net.infnetwork.snowball.craftov.combat.DamageService.FULL_PROTECTION_ABOVE);
+            if (fullAbove > 0) {
+                lore.add(Text.mm("<#8A8F98>耐久低于 " + Math.round(Math.min(1, fullAbove) * 100) + "% 时防护下降"));
+            }
         }
         if (def.isContainer()) {
             int stored = hasContents(stack) ? contents(stack).size() : 0;

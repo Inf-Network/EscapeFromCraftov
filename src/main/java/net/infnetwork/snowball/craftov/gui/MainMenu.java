@@ -19,7 +19,7 @@ final class MainMenu extends Menu {
     @Override
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
-        long value = plugin.carry().carriedValue(viewer);
+        long value = plugin.carry().gearValue(viewer);
         set(4, UiItems.button("craftov:ui/icon_profile", "<#F2E6C8><b>" + Text.escape(viewer.getName()),
                 List.of("<#8A8F98>块币 <#F2C94C>◈ " + Text.money(p.money),
                         "<#8A8F98>等级 <white>Lv." + p.level + " <#8A8F98>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",
@@ -84,7 +84,7 @@ final class MainMenu extends Menu {
                 "<white>右键 <#9AA0A6>按住开镜瞄准，松开即腰射",
                 "<white>Q <#9AA0A6>换弹  <white>潜行+Q <#9AA0A6>切换弹种",
                 "<white>F <#9AA0A6>切换射击模式  <white>潜行+F <#9AA0A6>干员技能",
-                "<white>右键物资箱 <#9AA0A6>搜索  <white>潜行靠近倒地队友 <#9AA0A6>救援",
+                "<white>右键物资箱 <#9AA0A6>搜索  <white>对准倒地队友按住右键 <#9AA0A6>救援",
                 "<white>医疗品 <#9AA0A6>拿在手上按住右键使用，终端里可查看伤势",
                 "<#9AA0A6>物品栏第 2 行是胸挂格，第 3、4 行是背包格")), e -> {
         });

@@ -22,7 +22,7 @@ public final class CraftovCommand implements TabExecutor {
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "marketaudit", "ai");
+            "marketaudit", "ai", "lagcomp");
 
     private final CraftovPlugin plugin;
 
@@ -156,7 +156,7 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量] · ai [id] · ai spawn <类型> <x> <y> <z> [id]"));
+                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id]"));
         }
     }
 
@@ -179,9 +179,10 @@ public final class CraftovCommand implements TabExecutor {
                 Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + amount);
             }
             case "injure" -> {
-                // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture>
+                // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
+                // A bleed with a source is that player's wound: it keeps their kill credit going.
                 if (args.length < 4) {
-                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture>");
+                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture> [造成伤口的玩家]");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
@@ -193,11 +194,12 @@ public final class CraftovCommand implements TabExecutor {
                     case "fracture" -> net.infnetwork.snowball.craftov.combat.Injury.FRACTURE;
                     default -> null;
                 };
-                if (target == null || part == null || injury == null) {
-                    Text.send(sender, "<#FF8A80>玩家、部位或伤势无效。");
+                Player source = args.length > 4 ? Bukkit.getPlayerExact(args[4]) : null;
+                if (target == null || part == null || injury == null || (args.length > 4 && source == null)) {
+                    Text.send(sender, "<#FF8A80>玩家、部位、伤势或造成伤口的玩家无效。");
                     return;
                 }
-                plugin.health().addInjury(target, part, injury);
+                plugin.health().addInjury(target, part, injury, source == null ? null : source.getUniqueId());
                 Text.send(sender, "<#5BD16B>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
             }
             case "money" -> {
@@ -361,6 +363,17 @@ public final class CraftovCommand implements TabExecutor {
                     sender.sendMessage(Text.mm("<#9AA0A6>还没有人在交易行卖出过东西。"));
                 }
             }
+            case "lagcomp" -> {
+                // /cv lagcomp [on|off]: hit lag compensation, until the next /cv reload, to compare hits
+                // on moving targets with and without it.
+                boolean on = args.length < 2 ? !plugin.getConfig().getBoolean("combat.lag-compensation.enabled", true)
+                        : args[1].equalsIgnoreCase("on");
+                plugin.getConfig().set("combat.lag-compensation.enabled", on);
+                Text.send(sender, on
+                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
+                                + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
+                        : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
+            }
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -375,6 +388,11 @@ public final class CraftovCommand implements TabExecutor {
                     Text.send(sender, "<#FF4D4D>items.yml 有错误，物品表没有更新，仍在使用原来的物品表：<#FF8A80>"
                             + Text.escape(shown.length() > 300 ? shown.substring(0, 300) + "…" : shown));
                     Text.send(sender, "<#9AA0A6>配置、掉落与地图已重新加载，完整错误见服务器日志。");
+                }
+                for (CraftovPlugin.OutdatedData old : plugin.outdatedData()) {
+                    Text.send(sender, "<#FFC23D>" + old.file() + " 比插件自带的旧（revision " + old.local() + "，插件 " + old.bundled()
+                            + "）：价格和掉落仍按旧文件。<#9AA0A6>备份后换成插件自带的版本（或把改动合并进去并改成 revision: "
+                            + old.bundled() + "），再 /cv reload。");
                 }
             }
             default -> help(sender);
@@ -447,6 +465,8 @@ public final class CraftovCommand implements TabExecutor {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
             out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("lagcomp")) {
+            out.addAll(List.of("on", "off"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("ai")) {

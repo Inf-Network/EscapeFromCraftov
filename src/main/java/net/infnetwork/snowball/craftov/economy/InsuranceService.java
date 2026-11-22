@@ -184,10 +184,11 @@ public final class InsuranceService {
     /**
      * Raid closing: insured items left behind go home, also when they are packed inside a rig or
      * backpack lying around, each one unless the loss roll takes it. What comes back waits in the
-     * profile's claims until {@link #returnMinutes} have passed.
+     * profile's claims until {@link #returnMinutes} have passed. Returns the value coming back to
+     * each owner (their luck does not count it as lost).
      */
-    public void settle(Raid raid) {
-        settle(raid, Set.of());
+    public Map<UUID, Long> settle(Raid raid) {
+        return settle(raid, Set.of());
     }
 
     /**
@@ -195,8 +196,9 @@ public final class InsuranceService {
      * back in the mailbox at once, with no loss roll: they were still in a raid the server called
      * off (alive, downed, on the entry camera or within the reconnect window), which costs nothing.
      */
-    public void settle(Raid raid, Set<UUID> voided) {
+    public Map<UUID, Long> settle(Raid raid, Set<UUID> voided) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
+        Map<UUID, Long> returned = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
@@ -227,6 +229,9 @@ public final class InsuranceService {
             for (ItemRecord record : claimed) {
                 (!spared && rng.nextDouble() < loss ? lost : records).add(record);
             }
+            for (ItemRecord record : records) {
+                returned.merge(owner, plugin.items().value(record), Long::sum);
+            }
             if (!records.isEmpty()) {
                 if (atOnce) {
                     plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
@@ -250,6 +255,7 @@ public final class InsuranceService {
                         + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
         });
+        return returned;
     }
 
     /** Moves claims that are ready into their online owners' mailboxes (every ten seconds). */

@@ -718,7 +718,8 @@ public final class RaidManager implements Listener {
         plugin.tasks().onExtract(player, raid, profit);
         long exitCost = point.def.type() == ExtractType.PAID ? point.def.cost() : 0;
         plugin.luck().settle(raid, rp, profile, new net.infnetwork.snowball.craftov.luck.LuckService.Outcome(true,
-                profit - rp.fees - exitCost, plugin.luck().redOut(out, rp.gearUids), coop(raid, rp, player), plugin.luck().uids(out)));
+                luckNet(raid, rp, out, total, rp.fees + exitCost), plugin.luck().redOut(out, rp.gearUids), coop(raid, rp, player),
+                plugin.luck().uids(out)));
         Profile.RaidReport report = report(raid, rp, "撤离成功 · " + point.def.name(), Math.max(0, profit), 0, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -773,10 +774,31 @@ public final class RaidManager implements Listener {
      * How a raid went for luck when the player died or went missing: they keep the secure container
      * and the melee weapon, so what they own changed by that less what they brought in and paid.
      */
-    private net.infnetwork.snowball.craftov.luck.LuckService.Outcome deathOutcome(RaidPlayer rp, @Nullable ItemStack melee) {
-        long kept = recordsValue(rp.secure) + (plugin.carry().isMelee(melee) ? plugin.items().value(melee) : 0);
-        return new net.infnetwork.snowball.craftov.luck.LuckService.Outcome(false, kept - rp.startValue - rp.fees, false,
-                rp.revives, plugin.luck().uids(rp.secure));
+    private net.infnetwork.snowball.craftov.luck.LuckService.Outcome deathOutcome(Raid raid, RaidPlayer rp, @Nullable ItemStack melee) {
+        List<ItemRecord> kept = new ArrayList<>(rp.secure);
+        ItemRecord meleeRecord = plugin.carry().isMelee(melee) ? plugin.items().toRecord(melee) : null;
+        if (meleeRecord != null) {
+            kept.add(meleeRecord);
+        }
+        long net = luckNet(raid, rp, kept, recordsValue(rp.secure) + (meleeRecord == null ? 0 : plugin.items().value(melee)), rp.fees);
+        return new net.infnetwork.snowball.craftov.luck.LuckService.Outcome(false, net, false, rp.revives, plugin.luck().uids(kept));
+    }
+
+    /**
+     * What a raid that is over for {@code rp} did to what they own, for their luck: the value of
+     * {@code kept} (carried out, or kept when dying) less what they brought in and {@code paid}.
+     * Gear a squadmate brought in is left out of it and credited back to that squadmate instead:
+     * handing a kit around the squad changes nobody's luck, where it used to count as the giver's
+     * loss and set off their loss compensation for free. Gear taken off enemies counts in full, as
+     * any other find; it was their loss. The credit is settled when the raid closes.
+     */
+    private long luckNet(Raid raid, RaidPlayer rp, List<ItemRecord> kept, long keptValue, long paid) {
+        long fromSquad = 0;
+        for (Map.Entry<UUID, Long> e : gearOf(raid, rp, kept, other -> other.squad == rp.squad).entrySet()) {
+            fromSquad += e.getValue();
+            raid.luck.credit.merge(e.getKey(), e.getValue(), Long::sum);
+        }
+        return keptValue - fromSquad - rp.startValue - paid;
     }
 
     // ------------------------------------------------------------------ death
@@ -851,7 +873,7 @@ public final class RaidManager implements Listener {
         int rankDelta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
         long xp = Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
-        plugin.luck().settle(raid, rp, profile, deathOutcome(rp, melee));
+        plugin.luck().settle(raid, rp, profile, deathOutcome(raid, rp, melee));
         Profile.RaidReport report = report(raid, rp, reason, 0, lost, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -1021,6 +1043,8 @@ public final class RaidManager implements Listener {
                 + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
                 + (rp.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
                 + plugin.ranks().deathDelta(0, rp, lostValue) + " below 1100, never below 0)" : "");
+        // Worked out here, not in the edit: a squadmate's credit must not depend on this profile.
+        net.infnetwork.snowball.craftov.luck.LuckService.Outcome luckOutcome = deathOutcome(raid, rp, melee);
         plugin.profiles().edit(rp.uuid, change, profile -> {
             profile.loadout.clear();
             keepMelee(profile, melee);
@@ -1031,7 +1055,7 @@ public final class RaidManager implements Listener {
             int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
             profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
             trimReports(profile);
-            plugin.luck().settle(raid, rp, profile, deathOutcome(rp, melee));
+            plugin.luck().settle(raid, rp, profile, luckOutcome);
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
@@ -1241,17 +1265,32 @@ public final class RaidManager implements Listener {
      * whereas leaving stacks out let a pile of .338 rounds or gold bars change hands every raid.
      */
     private long othersGear(Raid raid, RaidPlayer rp, List<ItemRecord> out) {
-        Set<String> theirs = new java.util.HashSet<>();
+        long total = 0;
+        for (long value : gearOf(raid, rp, out, other -> true).values()) {
+            total += value;
+        }
+        return total;
+    }
+
+    /**
+     * {@link #othersGear} by whose it was, among the other players {@code whose} accepts. A stack
+     * that counts as theirs is shared out among those who brought in that item and no longer hold
+     * it, by how many each of them is missing.
+     */
+    private Map<UUID, Long> gearOf(Raid raid, RaidPlayer rp, List<ItemRecord> out, java.util.function.Predicate<RaidPlayer> whose) {
+        Map<String, UUID> owners = new HashMap<>();
         for (RaidPlayer other : raid.players.values()) {
-            if (other != rp) {
-                theirs.addAll(other.gearUids);
+            if (other != rp && whose.test(other)) {
+                for (String uid : other.gearUids) {
+                    owners.put(uid, other.uuid);
+                }
             }
         }
-        long total = 0;
+        Map<UUID, Long> into = new java.util.LinkedHashMap<>();
         Map<String, long[]> stacks = new HashMap<>();
         for (ItemRecord record : out) {
-            total += foreignValue(record, theirs);
-            countStacks(record, stacks, theirs);
+            foreignValue(record, owners, into);
+            countStacks(record, stacks, owners.keySet());
         }
         Map<UUID, Map<String, Long>> held = new HashMap<>();
         for (Map.Entry<String, long[]> entry : stacks.entrySet()) {
@@ -1261,38 +1300,49 @@ public final class RaidManager implements Listener {
             if (excess <= 0) {
                 continue;
             }
+            Map<UUID, Long> missing = new java.util.LinkedHashMap<>();
             long given = 0;
             for (RaidPlayer other : raid.players.values()) {
-                long in = other == rp ? 0 : other.broughtIn.getOrDefault(id, 0L);
-                if (in > 0) {
-                    given += Math.max(0, in - held.computeIfAbsent(other.uuid, k -> held(raid, other)).getOrDefault(id, 0L));
+                long in = other == rp || !whose.test(other) ? 0 : other.broughtIn.getOrDefault(id, 0L);
+                long gone = in <= 0 ? 0 : Math.max(0, in - held.computeIfAbsent(other.uuid, k -> held(raid, other)).getOrDefault(id, 0L));
+                if (gone > 0) {
+                    missing.put(other.uuid, gone);
+                    given += gone;
                 }
             }
             long foreign = Math.min(excess, given);
-            if (foreign > 0) {
-                total += entry.getValue()[1] * foreign / count;
+            if (foreign <= 0) {
+                continue;
+            }
+            long value = entry.getValue()[1] * foreign / count;
+            long left = value;
+            int n = 0;
+            for (Map.Entry<UUID, Long> m : missing.entrySet()) {
+                long part = ++n == missing.size() ? left : value * m.getValue() / given;
+                left -= part;
+                into.merge(m.getKey(), part, Long::sum);
             }
         }
-        return total;
+        return into;
     }
 
     /**
-     * Value of the items in {@code record} with one of {@code theirs} instance ids. Whatever is packed
-     * in someone else's rig or backpack is judged on its own, like everything else.
+     * Adds to {@code into} the value of the items in {@code record} with one of {@code owners}'
+     * instance ids, by owner. Whatever is packed in someone else's rig or backpack is judged on its
+     * own, like everything else.
      */
-    private long foreignValue(ItemRecord record, Set<String> theirs) {
-        long total = 0;
+    private void foreignValue(ItemRecord record, Map<String, UUID> owners, Map<UUID, Long> into) {
         long inside = 0;
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
                 inside += plugin.items().value(child);
-                total += foreignValue(child, theirs);
+                foreignValue(child, owners, into);
             }
         }
-        if (record.uid != null && theirs.contains(record.uid)) {
-            total += plugin.items().value(record) - inside;
+        UUID owner = record.uid == null ? null : owners.get(record.uid);
+        if (owner != null) {
+            into.merge(owner, plugin.items().value(record) - inside, Long::sum);
         }
-        return total;
     }
 
     /**
@@ -1380,8 +1430,8 @@ public final class RaidManager implements Listener {
 
     private void close(Raid raid) {
         raid.state = Raid.State.CLOSED;
-        plugin.insurance().settle(raid);
-        plugin.luck().closeRaid(raid);
+        Map<UUID, Long> insured = plugin.insurance().settle(raid);
+        plugin.luck().closeRaid(raid, insured);
         spectators.values().removeIf(entry -> entry.getKey() == raid);
         for (Player player : raid.world.getPlayers()) {
             byPlayer.remove(player.getUniqueId());
@@ -1455,21 +1505,24 @@ public final class RaidManager implements Listener {
                 }
             }
             raid.state = Raid.State.CLOSED;
-            try {
-                // Luck hand-outs the dead did not carry out, and that nobody took home, are refunded.
-                plugin.luck().closeRaid(raid);
-            } catch (RuntimeException ex) {
-                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle luck refunds for raid " + raid.id, ex);
-            }
+            Map<UUID, Long> insured = Map.of();
             try {
                 // As when a raid closes: insured gear still on bodies, in containers or on the ground
                 // goes back to its owners (all of it, at once, to those still in the raid). The world
                 // is deleted below and nothing would be left to settle after the restart. On its own,
                 // so a failing settlement cannot keep the world and a failing teardown cannot cost
                 // the payouts.
-                plugin.insurance().settle(raid, voided);
+                insured = plugin.insurance().settle(raid, voided);
             } catch (RuntimeException ex) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
+            }
+            try {
+                // Luck of those already out settles as at a close: hand-outs the dead did not carry
+                // out, and that nobody took home, are refunded, and insured gear that came back
+                // just now is no loss.
+                plugin.luck().closeRaid(raid, insured);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle luck for raid " + raid.id, ex);
             }
             try {
                 // The dead watching a squadmate are sent home too.

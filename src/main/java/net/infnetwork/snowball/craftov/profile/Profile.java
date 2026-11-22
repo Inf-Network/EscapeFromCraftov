@@ -149,8 +149,6 @@ public final class Profile {
         public long playedAt;
         /** Raids left with loss compensation: more gold and red handed out in the containers they search. */
         public int boostRaids;
-        /** Losses up to this moment (epoch millis) have been compensated already. */
-        public long lossSince;
         /**
          * Raids that counted for luck, newest first: every one within the loss window
          * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.
@@ -162,8 +160,17 @@ public final class Profile {
     public static final class LuckRaid {
         public long time;
         public String tier = "";
-        /** Change in what the player owns: carried out or kept, less brought in, fees and paid exits. */
+        public String raid = "";
+        /**
+         * Change in what the player owns: carried out or kept, less brought in, fees and paid exits.
+         * A squadmate's gear is left out; the player's own that a squadmate carried out, or that
+         * insurance brought back, does not count as lost once the raid has closed.
+         */
         public long net;
+        /** The raid has not closed yet: net may still come down (squadmates, insurance). */
+        public boolean open;
+        /** Its loss has set off a loss compensation already and counts for no other. */
+        public boolean compensated;
         public int kills;
         public int deaths;
         /** Revives given, extracting beside a squadmate, escort jobs. */

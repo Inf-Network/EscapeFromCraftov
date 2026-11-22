@@ -53,7 +53,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *       container could hold, a search may hand that out and take its value. It is capped and wastes
  *       away while the player stays away.</li>
  *   <li><b>Loss compensation</b> (高爆率局, {@code luck.compensation}): a net loss within the window
- *       (a day) over the tier's threshold makes the player find gold and red items about
+ *       (a day) over the tier's threshold, settled when each raid closes, makes the player find gold and red items about
  *       {@code multiplier} times as often for the next few raids: each container they search may
  *       hand out one more, with (multiplier - 1) times the chance the container itself has of
  *       holding one. The containers' own rolls stay as they are, shared by everyone, so nobody
@@ -70,6 +70,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * pity and joins the behaviour history only when the player spent {@code luck.qualify.min-seconds}
  * in it and searched {@code luck.qualify.min-searches} containers. Every hand-out and refund is
  * logged.
+ *
+ * <p>A raid's net result counts from when the raid closes: gear handed around the squad is nobody's
+ * loss (the receiver does not gain it either), insured gear that comes back is no loss, and gear
+ * taken off enemies is a gain like any other find.
  */
 public final class LuckService {
 
@@ -148,6 +152,19 @@ public final class LuckService {
         return cfg().getDouble("luck.jackpot.soft-chance", 0.02) * (raids - soft + 1) / (hard - soft);
     }
 
+    /** Whether {@code line}'s net is settled: its raid closed, or is gone (a restart). */
+    private boolean settled(Profile.LuckRaid line) {
+        if (!line.open) {
+            return true;
+        }
+        for (Raid raid : plugin.raids().raids()) {
+            if (raid.id.equals(line.raid) && raid.state != Raid.State.CLOSED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private int seconds(RaidPlayer rp) {
         return (int) ((Bukkit.getCurrentTick() - rp.startTick) / 20);
     }
@@ -206,7 +223,7 @@ public final class LuckService {
         int reds = 0;
         int coop = 0;
         for (Profile.LuckRaid raid : luck.raids) {
-            if (!raid.qualified) {
+            if (!raid.qualified || !settled(raid)) {
                 continue;
             }
             if (raids >= limit) {
@@ -271,20 +288,27 @@ public final class LuckService {
     }
 
     /**
-     * How far the player's losses within the window (and since the last compensation) have got
-     * towards it: each raid's net loss as a share of its tier's threshold, profits taking it back.
-     * 1 or more sets it off.
+     * How far the player's losses within the window have got towards it: each settled raid's net
+     * loss as a share of its tier's threshold, profits taking it back, leaving out raids a
+     * compensation was already given for. 1 or more sets it off.
      */
     public double lossScore(Profile.Luck luck, long now) {
-        long window = Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000);
-        long since = Math.max(luck.lossSince, now - window);
         double score = 0;
-        for (Profile.LuckRaid raid : luck.raids) {
-            if (raid.time > since) {
-                score += -raid.net / (double) lossThreshold(raid.tier);
-            }
+        for (Profile.LuckRaid raid : lossRaids(luck, now)) {
+            score += -raid.net / (double) lossThreshold(raid.tier);
         }
         return score;
+    }
+
+    private List<Profile.LuckRaid> lossRaids(Profile.Luck luck, long now) {
+        long window = Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000);
+        List<Profile.LuckRaid> out = new ArrayList<>();
+        for (Profile.LuckRaid raid : luck.raids) {
+            if (raid.time > now - window && !raid.compensated && settled(raid)) {
+                out.add(raid);
+            }
+        }
+        return out;
     }
 
     /** How many times as often a compensated player finds gold or red (luck.compensation.multiplier). */
@@ -310,11 +334,12 @@ public final class LuckService {
         }
     }
 
-    /** Uses up one compensated raid, or starts the compensation when the losses call for it. */
-    private void compensate(Raid raid, RaidPlayer rp, Profile.Luck luck, long now) {
-        if (rp.luck.boosted && luck.boostRaids > 0) {
-            luck.boostRaids--;
-        }
+    /**
+     * Starts the compensation when the settled losses call for it and none is running; the raids
+     * it was given for count for no other.
+     */
+    private void compensate(Raid raid, Profile profile, long now) {
+        Profile.Luck luck = profile.luck;
         if (luck.boostRaids > 0) {
             return;
         }
@@ -324,10 +349,12 @@ public final class LuckService {
             return;
         }
         luck.boostRaids = raids;
-        luck.lossSince = now;
-        plugin.getLogger().info("[luck] " + rp.name + " lost enough within the window (" + String.format("%.2f", score)
+        for (Profile.LuckRaid line : lossRaids(luck, now)) {
+            line.compensated = true;
+        }
+        plugin.getLogger().info("[luck] " + profile.name + " lost enough within the window (" + String.format("%.2f", score)
                 + " x the threshold, last raid " + raid.id + " " + raid.tier.id() + "): loss compensation for the next " + raids + " raids");
-        Player player = Bukkit.getPlayer(rp.uuid);
+        Player player = Bukkit.getPlayer(profile.uuid);
         if (player != null && notifyBoost()) {
             Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
         }
@@ -519,7 +546,7 @@ public final class LuckService {
      * How the raid went for one player.
      *
      * @param net  change in what they own: what they carried out (or kept, dying) less what they
-     *             brought in, fees and a paid extraction
+     *             brought in, fees and a paid extraction; a squadmate's gear left out
      * @param red  carried out a red item they did not bring in
      * @param coop revives given, extracting beside a squadmate, an escort job
      * @param kept instance ids of everything they carried out or kept (secure container)
@@ -528,11 +555,11 @@ public final class LuckService {
     }
 
     /**
-     * The player's raid is over for them (extracted, dead or missing). It joins their history, uses
-     * up a compensated raid or sets off the compensation; a qualifying one pays into the quota and
-     * adds one to the raid count of every jackpot they did not find in it. Hand-outs they did not
-     * carry out wait for the raid to close ({@link #closeRaid}). {@code profile} may be an offline
-     * one being edited (missing).
+     * The player's raid is over for them (extracted, dead or missing). It joins their history and
+     * uses up a compensated raid; a qualifying one pays into the quota and adds one to the raid
+     * count of every jackpot they did not find in it. Its net result, and with it whether the
+     * compensation starts, and hand-outs they did not carry out wait for the raid to close
+     * ({@link #closeRaid}). {@code profile} may be an offline one being edited (missing).
      */
     public void settle(Raid raid, RaidPlayer rp, Profile profile, Outcome outcome) {
         if (!counts(raid)) {
@@ -551,6 +578,8 @@ public final class LuckService {
         Profile.LuckRaid line = new Profile.LuckRaid();
         line.time = now;
         line.tier = raid.tier.id();
+        line.raid = raid.id;
+        line.open = true;
         line.net = outcome.net();
         line.kills = rp.kills;
         line.deaths = outcome.extracted() ? 0 : 1;
@@ -559,7 +588,10 @@ public final class LuckService {
         line.qualified = qualified;
         luck.raids.add(0, line);
         prune(luck, now);
-        compensate(raid, rp, luck, now);
+        if (rp.luck.boosted && luck.boostRaids > 0) {
+            luck.boostRaids--;
+        }
+        raid.luck.settled.put(rp.uuid, rp.name);
         if (qualified) {
             for (String id : plugin.loot().jackpots()) {
                 if (!rp.luck.jackpotsFound.contains(id)) {
@@ -630,9 +662,10 @@ public final class LuckService {
     /**
      * The raid is over: pity and quota hand-outs their player did not carry out and nobody else did
      * either pay luck.quota.refund of their value back into that player's quota. Compensation
-     * hand-outs pay nothing back: they cost the player nothing.
+     * hand-outs pay nothing back: they cost the player nothing. Then each player's net result is
+     * settled ({@link #finish}); {@code insured} is the value insurance is sending back to each.
      */
-    public void closeRaid(Raid raid) {
+    public void closeRaid(Raid raid, Map<UUID, Long> insured) {
         double share = Math.max(0, cfg().getDouble("luck.quota.refund", 0.5));
         for (RaidLuck.Pending pending : raid.luck.pending) {
             LuckSession.Payout payout = pending.payout();
@@ -647,6 +680,40 @@ public final class LuckService {
                     + ") from raid " + raid.id + ": ◈" + back + " back into the quota");
         }
         raid.luck.pending.clear();
+        for (Map.Entry<UUID, String> e : raid.luck.settled.entrySet()) {
+            UUID uuid = e.getKey();
+            long squad = raid.luck.credit.getOrDefault(uuid, 0L);
+            long back = insured.getOrDefault(uuid, 0L);
+            plugin.profiles().edit(uuid, () -> "luck: raid " + raid.id + " closed, its luck.raids line: net + up to " + (squad + back)
+                    + " (no more than its loss), open = false, then loss compensation checked",
+                    profile -> finish(raid, profile, squad, back));
+        }
+        raid.luck.settled.clear();
+        raid.luck.credit.clear();
+    }
+
+    /**
+     * Settles {@code profile}'s net result of the closed raid: what of their gear a squadmate
+     * carried out ({@code squad}) or insurance sends back ({@code insured}) is not lost, up to what
+     * they lost (a stack can be counted for two squadmates), and the compensation may start.
+     */
+    private void finish(Raid raid, Profile profile, long squad, long insured) {
+        long now = System.currentTimeMillis();
+        for (Profile.LuckRaid line : profile.luck.raids) {
+            if (!line.open || !raid.id.equals(line.raid)) {
+                continue;
+            }
+            long back = Math.min(squad + insured, Math.max(0, -line.net));
+            line.net += back;
+            line.open = false;
+            if (back > 0) {
+                plugin.getLogger().info("[luck] " + profile.name + "'s loss in raid " + raid.id + " is ◈" + back
+                        + " less (gear a squadmate carried out ◈" + squad + ", insured gear coming back ◈" + insured
+                        + "): net ◈" + line.net);
+            }
+            break;
+        }
+        compensate(raid, profile, now);
     }
 
     // ------------------------------------------------------------------ admin (/cv luck)

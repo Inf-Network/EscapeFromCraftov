@@ -515,7 +515,10 @@ luck:
   # Behaviour score over the last `raids` qualifying raids, which the quota income is multiplied by:
   #   1 - profit-weight x P - kd-weight x K - red-weight x R + coop-weight x C, held within min..max
   #   P = log2((gains + profit-base) / (losses + profit-base)) / profit-scale, from each raid's net
-  #       result (what the player owns afterwards less before, fees included)
+  #       result (what the player owns afterwards less before, fees included), settled when the
+  #       raid closes: gear handed to a squadmate who carries it out is not lost (and not the
+  #       squadmate's gain), insured gear that comes back is not lost, and gear taken off enemies
+  #       is a gain
   #   K = log2((player kills + 1) / (deaths + 1)) / kd-scale
   #   R = (share of raids a red item they did not bring was carried out - red-baseline) / red-scale
   #   C = (revives + getting out beside a squadmate + escort jobs) per raid / coop-target
@@ -535,8 +538,9 @@ luck:
     red-scale: 0.3
     coop-weight: 0.25
     coop-target: 1.0
-  # Loss compensation (高爆率局). Within window-hours each raid's net loss counts as a share of its
-  # tier's threshold (profits take it back, losses in different tiers add up); reaching 1 makes the
+  # Loss compensation (高爆率局). Within window-hours each raid's net loss (settled as above, when
+  # the raid closes) counts as a share of its tier's threshold (profits take it back, losses in
+  # different tiers add up); reaching 1 makes the
   # player find gold and red about multiplier times as often in the next `raids` raids: every
   # container they search may hand out one more, with (multiplier - 1) times the chance the
   # container has of holding one by itself. The containers' own contents do not change, so nobody

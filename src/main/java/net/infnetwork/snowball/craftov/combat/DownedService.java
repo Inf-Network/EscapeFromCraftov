@@ -375,8 +375,13 @@ public final class DownedService implements Listener {
         }
     }
 
+    /**
+     * Ends the reviver's kneel. Only the kneel: a reviver knocked down mid-revive already crawls,
+     * and clearing that pose stood them up (a full-height box with the upright hit zones, and a
+     * player seen standing) until their own crawl came round again in the next pass.
+     */
     private void stopReviving(Player reviver) {
-        if (reviver.hasFixedPose()) {
+        if (reviver.hasFixedPose() && reviver.getPose() == Pose.SNEAKING && !isDowned(reviver)) {
             reviver.setPose(Pose.STANDING, false);
         }
     }

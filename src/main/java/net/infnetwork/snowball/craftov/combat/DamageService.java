@@ -242,6 +242,13 @@ public final class DamageService implements Listener {
 
     /** A knife hit: AI die in a fixed number of hits per class, players take flat damage. */
     private void melee(Player player, LivingEntity victim, ItemDef def) {
+        // The swing's own event is cancelled before the friendly-fire handler sees it, so ask the same
+        // questions a bullet does here: a player still under insertion protection (or anyone else a
+        // bullet would pass through) gets no hit marker, no death-report entry and no last hit.
+        if (!plugin.raids().canDamage(player, victim)
+                || (victim instanceof Player target && !plugin.raids().canBeShot(target))) {
+            return;
+        }
         net.infnetwork.snowball.craftov.weapon.MeleeSpec spec = def.melee();
         long now = org.bukkit.Bukkit.getCurrentTick();
         if (now - lastMelee.getOrDefault(player.getUniqueId(), -1000L) < spec.cooldownTicks()

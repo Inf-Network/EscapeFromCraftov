@@ -4,6 +4,7 @@ import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
+import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -29,6 +30,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.profile.PlayerTextures;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
@@ -334,6 +336,12 @@ public final class ReplayService implements Listener {
     private Mannequin standIn(Player viewer, World world, Sample sample, @Nullable Look look) {
         Location at = new Location(world, sample.x(), sample.y(), sample.z(), sample.yaw(), sample.pitch());
         Mannequin mannequin = world.spawn(at, Mannequin.class, m -> {
+            // The replay plays in the live raid world, so the stand-ins are real entities that stand
+            // where the fighters stood a moment ago (or still stand). Only the dead player sees them:
+            // the role tag makes bullets, grenades and the barrage pass through them, and they push
+            // nobody around.
+            m.getPersistentDataContainer().set(Keys.ENTITY_ROLE, PersistentDataType.STRING, "replay");
+            m.setCollidable(false);
             m.setVisibleByDefault(false);
             m.setPersistent(false);
             m.setInvulnerable(true);

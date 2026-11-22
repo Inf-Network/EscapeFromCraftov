@@ -145,7 +145,17 @@ public final class RaidManager implements Listener {
         return rp != null && rp.active() && Bukkit.getCurrentTick() >= rp.protectedUntil;
     }
 
+    /**
+     * Whether {@code attacker} may hurt {@code victim}: in a raid or on the range only a combatant can
+     * be hurt at all, players only by enemies in their own raid (or squadmates with friendly fire on),
+     * and soldiers never hurt each other. Bullets that may not hurt an entity fly through it.
+     */
     public boolean canDamage(LivingEntity attacker, LivingEntity victim) {
+        // Only where guns fire: the vanilla damage handler asks this too, and in an editor world an
+        // admin in creative must still be able to punch away a stray armour stand or mob.
+        if (!isCombatant(victim) && isCombatWorld(victim.getWorld())) {
+            return false;
+        }
         if (attacker instanceof Player a && victim instanceof Player v) {
             Raid raid = raidOf(a);
             if (raid == null || raid != raidOf(v)) {
@@ -159,6 +169,22 @@ public final class RaidManager implements Listener {
             return plugin.ai().isAi(victim) != plugin.ai().isAi(attacker) || plugin.lobby().isTarget(victim);
         }
         return true;
+    }
+
+    /**
+     * Players, soldiers, drones and range dummies: the only living things that take hits in a raid or
+     * on the range. Anything else alive there is scenery (corpses, kill-replay stand-ins, whatever
+     * decoration comes next), so a shot passes through it instead of stopping in mid-air with a hit
+     * marker.
+     */
+    public boolean isCombatant(LivingEntity entity) {
+        return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
+                || plugin.lobby().isTarget(entity);
+    }
+
+    /** Raid worlds and the private range: the only worlds where anyone can fire a gun. */
+    private boolean isCombatWorld(World world) {
+        return isRaidWorld(world) || plugin.range().isRangeWorld(world);
     }
 
     public boolean sameSquad(Player a, Player b) {

@@ -1281,12 +1281,16 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ voluntary exit / shutdown
 
-    /** Gives up the raid (counts as death). */
+    /**
+     * Gives up the raid (counts as death). Whoever hurt the player in the last 30 seconds, or
+     * knocked them down, still gets the kill: giving up from the terminal while crawling or about to
+     * die would otherwise deny them it and the bounty.
+     */
     public void surrender(Player player) {
         Raid raid = raidOf(player);
         RaidPlayer rp = session(player);
         if (raid != null && rp != null && rp.active()) {
-            die(raid, player, rp, "放弃行动", null);
+            die(raid, player, rp, "放弃行动", plugin.downed().killingHit(player));
         }
     }
 
@@ -1753,7 +1757,8 @@ public final class RaidManager implements Listener {
         }
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
-            die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
+            // As if bleeding out: the knocker keeps the kill and the bounty past the 30 seconds.
+            die(raid, player, rp, "倒地后断线", plugin.downed().killingHit(player));
             byPlayer.remove(player.getUniqueId());
             player.getInventory().clear();
             return;

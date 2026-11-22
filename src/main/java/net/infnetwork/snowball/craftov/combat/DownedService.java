@@ -215,14 +215,29 @@ public final class DownedService implements Listener {
         downed.remove(player.getUniqueId());
         uncrawl(player, state);
         rp.state = RaidPlayer.State.ALIVE;
-        DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
-        // Whoever knocked the player down keeps the kill unless someone has hurt them since: past 30
-        // seconds the last hit has expired, and a shell landing after that names nobody.
-        if (hit == null || (hit.attacker() == null && state.cause != null && state.cause.attacker() != null)) {
-            hit = state.cause;
-        }
+        DamageService.LastHit hit = killingHit(player, state);
         plugin.raids().die(raid, player, rp, hit == null || hit.attacker() == null ? "倒地后失血过多"
                 : net.infnetwork.snowball.craftov.raid.RaidManager.deathReason(hit), hit);
+    }
+
+    /**
+     * Who gets the kill when a player dies without a hit of their own to blame: bleeding out while
+     * down, quitting while down, giving up. That is whoever hurt them last, if within 30 seconds;
+     * otherwise, for a downed player, whoever knocked them down. Past 30 seconds the last hit has
+     * expired, and a shell landing after that names nobody, so neither takes the kill off the
+     * knocker. Ask before {@link #clear}, which forgets the knock-down.
+     */
+    public DamageService.@Nullable LastHit killingHit(Player player) {
+        return killingHit(player, downed.get(player.getUniqueId()));
+    }
+
+    private DamageService.@Nullable LastHit killingHit(Player player, @Nullable Downed state) {
+        DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
+        DamageService.LastHit cause = state == null ? null : state.cause;
+        if (hit == null || (hit.attacker() == null && cause != null && cause.attacker() != null)) {
+            return cause;
+        }
+        return hit;
     }
 
     private void tick() {

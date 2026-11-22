@@ -8,7 +8,9 @@
 //   3. in a fresh build world, "/cv editor start ../config" and "../../CraftEngine/config" are
 //      refused, "/cv editor save" then has no session, and neither plugins/Craftov/config.yml nor
 //      CraftEngine's config.yml is touched; with a real session "set minutes abc" prints its usage
-//      and "set camera" works without a value;
+//      and "set camera" works without a value; a map file whose id does not fit the new rule
+//      (upper case and a dash, as older versions allowed) still opens in the editor and saves to
+//      its own file, and once it is gone the same id is refused for a new map;
 //   4. a non-op player's "/squad invite <other>", the other's "/squad accept", then "/party" and
 //      "/craftov:party" list a squad of two, and tab completion of "/squad " offers
 //      invite / accept / leave / kick / list;
@@ -142,9 +144,9 @@ async function main () {
   const configTime = mtime(CONFIG)
   const ceTime = mtime(CE_CONFIG)
   const mapsBefore = listMaps()
-  r = await say(A, '/cv editor start ../config', /地图ID只能/)
+  r = await say(A, '/cv editor start ../config', /ID只能包含/)
   check('"/cv editor start ../config" is refused', !!r.hit && !r.lines.some(l => l.includes('开始编辑地图')), r.lines)
-  r = await say(A, '/cv editor start ../../CraftEngine/config', /地图ID只能/)
+  r = await say(A, '/cv editor start ../../CraftEngine/config', /ID只能包含/)
   check('"/cv editor start ../../CraftEngine/config" is refused', !!r.hit, r.lines)
   r = await say(A, '/cv editor save', /你不在编辑模式/)
   check('"/cv editor save" afterwards has no session to save', !!r.hit && !r.lines.some(l => l.includes('地图已保存')), r.lines)
@@ -162,6 +164,27 @@ async function main () {
   check('"/cv editor set name" without a value lists the keys', !!r.hit && !r.lines.some(l => l.includes('已设置')), r.lines)
   r = await say(A, '/cv editor discard', /已退出编辑模式/)
   check('"/cv editor discard" leaves without saving', !!r.hit && listMaps() === mapsBefore, [r.lines, listMaps()])
+  // A map saved before ids were checked: it must stay editable, and save over its own file.
+  const legacyId = `Sec-Legacy-${run}`
+  const legacyFile = path.join(MAPS, legacyId + '.yml')
+  const withLegacy = [...mapsBefore.split(',').filter(Boolean), legacyId + '.yml'].sort().join(',')
+  fs.writeFileSync(legacyFile, `id: ${legacyId}\nname: 旧地图\ntemplate: sectest_world\ntest: true\n`)
+  try {
+    await rcon('cv reload')
+    r = await say(A, `/cv editor start ${legacyId}`, /开始编辑地图|ID只能包含/)
+    check(`an existing map with the id ${legacyId} opens in the editor`, !!r.hit && r.hit.includes(`(${legacyId})`), r.lines)
+    r = await say(A, '/cv editor save', /地图已保存|保存失败/)
+    const saved = fs.readFileSync(legacyFile, 'utf8')
+    check('... and saves over its own file', !!r.hit && r.hit.includes('地图已保存') && saved.includes('raid-minutes') &&
+      listMaps() === withLegacy, [r.lines, listMaps()])
+    await say(A, '/cv editor discard', /已退出编辑模式/)
+  } finally {
+    fs.rmSync(legacyFile, { force: true })
+    await rcon('cv reload')
+  }
+  r = await say(A, `/cv editor start ${legacyId}`, /开始编辑地图|ID只能包含/)
+  check(`with no such map, ${legacyId} is refused as a new id`, !!r.hit && r.hit.includes('ID只能包含'), r.lines)
+  check('... and no map file is left', listMaps() === mapsBefore, [mapsBefore, listMaps()])
   A.chat('/cv lobby')
   await sleep(1500)
 

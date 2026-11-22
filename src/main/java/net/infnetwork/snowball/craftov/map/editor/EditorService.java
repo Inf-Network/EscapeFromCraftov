@@ -130,8 +130,14 @@ public final class EditorService implements Listener {
             return;
         }
         String id = typed.toLowerCase(Locale.ROOT);
-        if (!NAME.matcher(id).matches()) {
-            Text.send(player, "<#FF8A80>地图ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
+        // Only a new id has to fit NAME. A map saved before ids were checked ("废弃工厂", "my-map")
+        // still opens: its file is already in maps/, and MapRegistry.file keeps the save there.
+        MapDef existing = plugin.maps().get(typed);
+        if (existing == null) {
+            existing = plugin.maps().get(id);
+        }
+        if (existing == null && !NAME.matcher(id).matches()) {
+            Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         World world = player.getWorld();
@@ -139,11 +145,10 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
             return;
         }
-        MapDef existing = plugin.maps().get(id);
         MapDraft draft;
         if (existing != null) {
             if (!existing.template().equals(world.getName())) {
-                Text.send(player, "<#FF8A80>地图 " + id + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
+                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
                 return;
             }
             draft = MapDraft.of(existing);
@@ -160,7 +165,7 @@ public final class EditorService implements Listener {
         player.setGameMode(GameMode.CREATIVE);
         giveTools(player, session);
         refreshLabels(player, session);
-        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + draft.id + ")");
+        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
         Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
         Text.send(player, "<#9AA0A6>完成后用“保存”工具或 <white>/cv editor save</white>；<white>/cv editor set name|minutes|time <值></white> 修改属性。");
     }

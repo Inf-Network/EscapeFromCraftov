@@ -27,6 +27,8 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
@@ -51,6 +53,11 @@ import java.util.UUID;
  * spike stops them for a moment and then delivers them all at once, so a hold only times out after
  * a full second without one, and that kind of release does not count as letting go of a
  * semi-automatic trigger.
+ *
+ * <p>The cobweb is real on the client, and a body inside one is slowed to a crawl and stops
+ * falling. The server only takes a cell away a round trip after the client walked or fell into
+ * it, so cells keep clear of the body by how far it may get in that time: its recent movement per
+ * tick times the ping in ticks plus two, and while falling none goes below the feet.
  */
 public final class TriggerService implements Listener {
 
@@ -62,6 +69,14 @@ public final class TriggerService implements Listener {
     private static final int SWING_TIMEOUT = 20;
     /** A single click on air (no capture block in reach) fires this long. */
     private static final int TAP_TICKS = 2;
+    /** Blocks of clearance kept around a body standing still. */
+    private static final double BODY_MARGIN = 0.25;
+    /** Ticks of movement the clearance looks back over (movement packets arrive unevenly). */
+    private static final int MOTION_WINDOW = 3;
+    /** Longest step per tick believed: about the terminal speed of a fall. Anything longer is a teleport. */
+    private static final double MAX_STEP = 4.0;
+    /** Most ticks of ping the clearance allows for, so a bad connection does not push every cell away. */
+    private static final double MAX_LEAD = 12;
 
     private static final class Capture {
         @Nullable World world;
@@ -85,6 +100,11 @@ public final class TriggerService implements Listener {
         boolean stale;
         /** The server resent real blocks (it does after every right-click on a block): resend all cells. */
         boolean dirty;
+        /** Where the player was last tick, for {@link #steps}; null when there is nothing to measure from. */
+        @Nullable Location lastAt;
+        /** Movement (x, y, z) in each of the last {@link #MOTION_WINDOW} ticks. */
+        final double[][] steps = new double[MOTION_WINDOW][3];
+        int nextStep;
     }
 
     private final CraftovPlugin plugin;
@@ -123,6 +143,7 @@ public final class TriggerService implements Listener {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
             Capture c = capture(player);
+            track(player, c);
             boolean active = canCapture(player);
             if (active) {
                 updateCells(player, c);
@@ -151,6 +172,52 @@ public final class TriggerService implements Listener {
                 plugin.weapons().triggerUp(player, !c.stale);
             }
         }
+    }
+
+    /** Records how far the player moved since last tick (see {@link #clearance}). */
+    private static void track(Player player, Capture c) {
+        Location at = player.getLocation();
+        double[] step = c.steps[c.nextStep];
+        c.nextStep = (c.nextStep + 1) % MOTION_WINDOW;
+        if (c.lastAt != null && c.lastAt.getWorld() == at.getWorld()) {
+            step[0] = Math.clamp(at.getX() - c.lastAt.getX(), -MAX_STEP, MAX_STEP);
+            step[1] = Math.clamp(at.getY() - c.lastAt.getY(), -MAX_STEP, MAX_STEP);
+            step[2] = Math.clamp(at.getZ() - c.lastAt.getZ(), -MAX_STEP, MAX_STEP);
+        } else {
+            for (double[] old : c.steps) {
+                java.util.Arrays.fill(old, 0);
+            }
+        }
+        c.lastAt = at;
+    }
+
+    /**
+     * The space the player's body may reach before the client hears about a new cell: the hitbox plus
+     * a margin, stretched in each direction it moved lately by that step times the ping in ticks plus
+     * two, and further down while airborne for gravity over that time.
+     */
+    private static BoundingBox clearance(Player player, Capture c) {
+        double lead = Math.min(MAX_LEAD, player.getPing() / 50.0 + 2);
+        double[] low = new double[3];
+        double[] high = new double[3];
+        for (double[] step : c.steps) {
+            for (int i = 0; i < 3; i++) {
+                low[i] = Math.min(low[i], step[i]);
+                high[i] = Math.max(high[i], step[i]);
+            }
+        }
+        double fall = player.isOnGround() ? 0 : Math.min(MAX_STEP, 0.04 * lead * lead);
+        return player.getBoundingBox().expand(BODY_MARGIN)
+                .expand(-low[0] * lead, -low[1] * lead + fall, -low[2] * lead, high[0] * lead, high[1] * lead, high[2] * lead);
+    }
+
+    /** Airborne and on the way down: the next ticks take the body below where its feet are now. */
+    private static boolean falling(Player player, Capture c) {
+        if (player.isOnGround()) {
+            return false;
+        }
+        double[] last = c.steps[Math.floorMod(c.nextStep - 1, MOTION_WINDOW)];
+        return last[1] < 0;
     }
 
     /** Mirrors the server's reach check on dig packets: block interaction range plus one, eye to block. */
@@ -192,7 +259,9 @@ public final class TriggerService implements Listener {
         double ax = Math.abs(dir.getX());
         double ay = Math.abs(dir.getY());
         double az = Math.abs(dir.getZ());
-        BoundingBox body = player.getBoundingBox().expand(0.6);
+        BoundingBox body = clearance(player, c);
+        double feet = player.getLocation().getY();
+        boolean falling = falling(player, c);
         Set<Long> wanted = new HashSet<>();
         for (int a = -1; a <= 1; a++) {
             for (int b = -1; b <= 1; b++) {
@@ -213,7 +282,8 @@ public final class TriggerService implements Listener {
                     continue;
                 }
                 Block block = world.getBlockAt(x, y, z);
-                if (!block.getType().isAir() || body.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))) {
+                if (!block.getType().isAir() || body.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))
+                        || falling && y < feet) {
                     continue;
                 }
                 if (eye.toVector().distanceSquared(new Vector(x + 0.5, y + 0.5, z + 0.5)) > 4.3 * 4.3) {
@@ -434,6 +504,23 @@ public final class TriggerService implements Listener {
         long now = Bukkit.getCurrentTick();
         c.lastInput = now;
         c.tapUntil = Math.max(c.tapUntil, now + TAP_TICKS);
+    }
+
+    /** A teleport is not movement: measure from where the player lands. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) {
+        Capture c = captures.get(event.getPlayer().getUniqueId());
+        if (c != null) {
+            c.lastAt = null;
+        }
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Capture c = captures.get(event.getPlayer().getUniqueId());
+        if (c != null) {
+            c.lastAt = null;
+        }
     }
 
     @EventHandler

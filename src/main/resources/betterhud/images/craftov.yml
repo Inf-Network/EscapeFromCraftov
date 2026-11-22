@@ -16,6 +16,9 @@ craftov_panel_skill:
 craftov_alert_band:
   type: single
   file: craftov/alert_band.png
+craftov_prompt_band:
+  type: single
+  file: craftov/prompt_band.png
 craftov_hp_empty:
   type: single
   file: craftov/hp_empty.png

@@ -820,6 +820,11 @@ craftov_alert:
       operation: ==
   offset: left
 craftov_prompt:
+  images:
+    '1':
+      name: craftov_prompt_band
+      x: 0
+      y: -1
   texts:
     '1':
       name: craftov_pixel

@@ -610,6 +610,8 @@ HUD_IMAGES = {
     'craftov/panel_info.png': lambda: hudart.panel(132, 44),
     'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
     'craftov/alert_band.png': lambda: hudart.band(300, 14),
+    # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
+    'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
     'craftov/hp_bar.png': lambda: hudart.bar(64, 3, rgb(palette.OK)),
     'craftov/armor_empty.png': lambda: hudart.bar(30, 2, (0, 0, 0, 0), empty=True),
@@ -713,7 +715,7 @@ def build_betterhud():
     for part in hudart.BODY_PARTS:
         for state in range(len(hudart.BODY_STATES)):
             save(hudart.body_part(part, state), os.path.join(BH, 'assets', 'craftov', 'body', '%s_%d.png' % (part, state)))
-    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'alert_band', 'hp_empty', 'armor_empty',
+    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'alert_band', 'prompt_band', 'hp_empty', 'armor_empty',
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
@@ -817,6 +819,7 @@ def build_betterhud():
             'conditions': cond(('craftov_has_alert', 'true')),
         },
         'craftov_prompt': {
+            'images': numbered([image('craftov_prompt_band', 0, -1)]),
             'texts': numbered([text('[craftov_prompt]', 100, 0, align='center')]),
             'conditions': cond(('craftov_has_prompt', 'true'), ('craftov_extracting', 'false')),
         },

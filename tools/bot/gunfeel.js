@@ -24,6 +24,10 @@
 //           server measured for most strafing shots is within 10% of what the bot really walked, strafing
 //           hip fire is at least 1.8x as wide as standing and strafing aimed fire at least 2.5x;
 //           standing shots count no movement at all.
+//   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
+//           弹匣 穿透) and the line under them; a gun with the better number never has the shorter
+//           bar; in the gunsmith the vertical grip's button previews a longer accuracy bar (green), and
+//           fitted to the K47 its own accuracy bar gains segments while its hip spread drops.
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node gunfeel.js [scenario ...]
 //
@@ -42,7 +46,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'feed', 'kick', 'ads', 'recoil', 'move']
+const scenarios = wanted.length ? wanted : ['lobby', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -384,6 +388,122 @@ async function move (spot) {
 }
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 
+// ---------------------------------------------------------------- lore
+const nbt = require('prismarine-nbt')
+const GUNS = ['p18', 'd50', 'sv9', 'v57', 'k47', 'm4c', 'scr', 'kl7', 'r12', 'dm14', 'awr']
+const STATS = ['伤害', '射速', '精准', '开镜', '后坐', '弹匣', '穿透']
+/** Stats where the smaller number is the better one (a longer bar). */
+const SMALLER_BETTER = new Set(['精准', '开镜', '后坐'])
+
+/** An item's lore as lines of { color, text } runs, in order, colours inherited as the client does. */
+function loreLines (item) {
+  const comp = ((item && item.components) || []).find(c => c.type === 'lore')
+  if (!comp) return []
+  return comp.data.map(line => {
+    const runs = []
+    const walk = (node, color) => {
+      if (node === null || node === undefined) return
+      if (typeof node === 'string' || typeof node === 'number') { runs.push({ color, text: String(node) }); return }
+      if (Array.isArray(node)) { node.forEach(n => walk(n, color)); return }
+      const c = node.color || color
+      if (node.text !== undefined) runs.push({ color: c, text: String(node.text) })
+      if (node[''] !== undefined) runs.push({ color: c, text: String(node['']) })
+      if (node.extra) node.extra.forEach(n => walk(n, c))
+    }
+    let simple = line
+    try { simple = nbt.simplify(line) } catch (e) { /* already plain */ }
+    walk(simple, null)
+    return runs
+  })
+}
+
+/**
+ * The stat bars of a lore: label -> { filled, gain, loss, total, value } where filled counts the bar's
+ * lit segments (gains included), and value is the number after the bar (damage x pellets multiplied).
+ */
+function barsOf (item) {
+  const out = {}
+  for (const runs of loreLines(item)) {
+    const text = runs.map(r => r.text).join('')
+    const label = STATS.find(s => text.startsWith(s + ' '))
+    if (!label || !text.includes('▍')) continue
+    let filled = 0; let gain = 0; let loss = 0; let total = 0
+    for (const r of runs) {
+      const n = (r.text.match(/▍/g) || []).length
+      total += n
+      const c = String(r.color || '').toUpperCase()
+      if (c === '#5BD16B') gain += n
+      if (c === '#FF4D4D') loss += n
+      if (c !== '#3A3F47' && c !== '#FF4D4D') filled += n
+    }
+    const tail = text.slice(text.lastIndexOf('▍') + 1).trim()
+    const nums = (tail.match(/[\d.]+/g) || []).map(Number)
+    const value = nums.length === 2 && tail.includes('×') ? nums[0] * nums[1] : nums[0]
+    out[label] = { filled, gain, loss, total, value, text }
+  }
+  return out
+}
+
+async function lore () {
+  await rcon(`execute as ${name} at @s run tp @s 0.5 65 6.5 0 0`)
+  await sleep(1000)
+  for (const gun of GUNS) if (!bot.inventory.slots.some(s => s && itemId(s) === gun)) await rcon(`cv give ${name} ${gun}`)
+  await sleep(1500)
+  const bars = {}
+  for (const gun of GUNS) {
+    const item = bot.inventory.slots.find(s => s && itemId(s) === gun)
+    bars[gun] = barsOf(item)
+  }
+  log('K47 bars', Object.values(bars.k47).map(b => b.text))
+  log('lit segments (' + GUNS.join('/') + ')', STATS.map(s => s + ' ' + GUNS.map(g => bars[g][s] ? bars[g][s].filled : '-').join('/')))
+  const complete = GUNS.filter(g => STATS.every(s => bars[g][s] && bars[g][s].total === 10))
+  check('lore: every gun has the seven ten-segment stat bars', complete.length === GUNS.length,
+    GUNS.filter(g => !complete.includes(g)).map(g => g + ': ' + Object.keys(bars[g]).join(',')).join(' | '))
+  const hint = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).some(runs => runs.map(r => r.text).join('').includes('条越长越好'))
+  check('lore: a line under the bars says how to read them', hint)
+  // A gun with a better number never has a shorter bar.
+  const wrong = []
+  for (const stat of STATS) {
+    for (const a of GUNS) {
+      for (const b of GUNS) {
+        const x = bars[a][stat]; const y = bars[b][stat]
+        if (!x || !y) continue
+        const better = SMALLER_BETTER.has(stat) ? x.value < y.value : x.value > y.value
+        if (better && x.filled < y.filled) wrong.push(`${stat} ${a} ${x.value} (${x.filled}) vs ${b} ${y.value} (${y.filled})`)
+      }
+    }
+  }
+  check('lore: the bars rank the guns as their numbers do', wrong.length === 0, wrong.slice(0, 4).join(' | '))
+
+  // A vertical grip in the gunsmith: its button previews the accuracy bar going up, and once fitted
+  // the gun's own accuracy bar shows the gain.
+  await rcon(`cv give ${name} att_vgrip`)
+  await sleep(800)
+  hold('k47')
+  await sleep(1500)
+  const window = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 5000)
+    bot.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    bot.chat('/cv mod')
+  })
+  if (!window) throw new Error('the gunsmith did not open')
+  await sleep(800)
+  const partSlot = window.slots.findIndex((s, i) => i >= 45 && i < 54 && s && itemId(s) === 'att_vgrip')
+  const preview = partSlot >= 0 ? barsOf(window.slots[partSlot]) : {}
+  check('lore: the grip\'s button in the gunsmith previews a longer accuracy bar', !!preview['精准'] && preview['精准'].gain > 0,
+    preview['精准'] ? preview['精准'].text : `no preview (part at ${partSlot})`)
+  if (partSlot >= 0) await bot.clickWindow(partSlot, 0, 0)
+  await sleep(1200)
+  const fitted = barsOf(window.slots[22])
+  bot.closeWindow(window)
+  await sleep(500)
+  const before = bars.k47['精准']
+  const after = fitted['精准']
+  check('lore: the K47 with the grip fitted shows its accuracy bar gain and a smaller spread',
+    !!after && after.gain > 0 && after.value < before.value && after.filled > before.filled,
+    after ? `${before.text} -> ${after.text}` : 'no bar after fitting')
+}
+
 // ---------------------------------------------------------------- feed
 const inRaid = world => world.startsWith('craftov_raid_')
 const feedOf = async who => (await rcon(`cv feed ${who}`)).split('\n').map(l => l.trim()).filter(Boolean)
@@ -501,6 +621,7 @@ async function ads (spot) {
     log('---', scenario)
     if (scenario === 'lobby') { await lobby(); continue }
     if (scenario === 'feed') { await feed(); spot = null; continue }
+    if (scenario === 'lore') { await lore(); spot = null; continue }
     if (!spot || (await rcon(`data get entity ${name} Dimension`)).indexOf('craftov_range') < 0) {
       await enterRange()
       await sleep(500)

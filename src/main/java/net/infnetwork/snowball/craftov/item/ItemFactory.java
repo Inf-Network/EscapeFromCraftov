@@ -53,7 +53,8 @@ public final class ItemFactory {
      * 9: the weapon-handling line (#32-#34, which used 5-6) on top: gun lore shows the new rates of the
      * V57, KL7 and SCR, and guns carry max_damage and unbreakable for the draw mark (see
      * {@link #setDrawing}). 10: max_damage 2 for the reload mark, and no "dry" model string (the
-     * flash follows the shots the server fires, see {@link #setHandMark}).
+     * flash follows the shots the server fires, see {@link #setHandMark}), and gun lore with stat bars
+     * (GunStats) in place of the damage and rate line.
      */
     public static final int VERSION = 10;
     /**
@@ -668,7 +669,8 @@ public final class ItemFactory {
             ItemDef ammoDef = registry.get(ammoType);
             Map<String, net.infnetwork.snowball.craftov.weapon.AttachSpec> parts =
                     net.infnetwork.snowball.craftov.weapon.Attachments.resolve(gun, attachments(stack), registry);
-            int capacity = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts).magazine();
+            GunSpec withParts = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts);
+            int capacity = withParts.magazine();
             lore.add(Text.mm("<#8A8F98>口径 <white>" + gun.caliber() + "  <#8A8F98>弹匣 <white>" + ammo + "/" + capacity
                     + (ammoDef != null ? " <#8A8F98>(" + Text.escape(ammoDef.name()) + ")" : "")));
             StringBuilder modes = new StringBuilder();
@@ -678,8 +680,14 @@ public final class ItemFactory {
                 }
                 modes.append(mode.displayName());
             }
-            lore.add(Text.mm("<#8A8F98>伤害 <white>" + fmt(gun.damage()) + (gun.pellets() > 1 ? "×" + gun.pellets() : "")
-                    + "  <#8A8F98>射速 <white>" + gun.rpm() + "  <#8A8F98>模式 <white>" + modes));
+            lore.add(Text.mm("<#8A8F98>模式 <white>" + modes));
+            // Penetration is the loaded round's; an empty gun shows its caliber's first round.
+            List<ItemDef> rounds = registry.ammoFor(gun.caliber());
+            ItemDef shown = ammoDef != null ? ammoDef : rounds.isEmpty() ? null : rounds.get(0);
+            for (String line : GunStats.bars(registry, gun, withParts, shown)) {
+                lore.add(Text.mm(line));
+            }
+            lore.add(Text.mm(GunStats.HINT));
             ItemDef optic = registry.get(opticId(stack));
             ItemDef builtIn = registry.get(gun.scope());
             if (optic != null) {

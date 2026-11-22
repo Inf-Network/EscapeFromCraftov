@@ -124,6 +124,11 @@ final class GunsmithMenu extends Menu {
             } else if (!sameKind) {
                 note.add("<#FF8A80>" + mixNote(gun, stack));
             } else {
+                List<String> changes = changes(gun, spec, def);
+                if (!changes.isEmpty()) {
+                    note.add("<#9AA0A6>装上后：");
+                    note.addAll(changes);
+                }
                 note.add("<#5BD16B>点击安装");
             }
             button(45 + col, withNote(icon, note), e -> install(slot));
@@ -135,6 +140,23 @@ final class GunsmithMenu extends Menu {
             set(49, UiItems.button("craftov:ui/icon_help", "<#9AA0A6>身上没有配件", List.of(
                     "<#9AA0A6>瞄准镜和配件可以在商人「配件」页购买，", "<#9AA0A6>也会出现在武器箱和保险箱里")));
         }
+    }
+
+    /**
+     * The stat bars fitting this part would move on the gun, in place of whatever sits in its slot now
+     * (the same bars as the gun's tooltip, see GunStats). Sights change no bar.
+     */
+    private List<String> changes(ItemStack gun, GunSpec spec, ItemDef part) {
+        if (part.attach() == null) {
+            return List.of();
+        }
+        Map<String, String> now = ItemFactory.attachments(gun);
+        Map<String, String> next = new java.util.HashMap<>(now);
+        next.put(part.attach().slot(), part.id());
+        GunSpec before = Attachments.effective(spec, Attachments.resolve(spec, now, plugin.registry()));
+        GunSpec after = Attachments.effective(spec, Attachments.resolve(spec, next, plugin.registry()));
+        return net.infnetwork.snowball.craftov.item.GunStats.changes(plugin.registry(), before, after,
+                plugin.registry().get(ItemFactory.ammoType(gun)));
     }
 
     private static ItemStack withNote(ItemStack stack, List<String> note) {

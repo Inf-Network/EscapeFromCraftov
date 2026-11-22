@@ -155,9 +155,9 @@ trader:
   buy-multiplier: 1.15
   sell-multiplier: 0.55
   # Share of an armour piece's value charged per full bar of missing durability. Repairing raises
-  # the value by 0.75 of it, and the market's system buyers pay at most ~0.99 of value after fee and
-  # tax (they judge listings by item value, never by past sales), so below ~0.74 repairing worn
-  # armour to sell it is profit (tools/econ/repair.py checks).
+  # the value by 0.75 of it, and the market's system buyers pay at most market.virtual-max-value of
+  # value (~0.65 after fee and tax; they judge listings by item value, never by past sales), so below
+  # ~0.49 repairing worn armour to sell it would be profit (tools/econ/repair.py checks).
   repair-rate: 0.75
   # Rarest tier the trader sells (GOLD and RED only come from raids and the market).
   max-rarity: PURPLE
@@ -167,18 +167,23 @@ market:
   listing-fee: 0.02
   sale-tax: 0.05
   max-listings: 12
-  # Simulated buyers purchase listings priced near the reference price, so the market works on small servers.
+  # Simulated buyers take cheap listings, so the market works on small servers. They are a quick
+  # outlet a little better than the trader, not a buyer at full price: they pay at most
+  # virtual-max-value x the item's value (durability, attachments, loaded ammo and stack size
+  # included; ~0.65 after fee and tax against the trader's 0.55), nothing rarer than
+  # virtual-max-rarity, and at most virtual-daily-cap listings of one item per seller per day
+  # (04:00 reset; per seller, so one player cannot use it up for everyone else; 0 = no cap). Each
+  # round (10 s) a listing at up to 85% / 93% / 100% of their price sells with chance 0.3 / 0.12 /
+  # 0.04, so one at their full price takes about four minutes.
   virtual-buyers: true
   virtual-min-age-seconds: 45
+  virtual-max-value: 0.7
+  virtual-max-rarity: PURPLE
+  virtual-daily-cap: 10
   # Reference price = item value (durability, attachments, loaded ammo and stack size included) x this.
-  # It is fixed by items.yml: system buyers and the pricing screen judge listings against it, and no
-  # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
-  # than the trader's buy-multiplier, so reselling trader stock never pays.
+  # It is fixed by items.yml: the pricing screen and the trade-price band judge listings against it,
+  # and no sale moves it.
   reference-multiplier: 0.85
-  # Most listings of one item the system buyers take from one seller per hour (0 = no cap). A safety
-  # valve should a config change ever make reselling to them profitable again; per seller, so one
-  # player cannot use it up for everyone else.
-  virtual-hourly-cap: 40
   # Listings priced above this multiple of the reference price are refused (stops one colluding sale
   # at an absurd price from moving money between accounts).
   max-price-multiplier: 3.0

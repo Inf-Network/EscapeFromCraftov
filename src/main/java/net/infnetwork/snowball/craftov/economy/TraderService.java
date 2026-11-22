@@ -302,9 +302,9 @@ public final class TraderService {
 
     /**
      * Share of an armour piece's value charged per full bar of missing durability. A repair raises
-     * the item's value by 0.75 of its value per full bar (ItemFactory.value), so below about 0.74
-     * (0.75 times what the market's system buyers pay at most after fee and tax) repairing worn
-     * armour and selling it made money; tools/econ/repair.py checks every piece in items.yml.
+     * the item's value by 0.75 of its value per full bar (ItemFactory.value), so below about 0.49
+     * (0.75 times what the market's system buyers pay at most after fee and tax, 0.7 x 0.93) repairing
+     * worn armour and selling it would make money; tools/econ/repair.py checks every piece in items.yml.
      */
     public double repairRate() {
         return plugin.getConfig().getDouble("trader.repair-rate", 0.75);

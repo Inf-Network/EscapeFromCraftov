@@ -16,10 +16,12 @@ final class PriceMenu extends Menu {
     private final int stashIndex;
     private final ItemRecord record;
     private final StashMenu back;
-    /** Fixed anchor price (MarketService.anchorFor): the default price and what system buyers judge by. */
+    /** Fixed anchor price (MarketService.anchorFor): the default price, and what players judge listings by. */
     private final long reference;
     /** Highest price the market accepts for this record (MarketService.maxPrice). */
     private final long cap;
+    /** Most a system buyer pays for this record, 0 when they never buy it (MarketService.virtualPrice). */
+    private final long virtual;
     private long price;
 
     PriceMenu(CraftovPlugin plugin, Player viewer, int stashIndex, ItemRecord record, StashMenu back) {
@@ -30,6 +32,7 @@ final class PriceMenu extends Menu {
         this.back = back;
         this.reference = plugin.market().anchorFor(record);
         this.cap = plugin.market().maxPrice(record);
+        this.virtual = plugin.market().virtualPrice(record);
         this.price = reference;
     }
 
@@ -40,10 +43,12 @@ final class PriceMenu extends Menu {
             set(4, display);
         }
         double ratio = price / (double) reference;
-        String hint = ratio > 1.25 ? "<#FF4D4D>系统买家不会收购"
-                : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>本小时系统买家已收满你的这种物品，需要等待"
-                : ratio <= 0.9 ? "<#5BD16B>很快售出" : ratio <= 1.0 ? "<#5BD16B>较快售出" : ratio <= 1.1 ? "<#FFC23D>可能需要等待"
-                : "<#FF8A80>较难售出";
+        double chance = plugin.market().virtualChance(record, price);
+        String hint = virtual <= 0 ? "<#FF4D4D>系统买家不会收购<#8A8F98>（" + plugin.market().virtualRarityNote() + "<#8A8F98>）"
+                : chance <= 0 ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
+                : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>今天系统买家已收满你的这种物品，明天再来"
+                : chance >= 0.3 ? "<#5BD16B>系统买家很快收购" : chance >= 0.12 ? "<#5BD16B>系统买家较快收购"
+                : "<#FFC23D>系统买家可能要等几分钟";
         long fee = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));
         long tax = Math.round(price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
         adjust(10, -0.10, "-10%");
@@ -64,6 +69,15 @@ final class PriceMenu extends Menu {
         adjust(15, 0.01, "+1%");
         adjust(16, 0.10, "+10%");
         button(18, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80>返回", List.of()), e -> back.reopen());
+        if (virtual > 0) {
+            button(20, UiItems.button("craftov:ui/icon_value", "<white>系统收购价",
+                    List.of("<#8A8F98>系统买家最多出 ◈" + Text.money(virtual) + "（物品价值的 "
+                            + Math.round(plugin.market().virtualMaxValue() * 100) + "%）", "<#8A8F98>定得越低卖得越快")),
+                    e -> setPrice(virtual));
+        } else {
+            set(20, UiItems.button("craftov:ui/icon_value", "<#8A8F98>系统收购价",
+                    List.of("<#FF8A80>" + plugin.market().virtualRarityNote())));
+        }
         button(21, UiItems.button("craftov:ui/icon_value", "<white>参考价 ×0.9", List.of()), e -> setPrice(Math.round(reference * 0.9)));
         button(22, UiItems.button("craftov:ui/icon_value", "<white>参考价", List.of()), e -> setPrice(reference));
         button(23, UiItems.button("craftov:ui/icon_value", "<white>参考价 ×1.2", List.of()), e -> setPrice(Math.round(reference * 1.2)));

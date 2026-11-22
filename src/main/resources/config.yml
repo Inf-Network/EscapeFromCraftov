@@ -117,6 +117,10 @@ combat:
     # a second). In first person the opaque white hides the fog, and the effect is lifted before the
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
+  penetration:
+    # Glass in a raid (not tinted glass) shatters under any round, which flies on with this share of
+    # its damage. A round's path goes on through at most two blocks.
+    glass-damage: 0.9
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming

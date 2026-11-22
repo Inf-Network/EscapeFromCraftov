@@ -12,7 +12,7 @@
 #   tools/mac/mac <command>  anything else goes to `ssh mac craftov <command>`:
 #                            status, branches, start, stop, restart, rcon <cmd>,
 #                            log [n], clientlog [n], build, yml diff|copy <file>,
-#                            packip <ip> [--force], online-mode true|false
+#                            packip <ip> [--force], online-mode true|false [--restart]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

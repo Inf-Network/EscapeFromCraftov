@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.combat;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.weapon.AmmoSpec;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
 import net.kyori.adventure.text.Component;
@@ -79,6 +80,9 @@ public final class DamageService implements Listener {
         }
     }
 
+    /** What one hit did to its target, for the shooter's hit sound and marker. */
+    public enum Outcome { HIT, DOWNED, KILLED }
+
     /** One hit taken, kept for the death report. */
     public record HitRecord(String attacker, String weapon, BodyPart part, double damage, int distance) {
     }
@@ -86,6 +90,8 @@ public final class DamageService implements Listener {
     private final CraftovPlugin plugin;
     private final Map<UUID, LastHit> lastHits = new HashMap<>();
     private final Map<UUID, java.util.List<HitRecord>> hitsTaken = new HashMap<>();
+    /** Shooter -> tick of their last knock-down or kill marker. */
+    private final Map<UUID, Long> strongMarks = new HashMap<>();
     private boolean applying;
 
     public DamageService(CraftovPlugin plugin) {
@@ -187,13 +193,15 @@ public final class DamageService implements Listener {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
                     .add(new HitRecord(shooter == null ? "未知" : displayName(shooter), weaponName, part, damage, (int) Math.round(distance)));
         }
+        RaidPlayer.@Nullable State before = stateOf(victim);
         deal(victim, shooter, damage);
+        Outcome outcome = outcome(victim, before);
         if (victim instanceof Player hurt && shooter != null) {
             plugin.hud().damageFrom(hurt, shooter.getLocation());
         }
         plugin.ai().onBotHurt(victim, shooter);
         if (shooter instanceof Player player) {
-            feedback(player, victim, damage, zone);
+            feedback(player, victim, damage, zone, outcome);
         }
         return damage;
     }
@@ -338,12 +346,50 @@ public final class DamageService implements Listener {
         return applying;
     }
 
-    private void feedback(Player shooter, LivingEntity victim, double damage, HitZone zone) {
-        boolean lethal = victim.isDead() || victim.getHealth() <= 0
-                || (victim instanceof Player p && plugin.downed().isDowned(p));
-        String sound = lethal ? "craftov:hit.kill" : zone == HitZone.HEAD ? "craftov:hit.head" : "craftov:hit.body";
-        shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
-        plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, lethal);
+    /** A raid player's state before a hit, for {@link #outcome}; null for anyone else. */
+    private RaidPlayer.@Nullable State stateOf(LivingEntity victim) {
+        RaidPlayer rp = victim instanceof Player player ? plugin.raids().session(player) : null;
+        return rp == null ? null : rp.state;
+    }
+
+    /**
+     * What a hit just did, from the victim's state {@code before} it and now. A raid player is
+     * downed (standing before, crawling now) or killed (active before, dead now); a hit on someone
+     * already crawling is a plain hit unless it finishes them. Anyone else is killed when dead.
+     */
+    private Outcome outcome(LivingEntity victim, RaidPlayer.@Nullable State before) {
+        RaidPlayer rp = before != null && victim instanceof Player player ? plugin.raids().session(player) : null;
+        if (rp != null) {
+            if (rp.state == RaidPlayer.State.DEAD && before != RaidPlayer.State.DEAD) {
+                return Outcome.KILLED;
+            }
+            return rp.state == RaidPlayer.State.DOWNED && before == RaidPlayer.State.ALIVE ? Outcome.DOWNED : Outcome.HIT;
+        }
+        return victim.isDead() || victim.getHealth() <= 0 ? Outcome.KILLED : Outcome.HIT;
+    }
+
+    /**
+     * The shooter's hit sound and marker, by what the hit did: the kill chime and red cross only for
+     * the hit that kills, the knock-down sound and ring for the one that downs, and the plain body or
+     * head hit otherwise, shots at a crawling player included.
+     */
+    private void feedback(Player shooter, LivingEntity victim, double damage, HitZone zone, Outcome outcome) {
+        long now = Bukkit.getCurrentTick();
+        // The rest of a shotgun blast lands the same tick: plain hits on the now crawling body must
+        // not drown out the knock-down that came first.
+        boolean covered = outcome == Outcome.HIT && strongMarks.getOrDefault(shooter.getUniqueId(), -1L) == now;
+        if (outcome != Outcome.HIT) {
+            strongMarks.put(shooter.getUniqueId(), now);
+        }
+        if (!covered) {
+            String sound = switch (outcome) {
+                case KILLED -> "craftov:hit.kill";
+                case DOWNED -> "craftov:hit.knock";
+                case HIT -> zone == HitZone.HEAD ? "craftov:hit.head" : "craftov:hit.body";
+            };
+            shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
+            plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, outcome);
+        }
         if (!plugin.getConfig().getBoolean("combat.damage-numbers", true)) {
             return;
         }
@@ -420,12 +466,14 @@ public final class DamageService implements Listener {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
                     .add(new HitRecord(player.getName(), def.name(), part, damage, (int) Math.round(eye.toVector().distance(point))));
         }
+        RaidPlayer.@Nullable State before = stateOf(victim);
         deal(victim, player, damage);
+        Outcome outcome = outcome(victim, before);
         if (victim instanceof Player hurt) {
             plugin.hud().damageFrom(hurt, player.getLocation());
         }
         plugin.ai().onBotHurt(victim, player);
-        feedback(player, victim, damage, part.zone());
+        feedback(player, victim, damage, part.zone(), outcome);
     }
 
     /**

@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
+import io.papermc.paper.raytracing.BlockCollisionMode;
+import io.papermc.paper.raytracing.RayTraceTarget;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.BodyPart;
 import net.infnetwork.snowball.craftov.item.Keys;
@@ -62,7 +64,14 @@ public final class Ballistics {
                 && !entity.getPersistentDataContainer().has(Keys.ENTITY_ROLE)
                 && !(entity instanceof Player p && (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || !plugin.raids().canBeShot(p)))
                 && plugin.raids().canDamage(shooter, living);
-        RayTraceResult result = world.rayTrace(eye, dir, gun.maxRange(), FluidCollisionMode.NEVER, true, 0.0, filter);
+        // Blocks stop a round where they are drawn (their outline), not at their collision box: a fence or
+        // wall collides 1.5 blocks up but is drawn 1 high, which left an invisible half-block shield on top
+        // of every railing. Not the visual shape either, which is empty for glass. Whatever a player walks
+        // through (grass, flowers, signs) is ignored as before.
+        RayTraceResult result = world.rayTrace(b -> b.start(eye).direction(dir).maxDistance(gun.maxRange())
+                .fluidCollisionMode(FluidCollisionMode.NEVER).blockCollisionMode(BlockCollisionMode.OUTLINE)
+                .blockFilter(block -> !block.isPassable()).entityFilter(filter)
+                .targets(RayTraceTarget.ENTITY, RayTraceTarget.BLOCK));
         Location end;
         LivingEntity hitEntity = null;
         if (result == null) {

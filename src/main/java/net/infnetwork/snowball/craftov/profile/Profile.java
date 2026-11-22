@@ -32,6 +32,8 @@ public final class Profile {
     public List<ItemRecord> secure = new ArrayList<>();
     /** Items returned by expired market listings or escort refunds, claimed from the stash menu. */
     public List<ItemRecord> mailbox = new ArrayList<>();
+    /** Insured gear on its way back (InsuranceService): moves to the mailbox once it is ready. */
+    public List<Claim> claims = new ArrayList<>();
 
     public Set<String> collected = new LinkedHashSet<>();
     public Set<Integer> collectionRewards = new LinkedHashSet<>();
@@ -111,6 +113,20 @@ public final class Profile {
 
         public Preset(String name) {
             this.name = name;
+        }
+    }
+
+    /** One insured item coming back: it reaches the mailbox once {@code readyAt} (epoch millis) has passed. */
+    public static final class Claim {
+        public ItemRecord item;
+        public long readyAt;
+
+        public Claim() {
+        }
+
+        public Claim(ItemRecord item, long readyAt) {
+            this.item = item;
+            this.readyAt = readyAt;
         }
     }
 

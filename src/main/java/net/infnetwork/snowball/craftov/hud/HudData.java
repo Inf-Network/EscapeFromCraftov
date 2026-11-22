@@ -125,7 +125,9 @@ public final class HudData {
         if (plugin.stamina().exhausted(p)) {
             sb.append(sb.isEmpty() ? "" : " ").append("力竭");
         }
-        if (plugin.stamina().overweightPenalty(p) > 0) {
+        if (plugin.stamina().overloaded(p)) {
+            sb.append(sb.isEmpty() ? "" : " ").append("过载禁跑");
+        } else if (plugin.stamina().overweightPenalty(p) > 0) {
             sb.append(sb.isEmpty() ? "" : " ").append("超重");
         }
         return sb.toString();
@@ -286,6 +288,14 @@ public final class HudData {
 
     public boolean downed(Player p) {
         return plugin.downed().isDowned(p);
+    }
+
+    /** What a downed player should do: wait for a squadmate, or use their own injector when none is up. */
+    public String downedHint(Player p) {
+        if (!plugin.downed().isDowned(p)) {
+            return "";
+        }
+        return plugin.downed().mateCanRevive(p) ? "等待队友救援" : "使用自救注射器";
     }
 
     public String operator(Player p) {

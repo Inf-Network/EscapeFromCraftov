@@ -42,6 +42,21 @@ def marker(color, size=15, thick=2, gap=3):
     return img
 
 
+def knock_marker(color, size=19, ring=2, inner=3, outer=5):
+    """
+    The knock-down marker: a ring around a small cross, so it reads apart at a glance from the plain
+    hit and headshot crosses and from the bold red kill cross.
+    """
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse([0, 0, size - 1, size - 1], outline=color, width=ring)
+    c = size // 2
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            d.line([(c + sx * inner, c + sy * inner), (c + sx * outer, c + sy * outer)], fill=color, width=2)
+    return img
+
+
 GLYPHS = {
     'N': ["X...X", "XX..X", "X.X.X", "X..XX", "X...X"],
     'S': [".XXXX", "X....", ".XXX.", "....X", "XXXX."],

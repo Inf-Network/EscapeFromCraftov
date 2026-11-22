@@ -186,15 +186,6 @@ public final class AiService implements Listener {
         return bot == null ? null : bot.gun;
     }
 
-    /** Melee class of an AI: "boss", "special" (guards, snipers, escorts) or "normal", or null if not AI. */
-    public @Nullable String meleeClass(Entity entity) {
-        Bot bot = bots.get(entity.getUniqueId());
-        if (bot == null) {
-            return null;
-        }
-        return bot.boss ? "boss" : "patrol".equals(bot.kind) ? "normal" : "special";
-    }
-
     /** True if a shield soldier stops this round: it comes from the front and hits the head, torso or arms. */
     public boolean shieldBlocks(LivingEntity victim, @Nullable LivingEntity shooter, net.infnetwork.snowball.craftov.combat.BodyPart part) {
         Bot bot = bots.get(victim.getUniqueId());
@@ -442,6 +433,9 @@ public final class AiService implements Listener {
             setAttr(z, Attribute.FOLLOW_RANGE, 48);
             setAttr(z, Attribute.KNOCKBACK_RESISTANCE, 0.8);
             setAttr(z, Attribute.SPAWN_REINFORCEMENTS, 0);
+            // Zombies, husks and drowned are born with 2 points of vanilla armour, which took 1.6%
+            // off every bullet and knife on top of the plugin's own armour.
+            setAttr(z, Attribute.ARMOR, 0);
             if (boss) {
                 setAttr(z, Attribute.SCALE, 1.12);
             }
@@ -704,10 +698,12 @@ public final class AiService implements Listener {
         bot.burstLeft--;
         bot.ammoLeft--;
         Location eye = bot.mob.getEyeLocation();
-        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head. Rounds
-        // are hitscan, so there is no lead to give; a moving target is just harder to hold on (x1.4 at a
-        // walk). Bukkit's velocity reads zero while a player walks, so use the measured speed.
-        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
+        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
+        // The middle of the box follows the pose: 0.9 up standing, 0.75 crouched, 0.3 crawling (a
+        // fixed 0.95 aimed over the 0.6 box of a player in a one-block gap). Rounds are hitscan, so
+        // there is no lead to give; a moving target is just harder to hold on (x1.4 at a walk).
+        // Bukkit's velocity reads zero while a player walks, so use the measured speed.
+        Vector aim = target.getLocation().toVector().setY(target.getBoundingBox().getCenterY())
                 .subtract(eye.toVector()).normalize();
         double moving = 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
                 / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
@@ -765,15 +761,14 @@ public final class AiService implements Listener {
         Raid raid = bot.raid;
         DamageService.LastHit hit = plugin.damage().lastHit(bot.mob.getUniqueId());
         Player killer = hit == null || hit.attacker() == null ? null : Bukkit.getPlayer(hit.attacker());
-        if (killer != null) {
-            RaidPlayer rp = raid.player(killer.getUniqueId());
-            if (rp != null) {
-                rp.aiKills++;
-                plugin.tasks().onAiKill(killer, bot.boss, hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD,
-                        plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
-            }
+        RaidPlayer rp = killer == null ? null : raid.player(killer.getUniqueId());
+        // Only a killer still in the raid: one who has died or got out had their kills saved then.
+        if (killer != null && rp != null && rp.active()) {
+            rp.aiKills++;
+            // A knife kill is one the killing record says was a cut, not whatever is in hand now.
+            plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>爆头" : "")));
+                    + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
             if (bot.boss) {
                 plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
             }
@@ -810,7 +805,7 @@ public final class AiService implements Listener {
         }
         ContainerType crate = plugin.loot().type(bot.boss ? "vault" : "parcel");
         if (crate != null) {
-            items.addAll(plugin.loot().roll(crate, bot.raid.tier.lootShift() + (bot.boss ? 1 : 0)));
+            items.addAll(plugin.loot().roll(crate, bot.raid.tier.shift(bot.boss ? 1 : 0)));
         }
         if (rng.nextDouble() < 0.35) {
             ItemDef med = plugin.loot().pick(Category.MEDICAL, Rarity.GREEN, rng);

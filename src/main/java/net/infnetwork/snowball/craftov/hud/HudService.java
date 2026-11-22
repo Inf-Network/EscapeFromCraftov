@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.hud;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Equippable;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
@@ -214,12 +215,24 @@ public final class HudService {
         };
     }
 
-    public void hitMarker(Player shooter, boolean head, boolean kill) {
+    /**
+     * The marker at the crosshair for one hit: white, yellow for the head, an orange ring for a
+     * knock-down and a bold red cross for a kill.
+     */
+    public void hitMarker(Player shooter, boolean head, DamageService.Outcome outcome) {
         if (betterHud) {
-            plugin.betterHud().popup(shooter, kill ? "craftov_hit_kill" : head ? "craftov_hit_head" : "craftov_hit");
+            plugin.betterHud().popup(shooter, switch (outcome) {
+                case KILLED -> "craftov_hit_kill";
+                case DOWNED -> "craftov_hit_knock";
+                case HIT -> head ? "craftov_hit_head" : "craftov_hit";
+            });
             return;
         }
-        String mark = kill ? "<#FF4D4D><b>✖</b>" : head ? "<#FFC23D>✕" : "<white>✕";
+        String mark = switch (outcome) {
+            case KILLED -> "<#FF4D4D><b>✖</b>";
+            case DOWNED -> "<#FF9A3C><b>⊗</b>";
+            case HIT -> head ? "<#FFC23D>✕" : "<white>✕";
+        };
         shooter.sendTitlePart(TitlePart.TIMES, Title.Times.times(Duration.ZERO, Duration.ofMillis(150), Duration.ofMillis(100)));
         shooter.sendTitlePart(TitlePart.SUBTITLE, Text.mm(mark));
         shooter.sendTitlePart(TitlePart.TITLE, Text.mm(""));

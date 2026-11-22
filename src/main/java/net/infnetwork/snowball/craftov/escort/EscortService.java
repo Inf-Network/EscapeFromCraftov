@@ -223,12 +223,13 @@ public final class EscortService {
     }
 
     /**
-     * A player dropped out of a raid before it deployed (they disconnected while the map loaded).
+     * A player dropped out of a raid before it deployed (they disconnected while the map loaded, or
+     * could no longer pay the entry fee; {@code reason} says which, in Chinese).
      * Without their client the escorts' run does not count: an accepted contract is cancelled and
      * the reward refunded, since no client is left in that raid to settle it (an open one has no
      * escorts and simply stays open). A withdrawn escort leaves the contract and is not paid.
      */
-    public void onWithdraw(UUID uuid, String name) {
+    public void onWithdraw(UUID uuid, String name, String reason) {
         Contract c = involving(uuid);
         if (c == null || c.state == State.IN_RAID) {
             return;
@@ -244,7 +245,7 @@ public final class EscortService {
             for (UUID escort : c.escorts) {
                 Player p = Bukkit.getPlayer(escort);
                 if (p != null) {
-                    Text.send(p, "<#FFC23D>老板 " + Text.escape(name) + " 在部署前断开连接，护航委托已取消，本局不计护航报酬。");
+                    Text.send(p, "<#FFC23D>老板 " + Text.escape(name) + " " + reason + "，护航委托已取消，本局不计护航报酬。");
                 }
             }
             return;
@@ -252,7 +253,7 @@ public final class EscortService {
         dropEscort(c, uuid);
         Player client = Bukkit.getPlayer(c.client);
         if (client != null) {
-            Text.send(client, "<#FFC23D>护航 " + Text.escape(name) + " 在部署前断开连接，已退出你的护航委托。");
+            Text.send(client, "<#FFC23D>护航 " + Text.escape(name) + " " + reason + "，已退出你的护航委托。");
         }
     }
 

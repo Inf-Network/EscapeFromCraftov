@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.item;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Consumable;
@@ -43,8 +44,8 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
-    /** Bump when item components change; older stacks are rebuilt from their records on join. */
-    public static final int VERSION = 3;
+    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark. */
+    public static final int VERSION = 4;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -111,6 +112,17 @@ public final class ItemFactory {
     /** Marks a stack as a shooting-range loaner (lore says so; it can never be stored or sold). */
     public ItemStack markRange(ItemStack stack) {
         stack.editPersistentDataContainer(pdc -> pdc.set(Keys.RANGE, PersistentDataType.BYTE, (byte) 1));
+        refreshLore(stack, defOf(stack));
+        return stack;
+    }
+
+    public static boolean isKit(@Nullable ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.KIT);
+    }
+
+    /** Marks a stack as handed out by the free kit (lore says so; the trader pays nothing for it). */
+    public ItemStack markKit(ItemStack stack) {
+        stack.editPersistentDataContainer(pdc -> pdc.set(Keys.KIT, PersistentDataType.BYTE, (byte) 1));
         refreshLore(stack, defOf(stack));
         return stack;
     }
@@ -295,6 +307,15 @@ public final class ItemFactory {
                 record.attach.forEach((slot, id) -> fitted.append(fitted.isEmpty() ? "" : ";").append(slot).append('=').append(id));
                 pdc.set(Keys.ATTACH, PersistentDataType.STRING, fitted.toString());
             }
+            if (record.isKit()) {
+                pdc.set(Keys.KIT, PersistentDataType.BYTE, (byte) 1);
+            }
+            if (record.insured != null) {
+                pdc.set(Keys.INSURED, PersistentDataType.STRING, record.insured);
+            }
+            if (record.insuredAs != null) {
+                pdc.set(Keys.INSURED_AS, PersistentDataType.STRING, GSON.toJson(record.insuredAs));
+            }
             if (record.isTest()) {
                 pdc.set(Keys.TEST, PersistentDataType.BYTE, (byte) 1);
             }
@@ -378,12 +399,14 @@ public final class ItemFactory {
     }
 
     private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
-        ItemDef def = defOf(stack);
-        if (def == null) {
+        String id = idOf(stack);
+        if (id == null) {
             return null;
         }
+        // An id that items.yml no longer has (removed, renamed, a broken file) still gets its record:
+        // the stack stays in the loadout and comes back once the definition does.
         PersistentDataContainerView pdc = stack.getPersistentDataContainer();
-        ItemRecord record = new ItemRecord(def.id(), stack.getAmount());
+        ItemRecord record = new ItemRecord(id, stack.getAmount());
         record.uid = pdc.get(Keys.UID, PersistentDataType.STRING);
         record.ammo = pdc.get(Keys.AMMO, PersistentDataType.INTEGER);
         record.ammoType = pdc.get(Keys.AMMO_TYPE, PersistentDataType.STRING);
@@ -395,8 +418,23 @@ public final class ItemFactory {
         record.optic = pdc.get(Keys.OPTIC, PersistentDataType.STRING);
         Map<String, String> attach = attachments(stack);
         record.attach = attach.isEmpty() ? null : attach;
+        record.kit = pdc.has(Keys.KIT) ? Boolean.TRUE : null;
+        record.insured = pdc.get(Keys.INSURED, PersistentDataType.STRING);
+        record.insuredAs = insuredAs(pdc.get(Keys.INSURED_AS, PersistentDataType.STRING));
         record.test = isTest(stack) ? Boolean.TRUE : null;
         return record;
+    }
+
+    /** The deploy snapshot InsuranceService stored on an insured item, or null (none, or unreadable). */
+    private static @Nullable ItemRecord insuredAs(@Nullable String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return GSON.fromJson(json, ItemRecord.class);
+        } catch (JsonParseException ex) {
+            return null;
+        }
     }
 
     public static @Nullable String uid(@Nullable ItemStack stack) {
@@ -501,11 +539,24 @@ public final class ItemFactory {
     }
 
     public long value(ItemRecord record) {
+        return value(record, false);
+    }
+
+    /**
+     * What the trader pays against: {@link #value(ItemRecord)}, except that free-kit items count
+     * nothing for themselves. Attachments, rounds in the magazine and packed contents still count,
+     * since they need not have come from the kit.
+     */
+    public long tradeValue(ItemRecord record) {
+        return value(record, true);
+    }
+
+    private long value(ItemRecord record, boolean trade) {
         ItemDef def = registry.get(record.id);
         if (def == null || record.isTest()) {
             return 0;
         }
-        double unit = def.value();
+        double unit = trade && record.isKit() ? 0 : def.value();
         if (def.hasDurability() && record.dura != null && def.durability() > 0) {
             double fraction = Math.max(0, Math.min(1, record.dura / def.durability()));
             unit *= def.category() == Category.MEDICAL || def.category() == Category.KEY
@@ -520,7 +571,7 @@ public final class ItemFactory {
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                total += value(child);
+                total += value(child, trade);
             }
         }
         ItemDef optic = registry.get(record.optic);
@@ -639,6 +690,9 @@ public final class ItemFactory {
             lore.add(Text.mm("<#8A8F98>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
         }
         lore.add(Text.mm("<#8A8F98>重量 <white>" + fmt(def.weight() * stack.getAmount()) + "kg"));
+        if (isKit(stack)) {
+            lore.add(Text.mm("<#FFB74D>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
+        }
         if (isRange(stack)) {
             lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
         } else if (isTest(stack)) {

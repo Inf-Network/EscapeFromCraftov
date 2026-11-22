@@ -171,6 +171,10 @@ final class TraderMenu extends Menu {
         if (record == null) {
             return;
         }
+        if (plugin.registry().get(record.id) == null) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>物品表里暂时没有这件物品，不能出售"));
+            return;
+        }
         long price = plugin.traders().sellPrice(record);
         if (!event.isShiftClick()) {
             viewer.sendActionBar(Text.mm("<#9AA0A6>商人收购价 <#F2C94C>◈" + Text.money(price) + " <#9AA0A6>· 潜行点击出售"));

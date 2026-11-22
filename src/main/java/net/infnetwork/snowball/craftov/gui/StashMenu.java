@@ -69,7 +69,7 @@ final class StashMenu extends Menu {
             switch (mode) {
                 case TAKE -> lore.add(Text.mm("<#5BD16B>点击取出到背包"));
                 case SELL -> lore.add(Text.mm("<#FFC23D>点击出售给商人 <#F2C94C>◈" + Text.money(plugin.traders().sellPrice(record))));
-                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().referenceFor(record))));
+                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
             }
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot, display, e -> clickStash(stashIndex, record));
@@ -107,7 +107,7 @@ final class StashMenu extends Menu {
         set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
         button(50, UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + p.mailbox.size(),
-                List.of("<#9AA0A6>交易行退回、过期的物品", "<#9AA0A6>点击领取到仓库")), e -> {
+                List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品", "<#9AA0A6>点击领取到仓库")), e -> {
             claimMailbox(p);
             redraw();
         });
@@ -151,14 +151,16 @@ final class StashMenu extends Menu {
                     plugin.carry().equip(viewer, stack);
                 } else {
                     ItemStack left = plugin.carry().give(viewer, stack, false);
-                    if (left != null && left.getAmount() == stack.getAmount()) {
+                    int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
+                    if (moved <= 0) {
                         viewer.sendActionBar(Text.mm("<#FF8A80>背包空间不足"));
                         return;
                     }
-                    if (left == null) {
+                    // Only what was handed over leaves the record: a record above the stack size
+                    // (older builds stored those) builds a single stack and keeps the rest.
+                    record.amount -= moved;
+                    if (record.amount <= 0) {
                         p.stash.remove(stashIndex);
-                    } else {
-                        record.amount = left.getAmount();
                     }
                 }
                 viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.6f, 1f);
@@ -169,7 +171,13 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
             }
             case LIST -> {
-                new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                if (record.isKit()) {
+                    viewer.sendActionBar(Text.mm("<#FF8A80>免费补给的物品不能上架交易行"));
+                    return;
+                }
+                if (!plugin.market().refuseIfClosed(viewer)) {
+                    new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                }
                 return;
             }
         }
@@ -226,7 +234,11 @@ final class StashMenu extends Menu {
 
     private void deposit(Profile p, ItemRecord record) {
         ItemDef def = plugin.registry().get(record.id);
-        int max = def == null ? 1 : def.maxStack();
+        if (def == null) {
+            p.stash.add(record); // an id items.yml does not have: kept whole, its stack size is unknown
+            return;
+        }
+        int max = def.maxStack();
         for (ItemRecord existing : p.stash) {
             if (record.amount <= 0) {
                 return;
@@ -236,6 +248,13 @@ final class StashMenu extends Menu {
                 existing.amount += moved;
                 record.amount -= moved;
             }
+        }
+        // What is left is stored one full stack per record, never above the stack size.
+        while (record.amount > max) {
+            ItemRecord part = record.copy();
+            part.amount = max;
+            record.amount -= max;
+            p.stash.add(part);
         }
         if (record.amount > 0) {
             p.stash.add(record);

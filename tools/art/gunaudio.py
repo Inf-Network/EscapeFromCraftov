@@ -577,11 +577,17 @@ def foley(family, part, v=0):
 
 
 def tinnitus():
-    sec = 2.6
+    """Ears ringing after a flashbang (ThrowableService plays it to the flashed player only).
+
+    One high tone with a slow beat against a near neighbour, holding for about a second and then
+    fading over the next four, so it outlasts even the longest white-out. Stereo, so the client
+    plays it unpositioned, inside the listener's head; the volume scales with how hard they were hit.
+    """
+    sec = 5.0
     t = tvec(n_of(sec))
-    ring = (np.sin(2 * np.pi * 3150 * t) + .7 * np.sin(2 * np.pi * 4013 * t + 1) + .35 * np.sin(2 * np.pi * 5310 * t + 2))
-    ring *= (1 - np.exp(-t / .12)) * np.exp(-t / .7)
-    return peak(stereo(ring, np.roll(ring, 37)), .3)
+    ring = (np.sin(2 * np.pi * 3720 * t) + .5 * np.sin(2 * np.pi * 3733 * t + 1) + .12 * np.sin(2 * np.pi * 7452 * t + 2))
+    ring *= (1 - np.exp(-t / .05)) * np.exp(-np.maximum(0, t - 1.0) / 1.1)
+    return fade(peak(stereo(ring, np.roll(ring, 37)), .3), .4)
 
 
 # ---------------------------------------------------------------- catalogue for build.py

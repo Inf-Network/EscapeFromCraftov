@@ -56,7 +56,9 @@ final class EscortMenu extends Menu {
         set(36, UiItems.button("craftov:ui/icon_help", "<white>护航规则", List.of(
                 "<#9AA0A6>委托人托管赏金，护航者加入其小队一同出击。",
                 "<#9AA0A6>委托人成功撤离：护航者平分全部赏金。",
-                "<#9AA0A6>委托人阵亡：护航者获得 30%，其余退回。")));
+                "<#9AA0A6>委托人阵亡：护航者获得 30%，其余退回。",
+                "<#9AA0A6>每人同时只能接一份委托，离开委托人小队即放弃。",
+                "<#9AA0A6>只有和委托人同队出发的护航者参与分账。")));
         int s = 38;
         for (long reward : REWARDS) {
             button(s++, UiItems.button("craftov:ui/icon_value", "<#F2C94C>发布委托 ◈" + Text.money(reward), List.of("<#9AA0A6>赏金立即托管")), e -> {

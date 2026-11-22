@@ -1,10 +1,13 @@
 package net.infnetwork.snowball.craftov.inventory;
 
+import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -13,6 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -23,7 +27,9 @@ import java.util.Map;
  *  row 9..17     chest rig slots              rows 18..35 backpack slots
  *  36 feet = backpack   37 legs = rig   38 chest = body armor   39 head = helmet
  * </pre>
- * Rigs and backpacks carry their contents inside the item stack while unequipped.
+ * Rigs and backpacks carry their contents inside the item stack while unequipped. Whatever does
+ * not fit anywhere is dropped at the player's feet in a raid and mailed to the stash mailbox
+ * everywhere else, because outside a raid nobody can pick a dropped item up again.
  */
 public final class CarryService {
 
@@ -40,10 +46,12 @@ public final class CarryService {
     public static final int HEAD = 39;
     public static final int OFFHAND = 40;
 
+    private final CraftovPlugin plugin;
     private final ItemFactory items;
 
-    public CarryService(ItemFactory items) {
-        this.items = items;
+    public CarryService(CraftovPlugin plugin) {
+        this.plugin = plugin;
+        this.items = plugin.items();
     }
 
     public ItemFactory items() {
@@ -91,17 +99,19 @@ public final class CarryService {
 
     /** Slot indices (0..35) the player can currently store items in. */
     public List<Integer> usableSlots(Player player) {
+        return usableSlots(rigCapacity(player), backpackCapacity(player));
+    }
+
+    private static List<Integer> usableSlots(int rig, int pack) {
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < TERMINAL_SLOT; i++) {
             if (i != MELEE_SLOT) {
                 out.add(i);
             }
         }
-        int rig = rigCapacity(player);
         for (int i = 0; i < rig; i++) {
             out.add(RIG_START + i);
         }
-        int pack = backpackCapacity(player);
         for (int i = 0; i < pack; i++) {
             out.add(PACK_START + i);
         }
@@ -151,7 +161,7 @@ public final class CarryService {
 
     /**
      * Adds an item to free usable slots, stacking first. Returns the part that did not fit; when
-     * {@code dropOverflow} is set that remainder is dropped at the player's feet instead.
+     * {@code dropOverflow} is set that remainder is spilled instead (see {@link #spill}).
      */
     public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow) {
         ItemStack remaining = stack.clone();
@@ -189,10 +199,218 @@ public final class CarryService {
             }
         }
         if (dropOverflow) {
-            player.getWorld().dropItemNaturally(player.getLocation(), remaining);
+            spill(player, remaining);
             return null;
         }
         return remaining;
+    }
+
+    /** A copy of the player's inventory, indexed like {@link PlayerInventory#getItem(int)}, for {@link #simulateGive}. */
+    public @Nullable ItemStack[] copyCells(Player player) {
+        ItemStack[] contents = player.getInventory().getContents();
+        @Nullable ItemStack[] out = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack stack = contents[i];
+            out[i] = stack == null || stack.isEmpty() ? null : stack.clone();
+        }
+        return out;
+    }
+
+    /**
+     * Dry run of {@link #give} on {@code cells} (from {@link #copyCells}): places {@code stack}
+     * there the same way and returns false when some of it would be left over. Run it for each of
+     * several stacks in turn so that each one sees the cells the ones before it took; checking
+     * them one by one against the real inventory let two stacks count the same free cell. Cells
+     * are counted from the rig and backpack in {@code cells}, and placeholders in them count as
+     * free, so a container just put into its slot opens its cells as {@link #refreshLocks} would.
+     */
+    public boolean simulateGive(@Nullable ItemStack[] cells, ItemStack stack) {
+        ItemStack remaining = stack.clone();
+        if (ItemFactory.hasContents(remaining)) {
+            return false;
+        }
+        List<Integer> slots;
+        if (isMelee(remaining)) {
+            ItemDef held = items.defOf(cells[MELEE_SLOT]);
+            if (held != null && "knife_starter".equals(held.id())) {
+                cells[MELEE_SLOT] = null;
+            }
+            slots = List.of(MELEE_SLOT);
+        } else {
+            slots = usableSlots(capacity(cells[LEGS], RIG_MAX), capacity(cells[FEET], PACK_MAX));
+        }
+        for (int slot : slots) {
+            ItemStack current = cells[slot];
+            if (current != null && !ItemFactory.isUi(current) && current.isSimilar(remaining)) {
+                int space = current.getMaxStackSize() - current.getAmount();
+                if (space > 0) {
+                    int moved = Math.min(space, remaining.getAmount());
+                    current.setAmount(current.getAmount() + moved);
+                    remaining.setAmount(remaining.getAmount() - moved);
+                    if (remaining.getAmount() <= 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (int slot : slots) {
+            ItemStack current = cells[slot];
+            if (current == null || current.isEmpty() || ItemFactory.isUi(current)) {
+                cells[slot] = remaining;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Gets rid of an item that has no room on the player. In a raid it drops at their feet for
+     * anyone to loot. Anywhere else (lobby, range, editor) a dropped item can never be picked up
+     * again, so it goes to the stash mailbox instead. Range loaners, proving-ground armory items and
+     * non-Craftov stacks have no stored form and still drop.
+     */
+    public void spill(Player player, @Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
+            return;
+        }
+        if (plugin.raids().isRaidWorld(player.getWorld()) || !mail(player, stack)) {
+            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+        }
+    }
+
+    /**
+     * Settles the cursor on the way home from a raid (extraction, voided raid, server stop): back
+     * into the carry cells, or straight to the stash mailbox when it does not fit, since give's own
+     * overflow would drop it in the raid world being left. A proving-ground armory item stays on
+     * the cursor for {@link net.infnetwork.snowball.craftov.lobby.LobbyService#stripTestItems} to
+     * take away, but what the player packed into an armory rig or backpack is theirs and comes home
+     * now, the same way. Putting the armory item back first would leave it packed on the cursor
+     * whenever its slot is taken, and with no stored form it could not be mailed: it dropped in the
+     * raid with the player's own items inside. A stack with no stored form at all (not a Craftov
+     * item) still drops. Returns the records that went to the mailbox. Calling it again changes
+     * nothing.
+     */
+    public List<ItemRecord> reclaimCursorHome(Player player) {
+        List<ItemRecord> mailed = new ArrayList<>();
+        ItemStack cursor = player.getItemOnCursor();
+        if (ItemFactory.isTest(cursor)) {
+            List<ItemRecord> armory = new ArrayList<>();
+            List<ItemRecord> own = new ArrayList<>();
+            for (ItemRecord child : items.contents(cursor)) {
+                ItemRecord kept = ItemFactory.persistent(child);
+                if (kept == null) {
+                    armory.add(child);
+                } else {
+                    own.add(kept);
+                }
+            }
+            if (!own.isEmpty()) {
+                ItemStack shell = cursor.clone();
+                items.setContents(shell, armory);
+                player.setItemOnCursor(shell);
+                for (ItemRecord record : own) {
+                    ItemRecord sent = handBack(player, record);
+                    if (sent != null) {
+                        mailed.add(sent);
+                    }
+                }
+            }
+            return mailed;
+        }
+        ItemStack left = reclaimCursor(player);
+        if (left != null) {
+            ItemRecord record = items.toRecord(left);
+            if (record == null) {
+                player.getWorld().dropItemNaturally(player.getLocation(), left);
+            } else {
+                mail(player, record);
+                mailed.add(record);
+            }
+        }
+        return mailed;
+    }
+
+    /**
+     * Puts a record back into the carry cells, or into the stash mailbox when it does not fit or
+     * items.yml no longer knows its id, never onto the floor (the player may still be in a raid
+     * they are leaving). Returns what was mailed, or null.
+     */
+    public @Nullable ItemRecord handBack(Player player, ItemRecord record) {
+        ItemStack stack = items.fromRecord(record);
+        ItemRecord rest = stack == null ? record : items.toRecord(give(player, stack, false));
+        if (rest != null) {
+            mail(player, rest);
+        }
+        return rest;
+    }
+
+    /**
+     * Puts the item held on the cursor (inventory screen open) back into the carry cells; a packed
+     * rig or backpack is worn again if its slot is free. The cursor is empty afterwards. Returns what
+     * did not fit, or null. The one way the cursor is settled: on closing the inventory and on
+     * logging off (CarryListener), before an extraction is counted and on the way home from a raid
+     * (both through {@link #reclaimCursorHome}), and before an explicit lobby loadout capture.
+     * Calling it again finds the cursor empty.
+     */
+    public @Nullable ItemStack reclaimCursor(Player player) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (cursor.isEmpty()) {
+            return null;
+        }
+        ItemStack moving = cursor.clone();
+        player.setItemOnCursor(null);
+        if (ItemFactory.isUi(moving)) {
+            return null;
+        }
+        ItemDef def = items.defOf(moving);
+        if (def != null && def.isContainer() && ItemFactory.hasContents(moving)) {
+            ItemStack worn = player.getInventory().getItem(containerSlot(def.category()));
+            if (worn == null || worn.isEmpty()) {
+                equip(player, moving);
+                return null;
+            }
+        }
+        return give(player, moving, false);
+    }
+
+    /**
+     * Stores a stack that has no room on the player in their stash mailbox (see
+     * {@link #mail(Player, ItemRecord)}). Returns false, storing nothing, for a stack with no stored
+     * form: range loaners, proving-ground armory items (those packed inside are left out) and
+     * non-Craftov stacks, so an armory item can never turn into a real one this way.
+     */
+    public boolean mail(Player player, ItemStack stack) {
+        ItemRecord record = items.toRecord(stack);
+        if (record == null) {
+            return false;
+        }
+        mail(player, record);
+        return true;
+    }
+
+    /**
+     * Keeps a record the player cannot hold right now in their stash mailbox. This is the one way an
+     * online player's overflow reaches the mailbox. Items whose id items.yml no longer knows land here
+     * too: they cannot be built, but the record is kept and can be taken out of the stash again once
+     * the definition is back.
+     */
+    public void mail(Player player, ItemRecord packed) {
+        // Proving-ground armory items never leave their raid, not even packed inside something.
+        ItemRecord record = ItemFactory.persistent(packed);
+        if (record == null) {
+            return;
+        }
+        // Whatever reaches the mailbox has left its raid: an insurance mark kept there could match a
+        // later raid and pay out an item nobody insured.
+        record.uninsure();
+        plugin.profiles().edit(player.getUniqueId(), () -> "no room on the player: add to mailbox " + ProfileService.json(record),
+                p -> p.mailbox.add(record));
+        ItemDef def = items.registry().get(record.id);
+        String amount = record.amount > 1 ? " <#9AA0A6>×" + record.amount : "";
+        Text.send(player, def == null
+                ? "<#FFC23D>物品表里暂时没有 <white>" + Text.escape(record.id) + "</white>" + amount
+                        + "<#FFC23D>，已存入仓库邮箱，恢复后可以从仓库取回。"
+                : "<#9AA0A6>身上放不下，" + def.coloredName() + amount + " <#9AA0A6>已放进<#F2C94C>仓库邮箱<#9AA0A6>。");
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {
@@ -216,7 +434,7 @@ public final class CarryService {
         return false;
     }
 
-    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or dropped. */
+    /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or spilled. */
     public void enforceContainers(Player player) {
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot < FEET; slot++) {
@@ -233,7 +451,7 @@ public final class CarryService {
                     continue;
                 }
             }
-            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+            spill(player, stack);
         }
     }
 
@@ -291,6 +509,7 @@ public final class CarryService {
         for (ItemRecord record : contents) {
             ItemStack stack = items.fromRecord(record);
             if (stack == null) {
+                mail(player, record);
                 continue;
             }
             while (cursor < cap && inv.getItem(start + cursor) != null && !inv.getItem(start + cursor).isEmpty()) {
@@ -309,18 +528,6 @@ public final class CarryService {
 
     /** Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. */
     public Map<Integer, ItemRecord> snapshot(Player player) {
-        return snapshot(player, false);
-    }
-
-    /**
-     * Like {@link #snapshot(Player)} but keeps proving-ground armory items, for a player who disconnects
-     * mid-raid and may rejoin it. Never store it as a loadout without {@link #persistent}.
-     */
-    public Map<Integer, ItemRecord> raidSnapshot(Player player) {
-        return snapshot(player, true);
-    }
-
-    private Map<Integer, ItemRecord> snapshot(Player player, boolean keepTest) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot <= HEAD; slot++) {
@@ -328,7 +535,7 @@ public final class CarryService {
             if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
                 continue;
             }
-            ItemRecord record = keepTest ? items.packRecord(stack) : items.toRecord(stack);
+            ItemRecord record = items.toRecord(stack);
             if (record != null) {
                 out.put(slot, record);
             }
@@ -337,21 +544,42 @@ public final class CarryService {
     }
 
     /**
-     * A {@link #raidSnapshot} without its test items, fit to be saved as the loadout of a player who is
-     * offline. An armory rig or backpack is left out, so the player's own items in its cells would land
-     * in locked cells and be dropped on the lobby floor at the next login: they move to free pockets
-     * instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
+     * Copies of the stacks the player carries, keyed by slot, for a player who disconnects mid-raid
+     * and may rejoin it. Unlike records they keep every component (records keep the raid's insurance
+     * mark too, but not the fire mode), and they keep proving-ground armory items as test items. Never store them as a loadout without
+     * {@link #persistent}.
      */
-    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout, List<ItemRecord> homeless) {
-        boolean rigGone = isTestRecord(layout.get(LEGS));
-        boolean packGone = isTestRecord(layout.get(FEET));
+    public Map<Integer, ItemStack> copyCarried(Player player) {
+        Map<Integer, ItemStack> out = new HashMap<>();
+        PlayerInventory inv = player.getInventory();
+        for (int slot = 0; slot <= HEAD; slot++) {
+            ItemStack stack = inv.getItem(slot);
+            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack) && items.packRecord(stack) != null) {
+                out.put(slot, stack.clone());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * A {@link #copyCarried} snapshot as records without its test items, fit to be saved as the loadout
+     * of a player who is offline. The raid is void for them, so its insurance marks are dropped (gear
+     * that comes home is never insured). An armory rig or backpack is left out, so the player's own items in its cells
+     * would land in locked cells and be dropped on the lobby floor at the next login: they move to free
+     * pockets instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
+     */
+    public Map<Integer, ItemRecord> persistent(Map<Integer, ItemStack> carried, List<ItemRecord> homeless) {
+        boolean rigGone = ItemFactory.isTest(carried.get(LEGS));
+        boolean packGone = ItemFactory.isTest(carried.get(FEET));
         Map<Integer, ItemRecord> out = new HashMap<>();
         List<ItemRecord> orphans = new ArrayList<>();
-        layout.forEach((slot, record) -> {
-            ItemRecord kept = ItemFactory.persistent(record);
+        carried.forEach((slot, stack) -> {
+            // The record keeps the test marks of armory items packed inside, so they can be left out too.
+            ItemRecord kept = ItemFactory.persistent(items.packRecord(stack));
             if (kept == null) {
                 return;
             }
+            kept.uninsure();
             if (rigGone && isRigSlot(slot) || packGone && isPackSlot(slot)) {
                 orphans.add(kept);
             } else {
@@ -374,37 +602,55 @@ public final class CarryService {
         return out;
     }
 
-    private static boolean isTestRecord(@Nullable ItemRecord record) {
-        return record != null && record.isTest();
-    }
-
     public List<ItemRecord> allRecords(Player player) {
         return new ArrayList<>(snapshot(player).values());
     }
 
+    /**
+     * Rebuilds the inventory from a layout. Records whose id items.yml does not know are mailed and
+     * taken out of the layout (the profile's loadout, say), so applying it again before the next
+     * capture cannot mail them a second time.
+     */
     public void apply(Player player, Map<Integer, ItemRecord> layout, ItemStack terminal) {
+        Map<Integer, ItemStack> stacks = new HashMap<>();
+        List<ItemRecord> unknown = new ArrayList<>();
+        for (Iterator<Map.Entry<Integer, ItemRecord>> it = layout.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, ItemRecord> entry = it.next();
+            ItemStack stack = items.fromRecord(entry.getValue());
+            if (stack != null) {
+                stacks.put(entry.getKey(), stack);
+            } else {
+                it.remove();
+                unknown.add(entry.getValue());
+            }
+        }
+        restore(player, stacks, terminal);
+        for (ItemRecord record : unknown) {
+            mail(player, record);
+        }
+    }
+
+    /** Puts these stacks back in their slots; whatever no longer fits goes to free cells. */
+    public void restore(Player player, Map<Integer, ItemStack> layout, ItemStack terminal) {
         PlayerInventory inv = player.getInventory();
         inv.clear();
         player.setItemOnCursor(null);
         // Equipment first so capacity is known before cells are filled.
         for (int slot : new int[]{FEET, LEGS, CHEST, HEAD}) {
-            ItemRecord record = layout.get(slot);
-            if (record != null) {
-                inv.setItem(slot, items.fromRecord(record));
+            ItemStack stack = layout.get(slot);
+            if (stack != null) {
+                inv.setItem(slot, stack.clone());
             }
         }
         inv.setItem(TERMINAL_SLOT, terminal);
         refreshLocks(player);
         List<ItemStack> overflow = new ArrayList<>();
-        for (Map.Entry<Integer, ItemRecord> entry : layout.entrySet()) {
+        for (Map.Entry<Integer, ItemStack> entry : layout.entrySet()) {
             int slot = entry.getKey();
             if (slot >= FEET || slot == TERMINAL_SLOT) {
                 continue;
             }
-            ItemStack stack = items.fromRecord(entry.getValue());
-            if (stack == null) {
-                continue;
-            }
+            ItemStack stack = entry.getValue().clone();
             ItemStack current = inv.getItem(slot);
             if (slot < 36 && (current == null || current.isEmpty())) {
                 inv.setItem(slot, stack);

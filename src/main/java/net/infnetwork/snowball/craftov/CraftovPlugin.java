@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.logging.Level;
 
 /** Craftov: an extraction-shooter game mode for Paper 1.21.11. */
 public final class CraftovPlugin extends JavaPlugin {
@@ -108,7 +109,13 @@ public final class CraftovPlugin extends JavaPlugin {
         saveResourceIfMissing("loot.yml");
         loadTiers();
         registry = new ItemRegistry(getLogger());
-        registry.load(new File(getDataFolder(), "items.yml"));
+        if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
+            // Running without an item table would empty every loadout it captures: stay off until
+            // the file is fixed instead.
+            getLogger().severe("Craftov is disabled because items.yml could not be loaded. Fix it and restart.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         items = new ItemFactory(registry);
         loot = new LootService(items, getLogger());
         loot.load(new File(getDataFolder(), "loot.yml"));
@@ -118,7 +125,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
-        carry = new CarryService(items);
+        carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
         worlds = new WorldService(this, maps);
@@ -158,7 +165,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market, profiles);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -181,6 +188,7 @@ public final class CraftovPlugin extends JavaPlugin {
         backups = new net.infnetwork.snowball.craftov.util.Backups(this);
         backups.start();
         market.start();
+        escorts.start();
         new PackService(this).install();
         hookBetterHud();
 
@@ -194,41 +202,44 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (editor != null) {
-            editor.shutdown();
-        }
-        if (replays != null) {
-            replays.shutdown();
-        }
-        if (drones != null) {
-            drones.shutdown();
-        }
-        if (raids != null) {
-            raids.shutdown();
-        }
-        if (escorts != null) {
-            escorts.shutdown();
-        }
-        if (range != null) {
-            range.shutdown();
-        }
-        if (lobby != null) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
+        // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
+        step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
+        step("betterhud", betterHud, () -> betterHud.shutdown());
+        step("editor", editor, () -> editor.shutdown());
+        step("replays", replays, () -> replays.shutdown());
+        step("drones", drones, () -> drones.shutdown());
+        step("raids", raids, () -> raids.shutdown());
+        step("escorts", escorts, () -> escorts.shutdown());
+        step("range", range, () -> range.shutdown());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("loadout of " + player.getName(), lobby, () -> {
                 if (lobby.isLobby(player.getWorld())) {
                     lobby.captureLoadout(player);
                 }
-            }
+            });
         }
-        if (market != null) {
-            market.saveSync();
+        // Offline edits made while sending everyone home and queued market saves (both go through
+        // the profile writer) finish landing before the final saves, so none lands on top of them.
+        step("queued profile writes", profiles, () -> profiles.awaitWrites());
+        step("market", market, () -> market.saveSync());
+        step("profiles", profiles, () -> profiles.shutdown());
+        step("backup", backups, () -> backups.run("shutdown"));
+        step("teams", this, this::cleanupTeams);
+    }
+
+    /**
+     * Runs one shutdown step if its service was created, logging instead of throwing. A linkage
+     * error counts too: after the jar was replaced on disk a step can fail to load a class.
+     */
+    private void step(String name, @Nullable Object service, Runnable action) {
+        if (service == null) {
+            return;
         }
-        if (profiles != null) {
-            profiles.shutdown();
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError ex) {
+            getLogger().log(Level.SEVERE, "Shutdown step '" + name + "' failed; carrying on with the rest", ex);
         }
-        if (backups != null) {
-            backups.run("shutdown");
-        }
-        cleanupTeams();
     }
 
     private void hookBetterHud() {

@@ -132,7 +132,7 @@ final class DeployMenu extends Menu {
             redraw();
         });
         button(32, UiItems.button("craftov:ui/icon_rank", (ranked ? "<#FFC23D>● 排位赛" : "<#8A8F98>○ 排位赛"),
-                List.of("<#9AA0A6>撤离与击败干员获得排位分", "<#9AA0A6>阵亡将扣除排位分", "<#9AA0A6>只影响排位分，不影响匹配",
+                List.of("<#9AA0A6>撤离按净收益加减排位分（亏损最多扣 20）", "<#9AA0A6>击败干员加分，阵亡扣分", "<#9AA0A6>只影响排位分，不影响匹配",
                         "<#8A8F98>需要 Lv." + plugin.getConfig().getInt("rank.min-level", 3))),
                 e -> {
                     ranked = !ranked;

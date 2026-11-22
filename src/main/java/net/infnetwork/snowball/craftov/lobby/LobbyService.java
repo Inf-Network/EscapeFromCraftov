@@ -241,7 +241,12 @@ public final class LobbyService implements Listener {
     /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
+        // The cursor item comes home too: back into the inventory, or the mailbox. An armory item on
+        // it is left there, emptied of the player's own items, for stripTestItems to take.
+        plugin.carry().reclaimCursorHome(player);
         int[] stripped = stripTestItems(player);
+        // Whatever comes home from a raid (extracted, voided, server stop) is no longer insured.
+        plugin.insurance().strip(player);
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);
         enterLobby(player);
@@ -292,18 +297,13 @@ public final class LobbyService implements Listener {
             taken += 1 + splitTest(plugin.items().contents(cursor), handBack);
             player.setItemOnCursor(null);
         }
+        // The player is still in the raid world here, where give's own overflow would drop to the
+        // floor, so what does not fit is mailed directly.
         int mailed = 0;
-        if (!handBack.isEmpty()) {
-            Profile profile = plugin.profiles().get(player);
-            for (ItemRecord record : handBack) {
-                ItemStack stack = plugin.items().fromRecord(record);
-                ItemRecord rest = plugin.items().toRecord(stack == null ? null : plugin.carry().give(player, stack, false));
-                if (rest != null) {
-                    profile.mailbox.add(rest);
-                    mailed++;
-                }
+        for (ItemRecord record : handBack) {
+            if (plugin.carry().handBack(player, record) != null) {
+                mailed++;
             }
-            plugin.profiles().markDirty(player.getUniqueId());
         }
         return new int[]{taken, mailed};
     }
@@ -323,11 +323,16 @@ public final class LobbyService implements Listener {
     }
 
     public void enterLobby(Player player) {
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                plugin.tutorial().show(player, plugin.profiles().get(player));
-            }
-        }, 40L);
+        // onDisable sends everybody home from the raids and the range, and by then the plugin
+        // already counts as disabled: scheduling would throw and cut the shutdown short. The
+        // tutorial hint is not needed then anyway.
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    plugin.tutorial().show(player, plugin.profiles().get(player));
+                }
+            }, 40L);
+        }
         plugin.downed().clear(player);
         plugin.weapons().reset(player);
         plugin.hud().onLobby(player);
@@ -340,13 +345,36 @@ public final class LobbyService implements Listener {
         Profile profile = plugin.profiles().get(player);
         plugin.carry().apply(player, profile.loadout, UiItems.lobbyMenu());
         plugin.carry().ensureMelee(player);
+        // What did not fit went to the mailbox: the loadout is what was placed, at once, so entering
+        // the lobby again before the periodic save cannot mail those items a second time.
+        saveLoadout(player);
         player.setFallDistance(0);
         player.setFireTicks(0);
         player.getActivePotionEffects().forEach(e -> player.removePotionEffect(e.getType()));
     }
 
-    /** Persists the lobby inventory as the next raid's loadout. */
+    /**
+     * Persists the lobby inventory as the next raid's loadout. Whatever is held on the cursor goes
+     * back into the inventory first (or to the mailbox), so it is part of the loadout. Does nothing on
+     * the range: what the player holds there is loaners, and the loadout saved on entry has to survive
+     * until they leave.
+     */
     public void captureLoadout(Player player) {
+        if (plugin.range().isIn(player)) {
+            return;
+        }
+        plugin.carry().spill(player, plugin.carry().reclaimCursor(player));
+        saveLoadout(player);
+    }
+
+    /** The loadout as it is, cursor left alone (the periodic save must not snatch an item being dragged). */
+    private void saveLoadout(Player player) {
+        if (plugin.range().isIn(player)) {
+            return;
+        }
+        if (plugin.registry().isEmpty()) {
+            return; // without item definitions the snapshot would come out empty and wipe the loadout
+        }
         Profile profile = plugin.profiles().get(player);
         plugin.weapons().flush(player);
         profile.loadout = plugin.carry().snapshot(player);
@@ -358,8 +386,10 @@ public final class LobbyService implements Listener {
             if (isLobby(player.getWorld()) && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR
                     && plugin.raids().raidOf(player) == null) {
                 plugin.carry().ensureMelee(player);
-                captureLoadout(player);
                 plugin.carry().refreshLocks(player);
+                // Last: both steps above can mail what no longer has a cell, and a loadout saved
+                // before them would still hold it, so it would come back on the next lobby entry.
+                saveLoadout(player);
             }
         }
     }
@@ -451,6 +481,11 @@ public final class LobbyService implements Listener {
             profile.activeRaid = null;
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
         }
+        if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {
+            Text.send(player, "<#FF4D4D>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))
+                    + " <#9AA0A6>(详见控制台，修好后 /cv reload)");
+        }
+        plugin.escorts().reclaim(player, profile);
         plugin.health().setupPlayer(player, false);
         stripRangeItems(player);
         upgradeItems(player);
@@ -485,6 +520,7 @@ public final class LobbyService implements Listener {
             captureLoadout(player);
         }
         plugin.match().onQuit(player);
+        plugin.hud().onQuit(player);
         player.getInventory().clear();
         plugin.profiles().unload(player.getUniqueId());
         lastMenuClick.remove(player.getUniqueId());

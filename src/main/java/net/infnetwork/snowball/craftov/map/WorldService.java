@@ -91,6 +91,13 @@ public final class WorldService {
         if (folder.exists() && haveDef) {
             return;
         }
+        if (maps.broken().contains(builtin.id())) {
+            // Regenerating would write the default definition over the admin's file (and replay
+            // every block into the template world): leave both alone until the file is fixed.
+            plugin.getLogger().severe("Built-in map '" + builtin.name() + "' is not available: maps/" + builtin.id()
+                    + ".yml is invalid (see above). It is not regenerated while that file exists.");
+            return;
+        }
         long start = System.currentTimeMillis();
         plugin.getLogger().info("Generating built-in raid map '" + builtin.name() + "' (first start only, this takes a little while)...");
         World world = creator(template).createWorld();
@@ -156,7 +163,13 @@ public final class WorldService {
             plugin.getLogger().warning("Could not unload raid world " + name + "; it will be removed on next start");
             return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder.toPath()));
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder.toPath()));
+        } else {
+            // Shutting down: the scheduler refuses new tasks, and throwing here would leave every
+            // later raid without its players sent home.
+            deleteQuietly(folder.toPath());
+        }
     }
 
     /** Removes leftover raid worlds from a previous crash. */

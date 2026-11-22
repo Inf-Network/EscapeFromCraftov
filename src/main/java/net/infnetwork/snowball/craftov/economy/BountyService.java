@@ -11,13 +11,15 @@ import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Bounties. Players put money on other players' heads from the lobby; the top-ranked player also
- * carries a standing bounty paid by the house. Whoever kills a marked player in a raid collects all
- * of it, and everyone in a raid is told which marked players are in it.
+ * carries a standing bounty paid by the house, once a day, when they deploy for ranked with real
+ * gear. Whoever kills a marked player in a raid collects all of it, and everyone in a raid is
+ * told which marked players are in it.
  */
 public final class BountyService {
 
@@ -37,10 +39,56 @@ public final class BountyService {
         return top.isEmpty() ? null : top.get(0).uuid();
     }
 
+    public long houseBounty() {
+        return plugin.getConfig().getLong("bounty.champion", 20_000);
+    }
+
+    /** Gear the top player must deploy with for the house bounty to count. */
+    public long houseMinValue() {
+        return plugin.getConfig().getLong("bounty.champion-min-value", 60_000);
+    }
+
+    /** Everything on the player's head as the lobby shows it: placed bounties plus the house one if they are on top. */
     public long total(UUID target) {
-        long placed = plugin.profiles().get(target, "").bounty;
-        long house = target.equals(champion()) ? plugin.getConfig().getLong("bounty.champion", 20_000) : 0;
-        return placed + house;
+        long house = target.equals(champion()) ? houseBounty() : 0;
+        return placed(target) + house;
+    }
+
+    /**
+     * Bounties players placed on {@code target}. Read without caching: the raid-start announcement
+     * also asks about players who have disconnected since, and get() would keep their profile in
+     * memory as if they were online (for an unreadable file, a stand-in that their next login would
+     * then play on unsaved).
+     */
+    private long placed(UUID target) {
+        Profile profile = plugin.profiles().peek(target);
+        return profile == null ? 0 : profile.bounty;
+    }
+
+    private long houseBountyDay(UUID target) {
+        Profile profile = plugin.profiles().peek(target);
+        return profile == null ? -1 : profile.houseBountyDay;
+    }
+
+    /**
+     * What killing {@code rp} pays in this raid. Placed bounties always count. The house bounty is
+     * new money, so it only counts when the top player queued for ranked (and so also loses points
+     * for the death), deployed with at least bounty.champion-min-value of gear, and once a day:
+     * otherwise the top player could walk into a casual raid naked and have a friend shoot them
+     * for ◈20,000 every few minutes.
+     */
+    public long inRaid(RaidPlayer rp) {
+        return placed(rp.uuid) + (houseApplies(rp) ? houseBounty() : 0);
+    }
+
+    private boolean houseApplies(RaidPlayer rp) {
+        return rp.ranked && rp.gearValue >= houseMinValue() && rp.uuid.equals(champion())
+                && houseBountyDay(rp.uuid) != today();
+    }
+
+    /** Bounty day: rolls over at 04:00 like the daily contracts. */
+    private static long today() {
+        return LocalDateTime.now().minusHours(4).toLocalDate().toEpochDay();
     }
 
     /** Null on success, otherwise why not. */
@@ -54,7 +102,7 @@ public final class BountyService {
             return "块币不足";
         }
         payer.money -= amount;
-        plugin.profiles().edit(target, p -> p.bounty += amount);
+        plugin.profiles().edit(target, () -> "bounty placed by " + by.getName() + ": bounty +" + amount, p -> p.bounty += amount);
         plugin.profiles().markDirty(by.getUniqueId());
         Player marked = Bukkit.getPlayer(target);
         if (marked != null) {
@@ -67,7 +115,7 @@ public final class BountyService {
     public void announce(Raid raid) {
         StringBuilder targets = new StringBuilder();
         for (RaidPlayer rp : raid.players.values()) {
-            long amount = total(rp.uuid);
+            long amount = inRaid(rp);
             if (amount > 0) {
                 targets.append(targets.isEmpty() ? "" : "  ").append("<white>").append(Text.escape(rp.name))
                         .append(" <#F2C94C>◈").append(Text.money(amount));
@@ -87,11 +135,24 @@ public final class BountyService {
 
     /** A player killed another in a raid: pays out any bounty on the victim. */
     public void onKill(Player killer, Player victim, Raid raid) {
-        long amount = total(victim.getUniqueId());
+        RaidPlayer rp = raid.player(victim.getUniqueId());
+        if (rp == null) {
+            return;
+        }
+        boolean house = houseApplies(rp);
+        long amount = inRaid(rp);
         if (amount <= 0) {
             return;
         }
-        plugin.profiles().edit(victim.getUniqueId(), p -> p.bounty = 0);
+        long day = today();
+        plugin.profiles().edit(victim.getUniqueId(),
+                () -> "bounty claimed by " + killer.getName() + ": bounty = 0" + (house ? ", houseBountyDay = " + day : ""),
+                p -> {
+                    p.bounty = 0;
+                    if (house) {
+                        p.houseBountyDay = day;
+                    }
+                });
         Profile profile = plugin.profiles().get(killer);
         profile.money += amount;
         plugin.profiles().markDirty(killer.getUniqueId());

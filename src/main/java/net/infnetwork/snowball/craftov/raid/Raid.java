@@ -20,6 +20,11 @@ public final class Raid {
     public enum State { LOADING, RUNNING, ENDING, CLOSED }
 
     public final String id;
+    /**
+     * Unique across restarts, unlike {@link #id} (R1, R2, ... again after every start). Insurance
+     * marks name this, so a mark left on an item from an earlier run can never match a later raid.
+     */
+    public final String key;
     public final MapDef map;
     public final Tier tier;
     public final World world;
@@ -48,6 +53,7 @@ public final class Raid {
 
     public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;
+        this.key = id + "-" + Long.toString(System.currentTimeMillis(), 36);
         this.map = map;
         this.tier = tier;
         this.world = world;

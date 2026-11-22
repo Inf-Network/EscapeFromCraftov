@@ -21,7 +21,8 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
+            "marketaudit");
 
     private final CraftovPlugin plugin;
 
@@ -151,7 +152,8 @@ public final class CraftovCommand implements TabExecutor {
             sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"));
+            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
+                    + " · marketaudit [数量]"));
         }
     }
 
@@ -293,13 +295,48 @@ public final class CraftovCommand implements TabExecutor {
                     }
                 }
             }
+            case "marketaudit" -> {
+                // Accounts with the most market sales: farming the old ratcheting reference price took
+                // hundreds of sales an hour, far beyond what selling raid loot needs.
+                int limit = 10;
+                if (args.length > 1) {
+                    try {
+                        limit = Math.max(1, Math.min(50, Integer.parseInt(args[1])));
+                    } catch (NumberFormatException ex) {
+                        Text.send(sender, "/cv marketaudit [数量]");
+                        return;
+                    }
+                }
+                List<net.infnetwork.snowball.craftov.profile.ProfileService.Summary> top = plugin.profiles().leaderboard(
+                        (a, b) -> Long.compare(b.marketSales(), a.marketSales()), limit);
+                Text.send(sender, "<#F2E6C8>交易行成交最多的账号 <#8A8F98>（收入只统计本版本之后的成交）");
+                int rank = 1;
+                for (net.infnetwork.snowball.craftov.profile.ProfileService.Summary s : top) {
+                    if (s.marketSales() <= 0) {
+                        break;
+                    }
+                    sender.sendMessage(Text.mm("<#9AA0A6>" + rank++ + ". <white>" + Text.escape(s.name()) + " <#8A8F98>Lv." + s.level()
+                            + " · 成交 " + s.marketSales() + " 笔 · 收入 ◈" + Text.money(s.marketIncome()) + " · 余额 <#F2C94C>◈"
+                            + Text.money(s.money()) + " <#8A8F98>· 带出 ◈" + Text.money(s.extracted())));
+                }
+                if (rank == 1) {
+                    sender.sendMessage(Text.mm("<#9AA0A6>还没有人在交易行卖出过东西。"));
+                }
+            }
             case "reload" -> {
                 plugin.reloadConfig();
-                plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
+                String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
                 plugin.loadTiers();
-                Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");
+                if (itemError == null) {
+                    Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");
+                } else {
+                    String shown = itemError.replaceAll("\\s+", " ");
+                    Text.send(sender, "<#FF4D4D>items.yml 有错误，物品表没有更新，仍在使用原来的物品表：<#FF8A80>"
+                            + Text.escape(shown.length() > 300 ? shown.substring(0, 300) + "…" : shown));
+                    Text.send(sender, "<#9AA0A6>配置、掉落与地图已重新加载，完整错误见服务器日志。");
+                }
             }
             default -> help(sender);
         }

@@ -318,6 +318,9 @@ public final class RangeService implements Listener {
         Player player = event.getPlayer();
         if (isRangeWorld(event.getFrom()) && end(player)) {
             plugin.carry().apply(player, plugin.profiles().get(player).loadout, UiItems.lobbyMenu());
+            // Whatever did not fit went to the mailbox: saved at once, as entering the lobby does, so
+            // the loadout no longer holds it and entering the lobby next cannot mail it again.
+            plugin.lobby().captureLoadout(player);
         }
     }
 

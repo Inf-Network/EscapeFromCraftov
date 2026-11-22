@@ -1208,9 +1208,10 @@ public final class AiService implements Listener {
             }
         }
         if (target != null && plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
+            // aim: how high above the target's feet it aimed (the chest, or the head over low cover).
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d aim=%.2f",
                     bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), movingFactor(target), settle(bot, now),
-                    spread, gun.pellets(), hits));
+                    spread, gun.pellets(), hits, point.getY() - target.getLocation().getY()));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);

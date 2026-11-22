@@ -150,6 +150,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - CraftEngine 资源：`src/main/resources/pack/craftov/`（启动时安装到 `plugins/CraftEngine/resources/craftov/` 并自动重建资源包）
 - BetterHud 布局：`src/main/resources/betterhud/`（安装到 `plugins/BetterHud/`，并与 CraftEngine 资源包自动合并）
 - 无头测试客户端：`tools/bot/`（mineflayer，`npm install` 后 `node test.js`）
+- 真客户端截图：`tools/shots/shots.py run`（Linux 上用 Xvfb + Mesa 软件渲染跑原版 1.21.11 客户端，自动进本地测试服、加载资源包，按 `tools/shots/scenes/` 里的场景截图到 `tools/shots/out/`；需要 Xvfb、xdotool、ImageMagick）
 - 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）
 
 ### 左键开火的实现

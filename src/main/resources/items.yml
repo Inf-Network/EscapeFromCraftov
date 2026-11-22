@@ -217,25 +217,25 @@ items:
   drone:       { name: "侦察无人机", category: VALUABLE, rarity: PURPLE, value: 30000 }
   optics:      { name: "精密光学镜组", category: VALUABLE, rarity: PURPLE, value: 18000 }
   # gold
-  gold_bar:    { name: "金条", category: VALUABLE, rarity: GOLD, value: 68000, stack: 2 }
+  gold_bar:    { weight: 1.0, name: "金条", category: VALUABLE, rarity: GOLD, value: 68000, stack: 2 }
   server_drive: { name: "加密服务器硬盘", category: VALUABLE, rarity: GOLD, value: 92000 }
   dossier:     { name: "机密文件袋", category: VALUABLE, rarity: GOLD, value: 56000 }
-  reactor_cell: { name: "便携式反应堆电池", category: VALUABLE, rarity: GOLD, value: 120000 }
+  reactor_cell: { weight: 3.0, name: "便携式反应堆电池", category: VALUABLE, rarity: GOLD, value: 120000 }
 
   # ------------------------------------------------------------------ collectibles (tracked in the collection book)
   pocket_watch: { name: "古董怀表", category: COLLECTIBLE, rarity: GOLD, value: 75000, lore: "表盖内刻着一行褪色的字。" }
-  gilded_teaset: { name: "鎏金茶具", category: COLLECTIBLE, rarity: GOLD, value: 110000, lore: "某位指挥官的私人收藏。" }
+  gilded_teaset: { weight: 2.0, name: "鎏金茶具", category: COLLECTIBLE, rarity: GOLD, value: 110000, lore: "某位指挥官的私人收藏。" }
   star_crystal: { name: "星核水晶", category: COLLECTIBLE, rarity: RED, value: 680000, lore: "在黑暗中会发出微弱的蓝光。" }
-  gold_crown:   { name: "铸金王冠", category: COLLECTIBLE, rarity: RED, value: 1200000, lore: "一顶来历不明的黄金王冠。" }
+  gold_crown:   { weight: 2.5, name: "铸金王冠", category: COLLECTIBLE, rarity: RED, value: 1200000, lore: "一顶来历不明的黄金王冠。" }
   quantum_cpu:  { name: "量子处理器", category: COLLECTIBLE, rarity: RED, value: 420000, lore: "实验室流出的原型芯片。" }
   meteor_knife: { name: "陨铁短刀", category: COLLECTIBLE, rarity: RED, value: 260000, lore: "刀身布满维德曼花纹。" }
-  lion_statue:  { name: "黄金狮像", category: COLLECTIBLE, rarity: RED, value: 880000, lore: "沉甸甸的纯金雕像。" }
-  gramophone:   { name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
+  lion_statue:  { weight: 10.0, name: "黄金狮像", category: COLLECTIBLE, rarity: RED, value: 880000, lore: "沉甸甸的纯金雕像。" }
+  gramophone:   { weight: 6.0, name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
   pearl_necklace: { name: "深海珍珠项链", category: COLLECTIBLE, rarity: RED, value: 540000, lore: "每一颗都完美无瑕。" }
   master_chip:  { name: "机密主控芯片", category: COLLECTIBLE, rarity: RED, value: 1800000, lore: "整座港口防御系统的心脏。" }
-  seawater_filter: { name: "海水过滤器", category: COLLECTIBLE, rarity: GOLD, value: 95000, lore: "多层滤芯，一桶海水能滤出半桶淡水。" }
-  urine_purifier:  { name: "尿液净水机", category: COLLECTIBLE, rarity: PURPLE, value: 48000, lore: "别问水是从哪来的，能喝就行。" }
-  eel_generator:   { name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
+  seawater_filter: { weight: 4.0, name: "海水过滤器", category: COLLECTIBLE, rarity: GOLD, value: 95000, lore: "多层滤芯，一桶海水能滤出半桶淡水。" }
+  urine_purifier:  { weight: 4.0, name: "尿液净水机", category: COLLECTIBLE, rarity: PURPLE, value: 48000, lore: "别问水是从哪来的，能喝就行。" }
+  eel_generator:   { weight: 8.0, name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
 
   # ------------------------------------------------------------------ melee (always kept, hotbar key 3)
   knife_starter:

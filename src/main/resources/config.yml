@@ -115,6 +115,24 @@ medical:
   # left heals, up to the item's per-use amount. Bandages, hemostats and splints are used up whole.
   wound-cost: { LIGHT_BLEED: 15, HEAVY_BLEED: 40, FRACTURE: 40 }
 
+stamina:
+  # Stamina runs from 0 to 100. Sprinting drains sprint-drain a tick and a jump costs jump-cost,
+  # both times the load factor below; after 0.75 s without either it comes back at regen a tick
+  # (regen-sneaking while sneaking). At 0 sprinting stops until it is back at 30. With these
+  # numbers a full bar lasts about 17 s of sprinting and takes about 13 s to refill.
+  sprint-drain: 0.3
+  jump-cost: 5
+  regen: 0.4
+  regen-sneaking: 0.5
+  # Load (kg, items.yml weight). Above comfort-kg every kilogram slows by penalty-per-kg and drains
+  # stamina 1/30 faster. Above overload-kg sprinting is impossible and every further kilogram slows
+  # by overload-penalty-per-kg. The slowdown never goes past max-penalty.
+  comfort-kg: 25
+  overload-kg: 40
+  penalty-per-kg: 0.01
+  overload-penalty-per-kg: 0.025
+  max-penalty: 0.5
+
 combat:
   friendly-fire: false
   damage-numbers: true

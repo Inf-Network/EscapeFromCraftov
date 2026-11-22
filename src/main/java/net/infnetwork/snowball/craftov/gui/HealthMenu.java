@@ -55,8 +55,12 @@ final class HealthMenu extends Menu {
         List<String> status = new ArrayList<>();
         status.add("<#8A8F98>生命 <white>" + hp + " / 100");
         status.add("<#8A8F98>体力 <white>" + Math.round(plugin.stamina().stamina(viewer)) + (plugin.stamina().exhausted(viewer) ? " <#FF8A80>力竭" : ""));
-        status.add("<#8A8F98>负重 <white>" + String.format("%.1f", plugin.stamina().weight(viewer)) + "kg"
-                + (plugin.stamina().overweightPenalty(viewer) > 0 ? " <#FFB74D>超重，移动变慢" : ""));
+        var stamina = plugin.stamina();
+        double penalty = stamina.overweightPenalty(viewer);
+        status.add("<#8A8F98>负重 <white>" + String.format("%.1f", stamina.weight(viewer)) + "kg"
+                + " <#5F6368>/ " + Math.round(stamina.comfortKg()) + " / " + Math.round(stamina.overloadKg()) + "kg"
+                + (stamina.overloaded(viewer) ? " <#FF8A80>严重超重：无法冲刺，移速 -" + Math.round(penalty * 100) + "%"
+                : penalty > 0 ? " <#FFB74D>超重，移速 -" + Math.round(penalty * 100) + "%" : ""));
         if (plugin.health().painkilled(viewer)) {
             status.add("<#7FE0D0>止痛中 " + plugin.health().painkillerSeconds(viewer) + "s <#8A8F98>（骨折暂不影响行动）");
         }

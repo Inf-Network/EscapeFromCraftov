@@ -73,9 +73,17 @@ public final class DamageService implements Listener {
         recordHit(victim, attacker, weapon, BodyPart.defaultFor(zone));
     }
 
+    /**
+     * Notes who hurt {@code victim} last. Every bullet, knife and grenade hit passes through here,
+     * so a hit from someone else (a player or a soldier) also marks both sides as in combat.
+     */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
-        lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick()));
+        LastHit hit = new LastHit(attacker == null ? null : attacker.getUniqueId(),
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick());
+        lastHits.put(victim.getUniqueId(), hit);
+        if (attacker != null && attacker != victim) {
+            plugin.raids().onHostileHit(victim, attacker, hit);
+        }
     }
 
     public static String displayName(Entity entity) {
@@ -104,6 +112,9 @@ public final class DamageService implements Listener {
             victim.getWorld().playSound(face, "craftov:impact.metal", org.bukkit.SoundCategory.PLAYERS, 1f,
                     0.9f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.2f);
             plugin.ai().onBotHurt(victim, shooter);
+            if (shooter != null) {
+                plugin.raids().onHostileHit(victim, shooter, null); // a blocked shot is still a fight
+            }
             return 0;
         }
         double falloff = 1.0;

@@ -89,6 +89,10 @@ match:
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
   reconnect-seconds: 120
+  # Leaving the game within this many seconds of a hit taken from, or dealt to, another player or a
+  # soldier is death on the spot (report: 交战中断线); the kill goes to whoever hit them last. 0 turns
+  # it off.
+  combat-logout-seconds: 15
   # Whoever is still on the entry camera this long after deployment (s) is put down on their insertion
   # point at once. The camera itself takes about 7 s; values below 10 count as 10.
   deploy-timeout-seconds: 20

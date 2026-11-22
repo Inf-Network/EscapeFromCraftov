@@ -165,6 +165,36 @@ public final class RaidManager implements Listener {
         return true;
     }
 
+    /**
+     * {@code attacker} hit {@code victim} (or had the shot blocked: {@code hit} is null then). A
+     * raid player on either side is in combat from now on; the victim also remembers the hit, so
+     * leaving the game right after credits whoever made it. Hits between squadmates that do no
+     * damage (a grenade near a squadmate without friendly fire) count for nothing.
+     */
+    public void onHostileHit(LivingEntity victim, LivingEntity attacker, DamageService.@Nullable LastHit hit) {
+        if (!canDamage(attacker, victim)) {
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        RaidPlayer rv = victim instanceof Player v ? session(v) : null;
+        if (rv != null && rv.active()) {
+            rv.lastCombatTick = now;
+            if (hit != null) {
+                rv.lastHostile = hit;
+            }
+        }
+        RaidPlayer ra = attacker instanceof Player a ? session(a) : null;
+        if (ra != null && ra.active()) {
+            ra.lastCombatTick = now;
+        }
+    }
+
+    /** Whether leaving the game now counts as death: within raid.combat-logout-seconds of a fight (0: never). */
+    private boolean inCombat(RaidPlayer rp, long now) {
+        long window = plugin.getConfig().getLong("raid.combat-logout-seconds", 15) * 20L;
+        return window > 0 && rp.lastCombatTick >= 0 && now - rp.lastCombatTick < window;
+    }
+
     public boolean sameSquad(Player a, Player b) {
         Raid raid = raidOf(a);
         if (raid == null || raid != raidOf(b)) {
@@ -1900,6 +1930,19 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
             die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
+            byPlayer.remove(player.getUniqueId());
+            player.getInventory().clear();
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        if (rp.state == RaidPlayer.State.ALIVE && inCombat(rp, now)) {
+            // Closing the game mid-fight used to take the player out of the fight with all their
+            // gear, to come back two minutes later where they stood. Now it is death, as in other
+            // extraction shooters (a real connection drop mid-fight too), and the kill goes to
+            // whoever hit them last, if that was during this fight.
+            long window = plugin.getConfig().getLong("raid.combat-logout-seconds", 15) * 20L;
+            DamageService.LastHit hit = rp.lastHostile != null && now - rp.lastHostile.tick() < window ? rp.lastHostile : null;
+            die(raid, player, rp, "交战中断线", hit);
             byPlayer.remove(player.getUniqueId());
             player.getInventory().clear();
             return;

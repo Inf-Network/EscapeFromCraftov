@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.raid;
 
+import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
 import org.bukkit.inventory.ItemStack;
@@ -48,6 +49,16 @@ public final class RaidPlayer {
     public @Nullable String extracting;
     public int extractTicks;
     public long protectedUntil;
+    /**
+     * Tick of the last hit this player took from, or dealt to, another player or a soldier (-1:
+     * none yet). Leaving the game within raid.combat-logout-seconds of it counts as death.
+     */
+    public long lastCombatTick = -1;
+    /**
+     * The last hit another player or a soldier dealt this player. Kept apart from DamageService's
+     * last hit, which bleeding overwrites every 1.5 s, so leaving mid-fight credits the attacker.
+     */
+    public DamageService.@Nullable LastHit lastHostile;
     public @Nullable Location lastLocation;
     public long disconnectedAt;
     /**

@@ -596,9 +596,14 @@ public final class RaidManager implements Listener {
                     missing(raid, rp, "断线超时");
                 }
             }
+            if (remaining > 0) {
+                landOverdue(raid, now);
+            }
             if (remaining <= 0) {
                 for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
-                    if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
+                    if (rp.state == RaidPlayer.State.DEPLOYING) {
+                        callOff(raid, rp);
+                    } else if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
                         Player player = Bukkit.getPlayer(rp.uuid);
                         if (player != null && rp.active()) {
                             die(raid, player, rp, "行动超时，失踪", null);
@@ -613,6 +618,47 @@ public final class RaidManager implements Listener {
                 raid.endTick = Math.max(raid.endTick, now + 20L * 8); // a kill replay may need longer
             }
         }
+    }
+
+    /**
+     * The entry camera lands its squad after about 7 seconds. Whoever is still flying in long after
+     * that (the camera broke down, or a player was moved off it) would hang in the air for the whole
+     * raid, and keep it open: they are put down on their insertion point now.
+     */
+    private void landOverdue(Raid raid, long now) {
+        long timeout = Math.max(10, plugin.getConfig().getInt("raid.deploy-timeout-seconds", 20)) * 20L;
+        for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+            Player player = rp.state == RaidPlayer.State.DEPLOYING ? Bukkit.getPlayer(rp.uuid) : null;
+            if (player == null || now - rp.startTick <= timeout) {
+                continue;
+            }
+            plugin.getLogger().warning(rp.name + " was still flying into raid " + raid.id + " "
+                    + (now - rp.startTick) / 20 + " s after deployment; landing them now");
+            rp.inFlight = false;
+            insert(raid, player, rp.lastLocation != null && rp.lastLocation.getWorld() == raid.world
+                    ? rp.lastLocation : raid.world.getSpawnLocation());
+        }
+    }
+
+    /**
+     * The raid ran out before this player landed (in practice an admin's /cv end during the entry
+     * camera): home with everything they brought, and the entry fee and insurance premium back, as
+     * when the server stops during the flight.
+     */
+    private void callOff(Raid raid, RaidPlayer rp) {
+        rp.inFlight = false;
+        Player player = Bukkit.getPlayer(rp.uuid);
+        if (player == null) {
+            // Not expected: leaving turns DEPLOYING into DISCONNECTED (onQuit). The next join finds
+            // the raid gone and restores the lobby loadout (LobbyService.onJoin).
+            rp.state = RaidPlayer.State.LEFT;
+            byPlayer.remove(rp.uuid, raid);
+            return;
+        }
+        plugin.profiles().get(player).money += rp.fees;
+        evacuate(raid, player, rp, rp.fees > 0
+                ? "行动在你落地前结束，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还，携带的物资已保留。"
+                : "行动在你落地前结束，携带的物资已保留。");
     }
 
     // ------------------------------------------------------------------ extraction

@@ -69,8 +69,8 @@ import java.util.UUID;
  * and then nothing until the button is let go, so a spray at a target two blocks away used to stop
  * after two or three rounds. Each tick the server traces the crosshair for the nearest entity the
  * client could pick, and when one is that close, the cells go half a block in front of it instead.
- * Only when there is no room between the eye and the entity (closer than about a block and a
- * half, depending on where the player stands in the block) does the click still reach the entity.
+ * Only when no cell fits between the body and the entity does the click still reach the entity:
+ * from about 1.9 blocks out one always does, closer it depends on where block edges fall.
  *
  * <p>The cobweb is real on the client, and a body inside one is slowed to a crawl and stops
  * falling. The server only takes a cell away a round trip after the client walked or fell into

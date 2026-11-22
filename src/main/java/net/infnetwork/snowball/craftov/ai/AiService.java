@@ -538,8 +538,15 @@ public final class AiService implements Listener {
         }
     }
 
-    private @Nullable Bot spawn(Raid raid, Location at, double leash, String kind, int gear, boolean boss, String name) {
+    private @Nullable Bot spawn(Raid raid, Location requested, double leash, String kind, int gear, boolean boss, String name) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
+        // Offsets around a post were only checked for a free block at the feet: next to a wall that
+        // put soldiers' heads in it, and nothing kept them out of the water or off the map.
+        Location at = standable(raid, requested);
+        if (at == null) {
+            at = spotNear(raid, requested, 2);
+        }
+        at.setYaw(requested.getYaw());
         String[] guns = switch (Math.min(3, gear)) {
             case 0 -> new String[]{"p18", "sv9", "r12", "k47", "sv9"};
             case 1 -> new String[]{"k47", "m4c", "sv9", "r12", "k47"};
@@ -794,8 +801,14 @@ public final class AiService implements Listener {
         if (now >= bot.nextWanderTick && !"sniper".equals(bot.kind)) {
             ThreadLocalRandom rng = ThreadLocalRandom.current();
             double radius = "guard".equals(bot.kind) ? Math.min(4, bot.leash) : bot.leash;
-            Location dest = bot.home.clone().add(rng.nextDouble(-radius, radius), 0, rng.nextDouble(-radius, radius));
-            mob.getPathfinder().moveTo(dest, 0.6);
+            // Only to somewhere it can stand: the dock patrol's walk used to reach 8 blocks out to sea.
+            Location dest = null;
+            for (int i = 0; i < 4 && dest == null; i++) {
+                dest = standable(bot.raid, bot.home.clone().add(rng.nextDouble(-radius, radius), 0, rng.nextDouble(-radius, radius)));
+            }
+            if (dest != null) {
+                mob.getPathfinder().moveTo(dest, 0.6);
+            }
             bot.nextWanderTick = now + rng.nextInt(80, 220);
         }
         if (bot.ammoLeft < bot.gun.gun().magazine()) {
@@ -1303,6 +1316,27 @@ public final class AiService implements Listener {
         }
     }
 
+    /**
+     * A soldier stays what it is: a zombie under water turns into a drowned and a husk into a zombie,
+     * and the new mob is no soldier (it would vanish without a body).
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onTransform(org.bukkit.event.entity.EntityTransformEvent event) {
+        if (isAi(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Nor does it choke in a wall or drown: dying of where it was put is no death a player caused. */
+    @EventHandler(ignoreCancelled = true)
+    public void onChoke(org.bukkit.event.entity.EntityDamageEvent event) {
+        var cause = event.getCause();
+        if ((cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.SUFFOCATION
+                || cause == org.bukkit.event.entity.EntityDamageEvent.DamageCause.DROWNING) && isAi(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onSpawn(CreatureSpawnEvent event) {
         World world = event.getLocation().getWorld();
@@ -1481,6 +1515,21 @@ public final class AiService implements Listener {
         bot.ammoLeft = gun.magazine();
         bot.reloadUntil = now + gun.reloadTicks() + 10;
         plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
+    }
+
+    /**
+     * A spot a soldier can stand on (see {@link #standable}) up to {@code spread} blocks from {@code
+     * base}, tried at random a few times; else {@code base} as it is.
+     */
+    private static Location spotNear(Raid raid, Location base, double spread) {
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        for (int i = 0; i < 8; i++) {
+            Location spot = standable(raid, base.clone().add(rng.nextDouble(-spread, spread), 0, rng.nextDouble(-spread, spread)));
+            if (spot != null) {
+                return spot;
+            }
+        }
+        return base.clone();
     }
 
     /**

@@ -90,6 +90,23 @@ public final class DownedService implements Listener {
         return downed.get(player.getUniqueId());
     }
 
+    /**
+     * True while the player works on a downed squadmate or holds right click on one. Their hands
+     * are busy: the gun goes down, and they cannot shoot, cut, throw, reload or treat themselves.
+     * The click counts at once, before the revive check, so the use-item packet the same click
+     * sends right after cannot throw the grenade or start the bandage in their hand.
+     */
+    public boolean isReviving(Player player) {
+        UUID id = player.getUniqueId();
+        for (Downed state : downed.values()) {
+            if (id.equals(state.reviver)) {
+                return true;
+            }
+        }
+        Map.Entry<UUID, Long> click = clicks.get(id);
+        return click != null && downed.containsKey(click.getKey()) && Bukkit.getCurrentTick() - click.getValue() <= HOLD_TICKS;
+    }
+
     public boolean canBeDowned(Raid raid, RaidPlayer rp) {
         int maxDowns = plugin.getConfig().getInt("downed.max-downs", 2);
         if (rp.downs >= maxDowns) {

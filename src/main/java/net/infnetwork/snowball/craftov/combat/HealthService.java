@@ -461,6 +461,11 @@ public final class HealthService implements Listener {
             Text.send(player, "<#9AA0A6>医疗物品只能在行动中使用。");
             return;
         }
+        if (plugin.downed().isReviving(player)) {
+            event.setCancelled(true);
+            player.sendActionBar(Text.mm("<#9AA0A6>救援时不能使用医疗物品"));
+            return;
+        }
         boolean downed = plugin.downed().isDowned(player);
         if (med.effect() == MedSpec.Effect.SELF_REVIVE ? !downed : downed) {
             event.setCancelled(true);

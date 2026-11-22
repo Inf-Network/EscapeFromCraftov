@@ -137,7 +137,8 @@ public final class RaidManager implements Listener {
         }
         RaidPlayer rp = session(player);
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
-                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
+                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX)
+                && !plugin.downed().isReviving(player);
     }
 
     public boolean canBeShot(Player player) {

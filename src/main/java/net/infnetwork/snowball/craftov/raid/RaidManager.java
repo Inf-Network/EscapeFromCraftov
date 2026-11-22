@@ -867,7 +867,7 @@ public final class RaidManager implements Listener {
             drop.add(cursor.clone());
             lost += plugin.items().value(cursor);
         }
-        spawnCorpse(raid, at, player.getName(), drop, player);
+        spawnCorpse(raid, at, drop, player);
         player.getInventory().clear();
         player.setItemOnCursor(null);
         Profile profile = plugin.profiles().get(player);
@@ -1092,6 +1092,8 @@ public final class RaidManager implements Listener {
         // Items whose id items.yml no longer has cannot lie in the body: they go to the mailbox.
         List<ItemRecord> unknown = new ArrayList<>();
         ItemStack kept = null;
+        ItemStack helmet = null;
+        ItemStack vest = null;
         if (rp.disconnectedInventory != null) {
             for (Map.Entry<Integer, ItemStack> entry : rp.disconnectedInventory.entrySet()) {
                 ItemStack stack = entry.getValue();
@@ -1107,12 +1109,19 @@ public final class RaidManager implements Listener {
                     }
                 } else {
                     drop.add(stack);
+                    if (entry.getKey() == CarryService.HEAD) {
+                        helmet = stack;
+                    } else if (entry.getKey() == CarryService.CHEST) {
+                        vest = stack;
+                    }
                 }
             }
         }
         ItemStack melee = kept;
         if (rp.lastLocation != null && !drop.isEmpty()) {
-            spawnCorpse(raid, rp.lastLocation, rp.name, drop, null);
+            // Dressed as they left, like the body of anyone who dies in the raid.
+            spawnBody(raid, rp.lastLocation, rp.name + " 的遗体", drop, rp.look == null ? Mannequin.defaultProfile() : rp.look,
+                    helmet, vest);
         }
         long lost = 0;
         for (ItemStack stack : drop) {
@@ -1146,11 +1155,10 @@ public final class RaidManager implements Listener {
         announce(raid, "<#8A8F98>" + Text.escape(rp.name) + " 失去联络。");
     }
 
-    public void spawnCorpse(Raid raid, Location at, String name, List<ItemStack> items, @Nullable Player owner) {
-        io.papermc.paper.datacomponent.item.ResolvableProfile look = owner == null ? Mannequin.defaultProfile()
-                : io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile());
-        spawnBody(raid, at, name + " 的遗体", items, look,
-                owner == null ? null : owner.getInventory().getHelmet(), owner == null ? null : owner.getInventory().getChestplate());
+    public void spawnCorpse(Raid raid, Location at, List<ItemStack> items, Player owner) {
+        spawnBody(raid, at, owner.getName() + " 的遗体", items,
+                io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile()),
+                owner.getInventory().getHelmet(), owner.getInventory().getChestplate());
     }
 
     /**
@@ -1979,6 +1987,7 @@ public final class RaidManager implements Listener {
             // the usual reconnect window applies and a timeout leaves the body there. The copies keep
             // insurance marks and armory items for a rejoin; armory items never reach a saved loadout.
             rp.disconnectedInventory = plugin.carry().copyCarried(player);
+            rp.look = io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(player.getPlayerProfile());
             if (rp.state == RaidPlayer.State.ALIVE) {
                 rp.lastLocation = player.getLocation();
             }

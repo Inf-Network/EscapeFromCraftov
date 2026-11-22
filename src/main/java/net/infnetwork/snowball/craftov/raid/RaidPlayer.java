@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.raid;
 
+import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
@@ -77,6 +78,8 @@ public final class RaidPlayer {
      * exactly as they were (insurance mark, fire mode, armory items).
      */
     public @Nullable Map<Integer, ItemStack> disconnectedInventory;
+    /** A disconnected player's skin, taken when they left, for their body should they not come back. */
+    public @Nullable ResolvableProfile look;
     public @Nullable String escortContract;
     public int containersSearched;
 

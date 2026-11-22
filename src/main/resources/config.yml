@@ -118,6 +118,16 @@ combat:
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
 
+weapons:
+  spread:
+    # Moving widens the cone (bloom included) by 1 + move × how close the player is to their full
+    # walking pace (measured on the server, 0 standing .. 1 walking or faster): hip fire and aiming.
+    move-hip: 0.5
+    move-ads: 1.0
+    # Multipliers of the gun's base spread while sneaking and while off the ground.
+    sneak: 0.7
+    airborne: 2.5
+
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
   operator-chance: [0.15, 0.35, 0.5]

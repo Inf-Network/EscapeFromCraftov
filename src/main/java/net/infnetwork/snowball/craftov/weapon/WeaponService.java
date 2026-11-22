@@ -22,6 +22,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -144,6 +145,7 @@ public final class WeaponService implements Listener {
     private final Ballistics ballistics;
     private final GunAudio audio;
     private final ImpactFx fx;
+    private final MotionTracker motion = new MotionTracker();
     private final Map<UUID, GunState> states = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
@@ -180,6 +182,15 @@ public final class WeaponService implements Listener {
 
     public boolean isAiming(Player player) {
         return ads.getOrDefault(player.getUniqueId(), false);
+    }
+
+    /**
+     * How fast the player is really moving, in blocks per tick, measured from their position each tick
+     * (vanilla walking is about {@value MotionTracker#WALK_SPEED}). Bukkit's velocity reads about zero
+     * while a player walks or runs, so this is what moving-target checks use.
+     */
+    public double horizontalSpeed(Player player) {
+        return motion.speed(player);
     }
 
     public double adsSpeedFactor(Player player) {
@@ -267,6 +278,7 @@ public final class WeaponService implements Listener {
     private void tick() {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
+            motion.sample(player);
             GunState state = bind(player);
             if (state == null) {
                 continue;
@@ -281,7 +293,7 @@ public final class WeaponService implements Listener {
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
                         + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
-                        + " interval=" + state.gun.millisBetweenShots());
+                        + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player)));
             }
             if (isAiming(player)) {
                 if (held) {
@@ -397,6 +409,10 @@ public final class WeaponService implements Listener {
         Location eye = player.getEyeLocation();
         Vector dir = eye.getDirection();
         double spread = currentSpread(player, state);
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b",
+                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround()));
+        }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(dir, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
@@ -428,23 +444,27 @@ public final class WeaponService implements Listener {
         return true;
     }
 
+    /**
+     * Cone half-angle of the next shot. Moving widens it in proportion to how close the player is to
+     * their full walking pace, the gun's bloom included: walking hip fire is half as wide again, aiming
+     * while walking twice as wide (weapons.spread).
+     */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
-        double spread = isAiming(player) ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
-        Vector velocity = player.getVelocity();
-        boolean moving = velocity.getX() * velocity.getX() + velocity.getZ() * velocity.getZ() > 0.003;
-        if (moving) {
-            spread *= isAiming(player) ? 1.8 : 1.4;
-        }
+        boolean aiming = isAiming(player);
+        var config = plugin.getConfig();
+        double spread = aiming ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
         if (player.isSneaking()) {
-            spread *= 0.7;
+            spread *= config.getDouble("weapons.spread.sneak", 0.7);
         }
         if (!player.isOnGround()) {
-            spread *= 2.5;
+            spread *= config.getDouble("weapons.spread.airborne", 2.5);
         }
         if (state.fireMode() != FireMode.BOLT) {
-            spread += state.bloom * (isAiming(player) ? 0.25 : 0.6);
+            spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
+        double moving = config.getDouble(aiming ? "weapons.spread.move-ads" : "weapons.spread.move-hip", aiming ? 1.0 : 0.5);
+        spread *= 1.0 + moving * motion.moveFactor(player);
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
             spread *= 1.0 + 0.35 * arms;
@@ -838,8 +858,15 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /** A teleport is not movement: measure speed again from where the player lands. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) {
+        motion.reset(event.getPlayer());
+    }
+
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        motion.forget(event.getPlayer().getUniqueId());
         reset(event.getPlayer());
         ads.remove(event.getPlayer().getUniqueId());
         adsUntil.remove(event.getPlayer().getUniqueId());

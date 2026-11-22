@@ -354,13 +354,33 @@ public final class AiService implements Listener {
         List<Double> chances = plugin.getConfig().getDoubleList("ai.operator-chance");
         double chance = chances.isEmpty() ? 0.3 : chances.get(Math.min(chances.size() - 1, raid.tier.aiGear()));
         if (!raid.map.spawns().isEmpty() && rng.nextDouble() < chance) {
-            Location at = raid.map.spawns().get(rng.nextInt(raid.map.spawns().size())).pos().at(raid.world);
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (raid.state == Raid.State.RUNNING) {
-                    operatorSquad(raid, at);
-                }
-            }, 20L * plugin.getConfig().getInt("ai.operator-delay-seconds", 60));
+            operatorsLater(raid, 20L * plugin.getConfig().getInt("ai.operator-delay-seconds", 60), 4);
         }
+    }
+
+    /**
+     * A rival operator squad lands on a player spawn point in {@code delay} ticks: one with no player
+     * within 50 blocks (it used to pick any, right on top of a squad that had just landed there).
+     * With none clear it tries again 15 s later, {@code tries} times in all.
+     */
+    private void operatorsLater(Raid raid, long delay, int tries) {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (raid.state != Raid.State.RUNNING) {
+                return;
+            }
+            List<Location> clear = new ArrayList<>();
+            for (MapDef.SpawnDef spawn : raid.map.spawns()) {
+                Location at = spawn.pos().at(raid.world);
+                if (raid.online().stream().noneMatch(p -> p.getLocation().distanceSquared(at) < 50 * 50)) {
+                    clear.add(at);
+                }
+            }
+            if (!clear.isEmpty()) {
+                operatorSquad(raid, clear.get(ThreadLocalRandom.current().nextInt(clear.size())));
+            } else if (tries > 1) {
+                operatorsLater(raid, 20L * 15, tries - 1);
+            }
+        }, delay);
     }
 
     /** Idle rival operator: follow the squad leader, or walk to the next container and loot it. */

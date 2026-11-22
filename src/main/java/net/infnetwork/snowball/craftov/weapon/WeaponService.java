@@ -21,6 +21,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
@@ -1227,6 +1228,12 @@ public final class WeaponService implements Listener {
     /** A teleport is not movement: measure speed again from where the player lands. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
+        motion.reset(event.getPlayer());
+    }
+
+    /** Nor is respawning, which fires no teleport event even within the same world. */
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
         motion.reset(event.getPlayer());
     }
 

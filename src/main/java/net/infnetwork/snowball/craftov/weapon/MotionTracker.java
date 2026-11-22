@@ -22,8 +22,12 @@ final class MotionTracker {
     private static final double BLOCKS_PER_SPEED = 2.1585;
     /** Ticks averaged: movement packets sometimes arrive two in one tick and none in the next. */
     private static final int WINDOW = 4;
-    /** Getting further than this between two ticks is a teleport, not movement. */
-    private static final double TELEPORT = 3.0;
+    /**
+     * Most a player covers in one tick (sprint-jumping is about 0.6). A longer step is movement held
+     * back and arriving at once, counted as this much so the player still reads as moving; teleports
+     * reset the track through their event instead.
+     */
+    private static final double MAX_STEP = 1.0;
 
     private static final class Track {
         UUID world;
@@ -32,7 +36,7 @@ final class MotionTracker {
         /** Horizontal distance covered in each of the last {@link #WINDOW} ticks. */
         final double[] steps = new double[WINDOW];
         int next;
-        /** No position to measure from yet (just joined, teleported or changed world). */
+        /** No position to measure from yet (just joined, teleported, respawned or changed world). */
         boolean fresh = true;
     }
 
@@ -47,11 +51,7 @@ final class MotionTracker {
         if (!track.fresh && world.equals(track.world)) {
             double dx = at.getX() - track.x;
             double dz = at.getZ() - track.z;
-            step = Math.sqrt(dx * dx + dz * dz);
-            if (step > TELEPORT) {
-                java.util.Arrays.fill(track.steps, 0);
-                step = 0;
-            }
+            step = Math.min(MAX_STEP, Math.sqrt(dx * dx + dz * dz));
         } else {
             java.util.Arrays.fill(track.steps, 0);
         }

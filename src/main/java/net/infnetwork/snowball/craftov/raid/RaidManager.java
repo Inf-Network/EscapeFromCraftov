@@ -1487,6 +1487,11 @@ public final class RaidManager implements Listener {
         }
         if (event.getFinalDamage() >= player.getHealth()) {
             event.setCancelled(true);
+            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                // Cancelled, so HealthService.onFallen never sees it: the legs still break, and the
+                // fall is named as the cause.
+                plugin.health().fallen(player, event.getDamage());
+            }
             DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
             if (hit == null && event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof LivingEntity living) {
                 plugin.damage().recordHit(player, living, "近战", net.infnetwork.snowball.craftov.combat.HitZone.TORSO);

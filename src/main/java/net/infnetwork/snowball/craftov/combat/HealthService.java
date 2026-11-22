@@ -611,18 +611,44 @@ public final class HealthService implements Listener {
         }
     }
 
+    /**
+     * Falls hurt five times as much in a raid. This runs before RaidManager.onDamage (HIGHEST), which
+     * needs the full damage to tell whether the fall downs or kills; what the fall does to the legs
+     * waits for {@link #onFallen}, once nothing has cancelled it.
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onFall(EntityDamageEvent event) {
         if (event.getCause() == EntityDamageEvent.DamageCause.FALL && event.getEntity() instanceof Player player
                 && plugin.raids().isInRaid(player)) {
             event.setDamage(event.getDamage() * 5.0);
-            plugin.damage().recordHit(player, null, "坠落", BodyPart.LEFT_LEG);
-            if (event.getDamage() >= 25) {
-                BodyPart leg = ThreadLocalRandom.current().nextBoolean() ? BodyPart.LEFT_LEG : BodyPart.RIGHT_LEG;
-                addInjury(player, leg, Injury.FRACTURE);
-                if (event.getDamage() >= 50) {
-                    addInjury(player, leg == BodyPart.LEFT_LEG ? BodyPart.RIGHT_LEG : BodyPart.LEFT_LEG, Injury.FRACTURE);
-                }
+        }
+    }
+
+    /**
+     * A fall that went through. A downed or spawn-protected player takes no fall damage
+     * (RaidManager.onDamage cancels it), so crawling down a ledge neither breaks a leg nor names the
+     * fall as the cause of a later bleed-out. A fall that downs or kills is cancelled there too and
+     * handed to {@link #fallen} directly.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFallen(EntityDamageEvent event) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.FALL && event.getEntity() instanceof Player player
+                && plugin.raids().isInRaid(player)) {
+            fallen(player, event.getDamage());
+        }
+    }
+
+    /**
+     * Records a fall of {@code damage} (already multiplied) as the cause, keeping the credit with
+     * whoever hurt the player last, and breaks a leg from 25 damage (8 blocks) and both from 50.
+     */
+    public void fallen(Player player, double damage) {
+        plugin.damage().recordHit(player, null, "坠落", BodyPart.LEFT_LEG);
+        if (damage >= 25) {
+            BodyPart leg = ThreadLocalRandom.current().nextBoolean() ? BodyPart.LEFT_LEG : BodyPart.RIGHT_LEG;
+            addInjury(player, leg, Injury.FRACTURE);
+            if (damage >= 50) {
+                addInjury(player, leg == BodyPart.LEFT_LEG ? BodyPart.RIGHT_LEG : BodyPart.LEFT_LEG, Injury.FRACTURE);
             }
         }
     }

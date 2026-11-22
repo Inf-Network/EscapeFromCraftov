@@ -262,8 +262,15 @@ backup:
   keep-shutdown: 5
 
 insurance:
-  # Share of the insured gear's value charged on deploy.
+  # Share of the insured gear's value charged on deploy; rarity-rate overrides it per rarity.
   rate: 0.08
+  rarity-rate: { GOLD: 0.12, RED: 0.16 }
+  # Chance each insured item left behind is gone anyway when the raid closes (someone else took
+  # it), so dying among soldiers with nobody else around is no longer a full refund.
+  loss-chance: 0.3
+  # Minutes before what comes back reaches the mailbox (0 = at once). The time runs while the
+  # owner is offline too; it arrives the next time they are online after that.
+  return-minutes: 30
 
 events:
   # Share of raids fought at night (dark; soldiers see half as far but spot lit tactical lights from afar).

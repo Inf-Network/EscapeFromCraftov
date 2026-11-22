@@ -133,8 +133,9 @@ public final class TraderService {
     }
 
     /**
-     * Everything the player owns, at item value: money, stash, mailbox, what they carry, the secure
-     * container, their market listings and an escrowed escort reward. The escrow is read from the
+     * Everything the player owns, at item value: money, stash, mailbox, insurance claims on their
+     * way, what they carry, the secure container, their market listings and an escrowed escort
+     * reward. The escrow is read from the
      * profile, where EscortService records it with the deduction: that also covers a contract lost
      * in a crash whose reward has not been handed back yet.
      */
@@ -145,6 +146,9 @@ public final class TraderService {
             for (ItemRecord record : records) {
                 total += plugin.items().value(record);
             }
+        }
+        for (Profile.Claim claim : profile.claims) {
+            total += plugin.items().value(claim.item); // insured gear on its way to the mailbox
         }
         for (MarketService.Listing listing : plugin.market().mine(player.getUniqueId())) {
             total += plugin.items().value(listing.item);
@@ -168,7 +172,7 @@ public final class TraderService {
         long assets = assets(player);
         long maxAssets = freeKitMaxAssets();
         if (assets > maxAssets) {
-            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
+            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、理赔途中的装备、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
                     + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<#9AA0A6>可以从仓库取出装备或到商人处购买。");
             return;
         }

@@ -144,12 +144,17 @@ final class DeployMenu extends Menu {
             redraw();
         });
         var profile = plugin.profiles().get(viewer);
-        long fee = plugin.insurance().quote(viewer);
+        var insurance = plugin.insurance();
+        long fee = insurance.quote(viewer);
+        long minutes = insurance.returnMinutes();
         button(34, UiItems.button("craftov:ui/icon_secure", (profile.autoInsure ? "<#5BD16B>● 装备保险" : "<#8A8F98>○ 装备保险"),
                 List.of("<#9AA0A6>出发时为枪械、护甲、胸挂和背包投保",
-                        "<#9AA0A6>费用为装备价值的 " + Math.round(plugin.insurance().rate() * 100) + "%，本次约 <#F2C94C>◈" + Text.money(fee),
-                        "<#9AA0A6>阵亡后没被别人带出的投保装备，",
-                        "<#9AA0A6>会在对局结束时退回仓库邮箱")), e -> {
+                        "<#9AA0A6>费用为装备价值的 " + percent(insurance.rate()) + "（<#FFC23D>金色<#9AA0A6> "
+                                + percent(insurance.rate(net.infnetwork.snowball.craftov.item.Rarity.GOLD)) + "、<#FF4D4D>红色<#9AA0A6> "
+                                + percent(insurance.rate(net.infnetwork.snowball.craftov.item.Rarity.RED)) + "），本次约 <#F2C94C>◈" + Text.money(fee),
+                        "<#9AA0A6>阵亡后没被别人带出的投保装备，对局结束时",
+                        "<#9AA0A6>每件有 " + percent(1 - insurance.lossChance()) + " 的机会找回，"
+                                + (minutes > 0 ? minutes + " 分钟后退回仓库邮箱" : "退回仓库邮箱"))), e -> {
             profile.autoInsure = !profile.autoInsure;
             plugin.profiles().markDirty(viewer.getUniqueId());
             redraw();
@@ -182,5 +187,9 @@ final class DeployMenu extends Menu {
                 }
             });
         }
+    }
+
+    private static String percent(double share) {
+        return Math.round(share * 100) + "%";
     }
 }

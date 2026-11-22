@@ -6,7 +6,6 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
@@ -24,7 +23,8 @@ import java.util.logging.Logger;
  * <ul>
  *   <li>Trigger capture cells: vanilla answers every right-click on a block with real block
  *   updates, which would erase the client-only capture cells in front of a gun. A small outbound
- *   handler rewrites those updates back to the capture block.</li>
+ *   handler rewrites those updates back to the capture block. The same handler reports, in the
+ *   order they arrive, the client's dig starts and arm swings (see {@link DigInputs}).</li>
  *   <li>Scope zoom: the client's FOV multiplier is {@code (moveSpeed / abilities.walkingSpeed + 1) / 2},
  *   so sending a (negative) walking speed in a private abilities packet zooms the view without
  *   touching how fast the player actually moves.</li>
@@ -35,6 +35,13 @@ import java.util.logging.Logger;
 public final class Nms {
 
     private static final String HANDLER = "craftov_capture";
+    /**
+     * The client-only block the trigger keeps in front of a gun (see {@code TriggerService}): a sculk
+     * vein on all six faces, which has no collision, does nothing to a body inside it and has an
+     * outline shell a crosshair always meets. The resource pack makes it invisible and silent.
+     */
+    public static final String CAPTURE_BLOCK =
+            "minecraft:sculk_vein[down=true,east=true,north=true,south=true,up=true,west=true,waterlogged=false]";
     private static final String VIEW_HANDLER = "craftov_view";
 
     private static boolean ready;
@@ -47,7 +54,12 @@ public final class Nms {
     private static @Nullable Method blockUpdatePos;
     private static @Nullable Constructor<?> blockUpdateCtor;
     private static @Nullable Method asLong;
-    private static @Nullable Object cobwebState;
+    private static @Nullable Object captureState;
+    private static @Nullable Class<?> actionPacketClass;
+    private static @Nullable Method actionPacketAction;
+    private static @Nullable Method actionPacketPos;
+    private static @Nullable Class<?> swingPacketClass;
+    private static boolean inputsReady;
     private static @Nullable Method getAbilities;
     private static @Nullable Class<?> abilitiesClass;
     private static @Nullable Constructor<?> abilitiesPacketCtor;
@@ -73,6 +85,20 @@ public final class Nms {
     /** Set on the main thread, read on Netty threads. */
     private static volatile org.bukkit.plugin.@Nullable Plugin pickPlugin;
     private static volatile java.util.function.@Nullable Consumer<Player> pickHandler;
+
+    /**
+     * The client's dig starts and arm swings, reported on the network thread in the order they
+     * arrived, before the server handles them. In adventure mode the server turns every arm swing
+     * into a left-click on whatever block its own ray finds, which looks exactly like a dig start;
+     * this tells the two apart.
+     */
+    public interface DigInputs {
+        /** A START_DESTROY_BLOCK packet for this block (a {@code BlockPos.asLong} key). */
+        void started(long pos);
+
+        /** An arm swing packet (either hand). */
+        void swung();
+    }
 
     /** Decides what other players see in an entity's main hand. Called on Netty threads. */
     public interface ViewRewriter {
@@ -117,8 +143,8 @@ public final class Nms {
             Class<?> blockState = Class.forName("net.minecraft.world.level.block.state.BlockState");
             blockUpdateCtor = blockUpdateClass.getConstructor(blockPos, blockState);
             asLong = blockPos.getMethod("asLong");
-            Object craftData = Material.COBWEB.createBlockData();
-            cobwebState = craftData.getClass().getMethod("getState").invoke(craftData);
+            Object craftData = org.bukkit.Bukkit.createBlockData(CAPTURE_BLOCK);
+            captureState = craftData.getClass().getMethod("getState").invoke(craftData);
             Class<?> playerClass = Class.forName("net.minecraft.world.entity.player.Player");
             getAbilities = playerClass.getMethod("getAbilities");
             abilitiesClass = Class.forName("net.minecraft.world.entity.player.Abilities");
@@ -129,6 +155,16 @@ public final class Nms {
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Low-level hooks unavailable (" + ex + "); trigger capture falls back to resending cells, "
                     + "scopes use movement-based zoom.");
+        }
+        try {
+            actionPacketClass = Class.forName("net.minecraft.network.protocol.game.ServerboundPlayerActionPacket");
+            actionPacketAction = actionPacketClass.getMethod("getAction");
+            actionPacketPos = actionPacketClass.getMethod("getPos");
+            swingPacketClass = Class.forName("net.minecraft.network.protocol.game.ServerboundSwingPacket");
+            inputsReady = ready;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Dig packets unreadable (" + ex + "); stray arm swings are only filtered for a moment after Q, "
+                    + "doors and menus.");
         }
         try {
             equipmentClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket");
@@ -226,15 +262,18 @@ public final class Nms {
         }
     }
 
-    /** Keeps the given cells (BlockPos.asLong keys) showing the capture block for this player. */
-    public static void protectCells(Player player, Set<Long> cells) {
+    /**
+     * Keeps the given cells (BlockPos.asLong keys) showing the capture block for this player, and
+     * reports the player's dig starts and arm swings to {@code inputs}.
+     */
+    public static void protectCells(Player player, Set<Long> cells, DigInputs inputs) {
         if (!ready) {
             return;
         }
         try {
             Channel channel = channel(player);
             if (channel != null) {
-                install(channel, HANDLER, CaptureHandler.class, new CaptureHandler(cells));
+                install(channel, HANDLER, CaptureHandler.class, new CaptureHandler(cells, inputs));
             }
         } catch (ReflectiveOperationException | RuntimeException ex) {
             // Without the filter TriggerService resends cells after right-clicks instead.
@@ -244,9 +283,28 @@ public final class Nms {
     /** Rewrites real block updates at the capture cells back to the capture block. */
     private static final class CaptureHandler extends ChannelDuplexHandler {
         private final Set<Long> cells;
+        private final DigInputs inputs;
 
-        CaptureHandler(Set<Long> cells) {
+        CaptureHandler(Set<Long> cells, DigInputs inputs) {
             this.cells = cells;
+            this.inputs = inputs;
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (inputsReady) {
+                try {
+                    if (swingPacketClass.isInstance(msg)) {
+                        inputs.swung();
+                    } else if (actionPacketClass.isInstance(msg)
+                            && "START_DESTROY_BLOCK".equals(((Enum<?>) actionPacketAction.invoke(msg)).name())) {
+                        inputs.started((Long) asLong.invoke(actionPacketPos.invoke(msg)));
+                    }
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // the trigger falls back to its mute window for this packet
+                }
+            }
+            super.channelRead(ctx, msg);
         }
 
         @Override
@@ -254,7 +312,7 @@ public final class Nms {
             if (!cells.isEmpty() && blockUpdateClass.isInstance(msg)) {
                 Object pos = blockUpdatePos.invoke(msg);
                 if (cells.contains((Long) asLong.invoke(pos))) {
-                    msg = blockUpdateCtor.newInstance(pos, cobwebState);
+                    msg = blockUpdateCtor.newInstance(pos, captureState);
                 }
             }
             super.write(ctx, msg, promise);

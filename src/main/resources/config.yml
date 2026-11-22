@@ -200,6 +200,52 @@ combat:
       arm: 0.6
       leg: 0.6
 
+weapons:
+  # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
+  # back up). A trigger held through it fires as soon as it is over.
+  sprint-recovery-ticks: 5
+  # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
+  # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
+  # held fires as soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
+  draw-ticks:
+    pistol: 6
+    pistol_heavy: 6
+    smg: 10
+    pdw: 10
+    ak: 12
+    ar: 12
+    dmr: 12
+    pump: 14
+    lmg: 18
+    bolt: 18
+  spread:
+    # Moving widens the cone (bloom included) by 1 + move × how close the player is to their full
+    # walking pace (measured on the server, 0 standing .. 1 walking or faster): hip fire and aiming.
+    move-hip: 0.5
+    move-ads: 1.0
+    # Multipliers of the gun's base spread while sneaking and while off the ground.
+    sneak: 0.7
+    airborne: 2.5
+  recoil:
+    # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
+    # drifts back toward where the spray began, return-per-tick (0..1, 0 = no recovery) of the kick
+    # each tick, until the gun's recoil-return share (items.yml, default 0.7) is given back. What the
+    # player pulled down themselves is not given back again, and it never drifts past the crosshair
+    # the spray started from.
+    return-delay-ticks: 3
+    return-per-tick: 0.1
+    # In full-auto and burst fire this share of every kick lifts only the bullets, not the camera. The
+    # camera kick is a packet the client could ignore; this part cannot be. Each round lifts them less
+    # the higher they already are: muzzle-soft is the climb (degrees) at which a round's lift has
+    # halved, so an M4C spray aimed down the sights is about 0.6 degrees above the crosshair at round 10
+    # and 1.4 at round 30, still creeping up. muzzle-max is a hard ceiling no magazine reaches.
+    # It comes back to the crosshair over muzzle-return-ticks once the camera starts drifting back.
+    # Single shots (semi, bolt, pump) are not lifted.
+    muzzle-share: 0.2
+    muzzle-soft: 0.5
+    muzzle-max: 6.0
+    muzzle-return-ticks: 6
+
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
   operator-chance: [0.15, 0.35, 0.5]

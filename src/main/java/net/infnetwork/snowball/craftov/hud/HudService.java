@@ -179,7 +179,9 @@ public final class HudService {
                 if (data.gun(player) != null) {
                     int reload = data.reloadPercent(player);
                     sb.append("  <white>").append(Text.escape(weapon)).append(' ')
-                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%" : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
+                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%"
+                                    : data.drawing(player) ? "<#C8CCD2>拔枪 " + data.drawPercent(player) + "%"
+                                    : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
                                     + "<#8A8F98>/" + data.reserve(player) + " " + data.fireMode(player));
                 }
                 String injuries = data.injuries(player);

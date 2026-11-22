@@ -136,6 +136,7 @@ public final class ItemRegistry {
                     g.getDouble("ads-spread", 0.5),
                     g.getDouble("recoil", 1.0),
                     g.getDouble("recoil-h", 0.5),
+                    Math.max(0, Math.min(1, g.getDouble("recoil-return", 0.7))),
                     g.getInt("reload", 50),
                     g.getInt("zoom", 1),
                     g.getInt("pellets", 1),

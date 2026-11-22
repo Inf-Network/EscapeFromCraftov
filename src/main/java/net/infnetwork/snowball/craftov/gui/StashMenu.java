@@ -69,7 +69,7 @@ final class StashMenu extends Menu {
             switch (mode) {
                 case TAKE -> lore.add(Text.mm("<#5BD16B>点击取出到背包"));
                 case SELL -> lore.add(Text.mm("<#FFC23D>点击出售给商人 <#F2C94C>◈" + Text.money(plugin.traders().sellPrice(record))));
-                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().referenceFor(record))));
+                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
             }
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot, display, e -> clickStash(stashIndex, record));
@@ -107,7 +107,7 @@ final class StashMenu extends Menu {
         set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
         button(50, UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + p.mailbox.size(),
-                List.of("<#9AA0A6>交易行退回、过期的物品", "<#9AA0A6>点击领取到仓库")), e -> {
+                List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品", "<#9AA0A6>点击领取到仓库")), e -> {
             claimMailbox(p);
             redraw();
         });
@@ -171,7 +171,9 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
             }
             case LIST -> {
-                new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                if (!plugin.market().refuseIfClosed(viewer)) {
+                    new PriceMenu(plugin, viewer, stashIndex, record, this).open();
+                }
                 return;
             }
         }
@@ -203,6 +205,10 @@ final class StashMenu extends Menu {
             ItemStack current = event.getClickedInventory().getItem(slot);
             if (ItemFactory.isRange(current)) {
                 viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能存入仓库"));
+                continue;
+            }
+            if (ItemFactory.isTest(current)) {
+                viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能存入仓库"));
                 continue;
             }
             ItemRecord record = plugin.items().toRecord(current);

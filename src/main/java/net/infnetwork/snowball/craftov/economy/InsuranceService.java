@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.raid.LootContainer;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -55,19 +56,22 @@ public final class InsuranceService {
         return Math.round(value * rate());
     }
 
-    /** Called when a player deploys: insures their gear if they have it switched on and can pay. */
-    public void onDeploy(Player player, Raid raid) {
+    /**
+     * Called when a player deploys: insures their gear if they have it switched on and can pay.
+     * Returns the premium charged (0 when nothing was insured).
+     */
+    public long onDeploy(Player player, Raid raid) {
         Profile profile = plugin.profiles().get(player);
         if (!profile.autoInsure) {
-            return;
+            return 0;
         }
         long fee = quote(player);
         if (fee <= 0) {
-            return;
+            return 0;
         }
         if (profile.money < fee) {
             Text.send(player, "<#FF8A80>块币不足，本局装备未投保（需要 ◈" + Text.money(fee) + "）");
-            return;
+            return 0;
         }
         profile.money -= fee;
         String mark = player.getUniqueId() + ":" + raid.key;
@@ -81,6 +85,7 @@ public final class InsuranceService {
             }
         }
         Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后若没被别人带出，对局结束时退回邮箱。");
+        return fee;
     }
 
     /** Extracting ends insurance on everything carried out, whoever it belonged to, packed contents included. */
@@ -136,7 +141,8 @@ public final class InsuranceService {
             }
         }
         returns.forEach((owner, records) -> {
-            plugin.profiles().edit(owner, p -> p.mailbox.addAll(records));
+            plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
+                    + ProfileService.json(records), p -> p.mailbox.addAll(records));
             plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {

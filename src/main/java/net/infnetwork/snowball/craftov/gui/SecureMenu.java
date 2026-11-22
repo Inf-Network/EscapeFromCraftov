@@ -94,6 +94,10 @@ final class SecureMenu extends Menu {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
+        if (ItemFactory.isTest(stack)) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能放入安全箱"));
+            return;
+        }
         if (def == null || def.isGun() || def.isArmor() || def.isContainer() || def.category() == Category.WEAPON) {
             viewer.sendActionBar(Text.mm("<#FF8A80>该物品无法放入安全箱"));
             return;

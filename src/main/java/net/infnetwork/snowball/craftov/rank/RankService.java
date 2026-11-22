@@ -49,13 +49,18 @@ public final class RankService {
     }
 
     public int onDeath(Profile profile, RaidPlayer rp, long lost, Raid raid) {
-        int delta = -(22 + (int) Math.min(30, lost / 20000)) + rp.kills * 5;
-        if (profile.rankPoints < 1100) {
-            delta = delta / 2;
-        }
-        delta = Math.min(delta, 0);
+        int delta = deathDelta(profile.rankPoints, rp, lost);
         profile.rankPoints = Math.max(0, profile.rankPoints + delta);
         return delta;
+    }
+
+    /** What a death costs a player at {@code rankPoints} (0 or less; points never drop below 0). */
+    public int deathDelta(int rankPoints, RaidPlayer rp, long lost) {
+        int delta = -(22 + (int) Math.min(30, lost / 20000)) + rp.kills * 5;
+        if (rankPoints < 1100) {
+            delta = delta / 2;
+        }
+        return Math.min(delta, 0);
     }
 
     public long xpForLevel(int level) {

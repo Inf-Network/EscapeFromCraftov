@@ -14,6 +14,7 @@ import net.infnetwork.snowball.craftov.map.ExtractType;
 import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
@@ -64,6 +65,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 
 /** Owns every running raid: deployment, extraction, death, disconnects and settlement. */
 public final class RaidManager implements Listener {
@@ -105,6 +107,14 @@ public final class RaidManager implements Listener {
 
     public @Nullable Raid raidIn(World world) {
         return byWorld.get(world);
+    }
+
+    /**
+     * True while a dead player watches a squadmate. They have already left the raid (raidOf is
+     * null), but they are still out of the lobby and their loadout is the one death left them.
+     */
+    public boolean isSpectating(Player player) {
+        return spectators.containsKey(player.getUniqueId());
     }
 
     public @Nullable RaidPlayer session(Player player) {
@@ -163,8 +173,11 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ start
 
-    /** Starts a raid for the given squads. Players must currently be in the lobby. */
-    public void start(MapDef map, Tier tier, RaidMode mode, boolean ranked, List<List<Player>> squads) {
+    /**
+     * Starts a raid for the given squads. Players must currently be in the lobby. The roster is final:
+     * nobody joins a raid after it starts. {@code ranked} holds the players who win or lose rank points.
+     */
+    public void start(MapDef map, Tier tier, List<List<Player>> squads, java.util.Set<UUID> ranked) {
         World world = plugin.worlds().createRaidWorld(map);
         if (world == null) {
             for (List<Player> squad : squads) {
@@ -173,7 +186,7 @@ public final class RaidManager implements Listener {
             return;
         }
         String id = "R" + (++counter);
-        Raid raid = new Raid(id, map, tier, mode, ranked, world);
+        Raid raid = new Raid(id, map, tier, world);
         raids.put(id, raid);
         byWorld.put(world, raid);
         int squadNo = 0;
@@ -181,7 +194,7 @@ public final class RaidManager implements Listener {
             squadNo++;
             List<UUID> members = new ArrayList<>();
             for (Player player : squad) {
-                RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo);
+                RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo, ranked.contains(player.getUniqueId()));
                 raid.players.put(player.getUniqueId(), rp);
                 byPlayer.put(player.getUniqueId(), raid);
                 members.add(player.getUniqueId());
@@ -226,6 +239,14 @@ public final class RaidManager implements Listener {
     }
 
     private void deploy(Raid raid) {
+        if (raid.players.isEmpty()) {
+            // Everyone dropped out while the map loaded (see onQuit): nothing to deploy. tickSecond
+            // closes it in a moment; unloading the world right away cuts off chunk generation the
+            // preload set off around the map, and CraftEngine then logs a stack trace per chunk.
+            raid.state = Raid.State.ENDING;
+            raid.endTick = Bukkit.getCurrentTick() + 100L;
+            return;
+        }
         World world = raid.world;
         MapDef map = raid.map;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
@@ -275,75 +296,35 @@ public final class RaidManager implements Listener {
         for (UUID uuid : raid.squads.get(squadNo - 1)) {
             Player player = Bukkit.getPlayer(uuid);
             RaidPlayer rp = raid.player(uuid);
-            if (player == null || rp == null) {
-                if (rp != null) {
-                    rp.state = RaidPlayer.State.LEFT;
-                }
-                byPlayer.remove(uuid);
+            if (rp == null || rp.state != RaidPlayer.State.DEPLOYING) {
+                // Already settled (gone missing, left): never charge and deploy anyone twice.
                 continue;
             }
+            if (player == null) {
+                rp.state = RaidPlayer.State.LEFT;
+                byPlayer.remove(uuid, raid);
+                continue;
+            }
+            // The insertion point is fixed before the camera flies: whoever drops out during the
+            // flight reconnects there, or leaves their body there when the reconnect window ends.
+            rp.lastLocation = points.isEmpty() ? world.getSpawnLocation() : points.get(members.size() % points.size()).pos().at(world);
+            rp.inFlight = true;
             members.add(player);
             prepare(raid, player, rp);
         }
         Location spawn = points.isEmpty() ? world.getSpawnLocation() : points.get(0).pos().at(world);
-        Cinematic.play(plugin, raid, squadNo, members, spawn, player -> {
-            int index = members.indexOf(player);
-            Location target = points.isEmpty() ? spawn : points.get(Math.max(0, index) % points.size()).pos().at(world);
-            insert(raid, player, target);
+        Cinematic.play(plugin, raid, squadNo, members, spawn, uuid -> {
+            RaidPlayer rp = raid.player(uuid);
+            if (rp != null) {
+                rp.inFlight = false;
+            }
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || rp != null && rp.state != RaidPlayer.State.DEPLOYING) {
+                return; // offline (a later reconnect lands at once), or settled while the camera flew
+            }
+            // Everyone still on the camera lands now, including whoever reconnected during the flight.
+            insert(raid, player, rp == null || rp.lastLocation == null ? spawn : rp.lastLocation);
         });
-    }
-
-    /**
-     * A running raid of this map, difficulty and ranking that is still in its join window and has
-     * room for {@code size} more players, or null. Late squads backfill it instead of opening a new raid.
-     */
-    public @Nullable Raid joinable(String mapId, String tierId, boolean ranked, int size) {
-        int window = plugin.getConfig().getInt("match.join-window-seconds", 120);
-        int max = plugin.getConfig().getInt("match.max-players", 12);
-        Raid best = null;
-        for (Raid raid : raids.values()) {
-            if (raid.state != Raid.State.RUNNING || raid.ranked != ranked || !raid.map.id().equals(mapId)
-                    || !raid.tier.id().equals(tierId) || raid.elapsedSeconds() > window) {
-                continue;
-            }
-            int active = 0;
-            for (RaidPlayer rp : raid.players.values()) {
-                if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DOWNED) {
-                    active++;
-                }
-            }
-            if (active + size <= max && (best == null || raid.startTick > best.startTick)) {
-                best = raid;
-            }
-        }
-        return best;
-    }
-
-    /** Adds a squad to a raid that is already running, at the spawn group fewest squads use. */
-    public void joinRunning(Raid raid, List<Player> squad) {
-        List<UUID> members = new ArrayList<>();
-        int squadNo = raid.squads.size() + 1;
-        for (Player player : squad) {
-            RaidPlayer rp = new RaidPlayer(player.getUniqueId(), player.getName(), squadNo);
-            raid.players.put(player.getUniqueId(), rp);
-            byPlayer.put(player.getUniqueId(), raid);
-            members.add(player.getUniqueId());
-            player.showTitle(Title.title(Text.mm("<#F2C94C>匹配成功"), Text.mm("<#9AA0A6>加入进行中的行动 " + Text.escape(raid.map.name()) + " …"),
-                    Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
-            player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
-        }
-        raid.squads.add(members);
-        Map<Integer, Integer> use = new java.util.HashMap<>();
-        for (MapDef.SpawnDef spawn : raid.map.spawns()) {
-            use.putIfAbsent(spawn.group(), 0);
-        }
-        for (int group : raid.squadSpawnGroup.values()) {
-            use.merge(group, 1, Integer::sum);
-        }
-        List<Integer> groups = new ArrayList<>(use.keySet());
-        Collections.shuffle(groups);
-        int group = groups.stream().min(java.util.Comparator.comparingInt(use::get)).orElse(1);
-        deploySquad(raid, squadNo, group);
     }
 
     /** Takes the lobby loadout into the raid. */
@@ -356,10 +337,9 @@ public final class RaidManager implements Listener {
         Profile profile = plugin.profiles().get(player);
         profile.activeRaid = raid.id;
         profile.addStat("raids", 1);
-        if (raid.tier.entryFee() > 0) {
-            profile.money -= raid.tier.entryFee();
-        }
-        plugin.insurance().onDeploy(player, raid);
+        long entryFee = Math.max(0, raid.tier.entryFee());
+        profile.money -= entryFee;
+        rp.fees = entryFee + plugin.insurance().onDeploy(player, raid);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
         plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
@@ -657,7 +637,7 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         // Something held on the cursor is carried out too: back into the inventory (or the mailbox)
         // before the value is counted.
-        plugin.carry().mail(player, plugin.carry().reclaimCursor(player));
+        plugin.carry().mailOrDrop(player, plugin.carry().reclaimCursor(player));
         plugin.insurance().strip(player);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.EXTRACT);
         plugin.downed().clear(player);
@@ -674,7 +654,7 @@ public final class RaidManager implements Listener {
         profile.addStat("ai_kills", rp.aiKills);
         profile.activeRaid = null;
         List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid);
-        int rankDelta = raid.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
+        int rankDelta = rp.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
         long xp = Math.round((150 + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         plugin.tasks().onExtract(player, raid, profit);
@@ -757,7 +737,7 @@ public final class RaidManager implements Listener {
         profile.addStat("deaths", 1);
         profile.addStat("kills", rp.kills);
         profile.addStat("ai_kills", rp.aiKills);
-        int rankDelta = raid.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
+        int rankDelta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
         long xp = Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         Profile.RaidReport report = report(raid, rp, reason, 0, lost, rankDelta, xp);
@@ -885,17 +865,26 @@ public final class RaidManager implements Listener {
         List<ItemStack> drop = new ArrayList<>();
         // Items whose id items.yml no longer has cannot lie in the body: they go to the mailbox.
         List<ItemRecord> unknown = new ArrayList<>();
+        ItemStack kept = null;
         if (rp.disconnectedInventory != null) {
-            for (ItemRecord record : rp.disconnectedInventory.values()) {
-                ItemStack stack = plugin.items().fromRecord(record);
-                if (stack != null) {
-                    drop.add(stack);
+            for (Map.Entry<Integer, ItemStack> entry : rp.disconnectedInventory.entrySet()) {
+                ItemStack stack = entry.getValue();
+                // As in die(): the melee weapon stays out of the body and goes back into the loadout.
+                if (entry.getKey() == CarryService.MELEE_SLOT && plugin.carry().isMelee(stack)) {
+                    kept = stack;
+                } else if (plugin.items().defOf(stack) == null) {
+                    // An armory item has no record and stays behind with the raid.
+                    ItemRecord record = plugin.items().toRecord(stack);
+                    if (record != null) {
+                        record.uninsure();
+                        unknown.add(record);
+                    }
                 } else {
-                    record.uninsure();
-                    unknown.add(record);
+                    drop.add(stack);
                 }
             }
         }
+        ItemStack melee = kept;
         if (rp.lastLocation != null && !drop.isEmpty()) {
             spawnCorpse(raid, rp.lastLocation, rp.name, drop, null);
         }
@@ -904,13 +893,25 @@ public final class RaidManager implements Listener {
             lost += plugin.items().value(stack);
         }
         long lostValue = lost;
-        plugin.profiles().edit(rp.uuid, profile -> {
+        // For the journal, should the profile be unreadable: the gear is in the raid now, so the
+        // loadout must be emptied (but for the melee weapon) and the raid cleared, or a repaired
+        // profile brings it back.
+        ItemRecord meleeRecord = plugin.carry().isMelee(melee) ? plugin.items().toRecord(melee) : null;
+        Map<Integer, ItemRecord> left = meleeRecord == null ? Map.of() : Map.of(CarryService.MELEE_SLOT, meleeRecord);
+        Supplier<String> change = () -> "missing in raid " + raid.id + ": loadout = " + ProfileService.json(left)
+                + " (the rest of that gear stayed in the raid),"
+                + (unknown.isEmpty() ? "" : " add to mailbox " + ProfileService.json(unknown) + ",")
+                + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
+                + (rp.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
+                + plugin.ranks().deathDelta(0, rp, lostValue) + " below 1100, never below 0)" : "");
+        plugin.profiles().edit(rp.uuid, change, profile -> {
             profile.loadout.clear();
+            keepMelee(profile, melee);
             profile.mailbox.addAll(unknown);
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);
-            int delta = raid.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
+            int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
             profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
             trimReports(profile);
         });
@@ -939,8 +940,9 @@ public final class RaidManager implements Listener {
         }
         Location ground = at.clone();
         ground.setPitch(0);
-        // A full rig and backpack plus pockets, armour and the cursor is more than the 4 rows of
-        // loot.yml's body_bag: the body grows to fit everything, up to a double chest.
+        // A fully loaded player carries up to 38 stacks (7 pockets, 9 rig cells, 18 backpack cells
+        // and 4 worn pieces), and the cursor can add one more: more than the 4-row bag holds, and worn
+        // armour comes last in slot order. The body grows to fit, up to a double chest.
         int rows = Math.min(6, Math.max(type.rows(), (items.size() + 8) / 9));
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
                 1f, 1.4, 0.6, rows, 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
@@ -1001,7 +1003,7 @@ public final class RaidManager implements Listener {
         Profile.RaidReport report = new Profile.RaidReport();
         report.time = System.currentTimeMillis();
         report.map = raid.map.name();
-        report.tier = raid.tier.name() + (raid.ranked ? " · 排位" : "");
+        report.tier = raid.tier.name() + (rp.ranked ? " · 排位" : "");
         report.outcome = outcome;
         report.extractedValue = extracted;
         report.lostValue = lost;
@@ -1117,6 +1119,7 @@ public final class RaidManager implements Listener {
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;
+        plugin.escorts().voided(rp);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
         plugin.lobby().enterLobbyKeepInventory(player);
@@ -1124,7 +1127,12 @@ public final class RaidManager implements Listener {
         Text.send(player, "<#FFC23D>" + message);
     }
 
-    /** Plugin shutdown: everybody goes home with what they carry (raid voided, no losses). */
+    /**
+     * Plugin shutdown: the raid is voided and everybody in it goes home with what they carry (no
+     * losses, no rewards). Whoever was still flying in never set foot in it and also gets the entry
+     * fee and insurance premium back. Each player and each raid is handled on its own, so one
+     * failure cannot leave the others in a raid that no longer exists.
+     */
     public void shutdown() {
         // Insured gear in bodies and on the ground goes home as at a normal raid end: the worlds are
         // deleted below and nothing would be left to settle after the restart. Every raid is settled
@@ -1138,38 +1146,75 @@ public final class RaidManager implements Listener {
             }
         }
         for (Raid raid : new ArrayList<>(raids.values())) {
+            // A loading raid has not taken anything from its squads yet: they are still in the lobby.
+            boolean deployed = raid.state != Raid.State.LOADING;
             for (RaidPlayer rp : raid.players.values()) {
-                Player player = Bukkit.getPlayer(rp.uuid);
-                if (rp.active() && player != null) {
-                    plugin.weapons().reset(player);
-                    plugin.downed().clear(player);
-                    Profile profile = plugin.profiles().get(player);
-                    profile.secure = new ArrayList<>(rp.secure);
-                    profile.activeRaid = null;
-                    plugin.lobby().enterLobbyKeepInventory(player);
-                    plugin.lobby().captureLoadout(player);
-                    Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
-                } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    Map<Integer, ItemRecord> inv = rp.disconnectedInventory;
-                    inv.values().forEach(ItemRecord::uninsure); // the raid is void: its insurance with it
-                    plugin.profiles().edit(rp.uuid, profile -> {
-                        profile.loadout = new HashMap<>(inv);
-                        profile.secure = new ArrayList<>(rp.secure);
-                        profile.activeRaid = null;
-                    });
+                try {
+                    sendHome(raid, rp, deployed);
+                } catch (RuntimeException ex) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not send " + rp.name + " home from raid " + raid.id, ex);
                 }
             }
-            raid.state = Raid.State.CLOSED;
-            plugin.ai().clear(raid);
-            for (LootContainer container : raid.containers.values()) {
-                container.remove();
+            try {
+                raid.state = Raid.State.CLOSED;
+                // As when a raid closes: insured gear still on bodies, in containers or on the ground
+                // goes back to its owners, and the dead watching a squadmate are sent home too.
+                plugin.insurance().settle(raid);
+                spectators.values().removeIf(entry -> entry.getKey() == raid);
+                for (Player player : raid.world.getPlayers()) {
+                    plugin.lobby().enterLobby(player);
+                }
+                plugin.ai().clear(raid);
+                for (LootContainer container : raid.containers.values()) {
+                    container.remove();
+                }
+                plugin.match().disposeTeams(raid);
+                plugin.worlds().disposeRaidWorld(raid.world);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not close raid " + raid.id, ex);
             }
-            plugin.match().disposeTeams(raid);
-            plugin.worlds().disposeRaidWorld(raid.world);
         }
         raids.clear();
         byPlayer.clear();
         byWorld.clear();
+    }
+
+    private void sendHome(Raid raid, RaidPlayer rp, boolean deployed) {
+        Player player = Bukkit.getPlayer(rp.uuid);
+        boolean flyingIn = deployed && rp.state == RaidPlayer.State.DEPLOYING;
+        if ((rp.active() || flyingIn) && player != null) {
+            plugin.weapons().reset(player);
+            plugin.downed().clear(player);
+            Profile profile = plugin.profiles().get(player);
+            profile.secure = new ArrayList<>(rp.secure);
+            profile.activeRaid = null;
+            if (flyingIn) {
+                profile.money += rp.fees;
+            }
+            plugin.lobby().enterLobbyKeepInventory(player);
+            plugin.lobby().captureLoadout(player);
+            Text.send(player, flyingIn && rp.fees > 0
+                    ? "<#FFC23D>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
+                    : "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
+        } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
+            // Armory items are left out; own items from an armory rig or backpack that find
+            // no free pocket go to the mailbox.
+            List<ItemRecord> homeless = new ArrayList<>();
+            Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
+            // Dropped out during the entry camera: like those still watching it, they never
+            // landed, so the fees come back too.
+            long refund = rp.inFlight ? rp.fees : 0;
+            plugin.profiles().edit(rp.uuid, () -> "server stopped during raid " + raid.id + ": loadout = "
+                    + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
+                    + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null"
+                    + (refund > 0 ? ", money +" + refund : ""), profile -> {
+                profile.loadout = inv;
+                profile.mailbox.addAll(homeless);
+                profile.secure = new ArrayList<>(rp.secure);
+                profile.activeRaid = null;
+                profile.money += refund;
+            });
+        }
     }
 
     /** Rejoin after a disconnect. Returns true if the player was put back into their raid. */
@@ -1180,16 +1225,29 @@ public final class RaidManager implements Listener {
                 || rp.disconnectedInventory == null || rp.lastLocation == null) {
             return false;
         }
-        plugin.carry().apply(player, rp.disconnectedInventory, UiItems.raidTerminal());
+        plugin.carry().restore(player, rp.disconnectedInventory, UiItems.raidTerminal());
         rp.disconnectedInventory = null;
-        rp.state = RaidPlayer.State.ALIVE;
-        rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         plugin.health().setupPlayer(player, false);
         Location back = rp.lastLocation.getWorld() == raid.world ? rp.lastLocation : raid.map.spawns().isEmpty()
                 ? raid.world.getSpawnLocation() : raid.map.spawns().get(0).pos().at(raid.world);
         player.teleport(back);
+        if (rp.inFlight) {
+            // Back before the squad's entry camera ended: the camera picks the player up again
+            // (Cinematic looks players up by UUID) and they land with the squad through insert(),
+            // with the same title and spawn protection, instead of ahead of everyone else.
+            rp.state = RaidPlayer.State.DEPLOYING;
+            player.setGameMode(GameMode.SPECTATOR);
+            plugin.match().teamFor(raid, rp, player);
+            Text.send(player, "<#5BD16B>已重新连接到行动，正在随小队前往渗透点。");
+            return true;
+        }
+        rp.state = RaidPlayer.State.ALIVE;
+        rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         player.setGameMode(GameMode.ADVENTURE);
+        player.setFallDistance(0);
         plugin.match().teamFor(raid, rp, player);
+        // LobbyService.onJoin skips the lobby HUD for a rejoin, so the raid HUD is shown here.
+        plugin.hud().onRaidStart(player);
         Text.send(player, "<#5BD16B>已重新连接到行动。");
         return true;
     }
@@ -1369,12 +1427,13 @@ public final class RaidManager implements Listener {
     }
 
     private void useKey(Player player, Raid raid, String doorKey, Block door, String lock) {
+        // A free proving-ground armory copy of the key wears out before the player's own one does.
         ItemStack key = null;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
-            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())) {
+            if (def != null && def.category() == Category.KEY && lock.equals(def.lockId())
+                    && (key == null || ItemFactory.isTest(stack) && !ItemFactory.isTest(key))) {
                 key = stack;
-                break;
             }
         }
         if (key == null) {
@@ -1473,6 +1532,13 @@ public final class RaidManager implements Listener {
         if (raid == null || rp == null) {
             return;
         }
+        if (raid.state == Raid.State.LOADING) {
+            // Still in the lobby and nothing charged or taken yet (prepare runs at deployment):
+            // the player just drops out of this raid. LobbyService.onQuit then saves the real
+            // inventory as the loadout; the secure container is never touched.
+            withdraw(raid, rp);
+            return;
+        }
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
             die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
@@ -1482,19 +1548,38 @@ public final class RaidManager implements Listener {
         }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
             // The cursor item stays in the raid: back into the inventory, or on the ground here.
-            plugin.carry().stow(player, plugin.carry().reclaimCursor(player));
-            rp.disconnectedInventory = plugin.carry().snapshot(player);
-            rp.lastLocation = rp.state == RaidPlayer.State.ALIVE ? player.getLocation() : null;
+            plugin.carry().spill(player, plugin.carry().reclaimCursor(player));
+            // During the entry flight (DEPLOYING) lastLocation already holds the insertion point:
+            // the usual reconnect window applies and a timeout leaves the body there. The copies keep
+            // insurance marks and armory items for a rejoin; armory items never reach a saved loadout.
+            rp.disconnectedInventory = plugin.carry().copyCarried(player);
+            if (rp.state == RaidPlayer.State.ALIVE) {
+                rp.lastLocation = player.getLocation();
+            }
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();
             player.getInventory().clear();
-            if (rp.lastLocation == null) {
-                missing(raid, rp, "部署时断线");
-            }
         } else if (rp.state == RaidPlayer.State.DEAD || rp.state == RaidPlayer.State.EXTRACTED) {
             byPlayer.remove(player.getUniqueId());
         }
         plugin.match().leaveTeam(player);
+    }
+
+    /** Takes a player out of a raid that has not deployed yet and tells their squad. */
+    private void withdraw(Raid raid, RaidPlayer rp) {
+        raid.players.remove(rp.uuid);
+        // Squad lists keep their place even when emptied: their index is the squad number.
+        for (List<UUID> squad : raid.squads) {
+            squad.remove(rp.uuid);
+        }
+        byPlayer.remove(rp.uuid, raid);
+        for (RaidPlayer mate : raid.players.values()) {
+            Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
+            if (p != null) {
+                Text.send(p, "<#9AA0A6>队友 <white>" + Text.escape(rp.name) + "</white> 在部署前断开连接，已退出本局。");
+            }
+        }
+        plugin.escorts().onWithdraw(rp.uuid, rp.name);
     }
 
     /** Called by loot menus so systems (escort, stats) can react to looting. */

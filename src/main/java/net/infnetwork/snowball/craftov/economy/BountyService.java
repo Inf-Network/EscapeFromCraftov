@@ -38,7 +38,11 @@ public final class BountyService {
     }
 
     public long total(UUID target) {
-        long placed = plugin.profiles().get(target, "").bounty;
+        // Read without caching: the raid-start announcement also asks about players who have
+        // disconnected since, and get() would keep their profile in memory as if they were online
+        // (for an unreadable file, a stand-in that their next login would then play on unsaved).
+        Profile profile = plugin.profiles().peek(target);
+        long placed = profile == null ? 0 : profile.bounty;
         long house = target.equals(champion()) ? plugin.getConfig().getLong("bounty.champion", 20_000) : 0;
         return placed + house;
     }
@@ -54,7 +58,7 @@ public final class BountyService {
             return "块币不足";
         }
         payer.money -= amount;
-        plugin.profiles().edit(target, p -> p.bounty += amount);
+        plugin.profiles().edit(target, () -> "bounty placed by " + by.getName() + ": bounty +" + amount, p -> p.bounty += amount);
         plugin.profiles().markDirty(by.getUniqueId());
         Player marked = Bukkit.getPlayer(target);
         if (marked != null) {
@@ -91,7 +95,7 @@ public final class BountyService {
         if (amount <= 0) {
             return;
         }
-        plugin.profiles().edit(victim.getUniqueId(), p -> p.bounty = 0);
+        plugin.profiles().edit(victim.getUniqueId(), () -> "bounty claimed by " + killer.getName() + ": bounty = 0", p -> p.bounty = 0);
         Profile profile = plugin.profiles().get(killer);
         profile.money += amount;
         plugin.profiles().markDirty(killer.getUniqueId());

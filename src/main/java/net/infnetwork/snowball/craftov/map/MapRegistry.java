@@ -1,26 +1,37 @@
 package net.infnetwork.snowball.craftov.map;
 
+import net.infnetwork.snowball.craftov.map.gen.ProvingGroundGenerator;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jspecify.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.logging.Logger;
 
-/** Loads and saves maps/*.yml. */
+/**
+ * Loads and saves maps/*.yml. A file that does not parse is reported and left alone (see
+ * {@link #broken()}), never replaced by a default.
+ */
 public final class MapRegistry {
 
     private final File dir;
     private final Logger logger;
     private final Map<String, MapDef> maps = new LinkedHashMap<>();
+    private final Set<String> broken = new LinkedHashSet<>();
 
     public MapRegistry(File dir, Logger logger) {
         this.dir = dir;
@@ -29,6 +40,7 @@ public final class MapRegistry {
 
     public void load() {
         maps.clear();
+        broken.clear();
         dir.mkdirs();
         File[] files = dir.listFiles((d, n) -> n.endsWith(".yml"));
         if (files == null) {
@@ -37,13 +49,41 @@ public final class MapRegistry {
         java.util.Arrays.sort(files);
         for (File file : files) {
             try {
-                MapDef def = read(YamlConfiguration.loadConfiguration(file));
+                YamlConfiguration yaml = new YamlConfiguration();
+                yaml.load(file);
+                MapDef def = read(yaml);
                 maps.put(def.id(), def);
-            } catch (RuntimeException ex) {
-                logger.severe("Invalid map file " + file.getName() + ": " + ex.getMessage());
+            } catch (IOException | InvalidConfigurationException | RuntimeException ex) {
+                reportBroken(file, ex);
             }
         }
         logger.info("Loaded " + maps.size() + " raid maps");
+    }
+
+    /**
+     * A map file that does not parse is left as it is and copied to {@code <name>.broken}; its id
+     * (the file name) is remembered so a built-in map is not regenerated over the file.
+     */
+    private void reportBroken(File file, Exception ex) {
+        String id = file.getName().substring(0, file.getName().length() - ".yml".length());
+        broken.add(id);
+        String copy = file.getName() + ".broken";
+        try {
+            Files.copy(file.toPath(), new File(dir, copy).toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException copyFailed) {
+            copy = "(copy failed: " + copyFailed.getMessage() + ")";
+        }
+        String reason = String.valueOf(ex.getMessage()).strip().replace('\n', ' ');
+        logger.severe("==================================================================");
+        logger.severe("Map file maps/" + file.getName() + " is invalid and was NOT loaded: " + reason);
+        logger.severe("The file is left unchanged (a copy is kept as " + copy + "), and the map is not regenerated.");
+        logger.severe("Fix it and run /cv reload, or delete it to get the default map back on the next start.");
+        logger.severe("==================================================================");
+    }
+
+    /** Ids (file names) of map files that exist but could not be read on the last load. */
+    public Set<String> broken() {
+        return Collections.unmodifiableSet(broken);
     }
 
     public @Nullable MapDef get(String id) {
@@ -97,7 +137,9 @@ public final class MapRegistry {
                 bounds == null ? -10000 : bounds.getDouble("min-z"),
                 bounds == null ? 10000 : bounds.getDouble("max-x"),
                 bounds == null ? 10000 : bounds.getDouble("max-z"),
-                y.getString("time", "day"));
+                y.getString("time", "day"),
+                // Proving ground files written before the flag existed have no key: still a test map.
+                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)));
     }
 
     private static <T> List<T> list(YamlConfiguration y, String key, Function<Map<?, ?>, T> mapper) {
@@ -131,6 +173,7 @@ public final class MapRegistry {
         y.set("template", def.template());
         y.set("raid-minutes", def.raidSeconds() / 60);
         y.set("time", def.timeOfDay());
+        y.set("test", def.test());
         y.set("camera", def.camera().write());
         Map<String, Object> bounds = new LinkedHashMap<>();
         bounds.put("min-x", def.minX());

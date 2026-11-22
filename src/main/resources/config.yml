@@ -76,10 +76,12 @@ tiers:
     xp: 2.2
 
 match:
-  # Wait at most this long (s) for more players before launching with whoever is queued.
-  wait-seconds: 15
+  # One pool per map and difficulty (ranked or not). A raid launches as soon as it has max-squads squads,
+  # or once the longest-waiting player has waited wait-seconds, with everyone queued by then. Extra squads
+  # launch the next raid. Nobody joins a raid after it starts.
+  wait-seconds: 30
+  # Squads per raid; never more than the map has spawn groups (试验场 4, 锈港 6).
   max-squads: 4
-  max-solo-players: 8
 
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
@@ -97,6 +99,21 @@ downed:
 combat:
   friendly-fire: false
   damage-numbers: true
+  flashbang:
+    # A flashed player's screen goes white (then fades) and their ears ring: facing-ticks when they
+    # looked at the blast, away-ticks when it was behind them, never less than min-ticks. No effect
+    # through walls. Soldiers are dazzled instead (ai.dazzle).
+    facing-ticks: 80
+    away-ticks: 30
+    min-ticks: 20
+    # Share of a flashbang's effect left at the edge of its radius (full strength at the blast).
+    edge-strength: 0.4
+    # Also blind the player while the screen is fully white. The white is a camera overlay, which the
+    # client only draws in first person with the HUD shown, so without this a flashed player could
+    # press F5 (or F1) and see clearly; with it they see blindness fog there (it closes in over about
+    # a second). In first person the opaque white hides the fog, and the effect is lifted before the
+    # white starts to fade. Blindness also stops sprinting meanwhile.
+    blind-while-white: true
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
@@ -107,6 +124,18 @@ ai:
   insertion-grace-ticks: 240
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep
+  # moving and shooting back, but their next shot waits shot-delay-ticks and their spread is multiplied
+  # until the dazzle ends. Then a strobe cannot dazzle them again for immune-ticks.
+  dazzle:
+    strobe-ticks: 20
+    spread-multiplier: 3.0
+    shot-delay-ticks: 10
+    immune-ticks: 80
+    # Flashbang: dazzle length when the soldier faces the blast or has it behind them, scaled down
+    # with distance (combat.flashbang.edge-strength). No effect through walls; ignores immune-ticks.
+    flash-facing-ticks: 40
+    flash-away-ticks: 15
 
 trader:
   buy-multiplier: 1.15
@@ -122,7 +151,42 @@ market:
   # Simulated buyers purchase listings priced near the reference price, so the market works on small servers.
   virtual-buyers: true
   virtual-min-age-seconds: 45
+  # Reference price = item value (durability, attachments, loaded ammo and stack size included) x this.
+  # It is fixed by items.yml: system buyers and the pricing screen judge listings against it, and no
+  # sale moves it. System buyers then pay at most 1.25x of it (~0.99x value after fee and tax), less
+  # than the trader's buy-multiplier, so reselling trader stock never pays.
   reference-multiplier: 0.85
+  # Most listings of one item the system buyers take from one seller per hour (0 = no cap). A safety
+  # valve should a config change ever make reselling to them profitable again; per seller, so one
+  # player cannot use it up for everyone else.
+  virtual-hourly-cap: 40
+  # Listings priced above this multiple of the reference price are refused (stops one colluding sale
+  # at an absurd price from moving money between accounts).
+  max-price-multiplier: 3.0
+  # Account level both sides of a sale between players need: below it a player can neither buy other
+  # players' listings nor sell to other players, so a fresh account cannot hand its starting money to
+  # another one on day one in either direction (1 = no requirement). Listing, system buyers and the
+  # trader are not affected.
+  min-buy-level: 3
+  # Refuse sales between players when buyer and seller have logged in from the same address (each
+  # profile keeps its last 4). OFF by default: players on one LAN, in one household or behind one
+  # carrier NAT share an address and could not trade. Worth turning on for a public server; the real
+  # fix for second accounts is online-mode=true.
+  block-same-ip: false
+  # Most value a player can gain per day (04:00 reset) from trading with other players (0 = no cap):
+  # what other players pay for their listings after tax, plus how far below the reference price they
+  # buy other players' listings, so underpriced sales count as well as overpriced ones. OFF by default:
+  # friends trading gear on a small or LAN server would hit any cap low enough to matter. Sales to
+  # system buyers never count towards it.
+  daily-player-income-cap: 0
+  # The trade price shown in the market is information only: it follows sales between players (never
+  # system buyers), counted per plain unit with attachments, loaded ammo and wear divided out. Sales
+  # outside [trade-outlier-min, trade-outlier-max] x the reference price are ignored, and the result is
+  # kept within [trade-price-min, trade-price-max] x the plain unit's reference price.
+  trade-outlier-min: 0.5
+  trade-outlier-max: 2.0
+  trade-price-min: 0.6
+  trade-price-max: 1.5
 
 rank:
   min-level: 3
@@ -153,10 +217,17 @@ bounty:
   champion: 20000
 
 backup:
-  # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups (also on shutdown).
+  # Zips plugins/Craftov/data, players and market.json into plugins/Craftov/backups: a daily copy
+  # (*-auto.zip) and one on every shutdown (*-shutdown.zip), each kind kept separately.
   enabled: true
+  # A daily copy is made once the newest one is this old; restarts do not add extra ones.
   interval-hours: 24
-  keep: 7
+  # Minutes after start before the first check (then every ten minutes).
+  first-delay-minutes: 10
+  # How many copies of each kind are kept. backup.keep from older versions (both kinds together)
+  # still applies to a kind until its own key is set here.
+  keep-daily: 7
+  keep-shutdown: 5
 
 insurance:
   # Share of the insured gear's value charged on deploy.
@@ -200,5 +271,6 @@ search:
 
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item
-  # for free, top up money and reset health. Admins (craftov.admin) can always use it. Keep off on live servers.
+  # for free, top up money and reset health, and can see and queue for test maps (the proving ground).
+  # Admins (craftov.admin) can always do both. Keep off on live servers.
   enabled: false

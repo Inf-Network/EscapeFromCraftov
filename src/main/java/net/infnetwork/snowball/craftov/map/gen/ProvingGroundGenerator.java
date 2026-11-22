@@ -57,7 +57,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
         return new MapDef(ID, "试验场", "功能测试地图：军械库、全部物资箱、门禁、玻璃、坠落台、六种撤离点和敌兵区都在一张图里。",
                 "craftov_tpl_" + ID, 30 * 60, new Pos(60, 112, 70, 0),
                 List.copyOf(bp.spawns), List.copyOf(bp.extracts), List.copyOf(bp.containers), List.copyOf(bp.ai),
-                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, W - 1, D - 1, "day");
+                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, W - 1, D - 1, "day", true);
     }
 
     @Override
@@ -122,7 +122,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
     }
 
     private static final String[][] ARMORY = {
-            {"test_weapons", "全部武器", "已装满弹匣"},
+            {"test_weapons", "武器和配件", "枪已装满弹匣"},
             {"test_ammo", "全部弹药", "每种一组"},
             {"test_armor", "头盔与护甲", "1-6 级"},
             {"test_carry", "胸挂与背包", "装备后解锁格子"},
@@ -130,7 +130,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
             {"test_throwables", "投掷物", "破片/烟雾/震撼"},
             {"test_keys", "全部钥匙", "开北侧门禁室"},
             {"test_valuables", "全部物资", "白到红"},
-            {"test_collectibles", "全部收藏品", "撤离后登记"},
+            {"test_collectibles", "全部收藏品", "不计入收藏室"},
     };
 
     private void armory() {

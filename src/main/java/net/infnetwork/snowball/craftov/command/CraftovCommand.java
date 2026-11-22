@@ -21,7 +21,8 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
+            "marketaudit");
 
     private final CraftovPlugin plugin;
 
@@ -84,7 +85,9 @@ public final class CraftovCommand implements TabExecutor {
             case "queue" -> {
                 if (player != null && args.length >= 3) {
                     RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
-                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]), true);
+                    // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]
+                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
+                            args.length < 6 || Boolean.parseBoolean(args[5]));
                 }
             }
             default -> {
@@ -149,7 +152,8 @@ public final class CraftovCommand implements TabExecutor {
             sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"));
+            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
+                    + " · marketaudit [数量]"));
         }
     }
 
@@ -238,6 +242,11 @@ public final class CraftovCommand implements TabExecutor {
             case "end" -> {
                 for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
                     if (args.length < 2 || raid.id.equalsIgnoreCase(args[1])) {
+                        if (raid.state != Raid.State.RUNNING) {
+                            // Deploying sets startTick, which would undo this.
+                            Text.send(sender, "<#FF8A80>" + raid.id + " 还在加载，稍后再试。");
+                            continue;
+                        }
                         raid.startTick = Bukkit.getCurrentTick() - raid.map.raidSeconds() * 20L;
                         Text.send(sender, "<#FFC23D>已结束 " + raid.id);
                     }
@@ -281,9 +290,37 @@ public final class CraftovCommand implements TabExecutor {
                         Text.send(p, "<#F2E6C8>地图编辑器");
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|camera <值>"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|test|camera <值>"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard"));
                     }
+                }
+            }
+            case "marketaudit" -> {
+                // Accounts with the most market sales: farming the old ratcheting reference price took
+                // hundreds of sales an hour, far beyond what selling raid loot needs.
+                int limit = 10;
+                if (args.length > 1) {
+                    try {
+                        limit = Math.max(1, Math.min(50, Integer.parseInt(args[1])));
+                    } catch (NumberFormatException ex) {
+                        Text.send(sender, "/cv marketaudit [数量]");
+                        return;
+                    }
+                }
+                List<net.infnetwork.snowball.craftov.profile.ProfileService.Summary> top = plugin.profiles().leaderboard(
+                        (a, b) -> Long.compare(b.marketSales(), a.marketSales()), limit);
+                Text.send(sender, "<#F2E6C8>交易行成交最多的账号 <#8A8F98>（收入只统计本版本之后的成交）");
+                int rank = 1;
+                for (net.infnetwork.snowball.craftov.profile.ProfileService.Summary s : top) {
+                    if (s.marketSales() <= 0) {
+                        break;
+                    }
+                    sender.sendMessage(Text.mm("<#9AA0A6>" + rank++ + ". <white>" + Text.escape(s.name()) + " <#8A8F98>Lv." + s.level()
+                            + " · 成交 " + s.marketSales() + " 笔 · 收入 ◈" + Text.money(s.marketIncome()) + " · 余额 <#F2C94C>◈"
+                            + Text.money(s.money()) + " <#8A8F98>· 带出 ◈" + Text.money(s.extracted())));
+                }
+                if (rank == 1) {
+                    sender.sendMessage(Text.mm("<#9AA0A6>还没有人在交易行卖出过东西。"));
                 }
             }
             case "reload" -> {
@@ -342,7 +379,7 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("start")) {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
-            out.addAll(List.of("name", "description", "minutes", "time", "camera"));
+            out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         }

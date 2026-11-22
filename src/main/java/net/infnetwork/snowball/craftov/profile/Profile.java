@@ -55,6 +55,21 @@ public final class Profile {
     public boolean tutorialDone;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
+    /**
+     * Reward taken from this player for their escort contract and not yet paid out or returned
+     * (EscortService). Saved with the deduction itself; contracts live in memory only, so whatever
+     * is still held when the player joins a freshly started server (after a crash) goes back to them.
+     */
+    public long escortEscrow;
+    /**
+     * Market gains from other players on {@link #marketDay} (MarketService daily cap): what they paid
+     * for this player's listings after tax, plus how far below the reference price this player
+     * bought theirs.
+     */
+    public long marketDay = -1;
+    public long marketIncome;
+    /** Last few login addresses, newest last (MarketService: same-address trades). */
+    public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */

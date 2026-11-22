@@ -1,6 +1,8 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.raid.Raid;
+import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 
@@ -18,10 +20,32 @@ public final class MenuService {
             Text.send(player, "<#FF8A80>行动中无法使用该功能。");
             return false;
         }
+        if (plugin.raids().isSpectating(player)) {
+            Text.send(player, "<#FF8A80>观战中无法使用该功能，按 Shift 返回大厅。");
+            return false;
+        }
+        return notInRange(player);
+    }
+
+    /**
+     * The range holds the real loadout aside and hands out loaners until the player leaves, so no
+     * menu that moves items between the inventory and the profile (stash, trader, market, secure
+     * container, presets, free kit) may open there.
+     */
+    private boolean notInRange(Player player) {
+        if (plugin.range().isIn(player)) {
+            Text.send(player, "<#FF8A80>靶场内无法使用，请先离开靶场。");
+            return false;
+        }
         return true;
     }
 
     public void openMain(Player player) {
+        if (plugin.range().isIn(player)) {
+            // On the range the terminal is the weapon rack, which also leads to the gunsmith.
+            new RangeMenu(plugin, player).open();
+            return;
+        }
         if (lobbyOnly(player)) {
             new MainMenu(plugin, player).open();
             plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.TERMINAL);
@@ -33,6 +57,15 @@ public final class MenuService {
     }
 
     public void openStation(Player player, String station) {
+        // The rack is the one station inside the range, so it is handled before lobbyOnly.
+        if ("range_rack".equals(station)) {
+            if (plugin.range().isIn(player)) {
+                new RangeMenu(plugin, player).open();
+            } else if (lobbyOnly(player)) {
+                plugin.range().enter(player);
+            }
+            return;
+        }
         if (!lobbyOnly(player)) {
             return;
         }
@@ -47,13 +80,6 @@ public final class MenuService {
             case "rank", "rank_board" -> new RankMenu(plugin, player).open();
             case "tasks" -> new TaskMenu(plugin, player, false).open();
             case "hideout" -> new HideoutMenu(plugin, player).open();
-            case "range_rack" -> {
-                if (plugin.range().isIn(player)) {
-                    new RangeMenu(plugin, player).open();
-                } else {
-                    plugin.range().enter(player);
-                }
-            }
             default -> openMain(player);
         }
     }
@@ -77,7 +103,7 @@ public final class MenuService {
     }
 
     public void openMarket(Player player) {
-        if (lobbyOnly(player)) {
+        if (lobbyOnly(player) && !plugin.market().refuseIfClosed(player)) {
             new MarketMenu(plugin, player).open();
         }
     }
@@ -95,6 +121,20 @@ public final class MenuService {
     }
 
     public void openSecure(Player player) {
+        // Not lobbyOnly: the raid terminal opens the secure container mid-raid.
+        if (!notInRange(player)) {
+            return;
+        }
+        Raid raid = plugin.raids().raidOf(player);
+        RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
+        // Flying in, or dead (kill replay, then spectating a squadmate, when the player no longer
+        // counts as in the raid): the raid has its own copy of the container, or death has just
+        // settled it and the loadout, and outside the raid the menu would save the spectator's
+        // empty inventory as the loadout.
+        if (plugin.raids().isSpectating(player) || rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
+            Text.send(player, "<#FF8A80>入场途中或观战时无法打开安全箱。");
+            return;
+        }
         new SecureMenu(plugin, player).open();
     }
 }

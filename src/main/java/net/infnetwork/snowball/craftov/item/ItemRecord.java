@@ -32,6 +32,12 @@ public final class ItemRecord {
      * that is rebuilt mid-raid (gunsmith, reconnect, packed into a dropped backpack) stays insured.
      */
     public @Nullable String insured;
+    /**
+     * Proving-ground armory item (true, else null so Gson leaves it out). Only exists inside a raid:
+     * packed in a rig or backpack, or kept while its owner is disconnected. Never persisted, see
+     * {@link ItemFactory#toRecord}.
+     */
+    public @Nullable Boolean test;
 
     public ItemRecord() {
     }
@@ -50,6 +56,7 @@ public final class ItemRecord {
         copy.optic = optic;
         copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
         copy.insured = insured;
+        copy.test = test;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {
@@ -57,6 +64,10 @@ public final class ItemRecord {
             }
         }
         return copy;
+    }
+
+    public boolean isTest() {
+        return Boolean.TRUE.equals(test);
     }
 
     public boolean hasContents() {
@@ -71,6 +82,7 @@ public final class ItemRecord {
                 && Objects.equals(ammoType, other.ammoType)
                 && Objects.equals(dura, other.dura)
                 && Objects.equals(insured, other.insured)
+                && Objects.equals(test, other.test)
                 && !hasContents() && !other.hasContents();
     }
 

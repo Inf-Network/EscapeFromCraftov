@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.logging.Level;
 
 /** Craftov: an extraction-shooter game mode for Paper 1.21.11. */
 public final class CraftovPlugin extends JavaPlugin {
@@ -124,7 +125,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
-        carry = new CarryService(items);
+        carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
         worlds = new WorldService(this, maps);
@@ -164,7 +165,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market, profiles);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -187,6 +188,7 @@ public final class CraftovPlugin extends JavaPlugin {
         backups = new net.infnetwork.snowball.craftov.util.Backups(this);
         backups.start();
         market.start();
+        escorts.start();
         new PackService(this).install();
         hookBetterHud();
 
@@ -200,41 +202,43 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (editor != null) {
-            editor.shutdown();
-        }
-        if (replays != null) {
-            replays.shutdown();
-        }
-        if (drones != null) {
-            drones.shutdown();
-        }
-        if (raids != null) {
-            raids.shutdown();
-        }
-        if (escorts != null) {
-            escorts.shutdown();
-        }
-        if (range != null) {
-            range.shutdown();
-        }
-        if (lobby != null) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
+        // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
+        step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
+        step("betterhud", betterHud, () -> betterHud.shutdown());
+        step("editor", editor, () -> editor.shutdown());
+        step("replays", replays, () -> replays.shutdown());
+        step("drones", drones, () -> drones.shutdown());
+        step("raids", raids, () -> raids.shutdown());
+        step("escorts", escorts, () -> escorts.shutdown());
+        step("range", range, () -> range.shutdown());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("loadout of " + player.getName(), lobby, () -> {
                 if (lobby.isLobby(player.getWorld())) {
                     lobby.captureLoadout(player);
                 }
-            }
+            });
         }
-        if (market != null) {
-            market.saveSync();
+        step("market", market, () -> market.saveSync());
+        // Offline edits made while sending everyone home finish landing before the final save.
+        step("queued profile writes", profiles, () -> profiles.awaitWrites());
+        step("profiles", profiles, () -> profiles.shutdown());
+        step("backup", backups, () -> backups.run("shutdown"));
+        step("teams", this, this::cleanupTeams);
+    }
+
+    /**
+     * Runs one shutdown step if its service was created, logging instead of throwing. A linkage
+     * error counts too: after the jar was replaced on disk a step can fail to load a class.
+     */
+    private void step(String name, @Nullable Object service, Runnable action) {
+        if (service == null) {
+            return;
         }
-        if (profiles != null) {
-            profiles.shutdown();
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError ex) {
+            getLogger().log(Level.SEVERE, "Shutdown step '" + name + "' failed; carrying on with the rest", ex);
         }
-        if (backups != null) {
-            backups.run("shutdown");
-        }
-        cleanupTeams();
     }
 
     private void hookBetterHud() {
@@ -322,6 +326,14 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {
         return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
+    }
+
+    /**
+     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
+     * hands out one of everything) need the same access as the catalog.
+     */
+    public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
+        return !map.test() || canUseCatalog(player);
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }

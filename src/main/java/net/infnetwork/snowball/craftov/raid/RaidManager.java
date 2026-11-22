@@ -1970,9 +1970,9 @@ public final class RaidManager implements Listener {
         if (raidOf(player) != null) {
             return;
         }
-        if (voidRaid(player.getUniqueId(), player.getName(), null, true) != null) {
-            Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废。<#9AA0A6>出发前的装备和安全箱已退回，"
-                    + "入场费和保险费已退还，补偿邮件已发到仓库邮箱。");
+        Voided voided = voidRaid(player.getUniqueId(), player.getName(), null, true);
+        if (voided != null) {
+            Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废。" + voided.summary());
         }
     }
 
@@ -1985,7 +1985,7 @@ public final class RaidManager implements Listener {
         rp.disconnectedInventory = null;
         byPlayer.remove(rp.uuid, raid);
         plugin.escorts().callOff(rp);
-        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, false);
+        Voided voided = voidRaid(rp.uuid, rp.name, rp.deployment, false);
         if (player == null) {
             return;
         }
@@ -1994,10 +1994,35 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
         // What they carried stays in the raid: the lobby puts the loadout they went in with on them.
         plugin.lobby().enterLobby(player);
-        long refund = rp.deployment == null ? 0 : rp.deployment.entryFee + rp.deployment.premium;
-        Text.send(player, "<#FFC23D>服务器维护：本次行动已作废。<#9AA0A6>出发前的装备和安全箱已退回"
-                + (refund > 0 ? "，入场费和保险费 ◈" + Text.money(refund) + " 已退还" : "")
-                + (letter != null ? "，补偿邮件已发到仓库邮箱。" : "。"));
+        Text.send(player, "<#FFC23D>服务器维护：本次行动已作废。" + (voided == null ? "" : voided.summary()));
+    }
+
+    /**
+     * What a void did to one player, for the chat line that goes with its letter: {@code refund}
+     * the entry fee and premium handed back, {@code earned} what the raid had paid out (less what it
+     * cost on the way) and was taken back, {@code withheld} whether anything was not handed back
+     * because others had taken it out, {@code record} false for a profile without a deployment
+     * record (left by an older build), whose loadout simply stays and which gets no refund.
+     */
+    private record Voided(long refund, long earned, boolean withheld, boolean record) {
+        String summary() {
+            if (!record) {
+                return "<#9AA0A6>配装和安全箱仍是出发前的样子，局内捡到的物品不计，详见仓库邮箱里的邮件。";
+            }
+            StringBuilder sb = new StringBuilder("<#9AA0A6>出发前的装备和安全箱已退回");
+            if (withheld) {
+                sb.append("（已被其他干员带出本局的不再退回）");
+            }
+            if (refund > 0) {
+                sb.append("，入场费和保险费 ◈").append(Text.money(refund)).append(" 已退还");
+            }
+            if (earned > 0) {
+                sb.append("，局内获得的任务奖励、升级奖励和悬赏共 ◈").append(Text.money(earned)).append(" 已扣回");
+            } else if (earned < 0) {
+                sb.append("，局内更换任务花的 ◈").append(Text.money(-earned)).append(" 已退还");
+            }
+            return sb.append("，详见仓库邮箱里的邮件。").toString();
+        }
     }
 
     /**
@@ -2014,12 +2039,12 @@ public final class RaidManager implements Listener {
      * still names a raid but has no record (left by an older build) gets the letter and keeps its
      * loadout, which a raid never changes. Gear that went in with them but has since left the raid
      * with someone else (Profile.Deployment.gone and goneStacks, see {@link #leftWith}) does not
-     * come back to them as well. Returns the letter, or null when there was nothing to void (or it
+     * come back to them as well. Returns what it did, or null when there was nothing to void (or it
      * went to the journal of an unreadable profile).
      */
-    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
+    private @Nullable Voided voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
         long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
-        Profile.Mail[] sent = new Profile.Mail[1];
+        Voided[] sent = new Voided[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
         String cause = (crash ? "raid lost when the server went down" : "server stopped during the raid") + ", voided for " + name;
         plugin.profiles().edit(uuid, () -> {
@@ -2075,7 +2100,8 @@ public final class RaidManager implements Listener {
             }
             p.leaveRaid();
             MailService.deliver(p, letter);
-            sent[0] = letter;
+            sent[0] = new Voided(d == null ? 0 : d.entryFee + d.premium, d == null ? 0 : d.earned,
+                    lost[0] > 0 || !lostStacks.isEmpty(), d != null);
         });
         if (sent[0] == null) {
             return null;
@@ -2124,7 +2150,8 @@ public final class RaidManager implements Listener {
                                     boolean crash) {
         StringBuilder body = new StringBuilder(crash ? "服务器意外中断时" : "服务器维护时");
         body.append(d == null ? "你还在行动中" : "你还在「" + d.map + "」（" + d.tier + "）的行动中").append("，这局行动已作废。\n")
-                .append("出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
+                .append(d == null ? "你的配装和安全箱仍是出发前的样子，局内捡到的物品不计。"
+                        : "出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
         List<String> gone = new ArrayList<>();
         if (lost > 0) {
             gone.add(lost + " 件装备");
@@ -2140,6 +2167,12 @@ public final class RaidManager implements Listener {
             body.append("\n已退还").append(d.entryFee > 0 ? "入场费 ◈" + Text.money(d.entryFee) : "")
                     .append(d.entryFee > 0 && d.premium > 0 ? "、" : "").append(d.premium > 0 ? "保险费 ◈" + Text.money(d.premium) : "")
                     .append("，已直接到账。");
+        }
+        if (d != null && d.earned > 0) {
+            body.append("\n局内获得的任务奖励、升级奖励和悬赏共 ◈").append(Text.money(d.earned)).append(" 已从余额扣回")
+                    .append(d.bounties.isEmpty() ? "。" : "，领取的悬赏退回到被击杀者头上。");
+        } else if (d != null && d.earned < 0) {
+            body.append("\n局内更换任务花的 ◈").append(Text.money(-d.earned)).append(" 已退还到余额。");
         }
         if (compensation > 0) {
             body.append("\n附件是 ◈").append(Text.money(compensation)).append(" 补偿，领取后到账。");

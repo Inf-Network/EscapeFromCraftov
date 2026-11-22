@@ -78,6 +78,12 @@ public final class LootMenu extends Menu {
                 List.of("<muted>品质越高搜索越久，保持界面打开以继续"), "search");
     }
 
+    /** Opening a container plays loot.open (RaidManager), not the menu sound. */
+    @Override
+    protected boolean openSound() {
+        return false;
+    }
+
     @Override
     public void onClose() {
         container.refreshLook();

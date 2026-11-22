@@ -67,10 +67,15 @@ public abstract class Menu implements InventoryHolder {
             inventory.setContents(built.getContents());
         }
         viewer.openInventory(inventory);
-        if (!quietOpen) {
+        if (!quietOpen && openSound()) {
             UiSound.OPEN.play(viewer);
         }
         quietOpen = false;
+    }
+
+    /** False for screens that come with a sound of their own (a container being opened). */
+    protected boolean openSound() {
+        return true;
     }
 
     /** The title as drawn: background, text and, for two seconds after a result, that result. */

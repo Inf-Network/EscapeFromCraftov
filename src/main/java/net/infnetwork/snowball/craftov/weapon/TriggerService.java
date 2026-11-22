@@ -367,7 +367,8 @@ public final class TriggerService implements Listener {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
-        RayTraceResult target = world.rayTrace(eye, dir, REACH, FluidCollisionMode.NEVER, false, 0.0, e -> pickable(player, e));
+        RayTraceResult target = world.rayTrace(eye, dir, REACH, FluidCollisionMode.NEVER, false, 0.0,
+                e -> pickable(player, e) && !downedMate(player, e));
         if (target != null && target.getHitEntity() != null) {
             long cell = inFront(world, from, dir, target.getHitPosition().distance(from), body, falling, feet);
             if (cell != NONE) {
@@ -499,20 +500,23 @@ public final class TriggerService implements Listener {
 
     /**
      * What the client's crosshair can land on (vanilla's "pickable"): living things, hitboxes of loot boxes
-     * and racks, bodies. Not this player, nor a downed teammate: they are revived with a right-click on
-     * them, and cannot be shot anyway.
+     * and racks, bodies, other players. Not the player itself.
      */
-    private boolean pickable(Player player, Entity entity) {
+    public boolean pickable(Player player, Entity entity) {
         if (entity == player || !player.canSee(entity) || entity instanceof Display || entity instanceof Item
                 || entity instanceof ExperienceOrb || entity instanceof Projectile || entity instanceof AreaEffectCloud
                 || entity instanceof Marker || entity instanceof ArmorStand stand && stand.isMarker()) {
             return false;
         }
-        if (entity instanceof Player other) {
-            return other.getGameMode() != GameMode.SPECTATOR
-                    && !(plugin.downed().isDowned(other) && plugin.raids().sameSquad(player, other));
-        }
-        return true;
+        return !(entity instanceof Player other) || other.getGameMode() != GameMode.SPECTATOR;
+    }
+
+    /**
+     * A downed squad-mate: no capture cells go in front of one, since they are revived with a right-click
+     * on them and cannot be shot anyway.
+     */
+    public boolean downedMate(Player player, Entity entity) {
+        return entity instanceof Player other && plugin.downed().isDowned(other) && plugin.raids().sameSquad(player, other);
     }
 
     private void clearCells(Player player, Capture c) {

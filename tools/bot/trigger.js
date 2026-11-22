@@ -21,7 +21,8 @@
 //            M4C and SV9 one report every 150 and 200 ms, K47 one every 100 ms; a quick click on full
 //            auto fires exactly the rounds of one report.
 //   open     with a gun out, right-clicking the range's weapon rack 2.5 blocks away opens it although
-//            the crosshair lands on cobweb.
+//            the crosshair lands on cobweb. With a range target moved in front of the rack, the same
+//            right-click aims at the target and leaves the rack shut.
 //   fall     a 12-block fall looking straight down with a gun out: the cobweb the bot is sent never
 //            overlaps its body (with the old 0.6-block clearance it did), and the fall is a free fall
 //            (18 ticks; cobweb holds it up).
@@ -125,9 +126,13 @@ bot.once('login', () => {
 })
 // First-person reports the shooter hears: gun.<id>.fp, or gun.<id>.x<n>.fp holding n rounds.
 const reports = []
+/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads). */
+const adsHeard = []
 const onSound = p => {
-  const m = JSON.stringify(p.sound || p.soundId || '').match(/gun\.([a-z0-9_]+?)(?:\.x(\d))?\.fp\b(?!_)/)
+  const sound = JSON.stringify(p.sound || p.soundId || '')
+  const m = sound.match(/gun\.([a-z0-9_]+?)(?:\.x(\d))?\.fp\b(?!_)/)
   if (m) reports.push({ at: Date.now(), gun: m[1], rounds: m[2] ? Number(m[2]) : 1 })
+  if (/gun\.ads\b/.test(sound)) adsHeard.push(Date.now())
 }
 bot._client.on('entity_sound_effect', onSound)
 bot._client.on('sound_effect', onSound)
@@ -141,6 +146,16 @@ const ABORT = 1
 const dropKey = () => dig(4)
 const swapKey = () => dig(6)
 const swing = () => bot._client.write('arm_animation', { hand: 0 })
+/**
+ * One right-click as the vanilla client sends it: on a block the crosshair is on, a use on that block
+ * (the capture block and a gun both pass), then a use of the item in hand.
+ */
+function rightClick (cell) {
+  if (cell) {
+    bot._client.write('block_place', { hand: 0, location: cell, direction: 2, cursorX: 0.5, cursorY: 0.5, cursorZ: 0.5, insideBlock: false, worldBorderHit: false, sequence: sequence++ })
+  }
+  bot._client.write('use_item', { hand: 0, sequence: sequence++, rotation: { x: conv.toNotchianYaw(bot.entity.yaw), y: conv.toNotchianPitch(bot.entity.pitch) } })
+}
 
 function logSince (from) {
   const fd = fs.openSync(LOG, 'r')
@@ -431,20 +446,42 @@ async function open () {
   if (!rack) throw new Error('no weapon rack on the range')
   await arm('k47')
   const r = rack.position
+  /** Right-clicks where the crosshair is; what opened and how many times the gun went to aim. */
+  const click = async entities => {
+    const p = pick(entities)
+    let opened = null
+    const onOpen = w => { opened = w }
+    bot.once('windowOpen', onOpen)
+    const adsFrom = adsHeard.length
+    rightClick(p.kind === 'cell' ? p.cell : null)
+    await sleep(800)
+    bot.removeListener('windowOpen', onOpen)
+    if (opened) bot.closeWindow(opened)
+    await sleep(500)
+    return { p, opened, ads: adsHeard.length - adsFrom }
+  }
   await tp(r.x, r.y, r.z - 2.5, 0, 10)
-  const p = pick([rack])
-  log('rack pick', p.kind, 'cobweb at', p.tCell.toFixed(2), 'rack at', p.tEntity.toFixed(2))
-  let opened = null
-  const onOpen = w => { opened = w }
-  bot.once('windowOpen', onOpen)
-  bot.activateItem()
-  await sleep(800)
-  bot.deactivateItem()
-  bot.removeListener('windowOpen', onOpen)
-  check('open: the crosshair lands on cobweb in front of the rack', p.kind === 'cell')
-  check('open: right-clicking the rack with a gun out opens it', opened !== null, opened ? JSON.stringify(opened.title).slice(0, 80) : 'no window')
-  if (opened) bot.closeWindow(opened)
-  await sleep(500)
+  const box = await click([rack])
+  log('rack pick', box.p.kind, 'cobweb at', box.p.tCell.toFixed(2), 'rack at', box.p.tEntity.toFixed(2))
+  check('open: the crosshair lands on cobweb in front of the rack', box.p.kind === 'cell')
+  check('open: right-clicking the rack with a gun out opens it', box.opened !== null, box.opened ? JSON.stringify(box.opened.title).slice(0, 80) : 'no window')
+
+  const target = Object.values(bot.entities).filter(e => e.name === 'zombie')
+    .reduce((a, b) => !a || b.position.distanceTo(r) < a.position.distanceTo(r) ? b : a, null)
+  if (!target) throw new Error('no range target')
+  const home = target.position.clone()
+  const nearest = '@e[type=minecraft:zombie,sort=nearest,limit=1]'
+  try {
+    await rcon(`execute as ${name} at @s positioned ${home.x} ${home.y} ${home.z} run tp ${nearest} ${r.x.toFixed(3)} ${r.y.toFixed(3)} ${(r.z - 0.6).toFixed(3)}`)
+    await sleep(500)
+    const aim = await click([rack, target])
+    log('target pick', aim.p.kind, 'cobweb at', aim.p.tCell.toFixed(2), 'target at', aim.p.tEntity.toFixed(2))
+    check('open: a target in front of the rack gets aimed at, the rack stays shut', aim.opened === null && aim.ads > 0,
+      `${aim.opened ? 'opened ' + JSON.stringify(aim.opened.title).slice(0, 60) : 'nothing opened'}, ${aim.ads} gun.ads sounds`)
+  } finally {
+    await rcon(`execute as ${name} at @s positioned ${r.x} ${r.y} ${r.z} run tp ${nearest} ${home.x.toFixed(3)} ${home.y.toFixed(3)} ${home.z.toFixed(3)}`)
+    await sleep(300)
+  }
 }
 
 // ---------------------------------------------------------------- stray

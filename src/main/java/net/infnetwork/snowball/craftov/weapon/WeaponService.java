@@ -11,6 +11,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -1220,10 +1221,12 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * The trigger keeps client-only cobweb in front of whatever the crosshair is on (see
-     * {@link TriggerService}), so a right-click at a loot box, a body or a weapon rack lands on the
-     * cobweb and reaches the server as a click on air. Within reach and with nothing solid in the way,
-     * this passes it on to the entity as the click it would have been. True if something took it.
+     * The trigger keeps client-only capture blocks in front of whatever the crosshair is on (see
+     * {@link TriggerService}), so a right-click at a loot box, a body, a weapon rack or a downed teammate
+     * lands on one and reaches the server as a click on air. This passes it on as the click it would have
+     * been, but only to the first thing the client could have picked within reach, with nothing solid in
+     * the way: an enemy or a range target standing in front of a box means the player is aiming at them.
+     * True if something took it.
      */
     private boolean useEntityBehindCell(Player player) {
         long now = Bukkit.getCurrentTick();
@@ -1233,12 +1236,13 @@ public final class WeaponService implements Listener {
         }
         Location eye = player.getEyeLocation();
         RayTraceResult hit = player.getWorld().rayTrace(eye, eye.getDirection(), USE_REACH, FluidCollisionMode.NEVER, false, 0.0,
-                entity -> entity != player && (entity instanceof Interaction
-                        || "container".equals(entity.getPersistentDataContainer().get(Keys.ENTITY_ROLE, PersistentDataType.STRING))));
-        if (hit == null || hit.getHitEntity() == null) {
+                entity -> plugin.triggers().pickable(player, entity));
+        Entity first = hit == null ? null : hit.getHitEntity();
+        if (first == null || !(first instanceof Interaction || plugin.triggers().downedMate(player, first)
+                || "container".equals(first.getPersistentDataContainer().get(Keys.ENTITY_ROLE, PersistentDataType.STRING)))) {
             return false;
         }
-        PlayerInteractEntityEvent click = new PlayerInteractEntityEvent(player, hit.getHitEntity(), EquipmentSlot.HAND);
+        PlayerInteractEntityEvent click = new PlayerInteractEntityEvent(player, first, EquipmentSlot.HAND);
         Bukkit.getPluginManager().callEvent(click);
         return click.isCancelled();
     }

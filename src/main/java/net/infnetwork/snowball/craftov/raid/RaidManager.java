@@ -914,13 +914,18 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Left-clicking an entity in spectator mode starts watching it, which would let the dead follow
-     * an enemy around. In a raid only the plugin's own cameras (item displays), the kill replay's
-     * stand-ins and squadmates can be watched; clicking anything else does nothing.
+     * Left-clicking an entity in spectator mode starts watching it. That would let the dead follow
+     * an enemy around, or slip off the frozen death view: click the squadmate standing in front (or
+     * the body at their feet), then Shift off that camera instead of the held one, into a free
+     * camera. So in a raid every camera is only for whoever the plugin put on it: the entry camera
+     * (an item display) while flying in, the death view and the kill replay's camera after death
+     * (ReplayService knows which), and squadmates once the dead are watching them. Clicking anything
+     * else does nothing. The plugin's own camera moves pass through here too and are let through.
      */
     @EventHandler(ignoreCancelled = true)
     public void onStartSpectating(PlayerStartSpectatingEntityEvent event) {
-        UUID id = event.getPlayer().getUniqueId();
+        Player player = event.getPlayer();
+        UUID id = player.getUniqueId();
         Map.Entry<Raid, RaidPlayer> watching = spectators.get(id);
         Raid raid = watching != null ? watching.getKey() : byPlayer.get(id);
         RaidPlayer own = watching != null ? watching.getValue() : raid == null ? null : raid.player(id);
@@ -928,11 +933,19 @@ public final class RaidManager implements Listener {
             return;
         }
         Entity target = event.getNewSpectatorTarget();
-        if (target instanceof ItemDisplay || target instanceof Mannequin) {
+        if (plugin.replays().isCamera(player, target)) {
             return;
         }
-        RaidPlayer mate = target instanceof Player p ? raid.player(p.getUniqueId()) : null;
-        if (mate == null || mate.squad != own.squad) {
+        boolean allowed;
+        if (watching != null) {
+            // spectateMate files the dead under spectators before it moves the camera.
+            RaidPlayer mate = target instanceof Player p ? raid.player(p.getUniqueId()) : null;
+            allowed = mate != null && mate.squad == own.squad;
+        } else {
+            // Dead but not yet watching a mate: nothing but ReplayService's cameras, above.
+            allowed = own.state == RaidPlayer.State.DEPLOYING && target instanceof ItemDisplay;
+        }
+        if (!allowed) {
             event.setCancelled(true);
         }
     }

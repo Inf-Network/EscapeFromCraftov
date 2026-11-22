@@ -540,6 +540,17 @@ public final class ReplayService implements Listener {
         return playing.containsKey(player.getUniqueId());
     }
 
+    /**
+     * Whether {@code target} is the camera this service holds the player on: their death view, or
+     * the killer's stand-in in their replay. RaidManager lets the dead watch nothing else until they
+     * are on a squadmate, so neither a body nor the replay's other stand-ins are a way off it.
+     */
+    public boolean isCamera(Player player, Entity target) {
+        UUID id = player.getUniqueId();
+        Playback playback = playing.get(id);
+        return target == deathCameras.get(id) || playback != null && target == playback.camera;
+    }
+
     @EventHandler
     public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
         Player viewer = event.getPlayer();

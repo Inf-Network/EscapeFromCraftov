@@ -1,4 +1,4 @@
-// Server stop mid-raid (issue #19). Six bots set the scene, then the server is stopped over RCON and
+// Server stop mid-raid (issue #19). Seven bots set the scene, then the server is stopped over RCON and
 // started again, and the saves are checked on disk and in game:
 //   raider  - in a solo raid on the test map: picks something up (cv give) and moves a bandage into
 //             the secure container. Must keep both, with no "raid voided by a crash" on rejoin.
@@ -11,6 +11,8 @@
 //   flyer   - insured, queued last so the stop lands while the insertion camera is still running.
 //             The secure container must stay shut meanwhile; it must go home with the gear and
 //             get the insurance premium back.
+//   drop    - insured, queued with the flyer, disconnects during the insertion camera. Never
+//             landed either: gear kept and the fees back, although offline at the stop.
 //   ranger  - on the private range. Must get the lobby kit back, no range loaners.
 //   boss    - posts an escort contract; cv money +1000 shortly before the stop. Must end with the
 //             balance from before posting plus the 1000.
@@ -44,7 +46,7 @@ const NO_START = !!process.env.NO_START
 const SERVER_REAL = fs.realpathSync(SERVER_DIR)
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const tag = String(Math.floor(1000 + Math.random() * 9000))
-const NAMES = { raider: 'SdRaid' + tag, dead: 'SdDead' + tag, gone: 'SdGone' + tag, flyer: 'SdFly' + tag, ranger: 'SdRng' + tag, boss: 'SdBoss' + tag }
+const NAMES = { raider: 'SdRaid' + tag, dead: 'SdDead' + tag, gone: 'SdGone' + tag, flyer: 'SdFly' + tag, drop: 'SdDrop' + tag, ranger: 'SdRng' + tag, boss: 'SdBoss' + tag }
 // Only joins for the --crash escort step.
 const EXTRA = { guard: 'SdGrd' + tag }
 const t0 = Date.now()
@@ -154,11 +156,13 @@ async function setup () {
   for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.dead} ${item}`)
   for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.gone} ${item}`)
   for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.flyer} ${item}`)
+  for (const item of ['armor_3', 'm4c']) await rcon(`cv give ${NAMES.drop} ${item}`)
   for (const item of ['helmet_3', 'armor_3', 'm4c', 'medkit_s']) await rcon(`cv give ${NAMES.ranger} ${item}`)
   await sleep(2500)
   await insure('dead')
   await insure('gone')
   await insure('flyer')
+  await insure('drop')
 
   // The raid: raider, dead and gone queue together and land in one raid.
   const raiders = [NAMES.raider, NAMES.dead, NAMES.gone]
@@ -228,11 +232,18 @@ async function setup () {
   const posted = await balance(NAMES.boss)
   check('boss posts an escort contract (bounty held)', posted < expect.bossMoney, `${expect.bossMoney} -> ${posted}`)
 
-  // Flyer: backfills into the running raid; stop while the insertion camera runs.
+  // Flyer and drop: a second raid (nobody joins a running one); stop while its insertion camera runs.
   expect.flyerMoney = await balance(NAMES.flyer)
+  expect.dropMoney = await balance(NAMES.drop)
   await queueSolo('flyer')
+  await queueSolo('drop')
   const flying = await waitFor(async () => await inRaidWorld(NAMES.flyer) && await inMode(NAMES.flyer, 'spectator'), 15000, 200)
   check('flyer is in the insertion camera', flying, await dimension(NAMES.flyer))
+  const dropFlying = await waitFor(async () => await inRaidWorld(NAMES.drop) && await inMode(NAMES.drop, 'spectator'), 3000, 200)
+  check('drop is in the insertion camera', dropFlying, await dimension(NAMES.drop))
+  bots.drop.quit()
+  delete bots.drop
+  await sleep(800)
   // Anything moved in the secure container now would be overwritten on landing: it stays shut.
   const f = bots.flyer
   const from = f.chatLog.length
@@ -292,6 +303,11 @@ async function stopAndRestart () {
   check('flyer: activeRaid cleared', flyer.activeRaid == null, String(flyer.activeRaid))
   check('flyer: insurance premium refunded', flyer.money === expect.flyerMoney, `${expect.flyerMoney} -> ${flyer.money}`)
   check('flyer: gear kept', ['m4c', 'armor_3'].every(i => ids(flyer.loadout).includes(i)), ids(flyer.loadout).join(','))
+
+  const drop = profile(NAMES.drop)
+  check('drop: activeRaid cleared', drop.activeRaid == null, String(drop.activeRaid))
+  check('drop: fees refunded although offline', drop.money === expect.dropMoney, `${expect.dropMoney} -> ${drop.money}`)
+  check('drop: gear kept', ['m4c', 'armor_3'].every(i => ids(drop.loadout).includes(i)), ids(drop.loadout).join(','))
 
   const ranger = profile(NAMES.ranger)
   check('ranger: lobby kit back', ['helmet_3', 'armor_3', 'm4c', 'medkit_s'].every(i => ids(ranger.loadout).includes(i)), ids(ranger.loadout).join(','))

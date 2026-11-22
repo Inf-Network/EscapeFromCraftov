@@ -17,13 +17,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 /**
  * Entry camera: the squad's view sweeps from high above the map down to their insertion point.
  * Implemented with an invisible item display (smooth teleport interpolation) that the players
  * spectate. Players are looked up by UUID on every step, never kept as Player objects: someone who
  * drops out and reconnects during the flight is a new Player object, and RaidManager.tryRejoin puts
- * them back in spectator in the raid world so the camera picks them up again.
+ * them back in spectator in the raid world so the camera picks them up again. Whoever ends up
+ * outside the raid world while flying in (a command, a plugin) is brought straight back to the
+ * camera, and the flight always ends and lands everyone, whatever happens to one of them.
  */
 public final class Cinematic {
 
@@ -67,13 +70,18 @@ public final class Cinematic {
                 if (raid.state == Raid.State.CLOSED || !camera.isValid()) {
                     cancel();
                     camera.remove();
-                    watching().forEach(p -> p.setSpectatorTarget(null));
+                    release();
                     if (raid.state == Raid.State.RUNNING) {
-                        ids.forEach(onDone); // the camera vanished mid-flight: land everyone rather than leave them hanging
+                        land(); // the camera vanished mid-flight: land everyone rather than leave them hanging
                     }
                     return;
                 }
-                double t = Math.min(1.0, tick / (double) DURATION);
+                int now = tick;
+                // Counted first: whatever goes wrong further down, the flight still reaches its end
+                // and the squad lands. Counted at the bottom, an exception on every step kept the
+                // camera on the same frame for ever and nobody was ever put down.
+                tick += STEP;
+                double t = Math.min(1.0, now / (double) DURATION);
                 double e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
                 Vector pos = bezier(p0, p1, p2, p3, e);
                 Vector look = e > 0.85 ? spawn.getDirection().multiply(10).add(p3) : spawn.toVector().add(new Vector(0, 1, 0));
@@ -89,46 +97,98 @@ public final class Cinematic {
                     loc.setPitch(0);
                 }
                 camera.teleport(loc);
-                for (Player player : watching()) {
-                    if (player.getSpectatorTarget() != camera) {
-                        if (player.getLocation().distanceSquared(loc) > 64 * 64) {
-                            // Far away (just reconnected): move next to the camera now and attach on
-                            // the next step, once the client has been sent the camera entity.
-                            player.teleport(loc);
-                            continue;
-                        }
-                        player.setSpectatorTarget(camera);
-                    }
-                    if (tick == 4) {
-                        player.showTitle(Title.title(Text.mm("<b><#F2E6C8>" + Text.escape(raid.map.name())),
-                                Text.mm(tierLine + (isRanked(raid, player) ? " · <#FFC23D>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2600), Duration.ofMillis(600))));
-                        player.playSound(player.getLocation(), "craftov:ui.cinematic", SoundCategory.MASTER, 1f, 1f);
-                    } else if (tick == 70) {
-                        player.showTitle(Title.title(Text.mm(""), Text.mm("<#9AA0A6>第 " + squadNumber + " 小队 · 正在接近渗透点"),
-                                Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(300))));
+                for (Player player : aboard()) {
+                    try {
+                        follow(player, loc, now);
+                    } catch (RuntimeException ex) {
+                        // One player's trouble must not hold up the rest of the squad.
+                        plugin.getLogger().log(Level.WARNING, "Entry camera could not take " + player.getName() + " along", ex);
                     }
                 }
                 if (t >= 1.0) {
                     cancel();
                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        watching().forEach(p -> p.setSpectatorTarget(null));
-                        ids.forEach(onDone);
+                        release();
+                        land();
                         camera.remove();
                     }, 4L);
                 }
-                tick += STEP;
             }
 
-            /** Squad members who are on the camera right now: online, in the raid world, spectating. */
-            private List<Player> watching() {
+            private void follow(Player player, Location loc, int now) {
+                if (player.getGameMode() != GameMode.SPECTATOR) {
+                    player.setGameMode(GameMode.SPECTATOR);
+                }
+                // The world first: the distance to a player in another world cannot be measured.
+                if (player.getWorld() != raid.world || player.getLocation().distanceSquared(loc) > 64 * 64) {
+                    // Somewhere else (just reconnected, or sent to another world by a command):
+                    // next to the camera now, and attached on the next step, once the client has
+                    // been sent the camera entity.
+                    if (player.getSpectatorTarget() != null) {
+                        player.setSpectatorTarget(null);
+                    }
+                    player.teleport(loc);
+                    return;
+                }
+                if (player.getSpectatorTarget() != camera) {
+                    player.setSpectatorTarget(camera);
+                }
+                if (now == 4) {
+                    player.showTitle(Title.title(Text.mm("<b><#F2E6C8>" + Text.escape(raid.map.name())),
+                            Text.mm(tierLine + (isRanked(raid, player) ? " · <#FFC23D>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2600), Duration.ofMillis(600))));
+                    player.playSound(player.getLocation(), "craftov:ui.cinematic", SoundCategory.MASTER, 1f, 1f);
+                } else if (now == 70) {
+                    player.showTitle(Title.title(Text.mm(""), Text.mm("<#9AA0A6>第 " + squadNumber + " 小队 · 正在接近渗透点"),
+                            Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(1800), Duration.ofMillis(300))));
+                }
+            }
+
+            /**
+             * Squad members still flying in: online and neither landed nor settled, wherever they
+             * are. follow() brings back whoever is not on the camera.
+             */
+            private List<Player> aboard() {
                 List<Player> out = new ArrayList<>();
                 for (UUID id : ids) {
+                    RaidPlayer rp = raid.player(id);
                     Player player = Bukkit.getPlayer(id);
-                    if (player != null && player.getWorld() == raid.world && player.getGameMode() == GameMode.SPECTATOR) {
+                    if (player != null && rp != null && rp.state == RaidPlayer.State.DEPLOYING) {
                         out.add(player);
                     }
                 }
                 return out;
+            }
+
+            /** Takes the squad off the camera: the flight is over for all of them, landed or not. */
+            private void release() {
+                for (UUID id : ids) {
+                    RaidPlayer rp = raid.player(id);
+                    if (rp != null) {
+                        rp.inFlight = false;
+                    }
+                    Player player = Bukkit.getPlayer(id);
+                    if (player == null) {
+                        continue;
+                    }
+                    try {
+                        if (player.getSpectatorTarget() == camera) {
+                            player.setSpectatorTarget(null);
+                        }
+                    } catch (RuntimeException ex) {
+                        plugin.getLogger().log(Level.WARNING, "Entry camera could not let go of " + player.getName(), ex);
+                    }
+                }
+            }
+
+            /** Hands every squad member, online or not, to onDone: one failure keeps nobody else in the air. */
+            private void land() {
+                for (UUID id : ids) {
+                    try {
+                        onDone.accept(id);
+                    } catch (RuntimeException ex) {
+                        plugin.getLogger().log(Level.SEVERE, "Could not land " + id + " after the entry camera", ex);
+                    }
+                }
             }
         }.runTaskTimer(plugin, 2L, STEP);
     }

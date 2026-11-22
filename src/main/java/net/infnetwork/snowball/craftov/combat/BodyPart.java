@@ -88,14 +88,23 @@ public enum BodyPart {
      * <p>A prone player has no height to go by and is classified along its body ({@link #ofProne}).
      */
     public static BodyPart of(LivingEntity target, Vector point, Vector shot) {
-        if (prone(target)) {
-            return ofProne(target, point, shot);
+        return of(target, target.getBoundingBox(), target.getEyeHeight(), point, shot);
+    }
+
+    /**
+     * Classifies a hit point on {@code box}, the target's body as the shooter saw it with its eyes
+     * {@code eyeHeight} above its feet ({@link HitZone#of(BoundingBox, double, Vector)}), so a hit
+     * counts on the pose it was aimed at (standing, crouched or prone then); facing still comes from
+     * the target.
+     */
+    public static BodyPart of(LivingEntity target, BoundingBox box, double eyeHeight, Vector point, Vector shot) {
+        if (prone(target, box)) {
+            return ofProne(target, box, point, shot);
         }
-        HitZone zone = HitZone.of(target, point);
+        HitZone zone = HitZone.of(box, eyeHeight, point);
         if (zone == HitZone.HEAD) {
             return HEAD;
         }
-        BoundingBox box = target.getBoundingBox();
         double dx = point.getX() - box.getCenterX();
         double dz = point.getZ() - box.getCenterZ();
         double yaw = Math.toRadians(target.getLocation().getYaw());
@@ -133,8 +142,17 @@ public enum BodyPart {
      * 13% up the box and nearly every hit, and every hit on the top face, on the head.
      */
     public static boolean prone(LivingEntity target) {
+        return prone(target, target.getBoundingBox());
+    }
+
+    /**
+     * {@link #prone(LivingEntity)} for the body as the shooter saw it: by the height of {@code box},
+     * or by the pose while {@code box} is still the one the target has now (a rewound box from before
+     * it lay down is read upright).
+     */
+    private static boolean prone(LivingEntity target, BoundingBox box) {
         return target instanceof HumanEntity
-                && (target.getPose() == Pose.SWIMMING || target.getBoundingBox().getHeight() < 1.0);
+                && (box.getHeight() < 1.0 || (target.getPose() == Pose.SWIMMING && box.equals(target.getBoundingBox())));
     }
 
     /**
@@ -157,8 +175,7 @@ public enum BodyPart {
      * would make every hit on a flank an arm; a flank hit is the chest or stomach, and a back hit the
      * legs.
      */
-    private static BodyPart ofProne(LivingEntity target, Vector point, Vector shot) {
-        BoundingBox box = target.getBoundingBox();
+    private static BodyPart ofProne(LivingEntity target, BoundingBox box, Vector point, Vector shot) {
         double dx = point.getX() - box.getCenterX();
         double dz = point.getZ() - box.getCenterZ();
         double yaw = Math.toRadians(target.getBodyYaw());

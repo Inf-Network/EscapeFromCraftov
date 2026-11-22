@@ -65,4 +65,10 @@ public record GunSpec(
     public double millisBetweenShots() {
         return 60_000.0 / rpm;
     }
+
+    /** The same gun with {@code damage} per pellet, for a round that lost some of its punch on the way. */
+    public GunSpec withDamage(double damage) {
+        return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, recoil, recoilH,
+                recoilReturn, reloadTicks, zoom, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action);
+    }
 }

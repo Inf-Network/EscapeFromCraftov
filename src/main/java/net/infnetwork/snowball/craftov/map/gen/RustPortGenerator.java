@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.map.Pos;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -71,6 +72,57 @@ public final class RustPortGenerator implements MapGenerator {
     @Override
     public long blocksPlaced() {
         return b.placed();
+    }
+
+    /** Soldier posts older map files still have where generate() no longer puts them: old x y z, new x y z. */
+    private static final double[][] MOVED_POSTS = {
+            {182.5, 65, 100.5, 182.5, 65, 54.5}, // dock patrol
+            {150.5, 70, 24.5, 148.5, 70, 24.5}, // warehouse office guards
+            {150.5, 70, 54.5, 148.5, 70, 54.5},
+            {56.5, 65, 189.5, 61.5, 65, 179.5}, // radio tower guards
+            {94.5, 65, 112.5, 96.5, 65, 112.5}, // door guards: command centre, dormitory, clinic, checkpoint, garage office
+            {29.5, 65, 32.5, 31.5, 65, 32.5},
+            {24.5, 65, 100.5, 26.5, 65, 100.5},
+            {86.5, 65, 32.5, 88.5, 65, 32.5},
+            {22.5, 65, 164.5, 24.5, 65, 164.5},
+    };
+    /** The same for the north-west spawn group. */
+    private static final double[][] MOVED_SPAWNS = {
+            {8.5, 65, 8.5, 1.5, 65, 2.5}, {10.5, 65, 9.5, 3.5, 65, 3.5}, {12.5, 65, 8.5, 5.5, 65, 2.5},
+    };
+
+    /**
+     * A rustport.yml written before some soldier posts and a spawn group were moved apart (see
+     * MapRegistry#closeSpawns) gets the same moves; markers an admin has changed are left alone. The
+     * template world needs nothing: these are only markers. Returns {@code def} itself if nothing moved.
+     */
+    public static MapDef migrate(MapDef def) {
+        boolean[] changed = {false};
+        List<MapDef.AiDef> ai = def.ai().stream().map(a -> {
+            Pos to = moved(a.pos(), MOVED_POSTS);
+            changed[0] |= to != null;
+            return to == null ? a : new MapDef.AiDef(to, a.count(), a.radius(), a.kind());
+        }).toList();
+        List<MapDef.SpawnDef> spawns = def.spawns().stream().map(s -> {
+            Pos to = moved(s.pos(), MOVED_SPAWNS);
+            changed[0] |= to != null;
+            return to == null ? s : new MapDef.SpawnDef(s.group(), to);
+        }).toList();
+        if (!changed[0]) {
+            return def;
+        }
+        return new MapDef(def.id(), def.name(), def.description(), def.template(), def.raidSeconds(), def.camera(), spawns,
+                def.extracts(), def.containers(), ai, def.bosses(), def.doors(), def.switches(), def.minX(), def.minZ(),
+                def.maxX(), def.maxZ(), def.timeOfDay(), def.test());
+    }
+
+    private static @Nullable Pos moved(Pos pos, double[][] table) {
+        for (double[] row : table) {
+            if (Math.abs(pos.x() - row[0]) < 0.01 && Math.abs(pos.y() - row[1]) < 0.01 && Math.abs(pos.z() - row[2]) < 0.01) {
+                return new Pos(row[3], row[4], row[5], pos.yaw());
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ terrain
@@ -270,7 +322,8 @@ public final class RustPortGenerator implements MapGenerator {
         b.door(x1, G + 1, mz, BlockFace.WEST, p.wood());
         b.set(mx, G + 3, z1 + 1, "lantern[hanging=false]");
         b.set(mx, G + 3, z1, p.trim());
-        bp.ai(mx, G + 1, z1 + 3, 1, 8, "guard");
+        // Beside the door rather than in front of it: the dormitory's stood 29.4 blocks from the west spawn group.
+        bp.ai(mx + 2, G + 1, z1 + 3, 1, 8, "guard");
     }
 
     private void interior(String name, int x0, int z0, int x1, int z1, int y, int floor, int floors, Palette p,
@@ -510,7 +563,8 @@ public final class RustPortGenerator implements MapGenerator {
         b.clear(ox - 1, G + 5, z1 - 2, ox, G + 5, z1 - 2);
         bp.container("ammo_box", ox + 4, G + 6, z1 - 3, 90f, tier);
         bp.ai(x0 + w / 2.0, G + 1, z0 + d / 2.0, 2, 10, "patrol");
-        bp.ai(ox + 4, G + 6, z0 + d / 2.0, 1, 3, "guard");
+        // Two blocks in from the mezzanine's middle: 31 blocks from the north-east spawn group, not 29.
+        bp.ai(ox + 2, G + 6, z0 + d / 2.0, 1, 3, "guard");
     }
 
     private void garageHall(int x0, int z0, int w, int d) {
@@ -635,7 +689,9 @@ public final class RustPortGenerator implements MapGenerator {
         bp.container("crate", SEA_X - 4, G + 1, 60, 0f, 0);
         bp.container("parcel", SEA_X - 4, G + 1, 124, 0f, 0);
         bp.container("ammo_box", SEA_X - 4, G + 1, 164, 0f, 0);
-        bp.ai(SEA_X - 6, G + 1, 100, 2, 14, "patrol");
+        // North of the east spawn group (176, 96) by 42 blocks: at z 100 this pair stood 4.5-7 blocks
+        // from it with their backs turned.
+        bp.ai(SEA_X - 6, G + 1, 54, 2, 14, "patrol");
         bp.ai(SEA_X - 6, G + 1, 150, 1, 14, "patrol");
     }
 
@@ -665,7 +721,8 @@ public final class RustPortGenerator implements MapGenerator {
         b.set(x0, topY + 8, z0, Material.REDSTONE_LAMP);
         bp.switches.add(new MapDef.SwitchDef("radio", "通讯塔电闸", new Pos(x0 + 2.5, topY + 2, z0 - 1.5, 0), 360));
         bp.container("ammo_box", x0 - 2, topY + 1, z0 + 2, 0f, 1);
-        bp.ai(x0, G + 1, z0 + 5, 2, 8, "guard");
+        // On the tower's north-east side, away from the south-west spawn group (23 blocks from it on the south side).
+        bp.ai(x0 + 5, G + 1, z0 - 5, 2, 8, "guard");
     }
 
     // ------------------------------------------------------------------ props & markers
@@ -716,7 +773,8 @@ public final class RustPortGenerator implements MapGenerator {
 
     private void markers() {
         int y = G + 1;
-        int[][] groups = {{8, 8, 135}, {176, 10, 45}, {8, 56, 225}, {176, 96, 90}, {30, 196, 315}, {106, 198, 0}};
+        // Group 1 sits right in the north-west corner: at (8, 8) the dormitory's patrols were 22 blocks away.
+        int[][] groups = {{1, 2, 135}, {176, 10, 45}, {8, 56, 225}, {176, 96, 90}, {30, 196, 315}, {106, 198, 0}};
         for (int g = 0; g < groups.length; g++) {
             int[] s = groups[g];
             for (int k = 0; k < 3; k++) {

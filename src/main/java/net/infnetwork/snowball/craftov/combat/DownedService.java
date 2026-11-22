@@ -222,10 +222,12 @@ public final class DownedService implements Listener {
 
     /**
      * Who gets the kill when a player dies without a hit of their own to blame: bleeding out while
-     * down, quitting while down, giving up. That is whoever hurt them last, if within 30 seconds;
-     * otherwise, for a downed player, whoever knocked them down. Past 30 seconds the last hit has
-     * expired, and a shell landing after that names nobody, so neither takes the kill off the
-     * knocker. Ask before {@link #clear}, which forgets the knock-down.
+     * down, quitting while down, giving up. That is whoever hurt them last, if within 30 seconds
+     * and not on their own squad; otherwise, for a downed player, whoever knocked them down. Past
+     * 30 seconds the last hit has expired, a shell landing after that names nobody, and a
+     * squadmate's round (friendly fire on) earns no kill, so none of them takes the kill off the
+     * knocker: a squad could otherwise shoot its own crawling member to deny the enemy the bounty.
+     * Ask before {@link #clear}, which forgets the knock-down.
      */
     public DamageService.@Nullable LastHit killingHit(Player player) {
         return killingHit(player, downed.get(player.getUniqueId()));
@@ -234,10 +236,25 @@ public final class DownedService implements Listener {
     private DamageService.@Nullable LastHit killingHit(Player player, @Nullable Downed state) {
         DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
         DamageService.LastHit cause = state == null ? null : state.cause;
-        if (hit == null || (hit.attacker() == null && cause != null && cause.attacker() != null)) {
+        if (hit != null && hostile(player, hit)) {
+            return hit;
+        }
+        if (cause != null && cause.attacker() != null) {
             return cause;
         }
-        return hit;
+        return hit != null ? hit : cause;
+    }
+
+    /** True when someone other than the player and their squad dealt the hit: an enemy or a soldier. */
+    private boolean hostile(Player player, DamageService.LastHit hit) {
+        UUID attacker = hit.attacker();
+        if (attacker == null || attacker.equals(player.getUniqueId())) {
+            return false;
+        }
+        Raid raid = plugin.raids().raidOf(player);
+        RaidPlayer victim = raid == null ? null : raid.player(player.getUniqueId());
+        RaidPlayer other = raid == null ? null : raid.player(attacker);
+        return victim == null || other == null || other.squad != victim.squad;
     }
 
     private void tick() {

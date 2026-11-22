@@ -262,11 +262,6 @@ public final class Nms {
         }
     }
 
-    /** True if {@link #protectCells} also reports dig starts and swings to its {@link DigInputs}. */
-    public static boolean readsInputs() {
-        return inputsReady;
-    }
-
     /**
      * Keeps the given cells (BlockPos.asLong keys) showing the capture block for this player, and
      * reports the player's dig starts and arm swings to {@code inputs}.

@@ -29,13 +29,15 @@ import java.util.function.Predicate;
 /** Hitscan bullets shared by players and AI. */
 public final class Ballistics {
 
-    /** Pieces a round's path can have: it goes on through a block (see {@link #impact}) at most twice. */
+    /** Pieces a round's path can have: it goes on through glass or a thin block at most twice. */
     private static final int MAX_SEGMENTS = 3;
 
     private final CraftovPlugin plugin;
+    private final BlockPenetration penetration;
 
     public Ballistics(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.penetration = new BlockPenetration(plugin.getLogger());
     }
 
     /** Random direction inside a cone of {@code spreadDegrees} around {@code dir}. */
@@ -61,7 +63,8 @@ public final class Ballistics {
      *
      * <p>The round's path is traced in up to {@link #MAX_SEGMENTS} pieces: glass it shatters on the way
      * lets it fly on with a little less damage, so a window costs a round some punch instead of the
-     * whole shot. The tracer, the replay and the fly-by crack all follow it to where it finally stops.
+     * whole shot, and so does a thin block its penetration is enough for ({@link BlockPenetration}).
+     * The tracer, the replay and the fly-by crack all follow it to where it finally stops.
      */
     public @Nullable LivingEntity fire(LivingEntity shooter, Location eye, Vector dir, GunSpec gun,
                                        @Nullable AmmoSpec ammo, String weaponName, boolean tracer) {
@@ -76,6 +79,8 @@ public final class Ballistics {
         Vector from = eye.toVector();
         double travelled = 0;
         double keep = 1.0;
+        // Penetration left for blocks; armour still meets the round's full rating (DamageService).
+        int pen = ammo == null ? 1 : ammo.penetration();
         List<Block> passed = new ArrayList<>(MAX_SEGMENTS - 1);
         Vector end = null;
         boolean hitAnything = false;
@@ -112,8 +117,26 @@ public final class Ballistics {
                 break;
             }
             Block block = result.getHitBlock();
-            double through = block == null ? 0 : impact(block, at.toLocation(world),
-                    result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection(), dir);
+            if (block == null) {
+                end = at;
+                break;
+            }
+            Location point = at.toLocation(world);
+            Vector normal = result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection();
+            double through;
+            if (shatters(block)) {
+                through = shatter(block, point);
+            } else {
+                plugin.weapons().fx().block(block, point, normal, dir);
+                plugin.weapons().audio().impact(block, point);
+                BlockPenetration.Rule rule = penetration.of(plugin.getConfig(), block.getType());
+                if (rule != null && pen >= rule.level()) {
+                    through = rule.damage();
+                    pen -= rule.level();
+                } else {
+                    through = 0;
+                }
+            }
             if (through <= 0 || segment >= MAX_SEGMENTS) {
                 end = at;
                 break;
@@ -142,24 +165,21 @@ public final class Ballistics {
         return hitEntity;
     }
 
-    /**
-     * What a block does to a round that meets it at {@code at}. Glass in a raid shatters and lets the
-     * round fly on; anything else stops it with a bullet hole, dust and the material's sound. Returns
-     * the share of its damage the round keeps going on, or 0 if it stops here.
-     */
-    private double impact(Block block, Location at, @Nullable Vector normal, Vector dir) {
+    /** Glass in a raid, other than tinted glass, breaks under any round. */
+    private boolean shatters(Block block) {
+        Material type = block.getType();
+        return type.name().contains("GLASS") && type != Material.TINTED_GLASS && plugin.raids().isRaidWorld(block.getWorld());
+    }
+
+    /** Breaks the glass a round met at {@code at}. Returns the share of its damage the round keeps going on. */
+    private double shatter(Block block, Location at) {
         World world = at.getWorld();
         Material type = block.getType();
-        if (type.name().contains("GLASS") && type != Material.TINTED_GLASS && plugin.raids().isRaidWorld(world)) {
-            block.setType(Material.AIR, false);
-            world.playSound(at, Sound.BLOCK_GLASS_BREAK, SoundCategory.BLOCKS, 1f, 1f);
-            plugin.weapons().audio().impact(block, at);
-            world.spawnParticle(Particle.BLOCK, at, 20, 0.3, 0.3, 0.3, type.createBlockData());
-            return Math.max(0, plugin.getConfig().getDouble("combat.penetration.glass-damage", 0.9));
-        }
-        plugin.weapons().fx().block(block, at, normal, dir);
+        block.setType(Material.AIR, false);
+        world.playSound(at, Sound.BLOCK_GLASS_BREAK, SoundCategory.BLOCKS, 1f, 1f);
         plugin.weapons().audio().impact(block, at);
-        return 0;
+        world.spawnParticle(Particle.BLOCK, at, 20, 0.3, 0.3, 0.3, type.createBlockData());
+        return Math.max(0, plugin.getConfig().getDouble("combat.penetration.glass-damage", 0.9));
     }
 
     /** Where the muzzle of a gun held by {@code shooter} roughly is. */

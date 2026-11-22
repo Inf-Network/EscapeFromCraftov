@@ -387,11 +387,15 @@ def settlement_screen(extracted):
         s.wells([8])
         s.wells(slots(1, 0, 1, 8))
         s.band(2, 0, 8, '带出的物品 · 价值最高的 10 件' if extracted else '损失的物品 · 价值最高的 10 件', tick=tone)
-        x0, y0, x1, y1 = cells(3, 2, 4, 6)
-        s.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=rgb('#11151A'), outline=rgb(tone))
-        s.wells(slots(3, 2, 4, 6))
         s.toolbar(5).wells([45, 49])
         s.big(5, 6, 5, 8, ['再来一局'])
+        # The plate goes on after the bottom bar and closes on the row boundary: drawn first, its
+        # frame and the lower wells' bottom edge vanished under the bar's divider and the second
+        # row of items looked cut off.
+        x0, y0, x1, y1 = cells(3, 2, 4, 6)
+        s.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1], fill=rgb('#11151A'), outline=rgb(tone))
+        s.wells(slots(3, 2, 4, 6))
+        s.d.line([x0 - 2, y1, x1 + 2, y1], fill=rgb(tone))
         return s.done()
     return make
 

@@ -74,8 +74,10 @@ public final class SettlementMenu extends Menu {
         for (String c : s.collectibles()) {
             found.add("<danger>★ <white>" + Text.escape(c));
         }
-        set(17, UiItems.button("craftov:ui/icon_collection", "<text>新收藏品 <white>" + s.collectibles().size(),
-                found.isEmpty() ? List.of("<muted>这次没有新的收藏品") : found));
+        ItemStack collection = UiItems.button("craftov:ui/icon_collection", "<text>新收藏品 <white>" + s.collectibles().size(),
+                found.isEmpty() ? List.of("<muted>这次没有新的收藏品") : found);
+        counted(collection, s.collectibles().size());
+        set(17, collection);
         for (int i = 0; i < ITEM_SLOTS.length && i < s.items().size(); i++) {
             set(ITEM_SLOTS[i], s.items().get(i));
         }
@@ -86,15 +88,26 @@ public final class SettlementMenu extends Menu {
     }
 
     private void stat(int slot, String icon, String label, String value) {
-        stat(slot, icon, label, value, 1);
+        set(slot, UiItems.button("craftov:ui/" + icon, "<muted>" + label + " " + value, List.of()));
     }
 
-    /** A figure: its icon, the label and value as its name, and for counts the count on the stack. */
+    /** A count: its icon, the label and value as its name, and the count on the stack. */
     private void stat(int slot, String icon, String label, String value, int count) {
         ItemStack stack = UiItems.button("craftov:ui/" + icon, "<muted>" + label + " " + value, List.of());
+        counted(stack, count);
+        set(slot, stack);
+    }
+
+    /**
+     * A count on an icon without hovering: the number on the stack from 2 up (the client never draws
+     * a 1), and a shine on anything above 0, so one kill and none do not look the same.
+     */
+    private static void counted(ItemStack stack, int count) {
         stack.setData(DataComponentTypes.MAX_STACK_SIZE, 99);
         stack.setAmount(Math.max(1, Math.min(99, count)));
-        set(slot, stack);
+        if (count > 0) {
+            stack.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
     }
 
     /** Copies of the most valuable stacks, for display only (they carry no Craftov id once shown here). */

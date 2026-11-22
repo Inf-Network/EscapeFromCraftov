@@ -29,6 +29,8 @@
 //           on the HUD where it was, and so does writing the magazine to the stack after: the new
 //           magazine is in memory, the stack still says 30 PS, the inventory has the PS back and 30 AP
 //           fewer, and the inventory's value counts the magazine in memory.
+//   batch   K47 single shots while strafing with the movement packets held back and sent four at a
+//           time every 200 ms (a lagging or cheating client): every shot still reads as moving.
 //   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
 //           弹匣 穿透) and the line under them; a gun with the better number never has the shorter
 //           bar; in the gunsmith the vertical grip's button previews a longer accuracy bar (green), and
@@ -51,7 +53,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'magazine', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move']
+const scenarios = wanted.length ? wanted : ['lobby', 'magazine', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move', 'batch']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -461,6 +463,50 @@ async function move (spot) {
 }
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 
+// ---------------------------------------------------------------- batch
+/** While true the bot's movement packets are held back, and sent together every 200 ms. */
+let holdingMoves = false
+const heldMoves = []
+const writePacket = bot._client.write.bind(bot._client)
+bot._client.write = (packet, params) => {
+  if (holdingMoves && (packet === 'position' || packet === 'position_look')) {
+    heldMoves.push([packet, { ...params, flags: { ...params.flags } }]) // mineflayer reuses the object
+    return
+  }
+  writePacket(packet, params)
+}
+setInterval(() => { while (heldMoves.length) writePacket(...heldMoves.shift()) }, 200)
+
+async function batch (spot) {
+  await arm('k47')
+  await aim(spot)
+  dig(4)
+  await sleep(3200)
+  const from = logSize()
+  holdingMoves = true
+  try {
+    for (let leg = 0; leg < 4; leg++) {
+      const dir = leg % 2 ? 'right' : 'left'
+      bot.setControlState(dir, true)
+      await sleep(450)
+      for (let shot = 0; shot < 4; shot++) {
+        const before = shotsSince(from).length
+        for (let tries = 0; tries < 3 && shotsSince(from).length === before; tries++) { click(); await sleep(120) }
+        await sleep(60 + 50 * shot) // so the shots land on every tick of a batch
+      }
+      bot.setControlState(dir, false)
+      await sleep(300)
+    }
+  } finally {
+    holdingMoves = false
+    bot.clearControlStates()
+  }
+  await sleep(400)
+  const shots = shotsSince(from)
+  check('batch: strafing with movement sent four ticks at a time reads as moving on every shot',
+    shots.length >= 10 && shots.every(x => x.speed >= 0.15), `${shots.length} shots, server read ${shots.map(x => x.speed.toFixed(3)).join(' ')}`)
+}
+
 // ---------------------------------------------------------------- lore
 const nbt = require('prismarine-nbt')
 const GUNS = ['p18', 'd50', 'sv9', 'v57', 'k47', 'm4c', 'scr', 'kl7', 'r12', 'dm14', 'awr']
@@ -708,6 +754,7 @@ async function ads (spot) {
     else if (scenario === 'ads') await ads(spot)
     else if (scenario === 'recoil') await recoil(spot)
     else if (scenario === 'move') await move(spot)
+    else if (scenario === 'batch') await batch(spot)
     else log('unknown scenario', scenario)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

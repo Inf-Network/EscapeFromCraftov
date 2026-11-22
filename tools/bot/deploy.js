@@ -330,9 +330,13 @@ const scenarios = {
     const problems = untouched(client.before, afterC)
     if (!landed) problems.push(`escort did not land (${G.worldName} ${G.game.gameMode})`)
     if (!told) problems.push('escort was not told')
+    // The refund releases the escrow too: a reward still recorded as held would be paid back a
+    // second time on the next join, as if a crash had dropped the contract.
+    if (afterC.escortEscrow) problems.push(`escrow still held: ${afterC.escortEscrow}`)
     // Back in the lobby the client can post a new contract: the old one is gone, not stuck.
     const C2 = await make(client.name)
     await sleep(2500)
+    if (C2.chatLog.some(m => m.includes('护航委托因服务器中断已撤销'))) problems.push('refunded again on rejoin')
     menu = await openWith(C2, () => C2.chat('/cv'))
     menu = menu && await openWith(C2, () => C2.clickWindow(16, 0, 0))
     if (menu) { await C2.clickWindow(38, 0, 0); await sleep(600) }

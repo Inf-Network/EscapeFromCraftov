@@ -1,7 +1,8 @@
 // Soldier behaviour on the proving ground, with headless bots and soldiers posted by /cv ai spawn.
 //
 //   node aibehaviour.js                every scenario
-//   node aibehaviour.js doors sight    only these (doors sight range operator smoke boss)
+//   node aibehaviour.js doors sight    only these (doors sight range operator smoke boss fence nade
+//                                      wake doorbody edge)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
@@ -30,6 +31,21 @@
 //   boss      A lands on 机密 (two rifles give it the gear value): the proving ground's boss and its
 //             two guards are asleep (休眠) at the boss post from the start and still at 50 s into
 //             the raid, then wake and are announced (出现在地图中) by 70 s. Takes over a minute.
+//   fence     On the field, A stands behind a long spruce fence two blocks high, 15 blocks from a
+//             guard: the guard sees A through it (交战) but fires no round in 6 s (rounds stop in
+//             fences) and steps aside looking for a clear shot; once the fence is gone it opens
+//             fire within 6 s. (Two high because rays, bullets' included, only meet a block inside
+//             its own cell: the top half of a one-high fence stops neither sight nor rounds.)
+//   nade      A drops a frag at its own feet, leaves for the ground far below the field, and a
+//             patrol is posted 3 blocks from the grenade facing away: the blast tells it roughly
+//             where the grenade came from (受击/掩护), not only that something went off (警戒).
+//   wake      A lands on 机密 and crouches 9 blocks behind the sleeping boss group for 3 s: still
+//             asleep. One pistol shot into the sky wakes all of them within 2 s, long before 60 s.
+//   doorbody  As doors, then the guard is moved back into the doorway and killed there: its body
+//             lies in the doorway, and the door still swings shut within 8 s.
+//   edge      On the field, A (resistance, so the shots do not down it) stands 5 blocks from a
+//             guard posted next to the field's west edge, A on the inside: the guard backs off and
+//             sidesteps but never off the field for 8 s.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 
@@ -170,6 +186,24 @@ async function hold (bot, uuid, dist, ms, seen) {
   }
   bot.setControlState('sneak', false)
   return spotted
+}
+
+/** Puts the hotbar on the first slot holding an item whose components mention {@code id}. */
+function select (bot, id) {
+  const slot = bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && JSON.stringify(s.components || s.nbt || '').includes(id))
+  if (slot < 0) return false
+  bot.setQuickBarSlot(slot - 36)
+  return true
+}
+
+/** Counts the soldier gunshots A hears (craftov:gun.<set>.near/.mid/.far/.muff; A fires none). */
+function earShots (bot) {
+  const ear = { shots: 0 }
+  bot.on('soundEffectHeard', (name, pos) => {
+    if (process.env.DEBUG) console.log('sound', String(name), pos && `${pos.x.toFixed(1)},${pos.y.toFixed(1)},${pos.z.toFixed(1)}`)
+    if (/gun\.[^.]+\.(near|mid|far|muff)/.test(String(name))) ear.shots++
+  })
+  return ear
 }
 
 const scenarios = {
@@ -354,6 +388,161 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'the boss and its guards were in place and asleep from the start, woke and were announced at 60 s'} | asleep at start ${sleeping.length}, at 50 s ${still}`]
   },
 
+  async fence () {
+    const A = await land()
+    await clearSoldiers(A)
+    await field(A)
+    await rcon(`effect give ${A.username} minecraft:resistance 90 4 true`)
+    const top = FIELD.y + 1
+    // A long fence two high across the line of fire, 2 blocks in front of A; the guard is 15 blocks
+    // away. fill does not join fences up, so the posts get their east and west arms here (else
+    // the lines run through the gaps between bare posts).
+    const fence = `35 ${top} 60 86 ${top + 1} 60`
+    await inWorld(A, `fill ${fence} minecraft:spruce_fence[east=true,west=true]`)
+    await inWorld(A, `tp ${A.username} 60.5 ${top} 62.5 180 0`)
+    await sleep(500)
+    const ear = earShots(A)
+    const guard = await post(A, 'guard', 60.5, top, 47.5)
+    await rcon(`execute in minecraft:${A.worldName} as ${guard.uuid} at @s run tp @s ~ ~ ~ facing entity ${A.username}`)
+    const spotted = await waitFor(async () => { const s = await soldier(guard.uuid); return s && s.state === '交战' }, 12000, 250)
+    if (!spotted) return ['FAIL', `the guard never saw A behind the fence (${JSON.stringify(await soldier(guard.uuid))})`]
+    // Every line to A runs through the fence: seen, but no round would get there.
+    const shots0 = ear.shots
+    const xs = []
+    const states = new Set()
+    await waitFor(async () => { const s = await soldier(guard.uuid); if (s) { xs.push(s.x); states.add(s.state) } return false }, 6000, 250)
+    const behindShots = ear.shots - shots0
+    const moved = xs.length ? Math.max(...xs) - Math.min(...xs) : 0
+    // The fence gone, the guard has a clear shot and takes it.
+    await inWorld(A, `fill ${fence} minecraft:air`)
+    const shots1 = ear.shots
+    const fired = await waitFor(() => ear.shots > shots1, 6000, 100)
+    const problems = []
+    if (behindShots > 0) problems.push(`fired ${behindShots} rounds into the fence`)
+    if (moved < 1.5) problems.push(`never stepped aside for a clear shot (x ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)})`)
+    if (!fired) problems.push('did not fire at A with the fence gone')
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'held fire at A seen through the fence, stepped aside, fired once the fence was gone'} | behind the fence: ${behindShots} shots heard, x moved ${moved.toFixed(1)}, states ${[...states].join(',')}; fence gone: ${fired ? 'fired' : 'silent'}`]
+  },
+
+  async nade () {
+    const A = await land()
+    await clearSoldiers(A)
+    await field(A)
+    const top = FIELD.y + 1
+    await rcon(`cv give ${A.username} frag 1`)
+    await inWorld(A, `tp ${A.username} 60.5 ${top} 40.5 0 90`)
+    await sleep(800)
+    if (!select(A, 'frag')) return ['FAIL', 'no frag on the hotbar']
+    await sleep(300)
+    // Straight down at A's feet; it goes off 3.5 s later, by which time A is far below the field.
+    await A.look(0, -Math.PI / 2, true)
+    A.activateItem()
+    await sleep(150)
+    A.deactivateItem()
+    await sleep(300)
+    await inWorld(A, `tp ${A.username} 30.5 65 20.5`)
+    // Posted now, it has no time to wander off before the blast; it faces away from where A stood.
+    const patrol = await post(A, 'patrol', 60.5, top, 37.5)
+    await rcon(`execute in minecraft:${A.worldName} as ${patrol.uuid} at @s run tp @s ~ ~ ~ 180 0`)
+    const states = []
+    const reacted = await waitFor(async () => {
+      const s = await soldier(patrol.uuid)
+      if (!s) return true
+      if (states[states.length - 1] !== s.state) states.push(s.state)
+      return s.state === '受击' || s.state === '掩护'
+    }, 6000, 150)
+    const health = (await rcon(`data get entity ${patrol.uuid} Health`)).match(/: (-?[\d.]+)f/)
+    const alive = !!(await soldier(patrol.uuid))
+    const ok = reacted && alive
+    return [ok ? 'PASS' : 'FAIL', `${ok ? 'the blast gave the patrol a threat to answer' : alive ? 'the patrol hit by the frag never reacted as to a hit' : 'the frag killed the patrol (move it farther out)'} | states ${states.join(' -> ')}; health ${health ? health[1] : '-'}`]
+  },
+
+  async wake () {
+    const A = await land('CONFIDENTIAL')
+    const t0 = A.raidStart || Date.now()
+    const group = (await soldiers()).filter(s => s.state === '休眠')
+    if (group.length !== 3) return ['FAIL', `expected the boss and two guards asleep, saw ${group.length}`]
+    const boss = group.find(s => Math.hypot(s.x - 47.5, s.z - 16.5) < 1.5) || group[0]
+    const p = ahead(boss, -9)
+    const face = Math.atan2(-(boss.x - p.x), boss.z - p.z) * 180 / Math.PI
+    A.setControlState('sneak', true)
+    await inWorld(A, `tp ${A.username} ${p.x.toFixed(2)} ${boss.y} ${p.z.toFixed(2)} ${face.toFixed(1)} 0`)
+    await sleep(3000)
+    const quiet = (await soldiers()).filter(s => s.state === '休眠').length
+    // One shot from the pistol straight up: nothing hit, but they hear it 9 blocks away.
+    A.setQuickBarSlot(1)
+    await sleep(300)
+    await A.look(0, Math.PI / 2, true)
+    await sleep(200)
+    A.swingArm()
+    const shotAt = (Date.now() - t0) / 1000
+    const woke = await waitFor(async () => (await soldiers()).every(s => s.state !== '休眠'), 2000, 150)
+    A.setControlState('sneak', false)
+    const problems = []
+    if (quiet !== 3) problems.push(`only ${quiet} of 3 still asleep with A crouched behind them`)
+    if (!woke) problems.push(`a pistol shot 9 blocks away left ${(await soldiers()).filter(s => s.state === '休眠').length} asleep`)
+    if (shotAt > 55) problems.push(`the shot came ${shotAt.toFixed(0)} s in, too close to the boss's own time`)
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'asleep with A behind them, all awake within 2 s of a shot 9 blocks away'} | shot at ${shotAt.toFixed(1)} s into the raid`]
+  },
+
+  async doorbody () {
+    const A = await land()
+    await clearSoldiers(A)
+    const door = '75 65 56'
+    const isOpen = async () => /passed/i.test(await rcon(`execute in minecraft:${A.worldName} if block ${door} minecraft:spruce_door[open=true]`))
+    if (await isOpen()) return ['FAIL', 'the drill building door is open before the test']
+    const guard = await post(A, 'guard', 75.5, 65, 63.5)
+    await inWorld(A, `tp ${A.username} 75.5 65 58.5 180 0`)
+    await sleep(300)
+    await rcon(`execute in minecraft:${A.worldName} as ${guard.uuid} at @s run tp @s ~ ~ ~ facing entity ${A.username}`)
+    if (!await waitFor(async () => { const s = await soldier(guard.uuid); return s && s.state === '交战' }, 6000, 200)) return ['FAIL', 'the guard never spotted A']
+    await inWorld(A, `tp ${A.username} 80.5 70 40.5 0 0`)
+    const inside = await waitFor(async () => { const s = await soldier(guard.uuid); return s && s.z < 55.5 }, 10000, 100)
+    if (!inside) return ['FAIL', 'the guard did not come in through the door']
+    // Back into the doorway and dead there: its body lies across the threshold.
+    await inWorld(A, `tp ${guard.uuid} 75.5 65 56.5`)
+    await rcon(`kill ${guard.uuid}`)
+    await sleep(300)
+    const openAfter = await isOpen()
+    const body = /passed/i.test(await rcon(`execute in minecraft:${A.worldName} if entity @e[type=minecraft:mannequin,x=74.8,y=65,z=55.8,dx=1.4,dy=2,dz=1.4]`))
+    if (!openAfter) return ['FAIL', 'the door had already shut before the body lay in it (inconclusive)']
+    if (!body) return ['FAIL', 'no body in the doorway (inconclusive)']
+    const t0 = Date.now()
+    const closed = await waitFor(async () => !await isOpen(), 8000, 200)
+    return [closed ? 'PASS' : 'FAIL', `${closed ? 'the door shut with a body in the doorway' : 'the door stayed open over the body for 8 s'} | ${closed ? 'shut after ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s' : '-'}`]
+  },
+
+  async edge () {
+    const A = await land()
+    await clearSoldiers(A)
+    await field(A)
+    await rcon(`effect give ${A.username} minecraft:resistance 60 4 true`)
+    const top = FIELD.y + 1
+    // The field's west edge is x = 20; the guard stands 1.5 blocks from it, A 5 blocks further in.
+    const guard = await post(A, 'guard', 21.5, top, 52.5)
+    await inWorld(A, `tp ${A.username} 26.5 ${top} 52.5 90 0`)
+    await rcon(`execute in minecraft:${A.worldName} as ${guard.uuid} at @s run tp @s ~ ~ ~ facing entity ${A.username}`)
+    if (!await waitFor(async () => { const s = await soldier(guard.uuid); return s && s.state === '交战' }, 6000, 200)) return ['FAIL', 'the guard never spotted A']
+    let low = Infinity
+    let west = Infinity
+    const zs = []
+    let gone = false
+    await waitFor(async () => {
+      const s = await soldier(guard.uuid)
+      if (!s) { gone = true; return true }
+      low = Math.min(low, s.y)
+      west = Math.min(west, s.x)
+      zs.push(s.z)
+      return false
+    }, 8000, 200)
+    const problems = []
+    if (gone) problems.push('the guard is gone (fell off and died?)')
+    if (low < top - 0.5) problems.push(`the guard went down to y ${low.toFixed(1)}`)
+    if (west < 20) problems.push(`the guard went past the edge to x ${west.toFixed(1)}`)
+    const spread = zs.length ? Math.max(...zs) - Math.min(...zs) : 0
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'stayed on the field while backing off and sidestepping'} | lowest y ${low.toFixed(1)}, westmost x ${west.toFixed(1)}, z range ${spread.toFixed(1)}`]
+  },
+
   async smoke () {
     const A = await land()
     await clearSoldiers(A)
@@ -377,8 +566,10 @@ const scenarios = {
     await waitFor(async () => { const s = await soldier(patrol.uuid); if (s) looks.push(s); return s && s.state === '交战' }, 8000, 250)
     const inSmoke = looks.filter(s => s.state === '交战' || (s.aware[A.username] || 0) >= 1).length
     const peak = Math.max(0, ...looks.map(s => s.aware[A.username] || 0))
-    // The control: the same patrol sees A at once out of the cloud, 8 blocks to the side.
+    // The control: the same patrol sees A at once out of the cloud, 8 blocks to the side. It may
+    // have wandered off meanwhile, so it is turned to face A again.
     await inWorld(A, `tp ${A.username} 68.5 ${FIELD.y + 1} 42.5`)
+    await rcon(`execute in minecraft:${A.worldName} as ${patrol.uuid} at @s run tp @s ~ ~ ~ facing entity ${A.username}`)
     const t0 = Date.now()
     const outside = await waitFor(async () => { const s = await soldier(patrol.uuid); return s && s.state === '交战' }, 8000, 250)
     const problems = []

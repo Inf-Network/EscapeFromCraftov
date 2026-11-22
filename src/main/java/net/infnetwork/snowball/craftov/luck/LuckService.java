@@ -12,6 +12,7 @@ import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.raid.LootContainer;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -163,15 +164,22 @@ public final class LuckService {
      * it loses decay-per-day of itself a day (prorated), up to {@code now}.
      */
     public void decay(Profile.Luck luck, long now) {
-        if (luck.quota > 0 && luck.playedAt > 0) {
-            long idleFrom = luck.playedAt + Math.round(cfg().getDouble("luck.quota.decay-after-days", 3) * DAY);
-            long from = Math.max(idleFrom, luck.quotaAt);
-            double rate = Math.max(0, Math.min(1, cfg().getDouble("luck.quota.decay-per-day", 0.1)));
-            if (now > from && rate > 0) {
-                luck.quota = Math.round(luck.quota * Math.pow(1 - rate, (now - from) / (double) DAY));
-            }
-        }
+        luck.quota = decayed(luck, now);
         luck.quotaAt = Math.max(luck.quotaAt, now);
+    }
+
+    /** The quota as {@link #decay} would leave it at {@code now}, without changing anything. */
+    public long decayed(Profile.Luck luck, long now) {
+        if (luck.quota <= 0 || luck.playedAt <= 0) {
+            return luck.quota;
+        }
+        long idleFrom = luck.playedAt + Math.round(cfg().getDouble("luck.quota.decay-after-days", 3) * DAY);
+        long from = Math.max(idleFrom, luck.quotaAt);
+        double rate = Math.max(0, Math.min(1, cfg().getDouble("luck.quota.decay-per-day", 0.1)));
+        if (now <= from || rate <= 0) {
+            return luck.quota;
+        }
+        return Math.round(luck.quota * Math.pow(1 - rate, (now - from) / (double) DAY));
     }
 
     /**
@@ -302,7 +310,7 @@ public final class LuckService {
         decay(luck, System.currentTimeMillis());
         rp.luck.boosted = luck.boostRaids > 0;
         if (rp.luck.boosted && notifyBoost()) {
-            net.infnetwork.snowball.craftov.util.Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>本局你搜出金色和红色物品的概率提高（含本局还剩 "
+            Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>本局你搜出金色和红色物品的概率提高（含本局还剩 "
                     + luck.boostRaids + " 局）。");
         }
     }
@@ -326,7 +334,7 @@ public final class LuckService {
                 + " x the threshold, last raid " + raid.id + " " + raid.tier.id() + "): loss compensation for the next " + raids + " raids");
         Player player = Bukkit.getPlayer(rp.uuid);
         if (player != null && notifyBoost()) {
-            net.infnetwork.snowball.craftov.util.Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
+            Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
         }
     }
 
@@ -601,5 +609,116 @@ public final class LuckService {
                     + ") from raid " + raid.id + ": ◈" + back + " back into the quota");
         }
         raid.luck.pending.clear();
+    }
+
+    // ------------------------------------------------------------------ admin (/cv luck)
+
+    /** Lines (MiniMessage) showing a player's luck to an admin. Changes nothing. */
+    public List<String> describe(Profile profile) {
+        Profile.Luck luck = profile.luck;
+        long now = System.currentTimeMillis();
+        Behaviour b = behaviour(luck);
+        List<String> out = new ArrayList<>();
+        out.add("<#F2E6C8>运气 · <white>" + Text.escape(profile.name) + (cfg().getBoolean("luck.enabled", true) ? "" : " <#FF8A80>（luck.enabled 已关闭）"));
+        out.add("<#9AA0A6>额度池 <#F2C94C>◈" + Text.money(decayed(luck, now)) + " <#8A8F98>/ 上限 ◈" + Text.money(quotaCap())
+                + " · <#9AA0A6>行为系数 <white>×" + fmt(b.multiplier()) + " <#8A8F98>（最近 " + b.raids() + " 场有效对局）");
+        out.add("<#8A8F98>  赚 ◈" + Text.money(b.gains()) + " / 亏 ◈" + Text.money(b.losses()) + " → " + fmt(b.profit())
+                + " · 击败 " + b.kills() + " / 阵亡 " + b.deaths() + " → " + fmt(b.kd())
+                + " · 出红 " + b.reds() + " 场 → " + fmt(b.red()) + " · 合作 " + b.coop() + " → " + fmt(b.cooperation()));
+        StringBuilder pity = new StringBuilder("<#9AA0A6>保底");
+        for (Rarity rarity : List.of(Rarity.GOLD, Rarity.RED)) {
+            pity.append(" ").append(rarity.tag()).append(rarity == Rarity.GOLD ? "金 " : "红 ")
+                    .append(luck.pity.getOrDefault(rarity.name(), 0)).append("<#8A8F98>（软 ").append(pitySoft(rarity))
+                    .append(" / 硬 ").append(pityHard(rarity)).append("）");
+        }
+        out.add(pity.toString());
+        StringBuilder jackpots = new StringBuilder("<#9AA0A6>大奖（有效场次，软 " + jackpotSoft() + " / 硬 " + jackpotHard() + "）");
+        for (String id : plugin.loot().jackpots()) {
+            ItemDef def = plugin.registry().get(id);
+            jackpots.append(" <#FF4D4D>").append(def == null ? id : Text.escape(def.name())).append(" <white>")
+                    .append(luck.jackpots.getOrDefault(id, 0));
+        }
+        out.add(jackpots.toString());
+        out.add("<#9AA0A6>补偿局 " + (luck.boostRaids > 0 ? "<#5BD16B>还剩 " + luck.boostRaids + " 局" : "<#8A8F98>未生效")
+                + " <#9AA0A6>· 窗口内亏损 <white>" + Math.round(lossScore(luck, now) * 100) + "%<#8A8F98> 的阈值");
+        out.add("<#8A8F98>/cv luck " + Text.escape(profile.name) + " quota <数量|+数量|-数量> · pity <GOLD|RED|大奖物品> <数量> · boost <局数> · reset");
+        return out;
+    }
+
+    private static String fmt(double v) {
+        return String.format(java.util.Locale.ROOT, "%.2f", v);
+    }
+
+    /**
+     * Changes a player's luck for an admin ({@code by}): quota (n, +n or -n), pity (GOLD, RED or a
+     * jackpot id, then the count), boost (raids left) or reset. Returns null on success, else why not.
+     */
+    public @Nullable String adjust(UUID uuid, String action, String[] args, String by) {
+        java.util.function.Consumer<Profile> change;
+        String what;
+        try {
+            switch (action) {
+                case "quota" -> {
+                    if (args.length < 1) {
+                        return "用法：quota <数量|+数量|-数量>";
+                    }
+                    String raw = args[0];
+                    boolean relative = raw.startsWith("+") || raw.startsWith("-");
+                    long amount = Long.parseLong(raw.startsWith("+") ? raw.substring(1) : raw);
+                    what = "luck.quota " + (relative ? (amount >= 0 ? "+" : "") + amount : "= " + amount) + " (never below 0)";
+                    change = p -> {
+                        decay(p.luck, System.currentTimeMillis());
+                        p.luck.quota = Math.max(0, relative ? p.luck.quota + amount : amount);
+                    };
+                }
+                case "pity" -> {
+                    if (args.length < 2) {
+                        return "用法：pity <GOLD|RED|大奖物品> <数量>";
+                    }
+                    int count = Integer.parseInt(args[1]);
+                    if (count < 0) {
+                        return "数量不能小于 0。";
+                    }
+                    String key = args[0];
+                    if (key.equalsIgnoreCase("GOLD") || key.equalsIgnoreCase("RED")) {
+                        String rarity = key.toUpperCase(java.util.Locale.ROOT);
+                        what = "luck.pity." + rarity + " = " + count;
+                        change = p -> p.luck.pity.put(rarity, count);
+                    } else if (plugin.loot().jackpots().contains(key)) {
+                        what = "luck.jackpots." + key + " = " + count;
+                        change = p -> p.luck.jackpots.put(key, count);
+                    } else {
+                        return "保底只有 GOLD、RED 和大奖物品：" + String.join("、", plugin.loot().jackpots());
+                    }
+                }
+                case "boost" -> {
+                    if (args.length < 1) {
+                        return "用法：boost <局数>";
+                    }
+                    int raids = Integer.parseInt(args[0]);
+                    if (raids < 0) {
+                        return "局数不能小于 0。";
+                    }
+                    what = "luck.boostRaids = " + raids;
+                    change = p -> p.luck.boostRaids = raids;
+                }
+                case "reset" -> {
+                    what = "luck = {} (everything back to a new player's)";
+                    change = p -> p.luck = new Profile.Luck();
+                }
+                default -> {
+                    return "未知操作：" + action + "（quota、pity、boost、reset）";
+                }
+            }
+        } catch (NumberFormatException ex) {
+            return "数量必须是整数。";
+        }
+        if (!plugin.profiles().canEdit(uuid)) {
+            return "这个玩家的档案现在无法修改（读不出来或有待处理的 .unsaved）。";
+        }
+        String line = what;
+        plugin.profiles().edit(uuid, () -> "admin " + by + ": " + line, change);
+        plugin.getLogger().info("[luck] " + by + " set " + uuid + ": " + line);
+        return null;
     }
 }

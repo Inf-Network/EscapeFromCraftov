@@ -118,6 +118,11 @@ public final class TriggerService implements Listener {
         /** Swings until this tick come from Q, right-clicks or inventory use, not from the trigger. */
         long muteUntil = -100;
         boolean mining;
+        /**
+         * A dig started since the last tick. A click shorter than a client tick sends start and abort
+         * together, and the server reads both before its next tick: this still holds the trigger for one.
+         */
+        boolean pressed;
         /** The block the client said it started digging (see {@link #key}); its abort only counts in reach. */
         long digCell;
         boolean held;
@@ -198,7 +203,8 @@ public final class TriggerService implements Listener {
                 c.stale = false;
                 plugin.weapons().triggerUp(player, true);
             }
-            c.held = active && ((heard && digging) || now <= c.tapUntil);
+            c.held = active && ((heard && digging) || now <= c.tapUntil || c.pressed);
+            c.pressed = false;
             if (c.held && !wasHeld) {
                 plugin.weapons().triggerDown(player);
             } else if (!c.held && wasHeld) {
@@ -462,6 +468,7 @@ public final class TriggerService implements Listener {
             clearCells(player, c);
             c.held = false;
             c.mining = false;
+            c.pressed = false;
             c.stale = false;
             c.lastInput = -100;
             c.tapUntil = -100;
@@ -501,6 +508,7 @@ public final class TriggerService implements Listener {
             event.setUseItemInHand(Event.Result.DENY);
             event.setUseInteractedBlock(Event.Result.DENY);
             c.mining = true;
+            c.pressed = true;
             if (event.getClickedBlock() != null) {
                 Block block = event.getClickedBlock();
                 c.digCell = key(block.getX(), block.getY(), block.getZ());

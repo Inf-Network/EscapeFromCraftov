@@ -688,6 +688,16 @@ def build_betterhud():
                                text('<#9AA0A6>战备值 [craftov_value_short] · 干员 [craftov_operator]', 8, 33, 0.45)]),
             'conditions': cond(('craftov_in_lobby', 'true')),
         },
+        # Kill feed (KillFeedService): the last five kills, oldest on top, each for a few seconds,
+        # right-aligned under the vanilla status-effect icons in the top-right corner.
+        'craftov_feed': {
+            'texts': numbered([text('[craftov_feed_%d]' % i, 0, (i - 1) * 9, 0.45, 'right') for i in range(1, 6)]),
+        },
+        # Kill streak badge above the crosshair, for a moment after each kill.
+        'craftov_streak': {
+            'texts': numbered([text('[craftov_streak]', 0, 0, 0.7, 'center')]),
+            'conditions': cond(('craftov_has_streak', 'true')),
+        },
         'craftov_hit_layout': {'images': numbered([image('craftov_hit', 0, 0)])},
         'craftov_hit_head_layout': {'images': numbered([image('craftov_hit_head', 0, 0)])},
         'craftov_hit_kill_layout': {'images': numbered([image('craftov_hit_kill', -1, -1)])},
@@ -711,6 +721,8 @@ def build_betterhud():
         place('craftov_downed', 50, 50, -60, 40),
         place('craftov_med', 50, 50, -60, 54),
         place('craftov_lobby', 0, 0, 6, 6),
+        place('craftov_feed', 100, 0, -6, 52),
+        place('craftov_streak', 50, 50, 0, -44),
     ])}}
     write_text(os.path.join(BH, 'huds', 'craftov.yml'), yaml.safe_dump(huds, allow_unicode=True, sort_keys=False))
 

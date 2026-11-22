@@ -769,6 +769,7 @@ public final class AiService implements Listener {
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
+            plugin.killFeed().soldierKilled(raid, killer, bot.name, hit.weapon(), hit.headshot());
             if (bot.boss) {
                 plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
             }

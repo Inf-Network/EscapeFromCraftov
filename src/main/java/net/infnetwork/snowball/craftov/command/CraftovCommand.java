@@ -21,7 +21,7 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event", "feed",
             "marketaudit");
 
     private final CraftovPlugin plugin;
@@ -153,7 +153,7 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量]"));
+                    + " · marketaudit [数量] · feed <玩家>"));
         }
     }
 
@@ -198,6 +198,22 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 plugin.health().addInjury(target, part, injury, source == null ? null : source.getUniqueId());
                 Text.send(sender, "<#5BD16B>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
+            }
+            case "feed" -> {
+                // /cv feed <player>: the kill feed lines the player's HUD holds, oldest first (tests read it).
+                Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+                if (target == null) {
+                    Text.send(sender, "/cv feed <玩家>");
+                    return;
+                }
+                java.util.List<String> lines = plugin.killFeed().allLines(target);
+                if (lines.isEmpty()) {
+                    sender.sendMessage(Text.mm("<#9AA0A6>（击杀栏是空的）"));
+                }
+                for (String line : lines) {
+                    sender.sendMessage(Text.mm(line));
+                }
+                sender.sendMessage(Text.mm("<#9AA0A6>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
             }
             case "money" -> {
                 if (args.length < 3) {

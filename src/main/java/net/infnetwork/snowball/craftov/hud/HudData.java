@@ -290,6 +290,22 @@ public final class HudData {
         return plugin.downed().isDowned(p);
     }
 
+    /** The kill feed lines the HUD shows, oldest first, padded to {@link KillFeedService#LINES} with "". */
+    public String[] feed(Player p) {
+        String[] out = new String[KillFeedService.LINES];
+        java.util.Arrays.fill(out, "");
+        java.util.List<String> lines = plugin.killFeed().lines(p);
+        for (int i = 0; i < lines.size() && i < out.length; i++) {
+            out[i] = lines.get(i);
+        }
+        return out;
+    }
+
+    /** The kill streak badge above the crosshair, or "" when there is none to show. */
+    public String streakBadge(Player p) {
+        return plugin.killFeed().badge(p);
+    }
+
     /** What a downed player should do: wait for a squadmate, or use their own injector when none is up. */
     public String downedHint(Player p) {
         if (!plugin.downed().isDowned(p)) {

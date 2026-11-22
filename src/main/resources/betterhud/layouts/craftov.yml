@@ -636,6 +636,65 @@ craftov_lobby:
       second: 'true'
       operation: ==
   offset: left
+craftov_feed:
+  texts:
+    '1':
+      name: craftov_font
+      pattern: '[craftov_feed_1]'
+      x: 0
+      y: 0
+      scale: 0.45
+      align: right
+      outline: true
+    '2':
+      name: craftov_font
+      pattern: '[craftov_feed_2]'
+      x: 0
+      y: 9
+      scale: 0.45
+      align: right
+      outline: true
+    '3':
+      name: craftov_font
+      pattern: '[craftov_feed_3]'
+      x: 0
+      y: 18
+      scale: 0.45
+      align: right
+      outline: true
+    '4':
+      name: craftov_font
+      pattern: '[craftov_feed_4]'
+      x: 0
+      y: 27
+      scale: 0.45
+      align: right
+      outline: true
+    '5':
+      name: craftov_font
+      pattern: '[craftov_feed_5]'
+      x: 0
+      y: 36
+      scale: 0.45
+      align: right
+      outline: true
+  offset: left
+craftov_streak:
+  texts:
+    '1':
+      name: craftov_font
+      pattern: '[craftov_streak]'
+      x: 0
+      y: 0
+      scale: 0.7
+      align: center
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_streak
+      second: 'true'
+      operation: ==
+  offset: left
 craftov_hit_layout:
   images:
     '1':

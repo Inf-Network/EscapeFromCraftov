@@ -423,6 +423,13 @@ hud:
   betterhud: true
   # Keep the boss-bar HUD even when BetterHud is active.
   vanilla-bars-with-betterhud: false
+  # Kill feed in the top-right corner (in the chat without BetterHud): each line shows this long.
+  # Kills within streak-seconds of each other make a streak: rising chimes and a badge above the
+  # crosshair, shown badge-seconds after each kill.
+  feed:
+    seconds: 5
+    streak-seconds: 6
+    badge-seconds: 2.5
 
 pack:
   # Rebuild the CraftEngine pack automatically after Craftov updates its resources.

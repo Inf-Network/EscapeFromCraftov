@@ -186,6 +186,24 @@ SOUNDS = {
 }
 
 
+def kill_chime(n):
+    """The n-th kill of a streak (KillFeedService): the kill chime a whole tone higher for each kill
+    in it, with a third note from the third kill and a fourth from the fifth. Bell-like and short, so
+    six in a row stays a reward rather than a slot machine."""
+    base = 1568 * 2 ** ((n - 1) * 2 / 12)
+    parts = [(tone(base, 0.35, 0.09), 0), (tone(base * 1.5, 0.42, 0.11), 0.06)]
+    if n >= 3:
+        parts.append((tone(base * 2, 0.45, 0.12) * 0.6, 0.12))
+    if n >= 5:
+        parts.append((tone(base * 2.5, 0.5, 0.14) * 0.45, 0.18))
+    return norm(mixdown(*parts)) * (0.8 + 0.03 * n)
+
+
+# Added after the rest so the shared noise generator gives every older sound the same samples.
+for _n in range(1, 7):
+    SOUNDS['kill/%d' % _n] = (lambda n=_n: kill_chime(n))
+
+
 def write_ogg(data, path):
     import soundfile
     os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -1,10 +1,17 @@
 // Gun feel (issue #8), on the private range unless said otherwise.
 //
+//   lobby   The trigger held in the lobby, off the range, fires nothing and kicks nothing.
+//   feed    With a second bot, solo on the proving ground (test mode, test.enabled: true): two
+//           soldiers frozen at 1 health and the second bot at 3 health, shot dead one after the
+//           other within 6 s. The shooter's kill feed (/cv feed) holds three lines, the bot last, and
+//           a streak of 3; the shooter hears kill.1, kill.2 and kill.3 and no plain kill sound; no kill
+//           line reaches the chat; the other bot's feed holds its own death but not the soldiers. The
+//           shooter's raid report (after /kill) counts every round fired as fired standing still.
 //   kick    The first-person kick and flash follow the shots the server fires: every shot sends
 //           exactly one craftov:reload cooldown of the gun's kick time (2 ticks for the K47 at 600
 //           rpm, 3 for the P18, 6 for the AWR), as many as the server logged shots in a 1 s K47
 //           burst; a P18 held down after its shot and an AWR held for 2 s through its bolt cycle get
-//           one each; the trigger held in the lobby, off the range, gets none. Q starts the reload
+//           one each. Q starts the reload
 //           with the kick cleared (a 0 cooldown), then the reload mark (damage 2) on the gun's
 //           stack, and only then the long reload cooldown; the mark is gone once the reload is done.
 //   ads     K47 on full auto for 2 s with right mouse held (a use packet every 4 ticks, as the
@@ -35,7 +42,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'kick', 'ads', 'recoil', 'move']
+const scenarios = wanted.length ? wanted : ['lobby', 'feed', 'kick', 'ads', 'recoil', 'move']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -49,6 +56,17 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name
 bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 bot.on('kicked', r => log('KICKED', r))
 bot.on('error', e => log('ERROR', e.message))
+let worldName = ''
+const trackWorld = p => { if (p.worldState && p.worldState.name) worldName = p.worldState.name.replace(/^minecraft:/, '') }
+bot._client.on('login', trackWorld)
+bot._client.on('respawn', trackWorld)
+/** Craftov sounds the bot heard, and its chat lines: { at, name } / { at, text }. */
+const sounds = []
+for (const packet of ['sound_effect', 'entity_sound_effect']) {
+  bot._client.on(packet, p => { const m = JSON.stringify(p).match(/craftov:[a-z0-9_./]+/); if (m) sounds.push({ at: Date.now(), name: m[0] }) })
+}
+const chat = []
+bot.on('messagestr', m => chat.push({ at: Date.now(), text: m }))
 // mineflayer applies player_rotation as absolute angles; recoil sends it relative, as vanilla expects.
 /** Camera turns the server sent: { at, pitch, yaw } in degrees (pitch negative = up). */
 const turns = []
@@ -366,6 +384,100 @@ async function move (spot) {
 }
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 
+// ---------------------------------------------------------------- feed
+const inRaid = world => world.startsWith('craftov_raid_')
+const feedOf = async who => (await rcon(`cv feed ${who}`)).split('\n').map(l => l.trim()).filter(Boolean)
+
+async function feed () {
+  const victimName = 'Vic' + name.slice(4)
+  const victim = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: victimName, version: '1.21.11', auth: 'offline' })
+  victim._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) victim._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
+  let victimWorld = ''
+  const track = p => { if (p.worldState && p.worldState.name) victimWorld = p.worldState.name.replace(/^minecraft:/, '') }
+  victim._client.on('login', track)
+  victim._client.on('respawn', track)
+  await new Promise(resolve => victim.once('spawn', resolve))
+  await sleep(2500)
+  try {
+    bot.chat('/cv queue proving NORMAL SOLO')
+    victim.chat('/cv queue proving NORMAL SOLO')
+    log('both queued for the proving ground')
+    const until = Date.now() + 150000
+    while (Date.now() < until && !(inRaid(worldName) && inRaid(victimWorld))) await sleep(500)
+    if (!(inRaid(worldName) && worldName === victimWorld)) throw new Error(`not in one raid: ${worldName} / ${victimWorld}`)
+    await sleep(7000) // the insertion camera and spawn protection
+    const at = `execute at ${name} run`
+    await rcon(`${at} fill 39 64 85 52 64 100 minecraft:stone`)
+    await rcon(`${at} fill 39 65 85 52 79 100 minecraft:air`)
+    // Two soldiers, frozen at 1 health in front of the shooter; every other one goes, and keeps going.
+    for (const tag of ['gf_s1', 'gf_s2']) {
+      const by = Date.now() + 30000
+      while (Date.now() < by && !(await rcon(`execute if entity @e[tag=${tag}]`)).includes('passed')) {
+        // A raid soldier (craftov:ai), in the shooter's world: range targets are zombies too.
+        await rcon(`${at} tag @e[type=minecraft:zombie,tag=!gf_keep,distance=..2000,limit=1,nbt={BukkitValues:{"craftov:ai":"patrol"}}] add ${tag}`)
+        await sleep(500)
+      }
+      await rcon(`tag @e[tag=${tag}] add gf_keep`)
+    }
+    const sweep = setInterval(() => {
+      for (const type of ['zombie', 'husk', 'drowned', 'bee']) rcon(`${at} kill @e[type=minecraft:${type},tag=!gf_keep,distance=..2000]`).catch(() => {})
+    }, 1500)
+    try {
+      await rcon(`data merge entity @e[tag=gf_s1,limit=1] {NoAI:1b,Health:1f}`)
+      await rcon(`data merge entity @e[tag=gf_s2,limit=1] {NoAI:1b,Health:1f}`)
+      await rcon(`${at} tp @e[tag=gf_s1,limit=1] 43.5 65 92.5 180 0`)
+      await rcon(`${at} tp @e[tag=gf_s2,limit=1] 47.5 65 92.5 180 0`)
+      await rcon(`execute as ${victimName} at @s run tp @s 45.5 65 96.5 180 0`)
+      await rcon(`execute as ${name} at @s run tp @s 45.5 65 86.5 0 0`)
+      await rcon(`cv give ${name} k47`)
+      await sleep(1000)
+      hold('k47')
+      await sleep(1500)
+      await rcon(`damage ${victimName} 97 minecraft:generic`)
+      await sleep(300)
+      const since = Date.now()
+      const kills = [['gf_s1', 43.5, 92.5], ['gf_s2', 47.5, 92.5], [victimName, 45.5, 96.5]]
+      for (const [who, x, z] of kills) {
+        await bot.lookAt(bot.entity.position.offset(x - bot.entity.position.x, 1.1, z - bot.entity.position.z), true)
+        await sleep(200)
+        const sel = who.startsWith('gf_') ? `@e[tag=${who}]` : who
+        for (let i = 0; i < 8; i++) {
+          click()
+          await sleep(160)
+          const alive = who.startsWith('gf_') ? (await rcon(`execute if entity ${sel}`)).includes('passed') : victimWorld === worldName && !victim.game.gameMode.includes('spectator')
+          if (!alive) break
+        }
+      }
+      const took = Date.now() - since
+      await sleep(600)
+      const lines = await feedOf(name)
+      const shown = lines.filter(l => l.includes('→'))
+      log(`three kills in ${took} ms; feed:`, lines)
+      const chimes = sounds.filter(s => s.at >= since && /craftov:(kill\.\d|hit\.kill)/.test(s.name)).map(s => s.name.replace('craftov:', ''))
+      check('feed: three kills within 6 s', took < 6000 && victim.game.gameMode === 'spectator', `${took} ms, victim ${victim.game.gameMode}`)
+      check('feed: three lines in the shooter\'s feed, the victim last', shown.length === 3 && shown[2].includes(victimName) && shown[2].startsWith(name), shown)
+      check('feed: a streak of 3', lines.some(l => l.includes('连杀 3')), lines[lines.length - 1])
+      check('feed: the kills play kill.1, kill.2, kill.3 in turn and no plain kill sound', chimes.join(',') === 'kill.1,kill.2,kill.3', chimes)
+      check('feed: no kill lines in the chat', !chat.some(c => c.at >= since && c.text.includes('→')), chat.filter(c => c.at >= since).map(c => c.text))
+      const theirs = (await feedOf(victimName)).filter(l => l.includes('→'))
+      check('feed: the victim\'s feed has its own death and not the shooter\'s soldiers', theirs.length === 1 && theirs[0].includes(victimName), theirs)
+    } finally {
+      clearInterval(sweep)
+    }
+    // Out of the raid, the report says how many rounds were fired standing still.
+    const reportFrom = Date.now()
+    await rcon(`kill ${name}`)
+    const by = Date.now() + 20000
+    while (Date.now() < by && !chat.some(c => c.at >= reportFrom && c.text.includes('急停射击'))) await sleep(500)
+    const line = (chat.find(c => c.at >= reportFrom && c.text.includes('急停射击')) || {}).text
+    const m = line && line.match(/开火 (\d+) 发 · 急停射击 (\d+) 发/)
+    check('feed: the raid report counts the rounds fired, all of them standing still', !!m && Number(m[1]) >= 3 && m[1] === m[2], line)
+  } finally {
+    victim.quit()
+    await sleep(3000) // back in the lobby before the next scenario
+  }
+}
+
 // ---------------------------------------------------------------- ads
 async function ads (spot) {
   await arm('k47')
@@ -388,6 +500,7 @@ async function ads (spot) {
   for (const scenario of scenarios) {
     log('---', scenario)
     if (scenario === 'lobby') { await lobby(); continue }
+    if (scenario === 'feed') { await feed(); spot = null; continue }
     if (!spot || (await rcon(`data get entity ${name} Dimension`)).indexOf('craftov_range') < 0) {
       await enterRange()
       await sleep(500)

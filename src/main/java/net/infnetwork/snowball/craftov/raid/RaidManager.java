@@ -819,17 +819,19 @@ public final class RaidManager implements Listener {
         // cash in its own member's bounty. Nor does a killer who has already died or got out get one
         // (a wound of theirs bleeding out later, say): their kills were counted and saved when they
         // left, so a late one would pay the bounty and the contract but never reach their stats.
+        Player credited = null;
         if (hit != null && hit.attacker() != null && !hit.attacker().equals(player.getUniqueId())) {
             Player killer = Bukkit.getPlayer(hit.attacker());
             RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
             if (kr != null && kr.active() && kr.squad != rp.squad) {
                 kr.kills++;
+                credited = killer;
                 plugin.tasks().onPlayerKill(killer);
                 plugin.bounties().onKill(killer, player, raid);
                 killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(player.getName())));
             }
         }
-        killFeed(raid, hit, player.getName());
+        plugin.killFeed().playerDied(raid, hit, player, credited);
         player.setGameMode(GameMode.SPECTATOR);
         player.showTitle(Title.title(Text.mm("<#FF4D4D><b>行动失败"), Text.mm("<#9AA0A6>" + Text.escape(reason)),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(600))));
@@ -1055,16 +1057,6 @@ public final class RaidManager implements Listener {
         });
         container.attachCorpse(corpse);
         raid.containers.put(container.id, container);
-    }
-
-    private void killFeed(Raid raid, DamageService.@Nullable LastHit hit, String victim) {
-        String line = hit == null || hit.attacker() == null
-                ? "<#8A8F98>☠ <white>" + Text.escape(victim)
-                : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm(line));
-        }
     }
 
     public void announce(Raid raid, String message) {

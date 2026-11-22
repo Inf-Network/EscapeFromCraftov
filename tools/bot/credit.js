@@ -106,7 +106,11 @@ async function waitFor (pred, ms) {
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 const pdc = (item, key) => { const m = JSON.stringify(item && item.components || '').match(new RegExp(`"craftov:${key}":\\{"type":"\\w+","value":"?([^",}]+)`)); return m ? m[1] : null }
 const barsSince = (bot, since) => bot.bars.filter(b => b.at >= since).map(b => b.text)
-const hitsSince = (bot, since) => bot.sounds.filter(s => s.at >= since && s.name.startsWith('craftov:hit.')).map(s => s.name.slice('craftov:hit.'.length))
+// A kill credited to the shooter plays its streak chime (craftov:kill.1..6) instead of craftov:hit.kill.
+const hitsSince = (bot, since) => bot.sounds.filter(s => s.at >= since && /^craftov:(hit\.|kill\.\d)/.test(s.name))
+  .map(s => s.name.startsWith('craftov:kill.') ? 'kill' : s.name.slice('craftov:hit.'.length))
+/** The kill feed lines the bot's HUD holds (/cv feed: the feed is on the HUD, not in the chat). */
+const feedOf = async bot => (await rcon(`cv feed ${bot.username}`)).replace(/§./g, '').split('\n').map(l => l.trim()).filter(Boolean)
 const titled = (bot, text) => bot.titles.some(t => t.includes(text))
 const chatHas = (bot, ...parts) => bot.chatLines.some(l => parts.every(p => l.includes(p)))
 
@@ -415,7 +419,7 @@ async function squad () {
   log('waiting for V to bleed out')
   await waitFor(() => V.game.gameMode === 'spectator', 40000)
   await sleep(1500)
-  const feed = S.chatLines.filter(l => l.includes('→') && l.includes(V.username))
+  const feed = (await feedOf(S)).filter(l => l.includes('→') && l.includes(V.username))
   check('V bleeds out', V.game.gameMode === 'spectator', V.game.gameMode)
   check('the kill feed gives V to S, not to M', feed.some(l => l.startsWith(S.username)) && !feed.some(l => l.includes(M.username)), feed)
   check('S gets "✖ 击杀" for V, M does not', barsSince(S, since).some(b => b.includes('✖ 击杀') && b.includes(V.username))
@@ -535,8 +539,9 @@ async function solo () {
   check('C quits 32 s after A downed it: A gets "✖ 击杀"', barsSince(A, quitAt).some(b => b.includes('✖ 击杀') && b.includes(C.username)),
     barsSince(A, quitAt).filter(b => b.includes('击')))
   check('A claims the bounty on C', chatHas(A, '领取了', C.username), A.chatLines.filter(l => l.includes('悬赏')).slice(-2))
-  check('the kill feed gives C to A', A.chatLines.some(l => l.startsWith(A.username) && l.includes('→') && l.includes(C.username)),
-    A.chatLines.filter(l => l.includes(C.username)).slice(-2))
+  const aFeed = await feedOf(A)
+  check('the kill feed gives C to A', aFeed.some(l => l.startsWith(A.username) && l.includes('→') && l.includes(C.username)),
+    aFeed.filter(l => l.includes(C.username)).slice(-2))
 
   // 10. D bleeds out from the wound nobody made, over 30 s after A's shot: nobody's kill.
   await waitFor(() => D.game.gameMode === 'spectator', 60000)
@@ -545,8 +550,9 @@ async function solo () {
   check(`D bleeds out ${dAfter.toFixed(0)} s after A's shot (over 30 s): "阵亡（失血）"`,
     D.game.gameMode === 'spectator' && dAfter > 30 && titled(D, '阵亡（失血）'), D.titles.slice(-2))
   check('A gets no kill for D', !barsSince(A, since).some(b => b.includes('✖ 击杀') && b.includes(D.username)))
-  check('the kill feed shows "☠ D"', A.chatLines.some(l => l.includes('☠') && l.includes(D.username) && !l.includes('→')),
-    A.chatLines.filter(l => l.includes(D.username)).slice(-2))
+  const dFeed = await feedOf(A)
+  check('the kill feed shows "☠ D"', dFeed.some(l => l.includes('☠') && l.includes(D.username) && !l.includes('→')),
+    dFeed.filter(l => l.includes(D.username)).slice(-2))
 
   // 11. A dies; B, still bleeding from A's wound, bleeds out afterwards.
   const aDeath = Date.now()
@@ -643,7 +649,7 @@ async function friendlyFire () {
   check('M (friendly fire on) hits the crawling V in its last 20 s', mSounds.some(s => s && s.length > 0), mSounds)
   await waitFor(() => V.game.gameMode === 'spectator', 30000)
   await sleep(1500)
-  const feed = S.chatLines.filter(l => l.includes('→') && l.includes(V.username))
+  const feed = (await feedOf(S)).filter(l => l.includes('→') && l.includes(V.username))
   check('V bleeds out', V.game.gameMode === 'spectator', V.game.gameMode)
   check('V\'s death names S, who knocked it down, not M', titled(V, `被 ${S.username} 击杀`) && !titled(V, `被 ${M.username}`), V.titles.slice(-2))
   check('S gets "✖ 击杀" for V, M does not', barsSince(S, since).some(b => b.includes('✖ 击杀') && b.includes(V.username))

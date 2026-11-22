@@ -391,12 +391,15 @@ public final class DamageService implements Listener {
             strongMarks.put(shooter.getUniqueId(), now);
         }
         if (!covered) {
+            // A kill that counts for the shooter has just played its streak chime (KillFeedService).
             String sound = switch (outcome) {
-                case KILLED -> "craftov:hit.kill";
+                case KILLED -> plugin.killFeed().creditedNow(shooter) ? null : "craftov:hit.kill";
                 case DOWNED -> "craftov:hit.knock";
                 case HIT -> zone == HitZone.HEAD ? "craftov:hit.head" : "craftov:hit.body";
             };
-            shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
+            if (sound != null) {
+                shooter.playSound(shooter.getLocation(), sound, SoundCategory.PLAYERS, 0.9f, 1f);
+            }
             plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, outcome);
         }
         if (!plugin.getConfig().getBoolean("combat.damage-numbers", true)) {

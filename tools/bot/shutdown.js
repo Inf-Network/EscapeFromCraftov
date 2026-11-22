@@ -211,7 +211,8 @@ async function setup () {
 
   // Dead: killed with the insured gear on, while the raid keeps running for the raider.
   await rcon(`kill ${NAMES.dead}`)
-  const died = await waitFor(() => bots.raider.chatLog.some(m => m.includes('☠') && m.includes(NAMES.dead)), 4000)
+  // The kill feed is on the HUD (/cv feed reads it), not in the chat.
+  const died = await waitFor(async () => (await rcon(`cv feed ${NAMES.raider}`)).split('\n').some(m => m.includes('☠') && m.includes(NAMES.dead)), 4000, 300)
   check('dead is killed in the raid (kill feed, spectating)', died && await inMode(NAMES.dead, 'spectator'))
 
   // Ranger: kit captured in the lobby, then onto the private range.

@@ -21,7 +21,8 @@ How a recording becomes the files GunAudio.java plays:
   _s        suppressed: a suppressed .45 pistol for pistols and SMGs, a suppressed machine gun for
             rifles (Freesound), mid_s low-passed and echoed like far.
   tail      indoor room sound only: a near take convolved with a synthetic room (no direct sound);
-            GunAudio plays it with each shot under a roof, alternating two keys (.in, .in2).
+            GunAudio plays it with each shot under a roof, alternating two keys (.in, .in2). Through
+            a wall the listener gets the same room muffled like muff (.in_muff, .in_muff2).
   x<n>      automatic fire that does not fit the 50 ms server tick: n rounds at the gun's real
             interval in one file (GROUPS).
 Loudness is set per gun class from the first 120 ms (where a gunshot's loudness is), then a
@@ -420,14 +421,25 @@ def ir_room(seed, length):
     return ir
 
 
-def tail(family, v):
+@lru_cache(maxsize=None)
+def _room(family, v):
     gid = TAIL_SOURCE[family]
     t = pick(near_takes(gid), v)
     x = near(gid, t)
     length = {'light': .9, 'rifle': 1.1, 'heavy': 1.3, 'sniper': 1.5}[family]
     y = signal.fftconvolve(x, ir_room(hash32(family, v, 'room'), length))[:n_of(length + .1)]
-    y = hp(y, 45)
-    return level(fade_out(y, .4), target(gid) - 3.0, family + ' tail'), t.origin
+    return fade_out(hp(y, 45), .4), t.origin
+
+
+def tail(family, v):
+    y, origin = _room(family, v)
+    return level(y.copy(), target(TAIL_SOURCE[family]) - 3.0, family + ' tail'), origin
+
+
+def tail_muff(family, v):
+    """The same room heard through a wall: muffled the way muff() muffles a report."""
+    y, origin = _room(family, v)
+    return level(fade_out(lp2(y, 1200) + .15 * y, .3), target(TAIL_SOURCE[family]) - 3.0, family + ' tail muff'), origin
 
 
 # ---------------------------------------------------------------- takes per gun
@@ -585,6 +597,10 @@ def catalogue():
         # The same sounds under a second key: GunAudio alternates the two so a new tail can stop the
         # one two shots back without cutting the one still ringing under it.
         out.append(('gun.tail.%s.in2' % family, files, 16))
+        # For a listener the wall is between: the room muffled, under its own pair of keys.
+        files = [add('', 'gun/tail/%s_in_muff_%d' % (family, v), tail_muff(family, v), 22050) for v in range(2)]
+        out.append(('gun.tail.%s.in_muff' % family, files, 16))
+        out.append(('gun.tail.%s.in_muff2' % family, files, 16))
     return out, sources
 
 

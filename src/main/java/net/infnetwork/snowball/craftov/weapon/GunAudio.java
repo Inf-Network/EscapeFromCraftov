@@ -41,6 +41,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * keeps the stereo direction while the volume is set exactly. The reports are recordings that carry
  * the outdoor range's own decay; under a roof the room answers every shot as it is fired (a tail
  * that starts with the shot), so a single shot is one sound and automatic fire fills the room.
+ * Someone the wall is between hears that room muffled too.
  *
  * <p>Each event has several recorded variants. The client picks one from the seed in the sound
  * packet, so the server deals them like cards per shooter (every variant once before any repeats,
@@ -274,11 +275,18 @@ public final class GunAudio {
             // matter less as it takes over: both fade out over the mid-far crossfade, instead of
             // stopping at one distance where the sound would suddenly change.
             double close = 1 - weights[2];
-            if (room != null && gain * roomShare * close >= AUDIBLE) {
-                schedule(arrives, listener, muzzle, roomKey(listener, room), gain * roomShare * close, roomPitch, pick, true);
+            boolean blocked = d > 2 && close > 0 && occluded(ear, muzzle);
+            if (room != null) {
+                // Through a wall the room is muffled like the report, or it would ring out bright on
+                // every shot and give the wall away.
+                double share = roomShare * close * (blocked ? muffled : 1);
+                if (gain * share >= AUDIBLE) {
+                    schedule(arrives, listener, muzzle, roomKey(listener, blocked ? room + "_muff" : room), gain * share,
+                            roomPitch, pick, true);
+                }
             }
             double open = 1.0;
-            if (d > 2 && close > 0 && occluded(ear, muzzle)) {
+            if (blocked) {
                 // Through a wall: dull, but with a little of the open report under it so it is still
                 // a gunshot. Suppressed reports are dull already and only lose level.
                 double dry = suppressed ? 0.4 : muffledDry;

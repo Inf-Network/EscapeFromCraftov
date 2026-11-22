@@ -4838,6 +4838,38 @@
     }
    ]
   },
+  "gun/tail/heavy_in_muff_0": {
+   "loudness": -24.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Mosin Nagant/M_21P.wav",
+     "shot": 3,
+     "channel": 0,
+     "at": 14.1378
+    }
+   ]
+  },
+  "gun/tail/heavy_in_muff_1": {
+   "loudness": -24.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Mosin Nagant/M_21P.wav",
+     "shot": 0,
+     "channel": 1,
+     "at": 1.0334
+    }
+   ]
+  },
   "gun/tail/light_in_0": {
    "loudness": -25.0,
    "cut_from": [
@@ -4855,6 +4887,38 @@
    ]
   },
   "gun/tail/light_in_1": {
+   "loudness": -25.0,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_31P.wav",
+     "shot": 1,
+     "channel": 1,
+     "at": 3.5009
+    }
+   ]
+  },
+  "gun/tail/light_in_muff_0": {
+   "loudness": -25.0,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "Carl Gustav M45/G_31P.wav",
+     "shot": 0,
+     "channel": 1,
+     "at": 0.3099
+    }
+   ]
+  },
+  "gun/tail/light_in_muff_1": {
    "loudness": -25.0,
    "cut_from": [
     {
@@ -4902,6 +4966,38 @@
     }
    ]
   },
+  "gun/tail/rifle_in_muff_0": {
+   "loudness": -24.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "AR-15/D_32P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 0.7051
+    }
+   ]
+  },
+  "gun/tail/rifle_in_muff_1": {
+   "loudness": -24.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "AR-15/D_32P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 5.6487
+    }
+   ]
+  },
   "gun/tail/sniper_in_0": {
    "loudness": -23.5,
    "cut_from": [
@@ -4919,6 +5015,38 @@
    ]
   },
   "gun/tail/sniper_in_1": {
+   "loudness": -23.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "1917/B_24P.wav",
+     "shot": 1,
+     "channel": 0,
+     "at": 6.7327
+    }
+   ]
+  },
+  "gun/tail/sniper_in_muff_0": {
+   "loudness": -23.5,
+   "cut_from": [
+    {
+     "source": "ffsl",
+     "title": "The Free Firearm Sound Library, Prepared SFX Library",
+     "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+     "page": "https://opengameart.org/content/the-free-firearm-sound-library",
+     "license": "CC0-1.0",
+     "file": "1917/B_24P.wav",
+     "shot": 0,
+     "channel": 0,
+     "at": 1.3093
+    }
+   ]
+  },
+  "gun/tail/sniper_in_muff_1": {
    "loudness": -23.5,
    "cut_from": [
     {

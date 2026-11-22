@@ -230,6 +230,11 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastSprint = new HashMap<>();
     /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
     private final Map<UUID, Long> lastEntityUse = new HashMap<>();
+    /**
+     * Last tick a right-click on an entity did something (opened a box or a rack, started a revive). The
+     * client follows such a click with a plain use of the gun in the same tick, which must not aim.
+     */
+    private final Map<UUID, Long> handledUse = new HashMap<>();
     /** How far a right-click reaches an entity: vanilla's entity interaction range. */
     private static final double USE_REACH = 3.0;
 
@@ -1203,8 +1208,8 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
-        if (useEntityBehindCell(player)) {
-            return; // opened a box or a rack: no aiming at it
+        if (Bukkit.getCurrentTick() - handledUse.getOrDefault(player.getUniqueId(), -100L) <= 1 || useEntityBehindCell(player)) {
+            return; // opened a box or a rack, or reviving: no aiming at it
         }
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
                 && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()
@@ -1249,7 +1254,11 @@ public final class WeaponService implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityUse(PlayerInteractEntityEvent event) {
-        lastEntityUse.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
+        long now = Bukkit.getCurrentTick();
+        lastEntityUse.put(event.getPlayer().getUniqueId(), now);
+        if (event.isCancelled()) {
+            handledUse.put(event.getPlayer().getUniqueId(), now);
+        }
     }
 
     /** Clicking straight at a close entity sends an attack, not a dig; it still pulls the trigger. */
@@ -1367,5 +1376,6 @@ public final class WeaponService implements Listener {
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());
         lastEntityUse.remove(event.getPlayer().getUniqueId());
+        handledUse.remove(event.getPlayer().getUniqueId());
     }
 }

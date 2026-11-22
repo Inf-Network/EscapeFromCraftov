@@ -21,8 +21,8 @@
 //            M4C and SV9 one report every 150 and 200 ms, K47 one every 100 ms; a quick click on full
 //            auto fires exactly the rounds of one report.
 //   open     with a gun out, right-clicking the range's weapon rack 2.5 blocks away opens it although
-//            the crosshair lands on cobweb. With a range target moved in front of the rack, the same
-//            right-click aims at the target and leaves the rack shut.
+//            the crosshair lands on cobweb, and does not aim the gun as well. With a range target moved
+//            in front of the rack, the same right-click aims at the target and leaves the rack shut.
 //   fall     a 12-block fall looking straight down with a gun out: the cobweb the bot is sent never
 //            overlaps its body (with the old 0.6-block clearance it did), and the fall is a free fall
 //            (18 ticks; cobweb holds it up).
@@ -465,6 +465,7 @@ async function open () {
   log('rack pick', box.p.kind, 'cobweb at', box.p.tCell.toFixed(2), 'rack at', box.p.tEntity.toFixed(2))
   check('open: the crosshair lands on cobweb in front of the rack', box.p.kind === 'cell')
   check('open: right-clicking the rack with a gun out opens it', box.opened !== null, box.opened ? JSON.stringify(box.opened.title).slice(0, 80) : 'no window')
+  check('open: opening the rack does not aim the gun as well', box.ads === 0, `${box.ads} gun.ads sounds`)
 
   const target = Object.values(bot.entities).filter(e => e.name === 'zombie')
     .reduce((a, b) => !a || b.position.distanceTo(r) < a.position.distanceTo(r) ? b : a, null)

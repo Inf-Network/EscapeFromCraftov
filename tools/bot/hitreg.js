@@ -13,9 +13,10 @@
 //              their position every 3 ticks). The shooter aims at where a vanilla client would draw it
 //              (vanillaView: each update eased into over 3 client ticks, frames drawn between ticks) and
 //              fires single M4C rounds while it walks, aiming down the sights, with lag compensation on
-//              and then off: on must hit at least 75% and clearly more often. Soldiers that see a player stop and fight, and they do not side-step
-//              while fighting (see the note at soldierlag), so for this one the soldiers' insertion grace
-//              is raised in the server's config.yml (and put back after) so it walks on.
+//              and then off: on must hit at least 75% and clearly more often. Soldiers that notice a player
+//              stop and fight, and a soldier shot from out of sight takes cover, so for this one the
+//              server's config.yml (put back after) has soldiers never notice anyone (ai.awareness.rate
+//              below 0 drains what they notice) and not answer hits (ai.threat.seconds 0), so it walks on.
 //   fence      the target stands on the sniper tower right behind the railing, the shooter on the ground
 //              40 blocks away aims at the middle of its head: the rounds must hit the head, and rounds
 //              aimed lower, into the railing's model, must still stop on it.
@@ -111,17 +112,31 @@ function aiShots (from, kind, victim) {
 
 // ---------------------------------------------------------------- server config
 let configBackup = null
-/** Sets `ai.insertion-grace-ticks` in the server's config.yml and reloads it; null puts the file back. */
-async function setGrace (ticks) {
-  if (ticks === null) {
+/**
+ * Sets keys under `ai:` in the server's config.yml (`{ 'awareness.rate': -50 }`: a key of the section
+ * one level down, which must be in the file) and reloads it; null puts the file back.
+ */
+async function setAi (values) {
+  if (values === null) {
     if (configBackup === null) return
     fs.writeFileSync(CONFIG, configBackup)
     configBackup = null
   } else {
-    const text = fs.readFileSync(CONFIG, 'utf8')
-    if (!/^ {2}insertion-grace-ticks: *\d+/m.test(text)) throw new Error(`no ai.insertion-grace-ticks in ${CONFIG}`)
+    let text = fs.readFileSync(CONFIG, 'utf8')
     if (configBackup === null) configBackup = text
-    fs.writeFileSync(CONFIG, text.replace(/^( {2}insertion-grace-ticks: *)\d+/m, `$1${ticks}`))
+    const ai = text.search(/^ai:/m)
+    if (ai < 0) throw new Error(`no ai section in ${CONFIG}`)
+    for (const [key, value] of Object.entries(values)) {
+      const parts = key.split('.')
+      const re = parts.length === 1
+        ? new RegExp(`^( {2}${parts[0]}: *)\\S+`, 'm')
+        : new RegExp(`^( {2}${parts[0]}:\\n(?: {4}.*\\n|\\s*#.*\\n)*? {4}${parts[1]}: *)\\S+`, 'm')
+      const head = text.slice(0, ai)
+      const rest = text.slice(ai)
+      if (!re.test(rest)) throw new Error(`no ai.${key} in ${CONFIG}`)
+      text = head + rest.replace(re, `$1${value}`)
+    }
+    fs.writeFileSync(CONFIG, text)
   }
   log('cv reload:', (await rcon('cv reload')).trim())
 }
@@ -464,11 +479,12 @@ async function parapet () {
 }
 
 // ---------------------------------------------------------------- soldierlag
-// Soldiers that see a player stop where they are and fight. They were meant to side-step every couple of
-// seconds while fighting (AiService.think), but the step only starts on a tick divisible by 40 and the
-// next think, 2 ticks later, stops it again; so this scenario has the patrol walk on its own instead: it
-// cannot see the bots (ai.insertion-grace-ticks raised for the scenario), walks to where the target's
-// shot was heard, and keeps the path it has when it is hit.
+// Soldiers that notice a player stop where they are and fight, so this scenario has the patrol walk on its
+// own instead: it walks to where the target's shot was heard and keeps the path it has when it is hit.
+// For that it must never notice the bots and not answer the hits, which it would: the insertion grace
+// ends with a player's first shot, and a soldier shot from out of sight takes cover and fires back at the
+// spot. So for the scenario ai.awareness.rate goes below 0 (what a soldier sees drains its awareness
+// instead of raising it, the +0.5 of a hit included) and ai.threat.seconds to 0 (no answering a hit).
 async function soldierlag () {
   await rcon(`cv give ${SHOOTER} ammo_556_m855 60`)
   await arm('m4c')
@@ -488,7 +504,7 @@ async function soldierlag () {
   await rcon(`execute at ${SHOOTER} run fill 31 65 19 46 68 27 minecraft:air`)
   const there = await rcon(`execute at ${SHOOTER} if entity ${PATROL}`)
   if (!/Test passed/.test(there)) throw new Error('no patrol soldier was kept')
-  await setGrace(100000000)
+  await setAi({ 'awareness.rate': -50, 'threat.seconds': 0 })
   await tp(SHOOTER, spot.x, 65, spot.z, 180, 0)
   await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
   await tp(TARGET, W.x, 65, W.z, -90, 0)
@@ -603,7 +619,7 @@ async function soldierlag () {
     keep()
     view.stop()
     motion.stop()
-    await setGrace(null)
+    await setAi(null)
   }
 }
 
@@ -967,7 +983,7 @@ async function lag () {
     }
   }
   keep()
-  await setGrace(null).catch(e => log('could not put config.yml back:', e.message))
+  await setAi(null).catch(e => log('could not put config.yml back:', e.message))
   for (const id of ourRaids) await rcon('cv end ' + id).catch(() => {})
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')
   shooter.quit()
@@ -976,7 +992,7 @@ async function lag () {
   process.exit(failures.length)
 })().catch(async e => {
   log('ERROR', e.stack || e.message, failures)
-  await setGrace(null).catch(() => {})
+  await setAi(null).catch(() => {})
   if (shooter) shooter.quit()
   if (target) target.quit()
   process.exit(2 + failures.length)

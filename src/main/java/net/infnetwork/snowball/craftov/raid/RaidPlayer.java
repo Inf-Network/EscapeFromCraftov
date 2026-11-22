@@ -1,7 +1,10 @@
 package net.infnetwork.snowball.craftov.raid;
 
+import io.papermc.paper.datacomponent.item.ResolvableProfile;
+import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
+import org.bukkit.entity.Mannequin;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
@@ -50,7 +53,25 @@ public final class RaidPlayer {
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;
     public int extractTicks;
+    /** Until this tick the player takes no damage and cannot shoot, stab or throw (landing, rejoining). */
     public long protectedUntil;
+    /**
+     * Soldiers leave a freshly landed player alone until this tick (ai.insertion-grace-ticks), or
+     * until the player fires or hurts someone. Only landing sets it; rejoining does not.
+     */
+    public long aiGraceUntil;
+    /**
+     * Tick of the last hit this player (or their stand-in) took from, or dealt to, another player
+     * or a soldier (-1: none yet). Leaving the game within raid.combat-logout-seconds of it counts
+     * as death.
+     */
+    public long lastCombatTick = -1;
+    /**
+     * The last hit another player or a soldier dealt this player or their stand-in. Kept apart
+     * from DamageService's last hit, which bleeding overwrites every 1.5 s, so leaving mid-fight
+     * credits the attacker.
+     */
+    public DamageService.@Nullable LastHit lastHostile;
     public @Nullable Location lastLocation;
     public long disconnectedAt;
     /**
@@ -63,6 +84,23 @@ public final class RaidPlayer {
      * exactly as they were (insurance mark, fire mode, armory items).
      */
     public @Nullable Map<Integer, ItemStack> disconnectedInventory;
+    /** A disconnected player's skin, taken when they left, for their stand-in and their body. */
+    public @Nullable ResolvableProfile look;
+    /**
+     * What stays of a disconnected player where they stood (RaidManager.spawnStandIn): it can be
+     * shot, and a rejoin puts the player in its place. Null during the entry camera and once settled.
+     */
+    public @Nullable Mannequin standIn;
+    /**
+     * A disconnected player's health when they left. The stand-in carries it on from there; this
+     * is what counts whenever there is none.
+     */
+    public double offlineHealth;
+    /**
+     * A disconnected player's operator armour wear multiplier (OperatorService) as they left, for
+     * bullets their stand-in takes.
+     */
+    public double armorWear = 1.0;
     public @Nullable String escortContract;
     public int containersSearched;
 

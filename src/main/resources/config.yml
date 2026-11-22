@@ -103,6 +103,13 @@ match:
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
   reconnect-seconds: 120
+  # Leaving the game within this many seconds of a hit taken from, or dealt to, another player or a
+  # soldier is death on the spot (report: 交战中断线); the kill goes to whoever hit them last. 0 turns
+  # it off.
+  combat-logout-seconds: 15
+  # Whoever is still on the entry camera this long after deployment (s) is put down on their insertion
+  # point at once. The camera itself takes about 7 s; values below 10 count as 10.
+  deploy-timeout-seconds: 20
 
 downed:
   # Bleed-out time (s) of the first and second knock-down. A third lethal hit kills.
@@ -287,10 +294,55 @@ ai:
   operator-chance: [0.15, 0.35, 0.5]
   operator-delay-seconds: 60
   count-multiplier: 1.0
-  # Soldiers ignore freshly inserted players for this many ticks (20 ticks = 1 s).
+  # Soldiers ignore freshly inserted players for this many ticks after the 3 s landing protection
+  # (20 ticks = 1 s), unless the player fires, throws something or hurts someone first. Rejoining
+  # after a disconnect gives none of it: 2 s of protection (no damage, no attacks) and that is all;
+  # soldiers who see the player aim through it and open fire the moment it ends.
   insertion-grace-ticks: 240
+  # A soldier's body or limb hit does this share of what a player's would with the same gun and
+  # ammo, before armour (a boss: x1.15 on top). Headshots are softer still: soldiers use half the
+  # gun's head multiplier (at least x1), so with the usual x2.0 a soldier's headshot does about a
+  # third of a player's. World difficulty never changes any of it. 0.65 is the designed value;
+  # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # How far from the point it aims at a soldier's rounds land, in metres at the target, the same at
+  # any distance: from the first value at the lowest accuracy (常规 0.55) to the second at 1.0 and up
+  # (绝密 operators and bosses). On a moving target it grows with the target's measured speed (x1.4
+  # at a walk, about x1.5 sprinting); x2.6 when it has just started shooting (settling over 3 s).
+  # Past the gun's effective range it fires one or two rounds at a time.
+  aim-error: [0.6, 0.25]
+  sniper-aim-error: [0.2, 0.1]
+  # A hit from someone a soldier has not spotted tells it roughly where the shot came from (within
+  # error-meters; 1 + a tenth of the distance close up) but not who. Its awareness of the shooter
+  # jumps by 0.5 (to at most 0.9) and it looks 1.5 times as far for them; for seconds it fires
+  # bursts at that spot, works its way there from cover to cover and calls soldiers within 24
+  # blocks over, then goes to look.
+  threat:
+    seconds: 8
+    error-meters: 5
+  # A boss and its guards asleep at their post until their time ignore gunfire and explosions
+  # elsewhere, but wake (all of them) when one goes off within this many blocks of any of them, as
+  # they do when one of them sees a player, is hurt (bullet, blade or grenade) or falls.
+  boss-wake-radius: 12
+  # What a fallen soldier leaves: its gun by difficulty (常规, 机密, 绝密; bosses always), and a
+  # helmet or vest (45% each) at this share of full durability, never more than it had left.
+  drop:
+    gun-chance: [0.6, 0.45, 0.35]
+    armor-durability: [0.3, 0.7]
+  # Soldiers notice players gradually. Every look (10 a second) adds rate/10 times how close you are
+  # ((1 - distance/sight)^1.5, x3 within 6 blocks straight ahead; sight is 48 blocks, a sniper's 90,
+  # x0.55 at night), crouching (x0.5), standing still (x0.7) or sprinting (x1.5), light on you
+  # (x0.3 in the dark to x1 in full light), how much of you shows (head, chest and pelvis; glass,
+  # panes, bars, fences and leaves let half through each) and where you are in its view (x1 in the
+  # 120 degree cone ahead, x0.3 out to the sides, nothing behind; wider and x1.5 once it is alert).
+  # At 0.4 it turns and comes to look, at 1 it has spotted you. Out of sight it fades by fade a second.
+  awareness:
+    rate: 2.0
+    fade: 0.25
+  # Soldiers open the wooden doors on their way and close them again this many ticks after the last
+  # one went through (once nobody stands in the doorway). Iron and locked doors stay shut.
+  door-close-ticks: 40
   # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep
   # moving and shooting back, but their next shot waits shot-delay-ticks and their spread is multiplied
   # until the dazzle ends. Then a strobe cannot dazzle them again for immune-ticks.

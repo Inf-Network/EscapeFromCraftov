@@ -129,8 +129,10 @@ public final class DamageService implements Listener {
      * shelling, your own grenade) only names the cause: whoever hurt the victim in the last 30
      * seconds keeps the credit, so a fall or a shell cannot take a kill away from them, and the
      * death reads "killed by them (fall)". It does not restart their 30 seconds; the bleeding of a
-     * wound they made does ({@link #recordBleed}). Only players are covered: a shell that kills a
-     * soldier somebody shot a moment ago is nobody's kill, as before.
+     * wound they made does ({@link #recordBleed}). Only players (and their stand-ins) are covered: a shell that kills a
+     * soldier somebody shot a moment ago is nobody's kill, as before. Every bullet, knife and grenade
+     * hit passes through here, so a hit from someone else (a player or a soldier) also marks both
+     * sides as in combat ({@link net.infnetwork.snowball.craftov.raid.RaidManager#onHostileHit}).
      */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
         recordHit(victim, attacker, weapon, part, false, false);
@@ -152,14 +154,20 @@ public final class DamageService implements Listener {
     private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee,
                            boolean renews) {
         long now = Bukkit.getCurrentTick();
-        LastHit last = attacker == null && victim instanceof Player ? lastHit(victim.getUniqueId()) : null;
+        // A disconnected player's stand-in is the player: its bleeding keeps the credit too.
+        boolean player = victim instanceof Player || plugin.raids().standInOwner(victim) != null;
+        LastHit last = attacker == null && player ? lastHit(victim.getUniqueId()) : null;
         if (last != null && last.attacker() != null) {
             lastHits.put(victim.getUniqueId(), new LastHit(last.attacker(), last.attackerName(), weapon, part.zone(), part,
                     renews ? now : last.tick(), false, last.struck()));
             return;
         }
-        lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee, now));
+        LastHit hit = new LastHit(attacker == null ? null : attacker.getUniqueId(),
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee, now);
+        lastHits.put(victim.getUniqueId(), hit);
+        if (attacker != null && attacker != victim) {
+            plugin.raids().onHostileHit(victim, attacker, hit);
+        }
     }
 
     public static String displayName(Entity entity) {
@@ -194,8 +202,8 @@ public final class DamageService implements Listener {
         ArmorHit armorHit = armor(victim, part, base, ammo == null ? 1 : ammo.penetration(),
                 ammo == null ? 1.0 : ammo.armorDamage());
         double damage = base * zoneMult * armorHit.damageMult();
-        if (victim instanceof Player target && armorHit.penetrated() && zone != HitZone.HEAD) {
-            plugin.health().rollInjuries(target, part, damage, shooter);
+        if (armorHit.penetrated() && zone != HitZone.HEAD) {
+            rollInjuries(victim, part, damage, shooter);
         }
         recordHit(victim, shooter, weaponName, part);
         if (victim instanceof Player) {
@@ -223,6 +231,24 @@ public final class DamageService implements Listener {
         victim.getWorld().playSound(face, "craftov:impact.metal", SoundCategory.PLAYERS, 1f,
                 0.9f + ThreadLocalRandom.current().nextFloat() * 0.2f);
         plugin.ai().onBotHurt(victim, attacker);
+        if (attacker != null) {
+            plugin.raids().onHostileHit(victim, attacker, null); // a blocked shot or cut is still a fight
+        }
+    }
+
+    /**
+     * The wounds a hit that got through may cause: on a player, or on a disconnected player's
+     * stand-in (the wounds wait for the player, and bleed the stand-in on meanwhile).
+     */
+    private void rollInjuries(LivingEntity victim, BodyPart part, double damage, @Nullable LivingEntity attacker) {
+        if (victim instanceof Player target) {
+            plugin.health().rollInjuries(target, part, damage, attacker);
+            return;
+        }
+        RaidPlayer standsFor = plugin.raids().standInOwner(victim);
+        if (standsFor != null) {
+            plugin.health().rollInjuries(standsFor.uuid, part, damage, attacker);
+        }
     }
 
     /**
@@ -258,6 +284,12 @@ public final class DamageService implements Listener {
         double loss = base * armorDamage * wear;
         if (victim instanceof Player p) {
             loss *= plugin.operators().armorWearMultiplier(p);
+        } else {
+            // A disconnected player's stand-in wears its armour as the player would.
+            RaidPlayer standsFor = plugin.raids().standInOwner(victim);
+            if (standsFor != null) {
+                loss *= standsFor.armorWear;
+            }
         }
         double strength = armorStrength(dura, armor.durability(), loss,
                 plugin.getConfig().getDouble("combat.armor.full-protection-above", FULL_PROTECTION_ABOVE));
@@ -331,7 +363,16 @@ public final class DamageService implements Listener {
         return Math.max(0, Math.min(1, value));
     }
 
-    /** Deals raw damage without knockback or invulnerability frames. */
+    /**
+     * Deals raw damage without knockback or invulnerability frames. When a soldier (or any
+     * non-player) hurts a player, the damage source names no attacking entity, only the place the
+     * hit came from (so the screen still tilts away from the shooter): vanilla scales damage from
+     * a mob to a player with the world's difficulty, and soldiers' damage is meant to be set by
+     * ai.damage-multiplier alone, whatever difficulty a world ends up on. Kill credit comes from
+     * {@link #recordHit}, RaidManager counts any damage dealt here as hostile, and a soldier may
+     * always hurt a player, so nothing needs the entity there. Other pairs keep it: friendly fire
+     * between players and stand-ins is sorted out on EntityDamageByEntityEvent.
+     */
     public void deal(LivingEntity victim, @Nullable LivingEntity attacker, double amount) {
         if (amount <= 0 || victim.isDead()) {
             return;
@@ -339,7 +380,9 @@ public final class DamageService implements Listener {
         victim.setNoDamageTicks(0);
         DamageSource.Builder builder = DamageSource.builder(attacker instanceof Player ? DamageType.PLAYER_ATTACK
                 : attacker != null ? DamageType.MOB_ATTACK : DamageType.GENERIC);
-        if (attacker != null) {
+        if (attacker != null && victim instanceof Player && !(attacker instanceof Player)) {
+            builder.withDamageLocation(attacker.getLocation());
+        } else if (attacker != null) {
             builder.withCausingEntity(attacker).withDirectEntity(attacker);
         }
         applying = true;
@@ -456,8 +499,8 @@ public final class DamageService implements Listener {
         if (now - lastMelee.getOrDefault(player.getUniqueId(), -1000L) < spec.cooldownTicks()
                 || !eye.getWorld().equals(victim.getWorld())
                 || eye.distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
-                || !plugin.raids().canFire(player)
-                || !(victim instanceof Player || plugin.ai().isAi(victim))
+                || !plugin.raids().canAttack(player)
+                || !(victim instanceof Player || plugin.ai().isAi(victim) || plugin.raids().standInOwner(victim) != null)
                 || (victim instanceof Player target && !plugin.raids().canBeShot(target))
                 || !plugin.raids().canDamage(player, victim)) {
             return;
@@ -474,8 +517,8 @@ public final class DamageService implements Listener {
         double base = spec.damage();
         ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
         double damage = base * meleeZoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
-        if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
-            plugin.health().rollInjuries(target, part, damage, player);
+        if (armorHit.penetrated() && part != BodyPart.HEAD) {
+            rollInjuries(victim, part, damage, player);
         }
         recordHit(victim, player, def.name(), part, true, false);
         if (victim instanceof Player) {

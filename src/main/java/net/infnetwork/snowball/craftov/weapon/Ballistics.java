@@ -79,7 +79,8 @@ public final class Ballistics {
     }
 
     /**
-     * Fires one pellet from {@code eye} along {@code dir}. Returns the entity hit, if any.
+     * Fires one pellet from {@code eye} along {@code dir}. Returns the entity hit, if any. A soldier's
+     * round stops in a fellow soldier (shield and all) without hurting it, rather than passing through.
      *
      * <p>The round's path is traced block by block: glass it shatters on the way lets it fly on with a
      * little less damage, so a window costs a round some punch instead of the whole shot, and so does a
@@ -93,13 +94,14 @@ public final class Ballistics {
     public @Nullable LivingEntity fire(LivingEntity shooter, Location eye, Vector dir, GunSpec gun,
                                        @Nullable AmmoSpec ammo, String weaponName, boolean tracer) {
         World world = eye.getWorld();
+        boolean soldier = plugin.ai().isAi(shooter);
         Predicate<Entity> filter = entity -> entity instanceof LivingEntity living
                 && entity != shooter
                 && !living.isDead()
                 && !(entity instanceof org.bukkit.entity.ArmorStand)
                 && !entity.getPersistentDataContainer().has(Keys.ENTITY_ROLE)
                 && !(entity instanceof Player p && (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || !plugin.raids().canBeShot(p)))
-                && plugin.raids().canDamage(shooter, living);
+                && (plugin.raids().canDamage(shooter, living) || soldier && plugin.ai().isAi(living));
         // A player's round meets everyone where that player's screen showed them (HitboxHistory).
         int rewind = plugin.hitboxes().rewindMillis(shooter);
         Vector from = eye.toVector();
@@ -138,9 +140,13 @@ public final class Ballistics {
             if (hit != null) {
                 hitAnything = true;
                 LivingEntity living = hit.entity();
-                hitEntity = living;
                 end = hit.point();
                 replayEnd = hit.body();
+                if (!plugin.raids().canDamage(shooter, living)) {
+                    // A fellow soldier in the line of fire: the round ends there and does nothing.
+                    break;
+                }
+                hitEntity = living;
                 // The hit zone is read on the body the shooter saw (crouched or standing then); the wound
                 // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
@@ -291,6 +297,20 @@ public final class Ballistics {
             }
         }
         return out;
+    }
+
+    /**
+     * Whether a round with {@code pen} penetration gets through {@code block} on its own: glass in a
+     * raid it shatters, or a block in combat.penetration.blocks it has the level for. Soldiers ask it
+     * of the see-through blocks on their line of fire, so they shoot back through the bars and the
+     * leaves a player's rounds go through.
+     */
+    public boolean passes(Block block, int pen) {
+        if (shatters(block)) {
+            return true;
+        }
+        BlockPenetration.Rule rule = penetration.of(plugin.getConfig(), block.getType());
+        return rule != null && pen >= rule.level();
     }
 
     /** Glass in a raid, other than tinted glass, breaks under any round. */

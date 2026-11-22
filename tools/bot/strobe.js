@@ -17,6 +17,7 @@
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node strobe.js
 // Exit code 0 when every check passes, 1 when one fails, 2 when the scenario could not be set up.
 const mineflayer = require('mineflayer')
+const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 
 const PORT = Number(process.env.PORT || 25565)
@@ -101,9 +102,22 @@ function openSpotNear (bot, soldier) {
     const mode = ['爆闪', '常亮', '关'].find(m => s.includes('战术手电 ') && s.includes(`"value":"${m}"`))
     if (mode) log('light', mode)
   })
-  // Who hit us: damage_event carries the attacker's entity id + 1.
+  // Who hit us: damage_event carries the attacker's entity id + 1. A soldier's hit names no attacker,
+  // only where the shot came from, so that is the soldier nearest that spot.
   const hits = []
-  bot._client.on('damage_event', p => { if (bot.entity && p.entityId === bot.entity.id) hits.push({ by: p.sourceCauseId - 1, at: Date.now() }) })
+  bot._client.on('damage_event', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    let by = p.sourceCauseId - 1
+    if (!bot.entities[by] && p.sourcePosition) {
+      const from = new Vec3(p.sourcePosition.x, p.sourcePosition.y, p.sourcePosition.z)
+      let best = 3
+      for (const e of Object.values(bot.entities)) {
+        const d = SOLDIERS.includes(e.name) ? e.position.distanceTo(from) : Infinity
+        if (d < best) { best = d; by = e.id }
+      }
+    }
+    hits.push({ by, at: Date.now() })
+  })
   // Camera overlays arrive as a client-only helmet on our own head slot (5).
   const overlays = []
   bot._client.on('entity_equipment', p => {

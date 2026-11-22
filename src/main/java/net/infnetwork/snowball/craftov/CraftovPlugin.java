@@ -199,6 +199,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         worlds.ensureBuiltins();
         maps.load();
+        maps.warnCloseSpawns();
         lobby.start();
         range.start();
         stance.start();

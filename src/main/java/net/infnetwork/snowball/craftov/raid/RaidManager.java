@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
+import com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent;
+import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.gui.UiItems;
@@ -32,6 +34,7 @@ import org.bukkit.block.data.Openable;
 import org.bukkit.block.data.Powerable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
@@ -48,6 +51,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -131,6 +135,7 @@ public final class RaidManager implements Listener {
         return byWorld.containsKey(world);
     }
 
+    /** Whether the player may handle a weapon at all: aim, reload, and (see {@link #canAttack}) use it. */
     public boolean canFire(Player player) {
         if (plugin.lobby().inRange(player)) {
             return true;
@@ -139,6 +144,35 @@ public final class RaidManager implements Listener {
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
                 && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX)
                 && !plugin.downed().isReviving(player);
+    }
+
+    /**
+     * Whether the player may shoot, stab or throw something now: as {@link #canFire}, but not from
+     * behind spawn protection. Aiming and reloading are still fine then.
+     */
+    public boolean canAttack(Player player) {
+        return canFire(player) && !isProtected(player);
+    }
+
+    /**
+     * Spawn protection after landing or rejoining: no damage taken, and no attacks made either, so
+     * nobody fights from behind it.
+     */
+    public boolean isProtected(Player player) {
+        RaidPlayer rp = session(player);
+        return rp != null && isProtected(rp);
+    }
+
+    private static boolean isProtected(RaidPlayer rp) {
+        return Bukkit.getCurrentTick() < rp.protectedUntil;
+    }
+
+    /** The player fired, threw something or hurt someone: soldiers stop holding back. */
+    public void onAttack(Player player) {
+        RaidPlayer rp = session(player);
+        if (rp != null) {
+            rp.aiGraceUntil = 0;
+        }
     }
 
     public boolean canBeShot(Player player) {
@@ -157,6 +191,14 @@ public final class RaidManager implements Listener {
         if (!isCombatant(victim) && isCombatWorld(victim.getWorld())) {
             return false;
         }
+        RaidPlayer standsFor = standInOwner(victim);
+        if (attacker instanceof Player a && standsFor != null) {
+            // A stand-in is its player: squadmates cannot hurt it without friendly fire.
+            Raid raid = raidOf(a);
+            RaidPlayer ra = raid == null ? null : raid.player(a.getUniqueId());
+            return ra != null && raid.player(standsFor.uuid) == standsFor
+                    && (ra.squad != standsFor.squad || plugin.getConfig().getBoolean("combat.friendly-fire", false));
+        }
         if (attacker instanceof Player a && victim instanceof Player v) {
             Raid raid = raidOf(a);
             if (raid == null || raid != raidOf(v)) {
@@ -173,14 +215,47 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Players, soldiers, drones and range dummies: the only living things that take hits in a raid or
-     * on the range. Anything else alive there is scenery (corpses, kill-replay stand-ins, whatever
-     * decoration comes next), so a shot passes through it instead of stopping in mid-air with a hit
-     * marker.
+     * {@code attacker} hit {@code victim} (or had the shot blocked: {@code hit} is null then). A
+     * raid player on either side is in combat from now on; the victim also remembers the hit, so
+     * leaving the game right after credits whoever made it. A hit on a stand-in counts for its
+     * player, so coming back into the fight and leaving again at once is death like any other
+     * leaving mid-fight. Hits between squadmates that do no damage (a grenade near a squadmate
+     * without friendly fire) count for nothing.
+     */
+    public void onHostileHit(LivingEntity victim, LivingEntity attacker, DamageService.@Nullable LastHit hit) {
+        if (!canDamage(attacker, victim)) {
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        RaidPlayer rv = victim instanceof Player v ? session(v) : standInOwner(victim);
+        if (rv != null && (rv.active() || rv.state == RaidPlayer.State.DISCONNECTED)) {
+            rv.lastCombatTick = now;
+            if (hit != null) {
+                rv.lastHostile = hit;
+            }
+        }
+        RaidPlayer ra = attacker instanceof Player a ? session(a) : null;
+        if (ra != null && ra.active()) {
+            ra.lastCombatTick = now;
+            ra.aiGraceUntil = 0;
+        }
+    }
+
+    /** Whether leaving the game now counts as death: within raid.combat-logout-seconds of a fight (0: never). */
+    private boolean inCombat(RaidPlayer rp, long now) {
+        long window = plugin.getConfig().getLong("raid.combat-logout-seconds", 15) * 20L;
+        return window > 0 && rp.lastCombatTick >= 0 && now - rp.lastCombatTick < window;
+    }
+
+    /**
+     * Players, the stand-ins of disconnected players, soldiers, drones and range dummies: the only
+     * living things that take hits in a raid or on the range. Anything else alive there is scenery
+     * (corpses, kill-replay stand-ins, whatever decoration comes next), so a shot passes through it
+     * instead of stopping in mid-air with a hit marker.
      */
     public boolean isCombatant(LivingEntity entity) {
         return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
-                || plugin.lobby().isTarget(entity);
+                || plugin.lobby().isTarget(entity) || standInOwner(entity) != null;
     }
 
     /** Raid worlds and the private range: the only worlds where anyone can fire a gun. */
@@ -309,6 +384,15 @@ public final class RaidManager implements Listener {
             raid.switchBlocks.put(Raid.blockKey(sw.pos().at(world)), sw);
         }
         plugin.ai().populate(raid);
+        if (raid.tier.boss()) {
+            for (MapDef.BossDef boss : map.bosses()) {
+                if (rng.nextDouble() < boss.chance()) {
+                    // In place from the start, asleep until its time: it used to appear out of thin air
+                    // with its guards in a room someone might be looting.
+                    plugin.ai().spawnBoss(raid, boss, true);
+                }
+            }
+        }
         // Assign spawn groups.
         List<Integer> groups = new ArrayList<>();
         for (MapDef.SpawnDef spawn : map.spawns()) {
@@ -358,6 +442,12 @@ public final class RaidManager implements Listener {
                 rp.inFlight = false;
             }
             Player player = Bukkit.getPlayer(uuid);
+            if (player == null && rp != null && rp.state == RaidPlayer.State.DISCONNECTED && rp.lastLocation != null
+                    && raid.state == Raid.State.RUNNING) {
+                // Dropped out during the flight: from now on they stand on their insertion point
+                // like anyone else who left the raid, and a reconnect puts them there.
+                spawnStandIn(raid, rp, rp.lastLocation, null);
+            }
             if (player == null || rp != null && rp.state != RaidPlayer.State.DEPLOYING) {
                 return; // offline (a later reconnect lands at once), or settled while the camera flew
             }
@@ -412,6 +502,7 @@ public final class RaidManager implements Listener {
         player.setFallDistance(0);
         rp.state = RaidPlayer.State.ALIVE;
         rp.protectedUntil = Bukkit.getCurrentTick() + 60L;
+        rp.aiGraceUntil = rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240);
         plugin.carry().refreshLocks(player);
         player.showTitle(Title.title(Text.mm("<#F2C94C><b>行动开始"), Text.mm("<#9AA0A6>搜索物资，活着撤离"),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
@@ -593,13 +684,13 @@ public final class RaidManager implements Listener {
             }
             int remaining = raid.remainingSeconds();
             int elapsed = raid.elapsedSeconds();
-            if (!raid.bossSpawned && raid.tier.boss()) {
+            if (raid.tier.boss()) {
                 for (MapDef.BossDef boss : raid.map.bosses()) {
-                    if (elapsed >= boss.delaySeconds()) {
-                        raid.bossSpawned = true;
-                        if (ThreadLocalRandom.current().nextDouble() < boss.chance()) {
-                            plugin.ai().spawnBoss(raid, boss);
-                            announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资。");
+                    // Asleep at its post since the raid began (deploy); at its own time it is up and about.
+                    if (elapsed >= boss.delaySeconds() && raid.bossesWoken.add(boss.id())) {
+                        String name = plugin.ai().wakeBoss(raid, boss.id());
+                        if (name != null) {
+                            announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(name) + "</white> 出现在地图中，携带高价值物资。");
                         }
                     }
                 }
@@ -633,9 +724,14 @@ public final class RaidManager implements Listener {
                     missing(raid, rp, "断线超时");
                 }
             }
+            if (remaining > 0) {
+                landOverdue(raid, now);
+            }
             if (remaining <= 0) {
                 for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
-                    if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
+                    if (rp.state == RaidPlayer.State.DEPLOYING || rp.state == RaidPlayer.State.DISCONNECTED && rp.inFlight) {
+                        callOff(raid, rp);
+                    } else if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
                         Player player = Bukkit.getPlayer(rp.uuid);
                         if (player != null && rp.active()) {
                             die(raid, player, rp, "行动超时，失踪", null);
@@ -650,6 +746,55 @@ public final class RaidManager implements Listener {
                 raid.endTick = Math.max(raid.endTick, now + 20L * 8); // a kill replay may need longer
             }
         }
+    }
+
+    /**
+     * The entry camera lands its squad after about 7 seconds. Whoever is still flying in long after
+     * that (the camera broke down, or a player was moved off it) would hang in the air for the whole
+     * raid, and keep it open: they are put down on their insertion point now.
+     */
+    private void landOverdue(Raid raid, long now) {
+        long timeout = Math.max(10, plugin.getConfig().getInt("raid.deploy-timeout-seconds", 20)) * 20L;
+        for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+            Player player = rp.state == RaidPlayer.State.DEPLOYING ? Bukkit.getPlayer(rp.uuid) : null;
+            if (player == null || now - rp.startTick <= timeout) {
+                continue;
+            }
+            plugin.getLogger().warning(rp.name + " was still flying into raid " + raid.id + " "
+                    + (now - rp.startTick) / 20 + " s after deployment; landing them now");
+            rp.inFlight = false;
+            insert(raid, player, rp.lastLocation != null && rp.lastLocation.getWorld() == raid.world
+                    ? rp.lastLocation : raid.world.getSpawnLocation());
+        }
+    }
+
+    /**
+     * The raid ran out before this player landed (in practice an admin's /cv end during the entry
+     * camera): home with everything they brought, and the entry fee and insurance premium back, as
+     * when the server stops during the flight. That goes for whoever dropped out of the camera too
+     * (DISCONNECTED, still inFlight): they never landed either, and find it all back when they
+     * come back.
+     */
+    private void callOff(Raid raid, RaidPlayer rp) {
+        rp.inFlight = false;
+        Player player = rp.state == RaidPlayer.State.DISCONNECTED ? null : Bukkit.getPlayer(rp.uuid);
+        if (player == null) {
+            if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
+                // As far as other players' profit goes, they went home with all of it (see held).
+                rp.carriedOut = stackCounts(homeOffline(raid, rp, rp.fees, "raid " + raid.id + " ended during the entry camera"));
+                rp.disconnectedInventory = null;
+            }
+            // Otherwise (not expected: leaving turns DEPLOYING into DISCONNECTED in onQuit) the next
+            // join finds the raid gone and keeps the lobby loadout (LobbyService.onJoin).
+            rp.state = RaidPlayer.State.LEFT;
+            byPlayer.remove(rp.uuid, raid);
+            plugin.escorts().voided(rp);
+            return;
+        }
+        plugin.profiles().get(player).money += rp.fees;
+        evacuate(raid, player, rp, rp.fees > 0
+                ? "行动在你落地前结束，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还，携带的物资已保留。"
+                : "行动在你落地前结束，携带的物资已保留。");
     }
 
     // ------------------------------------------------------------------ extraction
@@ -806,7 +951,7 @@ public final class RaidManager implements Listener {
         for (ItemStack stack : drop) {
             lost += plugin.items().value(stack);
         }
-        spawnCorpse(raid, at, player.getName(), drop, player);
+        spawnCorpse(raid, at, drop, player);
         player.getInventory().clear();
         player.setItemOnCursor(null);
         Profile profile = plugin.profiles().get(player);
@@ -825,21 +970,7 @@ public final class RaidManager implements Listener {
         trimReports(profile);
         plugin.profiles().saveNow(player.getUniqueId());
         plugin.escorts().settle(raid, rp, false);
-        // Your own grenade is no kill: it would count for the daily contract and pay the top player
-        // his own house bounty. Nor is a squadmate's, with friendly fire on: a squad could otherwise
-        // cash in its own member's bounty. Nor does a killer who has already died or got out get one
-        // (a wound of theirs bleeding out later, say): their kills were counted and saved when they
-        // left, so a late one would pay the bounty and the contract but never reach their stats.
-        if (hit != null && hit.attacker() != null && !hit.attacker().equals(player.getUniqueId())) {
-            Player killer = Bukkit.getPlayer(hit.attacker());
-            RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
-            if (kr != null && kr.active() && kr.squad != rp.squad) {
-                kr.kills++;
-                plugin.tasks().onPlayerKill(killer);
-                plugin.bounties().onKill(killer, player, raid);
-                killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(player.getName())));
-            }
-        }
+        creditKill(raid, hit, rp);
         killFeed(raid, hit, player.getName());
         player.setGameMode(GameMode.SPECTATOR);
         player.showTitle(Title.title(Text.mm("<#FF4D4D><b>行动失败"), Text.mm("<#9AA0A6>" + Text.escape(reason)),
@@ -860,6 +991,28 @@ public final class RaidManager implements Listener {
                 }
             }
         });
+    }
+
+    /**
+     * Credits a player's death (in the raid or offline) to the player behind {@code hit}, if any.
+     * Your own grenade is no kill: it would count for the daily contract and pay the top player his
+     * own house bounty. Nor is a squadmate's, with friendly fire on: a squad could otherwise cash in
+     * its own member's bounty. Nor does a killer who has already died or got out get one (a wound of
+     * theirs bleeding out later, say): their kills were counted and saved when they left, so a late
+     * one would pay the bounty and the contract but never reach their stats.
+     */
+    private void creditKill(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim) {
+        if (hit == null || hit.attacker() == null || hit.attacker().equals(victim.uuid)) {
+            return;
+        }
+        Player killer = Bukkit.getPlayer(hit.attacker());
+        RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
+        if (kr != null && kr.active() && kr.squad != victim.squad) {
+            kr.kills++;
+            plugin.tasks().onPlayerKill(killer);
+            plugin.bounties().onKill(killer, victim, raid);
+            killer.sendActionBar(Text.mm("<#FF4D4D>✖ 击杀 <white>" + Text.escape(victim.name)));
+        }
     }
 
     /** Dead players watching a squadmate: spectator -> (raid, own raid record). */
@@ -891,17 +1044,97 @@ public final class RaidManager implements Listener {
         plugin.lobby().enterLobby(player);
     }
 
-    /** Shift leaves the camera; a target that died, extracted or left hands over to the next mate. */
-    @EventHandler
-    public void onStopSpectating(com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent event) {
+    /**
+     * The spectator menu (the number keys or the mouse wheel in spectator mode) teleports to any
+     * player on the server, in any world: to the lobby off the entry camera, or next to an enemy
+     * after death. Nobody in a raid, dead in one or watching a squadmate may use it. The client
+     * still opens the menu (it cannot be kept from doing so), but picking someone does nothing.
+     * Paper gives the same cause to the server's own camera moves (setSpectatorTarget snaps the
+     * player onto the entity they now watch); those land on that entity and are let through.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onSpectateTeleport(PlayerTeleportEvent event) {
+        if (event.getCause() != PlayerTeleportEvent.TeleportCause.SPECTATE) {
+            return;
+        }
         Player player = event.getPlayer();
+        if (!byPlayer.containsKey(player.getUniqueId()) && !spectators.containsKey(player.getUniqueId())) {
+            return;
+        }
+        Entity target = player.getSpectatorTarget();
+        Location to = event.getTo();
+        if (target != null && target.getWorld() == to.getWorld() && target.getLocation().distanceSquared(to) < 1.0E-6) {
+            return;
+        }
+        event.setCancelled(true);
+    }
+
+    /**
+     * Left-clicking an entity in spectator mode starts watching it. That would let the dead follow
+     * an enemy around, or slip off the frozen death view: click the squadmate standing in front (or
+     * the body at their feet), then Shift off that camera instead of the held one, into a free
+     * camera. So in a raid every camera is only for whoever the plugin put on it: the entry camera
+     * (an item display) while flying in, the death view and the kill replay's camera after death
+     * (ReplayService knows which), and squadmates once the dead are watching them. Clicking anything
+     * else does nothing. The plugin's own camera moves pass through here too and are let through.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onStartSpectating(PlayerStartSpectatingEntityEvent event) {
+        Player player = event.getPlayer();
+        UUID id = player.getUniqueId();
+        Map.Entry<Raid, RaidPlayer> watching = spectators.get(id);
+        Raid raid = watching != null ? watching.getKey() : byPlayer.get(id);
+        RaidPlayer own = watching != null ? watching.getValue() : raid == null ? null : raid.player(id);
+        if (raid == null || own == null) {
+            return;
+        }
+        Entity target = event.getNewSpectatorTarget();
+        if (plugin.replays().isCamera(player, target)) {
+            return;
+        }
+        boolean allowed;
+        if (watching != null) {
+            // spectateMate files the dead under spectators before it moves the camera.
+            RaidPlayer mate = target instanceof Player p ? raid.player(p.getUniqueId()) : null;
+            allowed = mate != null && mate.squad == own.squad;
+        } else {
+            // Dead but not yet watching a mate: nothing but ReplayService's cameras, above.
+            allowed = own.state == RaidPlayer.State.DEPLOYING && target instanceof ItemDisplay;
+        }
+        if (!allowed) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Keeps players on the camera the plugin gave them. Flying in, nothing takes them off the entry
+     * camera (Shift, the spectator menu, a teleport by command: Cinematic brings back whoever is
+     * moved to another world). Watching a squadmate, Shift leaves; a target that died, extracted
+     * or left hands over to the next mate; anything else (the spectator menu) stays on the mate.
+     * Paper sends this event too when the plugin moves the camera or changes the game mode, so a
+     * camera is only held on to while the player is still a spectator in the camera's world.
+     */
+    @EventHandler
+    public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
+        Player player = event.getPlayer();
+        Entity from = event.getSpectatorTarget();
+        boolean held = player.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == player.getWorld();
+        RaidPlayer flying = session(player);
+        if (held && from instanceof ItemDisplay && flying != null && flying.state == RaidPlayer.State.DEPLOYING && flying.inFlight) {
+            event.setCancelled(true);
+            return;
+        }
         Map.Entry<Raid, RaidPlayer> entry = spectators.get(player.getUniqueId());
         if (entry == null) {
             return;
         }
         Raid raid = entry.getKey();
-        RaidPlayer watched = event.getSpectatorTarget() instanceof Player t ? raid.player(t.getUniqueId()) : null;
-        boolean targetGone = watched == null || !watched.active() || event.getSpectatorTarget().getWorld() != raid.world;
+        RaidPlayer watched = from instanceof Player t ? raid.player(t.getUniqueId()) : null;
+        boolean targetGone = watched == null || !watched.active() || from.getWorld() != raid.world;
+        if (held && !targetGone && !player.getCurrentInput().isSneak()) {
+            event.setCancelled(true);
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !spectators.containsKey(player.getUniqueId())) {
                 return;
@@ -913,7 +1146,10 @@ public final class RaidManager implements Listener {
         });
     }
 
-    /** Spectators drift if their target extracts or dies between events: re-check once a second. */
+    /**
+     * Spectators drift if their target extracts or dies between events, or if a command moves them
+     * to another world while their camera stays behind: re-check once a second.
+     */
     private void tickSpectators() {
         for (UUID uuid : new ArrayList<>(spectators.keySet())) {
             Player player = Bukkit.getPlayer(uuid);
@@ -922,9 +1158,9 @@ public final class RaidManager implements Listener {
                 spectators.remove(uuid);
                 continue;
             }
-            org.bukkit.entity.Entity target = player.getSpectatorTarget();
+            Entity target = player.getSpectatorTarget();
             RaidPlayer watched = target instanceof Player t ? entry.getKey().player(t.getUniqueId()) : null;
-            if (watched == null || !watched.active()) {
+            if (watched == null || !watched.active() || target.getWorld() != player.getWorld()) {
                 if (!spectateMate(player, entry.getKey(), entry.getValue())) {
                     stopSpectating(player);
                 }
@@ -942,15 +1178,47 @@ public final class RaidManager implements Listener {
         }
     }
 
+    /** The reconnect window or the raid ran out on a disconnected player: missing in action. */
     private void missing(Raid raid, RaidPlayer rp, String reason) {
         if (rp.state != RaidPlayer.State.DISCONNECTED && !rp.active()) {
             return;
         }
+        lostOffline(raid, rp, "失踪（" + reason + "）", "missing in raid " + raid.id, false);
+        announce(raid, "<#8A8F98>" + Text.escape(rp.name) + " 失去联络。");
+    }
+
+    /**
+     * A disconnected player died where they stood: their stand-in was killed, or they bled out.
+     * Settled like going missing, but it is a death in the raid like any other: the kill
+     * feed shows it, the kill counts for whoever made it, and the player's own kills and
+     * experience from the raid count as they would on any death.
+     */
+    private void diedOffline(Raid raid, RaidPlayer rp, DamageService.@Nullable LastHit hit) {
+        if (rp.state != RaidPlayer.State.DISCONNECTED) {
+            return;
+        }
+        lostOffline(raid, rp, "断线后" + deathReason(hit), "killed while offline in raid " + raid.id, true);
+        creditKill(raid, hit, rp);
+        killFeed(raid, hit, rp.name);
+    }
+
+    /**
+     * Settles a player who is gone from the raid for good while offline. Their body, in their skin
+     * and with everything they carried but the melee weapon, lies where their stand-in stood (or
+     * where they left, without one); the melee weapon goes back into the loadout and the secure
+     * container home, as on any death. A player who {@code died} (rather than went missing) also
+     * gets their raid kills into their stats and the experience die() grants.
+     */
+    private void lostOffline(Raid raid, RaidPlayer rp, String outcome, String why, boolean died) {
+        Location standing = removeStandIn(rp);
+        Location at = standing != null ? standing : rp.lastLocation;
         rp.state = RaidPlayer.State.DEAD;
         List<ItemStack> drop = new ArrayList<>();
         // Items whose id items.yml no longer has cannot lie in the body: they go to the mailbox.
         List<ItemRecord> unknown = new ArrayList<>();
         ItemStack kept = null;
+        ItemStack helmet = null;
+        ItemStack vest = null;
         if (rp.disconnectedInventory != null) {
             for (Map.Entry<Integer, ItemStack> entry : rp.disconnectedInventory.entrySet()) {
                 ItemStack stack = entry.getValue();
@@ -966,27 +1234,37 @@ public final class RaidManager implements Listener {
                     }
                 } else {
                     drop.add(stack);
+                    if (entry.getKey() == CarryService.HEAD) {
+                        helmet = stack;
+                    } else if (entry.getKey() == CarryService.CHEST) {
+                        vest = stack;
+                    }
                 }
             }
         }
         ItemStack melee = kept;
-        if (rp.lastLocation != null && !drop.isEmpty()) {
-            spawnCorpse(raid, rp.lastLocation, rp.name, drop, null);
+        if (at != null && !drop.isEmpty()) {
+            // Dressed as they left, like the body of anyone who dies in the raid.
+            spawnBody(raid, at, rp.name + " 的遗体", drop, rp.look == null ? Mannequin.defaultProfile() : rp.look,
+                    helmet, vest);
         }
         long lost = 0;
         for (ItemStack stack : drop) {
             lost += plugin.items().value(stack);
         }
         long lostValue = lost;
+        long xp = died ? Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier()) : 0;
         // For the journal, should the profile be unreadable: the gear is in the raid now, so the
         // loadout must be emptied (but for the melee weapon) and the raid cleared, or a repaired
         // profile brings it back.
         ItemRecord meleeRecord = plugin.carry().isMelee(melee) ? plugin.items().toRecord(melee) : null;
         Map<Integer, ItemRecord> left = meleeRecord == null ? Map.of() : Map.of(CarryService.MELEE_SLOT, meleeRecord);
-        Supplier<String> change = () -> "missing in raid " + raid.id + ": loadout = " + ProfileService.json(left)
+        Supplier<String> change = () -> why + ": loadout = " + ProfileService.json(left)
                 + " (the rest of that gear stayed in the raid),"
                 + (unknown.isEmpty() ? "" : " add to mailbox " + ProfileService.json(unknown) + ",")
                 + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
+                + (died ? ", stats.kills +" + rp.kills + ", stats.ai_kills +" + rp.aiKills + ", xp +" + xp
+                + " and seasonXp +" + xp + " (each level reached pays 5000 x the level)" : "")
                 + (rp.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
                 + plugin.ranks().deathDelta(0, rp, lostValue) + " below 1100, never below 0)" : "");
         plugin.profiles().edit(rp.uuid, change, profile -> {
@@ -996,20 +1274,203 @@ public final class RaidManager implements Listener {
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);
+            if (died) {
+                profile.addStat("kills", rp.kills);
+                profile.addStat("ai_kills", rp.aiKills);
+                plugin.ranks().addXp(null, profile, xp);
+            }
             int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
-            profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
+            profile.reports.add(0, report(raid, rp, outcome, 0, lostValue, delta, xp));
             trimReports(profile);
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
-        announce(raid, "<#8A8F98>" + Text.escape(rp.name) + " 失去联络。");
     }
 
-    public void spawnCorpse(Raid raid, Location at, String name, List<ItemStack> items, @Nullable Player owner) {
-        io.papermc.paper.datacomponent.item.ResolvableProfile look = owner == null ? Mannequin.defaultProfile()
-                : io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile());
-        spawnBody(raid, at, name + " 的遗体", items, look,
-                owner == null ? null : owner.getInventory().getHelmet(), owner == null ? null : owner.getInventory().getChestplate());
+    // ------------------------------------------------------------------ stand-ins
+
+    /**
+     * A player who leaves the raid outside a fight stays in it as a stand-in: a mannequin in their
+     * skin, helmet, vest, rig and backpack, in the pose they left in, with their health. It is shot,
+     * stabbed and blown up like the player, armour included, so leaving the game is no way to get
+     * out of trouble. Killing it kills them: their gear goes into a body there. A rejoin puts the
+     * player in its place, with its health and whatever is left of the armour. Soldiers do not go
+     * looking for it.
+     */
+    private void spawnStandIn(Raid raid, RaidPlayer rp, Location at, @Nullable Pose pose) {
+        Map<Integer, ItemStack> carried = rp.disconnectedInventory == null ? Map.of() : rp.disconnectedInventory;
+        try {
+            Mannequin standIn = raid.world.spawn(at, Mannequin.class, m -> {
+                m.setProfile(rp.look == null ? Mannequin.defaultProfile() : rp.look);
+                m.setDescription(null); // no "NPC" line under the name
+                m.customName(net.kyori.adventure.text.Component.text(rp.name));
+                m.setImmovable(true);
+                m.setPersistent(false);
+                // Facing the way the player faced, body too: hit zones read the body's yaw, and a
+                // body left 50 degrees off its head would take chest shots in an arm.
+                m.setBodyYaw(at.getYaw());
+                org.bukkit.attribute.AttributeInstance max = m.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+                if (max != null) {
+                    max.setBaseValue(net.infnetwork.snowball.craftov.combat.HealthService.MAX_HP);
+                }
+                m.setHealth(Math.max(1, Math.min(net.infnetwork.snowball.craftov.combat.HealthService.MAX_HP, rp.offlineHealth)));
+                m.getEquipment().setHelmet(wornCopy(carried, CarryService.HEAD));
+                m.getEquipment().setChestplate(wornCopy(carried, CarryService.CHEST));
+                m.getEquipment().setLeggings(wornCopy(carried, CarryService.LEGS));
+                m.getEquipment().setBoots(wornCopy(carried, CarryService.FEET));
+                if (pose != null && pose != Pose.STANDING && Mannequin.validPoses().contains(pose)) {
+                    m.setPose(pose, true);
+                }
+                m.getPersistentDataContainer().set(Keys.STAND_IN, PersistentDataType.STRING, rp.uuid.toString());
+            });
+            // Kept loaded (the map's chunks are pinned, but only up to 40x40): an unloaded chunk
+            // would drop it, being non-persistent. raid close lets go of every ticket.
+            standIn.getChunk().addPluginChunkTicket(plugin);
+            plugin.match().teamFor(raid, rp, standIn);
+            rp.standIn = standIn;
+        } catch (RuntimeException ex) {
+            // Without one the player still comes back where they left, as before.
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not leave a stand-in for " + rp.name + " in raid " + raid.id, ex);
+        }
+    }
+
+    private static @Nullable ItemStack wornCopy(Map<Integer, ItemStack> carried, int slot) {
+        ItemStack stack = carried.get(slot);
+        return stack == null || stack.isEmpty() ? null : stack.clone();
+    }
+
+    /** The disconnected player this entity stands in for, or null if it is no stand-in. */
+    public @Nullable RaidPlayer standInOwner(@Nullable Entity entity) {
+        if (!(entity instanceof Mannequin)) {
+            return null;
+        }
+        String owner = entity.getPersistentDataContainer().get(Keys.STAND_IN, PersistentDataType.STRING);
+        Raid raid = owner == null ? null : raidIn(entity.getWorld());
+        if (raid == null) {
+            return null;
+        }
+        RaidPlayer rp;
+        try {
+            rp = raid.player(UUID.fromString(owner));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+        return rp != null && rp.state == RaidPlayer.State.DISCONNECTED && rp.standIn != null
+                && rp.standIn.getUniqueId().equals(entity.getUniqueId()) ? rp : null;
+    }
+
+    /**
+     * Takes the player's stand-in out of the world, if they have one. What its helmet and vest lost
+     * to bullets is written back to what the player carries, and its health becomes theirs.
+     * Returns where it stood, or null without one.
+     */
+    private @Nullable Location removeStandIn(RaidPlayer rp) {
+        Mannequin standIn = rp.standIn;
+        rp.standIn = null;
+        if (standIn == null) {
+            return null;
+        }
+        plugin.match().leaveTeam(standIn);
+        plugin.damage().forget(standIn.getUniqueId());
+        if (!standIn.isValid() && !standIn.isDead()) {
+            return null; // gone some other way: the player comes back where they left
+        }
+        if (rp.disconnectedInventory != null) {
+            wornBack(rp.disconnectedInventory, CarryService.HEAD, standIn.getEquipment().getHelmet());
+            wornBack(rp.disconnectedInventory, CarryService.CHEST, standIn.getEquipment().getChestplate());
+        }
+        rp.offlineHealth = standIn.getHealth();
+        Location at = standIn.getLocation();
+        standIn.remove();
+        return at;
+    }
+
+    private static void wornBack(Map<Integer, ItemStack> carried, int slot, @Nullable ItemStack worn) {
+        if (carried.containsKey(slot) && worn != null && !worn.isEmpty()) {
+            carried.put(slot, worn.clone());
+        }
+    }
+
+    /**
+     * Damage to a stand-in. What would hurt the player in a fight gets through (bullets, knives,
+     * blows, grenades and other explosions) and so does the void; it does not drown, burn or choke
+     * in a wall. A lethal hit is the player's death.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onStandInDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Mannequin standIn)) {
+            return;
+        }
+        RaidPlayer rp = standInOwner(standIn);
+        Raid raid = rp == null ? null : raidIn(standIn.getWorld());
+        if (rp == null || raid == null) {
+            return;
+        }
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        boolean counts = event instanceof EntityDamageByEntityEvent || plugin.damage().isApplying()
+                || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION || cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION
+                || cause == EntityDamageEvent.DamageCause.VOID;
+        if (!counts || raid.state != Raid.State.RUNNING) {
+            event.setCancelled(true);
+            return;
+        }
+        if (event.getFinalDamage() < standIn.getHealth()) {
+            return;
+        }
+        event.setCancelled(true);
+        DamageService.LastHit hit = plugin.damage().lastHit(standIn.getUniqueId());
+        if (hit == null && event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof LivingEntity living) {
+            plugin.damage().recordHit(standIn, living, "近战", net.infnetwork.snowball.craftov.combat.HitZone.TORSO);
+            hit = plugin.damage().lastHit(standIn.getUniqueId());
+        }
+        diedOffline(raid, rp, hit);
+    }
+
+    /**
+     * A disconnected player's wounds bleed on (HealthService): out of their stand-in, which dies of
+     * it like the player would, or out of the health kept for them while they have none. As for a
+     * player, the bleeding of a wound the stand-in's last attacker made ({@code sources}) keeps
+     * their kill credit going.
+     */
+    public void bleedOffline(Raid raid, RaidPlayer rp, double amount, net.infnetwork.snowball.craftov.combat.BodyPart worst,
+                             java.util.Set<UUID> sources) {
+        if (rp.state != RaidPlayer.State.DISCONNECTED) {
+            return;
+        }
+        Mannequin standIn = rp.standIn != null && rp.standIn.isValid() ? rp.standIn : null;
+        if (standIn != null) {
+            plugin.damage().recordBleed(standIn, "失血", worst, sources);
+            plugin.damage().deal(standIn, null, amount); // a lethal amount ends in onStandInDamage
+            standIn.getWorld().spawnParticle(Particle.BLOCK, standIn.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
+                    Material.REDSTONE_BLOCK.createBlockData());
+            return;
+        }
+        rp.offlineHealth -= amount;
+        if (rp.offlineHealth <= 0) {
+            long now = Bukkit.getCurrentTick();
+            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, now, false, now));
+        }
+    }
+
+    /** Should a stand-in die all the same (a /kill), it drops nothing: its gear is the player's. */
+    @EventHandler
+    public void onStandInDeath(org.bukkit.event.entity.EntityDeathEvent event) {
+        RaidPlayer rp = standInOwner(event.getEntity());
+        if (rp == null) {
+            return;
+        }
+        event.getDrops().clear();
+        event.setDroppedExp(0);
+        Raid raid = raidIn(event.getEntity().getWorld());
+        if (raid != null) {
+            diedOffline(raid, rp, plugin.damage().lastHit(event.getEntity().getUniqueId()));
+        }
+    }
+
+    public void spawnCorpse(Raid raid, Location at, List<ItemStack> items, Player owner) {
+        spawnBody(raid, at, owner.getName() + " 的遗体", items,
+                io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(owner.getPlayerProfile()),
+                owner.getInventory().getHelmet(), owner.getInventory().getChestplate());
     }
 
     /**
@@ -1347,6 +1808,7 @@ public final class RaidManager implements Listener {
 
     private void close(Raid raid) {
         raid.state = Raid.State.CLOSED;
+        raid.players.values().forEach(this::removeStandIn);
         plugin.insurance().settle(raid);
         spectators.values().removeIf(entry -> entry.getKey() == raid);
         for (Player player : raid.world.getPlayers()) {
@@ -1469,24 +1931,37 @@ public final class RaidManager implements Listener {
                     ? "<#FFC23D>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
                     : "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
         } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-            // Armory items are left out; own items from an armory rig or backpack that find
-            // no free pocket go to the mailbox.
-            List<ItemRecord> homeless = new ArrayList<>();
-            Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
             // Dropped out during the entry camera: like those still watching it, they never
-            // landed, so the fees come back too.
-            long refund = rp.inFlight ? rp.fees : 0;
-            plugin.profiles().edit(rp.uuid, () -> "server stopped during raid " + raid.id + ": loadout = "
-                    + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
-                    + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null"
-                    + (refund > 0 ? ", money +" + refund : ""), profile -> {
-                profile.loadout = inv;
-                profile.mailbox.addAll(homeless);
-                profile.secure = new ArrayList<>(rp.secure);
-                profile.activeRaid = null;
-                profile.money += refund;
-            });
+            // landed, so the fees come back too. A stand-in's armour goes home as worn as it is.
+            removeStandIn(rp);
+            homeOffline(raid, rp, rp.inFlight ? rp.fees : 0, "server stopped during raid " + raid.id);
         }
+    }
+
+    /**
+     * Sends a disconnected player home from a raid that is void for them: what they carried when
+     * they dropped out becomes their loadout, the secure container goes back as it was, and
+     * {@code refund} is paid back. Armory items are left out; own items from an armory rig or
+     * backpack that find no free pocket go to the mailbox. Returns everything that went home.
+     */
+    private List<ItemRecord> homeOffline(Raid raid, RaidPlayer rp, long refund, String why) {
+        List<ItemRecord> homeless = new ArrayList<>();
+        Map<Integer, ItemRecord> inv = rp.disconnectedInventory == null ? new HashMap<>()
+                : plugin.carry().persistent(rp.disconnectedInventory, homeless);
+        plugin.profiles().edit(rp.uuid, () -> why + ": loadout = "
+                + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
+                + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null"
+                + (refund > 0 ? ", money +" + refund : ""), profile -> {
+            profile.loadout = inv;
+            profile.mailbox.addAll(homeless);
+            profile.secure = new ArrayList<>(rp.secure);
+            profile.activeRaid = null;
+            profile.money += refund;
+        });
+        List<ItemRecord> home = new ArrayList<>(inv.values());
+        home.addAll(homeless);
+        home.addAll(rp.secure);
+        return home;
     }
 
     /** Rejoin after a disconnect. Returns true if the player was put back into their raid. */
@@ -1497,11 +1972,16 @@ public final class RaidManager implements Listener {
                 || rp.disconnectedInventory == null || rp.lastLocation == null) {
             return false;
         }
+        // Back in the stand-in's place, with its health and what is left of its armour.
+        Location standing = removeStandIn(rp);
         plugin.carry().restore(player, rp.disconnectedInventory, UiItems.raidTerminal());
         rp.disconnectedInventory = null;
         plugin.health().setupPlayer(player, false);
-        Location back = rp.lastLocation.getWorld() == raid.world ? rp.lastLocation : raid.map.spawns().isEmpty()
-                ? raid.world.getSpawnLocation() : raid.map.spawns().get(0).pos().at(raid.world);
+        if (rp.offlineHealth > 0) {
+            player.setHealth(Math.min(net.infnetwork.snowball.craftov.combat.HealthService.MAX_HP, rp.offlineHealth));
+        }
+        Location back = standing != null ? standing : rp.lastLocation.getWorld() == raid.world ? rp.lastLocation
+                : raid.map.spawns().isEmpty() ? raid.world.getSpawnLocation() : raid.map.spawns().get(0).pos().at(raid.world);
         player.teleport(back);
         if (rp.inFlight) {
             // Back before the squad's entry camera ended: the camera picks the player up again
@@ -1514,6 +1994,8 @@ public final class RaidManager implements Listener {
             return true;
         }
         rp.state = RaidPlayer.State.ALIVE;
+        // Two seconds to load in, and no more: no attacks either, and soldiers react as usual (the
+        // insertion grace is not handed out again, or rejoining would shake off a fight with them).
         rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         player.setGameMode(GameMode.ADVENTURE);
         player.setFallDistance(0);
@@ -1736,7 +2218,8 @@ public final class RaidManager implements Listener {
         door.getWorld().playSound(door.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);
     }
 
-    private static void setDoor(Block lower, boolean open) {
+    /** Opens or closes both halves of a door without block updates (soldiers use it too). */
+    public static void setDoor(Block lower, boolean open) {
         for (Block part : new Block[]{lower, lower.getRelative(org.bukkit.block.BlockFace.UP)}) {
             if (part.getBlockData() instanceof Openable openable) {
                 openable.setOpen(open);
@@ -1824,6 +2307,19 @@ public final class RaidManager implements Listener {
             player.getInventory().clear();
             return;
         }
+        long now = Bukkit.getCurrentTick();
+        if (rp.state == RaidPlayer.State.ALIVE && inCombat(rp, now)) {
+            // Closing the game mid-fight used to take the player out of the fight with all their
+            // gear, to come back two minutes later where they stood. Now it is death, as in other
+            // extraction shooters (a real connection drop mid-fight too), and the kill goes to
+            // whoever hit them last, if that was during this fight.
+            long window = plugin.getConfig().getLong("raid.combat-logout-seconds", 15) * 20L;
+            DamageService.LastHit hit = rp.lastHostile != null && now - rp.lastHostile.tick() < window ? rp.lastHostile : null;
+            die(raid, player, rp, "交战中断线", hit);
+            byPlayer.remove(player.getUniqueId());
+            player.getInventory().clear();
+            return;
+        }
         if (rp.state == RaidPlayer.State.ALIVE || rp.state == RaidPlayer.State.DEPLOYING) {
             // The cursor item is already back in the inventory (or on the ground here): CarryListener
             // settles it first, at the lowest priority.
@@ -1831,11 +2327,19 @@ public final class RaidManager implements Listener {
             // the usual reconnect window applies and a timeout leaves the body there. The copies keep
             // insurance marks and armory items for a rejoin; armory items never reach a saved loadout.
             rp.disconnectedInventory = plugin.carry().copyCarried(player);
-            if (rp.state == RaidPlayer.State.ALIVE) {
+            rp.look = io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(player.getPlayerProfile());
+            rp.offlineHealth = player.getHealth();
+            rp.armorWear = plugin.operators().armorWearMultiplier(player); // read while still in the raid
+            boolean landed = rp.state == RaidPlayer.State.ALIVE;
+            if (landed) {
                 rp.lastLocation = player.getLocation();
             }
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();
+            if (landed) {
+                // Someone flying in is nowhere in the world yet: they get theirs when the camera lands.
+                spawnStandIn(raid, rp, rp.lastLocation, player.getPose());
+            }
             player.getInventory().clear();
         } else if (rp.state == RaidPlayer.State.DEAD || rp.state == RaidPlayer.State.EXTRACTED) {
             byPlayer.remove(player.getUniqueId());

@@ -473,6 +473,11 @@ def start_client(cfg, display):
     env = dict(os.environ, DISPLAY=display, LIBGL_ALWAYS_SOFTWARE='1', GALLIUM_DRIVER='llvmpipe',
                ALSOFT_DRIVERS='null')  # OpenAL's null backend: no sound card here
     env.pop('WAYLAND_DISPLAY', None)
+    # The join checks read logs/latest.log, which still is the previous client's log (with its
+    # disconnect and its pack) until the new client starts writing; keep that one as previous.log.
+    old_log = GAME_DIR / 'logs' / 'latest.log'
+    if old_log.exists():
+        old_log.replace(old_log.with_name('previous.log'))
     log('starting the client as', cfg.name, '->', address)
     with open(GAME_DIR / 'client-console.log', 'wb') as out:
         proc = subprocess.Popen(command, cwd=GAME_DIR, env=env, stdout=out, stderr=subprocess.STDOUT,

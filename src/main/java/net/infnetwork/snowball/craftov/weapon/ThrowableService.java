@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.weapon;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.HitZone;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.Keys;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -54,6 +55,9 @@ public final class ThrowableService implements Listener {
         ItemStack thrownStack = hand.clone();
         thrownStack.setAmount(1);
         hand.setAmount(hand.getAmount() - 1);
+        if (!ItemFactory.isTest(thrownStack)) {
+            plugin.raids().usedUp(player, def.id(), 1);
+        }
         player.setCooldown(thrownStack, 20);
         Vector velocity = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
         Item item = player.getWorld().dropItem(player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(0.4)), thrownStack, i -> {

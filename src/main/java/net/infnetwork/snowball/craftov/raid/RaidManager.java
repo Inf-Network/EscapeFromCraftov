@@ -127,6 +127,14 @@ public final class RaidManager implements Listener {
         return raid == null ? null : raid.player(player.getUniqueId());
     }
 
+    /** {@code player} used up {@code amount} of item {@code id} in their raid (RaidPlayer.used). */
+    public void usedUp(Player player, @Nullable String id, int amount) {
+        RaidPlayer rp = id == null ? null : session(player);
+        if (rp != null && rp.active()) {
+            rp.used.merge(id, (long) amount, Long::sum);
+        }
+    }
+
     public boolean isInRaid(Player player) {
         RaidPlayer rp = session(player);
         return rp != null && rp.active() && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
@@ -2005,9 +2013,9 @@ public final class RaidManager implements Listener {
      * with the raid, only describes the change should the profile be unreadable). A profile that
      * still names a raid but has no record (left by an older build) gets the letter and keeps its
      * loadout, which a raid never changes. Gear that went in with them but has since left the raid
-     * with someone else (Profile.Deployment.gone, see {@link #leftWith}) does not come back to them
-     * as well. Returns the letter, or null when there was nothing to void (or it went to the
-     * journal of an unreadable profile).
+     * with someone else (Profile.Deployment.gone and goneStacks, see {@link #leftWith}) does not
+     * come back to them as well. Returns the letter, or null when there was nothing to void (or it
+     * went to the journal of an unreadable profile).
      */
     private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
         long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
@@ -2018,7 +2026,8 @@ public final class RaidManager implements Listener {
             int[] lost = new int[1];
             Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, known.gone, lost);
             List<ItemRecord> secure = known == null ? List.of() : without(known.secure, known.gone, lost);
-            return describeVoid(cause, known, loadout, secure, voidLetter(known, lost[0], compensation, crash));
+            Map<String, Long> lostStacks = known == null ? Map.of() : deduct(loadout, secure, known.goneStacks);
+            return describeVoid(cause, known, loadout, secure, voidLetter(known, lost[0], lostStacks, compensation, crash));
         }, p -> {
             Profile.Deployment d = p.deployment;
             if (p.activeRaid == null && d == null || known != null && d != null && !d.raid.equals(known.raid)) {
@@ -2028,7 +2037,8 @@ public final class RaidManager implements Listener {
             int[] lost = new int[1];
             Map<Integer, ItemRecord> loadout = d == null ? p.loadout : without(d.loadout, d.gone, lost);
             List<ItemRecord> secure = d == null ? p.secure : without(d.secure, d.gone, lost);
-            Profile.Mail letter = voidLetter(d, lost[0], compensation, crash);
+            Map<String, Long> lostStacks = d == null ? Map.of() : deduct(loadout, secure, d.goneStacks);
+            Profile.Mail letter = voidLetter(d, lost[0], lostStacks, compensation, crash);
             List<Profile.TaskState> tasks = new ArrayList<>();
             if (d != null) {
                 d.tasks.forEach(task -> tasks.add(task.copy()));
@@ -2105,13 +2115,26 @@ public final class RaidManager implements Listener {
         return sb.append("activeRaid = null, deployment = null, add to mail ").append(ProfileService.json(letter)).toString();
     }
 
-    /** The letter that tells a player their raid was voided, with the compensation attached. */
-    private static Profile.Mail voidLetter(Profile.@Nullable Deployment d, int lost, long compensation, boolean crash) {
+    /**
+     * The letter that tells a player their raid was voided, with the compensation attached.
+     * {@code lost} single items and {@code lostStacks} (item id -> count) had left the raid with
+     * others and were not handed back.
+     */
+    private Profile.Mail voidLetter(Profile.@Nullable Deployment d, int lost, Map<String, Long> lostStacks, long compensation,
+                                    boolean crash) {
         StringBuilder body = new StringBuilder(crash ? "服务器意外中断时" : "服务器维护时");
         body.append(d == null ? "你还在行动中" : "你还在「" + d.map + "」（" + d.tier + "）的行动中").append("，这局行动已作废。\n")
                 .append("出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
+        List<String> gone = new ArrayList<>();
         if (lost > 0) {
-            body.append("\n其中 ").append(lost).append(" 件装备已被其他干员带出本局，不再退回。");
+            gone.add(lost + " 件装备");
+        }
+        lostStacks.forEach((id, n) -> {
+            ItemDef def = plugin.registry().get(id);
+            gone.add((def == null ? id : def.name()) + " ×" + n);
+        });
+        if (!gone.isEmpty()) {
+            body.append("\n已被其他干员带出本局的不再退回：").append(String.join("、", gone)).append("。");
         }
         if (d != null && d.entryFee + d.premium > 0) {
             body.append("\n已退还").append(d.entryFee > 0 ? "入场费 ◈" + Text.money(d.entryFee) : "")
@@ -2169,48 +2192,178 @@ public final class RaidManager implements Listener {
 
     /**
      * {@code leaver} is out of the raid for good and keeps {@code kept}: what they got out with, or
-     * what a death leaves them (the secure container, the melee weapon). Gear among it that someone
-     * still in the raid took in goes on that player's deployment record (Profile.Deployment.gone)
-     * and is saved at once, so a void raid, whether a stop or a crash voids it, does not hand it
-     * back to them as well. Called once the leaver's own save is queued (saves land in order):
-     * should the server die in between, the gear exists twice rather than not at all.
+     * what a death leaves them (the secure container, the melee weapon). What among it someone still
+     * in the raid took in goes on that player's deployment record (Profile.Deployment.gone and
+     * goneStacks) and is saved at once, so a void raid, whether a stop or a crash voids it, does not
+     * hand it back to them as well. Called once the leaver's own save is queued (saves land in
+     * order): should the server die in between, it exists twice rather than not at all.
+     *
+     * <p>Single items go by instance id. Stacking items (ammo, meds, valuables) have none, so they
+     * go by count, as in {@link #othersGear}: of each item the leaver keeps more of than they took
+     * in, as much as a void would still hand someone back but they neither hold nor have used up
+     * counts as theirs, up to that excess. Rounds in someone's gun are left out of the count, as the
+     * gun goes by its id, rounds and all. A find of the same item can be caught by this when the
+     * owner lost theirs another way (dropped it, left it in a crate); it costs them only what a void
+     * would have handed back, whereas leaving stacks out let gold bars handed to a squadmate who got
+     * out come back with every server stop.
      */
     private void leftWith(Raid raid, RaidPlayer leaver, Collection<ItemRecord> kept) {
-        Set<String> ids = new java.util.HashSet<>();
-        instanceIds(kept, ids);
-        if (ids.isEmpty()) {
+        List<RaidPlayer> owners = new ArrayList<>();
+        Set<String> skip = new java.util.HashSet<>();
+        for (RaidPlayer owner : raid.players.values()) {
+            if (owner != leaver && owner.deployment != null && stillIn(owner)) {
+                owners.add(owner);
+                skip.addAll(owner.gearUids);
+            }
+        }
+        if (owners.isEmpty()) {
             return;
         }
-        for (RaidPlayer owner : raid.players.values()) {
-            if (owner == leaver || owner.deployment == null || !stillIn(owner)) {
-                continue;
+        Set<String> ids = new java.util.HashSet<>();
+        instanceIds(kept, ids);
+        Map<String, long[]> stacks = new HashMap<>();
+        for (ItemRecord record : kept) {
+            countStacks(record, stacks, skip);
+        }
+        Map<String, Long> excess = new HashMap<>();
+        stacks.forEach((id, entry) -> {
+            long more = entry[0] - leaver.broughtIn.getOrDefault(id, 0L);
+            if (more > 0) {
+                excess.put(id, more);
             }
+        });
+        for (RaidPlayer owner : owners) {
             Set<String> theirs = new java.util.LinkedHashSet<>(ids);
             theirs.retainAll(owner.gearUids);
-            if (!theirs.isEmpty()) {
-                noteGone(raid, owner, theirs, leaver.name);
+            Map<String, Long> counted = new java.util.LinkedHashMap<>();
+            if (!excess.isEmpty()) {
+                Set<String> gone = new java.util.HashSet<>(owner.deployment.gone);
+                gone.addAll(theirs);
+                Map<String, Long> back = refundable(owner.deployment, gone);
+                Map<String, Long> held = null;
+                for (Map.Entry<String, Long> entry : excess.entrySet()) {
+                    String id = entry.getKey();
+                    long would = back.getOrDefault(id, 0L);
+                    if (entry.getValue() <= 0 || would <= 0) {
+                        continue;
+                    }
+                    if (held == null) {
+                        held = held(raid, owner);
+                    }
+                    long take = Math.min(entry.getValue(), would - held.getOrDefault(id, 0L) - owner.used.getOrDefault(id, 0L));
+                    if (take > 0) {
+                        counted.put(id, take);
+                        entry.setValue(entry.getValue() - take);
+                    }
+                }
+            }
+            if (!theirs.isEmpty() || !counted.isEmpty()) {
+                noteGone(raid, owner, theirs, counted, leaver.name);
             }
         }
     }
 
-    /** Adds gear of {@code owner}'s that {@code by} has taken out of the raid to their deployment record. */
-    private void noteGone(Raid raid, RaidPlayer owner, Set<String> uids, String by) {
+    /**
+     * Stacking items a void would hand back from {@code d} (item id -> count): its loadout and
+     * secure container without the gear by instance id in {@code gone}, less its goneStacks.
+     */
+    private Map<String, Long> refundable(Profile.Deployment d, Set<String> gone) {
+        int[] ignored = new int[1];
+        List<ItemRecord> records = new ArrayList<>(without(d.loadout, gone, ignored).values());
+        records.addAll(without(d.secure, gone, ignored));
+        Map<String, Long> counts = stackCounts(records);
+        d.goneStacks.forEach((id, n) -> counts.merge(id, -n, Long::sum));
+        return counts;
+    }
+
+    /** Adds what of {@code owner}'s {@code by} has taken out of the raid to their deployment record. */
+    private void noteGone(Raid raid, RaidPlayer owner, Set<String> uids, Map<String, Long> stacks, String by) {
         Profile.Deployment known = owner.deployment;
+        boolean[] same = new boolean[1];
         plugin.profiles().edit(owner.uuid, () -> "gear " + owner.name + " took into raid " + raid.id + " left it with " + by
-                + ": deployment.gone add " + ProfileService.json(uids) + " (only while deployment.raid is \"" + raid.key + "\")", p -> {
+                + ": deployment.gone add " + ProfileService.json(uids) + ", deployment.goneStacks add " + ProfileService.json(stacks)
+                + " (each count added to the one there; only while deployment.raid is \"" + raid.key + "\")", p -> {
             Profile.Deployment d = p.deployment;
             if (d != null && d.raid.equals(raid.key)) {
-                d.gone.addAll(uids);
+                addGone(d, uids, stacks);
+                same[0] = d == known;
             }
         });
-        if (known != null) {
-            // The copy kept with the raid (the profile's own while they are online): a stop reads
-            // the profile's, this only describes the void should that profile be unreadable.
-            known.gone.addAll(uids);
+        if (known != null && !same[0]) {
+            // The copy kept with the raid, when it is not the profile's own (they are offline): a
+            // stop voids from the profile, and this only describes the void should that be unreadable.
+            addGone(known, uids, stacks);
         }
         if (plugin.profiles().cached(owner.uuid) != null) {
             plugin.profiles().saveNow(owner.uuid); // an offline profile was written by the edit
         }
+    }
+
+    private static void addGone(Profile.Deployment d, Set<String> uids, Map<String, Long> stacks) {
+        d.gone.addAll(uids);
+        stacks.forEach((id, n) -> d.goneStacks.merge(id, n, Long::sum));
+    }
+
+    /**
+     * Takes {@code counts} (item id -> how many) out of the stacking items in these records, which
+     * it changes: loose stacks before rounds loaded in guns, the loadout before the secure
+     * container. Returns what it took (never more than there is).
+     */
+    private Map<String, Long> deduct(Map<Integer, ItemRecord> loadout, List<ItemRecord> secure, Map<String, Long> counts) {
+        Map<String, Long> left = new HashMap<>(counts);
+        Map<String, Long> taken = new java.util.LinkedHashMap<>();
+        if (left.values().stream().noneMatch(n -> n > 0)) {
+            return taken;
+        }
+        List<Integer> slots = new ArrayList<>(loadout.keySet());
+        Collections.sort(slots);
+        for (Integer slot : slots) {
+            if (takeLoose(loadout.get(slot), left, taken)) {
+                loadout.remove(slot);
+            }
+        }
+        secure.removeIf(record -> takeLoose(record, left, taken));
+        for (Integer slot : slots) {
+            ItemRecord record = loadout.get(slot);
+            if (record != null) {
+                takeRounds(record, left, taken);
+            }
+        }
+        secure.forEach(record -> takeRounds(record, left, taken));
+        return taken;
+    }
+
+    /** {@link #deduct} on one record and what is packed in it; true when the record itself is used up. */
+    private boolean takeLoose(ItemRecord record, Map<String, Long> left, Map<String, Long> taken) {
+        if (record.contents != null) {
+            record.contents.removeIf(child -> takeLoose(child, left, taken));
+        }
+        ItemDef def = plugin.registry().get(record.id);
+        long want = left.getOrDefault(record.id, 0L);
+        if (def == null || def.maxStack() <= 1 || want <= 0) {
+            return false;
+        }
+        long have = Math.max(1, record.amount);
+        long take = Math.min(want, have);
+        left.put(record.id, want - take);
+        taken.merge(record.id, take, Long::sum);
+        record.amount = (int) (have - take);
+        return record.amount <= 0;
+    }
+
+    /** {@link #deduct} on the rounds loaded in a gun (and in guns packed in it). */
+    private static void takeRounds(ItemRecord record, Map<String, Long> left, Map<String, Long> taken) {
+        if (record.contents != null) {
+            record.contents.forEach(child -> takeRounds(child, left, taken));
+        }
+        long want = record.ammoType == null ? 0 : left.getOrDefault(record.ammoType, 0L);
+        if (want <= 0 || record.ammo == null || record.ammo <= 0) {
+            return;
+        }
+        long take = Math.min(want, record.ammo);
+        left.put(record.ammoType, want - take);
+        taken.merge(record.ammoType, take, Long::sum);
+        record.ammo = (int) (record.ammo - take);
     }
 
     /** Adds the instance ids of these records (packed contents too) to {@code into}. */

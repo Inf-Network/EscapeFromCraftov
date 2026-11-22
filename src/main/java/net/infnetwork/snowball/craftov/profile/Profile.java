@@ -192,6 +192,12 @@ public final class Profile {
          * as it happens, so a crash voids the raid the same way a stop does.
          */
         public Set<String> gone = new LinkedHashSet<>();
+        /**
+         * The same for stacking items (ammo, meds, valuables), which have no instance id: item id ->
+         * how many of those in {@link #loadout} and {@link #secure} count as gone, worked out from
+         * counts (RaidManager.leftWith).
+         */
+        public Map<String, Long> goneStacks = new HashMap<>();
     }
 
     /** A bounty collected in a raid (BountyService.onKill). */

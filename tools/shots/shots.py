@@ -19,9 +19,11 @@ ImageMagick `import` for the picture. Screenshots land in tools/shots/out/<shot>
 
 Common options (before or after the subcommand): --port (env SHOTS_PORT, default 25565),
 --rcon-port (SHOTS_RCON_PORT, default port + 10), --server-dir (default server/run), --name (the
-client's offline user name, default ShotCam). `run --build` rebuilds the plugin and restarts the
-server first, `run --fresh` resets the player to a new profile with the starter kit, and
-`run --send` sends every shot of the run to the Mac. A scene can take an argument: `run gun:k47`.
+client's offline user name, default ShotCam). A server already on the ports is only used when it
+runs from --server-dir, so a second checkout needs a --port of its own. `run --build` rebuilds the
+plugin and restarts the server first (only one shots started), `run --fresh` resets the player to
+a new profile with the starter kit, and `run --send` sends every shot of the run to the Mac. A
+scene can take an argument: `run gun:k47`.
 
 The first run creates a venv with minecraft-launcher-lib (BSD-2-Clause) in tools/shots/.cache/ and
 downloads the client (about 550 MB) there. Needs Xvfb, xdotool, ImageMagick and Mesa.
@@ -195,6 +197,53 @@ def stop_pid(pid, needle, grace=15):
 
 # ---------------------------------------------------------------------------------------- server
 
+def listener_pid(port):
+    """The process listening on this TCP port: None when nothing listens, 0 when the socket belongs
+    to a process this user cannot inspect."""
+    sockets = set()
+    for table in ('/proc/net/tcp', '/proc/net/tcp6'):
+        with contextlib.suppress(OSError):
+            for row in Path(table).read_text().splitlines()[1:]:
+                fields = row.split()
+                if len(fields) > 9 and fields[3] == '0A' and int(fields[1].rsplit(':', 1)[1], 16) == port:
+                    sockets.add(f'socket:[{fields[9]}]')
+    if not sockets:
+        return None
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():
+            continue
+        with contextlib.suppress(OSError):
+            for fd in (proc / 'fd').iterdir():
+                with contextlib.suppress(OSError):  # descriptors come and go while we look
+                    if os.readlink(fd) in sockets:
+                        return int(proc.name)
+    return 0
+
+
+def check_server(cfg):
+    """The pid of the server on cfg's ports, or None when neither port is in use. shots reads and
+    writes --server-dir (plugin jar, profiles, map files), so a server on those ports that does not
+    run from there (another checkout's, someone else's) is refused rather than used."""
+    pids = {listener_pid(port) for port in (cfg.port, cfg.rcon_port)} - {None}
+    if not pids:
+        return None
+    if 0 in pids:
+        raise Fail(f'port {cfg.port} or {cfg.rcon_port} belongs to another user\'s process; '
+                   'pick free ports with --port and --rcon-port')
+    if len(pids) > 1:
+        raise Fail(f'ports {cfg.port} and {cfg.rcon_port} belong to different processes ({", ".join(map(str, sorted(pids)))}); '
+                   'pick free ports with --port and --rcon-port')
+    pid = pids.pop()
+    try:
+        cwd = Path(os.readlink(f'/proc/{pid}/cwd'))
+    except OSError:
+        cwd = None
+    if cwd != cfg.server_dir:
+        raise Fail(f'the server on port {cfg.port} (pid {pid}) runs from {cwd or "an unknown directory"}, not from '
+                   f'{cfg.server_dir}; give this checkout a server of its own with --port (and --rcon-port)')
+    return pid
+
+
 def set_properties(path, values):
     lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
     seen = set()
@@ -210,6 +259,8 @@ def set_properties(path, values):
 def setup_server(cfg):
     """A local offline-mode test server for screenshots: RCON on, test mode on, short queue."""
     run_dir = cfg.server_dir
+    if check_server(cfg):
+        raise Fail(f'the server in {run_dir} is running; stop it before setting it up again')
     log('setting up the test server in', run_dir)
     env = dict(os.environ, RUN_DIR=str(run_dir))
     subprocess.run([str(ROOT / 'server' / 'setup.sh'), '--local', '--port', str(cfg.port)], env=env, check=True)
@@ -273,11 +324,13 @@ def build_plugin(cfg):
     subprocess.run([str(ROOT / 'gradlew'), '-p', str(ROOT), 'jar', '--quiet'], check=True)
     jar = max((ROOT / 'build' / 'libs').glob('Craftov-*.jar'), key=lambda p: p.stat().st_mtime)
     dest = cfg.server_dir / 'plugins' / 'Craftov.jar'
-    if dest.parent.exists():
-        # Rename into place, so a running server keeps reading the old file until it restarts.
-        tmp = dest.with_suffix('.jar.new')
-        shutil.copyfile(jar, tmp)
-        tmp.replace(dest)
+    if not dest.parent.is_dir():
+        raise Fail(f'{dest.parent} does not exist; set the server up with `shots.py setup` first')
+    # Rename into place, so a running server keeps reading the old file until it restarts.
+    tmp = dest.with_suffix('.jar.new')
+    shutil.copyfile(jar, tmp)
+    tmp.replace(dest)
+    log('installed', jar.name, 'in', dest.parent)
 
 
 # ---------------------------------------------------------------------------------------- client
@@ -598,8 +651,12 @@ class Session:
         self.wait_until(self.in_lobby, 30, 'the lobby')
         time.sleep(1.5)
 
+    def raid_players(self):
+        """{raid id: players in it} from `cv raids` (one row per raid: `R3 试验场 常规 RUNNING · ... · 玩家 1 · AI 4`)."""
+        return {rid: int(n) for rid, n in re.findall(r'(R\d+) [^\n]*?玩家 (\d+)', self.rcon('cv raids'))}
+
     def raids(self):
-        return set(re.findall(r'\b(R\d+)\b', self.rcon('cv raids')))
+        return set(self.raid_players())
 
     def always_extract(self, map_id):
         """(x, y, z) of the map's first always-open extract, read from the server's map file."""
@@ -620,8 +677,10 @@ class Session:
 
     def extract(self, map_id, raids=()):
         """Leaves the raid through the map's always-open extract, keeping the gear for the next run.
-        If that does not work, ends the given raids instead (the player is then missing in action and
-        loses what it carried)."""
+        `raids` are the raids that appeared since the player queued. If the extract does not work
+        and exactly one of them is left with the player alone in it, that raid is ended instead (the
+        player is then missing in action and loses what it carried). Ending a raid makes everyone
+        still in it missing in action, so with anyone else around the player stays and this fails."""
         spot = self.always_extract(map_id)
         if spot:
             self.rcon(f'execute as {self.name} at @s run tp @s {spot[0]} {spot[1]} {spot[2]}')
@@ -629,9 +688,15 @@ class Session:
                 self.wait_until(self.in_lobby, 40, 'the extract')
                 time.sleep(1.5)
                 return
-        log('no extract worked; ending the raid')
-        for raid in raids:
-            self.rcon(f'cv end {raid}')
+        candidates = {rid: n for rid, n in self.raid_players().items() if rid in raids}
+        if len(candidates) != 1 or next(iter(candidates.values())) != 1:
+            rows = ', '.join(f'{rid} ({n} players)' for rid, n in sorted(candidates.items())) or 'none found'
+            raise Fail(f'{self.name} could not reach the extract and is still in the raid. Ending a raid makes '
+                       'everyone in it missing in action, and no new raid has it alone inside '
+                       f'(new raids: {rows}), so nothing was ended; end its raid by hand (`cv end <id>`)')
+        raid = next(iter(candidates))
+        log(f'no extract worked; ending {raid}, where {self.name} is alone')
+        self.rcon(f'cv end {raid}')
         self.wait_until(self.in_lobby, 90, 'the way back to the lobby')
         time.sleep(1.5)
 
@@ -730,28 +795,30 @@ def player_online(cfg):
     return cfg.name in rcon(cfg, 'list').split(':', 1)[-1].replace(',', ' ').split()
 
 
-def port_open(port):
-    with contextlib.suppress(OSError), socket.create_connection(('127.0.0.1', port), timeout=1):
-        return True
-    return False
-
-
 def restart_server(cfg, state):
-    """Restarts a running server so it loads a new plugin jar. One this tool did not start keeps
-    running after the run, as before."""
+    """Restarts the server shots started, so it loads a new plugin jar."""
     log('restarting the server for the new plugin')
-    ours = state.pop('server_pid', None)
+    pid = state.pop('server_pid')
     state.pop('server_rcon_port', None)
-    if ours:
-        stop_server(cfg, ours, cfg.rcon_port)
-    else:
-        rcon(cfg, 'stop')
+    save_state(state)
+    stop_server(cfg, pid, cfg.rcon_port)
     end = time.time() + 90
-    while time.time() < end and (port_open(cfg.port) or port_open(cfg.rcon_port)):
+    while time.time() < end and (listener_pid(cfg.port) is not None or listener_pid(cfg.rcon_port) is not None):
         time.sleep(1)
-    pid = start_server(cfg)
-    if ours:
-        state.update(server_pid=pid, server_rcon_port=cfg.rcon_port)
+    state.update(server_pid=start_server(cfg), server_rcon_port=cfg.rcon_port)
+    save_state(state)
+
+
+def wait_rcon(cfg, pid):
+    """Waits for RCON on a server from --server-dir that is up or still starting."""
+    end = time.time() + 240
+    while not rcon_alive(cfg):
+        if not pid_alive(pid):
+            raise Fail(f'the server in {cfg.server_dir} stopped; see {cfg.server_dir / "logs" / "latest.log"}')
+        if time.time() > end:
+            raise Fail(f'the server in {cfg.server_dir} (pid {pid}) does not answer RCON on port {cfg.rcon_port}; '
+                       'check enable-rcon, rcon.port and rcon.password in its server.properties')
+        time.sleep(1)
 
 
 def reset_profile(cfg):
@@ -778,8 +845,11 @@ def up(cfg, state, started=None):
     elif state.get('server_rcon_port') != cfg.rcon_port:
         raise Fail(f'shots already runs a server with RCON port {state.get("server_rcon_port")}; '
                    'stop it with `shots.py down` first')
+    pid = check_server(cfg)
     fresh_server = False
-    if not rcon_alive(cfg):
+    if pid is None:
+        if not (cfg.server_dir / 'start.sh').exists():
+            setup_server(cfg)
         if cfg.build:
             build_plugin(cfg)
         state.update(server_pid=start_server(cfg), server_rcon_port=cfg.rcon_port)
@@ -787,9 +857,15 @@ def up(cfg, state, started=None):
         started.append('server')
         fresh_server = True
     elif cfg.build:
+        # Never stop a server someone else started: they may be using it.
+        if state.get('server_pid') != pid:
+            raise Fail(f'--build restarts the server, and the one in {cfg.server_dir} (pid {pid}) was not started by '
+                       'shots.py; stop it yourself first, or run without --build')
         build_plugin(cfg)
         restart_server(cfg, state)
         fresh_server = True
+    else:
+        wait_rcon(cfg, pid)
     client_up = pid_alive(state.get('client_pid'), 'net.minecraft.client') and pid_alive(state.get('xvfb_pid'), 'Xvfb')
     if client_up and state.get('port') == cfg.port and not fresh_server and not cfg.fresh and player_online(cfg):
         log('reusing the client on', state['display'])
@@ -868,8 +944,13 @@ def send(names):
 
 
 def status(cfg, state):
-    ours = pid_alive(state.get('server_pid'), 'paper.jar') and state.get('server_rcon_port') == cfg.rcon_port
-    print('server   ', 'up' if rcon_alive(cfg) else 'down', f'(port {cfg.port}, rcon {cfg.rcon_port}, {cfg.server_dir})',
+    try:
+        pid = check_server(cfg)
+        server = 'down' if pid is None else 'up' if rcon_alive(cfg) else f'running (pid {pid}), RCON not answering'
+    except Fail as e:
+        pid, server = None, f'not usable: {e}'
+    ours = pid is not None and state.get('server_pid') == pid
+    print('server   ', server, f'(port {cfg.port}, rcon {cfg.rcon_port}, {cfg.server_dir})',
           '[started by shots]' if ours else '')
     alive = pid_alive(state.get('client_pid'), 'net.minecraft.client')
     print('client   ', f'up on {state.get("display")} as {cfg.name}' if alive else 'down')

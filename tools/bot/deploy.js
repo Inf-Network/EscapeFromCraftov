@@ -9,6 +9,8 @@
 //   match: { wait-seconds: 2, join-window-seconds: -1 }   (no backfill into older raids)
 //   raid: { reconnect-seconds: 30 }                        and RECONNECT=30 here
 //   tiers.NORMAL.entry-fee: 1000                           (so a charged fee shows)
+// The 'timeout' scenario also sets insurance.loss-chance and insurance.return-minutes to 0 for its
+// run (insurance.js, put back afterwards), since it checks that every insured piece comes back.
 // Profiles are read from PLAYERS (default ../../server/run/plugins/Craftov/data/players).
 // Each scenario prints PASS, FAIL or SKIP with what was seen; the exit code is the
 // number of failures.
@@ -17,6 +19,7 @@ const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const pinInsurance = require('./insurance')
 
 const MC_PORT = Number(process.env.MC_PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
@@ -351,53 +354,62 @@ const scenarios = {
   // A fully loaded player (38 stacks: every pocket, rig and backpack cell, and all four worn
   // pieces) quits during the entry camera and stays away: a body with the gear at the insertion
   // point, reported missing, insured gear (helmet and armour included) back in the mailbox, melee
-  // weapon kept.
+  // weapon kept. Insurance is pinned to a full, immediate refund for this one scenario.
   async timeout () {
-    const { name, before } = await prime()
-    const full = fullLoad(before)
-    fs.writeFileSync(profileFile(name), JSON.stringify(full, null, 2))
-    const bot = await make(name)
-    await sleep(2500)
-    queue(bot)
-    if (!await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'spectator', 40000)) return ['FAIL', 'no entry camera']
-    await sleep(1500)
-    const carried = inventory(bot)
-    await quit(bot)
-    const selector = `@e[type=minecraft:mannequin,name="☠ ${name} 的遗体",limit=1]`
-    await sleep(RECONNECT * 1000)
-    let body = ''
-    for (let i = 0; i < 20 && !body.includes('Test passed'); i++) {
-      await sleep(1000)
-      body = await rcon(`execute if entity ${selector}`)
+    const restore = await pinInsurance(path.join(PLAYERS, '..', '..'), rcon)
+    try {
+      return await timeoutRun()
+    } finally {
+      await restore()
     }
-    const bodyAt = body.includes('Test passed') ? await rcon(`data get entity ${selector} Pos`) : '(none)'
-    // The raid closes 8 s after its last player is gone and settles insurance then; the profile
-    // may only reach the disk with the next periodic save (every 10 s).
-    let after = null
-    for (let i = 0; i < 30 && !(after && (after.mailbox || []).length); i++) {
-      await sleep(1000)
-      after = readProfile(name)
-    }
-    after = await settledProfile(name)
-    const problems = []
-    if (!body.includes('Test passed')) problems.push('no body')
-    const z = bodyAt.match(/\[(-?[\d.]+)d, (-?[\d.]+)d, (-?[\d.]+)d\]/)
-    if (z && (Math.abs(Number(z[2]) - 65) > 1.5 || Number(z[3]) < 94 || Number(z[3]) > 97.5)) problems.push(`body at ${bodyAt}`)
-    const outcome = (after.reports && after.reports[0] && after.reports[0].outcome) || ''
-    if (outcome !== '失踪（断线超时）') problems.push(`report ${outcome}`)
-    if (stat(after, 'deaths') !== stat(before, 'deaths') + 1) problems.push(`deaths ${stat(after, 'deaths')}`)
-    if (!same(after.secure, before.secure)) problems.push(`secure ${JSON.stringify(after.secure)}`)
-    const kept = Object.keys(after.loadout)
-    if (!same(kept, ['2'])) problems.push(`loadout slots ${kept}`)
-    const mailed = (after.mailbox || []).map(r => r.id).sort()
-    if (carried.insured > 0 && mailed.length === 0) problems.push('no insurance payout')
-    // Worn armour comes last in slot order: it is what a too-small body used to drop.
-    for (const slot of ['36', '37', '38', '39']) {
-      if (!mailed.includes(full.loadout[slot].id)) problems.push(`${full.loadout[slot].id} not mailed back`)
-    }
-    if (carried.ids.length < 38) problems.push(`only ${carried.ids.length} stacks carried`)
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'body, report, melee and insurance as expected'} | body ${bodyAt.replace(/^.*data: /, '')} | ${carried.ids.length} stacks, ${carried.insured} insured, mailed ${mailed.join(',')}`]
   }
+}
+
+async function timeoutRun () {
+  const { name, before } = await prime()
+  const full = fullLoad(before)
+  fs.writeFileSync(profileFile(name), JSON.stringify(full, null, 2))
+  const bot = await make(name)
+  await sleep(2500)
+  queue(bot)
+  if (!await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'spectator', 40000)) return ['FAIL', 'no entry camera']
+  await sleep(1500)
+  const carried = inventory(bot)
+  await quit(bot)
+  const selector = `@e[type=minecraft:mannequin,name="☠ ${name} 的遗体",limit=1]`
+  await sleep(RECONNECT * 1000)
+  let body = ''
+  for (let i = 0; i < 20 && !body.includes('Test passed'); i++) {
+    await sleep(1000)
+    body = await rcon(`execute if entity ${selector}`)
+  }
+  const bodyAt = body.includes('Test passed') ? await rcon(`data get entity ${selector} Pos`) : '(none)'
+  // The raid closes 8 s after its last player is gone and settles insurance then; the profile
+  // may only reach the disk with the next periodic save (every 10 s).
+  let after = null
+  for (let i = 0; i < 30 && !(after && (after.mailbox || []).length); i++) {
+    await sleep(1000)
+    after = readProfile(name)
+  }
+  after = await settledProfile(name)
+  const problems = []
+  if (!body.includes('Test passed')) problems.push('no body')
+  const z = bodyAt.match(/\[(-?[\d.]+)d, (-?[\d.]+)d, (-?[\d.]+)d\]/)
+  if (z && (Math.abs(Number(z[2]) - 65) > 1.5 || Number(z[3]) < 94 || Number(z[3]) > 97.5)) problems.push(`body at ${bodyAt}`)
+  const outcome = (after.reports && after.reports[0] && after.reports[0].outcome) || ''
+  if (outcome !== '失踪（断线超时）') problems.push(`report ${outcome}`)
+  if (stat(after, 'deaths') !== stat(before, 'deaths') + 1) problems.push(`deaths ${stat(after, 'deaths')}`)
+  if (!same(after.secure, before.secure)) problems.push(`secure ${JSON.stringify(after.secure)}`)
+  const kept = Object.keys(after.loadout)
+  if (!same(kept, ['2'])) problems.push(`loadout slots ${kept}`)
+  const mailed = (after.mailbox || []).map(r => r.id).sort()
+  if (carried.insured > 0 && mailed.length === 0) problems.push('no insurance payout')
+  // Worn armour comes last in slot order: it is what a too-small body used to drop.
+  for (const slot of ['36', '37', '38', '39']) {
+    if (!mailed.includes(full.loadout[slot].id)) problems.push(`${full.loadout[slot].id} not mailed back`)
+  }
+  if (carried.ids.length < 38) problems.push(`only ${carried.ids.length} stacks carried`)
+  return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'body, report, melee and insurance as expected'} | body ${bodyAt.replace(/^.*data: /, '')} | ${carried.ids.length} stacks, ${carried.insured} insured, mailed ${mailed.join(',')}`]
 }
 
 ;(async () => {

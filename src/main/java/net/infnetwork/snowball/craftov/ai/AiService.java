@@ -226,6 +226,73 @@ public final class AiService implements Listener {
         return entity != null && bots.containsKey(entity.getUniqueId());
     }
 
+    /**
+     * One line per soldier of a raid for /cv ai: name, kind, position and facing, what it is doing,
+     * whom it is fighting and how aware it is of each player it has half noticed, and its UUID.
+     */
+    public List<String> describe(Raid raid) {
+        long now = Bukkit.getCurrentTick();
+        List<String> out = new ArrayList<>();
+        for (Bot bot : bots.values()) {
+            if (bot.raid != raid || !bot.mob.isValid()) {
+                continue;
+            }
+            Location at = bot.mob.getLocation();
+            StringBuilder line = new StringBuilder(String.format(java.util.Locale.ROOT, "%s %s %.1f %.1f %.1f 朝向 %.0f %s",
+                    bot.name, bot.kind, at.getX(), at.getY(), at.getZ(), at.getYaw(), state(bot, now)));
+            Player target = bot.target == null ? null : Bukkit.getPlayer(bot.target);
+            if (target != null && now - bot.lastSeenTick < 40) {
+                line.append(" 目标 ").append(target.getName());
+            }
+            if (!bot.awareness.isEmpty()) {
+                line.append(" 察觉");
+                bot.awareness.forEach((id, value) -> {
+                    Player p = Bukkit.getPlayer(id);
+                    line.append(' ').append(p == null ? id.toString().substring(0, 8) : p.getName())
+                            .append('=').append(String.format(java.util.Locale.ROOT, "%.2f", value));
+                });
+            }
+            out.add(line.append(' ').append(bot.mob.getUniqueId()).toString());
+        }
+        return out;
+    }
+
+    /** What a soldier is busy with, as /cv ai shows it. */
+    private static String state(Bot bot, long now) {
+        if (bot.target != null && now - bot.lastSeenTick < 40) {
+            return "交战";
+        }
+        if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
+            return "追击";
+        }
+        if (now < bot.holdUntil) {
+            return "守候";
+        }
+        if (bot.alertPos != null && now < bot.alertUntil) {
+            return "警戒";
+        }
+        if (bot.looting != null) {
+            return "搜刮";
+        }
+        return "巡逻";
+    }
+
+    /**
+     * Puts one soldier of {@code kind} (patrol, guard, sniper, shield or operator) at {@code at}, posted
+     * there, for testing (/cv ai spawn). Returns its name, or null if none could be made.
+     */
+    public @Nullable String spawnSoldier(Raid raid, Location at, String kind) {
+        String name = switch (kind) {
+            case "shield" -> "持盾突击手";
+            case "operator" -> "敌对干员 · 测试";
+            default -> NAMES[ThreadLocalRandom.current().nextInt(NAMES.length)];
+        };
+        int gear = "operator".equals(kind) ? Math.min(3, raid.tier.aiGear() + 1) : raid.tier.aiGear();
+        double leash = "guard".equals(kind) ? 4 : "patrol".equals(kind) ? 6 : 3;
+        Bot bot = spawn(raid, at, leash, kind, gear, false, name);
+        return bot == null ? null : bot.name;
+    }
+
     public int count(Raid raid) {
         int n = 0;
         for (Bot bot : bots.values()) {

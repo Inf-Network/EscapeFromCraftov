@@ -163,13 +163,13 @@ public final class WorldService {
             plugin.getLogger().warning("Could not unload raid world " + name + "; it will be removed on next start");
             return;
         }
-        if (!plugin.isEnabled()) {
-            // Shutdown: a disabled plugin cannot schedule tasks (the scheduler throws, which used
-            // to stop closing the remaining raids), so the copy goes right away.
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder.toPath()));
+        } else {
+            // Shutting down: the scheduler refuses new tasks, and throwing here would leave every
+            // later raid without its players sent home.
             deleteQuietly(folder.toPath());
-            return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder.toPath()));
     }
 
     /** Removes leftover raid worlds from a previous crash. */

@@ -119,7 +119,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
-        carry = new CarryService(items);
+        carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
         worlds = new WorldService(this, maps);
@@ -199,23 +199,45 @@ public final class CraftovPlugin extends JavaPlugin {
         // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
         step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
         step("betterhud", betterHud, () -> betterHud.shutdown());
-        step("editor", editor, () -> editor.shutdown());
-        step("replays", replays, () -> replays.shutdown());
-        step("drones", drones, () -> drones.shutdown());
-        step("raids", raids, () -> raids.shutdown());
-        step("escorts", escorts, () -> escorts.shutdown());
-        step("range", range, () -> range.shutdown());
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            step("loadout of " + player.getName(), lobby, () -> {
-                if (lobby.isLobby(player.getWorld())) {
-                    lobby.captureLoadout(player);
-                }
-            });
+        // Each step runs on its own: one system failing to shut down must never cost the players
+        // their saves, which are written at the end.
+        if (editor != null) {
+            shutdownStep("editor", editor::shutdown);
         }
-        step("market", market, () -> market.saveSync());
-        step("profiles", profiles, () -> profiles.shutdown());
-        step("backup", backups, () -> backups.run("shutdown"));
-        step("teams", this, this::cleanupTeams);
+        if (replays != null) {
+            shutdownStep("replays", replays::shutdown);
+        }
+        if (drones != null) {
+            shutdownStep("drones", drones::shutdown);
+        }
+        if (raids != null) {
+            shutdownStep("raids", raids::shutdown);
+        }
+        if (escorts != null) {
+            shutdownStep("escorts", escorts::shutdown);
+        }
+        if (range != null) {
+            shutdownStep("range", range::shutdown);
+        }
+        if (lobby != null) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (lobby.isLobby(player.getWorld())) {
+                    shutdownStep("loadout of " + player.getName(), () -> lobby.captureLoadout(player));
+                }
+            }
+        }
+        if (market != null) {
+            shutdownStep("market", market::saveSync);
+        }
+        if (profiles != null) {
+            // Offline edits made while sending everyone home finish landing before the final save.
+            shutdownStep("queued profile writes", profiles::awaitWrites);
+            shutdownStep("profiles", profiles::shutdown);
+        }
+        if (backups != null) {
+            shutdownStep("backup", () -> backups.run("shutdown"));
+        }
+        shutdownStep("teams", this::cleanupTeams);
     }
 
     /** Runs one shutdown step if its service was created, logging instead of throwing. */
@@ -227,6 +249,14 @@ public final class CraftovPlugin extends JavaPlugin {
             action.run();
         } catch (RuntimeException | LinkageError ex) {
             getLogger().log(Level.SEVERE, "Shutdown step '" + name + "' failed; carrying on with the rest", ex);
+        }
+    }
+
+    private void shutdownStep(String what, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException ex) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Shutdown step failed: " + what, ex);
         }
     }
 
@@ -315,6 +345,14 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {
         return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
+    }
+
+    /**
+     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
+     * hands out one of everything) need the same access as the catalog.
+     */
+    public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
+        return !map.test() || canUseCatalog(player);
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }

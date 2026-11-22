@@ -23,8 +23,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * reward is paid out when the client extracts (a consolation share if the client dies).
  *
  * <p>Contracts live in memory, but the escrowed reward is recorded on the client's profile
- * ({@link Profile#escortEscrow}) together with the deduction, so a reward whose contract was lost
- * in a crash goes back to the client on the next start.
+ * ({@link Profile#escortEscrow}) together with the deduction. Stopping the server refunds every
+ * open contract; a reward whose contract was lost in a crash goes back to the client after the
+ * restart.
  */
 public final class EscortService {
 
@@ -166,8 +167,50 @@ public final class EscortService {
             return;
         }
         contracts.remove(c.id);
-        release(c, c.reward);
+        refund(c);
         Text.send(client, "<#9AA0A6>委托已取消，赏金已退回。");
+    }
+
+    /**
+     * A player dropped out of a raid before it deployed (they disconnected while the map loaded).
+     * Without their client the escorts' run does not count: an accepted contract is cancelled and
+     * the reward refunded, since no client is left in that raid to settle it (an open one has no
+     * escorts and simply stays open). A withdrawn escort leaves the contract and is not paid.
+     */
+    public void onWithdraw(UUID uuid, String name) {
+        Contract c = involving(uuid);
+        if (c == null || c.state == State.IN_RAID) {
+            return;
+        }
+        if (c.client.equals(uuid)) {
+            if (c.state != State.ACCEPTED) {
+                return;
+            }
+            contracts.remove(c.id);
+            // Through the escrow, like a cancel: a plain refund would leave the reward recorded as
+            // held, and reclaim() would hand it back a second time on the client's next join.
+            refund(c);
+            for (UUID escort : c.escorts) {
+                Player p = Bukkit.getPlayer(escort);
+                if (p != null) {
+                    Text.send(p, "<#FFC23D>老板 " + Text.escape(name) + " 在部署前断开连接，护航委托已取消，本局不计护航报酬。");
+                }
+            }
+            return;
+        }
+        c.escorts.remove(uuid);
+        if (c.escorts.isEmpty()) {
+            c.state = State.OPEN;
+        }
+        Player client = Bukkit.getPlayer(c.client);
+        if (client != null) {
+            Text.send(client, "<#FFC23D>护航 " + Text.escape(name) + " 在部署前断开连接，已退出你的护航委托。");
+        }
+    }
+
+    /** Gives a contract's whole reward back to the client and releases it from escrow. */
+    private void refund(Contract c) {
+        release(c, c.reward);
     }
 
     /** Ends the client's escrow for {@code c} and hands {@code refund} of it back. */
@@ -242,9 +285,24 @@ public final class EscortService {
         }
     }
 
+    /**
+     * Join: a reward still held in escrow without a live contract belongs to a contract the server
+     * lost when it went down without shutting down cleanly. It goes back to the client.
+     */
+    public void reclaim(Player player, Profile profile) {
+        if (profile.escortEscrow <= 0 || byClient(player.getUniqueId()) != null) {
+            return;
+        }
+        long held = profile.escortEscrow;
+        profile.escortEscrow = 0;
+        profile.money += held;
+        plugin.profiles().markDirty(player.getUniqueId());
+        Text.send(player, "<#FFC23D>你的护航委托因服务器中断已撤销，托管的赏金 ◈" + Text.money(held) + " 已退回。");
+    }
+
     public void shutdown() {
         for (Contract c : contracts.values()) {
-            release(c, c.reward);
+            refund(c);
         }
         contracts.clear();
     }

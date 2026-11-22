@@ -57,8 +57,8 @@ public final class Profile {
     public long bounty;
     /**
      * Reward taken from this player for their escort contract and not yet paid out or returned
-     * (EscortService). Saved with the deduction itself, so a contract lost in a crash is refunded
-     * on the next start.
+     * (EscortService). Saved with the deduction itself; contracts live in memory only, so whatever
+     * is still held after a crash goes back to the player.
      */
     public long escortEscrow;
     /**

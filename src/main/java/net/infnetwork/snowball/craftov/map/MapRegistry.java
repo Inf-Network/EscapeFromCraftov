@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.map;
 
+import net.infnetwork.snowball.craftov.map.gen.ProvingGroundGenerator;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -136,7 +137,9 @@ public final class MapRegistry {
                 bounds == null ? -10000 : bounds.getDouble("min-z"),
                 bounds == null ? 10000 : bounds.getDouble("max-x"),
                 bounds == null ? 10000 : bounds.getDouble("max-z"),
-                y.getString("time", "day"));
+                y.getString("time", "day"),
+                // Proving ground files written before the flag existed have no key: still a test map.
+                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)));
     }
 
     private static <T> List<T> list(YamlConfiguration y, String key, Function<Map<?, ?>, T> mapper) {
@@ -170,6 +173,7 @@ public final class MapRegistry {
         y.set("template", def.template());
         y.set("raid-minutes", def.raidSeconds() / 60);
         y.set("time", def.timeOfDay());
+        y.set("test", def.test());
         y.set("camera", def.camera().write());
         Map<String, Object> bounds = new LinkedHashMap<>();
         bounds.put("min-x", def.minX());

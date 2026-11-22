@@ -33,7 +33,8 @@ import java.util.UUID;
  * Gun-mounted tactical light, cycled with the middle mouse button: off, steady, strobe. Vanilla has no
  * moving lights, so the beam is a client-side light block where it lands (plus a dim one at the
  * muzzle), moved every tick and shown to everyone nearby. The strobe blinks at about 5 Hz; anyone
- * caught looking into it gets a white flicker on screen and soldiers lose their aim for a moment.
+ * caught looking into it gets a white flicker on screen and soldiers lose their aim for a moment
+ * (they keep fighting, and get used to it for a few seconds afterwards: AiService.dazzle).
  */
 public final class TacticalLight implements Listener {
 
@@ -282,7 +283,7 @@ public final class TacticalLight implements Listener {
                     plugin.hud().dazzle(player, 12);
                 }
             } else {
-                plugin.ai().stun(target.getLocation(), 0.8, 24);
+                plugin.ai().dazzle(target, plugin.getConfig().getInt("ai.dazzle.strobe-ticks", 20));
             }
         }
     }

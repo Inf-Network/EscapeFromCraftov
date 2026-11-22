@@ -264,3 +264,13 @@ def strobe_overlay(w=320, h=180):
     alpha = np.clip(245 - 25 * r, 0, 255).astype(np.uint8)
     rgb = np.full((h, w, 3), (250, 250, 244), np.uint8)
     return Image.fromarray(np.dstack([rgb, alpha]))
+
+
+# Opacity of the flashbang white-out, one camera overlay per fade step: 4 blots the screen out
+# completely, 1 is a faint haze. HudService.flash steps down through them as the flash wears off.
+FLASH_ALPHA = (70, 140, 205, 255)
+
+
+def flash_overlay(level, w=32, h=18):
+    """Plain white camera overlay for a flashbanged player at fade step ``level`` (1..4)."""
+    return Image.new('RGBA', (w, h), (255, 255, 255, FLASH_ALPHA[level - 1]))

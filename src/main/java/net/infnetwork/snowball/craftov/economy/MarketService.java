@@ -34,7 +34,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
@@ -44,6 +47,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * included) times {@code market.reference-multiplier}. It comes from items.yml, so no sale can
  * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
  * 1.15 × buy price, and buying from the trader to resell never pays.
+ *
+ * <p>Every trade writes the market and the profiles it touched straight away, in order, so a crash
+ * cannot leave a sold listing on the market after its seller was paid (or the other way round).
  */
 public final class MarketService implements Listener {
 
@@ -88,6 +94,12 @@ public final class MarketService implements Listener {
     /** Copies handed out for saving (main thread), and the newest one on disk (under the write lock). */
     private long saves;
     private long written;
+    /** One writer, so saves land in the order they were taken. */
+    private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Craftov-MarketIO");
+        t.setDaemon(true);
+        return t;
+    });
     /**
      * When system buyers took each seller's listings of each item in the last hour, oldest first
      * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
@@ -176,13 +188,26 @@ public final class MarketService implements Listener {
         dirty = false;
         String json = GSON.toJson(data);
         long version = ++saves;
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> write(json, version));
+        io.execute(() -> write(json, version));
     }
 
+    /** Shutdown: lets queued saves finish, then writes the current state last. */
     public void saveSync() {
+        io.shutdown();
+        try {
+            io.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
         if (!closed) {
             write(GSON.toJson(data), ++saves);
         }
+    }
+
+    /** Writes the market and the given player's profile now, after a trade changed both. */
+    private void commit(UUID player) {
+        plugin.profiles().saveNow(player);
+        save();
     }
 
     /**
@@ -371,7 +396,7 @@ public final class MarketService implements Listener {
         listing.expires = listing.created + plugin.getConfig().getLong("market.listing-hours", 48) * 3600_000L;
         data.listings.add(listing);
         dirty = true;
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
@@ -414,8 +439,8 @@ public final class MarketService implements Listener {
         addTradeGain(buyer, bargain(listing));
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
-        plugin.profiles().markDirty(player.getUniqueId());
         complete(listing, player.getName(), true);
+        commit(player.getUniqueId());
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
         ItemDef def = plugin.registry().get(listing.item.id);
         Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
@@ -546,7 +571,7 @@ public final class MarketService implements Listener {
         dirty = true;
         Profile profile = plugin.profiles().get(player);
         profile.mailbox.add(listing.item);
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#9AA0A6>已下架，物品已退回仓库邮箱。");
         return true;
     }
@@ -575,6 +600,7 @@ public final class MarketService implements Listener {
                 addTradeGain(seller, payout);
             }
         });
+        plugin.profiles().saveNow(listing.seller);
         recordSale(listing, playerSale);
         dirty = true;
         Player seller = Bukkit.getPlayer(listing.seller);
@@ -628,6 +654,7 @@ public final class MarketService implements Listener {
             if (now >= listing.expires) {
                 if (plugin.profiles().tryEdit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
                         + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item))) {
+                    plugin.profiles().saveNow(listing.seller);
                     data.listings.remove(listing);
                     dirty = true;
                 }

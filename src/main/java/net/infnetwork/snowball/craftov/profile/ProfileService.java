@@ -78,10 +78,14 @@ public final class ProfileService implements Listener {
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
     /**
-     * Offline profiles changed through {@link #edit} or just unloaded on logout, kept until every
-     * write queued for them has reached the disk. Without this, back-to-back edits (several market
-     * listings of one offline seller returned or sold in the same tick) each re-read a file the
-     * previous write had not replaced yet, and all but one of the changes were lost. Main thread only.
+     * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, used instead
+     * of the file while a write queued for them has not reached the disk. Without this, back-to-back
+     * edits (several market listings of one offline seller returned or sold in the same tick, a
+     * sale right as the seller logs off, or the shutdown restoring a player who disconnected
+     * mid-raid, paying out their insurance and refunding their escort contract one after another)
+     * each re-read a file the previous write had not replaced yet, and all but one of the changes
+     * were lost. Once the writes have landed the file is read again, so a file edited by hand
+     * while its owner is offline still counts. Main thread only.
      */
     private final Map<UUID, Pending> offline = new HashMap<>();
     /**
@@ -175,7 +179,8 @@ public final class ProfileService implements Listener {
         Profile profile = cache.get(uuid);
         if (profile == null) {
             // A profile edited while offline may still be on its way to the disk: take that copy.
-            Pending pending = offline.remove(uuid);
+            Pending pending = inFlight(uuid);
+            offline.remove(uuid);
             profile = pending != null ? pending.profile() : load(uuid);
             if (profile == null) {
                 profile = new Profile(uuid, name);
@@ -221,7 +226,7 @@ public final class ProfileService implements Listener {
         if (profile != null) {
             return profile;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         return pending != null ? pending.profile() : load(uuid);
     }
 
@@ -234,7 +239,7 @@ public final class ProfileService implements Listener {
         if (profile != null) {
             return profile.level;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         if (pending != null) {
             return pending.profile().level;
         }
@@ -250,17 +255,8 @@ public final class ProfileService implements Listener {
      * {@code field = value} for a value that replaces it, and every item in full as JSON.
      */
     public void edit(UUID uuid, Supplier<String> change, Consumer<Profile> mutation) {
-        Profile profile = editable(uuid);
-        if (profile == null) {
+        if (!apply(uuid, mutation)) {
             hold(uuid, change);
-            return;
-        }
-        mutation.accept(profile);
-        Pending pending = offline.get(uuid);
-        if (pending != null && pending.profile() == profile) {
-            writeAsync(profile, pending.writes());
-        } else {
-            markDirty(uuid);
         }
     }
 
@@ -270,10 +266,33 @@ public final class ProfileService implements Listener {
      * keeps what it was about to hand over (a market listing) and tries again later.
      */
     public boolean tryEdit(UUID uuid, Supplier<String> change, Consumer<Profile> mutation) {
-        if (editable(uuid) == null && (Files.exists(file(uuid)) || Files.exists(journal(uuid)))) {
+        if (apply(uuid, mutation)) {
+            return true;
+        }
+        if (Files.exists(file(uuid)) || Files.exists(journal(uuid))) {
             return false;
         }
-        edit(uuid, change, mutation);
+        hold(uuid, change); // no such account: only logged
+        return true;
+    }
+
+    /**
+     * The one place a profile is changed for {@link #edit} and {@link #tryEdit}: the live profile
+     * is marked for the next flush, an offline one is written now and kept in {@link #offline}
+     * until that write has landed. False, changing nothing, when the profile cannot be used.
+     */
+    private boolean apply(UUID uuid, Consumer<Profile> mutation) {
+        Profile profile = editable(uuid);
+        if (profile == null) {
+            return false;
+        }
+        mutation.accept(profile);
+        Pending pending = offline.get(uuid);
+        if (pending != null && pending.profile() == profile) {
+            writeAsync(profile, pending.writes());
+        } else {
+            markDirty(uuid);
+        }
         return true;
     }
 
@@ -287,15 +306,16 @@ public final class ProfileService implements Listener {
 
     /**
      * The profile changes to {@code uuid} are made on: the live one, or an offline one kept in
-     * {@link #offline} (loaded now if need be, and dropped again by the next flush when nothing
-     * was written to it); null when it cannot be used or does not exist.
+     * {@link #offline} while a write of it is queued (otherwise loaded from the file now, and
+     * dropped again once nothing of it is left to write); null when it cannot be used or does not
+     * exist.
      */
     private @Nullable Profile editable(UUID uuid) {
         Profile profile = cache.get(uuid);
         if (profile != null) {
             return placeholders.contains(profile) ? null : profile;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         if (pending == null) {
             Profile loaded = load(uuid);
             if (loaded == null) {
@@ -305,6 +325,19 @@ public final class ProfileService implements Listener {
             offline.put(uuid, pending);
         }
         return pending.profile();
+    }
+
+    /**
+     * The in-memory copy of an offline profile while a write of it is still queued, else null.
+     * Only this thread queues writes, so a count of 0 means the file holds that copy.
+     */
+    private @Nullable Pending inFlight(UUID uuid) {
+        Pending pending = offline.get(uuid);
+        if (pending == null || pending.writes().get() > 0) {
+            return pending;
+        }
+        offline.remove(uuid);
+        return null;
     }
 
     /** A value as one line of JSON, the way the profile file holds it (for change descriptions). */
@@ -349,18 +382,35 @@ public final class ProfileService implements Listener {
         offline.values().removeIf(pending -> pending.writes().get() == 0);
     }
 
-    public void shutdown() {
-        // Let queued writes finish first: an older copy still in the queue would otherwise land
-        // on top of the final save below.
+    /**
+     * Stops taking writes and waits up to 10 s for the queued ones to land. Runs before the final
+     * save: an older copy still in the queue would otherwise land on top of it.
+     */
+    public void awaitWrites() {
         io.shutdown();
         try {
-            io.awaitTermination(10, TimeUnit.SECONDS);
+            if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
+                plugin.getLogger().warning("Queued profile writes did not finish in time.");
+            }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Final save of every cached profile (stand-ins excepted), after {@link #awaitWrites}. */
+    public void shutdown() {
+        if (!io.isShutdown()) {
+            awaitWrites();
+        }
         for (Profile profile : cache.values()) {
-            if (!placeholders.contains(profile)) {
+            if (placeholders.contains(profile)) {
+                continue;
+            }
+            // One profile that cannot be written must not cost the others theirs.
+            try {
                 writeSync(GSON.toJson(profile), profile.uuid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not save profile " + profile.uuid, ex);
             }
         }
         dirty.clear();

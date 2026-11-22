@@ -139,6 +139,8 @@ public final class BountyService {
      */
     public void onKill(Player killer, RaidPlayer rp, Raid raid) {
         boolean house = houseApplies(rp);
+        long placed = placed(rp.uuid);
+        long dayBefore = houseBountyDay(rp.uuid);
         long amount = inRaid(rp);
         if (amount <= 0) {
             return;
@@ -154,6 +156,18 @@ public final class BountyService {
                 });
         Profile profile = plugin.profiles().get(killer);
         profile.money += amount;
+        profile.earnedInRaid(amount);
+        if (profile.deployment != null) {
+            // Should the killer's raid turn out void, the kill never happened: the money goes back
+            // on the victim's head (RaidManager.voidRaid).
+            Profile.BountyClaim claim = new Profile.BountyClaim();
+            claim.victim = rp.uuid;
+            claim.placed = placed;
+            claim.house = house;
+            claim.dayBefore = dayBefore;
+            claim.day = day;
+            profile.deployment.bounties.add(claim);
+        }
         plugin.profiles().markDirty(killer.getUniqueId());
         killer.playSound(killer.getLocation(), "craftov:ui.sell", SoundCategory.MASTER, 1f, 1f);
         for (Player player : raid.online()) {

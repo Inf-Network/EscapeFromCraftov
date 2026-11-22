@@ -702,6 +702,9 @@ public final class WeaponService implements Listener {
             return false;
         }
         state.ammo--;
+        if (!state.test) {
+            plugin.raids().usedUp(player, state.ammoType, 1);
+        }
         state.lastShotTick = Bukkit.getCurrentTick();
         state.nextShotTick = state.lastShotTick + gun.ticksBetweenShots();
         plugin.raids().onAttack(player);

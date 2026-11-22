@@ -47,8 +47,19 @@ public final class RaidPlayer {
     public Map<String, Long> broughtIn = new HashMap<>();
     /** The same counts for what this player carried out, once they have extracted (null before). */
     public @Nullable Map<String, Long> carriedOut;
+    /**
+     * Stacking items this player has used up in the raid (rounds fired, grenades thrown, meds
+     * used): item id -> count. No longer in hand, yet not handed to anyone (RaidManager.leftWith).
+     */
+    public Map<String, Long> used = new HashMap<>();
     /** Entry fee and insurance premium paid on deploy, handed back if the raid is called off before landing. */
     public long fees;
+    /**
+     * The record saved with the deploy (Profile.deployment; the same object while the player is
+     * online). A server stop voids the raid with it, and describes the change from it should the
+     * profile not be readable then.
+     */
+    public net.infnetwork.snowball.craftov.profile.Profile.@Nullable Deployment deployment;
     public long startTick;
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;

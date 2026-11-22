@@ -8,9 +8,10 @@
 // it (it cannot be worn or put in a cell) and must count it: collection entry, extracted value.
 //
 // insure: end = the raid ends normally; stop = the server stops after the owner died; offline = it
-// stops while the owner is disconnected; two = two raids are running when it stops. The three stop
-// variants leave the server stopped. insure sets insurance.loss-chance and return-minutes to 0 in
-// config.yml while it runs, so every claim comes back at once, and puts the file back afterwards.
+// stops while the owner is disconnected (their raid is void: the loadout as it went in, no claim);
+// two = two raids are running when it stops. The three stop variants leave the server stopped.
+// insure sets insurance.loss-chance and return-minutes to 0 in config.yml while it runs, so every
+// claim comes back at once, and puts the file back afterwards.
 //
 // Env: PORT / RCON_PORT / RCON_PASS of the local test server (default 25565 / 25575 / craftov-local),
 // CRAFTOV_DATA = its plugins/Craftov folder (default ../../server/run/plugins/Craftov). Profiles are
@@ -380,16 +381,25 @@ async function insureOne () {
   await sleep(2500)
   if (variant === 'offline') {
     // The owner disconnects with the m4c and the armour; the backpack and the k47 lie on the ground.
-    // Stopping the server pays those out and restores the loadout: both to the offline profile.
+    // The stop finds them inside the reconnect window, so their raid is void (issue #67): the
+    // offline profile gets the loadout back as it went in, the dropped backpack and k47 included,
+    // and no insurance claim on top of it.
     bot.quit()
     await sleep(3000)
     await stopServer()
     const p = readProfile(name)
-    const ids = p.mailbox.map(r => r.id).sort()
-    check('mailbox has the dropped backpack and the gun inside it', JSON.stringify(ids) === JSON.stringify(['k47', 'pack_3']), ids)
+    check('no insurance claim: the mailbox is empty', p.mailbox.length === 0 && (p.claims || []).length === 0,
+      { mailbox: p.mailbox.map(r => r.id), claims: (p.claims || []).map(c => c.item && c.item.id) })
+    // The lobby's starter knife in the melee slot went in too.
     const kept = Object.values(p.loadout)
-    check('loadout restored with the m4c and the armour', countIds(kept, 'm4c') === 1 && countIds(kept, 'armor_3') === 1, kept.map(r => r.id))
-    check('no insurance mark left anywhere', noMarks(p.mailbox) && noMarks(kept))
+    const want = ['armor_3', 'k47', 'knife_starter', 'm4c', 'optic_reddot', 'pack_3']
+    check('loadout as it went in, the dropped backpack and k47 included',
+      JSON.stringify(kept.map(r => r.id).sort()) === JSON.stringify(want), kept.map(r => r.id))
+    check('the m4c came back without the red dot fitted in the raid', kept.some(r => r.id === 'm4c' && !r.optic),
+      kept.filter(r => r.id === 'm4c').map(r => r.optic || 'no optic'))
+    check('a void letter waits in the mailbox', (p.mail || []).filter(m => m.title === '服务器维护补偿' && !m.claimed).length === 1,
+      (p.mail || []).map(m => m.title))
+    check('no insurance mark left anywhere', noMarks(kept))
     return
   }
   await rcon('kill ' + name)

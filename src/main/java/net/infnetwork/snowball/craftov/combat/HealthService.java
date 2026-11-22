@@ -722,6 +722,9 @@ public final class HealthService implements Listener {
         player.sendActionBar(Text.mm(msg.toString()));
         if (consumed) {
             replaceOne(player, event.getHand(), stack, null);
+            if (!ItemFactory.isTest(stack)) {
+                plugin.raids().usedUp(player, def.id(), 1);
+            }
         }
         player.getWorld().playSound(player.getLocation(), "craftov:med.finish", SoundCategory.PLAYERS, 0.8f, 1f);
         forceSpeedUpdate(player);

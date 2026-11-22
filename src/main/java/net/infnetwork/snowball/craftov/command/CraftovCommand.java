@@ -19,7 +19,7 @@ import java.util.Locale;
 
 public final class CraftovCommand implements TabExecutor {
 
-    private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
+    private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "marketaudit", "ai", "lagcomp");
@@ -55,6 +55,9 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "stash" -> {
                 if (player != null) plugin.menus().openStash(player);
+            }
+            case "mail" -> {
+                if (player != null) plugin.menus().openMail(player);
             }
             case "trader" -> {
                 if (player != null) plugin.menus().openTrader(player);
@@ -145,7 +148,7 @@ public final class CraftovCommand implements TabExecutor {
     private void help(CommandSender sender) {
         Text.send(sender, "<#F2E6C8>Craftov 指令");
         sender.sendMessage(Text.mm("<#9AA0A6>/cv <#8A8F98>打开战术终端  <#9AA0A6>/cv deploy <#8A8F98>开始行动"));
-        sender.sendMessage(Text.mm("<#9AA0A6>/cv stash | trader | market | secure"));
+        sender.sendMessage(Text.mm("<#9AA0A6>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv leave <#8A8F98>取消匹配"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {

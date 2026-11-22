@@ -67,8 +67,16 @@ public final class DamageService implements Listener {
         static final ArmorHit NONE = new ArmorHit(1.0, true, false);
     }
 
-    /** Who last hurt an entity, for kill credit and kill feed. */
-    public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick) {
+    /** Who last hurt an entity, for kill credit and kill feed; {@code melee} when it was a knife cut. */
+    public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick,
+                          boolean melee) {
+        /**
+         * A shot to the head. A knife cut that lands on the head is not one: a level swing at a
+         * standing target lands there, so counting it would hand out headshot credit for most knife kills.
+         */
+        public boolean headshot() {
+            return zone == HitZone.HEAD && !melee;
+        }
     }
 
     /** One hit taken, kept for the death report. */
@@ -107,8 +115,12 @@ public final class DamageService implements Listener {
     }
 
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
+        recordHit(victim, attacker, weapon, part, false);
+    }
+
+    private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee) {
         lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick()));
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick(), melee));
     }
 
     public static String displayName(Entity entity) {
@@ -379,7 +391,7 @@ public final class DamageService implements Listener {
         if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
             plugin.health().rollInjuries(target, part, damage);
         }
-        recordHit(victim, player, def.name(), part);
+        recordHit(victim, player, def.name(), part, true);
         if (victim instanceof Player) {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
                     .add(new HitRecord(player.getName(), def.name(), part, damage, (int) Math.round(eye.toVector().distance(point))));

@@ -1019,7 +1019,7 @@ public final class RaidManager implements Listener {
         String line = hit == null || hit.attacker() == null
                 ? "<#8A8F98>☠ <white>" + Text.escape(victim)
                 : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
+                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
         for (Player player : raid.online()) {
             player.sendMessage(Text.mm(line));
         }

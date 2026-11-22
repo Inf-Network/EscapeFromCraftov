@@ -754,11 +754,11 @@ public final class AiService implements Listener {
             RaidPlayer rp = raid.player(killer.getUniqueId());
             if (rp != null) {
                 rp.aiKills++;
-                plugin.tasks().onAiKill(killer, bot.boss, hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD,
+                plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(),
                         plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
             }
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>爆头" : "")));
+                    + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
             if (bot.boss) {
                 plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
             }

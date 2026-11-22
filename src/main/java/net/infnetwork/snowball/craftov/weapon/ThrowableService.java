@@ -109,6 +109,8 @@ public final class ThrowableService implements Listener {
 
     private void smoke(Location at, ThrowableSpec spec) {
         at.getWorld().playSound(at, "craftov:throw.smoke", SoundCategory.PLAYERS, 2f, 1f);
+        // The cloud below lasts 15 s and its particles linger a few seconds more; soldiers cannot see through it.
+        plugin.ai().smoke(at, spec.radius(), 20L * 18);
         new BukkitRunnable() {
             int ticks;
 

@@ -52,6 +52,31 @@ final class Sight {
         return left;
     }
 
+    /**
+     * Length of the stretch of the segment {@code from}-{@code to} inside an upright ellipsoid
+     * centred on {@code centre}, {@code radius} across and {@code height} up and down from it.
+     */
+    static double chord(Vector from, Vector to, Vector centre, double radius, double height) {
+        // Squash the ellipsoid into a sphere; the fraction of the segment inside stays the same.
+        double k = radius / height;
+        Vector a = new Vector(from.getX() - centre.getX(), (from.getY() - centre.getY()) * k, from.getZ() - centre.getZ());
+        Vector d = new Vector(to.getX() - from.getX(), (to.getY() - from.getY()) * k, to.getZ() - from.getZ());
+        double qa = d.lengthSquared();
+        if (qa < 1e-9) {
+            return 0;
+        }
+        double qb = 2 * a.dot(d);
+        double qc = a.lengthSquared() - radius * radius;
+        double disc = qb * qb - 4 * qa * qc;
+        if (disc <= 0) {
+            return 0;
+        }
+        double root = Math.sqrt(disc);
+        double t1 = Math.max(0, (-qb - root) / (2 * qa));
+        double t2 = Math.min(1, (-qb + root) / (2 * qa));
+        return t2 <= t1 ? 0 : (t2 - t1) * from.distance(to);
+    }
+
     /** Blocks that stop a bullet or a body but not the eye. */
     static boolean seeThrough(Material type) {
         if (type == Material.TINTED_GLASS) {

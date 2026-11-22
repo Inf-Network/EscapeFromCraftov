@@ -54,10 +54,17 @@ public final class AiService implements Listener {
 
     /** How long a soldier holds at the end of a path that cannot reach its goal before trying again. */
     private static final long HOLD_TICKS = 20L * 4;
+    /** Blocks of smoke along a sight line that hide what is behind it. */
+    private static final double SMOKE_OPAQUE = 1.5;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
     private final AiDoors doors;
+    /** Smoke clouds soldiers cannot see through, in every raid world. */
+    private final List<Smoke> smokes = new ArrayList<>();
+
+    private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
+    }
 
     static final class Bot {
         final Zombie mob;
@@ -620,6 +627,7 @@ public final class AiService implements Listener {
         }
         dead.forEach(bots::remove);
         doors.tick(now);
+        smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
     }
 
     private void think(Bot bot, long now) {
@@ -874,16 +882,49 @@ public final class AiService implements Listener {
         return cos >= 0.5 ? 1 : cos >= -0.17 ? 0.3 : 0;
     }
 
-    /** How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets through. */
-    private static double[] sightLines(LivingEntity looker, Player player) {
+    /**
+     * How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets
+     * through: blocks as {@link Sight#through}, and smoke hides what is behind more than
+     * {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
+     */
+    private double[] sightLines(LivingEntity looker, Player player) {
         Vector eye = looker.getEyeLocation().toVector();
         Vector feet = player.getLocation().toVector();
         double[] heights = aimHeights(player);
         double[] out = new double[heights.length];
         for (int i = 0; i < heights.length; i++) {
-            out[i] = Sight.through(player.getWorld(), eye, feet.clone().add(new Vector(0, heights[i], 0)));
+            Vector point = feet.clone().add(new Vector(0, heights[i], 0));
+            double smoke = smokeAlong(player.getWorld(), eye, point);
+            out[i] = smoke > SMOKE_OPAQUE ? 0 : Sight.through(player.getWorld(), eye, point) * (1 - 0.5 * smoke / SMOKE_OPAQUE);
         }
         return out;
+    }
+
+    /**
+     * A smoke grenade went off at {@code at}: for {@code ticks} soldiers cannot see through its
+     * cloud, an upright ellipsoid a little smaller than the particles' spread ({@code radius} 6 makes
+     * one 4.8 blocks across and 2.5 up and down, its centre 0.8 above the grenade). It fills
+     * out over the first second and thins over the last three.
+     */
+    public void smoke(Location at, double radius, long ticks) {
+        long now = Bukkit.getCurrentTick();
+        smokes.add(new Smoke(at.getWorld(), at.toVector().add(new Vector(0, 0.8, 0)), radius * 0.8, 2.5, now, now + ticks));
+    }
+
+    /** Blocks of smoke a line from {@code from} to {@code to} passes through. */
+    private double smokeAlong(World world, Vector from, Vector to) {
+        long now = Bukkit.getCurrentTick();
+        double total = 0;
+        for (Smoke smoke : smokes) {
+            if (smoke.world() != world || now < smoke.from()) {
+                continue;
+            }
+            double grow = Math.min(1, (now - smoke.from() + 5) / 25.0);
+            double thin = Math.min(1, 0.5 + (smoke.until() - now) / 120.0);
+            double scale = Math.min(grow, thin);
+            total += Sight.chord(from, to, smoke.centre(), smoke.radius() * scale, smoke.height() * scale);
+        }
+        return total;
     }
 
     /** Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling. */
@@ -937,6 +978,11 @@ public final class AiService implements Listener {
         }
         if (now < bot.dazzledUntil) {
             spread *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
+        }
+        // Shooting past the edge of a smoke cloud: it sees you only dimly and goes wide.
+        double haze = smokeAlong(eye.getWorld(), eye.toVector(), eye.toVector().add(aim.clone().multiply(distance)));
+        if (haze > 0) {
+            spread *= 1 + Math.min(SMOKE_OPAQUE, haze);
         }
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         // A share of what a player deals with the same gun and ammo to the body and limbs (headshots

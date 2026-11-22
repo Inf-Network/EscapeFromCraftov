@@ -23,6 +23,8 @@ import skins  # noqa: E402
 import soldiers  # noqa: E402
 import sounds  # noqa: E402
 import gunaudio  # noqa: E402
+import pixelfont  # noqa: E402
+import screens  # noqa: E402
 import ui  # noqa: E402
 from px import gradient_bg, rgb  # noqa: E402
 
@@ -446,6 +448,49 @@ def build_ui():
             'tints': [{'type': 'minecraft:constant', 'value': -1}, {'type': 'minecraft:dye', 'default': -8486772}]}})
 
 
+# craftov:ui font (gui/UiFont.java): its own key, so nothing clashes with the U+E000 glyphs CraftEngine
+# puts in minecraft:default. Shift characters move the pen (negative 2^k at U+F800+k, positive at
+# U+F810+k), screen backgrounds sit at U+E100 onwards, and the pixel font fills in the text.
+SHIFT_NEG, SHIFT_POS, SCREEN_BASE = 0xF800, 0xF810, 0xE100
+
+
+def build_screens():
+    """Container skin, slot silhouettes, label lang strings and the craftov:ui font with the screens."""
+    save(screens.generic_54(), os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png'))
+    save(screens.inventory(), os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png'))
+    for kind in ('helmet', 'chestplate', 'leggings', 'boots'):
+        save(screens.silhouette(kind), os.path.join(MC, 'textures', 'gui', 'sprites', 'container', 'slot', kind + '.png'))
+    for lang in ('zh_cn', 'zh_tw', 'zh_hk', 'en_us'):
+        write_json(os.path.join(MC, 'lang', lang + '.json'), screens.LANG)
+    ratios = screens.contrast_report()
+    print('title / label contrast on the window body:', ratios)
+    for name in ('TEXT', 'MUTED', 'ACCENT'):
+        assert ratios[name] >= 4.5, 'menu titles and labels need 4.5:1 against the window (%s is %s)' % (name, ratios[name])
+    advances = {' ': 4, '　': 11}
+    for k in range(10):
+        advances[chr(SHIFT_NEG + k)] = -(1 << k)
+        advances[chr(SHIFT_POS + k)] = 1 << k
+    providers = [{'type': 'space', 'advances': advances}]
+    sheet, rows, _ = pixelfont.load()
+    save(sheet, os.path.join(CV, 'textures', 'font', 'pixel10.png'))
+    # Ascent 8 puts the glyphs' ink where vanilla's own 8 px text starts.
+    providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
+                      'chars': rows})
+    meta = {}
+    for i, (sid, make) in enumerate(screens.SCREENS.items()):
+        img, left, top = make()
+        cp = chr(SCREEN_BASE + i)
+        save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))
+        # A menu title is drawn 6 px below the window top: ascent 13 puts the image's top row there.
+        providers.append({'type': 'bitmap', 'file': 'craftov:font/screen/%s.png' % sid, 'height': img.height,
+                          'ascent': 13 + top, 'chars': [cp]})
+        box = img.getchannel('A').getbbox()
+        # The client advances a bitmap glyph by its inked width plus one.
+        meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left}
+    write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
+    write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
+
+
 def build_skins():
     save(skins.soldier_skin(), os.path.join(MC, 'textures', 'entity', 'zombie', 'zombie.png'))
     for asset, fn in skins.EQUIPMENT.items():
@@ -612,8 +657,8 @@ def build_betterhud():
     write_text(os.path.join(BH, 'images', 'craftov.yml'), yaml.safe_dump(images, allow_unicode=True, sort_keys=False))
 
     # BetterHud only bundles unifont glyphs for the listed languages; without "china" every CJK character is tofu.
-    write_text(os.path.join(BH, 'texts', 'craftov.yml'), yaml.safe_dump(
-        {'craftov_font': {'merge-default-bitmap': True, 'use-unifont': True, 'include': ['china']}}, allow_unicode=True, sort_keys=False))
+    texts = {'craftov_font': {'merge-default-bitmap': True, 'use-unifont': True, 'include': ['china']}}
+    write_text(os.path.join(BH, 'texts', 'craftov.yml'), yaml.safe_dump(texts, allow_unicode=True, sort_keys=False))
 
     # Text scale 1.0 renders 16 px tall glyphs, so 0.5 matches vanilla chat size. The font has no ◈ or ⏱ glyphs.
     layouts = {
@@ -799,6 +844,7 @@ def main():
     build_containers()
     build_fx()
     build_ui()
+    build_screens()
     build_skins()
     build_vanilla_hud()
     build_sounds()

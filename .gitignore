@@ -32,3 +32,5 @@ tools/bot/node_modules
 # Screenshot harness: venv, Minecraft client and screenshots
 tools/shots/.cache/
 tools/shots/out/
+# Pixel font download (tools/art/pixelfont.py bake)
+tools/art/.cache/

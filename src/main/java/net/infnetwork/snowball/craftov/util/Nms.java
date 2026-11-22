@@ -197,6 +197,53 @@ public final class Nms {
         return ready;
     }
 
+    private static @Nullable Method asVanilla;
+    private static @Nullable Field containerMenu;
+    private static @Nullable Field containerId;
+    private static @Nullable Method menuType;
+    private static @Nullable Method sendAllData;
+    private static @Nullable Constructor<?> openScreenCtor;
+    private static boolean retitleTried;
+
+    /**
+     * Gives the open container a new title without closing it: the open-screen packet again with the
+     * same container id, then the contents (which a new screen starts without). Bukkit's own
+     * InventoryView#setTitle only takes legacy text, which cannot carry the craftov:ui font that draws
+     * the designed backgrounds. Returns false when the hooks are unavailable (the caller reopens).
+     */
+    public static boolean retitle(Player player, net.kyori.adventure.text.Component title) {
+        if (!ready) {
+            return false;
+        }
+        try {
+            if (!retitleTried) {
+                retitleTried = true;
+                asVanilla = Class.forName("io.papermc.paper.adventure.PaperAdventure")
+                        .getMethod("asVanilla", net.kyori.adventure.text.Component.class);
+                containerMenu = Class.forName("net.minecraft.world.entity.player.Player").getField("containerMenu");
+                Class<?> menu = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu");
+                containerId = menu.getField("containerId");
+                menuType = menu.getMethod("getType");
+                sendAllData = menu.getMethod("sendAllDataToRemote");
+                openScreenCtor = Class.forName("net.minecraft.network.protocol.game.ClientboundOpenScreenPacket").getConstructor(
+                        int.class, Class.forName("net.minecraft.world.inventory.MenuType"),
+                        Class.forName("net.minecraft.network.chat.Component"));
+            }
+            if (openScreenCtor == null) {
+                return false;
+            }
+            Object handle = getHandle.invoke(player);
+            Object menu = containerMenu.get(handle);
+            Object packet = openScreenCtor.newInstance(containerId.getInt(menu), menuType.invoke(menu), asVanilla.invoke(null, title));
+            sendPacket.invoke(playerConnection.get(handle), packet);
+            sendAllData.invoke(menu);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            openScreenCtor = null;
+            return false;
+        }
+    }
+
     private static @Nullable Object connection(Player player) throws ReflectiveOperationException {
         Object handle = getHandle.invoke(player);
         return playerConnection.get(handle);

@@ -16,25 +16,35 @@ import java.util.function.Consumer;
 /**
  * Chest-style menu. Every click inside an open menu is cancelled and routed here; subclasses
  * implement {@link #draw()} and optionally {@link #onBottomClick} for clicks in the player inventory.
+ * <p>
+ * The title is drawn in the craftov:ui pixel font; a menu with a screen id also gets that screen's
+ * designed background behind the window ({@link UiFont}).
  */
 public abstract class Menu implements InventoryHolder {
 
     protected final Player viewer;
     private final int rows;
+    private final @Nullable String screen;
     private Component title;
     private @Nullable Inventory inventory;
     private final Map<Integer, Consumer<InventoryClickEvent>> handlers = new HashMap<>();
 
     protected Menu(Player viewer, int rows, Component title) {
+        this(viewer, rows, null, title);
+    }
+
+    /** A menu drawn on a designed screen background (tools/art/screens.py, SCREENS). */
+    protected Menu(Player viewer, int rows, @Nullable String screen, Component title) {
         this.viewer = viewer;
         this.rows = rows;
+        this.screen = screen;
         this.title = title;
     }
 
     protected abstract void draw();
 
     public void open() {
-        inventory = Bukkit.createInventory(this, rows * 9, title);
+        inventory = Bukkit.createInventory(this, rows * 9, UiFont.title(screen, title));
         redraw();
         viewer.openInventory(inventory);
     }
@@ -48,9 +58,19 @@ public abstract class Menu implements InventoryHolder {
         draw();
     }
 
-    /** Re-creates the inventory with a new title (titles cannot change in place). */
+    /**
+     * Changes the title in place (the window stays open, the cursor where it was); reopens the menu
+     * only if that is not possible.
+     */
     public void retitle(Component newTitle) {
+        if (newTitle.equals(title)) {
+            return;
+        }
         this.title = newTitle;
+        if (inventory != null && viewer.getOpenInventory().getTopInventory() == inventory
+                && net.infnetwork.snowball.craftov.util.Nms.retitle(viewer, UiFont.title(screen, title))) {
+            return;
+        }
         open();
     }
 
@@ -112,7 +132,7 @@ public abstract class Menu implements InventoryHolder {
     @Override
     public Inventory getInventory() {
         if (inventory == null) {
-            inventory = Bukkit.createInventory(this, rows * 9, title);
+            inventory = Bukkit.createInventory(this, rows * 9, UiFont.title(screen, title));
         }
         return inventory;
     }

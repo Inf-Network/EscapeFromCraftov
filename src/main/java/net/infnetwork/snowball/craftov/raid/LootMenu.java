@@ -23,12 +23,25 @@ public final class LootMenu extends Menu {
     private final LootContainer container;
     private int lastProgressStep = -1;
     private int seenVersion = -1;
+    /** The title still says "搜索中…"; it is dropped in place once nothing is left hidden. */
+    private boolean searchingTitle;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
-        super(viewer, container.type.rows(), Text.mm("<text>" + Text.escape(container.title)
-                + (container.hiddenCount() > 0 ? "  <muted>搜索中…" : "")));
+        super(viewer, container.type.rows(), title(container, container.hiddenCount() > 0));
         this.plugin = plugin;
         this.container = container;
+        this.searchingTitle = container.hiddenCount() > 0;
+    }
+
+    private static net.kyori.adventure.text.Component title(LootContainer container, boolean searching) {
+        return Text.mm("<text>" + Text.escape(container.title) + (searching ? "  <muted>搜索中…" : ""));
+    }
+
+    private void dropSearchingTitle() {
+        if (searchingTitle && container.hiddenCount() == 0) {
+            searchingTitle = false;
+            retitle(title(container, false));
+        }
     }
 
     @Override
@@ -77,6 +90,7 @@ public final class LootMenu extends Menu {
             redraw(); // another searcher revealed or took something
         }
         if (container.hiddenCount() == 0) {
+            dropSearchingTitle();
             return;
         }
         double speed = plugin.operators().searchMultiplier(viewer);

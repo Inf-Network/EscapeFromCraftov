@@ -12,7 +12,7 @@ final class MainMenu extends Menu {
     private final CraftovPlugin plugin;
 
     MainMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 4, Text.mm("<text>战术终端"));
+        super(viewer, 4, Text.mm("战术终端"));
         this.plugin = plugin;
     }
 

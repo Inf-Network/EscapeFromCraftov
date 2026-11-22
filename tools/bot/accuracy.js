@@ -497,8 +497,17 @@ async function ai () {
     if (bot.entity && p.entityId === bot.entity.id && (by ? SOLDIERS.includes(by.name) : !!p.sourcePosition)) hits.push(Date.now())
   })
   // Soldiers' reports reach us as positional sounds; every soldier in the raid is shooting at us.
+  // One shot can arrive as two sounds in the same tick (two distance bands crossfading, or the
+  // muffled report with a little of the open one): those count once.
   const reports = []
-  bot.on('soundEffectHeard', sound => { if (/craftov:gun\.[a-z0-9_]+\.(near|mid|far|muff)$/.test(String(sound))) reports.push(Date.now()) })
+  let lastReport = null
+  bot.on('soundEffectHeard', sound => {
+    const m = String(sound).match(/craftov:gun\.([a-z0-9_]+)\.(near|mid|far|muff)$/)
+    if (!m) return
+    const now = Date.now()
+    if (!lastReport || now - lastReport.at > 10 || lastReport.gun !== m[1]) reports.push(now)
+    lastReport = { at: now, gun: m[1] }
+  })
   if ((await rcon(`data get entity ${name} Dimension`)).includes('craftov_range')) {
     bot.clearControlStates()
     bot.setQuickBarSlot(8) // 离开靶场

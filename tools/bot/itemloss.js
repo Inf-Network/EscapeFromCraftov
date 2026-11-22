@@ -1,7 +1,11 @@
 // Checks for the silent item losses of issue #18: a broken or changed items.yml, items held on the
 // cursor, loading a preset without its backpack, insurance marks, full bodies and season rewards.
 //
-//   node itemloss.js reload | unknown | raid | insure [end|stop|offline|two] | missing | preset | season
+//   node itemloss.js reload | unknown | raid | cursorpack | insure [end|stop|offline|two] | missing | preset | season
+//
+// cursorpack: a backpack taken off onto the cursor with a collectible inside. At the no-backpack exit
+// it must block the countdown like a worn one; then, with another backpack worn, the extraction mails
+// it (it cannot be worn or put in a cell) and must count it: collection entry, extracted value.
 //
 // insure: end = the raid ends normally; stop = the server stops after the owner died; offline = it
 // stops while the owner is disconnected; two = two raids are running when it stops. The three stop
@@ -260,6 +264,56 @@ async function raid () {
   check('gold bar saved in the loadout', countIds(Object.values(p.loadout), 'gold_bar') === 1, Object.values(p.loadout).map(r => r.id))
 }
 
+async function cursorpack () {
+  const name = 'Bp' + tag
+  // pack_3 worn with empty cells, an empty pack_2 in pocket 0, the other pockets full and no rig, so
+  // a collectible given in the raid lands in the backpack.
+  const loadout = { 36: rec('pack_3'), 0: rec('pack_2') }
+  for (const s of [1, 3, 4, 5, 6, 7]) loadout[s] = rec('screws')
+  await prepare(name, p => { p.loadout = loadout; p.mailbox = []; p.collected = [] })
+  const bot = await make(name)
+  // The countdown beeps every second (craftov:extract.beep); a blocked exit stays silent.
+  const beeps = []
+  bot.on('soundEffectHeard', n => { if (String(n).includes('extract.beep')) beeps.push(Date.now()) })
+  await deploy([bot])
+  await rcon(`cv give ${name} pocket_watch`)
+  await sleep(800)
+  const cells = Array.from({ length: 18 }, (_, i) => 18 + i)
+  check('collectible lands in the worn backpack', cells.some(i => cid(bot.inventory.slots[i]) === 'pocket_watch'), carriedIds(bot))
+
+  // The worn backpack onto the cursor, then into the no-backpack exit: blocked like a worn one.
+  await bot.clickWindow(8, 0, 0)
+  await sleep(600)
+  const before = bot.worldChanges
+  await rcon(`execute as ${name} at @s run tp @s 106.5 65 44.5`)
+  await sleep(9000)
+  check('no-backpack exit blocks a packed backpack held on the cursor', bot.worldChanges === before && beeps.length === 0,
+    { worldChanges: bot.worldChanges - before, beeps: beeps.length })
+  await rcon(`execute as ${name} at @s run tp @s 100.5 65 30.5`)
+  await sleep(1000)
+
+  // Back on, then swapped for the empty pack_2: pack_3 with the watch is left on the cursor.
+  await bot.clickWindow(8, 0, 0) // cursor pack_3 back on
+  await sleep(500)
+  await bot.clickWindow(36, 0, 0) // pocket 0: pack_2 onto the cursor
+  await sleep(500)
+  await bot.clickWindow(8, 0, 0) // pack_2 on, pack_3 (packed) onto the cursor
+  await sleep(800)
+  check('pack_2 worn, pack_3 on the cursor', cid(bot.inventory.slots[8]) === 'pack_2', carriedIds(bot))
+  await rcon(`execute as ${name} at @s run tp @s 106.5 65 8.5`)
+  check('extracted (the countdown beeped this time)', await waitFor(() => bot.worldChanges > before, 20000) && beeps.length > 0, beeps.length)
+  await sleep(2500)
+  const broadcast = bot.chats.some(c => c.includes('成功带出收藏品'))
+  await leave(bot)
+  const p = readProfile(name)
+  const mailed = p.mailbox.find(r => r.id === 'pack_3')
+  check('the packed backpack went to the mailbox with the watch', !!mailed && (mailed.contents || []).some(r => r.id === 'pocket_watch'),
+    p.mailbox.map(r => r.id + (r.contents ? '[' + r.contents.map(c => c.id).join(',') + ']' : '')))
+  check('the watch is in the collection', (p.collected || []).includes('pocket_watch') && broadcast, { collected: p.collected, broadcast })
+  const report = p.reports && p.reports[0]
+  check('the extracted value counts the mailed watch', !!report && report.extractedValue >= 70000, report && report.extractedValue)
+}
+
 // The guns are loaded, so a claim that lost the deploy snapshot (which would empty them) shows.
 const loaded = (id, ammoType) => Object.assign(gun(id), { ammo: 20, ammoType })
 const insuredLoadout = () => ({ 0: loaded('m4c', 'ammo_556_m855'), 1: rec('optic_reddot'), 18: loaded('k47', 'ammo_762_ps'),
@@ -474,7 +528,7 @@ async function season () {
   check('all four in the loadout', countIds(Object.values(p.loadout), 'medkit_l') === 4)
 }
 
-const scenarios = { reload, unknown, raid, insure, missing, preset, season }
+const scenarios = { reload, unknown, raid, cursorpack, insure, missing, preset, season }
 
 ;(async () => {
   try {

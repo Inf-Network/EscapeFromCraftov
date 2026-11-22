@@ -27,6 +27,14 @@
 //           wears the armory copy and leaves the bot's own key alone.
 //   contract a saved daily contract for the proving ground (test mode off) is swapped for another
 //           one when the contracts are read, for free; the other two contracts stay.
+//   cursor  test mode on: the bot packs its own bandage into an armory backpack, takes its own pack_1
+//           onto the cursor and clicks the backpack slot, so pack_1 is worn and the armory backpack,
+//           packed, is left on the cursor. It extracts like that: the bandage must come home (in the
+//           inventory or the mailbox), the armory backpack must be taken with the usual notice and
+//           no test item may be left.
+//   insured test mode on, insurance on: the bot packs its own insured K47 into an armory backpack,
+//           throws the backpack with Q and dies. When the raid closes the K47 must reach the mailbox
+//           as it was insured (with its rounds), although the backpack around it is an armory item.
 //   offline test mode on, two bots in a raid, each with an armory backpack whose cells hold its own
 //           items while its pockets and rig are full. A disconnects and rejoins (armory items come
 //           back), disconnects again, and the server is stopped with B still online. After the
@@ -148,6 +156,26 @@ const PACK_CELLS = Array.from({ length: 18 }, (_, i) => 18 + i)
 const GIFTS = ['screws', 'tape', 'battery', 'lighter', 'canned_food', 'copper_coil', 'water_tabs', 'circuit', 'toolset',
   'cigarettes', 'coffee', 'energy_drink', 'multimeter', 'ration', 'ssd', 'radio']
 const ownIn = (bot, slots) => slots.map(i => bot.inventory.slots[i]).filter(s => s && !isTest(s)).map(itemId).filter(Boolean)
+/** How many of an item the bot carries of its own (armory stacks left out). */
+const ownCount = (bot, id) => bot.inventory.slots.filter(s => s && itemId(s) === id && !isTest(s)).reduce((n, s) => n + s.count, 0)
+/** One raw click on the bot's own inventory (mode 4 = Q), as the vanilla client sends it. */
+const rawClick = (bot, slot, button, mode) =>
+  bot._client.write('window_click', { windowId: 0, stateId: -1, slot, mouseButton: button, mode, changedSlots: [], cursorItem: undefined })
+
+/** Opens the armory carry box and right-clicks the biggest armory backpack on; true if it is worn. */
+async function wearArmoryPack (bot) {
+  const w = await openContainerAt(bot, 47.5, 65, 77.5)
+  if (!w) return false
+  await waitFor(() => revealed(w).length === top(w).length, 60000) // backpacks come last
+  const packs = revealed(w).filter(([, s]) => /pack_/.test(itemId(s) || '') && isTest(s))
+  const [bigSlot] = packs[packs.length - 1] || []
+  if (bigSlot !== undefined) {
+    await bot.clickWindow(bigSlot, 1, 0) // right-click: equip (the bot's own pack goes into the box)
+    await sleep(800)
+  }
+  bot.__box = w
+  return isTest(bot.inventory.slots[8]) && /pack_/.test(itemId(bot.inventory.slots[8]) || '')
+}
 
 /** Queues a squad of solo bots for the proving ground and waits until all are in the raid. */
 async function deploy (list) {
@@ -531,6 +559,86 @@ const scenarios = {
       tasks[1].kind === 'AI_KILL' && tasks[1].progress === 2 && tasks[2].kind === 'SEARCH' && tasks[2].progress === 1 &&
       after.money === money
     return [ok, { menu: !!menu, tasks, money: [money, after.money] }]
+  },
+
+  async cursor () {
+    await testMode(true)
+    const a = await make()
+    await waitFor(() => fs.existsSync(profileFile(a)), 15000)
+    const mailBefore = profile(a).mailbox.length
+    if (!await deploy([a])) return [false, { error: 'never reached the raid', world: a.worldName }]
+    const notes = {}
+    notes.armoryPackWorn = await wearArmoryPack(a)
+    const w = a.__box
+    // The bot's own pack_1 comes back out of the box into a pocket.
+    const own = w && top(w).find(([, s]) => itemId(s) === 'pack_1' && !isTest(s))
+    if (own) { await a.clickWindow(own[0], 0, 0); await sleep(600) }
+    if (w) a.closeWindow(w)
+    await sleep(500)
+    const bandages = ownCount(a, 'bandage')
+    const bandageSlot = POCKETS.concat([38]).find(i => itemId(a.inventory.slots[i]) === 'bandage' && !isTest(a.inventory.slots[i]))
+    if (bandageSlot !== undefined && !a.inventory.slots[18]) {
+      await a.clickWindow(bandageSlot, 0, 0); await sleep(300)
+      await a.clickWindow(18, 0, 0); await sleep(500)
+    }
+    notes.bandages = bandages
+    notes.bandageInArmoryPack = itemId(a.inventory.slots[18]) === 'bandage' && !isTest(a.inventory.slots[18])
+    const ownPack = a.inventory.slots.findIndex((s, i) => i >= 9 && s && itemId(s) === 'pack_1' && !isTest(s))
+    if (ownPack < 0) return [false, { error: 'own pack_1 not carried', notes }]
+    // Own pack_1 onto the cursor, then onto the backpack slot: the armory backpack, packed, takes its place on the cursor.
+    await a.clickWindow(ownPack, 0, 0); await sleep(400)
+    await a.clickWindow(8, 0, 0); await sleep(800)
+    notes.ownPackWorn = itemId(a.inventory.slots[8]) === 'pack_1' && !isTest(a.inventory.slots[8])
+    notes.cursor = itemId(a.inventory.selectedItem)
+    await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 8.5`)
+    if (!await waitFor(() => inLobby(a), 30000)) return [false, { error: 'did not extract', notes, chat: a.chatLog.slice(-3) }]
+    await sleep(4000)
+    const after = profile(a)
+    const mailed = after.mailbox.slice(mailBefore).filter(r => r.id === 'bandage').reduce((n, r) => n + r.amount, 0)
+    const result = {
+      ...notes,
+      home: { carried: ownCount(a, 'bandage'), mailed },
+      testItemsLeft: a.inventory.slots.filter(isTest).length,
+      notice: saw(a, '试验场物资已收回'),
+      packHome: itemId(a.inventory.slots[8])
+    }
+    const ok = notes.armoryPackWorn && notes.bandageInArmoryPack && notes.ownPackWorn && bandages > 0 &&
+      result.home.carried + result.home.mailed === bandages && result.testItemsLeft === 0 && result.notice && result.packHome === 'pack_1'
+    return [ok, result]
+  },
+
+  async insured () {
+    await testMode(true)
+    const a = await make()
+    await waitFor(() => fs.existsSync(profileFile(a)), 15000)
+    const menu = await openWindow(a, () => a.chat('/cv deploy'))
+    if (!menu) return [false, { error: 'deploy screen did not open' }]
+    await a.clickWindow(34, 0, 0) // auto insurance on
+    await sleep(400)
+    a.closeWindow(menu)
+    const mailBefore = profile(a).mailbox.length
+    if (!await deploy([a])) return [false, { error: 'never reached the raid', world: a.worldName }]
+    const notes = { insured: saw(a, '件装备投保') }
+    notes.armoryPackWorn = await wearArmoryPack(a)
+    if (a.__box) a.closeWindow(a.__box)
+    await sleep(500)
+    const gunSlot = POCKETS.concat([38]).find(i => itemId(a.inventory.slots[i]) === 'k47' && !isTest(a.inventory.slots[i]))
+    if (gunSlot === undefined) return [false, { error: 'own K47 not carried', notes }]
+    notes.ammo = pdc(a.inventory.slots[gunSlot], 'ammo')
+    await a.clickWindow(gunSlot, 0, 0); await sleep(300)
+    await a.clickWindow(18, 0, 0); await sleep(500)
+    notes.gunInArmoryPack = itemId(a.inventory.slots[18]) === 'k47' && !isTest(a.inventory.slots[18])
+    rawClick(a, 8, 0, 4) // Q on the worn armory backpack: thrown with the K47 inside
+    await sleep(1500)
+    notes.thrown = Object.values(a.entities).some(e => e.name === 'item' && e.position.distanceTo(a.entity.position) < 6)
+    await rcon(`damage ${a.username} 1000 minecraft:generic`)
+    // The solo raid closes a few seconds after the death; the claim then mails what was insured.
+    const back = await waitFor(() => profile(a).mailbox.slice(mailBefore).some(r => r.id === 'k47'), 60000)
+    const gun = profile(a).mailbox.slice(mailBefore).find(r => r.id === 'k47')
+    const result = { ...notes, back, gun: gun && { ammo: gun.ammo, ammoType: gun.ammoType, test: !!gun.test, insured: gun.insured || null } }
+    const ok = notes.insured && notes.armoryPackWorn && notes.gunInArmoryPack && notes.thrown && back &&
+      !gun.test && !gun.insured && String(gun.ammo) === String(notes.ammo)
+    return [ok, result]
   },
 
   async offline () {

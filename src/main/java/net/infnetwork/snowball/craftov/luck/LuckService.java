@@ -403,7 +403,7 @@ public final class LuckService {
                 continue;
             }
             if (rng.nextDouble() < pityChance(rarity, luck.pity.getOrDefault(rarity.name(), 0))) {
-                return new Choice(pool.get(rng.nextInt(pool.size())), "pity-" + rarity.name());
+                return new Choice(pick(container, pool, rng), "pity-" + rarity.name());
             }
         }
         long min = minItemValue();
@@ -417,10 +417,34 @@ public final class LuckService {
                 }
             }
             if (!affordable.isEmpty()) {
-                return new Choice(affordable.get(rng.nextInt(affordable.size())), "quota");
+                return new Choice(pick(container, affordable, rng), "quota");
             }
         }
         return null;
+    }
+
+    /**
+     * One of {@code pool} as the container itself would draw it: a category by the container's
+     * weights (among those in the pool), then any of its items. A crate hands out a valuable far
+     * more often than a collectible, as it holds them.
+     */
+    private static ItemDef pick(LootContainer container, List<ItemDef> pool, Random rng) {
+        Map<Category, List<ItemDef>> byCategory = new EnumMap<>(Category.class);
+        for (ItemDef def : pool) {
+            byCategory.computeIfAbsent(def.category(), k -> new ArrayList<>()).add(def);
+        }
+        double total = 0;
+        for (Category category : byCategory.keySet()) {
+            total += Math.max(0, container.type.categories().getOrDefault(category, 0.0));
+        }
+        double roll = rng.nextDouble() * total;
+        for (Map.Entry<Category, List<ItemDef>> e : byCategory.entrySet()) {
+            roll -= Math.max(0, container.type.categories().getOrDefault(e.getKey(), 0.0));
+            if (roll <= 0) {
+                return e.getValue().get(rng.nextInt(e.getValue().size()));
+            }
+        }
+        return pool.get(rng.nextInt(pool.size()));
     }
 
     /** Whether finding {@code def} counts as finding {@code rarity} for pity: rounds never do. */

@@ -197,6 +197,17 @@ class Player:
         return sum(-r["net"] / self.s.thresholds.get(r["tier"], 200000) for r in self.raids if r["raid"] > since)
 
 
+def pick(data, type_id, pool, rng):
+    """LuckService.pick: a category by the container's weights (among those in the pool), then any item of it."""
+    weights = {c.upper(): float(w) for c, w in (data.containers[type_id].get("categories") or {}).items()}
+    by_cat = {}
+    for it in pool:
+        by_cat.setdefault(it.category, []).append(it)
+    cats = list(by_cat)
+    cat = rng.choices(cats, [max(0.0, weights.get(c, 0.0)) for c in cats])[0]
+    return rng.choice(by_cat[cat])
+
+
 def search(player, loot, data, type_id, shift, boost, rng, no_red=False):
     """One container: (natural item ids, hand-out (id, source) or None). Mirrors LuckService.onSearch."""
     s = player.s
@@ -222,12 +233,12 @@ def search(player, loot, data, type_id, shift, boost, rng, no_red=False):
                     continue
                 if rng.random() < s.pity_chance(r, player.pity[r]):
                     pool = finds[r]
-                    choice = (rng.choice(pool).id, "pity-" + r)
+                    choice = (pick(data, type_id, pool, rng).id, "pity-" + r)
                     break
         if choice is None and player.quota >= s.min_value and rng.random() < s.quota_chance:
             pool = [it for f in finds.values() for it in f if s.min_value <= it.value <= player.quota]
             if pool:
-                choice = (rng.choice(pool).id, "quota")
+                choice = (pick(data, type_id, pool, rng).id, "quota")
     if choice:
         item = data.items[choice[0]]
         if choice[1] == "quota":

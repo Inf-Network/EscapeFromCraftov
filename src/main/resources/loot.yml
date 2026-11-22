@@ -10,6 +10,14 @@
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
 revision: 2
+# Jackpot items: the top collectibles. The rarity rolls above never draw them; instead every
+# container that can hold a red item (soldier bodies and supply drops included) has this chance per
+# item of holding one more, shared like the rest of its contents. Players who go long without one
+# get it from their personal pity (config.yml luck.jackpot).
+jackpots:
+  master_chip: 0.0002
+  gold_crown: 0.0003
+  lion_statue: 0.0005
 containers:
   crate:
     name: "杂物箱"

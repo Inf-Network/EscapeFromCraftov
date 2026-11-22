@@ -7,6 +7,9 @@ stack sizes, worn armour and rounds left in a gun, all valued like ItemFactory.v
 the container list of maps/rustport.yml (a snapshot is kept in tools/econ/maps/rustport.json;
 the generator has a fixed seed, so it only changes when RustPortGenerator does).
 
+Jackpot items (loot.yml jackpots) are left out of the rarity rolls and added with their own chance
+to every container that can hold a red item, as LootService does; a commit without them has none.
+
 The rules follow LootService.java of the same commit: the old unbounded shift
 (x (1 + 0.55 s)^rarity / (1 + 0.4 s), container tiers added without a cap) or the bounded one
 (x (1 + shift-bonus x s) from loot.yml, capped at the tier's max-shift), and a fallback to the nearest
@@ -81,6 +84,7 @@ class Data:
         self.items = {k: Item(k, v) for k, v in source.yaml("src/main/resources/items.yml")["items"].items()}
         loot = source.yaml("src/main/resources/loot.yml")
         self.containers = loot["containers"]
+        self.jackpots = {k: float(v) for k, v in (loot.get("jackpots") or {}).items() if k in self.items}
         # LootService.DEFAULT_BONUS when loot.yml has no shift-bonus.
         self.bonus = dict(DEFAULT_BONUS, **{r.upper(): float(v) for r, v in (loot.get("shift-bonus") or {}).items()})
         self.config = source.yaml("src/main/resources/config.yml")
@@ -131,10 +135,28 @@ class Data:
             order += list(range(idx - 1, -1, -1))
         for i in order:
             if 0 <= i < len(RARITIES):
-                found = [it for it in self.by_category.get(category, []) if it.lootable and it.rarity == RARITIES[i]]
+                found = [it for it in self.by_category.get(category, [])
+                         if it.lootable and it.rarity == RARITIES[i] and it.id not in self.jackpots]
                 if found:
                     return found
         return []
+
+    def finds(self, type_id, shift, rarity):
+        """LootService.finds: single, non-ammo, non-jackpot items the container can turn up at `rarity`."""
+        ctype = self.containers[type_id]
+        if ctype.get("all-of") or self.rarity_weights(ctype, shift).get(rarity, 0) <= 0:
+            return []
+        out = []
+        for c, w in (ctype.get("categories") or {}).items():
+            if w <= 0 or c.upper() == "AMMO":
+                continue
+            out += [it for it in self.by_category.get(c.upper(), [])
+                    if it.lootable and it.rarity == rarity and it.stack == 1 and it.id not in self.jackpots]
+        return out
+
+    def jackpot_chances(self, type_id, shift):
+        """{jackpot id: chance} of the container holding one (only containers that can hold a red item)."""
+        return dict(self.jackpots) if self.finds(type_id, shift, "RED") else {}
 
     def item_distribution(self, type_id, shift):
         """{item id: probability} of one rolled item; the missing mass is a roll that yields nothing."""
@@ -207,13 +229,18 @@ class Data:
         dist = self.item_distribution(type_id, shift)
         per_item = sum(p * self.mean_value(self.items[i]) for i, p in dist.items())
         n = sum(k * p for k, p in self.counts(type_id, shift))
-        return n * per_item
+        jackpot = sum(c * self.mean_value(self.items[i]) for i, c in self.jackpot_chances(type_id, shift).items())
+        return n * per_item + jackpot
 
     def p_rarity(self, type_id, shift, rarity):
         """Chance the container holds at least one item of `rarity`."""
         dist = self.item_distribution(type_id, shift)
         p = sum(q for i, q in dist.items() if self.items[i].rarity == rarity)
-        return sum(pk * (1 - (1 - p) ** k) for k, pk in self.counts(type_id, shift))
+        none = sum(pk * (1 - p) ** k for k, pk in self.counts(type_id, shift))
+        for i, c in self.jackpot_chances(type_id, shift).items():
+            if self.items[i].rarity == rarity:
+                none *= 1 - c
+        return 1 - none
 
     def sampler(self, type_id, shift):
         dist = self.item_distribution(type_id, shift)
@@ -221,10 +248,12 @@ class Data:
         weights = [dist[i] for i in ids]
         nothing = max(0.0, 1 - sum(weights))
         counts = self.counts(type_id, shift)
+        jackpots = self.jackpot_chances(type_id, shift)
 
         def roll(rng):
             k = rng.choices([c for c, _ in counts], [p for _, p in counts])[0]
             picks = rng.choices(ids + [None], weights + [nothing], k=k)
+            picks += [i for i, c in jackpots.items() if rng.random() < c]
             return [self.sample_value(self.items[i], rng) for i in picks if i is not None]
 
         return roll

@@ -29,6 +29,12 @@ final class MotionTracker {
      */
     private static final double MAX_STEP = 1.0;
     /**
+     * A step this many times the player's pace is more than one tick of movement: packets held back
+     * and sent together (see {@link #average}). Sprinting is 1.3 times walking pace; a sprint-jump's
+     * first tick goes further, but never right before a stop.
+     */
+    private static final double HELD_BACK = 1.5;
+    /**
      * Moving this much faster than the player's own walking pace is running, whatever the client says
      * about sprinting: vanilla sprinting is 1.3 times walking pace.
      */
@@ -54,6 +60,8 @@ final class MotionTracker {
         final double[] paces = new double[PACE_WINDOW];
         int nextPace;
         boolean pacesSet;
+        /** The highest of {@link #paces}: the pace to compare with. */
+        double pace = WALK_SPEED;
         /** Consecutive ticks spent on the ground well over that pace. */
         int fastTicks;
     }
@@ -90,6 +98,7 @@ final class MotionTracker {
         for (double p : track.paces) {
             pace = Math.max(pace, p);
         }
+        track.pace = pace;
         boolean fast = groundRun(player) && average(track) > RUN_RATIO * pace;
         track.fastTicks = fast ? track.fastTicks + 1 : 0;
     }
@@ -119,18 +128,29 @@ final class MotionTracker {
      * Pace over the last {@link #WINDOW} ticks, robust to how movement packets fall into ticks: the
      * median of the three two-tick averages in it. A plain average reads a steady walk 25% slow
      * whenever one tick's packet arrives with the next tick's (steps x, x, x, 0 average 0.75x; their
-     * two-tick averages x, x, x/2 have the median x), and such a tick is common. A stop still shows
-     * within two or three ticks: the median drops once two of the three pairs are small (a stop with
-     * the opposite key, steps x, 0.1x, 0, 0, reads 0.05x; letting go, x, x, 0, 0 reads x/2 until the
-     * next still tick).
+     * two-tick averages x, x, x/2 have the median x), and such a tick is common. A stop shows within
+     * two or three ticks: the median drops once two of the three pairs are small (a stop with the
+     * opposite key, steps x, 0.1x, 0, 0, reads 0.05x; letting go, x, x, 0, 0 reads x/2 until the next
+     * still tick). Movement held back and sent at once is the exception: a client that sends four
+     * ticks of it together (steps 0, 0, 0, 4x) would read as standing on two ticks out of four, so
+     * when one step in the window is longer than {@link #HELD_BACK} times the player's pace and the
+     * median is at most half the plain average, the plain average counts (x on every tick of it).
      */
     private static double average(Track track) {
         double[] pairs = new double[WINDOW - 1];
+        double sum = 0;
+        double longest = 0;
         for (int i = 0; i < WINDOW - 1; i++) {
             pairs[i] = (track.steps[(track.next + i) % WINDOW] + track.steps[(track.next + i + 1) % WINDOW]) / 2;
         }
+        for (double step : track.steps) {
+            sum += step;
+            longest = Math.max(longest, step);
+        }
         java.util.Arrays.sort(pairs);
-        return pairs[pairs.length / 2];
+        double median = pairs[pairs.length / 2];
+        double mean = sum / WINDOW;
+        return longest > HELD_BACK * track.pace && median <= 0.5 * mean ? mean : median;
     }
 
     /** Blocks per tick the player's movement-speed attribute walks right now. */

@@ -145,7 +145,15 @@ public final class RaidManager implements Listener {
         return rp != null && rp.active() && Bukkit.getCurrentTick() >= rp.protectedUntil;
     }
 
+    /**
+     * Whether {@code attacker} may hurt {@code victim}: only a combatant can be hurt at all, players
+     * only by enemies in their own raid (or squadmates with friendly fire on), and soldiers never
+     * hurt each other. Bullets that may not hurt an entity fly through it.
+     */
     public boolean canDamage(LivingEntity attacker, LivingEntity victim) {
+        if (!isCombatant(victim)) {
+            return false;
+        }
         if (attacker instanceof Player a && victim instanceof Player v) {
             Raid raid = raidOf(a);
             if (raid == null || raid != raidOf(v)) {
@@ -159,6 +167,16 @@ public final class RaidManager implements Listener {
             return plugin.ai().isAi(victim) != plugin.ai().isAi(attacker) || plugin.lobby().isTarget(victim);
         }
         return true;
+    }
+
+    /**
+     * Players, soldiers, drones and range dummies: the only living things that take hits. Anything
+     * else alive in a world is scenery (corpses, kill-replay stand-ins, whatever decoration comes
+     * next), so a shot passes through it instead of stopping in mid-air with a hit marker.
+     */
+    public boolean isCombatant(LivingEntity entity) {
+        return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
+                || plugin.lobby().isTarget(entity);
     }
 
     public boolean sameSquad(Player a, Player b) {

@@ -9,26 +9,38 @@
 //   5. S shoots V (full health) down: the shot that downs it plays craftov:hit.knock and no shot
 //      plays craftov:hit.kill;
 //   6. V, down again, falls 10 blocks and M's frag goes off at its feet: V loses no bleed-out time;
-//      V bleeds out and the kill is S's (kill feed, "✖ 击杀" for S, none for M, V's death title);
+//      V bleeds out and the kill is S's (kill feed, "✖ 击杀" for S, none for M, V's death title),
+//      with no kill replay (S last hit V 30 s before);
 //   7. S shoots M dead (nobody left standing to revive it): the killing shot plays craftov:hit.kill,
-//      M's report shows no player kills;
+//      M watches the kill replay, and M's report shows no player kills;
 //   8. S, at 20 health, blows itself up: "阵亡（破片手雷）", and its report shows the two kills only.
-// solo: two solo bots A and B:
-//   9. A shoots B once, B is given A's heavy chest bleed and bleeds out, over 30 s after the shot:
-//      B's death reads "被 A 击杀（失血）", A gets "✖ 击杀", the kill feed names A.
+// solo: four solo bots A (the shooter), B, C and D; D first puts a bounty on C from the lobby:
+//   9. A shoots C, who carries an injector, down; C quits 32 s later: A gets "✖ 击杀" and the bounty;
+//  10. A shoots D, D's wounds are cleared and it gets a heavy bleed nobody made: it bleeds out over
+//      30 s after the shot as nobody's kill ("阵亡（失血）", "☠ D");
+//  11. A shoots B, B's wounds are cleared and it gets a light bleed of A's; A is killed, then B bleeds
+//      out: B's death still names A, but A, already dead, gets no kill; A's report shows C only.
+// ff: the squad setup with combat.friendly-fire turned on in the server's config.yml (SERVER_DIR,
+// default the repository's server/run; put back afterwards):
+//  12. S shoots V down; M hits the crawling V in the last 20 s of its bleed-out (the hits are
+//      recorded, though the squad's scoreboard team blocks their damage): when V bleeds out, the
+//      kill is S's, not M's.
 //
-//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node credit.js [squad|solo]
+//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node credit.js [ff|squad|solo]
 //
-// Both scenarios run when none is named. The bots are made op (test map) and deopped when done;
+// All three run when none is named. The bots are made op (test map) and deopped when done;
 // soldiers are killed every few seconds so they do not join in. A match launches after
 // match.wait-seconds (30 by default). Exit code 0 when every check passes, 1 when one fails, 2 when
 // the scenario could not be set up.
+const fs = require('fs')
+const path = require('path')
 const mineflayer = require('mineflayer')
 const nbt = require('prismarine-nbt')
 const rconRaw = require('./rcon')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
 const rcon = cmd => rconRaw(cmd, RCON)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
@@ -228,6 +240,32 @@ async function dropFrag (bot, key, at) {
   bot.setControlState('sneak', false)
 }
 
+/** Runs `action` and returns the window it opens, or null after 4 s. */
+function nextWindow (bot, action) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 4000)
+    bot.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    Promise.resolve().then(action).catch(() => {})
+  })
+}
+
+/** `payer`, in the lobby, puts a bounty on `target`: main menu, 悬赏榜 (slot 32), the target's head. */
+async function placeBounty (payer, target) {
+  await rcon(`cv money ${payer.username} 20000`)
+  const main = await nextWindow(payer, () => payer.chat('/cv menu'))
+  if (!main) return false
+  const board = await nextWindow(payer, () => payer.clickWindow(32, 0, 0))
+  if (!board) return false
+  await sleep(300)
+  const slot = board.slots.findIndex((s, i) => i >= 9 && i < 36 && s && JSON.stringify(s.components || '').includes(target.username))
+  const since = Date.now()
+  if (slot >= 0) await payer.clickWindow(slot, 0, 0)
+  await waitFor(() => barsSince(payer, since).some(b => b.includes('已追加悬赏')), 3000)
+  payer.closeWindow(board)
+  await sleep(300)
+  return barsSince(payer, since).some(b => b.includes('已追加悬赏'))
+}
+
 /** Seconds left on a downed bot's bleed-out, from its latest action bar. */
 const bleedOut = bot => { const b = bot.bars.slice().reverse().find(x => /倒地 .*?(\d+)s/.test(x.text)); return b ? Number(b.text.match(/倒地 .*?(\d+)s/)[1]) : null }
 
@@ -384,6 +422,8 @@ async function squad () {
     && !barsSince(M, since).some(b => b.includes('✖ 击杀')), { S: barsSince(S, since).filter(b => b.includes('击杀')), M: barsSince(M, since).filter(b => b.includes('击杀')) })
   check('V\'s death title names S', titled(V, `被 ${S.username} 击杀`), V.titles.slice(-2))
   check('no bounty is claimed for V', !chatHas(S, '领取了', V.username))
+  await sleep(2000)
+  check('V gets no kill replay: S, still in the raid, last hit it 30 s before', !titled(V, '击杀回放'), V.titles.slice(-3))
 
   // 7. S shoots M dead: the killing shot plays the kill sound.
   await tp(S, 45.5, 65, 88.5, 0, 0)
@@ -403,6 +443,7 @@ async function squad () {
     (mSounds[mSounds.length - 1] || []).includes('kill') && !mSounds.flat().includes('knock'), mSounds)
   await waitFor(() => M.chatLines.some(l => l.includes('击败干员')), 45000)
   const mReport = M.chatLines.find(l => l.includes('击败干员'))
+  check('M, shot dead, watches the kill replay first', titled(M, '击杀回放'), M.titles)
   check('M\'s report: no player kills (its frag by the downed V counted for nothing)', /击败干员 0\b/.test(mReport || ''), mReport)
 
   // 8. S at 20 health blows itself up.
@@ -426,48 +467,201 @@ async function squad () {
 async function solo () {
   const A = await make(`kc${run}a`)
   const B = await make(`kc${run}b`)
-  for (const bot of [A, B]) await rcon(`op ${bot.username}`)
-  for (const bot of [A, B]) bot.chat('/cv queue proving NORMAL SOLO')
+  const C = await make(`kc${run}c`)
+  const D = await make(`kc${run}d`)
+  const all = [A, B, C, D]
+  for (const bot of all) await rcon(`op ${bot.username}`)
+  if (!await placeBounty(D, C)) {
+    log('SETUP: D could not put a bounty on C from the lobby')
+    return 2
+  }
+  for (const bot of all) bot.chat('/cv queue proving NORMAL SOLO')
   log('solo queued; waiting for the raid')
-  if (!await enterRaid([A, B])) return 2
+  if (!await enterRaid(all)) return 2
+  if (new Set(all.map(b => b.worldName)).size !== 1) {
+    log('SETUP: the four solo bots are not in one raid', all.map(b => b.worldName))
+    return 2
+  }
+  await waitFor(() => chatHas(A, '本局悬赏目标', C.username), 15000) // 14 s after the raid begins
+  check('the raid announces the bounty on C', chatHas(A, '本局悬赏目标', C.username), A.chatLines.filter(l => l.includes('悬赏')))
   sweep(true)
   await clearArea(A)
-  for (const slot of ['head', 'chest']) await rcon(`item replace entity ${B.username} armor.${slot} with minecraft:air`)
+  for (const bot of [B, C, D]) for (const slot of ['head', 'chest']) await rcon(`item replace entity ${bot.username} armor.${slot} with minecraft:air`)
   if (!await holdGun(A) || !await semi(A)) {
     log('SETUP: the shooter has no K47 or could not switch it to semi-auto')
     return 2
   }
-  B.setQuickBarSlot(2)
+  if (await giveToHotbar(C, 'revive_kit', 7) < 0) {
+    log('SETUP: could not give C an injector')
+    return 2
+  }
+  for (const bot of [B, C, D]) bot.setQuickBarSlot(2)
   await tp(A, 45.5, 65, 88.5, 0, 0)
-  await tp(B, 45.5, 65, 94.5, 180, 0)
+  await tp(B, 40.5, 65, 94.5, 180, 0)
+  await tp(C, 45.5, 65, 94.5, 180, 0)
+  await tp(D, 50.5, 65, 94.5, 180, 0)
   await sleep(1000)
-
-  // 9. One shot and a heavy bleed: B bleeds out as A's kill.
   const since = Date.now()
-  const first = await shot(A, B, 1.2)
-  const shotAt = Date.now()
-  log(`A's shot: ${JSON.stringify(first)}, B at ${await health(B.username)}`)
-  await rcon(`cv injure ${B.username} chest heavy ${A.username}`)
-  await waitFor(() => B.game.gameMode === 'spectator', 70000)
-  const after = (Date.now() - shotAt) / 1000
+
+  // 9. A shoots C down; with the injector on it, C crawls instead of dying.
+  for (let i = 0; i < 6 && !titled(C, '第一次倒地'); i++) {
+    await shot(A, C, 1.2)
+    await sleep(300)
+  }
+  const downAt = Date.now()
+  check('A shoots C, who carries an injector, down', titled(C, '第一次倒地'), C.titles.slice(-2))
+
+  // 10. D: one shot from A, then only a heavy bleed nobody made (A's shot may have made one too).
+  const dShot = await shot(A, D, 1.2)
+  const dShotAt = Date.now()
+  await restore(D)
+  await rcon(`damage ${D.username} 40 minecraft:generic`)
+  await rcon(`cv injure ${D.username} chest heavy`)
+  log(`A's shot at D: ${JSON.stringify(dShot)}; D at ${await health(D.username)}, bleeding from a wound nobody made`)
+
+  // 11. B: one shot from A, then only a light bleed of A's, which keeps A's credit going.
+  const bShot = await shot(A, B, 1.2)
+  await restore(B)
+  await rcon(`damage ${B.username} 40 minecraft:generic`)
+  await rcon(`cv injure ${B.username} chest light ${A.username}`)
+  log(`A's shot at B: ${JSON.stringify(bShot)}; B at ${await health(B.username)}, bleeding lightly from A's wound`)
+
+  // 9. C quits 32 s after going down: the kill and the bounty go to A.
+  await waitFor(() => Date.now() - downAt > 32000, 40000)
+  const quitAt = Date.now()
+  C.quit()
+  await waitFor(() => barsSince(A, quitAt).some(b => b.includes('✖ 击杀') && b.includes(C.username)), 6000)
+  await sleep(500)
+  check('C quits 32 s after A downed it: A gets "✖ 击杀"', barsSince(A, quitAt).some(b => b.includes('✖ 击杀') && b.includes(C.username)),
+    barsSince(A, quitAt).filter(b => b.includes('击')))
+  check('A claims the bounty on C', chatHas(A, '领取了', C.username), A.chatLines.filter(l => l.includes('悬赏')).slice(-2))
+  check('the kill feed gives C to A', A.chatLines.some(l => l.startsWith(A.username) && l.includes('→') && l.includes(C.username)),
+    A.chatLines.filter(l => l.includes(C.username)).slice(-2))
+
+  // 10. D bleeds out from the wound nobody made, over 30 s after A's shot: nobody's kill.
+  await waitFor(() => D.game.gameMode === 'spectator', 60000)
+  const dAfter = (Date.now() - dShotAt) / 1000
   await sleep(1500)
-  check(`B bleeds out ${after.toFixed(0)} s after A's shot (over 30 s)`, B.game.gameMode === 'spectator' && after > 30)
-  check('B\'s death reads "被 A 击杀（失血）"', titled(B, `被 ${A.username} 击杀（失血）`), B.titles.slice(-2))
-  check('A gets "✖ 击杀" for B', barsSince(A, since).some(b => b.includes('✖ 击杀') && b.includes(B.username)), barsSince(A, since).filter(b => b.includes('击')))
-  const feed = A.chatLines.filter(l => l.includes('→') && l.includes(B.username))
-  check('the kill feed reads "A [失血] → B"', feed.some(l => l.startsWith(`${A.username} [失血]`)), feed)
+  check(`D bleeds out ${dAfter.toFixed(0)} s after A's shot (over 30 s): "阵亡（失血）"`,
+    D.game.gameMode === 'spectator' && dAfter > 30 && titled(D, '阵亡（失血）'), D.titles.slice(-2))
+  check('A gets no kill for D', !barsSince(A, since).some(b => b.includes('✖ 击杀') && b.includes(D.username)))
+  check('the kill feed shows "☠ D"', A.chatLines.some(l => l.includes('☠') && l.includes(D.username) && !l.includes('→')),
+    A.chatLines.filter(l => l.includes(D.username)).slice(-2))
+
+  // 11. A dies; B, still bleeding from A's wound, bleeds out afterwards.
+  const aDeath = Date.now()
+  await rcon(`damage ${A.username} 1000 minecraft:generic`)
+  await waitFor(() => A.game.gameMode === 'spectator', 5000)
+  check('A dies', A.game.gameMode === 'spectator', A.game.gameMode)
+  await rcon(`cv injure ${B.username} chest heavy ${A.username}`)
+  await waitFor(() => A.chatLines.some(l => l.includes('击败干员')), 30000)
+  const aReport = A.chatLines.find(l => l.includes('击败干员'))
+  check('A\'s report: one player kill (C; D bled from a wound nobody made)', /击败干员 1\b/.test(aReport || ''), aReport)
+  await waitFor(() => B.game.gameMode === 'spectator', 60000)
+  await sleep(1500)
+  check('B bleeds out after A died; its death still names A', B.game.gameMode === 'spectator' && titled(B, `被 ${A.username} 击杀（失血）`),
+    B.titles.slice(-2))
+  check('A, already dead, gets no "✖ 击杀" for B', !barsSince(A, aDeath).some(b => b.includes('✖ 击杀')), barsSince(A, aDeath).filter(b => b.includes('击')))
+  return 0
+}
+
+// ------------------------------------------------------------------ friendly fire
+
+async function ff () {
+  const file = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
+  let original
+  try { original = fs.readFileSync(file, 'utf8') } catch (e) {
+    log('SETUP: cannot read', file)
+    return 2
+  }
+  const on = original.replace(/^(\s*friendly-fire:\s*)false\s*$/m, '$1true')
+  if (on === original) {
+    log('SETUP: no "friendly-fire: false" in', file)
+    return 2
+  }
+  fs.writeFileSync(file, on)
+  try {
+    if (!(await rcon('cv reload')).includes('已重新加载')) {
+      log('SETUP: cv reload failed')
+      return 2
+    }
+    return await friendlyFire()
+  } finally {
+    fs.writeFileSync(file, original)
+    await rcon('cv reload').catch(() => {})
+  }
+}
+
+async function friendlyFire () {
+  const S = await make(`kf${run}s`)
+  const V = await make(`kf${run}v`)
+  const M = await make(`kf${run}m`)
+  for (const bot of [S, V, M]) await rcon(`op ${bot.username}`)
+  M.chat(`/cv party invite ${V.username}`)
+  await sleep(800)
+  V.chat('/cv party accept')
+  await sleep(800)
+  M.chat('/cv queue proving NORMAL TRIO')
+  S.chat('/cv queue proving NORMAL SOLO')
+  log('friendly fire on; squad and enemy queued')
+  if (!await enterRaid([S, V, M])) return 2
+  if (S.worldName !== V.worldName || S.worldName !== M.worldName) {
+    log('SETUP: the enemy is not in the squad\'s raid', [S.worldName, V.worldName, M.worldName])
+    return 2
+  }
+  sweep(true)
+  await clearArea(S)
+  for (const bot of [S, V, M]) for (const slot of ['head', 'chest']) await rcon(`item replace entity ${bot.username} armor.${slot} with minecraft:air`)
+  if (!await holdGun(M) && await giveToHotbar(M, 'k47', 0) < 0) {
+    log('SETUP: could not give M a K47')
+    return 2
+  }
+  if (!await holdGun(S) || !await semi(S) || !await holdGun(M) || !await semi(M)) {
+    log('SETUP: S or M has no K47 or could not switch it to semi-auto')
+    return 2
+  }
+  V.setQuickBarSlot(2)
+  await tp(S, 45.5, 65, 88.5, 0, 0)
+  await tp(V, 45.5, 65, 94.5, 180, 0)
+  await tp(M, 50.5, 65, 94.5, 90, 0) // side-on: a miss at V flies on past nobody
+  await sleep(1000)
+  const since = Date.now()
+  for (let i = 0; i < 6 && !titled(V, '第一次倒地'); i++) {
+    await shot(S, V, 1.2)
+    await sleep(300)
+  }
+  check('S shoots V down', titled(V, '第一次倒地'), V.titles.slice(-2))
+  // Late in the bleed-out, so M's hits are still V's last hit (under 30 s old) when it dies. They
+  // are recorded and play hit markers; the squad's scoreboard team keeps them from doing damage.
+  await waitFor(() => bleedOut(V) !== null && bleedOut(V) <= 20, 60000)
+  const mSounds = []
+  for (let i = 0; i < 2 && V.game.gameMode !== 'spectator'; i++) {
+    mSounds.push(await shot(M, V, 0.3))
+    await sleep(300)
+  }
+  log('M\'s shots at the crawling V', mSounds, 'V bleed-out left', bleedOut(V))
+  check('M (friendly fire on) hits the crawling V in its last 20 s', mSounds.some(s => s && s.length > 0), mSounds)
+  await waitFor(() => V.game.gameMode === 'spectator', 30000)
+  await sleep(1500)
+  const feed = S.chatLines.filter(l => l.includes('→') && l.includes(V.username))
+  check('V bleeds out', V.game.gameMode === 'spectator', V.game.gameMode)
+  check('V\'s death names S, who knocked it down, not M', titled(V, `被 ${S.username} 击杀`) && !titled(V, `被 ${M.username}`), V.titles.slice(-2))
+  check('S gets "✖ 击杀" for V, M does not', barsSince(S, since).some(b => b.includes('✖ 击杀') && b.includes(V.username))
+    && !barsSince(M, since).some(b => b.includes('✖ 击杀')), { S: barsSince(S, since).filter(b => b.includes('击杀')), M: barsSince(M, since).filter(b => b.includes('击杀')) })
+  check('the kill feed gives V to S', feed.some(l => l.startsWith(S.username)) && !feed.some(l => l.startsWith(M.username)), feed)
   return 0
 }
 
 ;(async () => {
   let code = 0
-  if (WHICH === 'all' || WHICH === 'squad') code = Math.max(code, await squad())
-  sweep(false)
-  for (const bot of bots.splice(0)) {
-    try { await rcon(`deop ${bot.username}`) } catch (e) { }
-    try { bot.quit() } catch (e) { }
+  for (const [name, scenario] of [['ff', ff], ['squad', squad], ['solo', solo]]) {
+    if (code < 2 && (WHICH === 'all' || WHICH === name)) code = Math.max(code, await scenario())
+    sweep(false)
+    for (const bot of bots.splice(0)) {
+      try { await rcon(`deop ${bot.username}`) } catch (e) { }
+      try { bot.quit() } catch (e) { }
+    }
   }
-  if (code < 2 && (WHICH === 'all' || WHICH === 'solo')) code = Math.max(code, await solo())
   finish(code === 2 ? 2 : checks.every(c => c.ok) ? 0 : 1)
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 

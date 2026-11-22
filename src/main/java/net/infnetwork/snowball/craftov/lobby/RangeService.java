@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -24,6 +25,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -40,7 +42,9 @@ import java.util.UUID;
  * Private shooting ranges. Entering saves the player's lobby inventory and moves them to a copy of
  * the hangar's firing line in a separate world, one copy per player, far from all others and with
  * other players hidden. Leaving wipes everything they hold and restores the saved inventory, so
- * nothing handed out on the range can ever reach the lobby, the stash or a raid.
+ * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
+ * inventory is kept here as well as in the profile and written back on leaving, so nothing that
+ * overwrites the profile's loadout during the session can cost the player their gear.
  */
 public final class RangeService implements Listener {
 
@@ -58,6 +62,8 @@ public final class RangeService implements Listener {
     private final CraftovPlugin plugin;
     private @Nullable World world;
     private final Map<UUID, Integer> plots = new HashMap<>();
+    /** The lobby loadout each player brought in, handed back to the profile when they leave. */
+    private final Map<UUID, Map<Integer, ItemRecord>> saved = new HashMap<>();
     private final Map<Integer, List<Entity>> plotEntities = new HashMap<>();
     private final BitSet used = new BitSet();
 
@@ -105,6 +111,7 @@ public final class RangeService implements Listener {
         // The lobby inventory is the real loadout: save it before anything is handed out.
         plugin.lobby().captureLoadout(player);
         plugin.profiles().saveNow(player.getUniqueId());
+        saved.put(player.getUniqueId(), copy(plugin.profiles().get(player).loadout));
         plugin.match().cancelQueue(player.getUniqueId(), "进入靶场");
         plugin.weapons().reset(player);
         int plot = used.nextClearBit(0);
@@ -127,9 +134,22 @@ public final class RangeService implements Listener {
 
     /** Ends the session: everything held is discarded and the saved lobby inventory comes back. */
     public void leave(Player player, boolean toLobby) {
+        if (!end(player) || !toLobby) {
+            return;
+        }
+        plugin.lobby().enterLobby(player);
+        player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
+    }
+
+    /**
+     * Ends the session where the player stands: the loaners are discarded, the plot is freed, the
+     * others can see them again and the loadout saved on entry goes back into the profile. False
+     * when there was no session.
+     */
+    private boolean end(Player player) {
         Integer plot = plots.remove(player.getUniqueId());
         if (plot == null) {
-            return;
+            return false;
         }
         plugin.weapons().reset(player);
         player.closeInventory();
@@ -140,10 +160,8 @@ public final class RangeService implements Listener {
             player.showPlayer(plugin, other);
             other.showPlayer(plugin, player);
         }
-        if (toLobby) {
-            plugin.lobby().enterLobby(player);
-            player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
-        }
+        restoreLoadout(player.getUniqueId());
+        return true;
     }
 
     public void shutdown() {
@@ -152,6 +170,20 @@ public final class RangeService implements Listener {
                 leave(player, true);
             }
         }
+    }
+
+    /** Writes the loadout saved on entry back to the profile, whatever happened to it meanwhile. */
+    private void restoreLoadout(UUID uuid) {
+        Map<Integer, ItemRecord> loadout = saved.remove(uuid);
+        if (loadout != null) {
+            plugin.profiles().edit(uuid, profile -> profile.loadout = loadout);
+        }
+    }
+
+    private static Map<Integer, ItemRecord> copy(Map<Integer, ItemRecord> loadout) {
+        Map<Integer, ItemRecord> out = new HashMap<>();
+        loadout.forEach((slot, record) -> out.put(slot, record.copy()));
+        return out;
     }
 
     private void hideOthers(Player player) {
@@ -265,13 +297,25 @@ public final class RangeService implements Listener {
             }
         }
         for (UUID uuid : new ArrayList<>(plots.keySet())) {
-            Player player = Bukkit.getPlayer(uuid);
-            if (player == null || !isRangeWorld(player.getWorld())) {
+            if (Bukkit.getPlayer(uuid) == null) {
                 Integer plot = plots.remove(uuid);
                 if (plot != null) {
                     release(plot);
                 }
+                restoreLoadout(uuid);
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        // Moved off the range by other means (admin teleport, /cv lobby, /tp). The session ends the
+        // moment they arrive: waiting for the next upkeep tick left a moment in which the lobby
+        // menus worked on a loadout the range was about to overwrite. Leaving through the exit
+        // item ends the session before the teleport, so this does nothing then.
+        Player player = event.getPlayer();
+        if (isRangeWorld(event.getFrom()) && end(player)) {
+            plugin.carry().apply(player, plugin.profiles().get(player).loadout, UiItems.lobbyMenu());
         }
     }
 

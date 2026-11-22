@@ -60,6 +60,11 @@ public final class Text {
         return Long.toString(amount);
     }
 
+    /** A plain number with at most two decimals and no trailing zeros: 3, 1.5, 0.85. */
+    public static String decimal(double value) {
+        return trim(value);
+    }
+
     private static String trim(double value) {
         String s = String.format("%.2f", value);
         while (s.contains(".") && (s.endsWith("0") || s.endsWith("."))) {

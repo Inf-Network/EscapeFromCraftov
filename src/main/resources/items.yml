@@ -163,7 +163,7 @@ items:
   # ------------------------------------------------------------------ throwables
   frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "右键投掷，3.5 秒后爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }
   smoke: { name: "烟雾弹", category: THROWABLE, rarity: GREEN, value: 2500, stack: 2, lore: "右键投掷，释放浓密烟幕。", throwable: { type: SMOKE, fuse: 30, radius: 6, damage: 0 } }
-  flash: { name: "震撼弹", category: THROWABLE, rarity: GREEN, value: 3000, stack: 2, lore: "右键投掷，致盲附近的敌人。", throwable: { type: FLASH, fuse: 40, radius: 10, damage: 0 } }
+  flash: { name: "震撼弹", category: THROWABLE, rarity: GREEN, value: 3000, stack: 2, lore: "右键投掷。正对爆点会白屏数秒并耳鸣，背对时较轻，隔墙无效；敌兵被闪会明显失准。", throwable: { type: FLASH, fuse: 40, radius: 10, damage: 0 } }
 
   # ------------------------------------------------------------------ keys
   key_dorm: { name: "宿舍顶层房间钥匙", category: KEY, rarity: BLUE, value: 15000, durability: 3, lock: dorm_201, lore: "锈港 · 宿舍楼二层尽头的房间。" }
@@ -183,7 +183,7 @@ items:
   att_suppressor:  { name: "消音器", category: ATTACHMENT, rarity: BLUE, value: 22000, weight: 0.45, lore: "枪声变小、传得近，没有枪口焰，敌兵要离得很近才听得到。后坐略降。", attach: { slot: muzzle, mount: [rifle, pistol], suppressed: true, recoil: 0.92, ads-spread: 1.05 } }
   att_compensator: { name: "枪口补偿器", category: ATTACHMENT, rarity: GREEN, value: 12000, weight: 0.2, lore: "把火药气体导向上方和两侧，压住枪口上跳。", attach: { slot: muzzle, mount: [rifle], recoil: 0.75, recoil-h: 0.88 } }
   att_vgrip:       { name: "垂直握把", category: ATTACHMENT, rarity: GREEN, value: 9000, weight: 0.15, lore: "前握更稳，左右晃动明显减小，腰射更集中。", attach: { slot: grip, mount: [rifle, shotgun], recoil: 0.92, recoil-h: 0.7, hip-spread: 0.88 } }
-  att_taclight:    { name: "战术手电", category: ATTACHMENT, rarity: BLUE, value: 15000, weight: 0.2, lore: "鼠标中键切换：关 → 常亮 → 爆闪。爆闪会让正对着灯的人短暂失明，也会暴露你自己。", attach: { slot: tactical, mount: [rifle, pistol, shotgun], light: strobe, hip-spread: 0.96 } }
+  att_taclight:    { name: "战术手电", category: ATTACHMENT, rarity: BLUE, value: 15000, weight: 0.2, lore: "鼠标中键切换：关 → 常亮 → 爆闪。爆闪让正对着灯的玩家白屏、敌兵短暂失准，也会暴露你自己。", attach: { slot: tactical, mount: [rifle, pistol, shotgun], light: strobe, hip-spread: 0.96 } }
   att_extmag:      { name: "扩容弹匣", category: ATTACHMENT, rarity: PURPLE, value: 16000, weight: 0.35, lore: "弹匣容量 +50%，换弹慢一些。", attach: { slot: mag, mount: [rifle, pistol], magazine: 1.5, reload: 1.15, move-speed: 0.98 } }
 
   # ------------------------------------------------------------------ valuables: white

@@ -1,6 +1,6 @@
 // Kill-replay stand-ins must not stop bullets (issue #36), and whatever should take hits still does.
 //
-//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node replayhit.js [replay] [targets]
+//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node replayhit.js [replay] [targets] [knife] [scenery]
 //
 // replay   Three bots on the proving ground: A alone, B and C in one squad. All three stand still in
 //          spawn bay 1 for 8 s, then B is downed and A shoots B until B dies. That starts B's kill
@@ -14,8 +14,16 @@
 // targets  Bullets stop only on combatants, so check that the rest still do: a training dummy on
 //          the private range, an enemy operator squad (summoned with /cv event operators) and a
 //          recon drone (/cv event drone) on the proving ground each give the shooter a hit.
+// knife    A alone, B and C in one squad on the proving ground (friendly fire off). Right after
+//          landing A knifes B, who is still under insertion protection: no craftov:hit.*, no damage
+//          number, B keeps its health. Later C knifes B: the same (the squad's scoreboard team
+//          already stops that swing in vanilla). Then A knifes B: B is hurt and A hears the hit.
+// scenery  Outside raids and the range the whitelist does not apply: in a fresh map-editor world
+//          (creative) one punch breaks an armour stand and a punched pig is hurt. (A raid world
+//          refuses summoned mobs, so the other side, scenery taking no hits there, is left to the
+//          replay scenario's bullets.)
 //
-// Without arguments both run. Needs a local test server (server/setup.sh --local) with RCON on. The
+// Without arguments all of them run. Needs a local test server (server/setup.sh --local) with RCON on. The
 // bots are made op so they can queue for the proving ground. To keep the run short and quiet, in
 // plugins/Craftov/config.yml:
 //   match: { wait-seconds: 6 }   cinematic: { enabled: false }   events: { per-raid: 0 }
@@ -33,6 +41,7 @@ const run = Math.random().toString(36).slice(2, 6)
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const MANNEQUIN = require('minecraft-data')('1.21.11').entitiesByName.mannequin.id
+const TEXT_DISPLAY = require('minecraft-data')('1.21.11').entitiesByName.text_display.id
 
 const failures = []
 let ours = [] // raid ids this run started, ended at the end
@@ -57,7 +66,11 @@ function make (tag) {
   const heard = p => { const m = JSON.stringify(p).match(/craftov:[a-z0-9_./]+/); if (m) bot.sounds.push({ at: Date.now(), id: m[0] }) }
   bot._client.on('sound_effect', heard)
   bot._client.on('entity_sound_effect', heard)
-  bot._client.on('spawn_entity', p => { if (p.type === MANNEQUIN) bot.mannequins.set(p.entityId, Date.now()) })
+  bot.texts = [] // when a text display (a damage number, say) was spawned for this bot
+  bot._client.on('spawn_entity', p => {
+    if (p.type === MANNEQUIN) bot.mannequins.set(p.entityId, Date.now())
+    if (p.type === TEXT_DISPLAY) bot.texts.push(Date.now())
+  })
   bot._client.on('camera', p => bot.cameras.push(p.cameraId))
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), text: strip(JSON.stringify(t)) }))
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLog.push(m); log(tag, 'CHAT', m) } })
@@ -267,6 +280,123 @@ async function targets () {
   await done([t])
 }
 
+/** Puts the bot's knife (the melee slot is always filled) in its hand. */
+async function knife (bot) {
+  const has = () => bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && /^knife_/.test(id(s) || ''))
+  if (has() < 0) { await rcon(`cv give ${bot.username} knife_starter`); await sleep(800) }
+  const slot = has()
+  if (slot >= 0) bot.setQuickBarSlot(slot - 36)
+  await sleep(300)
+  return slot >= 0
+}
+
+/** Swings at {@code target} once; returns the craftov sounds and text displays it got. */
+async function stab (bot, target) {
+  await bot.lookAt(target.position.offset(0, 1.2, 0), true)
+  await sleep(200)
+  const sounds = bot.sounds.length
+  const texts = bot.texts.length
+  bot.attack(target)
+  await sleep(700)
+  return { sounds: soundsSince(bot, sounds), texts: bot.texts.length - texts }
+}
+
+async function knives () {
+  const a = await make('A')
+  const b = await make('B')
+  const c = await make('C')
+  await sleep(2500)
+  for (const bot of [a, b, c]) await rcon(`op ${bot.username}`)
+  b.chat(`/cv party invite ${c.username}`)
+  await sleep(600)
+  c.chat('/cv party accept')
+  await sleep(600)
+  const older = await raids()
+  a.chat('/cv queue proving NORMAL SOLO')
+  await sleep(300)
+  b.chat('/cv queue proving NORMAL TRIO')
+  const landed = await waitFor(() => [a, b, c].every(inRaid), 120000, 100)
+  const landedAt = Date.now()
+  const world = a.worldName
+  check('all three land in one raid', landed && b.worldName === world && c.worldName === world,
+    [a, b, c].map(x => `${x.username}:${x.worldName}/${x.game.gameMode}`).join(' '))
+  if (!landed) return done([a, b, c])
+  // Spawn bay 1: C a step and a half west of B, A the same distance east.
+  await rcon(`execute as ${b.username} at @s run tp @s 22.5 65 90.5 90 0`)
+  await rcon(`execute as ${a.username} at @s run tp @s 24.0 65 90.5 90 0`)
+  const armedA = await knife(a)
+  await sleep(200)
+  // B landed under three seconds of insertion protection: A's knife must not even look like a hit.
+  const early = Date.now() - landedAt
+  const fresh = b.health
+  const shielded = await stab(a, a.players[b.username].entity)
+  log('A heard (knifing a protected B)', shielded.sounds.join(' '), 'texts', shielded.texts, 'after', early, 'ms')
+  check('the protected stab came inside the protection window', early < 2200, `${early} ms after landing`)
+  check('knifing a protected player gives no hit feedback', !shielded.sounds.some(s => s.startsWith('craftov:hit.')))
+  check('knifing a protected player shows no damage number', shielded.texts === 0, `${shielded.texts} text displays`)
+  check('knifing a protected player does no damage', b.health === fresh, `${fresh} -> ${b.health}`)
+  ours.push(...(await raids()).filter(id => !older.includes(id)))
+  await sleep(3500) // past the protection
+  await clear(world)
+  check('A and C hold a knife', armedA && (await knife(c)))
+  await rcon(`execute as ${b.username} at @s run tp @s 22.5 65 90.5 90 0`)
+  await rcon(`execute as ${c.username} at @s run tp @s 21.0 65 90.5 -90 0`)
+  await rcon(`execute as ${a.username} at @s run tp @s 24.0 65 90.5 90 0`)
+  await sleep(1500)
+
+  const before = b.health
+  const mate = await stab(c, c.players[b.username].entity)
+  await sleep(300)
+  log('C heard (knifing B)', mate.sounds.join(' '), 'texts', mate.texts, 'B health', before, '->', b.health)
+  check('knifing a squadmate gives no hit feedback', !mate.sounds.some(s => s.startsWith('craftov:hit.')))
+  check('knifing a squadmate shows no damage number', mate.texts === 0, `${mate.texts} text displays`)
+  check('knifing a squadmate does no damage', b.health === before, `${before} -> ${b.health}`)
+
+  const enemy = await stab(a, a.players[b.username].entity)
+  await sleep(300)
+  log('A heard (knifing B)', enemy.sounds.join(' '), 'texts', enemy.texts, 'B health', before, '->', b.health)
+  check('knifing an enemy hurts them', b.health < before, `${before} -> ${b.health}`)
+  check('knifing an enemy gives hit feedback', enemy.sounds.some(s => s.startsWith('craftov:hit.')))
+
+  await done([a, b, c])
+}
+
+async function scenery () {
+  const t = await make('S')
+  await sleep(2500)
+  await rcon(`op ${t.username}`)
+  const name = `rhscn${run}`
+  t.chat(`/cv editor world ${name}`)
+  const there = await waitFor(() => t.worldName === name && t.game.gameMode === 'creative', 30000)
+  check('the bot is in a fresh editor world in creative', there, `${t.worldName}/${t.game.gameMode}`)
+  if (!there) return done([t])
+  await sleep(1000)
+  const empty = t.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && !s)
+  t.setQuickBarSlot(Math.max(0, empty - 36))
+  const stands = () => count(`@e[type=minecraft:armor_stand,tag=rh]`)
+  await rcon(`execute as ${t.username} at @s run summon minecraft:armor_stand ~2 ~ ~ {NoGravity:1b,Tags:["rh"]}`)
+  await sleep(800)
+  const stand = t.nearestEntity(e => e.name === 'armor_stand')
+  const before = await stands()
+  if (stand) { await t.lookAt(stand.position.offset(0, 1, 0), true); await sleep(200); t.attack(stand); await sleep(800) }
+  const after = await stands()
+  check('one punch breaks an armour stand in the editor', stand && before === 1 && after === 0, `stand ${stand ? 'seen' : 'missing'}, ${before} -> ${after}`)
+
+  await rcon(`execute as ${t.username} at @s run summon minecraft:pig ~-2 ~ ~ {NoAI:1b,Tags:["rh"]}`)
+  await sleep(800)
+  const pig = t.nearestEntity(e => e.name === 'pig')
+  const pigHealth = async () => { const m = (await rcon(`execute in minecraft:${name} run data get entity @e[type=minecraft:pig,tag=rh,limit=1] Health`)).match(/([0-9.]+)f/); return m ? Number(m[1]) : null }
+  const pigBefore = await pigHealth()
+  if (pig) { await t.lookAt(pig.position.offset(0, 0.5, 0), true); await sleep(200); t.attack(pig); await sleep(800) }
+  const pigAfter = await pigHealth()
+  check('a punched pig in the editor is hurt', pig && pigBefore !== null && (pigAfter === null || pigAfter < pigBefore),
+    `pig ${pig ? 'seen' : 'missing'}, health ${pigBefore} -> ${pigAfter}`)
+  await rcon(`execute in minecraft:${name} run kill @e[type=minecraft:pig,tag=rh]`)
+  t.chat('/cv lobby')
+  await sleep(1500)
+  await done([t])
+}
+
 /** Removes soldiers and drones around the proving ground's bays. */
 async function clear (world) {
   for (const type of [...AI, 'bee']) {
@@ -281,7 +411,7 @@ async function done (bots) {
 }
 
 (async () => {
-  const scenarios = { replay, targets }
+  const scenarios = { replay, targets, knife: knives, scenery }
   const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(scenarios)
   for (const name of wanted) {
     log(`--- ${name}`)

@@ -19,6 +19,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Husk;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
@@ -119,6 +120,8 @@ public final class ReplayService implements Listener {
     private final CraftovPlugin plugin;
     private final Map<Raid, Track> tracks = new IdentityHashMap<>();
     private final Map<UUID, Playback> playing = new HashMap<>();
+    /** The marker each dead player's view is held on until the replay or the report (lockCamera). */
+    private final Map<UUID, ItemDisplay> deathCameras = new HashMap<>();
 
     public ReplayService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -216,17 +219,29 @@ public final class ReplayService implements Listener {
     // ------------------------------------------------------------------ after a death
 
     /**
-     * Called when a raid player dies. Plays the kill replay first if there is a killer to follow,
-     * then {@code after} (death report, spectating); without one, {@code after} runs as before.
+     * Called when a raid player dies, already a spectator. The view is held where they fell (see
+     * lockCamera), then the kill replay plays if there is a killer to follow, then {@code after}
+     * (death report, spectating); without one, {@code after} runs five seconds later.
      */
     public void afterDeath(Player victim, Raid raid, DamageService.@Nullable LastHit hit, Runnable after) {
+        UUID id = victim.getUniqueId();
         Clip clip = hit == null || hit.attacker() == null || !plugin.getConfig().getBoolean("replay.enabled", true)
                 ? null : clip(victim, raid, hit);
+        // After the clip: the camera moves the player up to eye height, and the clip keeps the feet.
+        try {
+            lockCamera(victim);
+        } catch (RuntimeException ex) {
+            // Never at the cost of what follows: without it the dead would stay in the raid for good.
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Could not hold " + victim.getName() + "'s view after death", ex);
+        }
+        Runnable unlockThenAfter = () -> {
+            unlockCamera(id);
+            after.run();
+        };
         if (clip == null) {
-            Bukkit.getScheduler().runTaskLater(plugin, after, 20L * 5);
+            Bukkit.getScheduler().runTaskLater(plugin, unlockThenAfter, 20L * 5);
             return;
         }
-        UUID id = victim.getUniqueId();
         // The last death ends the raid; keep its world open until the replay is over.
         long length = clip.frames().get(clip.frames().size() - 1).tick() - clip.frames().get(0).tick() + SLOW_TICKS + 40;
         raid.endTick = Math.max(raid.endTick, Bukkit.getCurrentTick() + 30 + length + 40);
@@ -234,11 +249,44 @@ public final class ReplayService implements Listener {
             Player viewer = Bukkit.getPlayer(id);
             if (viewer == null || viewer.getWorld() != raid.world
                     || (raid.state != Raid.State.RUNNING && raid.state != Raid.State.ENDING)) {
-                after.run();
+                unlockThenAfter.run();
                 return;
             }
             start(viewer, clip, after);
         }, 30L);
+    }
+
+    /**
+     * Death makes the player a spectator at once, but the replay starts a moment later (or the
+     * report and the squadmate camera five seconds later). Until then the view is held on an
+     * invisible marker at their eyes, the same tick, so the dead cannot fly through walls or over
+     * to an enemy and tell their squad where everyone is.
+     */
+    private void lockCamera(Player victim) {
+        unlockCamera(victim.getUniqueId());
+        if (!victim.isOnline() || victim.getGameMode() != GameMode.SPECTATOR) {
+            return;
+        }
+        ItemDisplay marker = victim.getWorld().spawn(victim.getEyeLocation(), ItemDisplay.class, d -> {
+            d.setPersistent(false);
+            d.setViewRange(0f);
+        });
+        deathCameras.put(victim.getUniqueId(), marker);
+        victim.setSpectatorTarget(marker);
+    }
+
+    /** Off the death camera (unless another camera already took over) and the marker removed. */
+    private void unlockCamera(UUID id) {
+        // Out of the map first: onStopSpectating holds on to a death camera it still finds there.
+        ItemDisplay marker = deathCameras.remove(id);
+        if (marker == null) {
+            return;
+        }
+        Player player = Bukkit.getPlayer(id);
+        if (player != null && player.getSpectatorTarget() == marker) {
+            player.setSpectatorTarget(null);
+        }
+        marker.remove();
     }
 
     private @Nullable Clip clip(Player victim, Raid raid, DamageService.LastHit hit) {
@@ -402,6 +450,9 @@ public final class ReplayService implements Listener {
         if (camera != null && (playback.ticks == 2 || playback.ticks % 10 == 0) && viewer.getSpectatorTarget() != camera) {
             viewer.setSpectatorTarget(camera);
         }
+        if (camera != null && viewer.getSpectatorTarget() == camera) {
+            unlockCamera(viewer.getUniqueId()); // the replay has the view now
+        }
         // Real time until the last second, which plays at half speed.
         playback.recorded += playback.endTick - playback.recorded <= SLOW_TICKS ? 0.5 : 1.0;
         if (playback.recorded > playback.endTick + 10) {
@@ -462,9 +513,15 @@ public final class ReplayService implements Listener {
             Bukkit.getScheduler().cancelTask(playback.task);
         }
         Player viewer = playback.viewer;
-        if (viewer.isOnline() && viewer.getSpectatorTarget() instanceof Mannequin) {
+        // The death camera too: it still has the view when the killer's stand-in never took over.
+        ItemDisplay marker = deathCameras.remove(viewer.getUniqueId());
+        Entity watching = viewer.isOnline() ? viewer.getSpectatorTarget() : null;
+        if (watching instanceof Mannequin || watching != null && watching == marker) {
             viewer.setSpectatorTarget(null);
             viewer.teleport(playback.clip.deathAt());
+        }
+        if (marker != null) {
+            marker.remove();
         }
         for (Mannequin mannequin : playback.standIns.values()) {
             mannequin.remove();
@@ -486,8 +543,17 @@ public final class ReplayService implements Listener {
     @EventHandler
     public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
         Player viewer = event.getPlayer();
+        // Paper also sends this when the game mode changes or the plugin lets go of a camera: those
+        // find the viewer out of spectator mode, or the camera already dropped (finish, unlockCamera),
+        // and go through.
+        Entity from = event.getSpectatorTarget();
+        boolean held = viewer.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == viewer.getWorld();
         Playback playback = playing.get(viewer.getUniqueId());
         if (playback == null) {
+            // Nothing leaves the death camera, Shift included, until the replay or the report.
+            if (held && from == deathCameras.get(viewer.getUniqueId())) {
+                event.setCancelled(true);
+            }
             return;
         }
         if (viewer.getCurrentInput().isSneak()) {
@@ -496,25 +562,27 @@ public final class ReplayService implements Listener {
             return;
         }
         // Anything else (the spectator menu, whose teleport RaidManager refuses) keeps the camera.
-        // Paper also sends this when the game mode changes or the plugin lets go of the camera:
-        // those find the viewer out of spectator mode, or off the replay (finish), and go through.
-        Entity from = event.getSpectatorTarget();
-        if (viewer.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == viewer.getWorld()) {
+        if (held) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        Playback playback = playing.get(event.getPlayer().getUniqueId());
+        UUID id = event.getPlayer().getUniqueId();
+        Playback playback = playing.get(id);
         if (playback != null) {
             finish(playback);
         }
+        unlockCamera(id);
     }
 
     public void shutdown() {
         for (Playback playback : new ArrayList<>(playing.values())) {
             finish(playback);
+        }
+        for (UUID id : new ArrayList<>(deathCameras.keySet())) {
+            unlockCamera(id);
         }
     }
 }

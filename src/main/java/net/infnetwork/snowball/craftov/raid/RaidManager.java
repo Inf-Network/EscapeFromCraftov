@@ -2238,6 +2238,7 @@ public final class RaidManager implements Listener {
             rp.disconnectedInventory = plugin.carry().copyCarried(player);
             rp.look = io.papermc.paper.datacomponent.item.ResolvableProfile.resolvableProfile(player.getPlayerProfile());
             rp.offlineHealth = player.getHealth();
+            rp.armorWear = plugin.operators().armorWearMultiplier(player); // read while still in the raid
             boolean landed = rp.state == RaidPlayer.State.ALIVE;
             if (landed) {
                 rp.lastLocation = player.getLocation();

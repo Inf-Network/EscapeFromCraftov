@@ -152,23 +152,28 @@ public final class HealthService implements Listener {
     }
 
     public void addInjury(Player player, BodyPart part, Injury injury) {
-        if (injury == Injury.FRACTURE && !part.canFracture()) {
-            return;
-        }
-        EnumSet<Injury> set = wounds.computeIfAbsent(player.getUniqueId(), k -> new EnumMap<>(BodyPart.class))
-                .computeIfAbsent(part, k -> EnumSet.noneOf(Injury.class));
-        if (injury == Injury.LIGHT_BLEED && set.contains(Injury.HEAVY_BLEED)) {
-            return;
-        }
-        if (injury == Injury.HEAVY_BLEED) {
-            set.remove(Injury.LIGHT_BLEED);
-        }
-        if (set.add(injury)) {
+        if (addWound(player.getUniqueId(), part, injury)) {
             player.sendActionBar(Text.mm("<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName()));
             player.playSound(player.getLocation(), "craftov:status.injury", SoundCategory.PLAYERS, 0.8f, 1f);
             updateFood(player);
             forceSpeedUpdate(player);
         }
+    }
+
+    /** Adds an injury to {@code uuid}'s wounds, online or not. True if it is new. */
+    private boolean addWound(UUID uuid, BodyPart part, Injury injury) {
+        if (injury == Injury.FRACTURE && !part.canFracture()) {
+            return false;
+        }
+        EnumSet<Injury> set = wounds.computeIfAbsent(uuid, k -> new EnumMap<>(BodyPart.class))
+                .computeIfAbsent(part, k -> EnumSet.noneOf(Injury.class));
+        if (injury == Injury.LIGHT_BLEED && set.contains(Injury.HEAVY_BLEED)) {
+            return false;
+        }
+        if (injury == Injury.HEAVY_BLEED) {
+            set.remove(Injury.LIGHT_BLEED);
+        }
+        return set.add(injury);
     }
 
     /** Adds an injury to a sensible part (used by tests and environmental damage). */
@@ -250,17 +255,36 @@ public final class HealthService implements Listener {
     }
 
     public void rollInjuries(Player player, BodyPart part, double damage) {
+        for (Injury injury : roll(part, damage)) {
+            addInjury(player, part, injury);
+        }
+    }
+
+    /**
+     * The same for a disconnected player, from a bullet their stand-in took: the wounds wait for
+     * them, and a bleed bleeds the stand-in on (tickWounds), as it would the player.
+     */
+    public void rollInjuries(UUID offline, BodyPart part, double damage) {
+        for (Injury injury : roll(part, damage)) {
+            addWound(offline, part, injury);
+        }
+    }
+
+    /** What a penetrating bullet of {@code damage} does to {@code part}: bleeding, a fracture, both or neither. */
+    private static List<Injury> roll(BodyPart part, double damage) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         double scale = Math.min(2.0, damage / 30.0);
         double heavy = part.armored() ? 0.08 : 0.04;
+        List<Injury> out = new ArrayList<>(2);
         if (rng.nextDouble() < heavy * scale) {
-            addInjury(player, part, Injury.HEAVY_BLEED);
+            out.add(Injury.HEAVY_BLEED);
         } else if (rng.nextDouble() < 0.26 * scale) {
-            addInjury(player, part, Injury.LIGHT_BLEED);
+            out.add(Injury.LIGHT_BLEED);
         }
         if (part.canFracture() && rng.nextDouble() < 0.2 * scale) {
-            addInjury(player, part, Injury.FRACTURE);
+            out.add(Injury.FRACTURE);
         }
+        return out;
     }
 
     public boolean painkilled(Player player) {

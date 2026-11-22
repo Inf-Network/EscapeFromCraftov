@@ -130,6 +130,8 @@ public final class DamageService implements Listener {
             case LEFT_ARM, RIGHT_ARM -> 0.65;
             case LEFT_LEG, RIGHT_LEG -> 0.7;
         };
+        // A disconnected player's stand-in is hurt as the player would be: same injuries, same armour wear.
+        net.infnetwork.snowball.craftov.raid.RaidPlayer standsFor = victim instanceof Player ? null : plugin.raids().standInOwner(victim);
         int pen = ammo == null ? 1 : ammo.penetration();
         boolean armorSounded = false;
         double armorMult = 1.0;
@@ -147,6 +149,8 @@ public final class DamageService implements Listener {
                     double loss = base * (ammo == null ? 1.0 : ammo.armorDamage()) * (penetrated ? 0.3 : 0.2);
                     if (victim instanceof Player p) {
                         loss *= plugin.operators().armorWearMultiplier(p);
+                    } else if (standsFor != null) {
+                        loss *= standsFor.armorWear;
                     }
                     double newDura = Math.max(0, dura - loss);
                     ItemStack updated = armorStack.clone();
@@ -168,8 +172,12 @@ public final class DamageService implements Listener {
             plugin.weapons().audio().bodyImpact(victim, zone == HitZone.HEAD, false, true);
         }
         double damage = base * zoneMult * armorMult;
-        if (victim instanceof Player target && penetrated && zone != HitZone.HEAD) {
-            plugin.health().rollInjuries(target, part, damage);
+        if (penetrated && zone != HitZone.HEAD) {
+            if (victim instanceof Player target) {
+                plugin.health().rollInjuries(target, part, damage);
+            } else if (standsFor != null) {
+                plugin.health().rollInjuries(standsFor.uuid, part, damage);
+            }
         }
         recordHit(victim, shooter, weaponName, part);
         if (victim instanceof Player) {

@@ -93,6 +93,11 @@ public final class RaidPlayer {
      * is what counts whenever there is none.
      */
     public double offlineHealth;
+    /**
+     * A disconnected player's operator armour wear multiplier (OperatorService) as they left, for
+     * bullets their stand-in takes.
+     */
+    public double armorWear = 1.0;
     public @Nullable String escortContract;
     public int containersSearched;
 

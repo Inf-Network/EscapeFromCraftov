@@ -142,6 +142,16 @@ ai:
   # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # Soldiers notice players gradually. Every look (10 a second) adds rate/10 times how close you are
+  # ((1 - distance/sight)^1.5, x3 within 6 blocks straight ahead; sight is 48 blocks, a sniper's 90,
+  # x0.55 at night), crouching (x0.5), standing still (x0.7) or sprinting (x1.5), light on you
+  # (x0.3 in the dark to x1 in full light), how much of you shows (head, chest and pelvis; glass,
+  # panes, bars, fences and leaves let half through each) and where you are in its view (x1 in the
+  # 120 degree cone ahead, x0.3 out to the sides, nothing behind; wider and x1.5 once it is alert).
+  # At 0.4 it turns and comes to look, at 1 it has spotted you. Out of sight it fades by fade a second.
+  awareness:
+    rate: 2.0
+    fade: 0.25
   # Soldiers open the wooden doors on their way and close them again this many ticks after the last
   # one went through (once nobody stands in the doorway). Iron and locked doors stay shut.
   door-close-ticks: 40

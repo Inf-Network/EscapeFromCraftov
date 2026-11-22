@@ -95,6 +95,10 @@ public final class AiService implements Listener {
         @Nullable UUID leader;
         /** Its path could not reach the goal (a locked door, a wall): it waits where it got to until then. */
         long holdUntil;
+        /** How close it is to having spotted each player it might have noticed, 0..1 (see acquire). */
+        final Map<UUID, Double> awareness = new HashMap<>();
+        /** What got through to the current target's head, chest and pelvis on the last look, or null. */
+        double @Nullable [] targetLines;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -671,12 +675,30 @@ public final class AiService implements Listener {
         return Math.round(base / Math.max(0.3, bot.accuracy) + ThreadLocalRandom.current().nextInt(0, 8));
     }
 
+    /**
+     * Who the soldier has spotted, if anyone. Nobody is seen at once: each look (every 2 ticks) adds to
+     * the soldier's awareness of a player, faster the closer, the more of them shows (head, chest and
+     * pelvis are checked separately, see {@link Sight}), the more they move and the brighter they
+     * are lit, and only inside its field of view (120 degrees ahead, a little out to the sides,
+     * nothing behind; wider once it is alert). Out of sight it fades again. Half way there the
+     * soldier turns to look and comes over; at 1 it has spotted the player and fights. Someone it
+     * was fighting a moment ago is spotted again as soon as any of them shows.
+     */
     private @Nullable Player acquire(Bot bot, long now) {
         Zombie mob = bot.mob;
         Player best = null;
         double bestDist = Double.MAX_VALUE;
+        double[] bestLines = null;
+        Player suspect = null;
+        double suspicion = 0;
         double sight = "sniper".equals(bot.kind) ? 90 : 48;
-        Vector facing = mob.getLocation().getDirection().setY(0);
+        Location from = mob.getLocation();
+        Vector facing = from.getDirection().setY(0);
+        boolean alerted = now < bot.alertUntil;
+        var config = plugin.getConfig();
+        double rate = config.getDouble("ai.awareness.rate", 2.0);
+        double fade = config.getDouble("ai.awareness.fade", 0.25) * 0.1;
+        java.util.Set<UUID> present = new java.util.HashSet<>();
         for (Player player : bot.raid.online()) {
             RaidPlayer rp = bot.raid.player(player.getUniqueId());
             // A player who just rejoined is seen and aimed at through their 2 s of protection
@@ -684,42 +706,70 @@ public final class AiService implements Listener {
             if (rp == null || rp.state != RaidPlayer.State.ALIVE || now < rp.aiGraceUntil) {
                 continue;
             }
+            UUID id = player.getUniqueId();
+            present.add(id);
+            double aware = bot.awareness.getOrDefault(id, 0.0);
             // At night soldiers see about half as far, but a lit tactical light gives you away from beyond
             // normal sight, whichever way they face.
             boolean lit = plugin.lights().mode(player) != net.infnetwork.snowball.craftov.weapon.TacticalLight.Mode.OFF;
             double range = lit ? sight * 1.3 : bot.raid.night ? sight * 0.55 : sight;
-            double d = mob.getLocation().distanceSquared(player.getLocation());
-            if (d > range * range || d >= bestDist) {
+            double d2 = from.distanceSquared(player.getLocation());
+            if (d2 > range * range) {
+                bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
             }
-            boolean known = player.getUniqueId().equals(bot.target) && now - bot.lastSeenTick < 40;
-            if (lit && mob.hasLineOfSight(player)) {
-                known = true;
-            }
+            double d = Math.sqrt(d2);
+            boolean recent = id.equals(bot.target) && now - bot.lastSeenTick < 20L * 10;
+            boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
             // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
-            double heard = player.isSneaking() || !moving(player) ? 0 : player.isSprinting() ? 24 : 10;
-            boolean noisy = d < heard * heard;
-            if (!known && d > 64) {
-                Vector to = player.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
-                double dot = facing.lengthSquared() < 1e-4 || to.lengthSquared() < 1e-4 ? 1 : facing.normalize().dot(to.normalize());
-                if (dot < 0.2 && !noisy && now >= bot.alertUntil) {
-                    continue;
-                }
-                if (player.isSneaking() && d > 18 * 18) {
-                    continue;
-                }
+            boolean moving = moving(player);
+            double heard = player.isSneaking() || !moving ? 0 : player.isSprinting() ? 24 : 10;
+            boolean noisy = d < heard;
+            double view = view(facing, from, player.getLocation(), alerted);
+            if (noisy) {
+                view = Math.max(view, 0.8); // it turns towards the footsteps
             }
-            if (!mob.hasLineOfSight(player)) {
+            double[] lines = null;
+            double seen = 0;
+            if (view > 0 || known || lit) {
+                lines = sightLines(mob, player);
+                seen = (lines[0] + lines[1] + lines[2]) / 3;
+            }
+            if (seen > 0 && (known || lit)) {
+                aware = 1;
+            } else if (seen > 0 && view > 0) {
+                double closeness = Math.pow(1 - d / range, 1.5) * (d < 6 && view >= 1 ? 3 : 1);
+                double stance = player.isSneaking() ? 0.5 : 1.0;
+                double motion = !moving ? 0.7 : player.isSprinting() ? 1.5 : 1.0;
+                double light = 0.3 + 0.7 * player.getEyeLocation().getBlock().getLightLevel() / 15.0;
+                aware = Math.min(1, aware + 0.1 * rate * closeness * stance * motion * light * view * seen * (alerted ? 1.5 : 1));
+            } else {
+                aware = Math.max(0, aware - fade);
                 if (noisy && bot.target == null) {
                     // Footsteps behind a wall: go and look.
                     bot.alertPos = player.getLocation();
                     bot.alertUntil = now + 20L * 6;
                 }
-                continue;
             }
-            best = player;
-            bestDist = d;
+            bot.awareness.put(id, aware);
+            boolean spotted = seen > 0 && (aware >= 1 || recent && aware >= 0.5);
+            if (spotted && d2 < bestDist) {
+                best = player;
+                bestDist = d2;
+                bestLines = lines;
+            } else if (!spotted && seen > 0 && aware >= 0.4 && aware > suspicion) {
+                suspect = player;
+                suspicion = aware;
+            }
         }
+        bot.awareness.keySet().removeIf(id -> !present.contains(id) || bot.awareness.get(id) <= 0);
+        if (best == null && suspect != null && bot.target == null) {
+            // Something moved over there: it looks, and walks over to see what it was.
+            mob.lookAt(suspect.getEyeLocation());
+            bot.alertPos = suspect.getLocation();
+            bot.alertUntil = Math.max(bot.alertUntil, now + 20L * 4);
+        }
+        bot.targetLines = bestLines;
         if (best != null) {
             if (!best.getUniqueId().equals(bot.target) || now - bot.lastSeenTick > 60) {
                 bot.engagedSince = now;
@@ -738,6 +788,41 @@ public final class AiService implements Listener {
             }
         }
         return best;
+    }
+
+    /**
+     * How well a soldier facing {@code facing} (flat) can see {@code to} from {@code from}: 1 inside
+     * the 120 degree cone ahead, 0.3 out to 100 degrees either side, 0 behind. Alert, it looks around:
+     * the whole half ahead counts fully and the sides up to 120 degrees partly.
+     */
+    private static double view(Vector facing, Location from, Location to, boolean alerted) {
+        Vector toward = to.toVector().subtract(from.toVector()).setY(0);
+        if (facing.lengthSquared() < 1e-4 || toward.lengthSquared() < 0.25) {
+            return 1;
+        }
+        double cos = facing.clone().normalize().dot(toward.normalize());
+        if (alerted) {
+            return cos >= 0 ? 1 : cos >= -0.5 ? 0.4 : 0;
+        }
+        return cos >= 0.5 ? 1 : cos >= -0.17 ? 0.3 : 0;
+    }
+
+    /** How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets through. */
+    private static double[] sightLines(LivingEntity looker, Player player) {
+        Vector eye = looker.getEyeLocation().toVector();
+        Vector feet = player.getLocation().toVector();
+        double[] heights = aimHeights(player);
+        double[] out = new double[heights.length];
+        for (int i = 0; i < heights.length; i++) {
+            out[i] = Sight.through(player.getWorld(), eye, feet.clone().add(new Vector(0, heights[i], 0)));
+        }
+        return out;
+    }
+
+    /** Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling. */
+    private static double[] aimHeights(Player player) {
+        double h = player.getHeight();
+        return new double[]{h - 0.2, h * 0.55, h * 0.33};
     }
 
     private static boolean moving(Player player) {

@@ -560,7 +560,9 @@ security:
   # internet, set online-mode=true or install a login plugin.
   # "auto": only in offline mode (not behind a proxy that does the online check); "always"; "off".
   admin-guard: "auto"
-  # IP addresses or blocks (CIDR). The default is this machine and the private networks (the LAN).
+  # IP addresses or blocks (CIDR), written as numbers: host names are not looked up, and an entry that is
+  # not a valid address (192.168.1.300) is ignored with a warning. The default is this machine and the
+  # private networks (the LAN).
   # An empty list lets no operator in. A tunnel or proxy on this machine (frp, ngrok, playit, Velocity
   # without forwarding) makes every player look like 127.0.0.1: then take 127.0.0.0/8 and ::1/128 out.
   admin-addresses:

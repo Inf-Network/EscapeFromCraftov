@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.security;
 
+import com.google.common.net.InetAddresses;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -11,14 +12,12 @@ import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.jspecify.annotations.Nullable;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * Keeps operator accounts to trusted addresses while the server runs in offline mode.
@@ -36,7 +35,6 @@ public final class AdminGuardService implements Listener {
     /** Loopback and private networks, IPv4 and IPv6: where the owner sits next to the server. */
     private static final List<String> DEFAULT_ADDRESSES = List.of("127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12",
             "192.168.0.0/16", "fc00::/7", "fe80::/10");
-    private static final Pattern IPV4 = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
 
     private final CraftovPlugin plugin;
     /** Operator UUIDs, copied on the main thread: the ops list is not meant to be read from the login thread. */
@@ -147,22 +145,18 @@ public final class AdminGuardService implements Listener {
 
         /**
          * "192.168.0.0/16", "fc00::/7", or a single address. Literals only: a host name would be a
-         * DNS lookup, and DNS is not something to trust with admin access.
+         * DNS lookup, and DNS is not something to trust with admin access. InetAddress.getByName
+         * looks up anything that is not a valid literal ("192.168.1.300" goes to the resolver, which
+         * may well answer it), so the text goes through Guava, which never asks DNS.
          */
         static @Nullable Block parse(String text) {
             String s = text.trim();
             int slash = s.indexOf('/');
-            String host = slash < 0 ? s : s.substring(0, slash);
-            if (!IPV4.matcher(host).matches() && !host.contains(":")) {
+            String host = (slash < 0 ? s : s.substring(0, slash)).trim();
+            if (!InetAddresses.isInetAddress(host)) {
                 return null;
             }
-            byte[] bytes;
-            try {
-                // In brackets a malformed IPv6 literal is an error; bare, it would go to DNS as a name.
-                bytes = InetAddress.getByName(host.contains(":") ? "[" + host + "]" : host).getAddress();
-            } catch (UnknownHostException | SecurityException ex) {
-                return null;
-            }
+            byte[] bytes = InetAddresses.forString(host).getAddress();
             int prefix = bytes.length * 8;
             if (slash >= 0) {
                 try {

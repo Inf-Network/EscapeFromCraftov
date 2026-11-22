@@ -12,10 +12,11 @@
 //   4. a non-op player's "/squad invite <other>", the other's "/squad accept", then "/party" and
 //      "/craftov:party" list a squad of two, and tab completion of "/squad " offers
 //      invite / accept / leave / kick / list;
-//   5. with security.admin-addresses set to [] in the server's config.yml (and /cv reload), an
+//   5. with security.admin-addresses set to entries that are not literal addresses (192.168.1.300,
+//      localhost) in the server's config.yml (and /cv reload), both are reported as ignored, an
 //      operator bot logging in from 127.0.0.1 is refused with the admin message and the refusal is
 //      logged, while a non-op bot still gets in; "admin-guard: off" (a bare YAML off) lets the
-//      operator in despite the empty list, and so does the list restored. The config file is
+//      operator in despite the list, and so does the default list restored. The config file is
 //      restored however the run ends.
 //
 //   node security.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local
@@ -187,7 +188,10 @@ async function main () {
 
   // ---- 5. the operator guard
   const original = fs.readFileSync(CONFIG, 'utf8')
-  const empty = original.replace(/^([ \t]*)admin-addresses:[ \t]*\n(?:\1[ \t]+-.*\n)+/m, '$1admin-addresses: []\n')
+  // Neither is an address: one has an octet past 255 (which InetAddress would hand to DNS), one is a
+  // host name. With both ignored, no operator is trusted.
+  const empty = original.replace(/^([ \t]*)admin-addresses:[ \t]*\n(?:\1[ \t]+-.*\n)+/m,
+    '$1admin-addresses: ["192.168.1.300", "localhost"]\n')
   if (empty === original) {
     log('SETUP: no security.admin-addresses list in', CONFIG)
     return 2
@@ -202,11 +206,13 @@ async function main () {
     }
     const logBefore = fs.statSync(LOG).size
     const refused = await join(A.username)
-    check('with admin-addresses: [] the operator is refused at login', !!refused.kicked && refused.kicked.includes('管理员账号'),
-      refused.kicked || 'spawned')
+    check('with admin-addresses [192.168.1.300, localhost] the operator is refused at login',
+      !!refused.kicked && refused.kicked.includes('管理员账号'), refused.kicked || 'spawned')
     if (!refused.kicked) refused.quit()
     await sleep(1000)
     const tail = logSince(logBefore)
+    const ignored = tail.split('\n').filter(l => l.includes('security.admin-addresses:') && l.includes('ignored'))
+    check('... both entries are reported as not addresses', ['"192.168.1.300"', '"localhost"'].every(e => ignored.some(l => l.includes(e))), ignored)
     check('... and the refusal is logged', tail.includes(`Refused the login of operator ${A.username}`), tail.split('\n').filter(l => l.includes('Refused')))
     const C = await join(`sec${run}c`)
     check('a non-op player still gets in', !C.kicked, C.kicked)
@@ -216,7 +222,7 @@ async function main () {
     await rcon('cv reload')
     await sleep(1000)
     const unguarded = await join(A.username)
-    check('with admin-guard: off the operator gets in despite the empty list', !unguarded.kicked, unguarded.kicked)
+    check('with admin-guard: off the operator gets in despite the list', !unguarded.kicked, unguarded.kicked)
     if (!unguarded.kicked) unguarded.quit()
     await sleep(1500)
   } finally {

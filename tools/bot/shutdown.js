@@ -182,7 +182,7 @@ function flatText (n) {
 // The kill feed and the alert banner are on the HUD, which bots cannot see: `cv hud` prints what it
 // shows (the kill feed's last lines in feedlog). Without BetterHud the same lines go to chat.
 const hudOf = async name => String(await rcon(`cv hud ${name}`))
-const feedLog = async name => ((await hudOf(name)).match(/feedlog=(.*)$/) || [, ''])[1]
+const feedLog = async name => ((await hudOf(name)).match(/feedlog=([^|]*)/) || [, ''])[1]
 async function told (bot, ...parts) {
   if (bot.chatLog.some(m => parts.every(t => m.includes(t)))) return true
   const hud = await hudOf(bot.username)

@@ -12,7 +12,9 @@
 //      in the melee slot in the lobby;
 //   4. extracting from a 常规 raid carrying only the karambit: 净收益 +0 (the knife counts at deploy
 //      and at extraction alike) and no flat extraction experience (经验 +0, rank.extract-xp needs
-//      gear value).
+//      gear value);
+//   5. a second karambit held on the cursor (copied there with /item) when the bot dies in a 常规
+//      raid goes into the body: 损失 -◈95,000, and the equipped karambit is still kept.
 //
 //   node knifevalue.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local
 //
@@ -231,6 +233,22 @@ async function scenario (bot) {
   check('extracting with only the karambit: 净收益 +0', !!sub && /净收益 \+0(\D|$)/.test(sub.text), sub && sub.text)
   check('and no flat extraction experience: 经验 +0', !!xp && /经验 \+0(\D|$)/.test(xp), xp)
   await waitFor(() => inLobby(bot), 30000)
+
+  // 5. A second knife held on the cursor at death goes into the body and is lost; only the one in
+  //    the melee slot is kept. Normal play never puts a knife on the cursor, so /item copies the
+  //    equipped karambit there.
+  await carryOnly(bot, 'knife_karambit')
+  if (!await deploy(bot, 'NORMAL')) throw new Error('the bot never reached the second 常规 raid')
+  const copied = await rcon(`item replace entity ${name} player.cursor from entity ${name} hotbar.2`)
+  log('cursor copy:', copied)
+  from = bot.chatLog.length
+  await rcon(`damage ${name} 1000 minecraft:generic`)
+  const lost2 = await waitChat(bot, /损失|击败干员 \d+ · 击败敌兵/, 60000, from)
+  check('a karambit on the cursor at death is lost with the body: 损失 -◈95,000',
+    !!lost2 && lost2.includes('损失') && money(lost2) === 95000, lost2)
+  if (!await waitFor(() => inLobby(bot), 60000)) throw new Error('the bot did not get back to the lobby')
+  await waitFor(() => melee(bot) === 'knife_karambit', 5000)
+  check('the karambit in the melee slot is still kept', melee(bot) === 'knife_karambit', melee(bot))
 }
 
 ;(async () => {

@@ -123,8 +123,8 @@ weapons:
   # back up). A trigger held through it fires as soon as it is over.
   sprint-recovery-ticks: 5
   # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
-  # action in items.yml. Until then it neither fires nor aims; a trigger held through it fires as
-  # soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
+  # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
+  # held fires as soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
   draw-ticks:
     pistol: 6
     pistol_heavy: 6

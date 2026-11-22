@@ -51,6 +51,8 @@ public final class WeaponService implements Listener {
      * a new spray counts as aimed somewhere else, and the old spray's recovery is dropped.
      */
     private static final double TURNED_AWAY = 2.0;
+    /** What one shot costs from {@link GunState#shotBudget}: a minute in milliseconds. */
+    private static final long SHOT_COST = 60_000L;
 
     /** Runtime state of the gun a player is holding. */
     public static final class GunState {
@@ -68,7 +70,11 @@ public final class WeaponService implements Listener {
         boolean freshPull;
         /** Rounds of the current three-round burst still to fire: they do, whether or not the trigger is held. */
         int burstLeft;
-        double shotBudgetMs;
+        /**
+         * Time banked toward the next shot, in milliseconds times rpm: a tick adds 50 x rpm and a shot
+         * costs 60000. Whole numbers keep the rhythm exact, where 66.67 ms steps would drift a tick.
+         */
+        long shotBudget;
         long reloadStart = -1;
         long reloadEnd = -1;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
@@ -353,7 +359,7 @@ public final class WeaponService implements Listener {
             boolean held = plugin.triggers().held(player);
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
-                        + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
+                        + " mode=" + state.fireMode() + " budget=" + state.shotBudget / Math.max(1, state.gun.rpm()) + " canFire=" + plugin.raids().canFire(player)
                         + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player)));
             }
             if (isAiming(player)) {
@@ -379,7 +385,7 @@ public final class WeaponService implements Listener {
             if (sprintLocked(player)) {
                 // Still held when the sprint ends: the gun fires once it is back up. A burst does not resume.
                 sprintHint(player);
-                state.shotBudgetMs = 0;
+                state.shotBudget = 0;
                 state.burstLeft = 0;
                 continue;
             }
@@ -390,21 +396,20 @@ public final class WeaponService implements Listener {
             }
             FireMode mode = state.fireMode();
             GunSpec gun = state.gun;
-            state.shotBudgetMs += 50.0;
-            double interval = gun.millisBetweenShots();
+            state.shotBudget += 50L * gun.rpm();
             int guard = 0;
-            while (state.shotBudgetMs >= interval && guard++ < 4) {
+            while (state.shotBudget >= SHOT_COST && guard++ < 4) {
                 if (mode.singleAction() || mode == FireMode.BURST) {
                     if (mode == FireMode.BURST && state.burstLeft > 0) {
                         state.burstLeft--;
                     } else {
-                        state.shotBudgetMs = Math.min(state.shotBudgetMs, interval);
+                        state.shotBudget = Math.min(state.shotBudget, SHOT_COST);
                         break;
                     }
                 }
-                state.shotBudgetMs -= interval;
+                state.shotBudget -= SHOT_COST;
                 if (!shoot(player, state)) {
-                    state.shotBudgetMs = 0;
+                    state.shotBudget = 0;
                     state.burstLeft = 0;
                     break;
                 }
@@ -476,7 +481,7 @@ public final class WeaponService implements Listener {
         long now = Bukkit.getCurrentTick();
         long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
         if (now - state.lastShotTick >= cooldownTicks || state.lastShotTick == 0) {
-            state.shotBudgetMs = 0;
+            state.shotBudget = 0;
             state.burstLeft = state.fireMode() == FireMode.BURST ? 2 : 0;
             shoot(player, state);
         }

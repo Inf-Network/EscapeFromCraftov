@@ -7,7 +7,9 @@
 Sections (each mirrors the Java code it names, and follows the rules of the commit it reads):
 
   loot       per tier: entry fee, whole-map value and the median 10-box run (tools/econ/ev.py
-             has the full tables and checks)
+             has the full tables), and the entry fee the fee rule asks for: FEE_SHARE of the
+             tier's median run, rounded to the thousand, for every tier with a gear requirement
+             (the free tier stays free, so a player who lost everything can always play)
   market     what the trader and the market's system buyers pay (MarketService.virtualPrice /
              virtualChance, or the old anchor x 1.25 rule), and whether a listing at 1.0x value sells
   insurance  premium and expected cost of a death for two kits (InsuranceService)
@@ -32,6 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ev  # noqa: E402
 
 RECIPE_MIN, RECIPE_MAX = 1.3, 1.6
+# Entry fee of a tier with a gear requirement: this share of what its median 10-box run carries out.
+FEE_SHARE = 0.05
 HIDEOUT = "src/main/java/net/infnetwork/snowball/craftov/economy/HideoutService.java"
 
 
@@ -66,13 +70,19 @@ class Report:
         section("loot (python3 tools/econ/ev.py for the full tables)")
         starter = self.data.starter_value()
         print(f"starter kit {money(starter)}, free kit {money(self.data.free_kit_value())}")
-        print(f"{'tier':14} {'entry fee':>9} {'map EV':>11} {'median run':>11} {'x kit':>6} {'vault RED':>9}")
+        print(f"{'tier':14} {'entry fee':>9} {'fee rule':>9} {'map EV':>11} {'median run':>11} {'x kit':>6} "
+              f"{'fee/run':>7} {'vault RED':>9}")
         for tier_id, t in self.data.tiers.items():
             runs = self.data.runs(tier_id, 10, 14, 4000, 22)
             med = runs[len(runs) // 2]
             red = self.data.p_rarity("vault", self.data.shift(tier_id, 2), "RED")
-            print(f"{t.get('name', tier_id) + ' ' + tier_id:14} {money(t.get('entry-fee', 0)):>9} "
-                  f"{money(self.data.map_ev(tier_id)):>11} {money(med):>11} {med / starter:>6.2f} {red:>9.1%}")
+            fee = t.get("entry-fee", 0)
+            rule = round(FEE_SHARE * med, -3) if t.get("min-value", 0) > 0 else 0
+            print(f"{t.get('name', tier_id) + ' ' + tier_id:14} {money(fee):>9} {money(rule):>9} "
+                  f"{money(self.data.map_ev(tier_id)):>11} {money(med):>11} {med / starter:>6.2f} "
+                  f"{fee / med:>7.1%} {red:>9.1%}")
+        print(f"(fee rule = {FEE_SHARE:.0%} of the median run for tiers with a gear requirement; "
+              "python3 tools/econ/luck.py adds what pity and the quota hand out on top)")
 
     # ------------------------------------------------------------------ market
 

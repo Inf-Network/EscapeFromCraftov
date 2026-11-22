@@ -5,6 +5,7 @@
     python3 tools/art/fpview.py k47 [firstperson_righthand|ads] out.png
     python3 tools/art/fpview.py k47 reload sheet.png [optic id]     # contact sheet of reload frames
     python3 tools/art/fpview.py k47 kick sheet.png                  # one shot's kick frames (kick-ads: aimed)
+    python3 tools/art/fpview.py knife_karambit inspect sheet.png    # contact sheet of a knife inspect
 """
 import json
 import math
@@ -61,9 +62,24 @@ def hand_matrix(display, left=False):
     return mat_mul(m, translate(-0.5, -0.5, -0.5))
 
 
+# Vanilla flat items (knives use handheld): the texture on a 1 pixel thick slab, as the client's
+# ItemModelGenerator builds it (the pixel-edge faces are left out here), with handheld's displays.
+FLAT_PARENTS = ('minecraft:item/handheld', 'minecraft:item/generated')
+HANDHELD_DISPLAY = {
+    'thirdperson_righthand': {'rotation': [0, -90, 55], 'translation': [0, 4.0, 0.5], 'scale': [0.85, 0.85, 0.85]},
+    'firstperson_righthand': {'rotation': [0, -90, 25], 'translation': [1.13, 3.2, 1.13], 'scale': [0.68, 0.68, 0.68]},
+}
+SPRITE = [{'from': [0, 0, 7.5], 'to': [16, 16, 8.5], 'faces': {
+    'south': {'uv': [0, 0, 16, 16], 'texture': '#layer0'}, 'north': {'uv': [16, 0, 0, 16], 'texture': '#layer0'}}}]
+
+
 def load_model(path):
     with open(path, encoding='utf-8') as f:
         model = json.load(f)
+    if model.get('parent') in FLAT_PARENTS and 'elements' not in model:
+        model['display'] = dict(HANDHELD_DISPLAY, **model.get('display', {}))
+        model['elements'] = SPRITE
+        return model
     if 'parent' in model and model['parent'].startswith('craftov:'):
         parent = model['parent'].split(':', 1)[-1]
         base = load_model(os.path.join(ROOT, 'models', parent + '.json'))
@@ -281,6 +297,24 @@ def kick_sheet(gid, out, kind='hip'):
     print(out)
 
 
+def inspect_sheet(knife, out, cols=5, step=5):
+    """Contact sheet of a knife's inspect frames (every `step`-th frame, plus the last)."""
+    folder = os.path.join(ROOT, 'models', 'item', 'knife_inspect', knife)
+    count = len(os.listdir(folder))
+    tiles = []
+    for k in sorted(set(range(step - 1, count, step)) | {0, count - 1}):
+        model = load_model(os.path.join(folder, '%d.json' % k))
+        tmp = '/tmp/_fp_frame.png'
+        render(model, model['display']['firstperson_righthand'], tmp, '%s frame %d (tick %d)' % (knife, k, k))
+        tiles.append(Image.open(tmp).resize((W // 2, H // 2)))
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new('RGB', (cols * W // 2, rows * H // 2))
+    for i, t in enumerate(tiles):
+        sheet.paste(t, ((i % cols) * W // 2, (i // cols) * H // 2))
+    sheet.save(out)
+    print(out)
+
+
 def main():
     gid = sys.argv[1] if len(sys.argv) > 1 else 'k47'
     which = sys.argv[2] if len(sys.argv) > 2 else 'firstperson_righthand'
@@ -291,8 +325,14 @@ def main():
     if which in ('kick', 'kick-ads'):
         kick_sheet(gid, out, 'ads' if which == 'kick-ads' else 'hip')
         return
+    if which == 'inspect':
+        inspect_sheet(gid, out)
+        return
     folder = 'gun_ads' if which == 'ads' else 'gun'
-    model = load_model(os.path.join(ROOT, 'models', 'item', folder, gid + '.json'))
+    path = os.path.join(ROOT, 'models', 'item', folder, gid + '.json')
+    if not os.path.exists(path):  # not a gun: a flat item such as a knife
+        path = os.path.join(ROOT, 'models', 'item', gid + '.json')
+    model = load_model(path)
     display = model['display']['firstperson_righthand']
     render(model, display, out, '%s %s %s' % (gid, which, display))
     print(out)

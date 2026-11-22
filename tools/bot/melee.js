@@ -35,8 +35,9 @@
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node melee.js
 //
-// The bots are made op (test maps, /cv items) and get a karambit and money in the lobby to meet the
-// 机密 gear requirement; they are deopped when done. A match launches after match.wait-seconds
+// The bots are made op (test maps, /cv items) and get a karambit, a gold bar and money in the lobby:
+// the gold bar meets the 机密 gear requirement, which a knife does not count towards (issue #81);
+// they are deopped when done. A match launches after match.wait-seconds
 // (30 by default) and the boss appears 60 s into the raid. Exit code 0 when every check passes,
 // 1 when one fails, 2 when the scenario could not be set up.
 const fs = require('fs')
@@ -131,6 +132,21 @@ function make (name) {
   // raw NBT text keeps every string as "value":"...".
   bot.actionBars = []
   bot._client.on('action_bar', p => bot.actionBars.push(JSON.stringify(p.text)))
+  // A bullet snapping past jolts the view by a fraction of a degree, sent as a relative rotation.
+  // mineflayer applies that packet as absolute, so the bot's own look dropped to level and it sent
+  // that back on its next move: a chest cut became a head cut whenever a soldier's round flew by.
+  // mineflayer adds its own listener a tick after createBot, so this one goes on at login, after it.
+  bot.viewKicks = 0
+  bot.once('login', () => {
+    let before = null
+    bot._client.prependListener('player_rotation', () => { before = bot.entity && [bot.entity.yaw, bot.entity.pitch] })
+    bot._client.on('player_rotation', p => {
+      if (!before || !(p.relativeYaw || p.relativePitch)) return
+      bot.viewKicks++
+      if (p.relativeYaw) bot.entity.yaw = before[0] - p.yaw * Math.PI / 180
+      if (p.relativePitch) bot.entity.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, before[1] - p.pitch * Math.PI / 180))
+    })
+  })
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -272,18 +288,22 @@ async function cut (attacker, sel, part, height, filter) {
     const share = { head: 0.92, chest: 0.64, leg: 0.2 }[part]
     await attacker.lookAt(entity.position.offset(0, height * share, 0), true)
   }
+  // The look wanted, kept now: placeAttacker's tp turns the bot level (pitch 0), and when its
+  // position packet reaches the bot after the look above, the bot's own pitch is level again.
+  const want = { yaw: attacker.entity.yaw, pitch: attacker.entity.pitch }
   await sleep(250)
-  // The cut lands where the server thinks the attacker looks. placeAttacker's tp turns it level
-  // (pitch 0), and a look sent too soon after can be lost, which turns a chest cut into a head cut:
-  // wait until the server has the pitch (Minecraft's pitch is down-positive, mineflayer's up-positive).
-  const pitch = -attacker.entity.pitch * 180 / Math.PI
+  // The cut lands where the server thinks the attacker looks, and a look sent too soon after the tp
+  // can be lost, which turns a chest cut into a head cut: wait until the server has the pitch wanted
+  // (Minecraft's pitch is down-positive, mineflayer's up-positive), sending that look again if not.
+  const pitch = -want.pitch * 180 / Math.PI
   let seen = null
-  for (let n = 0; n < 8; n++) {
+  // Up to 3 s: until the bot confirms the tp the server ignores its looks.
+  for (let n = 0; n < 20; n++) {
     seen = await dataNumber(attacker.username, 'Rotation[1]')
     if (seen !== null && Math.abs(seen - pitch) < 1.5) break
     log(`  the server has pitch ${rd(seen)}, the look is ${rd(pitch)}: sending it again`)
-    await attacker.look(attacker.entity.yaw, attacker.entity.pitch, true)
-    attacker.entity.pitch += 1e-4 // a changed angle makes mineflayer send the look again
+    // A slightly changed angle makes mineflayer send the look even if it thinks it is there.
+    await attacker.look(want.yaw, want.pitch + (n + 1) * 1e-4, true)
     await sleep(150)
   }
   const before = await health(sel)
@@ -403,7 +423,8 @@ async function armourAttr (sel) {
   check('trader weapons page: the tactical dagger is sold, the machete and the karambit are not',
     sold.includes('knife_tactical') && !sold.includes('knife_machete') && !sold.includes('knife_karambit'), sold.filter(id => id.startsWith('knife')))
   for (const bot of bots) {
-    await rcon(`cv give ${bot.username} knife_karambit`) // also meets the 机密 gear requirement
+    await rcon(`cv give ${bot.username} knife_karambit`)
+    await rcon(`cv give ${bot.username} gold_bar`) // the 机密 gear requirement: the knife counts nothing
   }
   await waitFor(() => bots.every(b => pdc(b.inventory.slots[38], 'id') === 'knife_karambit'), 5000)
   const karambitLore = lore(attacker.inventory.slots[38])
@@ -624,6 +645,7 @@ async function armourAttr (sel) {
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 
 async function finish (code) {
+  log('view kicks (relative rotations) received:', bots.map(b => `${b.username} ${b.viewKicks}`).join(', '))
   for (const bot of bots) {
     try { await rcon(`effect clear ${bot.username}`) } catch (e) { }
     try { await rcon(`deop ${bot.username}`) } catch (e) { }

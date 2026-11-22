@@ -7,6 +7,9 @@ stack sizes, worn armour and rounds left in a gun, all valued like ItemFactory.v
 the container list of maps/rustport.yml (a snapshot is kept in tools/econ/maps/rustport.json;
 the generator has a fixed seed, so it only changes when RustPortGenerator does).
 
+Jackpot items (loot.yml jackpots) are left out of the rarity rolls and added with their own chance
+to every container that can hold a red item, as LootService does; a commit without them has none.
+
 The rules follow LootService.java of the same commit: the old unbounded shift
 (x (1 + 0.55 s)^rarity / (1 + 0.4 s), container tiers added without a cap) or the bounded one
 (x (1 + shift-bonus x s) from loot.yml, capped at the tier's max-shift), and a fallback to the nearest
@@ -18,10 +21,9 @@ the new ones.
   python3 tools/econ/ev.py --map server/run/plugins/Craftov/maps/rustport.yml
 
 A "run" is N containers picked at random from the whole map, of which the C most valuable items
-are carried out (one cell each), valued at item value. Exits 1 when a check fails:
-
-  * 常规: the median run (10 containers, 14 cells) is worth at most 3x the starter kit
-  * 常规: a high-grade safe (vault) holds a RED item at most 10% of the time
+are carried out (one cell each), valued at item value. It only prints: the owner keeps the regular
+loot generous on purpose and evens out bad luck with personal pity and a quota pool (#80,
+tools/econ/luck.py), so there is no ceiling on what a run may be worth.
 """
 
 import argparse
@@ -29,7 +31,6 @@ import json
 import random
 import statistics
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
@@ -38,9 +39,6 @@ ROOT = Path(__file__).resolve().parents[2]
 RARITIES = ["WHITE", "GREEN", "BLUE", "PURPLE", "GOLD", "RED"]
 DEFAULT_STACK = {"AMMO": 60, "VALUABLE": 1, "COLLECTIBLE": 1, "MEDICAL": 3, "THROWABLE": 3}
 DEFAULT_BONUS = {"WHITE": -0.25, "GREEN": -0.05, "BLUE": 0.1, "PURPLE": 0.3, "GOLD": 0.5, "RED": 1.0}
-# Checks (常规).
-MAX_RUN_KITS = 3.0
-MAX_VAULT_RED = 0.10
 
 
 class Source:
@@ -86,6 +84,7 @@ class Data:
         self.items = {k: Item(k, v) for k, v in source.yaml("src/main/resources/items.yml")["items"].items()}
         loot = source.yaml("src/main/resources/loot.yml")
         self.containers = loot["containers"]
+        self.jackpots = {k: float(v) for k, v in (loot.get("jackpots") or {}).items() if k in self.items}
         # LootService.DEFAULT_BONUS when loot.yml has no shift-bonus.
         self.bonus = dict(DEFAULT_BONUS, **{r.upper(): float(v) for r, v in (loot.get("shift-bonus") or {}).items()})
         self.config = source.yaml("src/main/resources/config.yml")
@@ -136,10 +135,28 @@ class Data:
             order += list(range(idx - 1, -1, -1))
         for i in order:
             if 0 <= i < len(RARITIES):
-                found = [it for it in self.by_category.get(category, []) if it.lootable and it.rarity == RARITIES[i]]
+                found = [it for it in self.by_category.get(category, [])
+                         if it.lootable and it.rarity == RARITIES[i] and it.id not in self.jackpots]
                 if found:
                     return found
         return []
+
+    def finds(self, type_id, shift, rarity):
+        """LootService.finds: single, non-ammo, non-jackpot items the container can turn up at `rarity`."""
+        ctype = self.containers[type_id]
+        if ctype.get("all-of") or self.rarity_weights(ctype, shift).get(rarity, 0) <= 0:
+            return []
+        out = []
+        for c, w in (ctype.get("categories") or {}).items():
+            if w <= 0 or c.upper() == "AMMO":
+                continue
+            out += [it for it in self.by_category.get(c.upper(), [])
+                    if it.lootable and it.rarity == rarity and it.stack == 1 and it.id not in self.jackpots]
+        return out
+
+    def jackpot_chances(self, type_id, shift):
+        """{jackpot id: chance} of the container holding one (only containers that can hold a red item)."""
+        return dict(self.jackpots) if self.finds(type_id, shift, "RED") else {}
 
     def item_distribution(self, type_id, shift):
         """{item id: probability} of one rolled item; the missing mass is a roll that yields nothing."""
@@ -212,13 +229,18 @@ class Data:
         dist = self.item_distribution(type_id, shift)
         per_item = sum(p * self.mean_value(self.items[i]) for i, p in dist.items())
         n = sum(k * p for k, p in self.counts(type_id, shift))
-        return n * per_item
+        jackpot = sum(c * self.mean_value(self.items[i]) for i, c in self.jackpot_chances(type_id, shift).items())
+        return n * per_item + jackpot
 
     def p_rarity(self, type_id, shift, rarity):
         """Chance the container holds at least one item of `rarity`."""
         dist = self.item_distribution(type_id, shift)
         p = sum(q for i, q in dist.items() if self.items[i].rarity == rarity)
-        return sum(pk * (1 - (1 - p) ** k) for k, pk in self.counts(type_id, shift))
+        none = sum(pk * (1 - p) ** k for k, pk in self.counts(type_id, shift))
+        for i, c in self.jackpot_chances(type_id, shift).items():
+            if self.items[i].rarity == rarity:
+                none *= 1 - c
+        return 1 - none
 
     def sampler(self, type_id, shift):
         dist = self.item_distribution(type_id, shift)
@@ -226,10 +248,12 @@ class Data:
         weights = [dist[i] for i in ids]
         nothing = max(0.0, 1 - sum(weights))
         counts = self.counts(type_id, shift)
+        jackpots = self.jackpot_chances(type_id, shift)
 
         def roll(rng):
             k = rng.choices([c for c, _ in counts], [p for _, p in counts])[0]
             picks = rng.choices(ids + [None], weights + [nothing], k=k)
+            picks += [i for i, c in jackpots.items() if rng.random() < c]
             return [self.sample_value(self.items[i], rng) for i in picks if i is not None]
 
         return roll
@@ -280,7 +304,7 @@ def money(x):
 
 
 def report(data, containers, cells, trials, seed):
-    """Prints the tables and returns the list of failed checks."""
+    """Prints the tables."""
     starter, free = data.starter_value(), data.free_kit_value()
     rules = ("bounded shift" if data.bounded else "old unbounded shift") + (
         ", fallback to either side" if data.two_way else ", fallback to lower rarities only")
@@ -290,7 +314,6 @@ def report(data, containers, cells, trials, seed):
     print()
     print(f"{'tier':14} {'entry fee':>9} {'map EV':>11} {'run p10':>9} {'median':>9} {'mean':>9} {'p90':>10} "
           f"{'median/kit':>10}  vault RED  safe RED")
-    failures = []
     for tier_id, t in data.tiers.items():
         totals = data.runs(tier_id, containers, cells, trials, seed)
         med = statistics.median(totals)
@@ -299,11 +322,6 @@ def report(data, containers, cells, trials, seed):
         print(f"{t.get('name', tier_id) + ' ' + tier_id:14} {money(t.get('entry-fee', 0)):>9} {money(data.map_ev(tier_id)):>11} "
               f"{money(totals[len(totals) // 10]):>9} {money(med):>9} {money(statistics.mean(totals)):>9} "
               f"{money(totals[len(totals) * 9 // 10]):>10} {med / starter:>10.2f}  {vault_red:>8.1%}  {safe_red:>8.1%}")
-        if tier_id == "NORMAL":
-            if med > MAX_RUN_KITS * starter:
-                failures.append(f"常规 median run {money(med)} is more than {MAX_RUN_KITS:g}x the starter kit ({money(starter)})")
-            if vault_red > MAX_VAULT_RED:
-                failures.append(f"常规 vault holds a RED item {vault_red:.1%} of the time (at most {MAX_VAULT_RED:.0%})")
     print(f"(run = {containers} random containers, best {cells} items carried out, {trials} trials, item value)")
     print()
     shifts = sorted({data.shift(tid, b) for tid in data.tiers for _, b in data.map})
@@ -323,7 +341,6 @@ def report(data, containers, cells, trials, seed):
               f"(~{soldiers:.0f} soldiers, {money(parcel * soldiers)} in all)"
               + (f"; the boss adds a vault roll worth {money(boss)}" if boss else ""))
     print()
-    return failures
 
 
 def main():
@@ -337,12 +354,7 @@ def main():
     args = parser.parse_args()
     if args.before:
         report(Data(Source(args.before), args.map), args.containers, args.cells, args.trials, args.seed)
-    failures = report(Data(Source(), args.map), args.containers, args.cells, args.trials, args.seed)
-    for failure in failures:
-        print("FAIL: " + failure)
-    if failures:
-        sys.exit(1)
-    print("loot checks pass")
+    report(Data(Source(), args.map), args.containers, args.cells, args.trials, args.seed)
 
 
 if __name__ == "__main__":

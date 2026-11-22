@@ -42,7 +42,8 @@ public final class Raid {
     /** Locked doors someone has opened with a key: they stay unlocked for the rest of the raid. */
     public final java.util.Set<String> unlockedDoors = new java.util.HashSet<>();
     public final Map<String, MapDef.SwitchDef> switchBlocks = new HashMap<>();
-    public boolean bossSpawned;
+    /** Ids of the map's bosses (in place, asleep, since the raid began) whose time has come: woken and announced. */
+    public final java.util.Set<String> bossesWoken = new java.util.HashSet<>();
     public boolean warned5;
     public boolean warned1;
     public long endTick;
@@ -50,6 +51,8 @@ public final class Raid {
     public boolean night;
     /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
     public long blackoutUntil;
+    /** Luck hand-outs carried out or waiting for a refund (LuckService). */
+    public final net.infnetwork.snowball.craftov.luck.RaidLuck luck = new net.infnetwork.snowball.craftov.luck.RaidLuck();
 
     public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;

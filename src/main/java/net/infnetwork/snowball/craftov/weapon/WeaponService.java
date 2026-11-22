@@ -561,7 +561,7 @@ public final class WeaponService implements Listener {
             boolean held = plugin.triggers().held(player);
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
-                        + " mode=" + state.fireMode() + " budget=" + state.shotBudget / Math.max(1, state.gun.rpm()) + " canFire=" + plugin.raids().canFire(player)
+                        + " mode=" + state.fireMode() + " budget=" + state.shotBudget / Math.max(1, state.gun.rpm()) + " canAttack=" + plugin.raids().canAttack(player)
                         + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player))
                         + " bloom=" + String.format("%.2f", state.bloom));
             }
@@ -715,7 +715,7 @@ public final class WeaponService implements Listener {
     // ------------------------------------------------------------------ shooting
 
     private boolean shoot(Player player, GunState state) {
-        if (!plugin.raids().canFire(player) || sprintLocked(player)) {
+        if (!plugin.raids().canAttack(player) || sprintLocked(player)) {
             return false;
         }
         GunSpec gun = state.gun;
@@ -731,8 +731,12 @@ public final class WeaponService implements Listener {
             return false;
         }
         state.ammo--;
+        if (!state.test) {
+            plugin.raids().usedUp(player, state.ammoType, 1);
+        }
         state.lastShotTick = Bukkit.getCurrentTick();
         state.nextShotTick = state.lastShotTick + gun.ticksBetweenShots();
+        plugin.raids().onAttack(player);
         ItemDef ammoDef = plugin.registry().get(state.ammoType);
         AmmoSpec ammo = ammoDef == null ? null : ammoDef.ammo();
         Location eye = player.getEyeLocation();
@@ -1444,7 +1448,7 @@ public final class WeaponService implements Listener {
 
     /** Why this player cannot fire right now, or null if they can. */
     private @Nullable String fireBlocker(Player player) {
-        if (plugin.raids().canFire(player)) {
+        if (plugin.raids().canAttack(player)) {
             return null;
         }
         if (plugin.lobby().isLobby(player.getWorld())) {
@@ -1454,7 +1458,7 @@ public final class WeaponService implements Listener {
             return "<#9AA0A6>救援时不能开火";
         }
         if (plugin.raids().isInRaid(player)) {
-            return "<#9AA0A6>现在不能开火";
+            return plugin.raids().isProtected(player) ? "<#9AA0A6>保护时间内不能开火" : "<#9AA0A6>现在不能开火";
         }
         return "<#9AA0A6>只能在行动或靶场中开火";
     }

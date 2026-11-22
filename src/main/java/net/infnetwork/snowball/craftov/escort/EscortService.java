@@ -97,6 +97,12 @@ public final class EscortService {
         return c.id;
     }
 
+    /** Whether {@code uuid} is the client of contract {@code id}, rather than one of its escorts. */
+    public boolean isClient(String id, UUID uuid) {
+        Contract c = contracts.get(id);
+        return c != null && c.client.equals(uuid);
+    }
+
     /**
      * The client's raid was voided without an outcome (they ended up outside the raid world): the
      * contract stands as before the deploy, so it can be played again or cancelled.
@@ -106,6 +112,20 @@ public final class EscortService {
         if (c != null && c.client.equals(rp.uuid) && c.state == State.IN_RAID) {
             c.state = c.escorts.isEmpty() ? State.OPEN : State.ACCEPTED;
         }
+    }
+
+    /**
+     * The server stopped with the client still in the raid, which voids it: the contract is
+     * called off like a cancel, the whole reward goes back to the client and no escort is paid.
+     * (After a crash the contract is gone and {@link #reclaim} returns the reward instead.)
+     */
+    public void callOff(RaidPlayer rp) {
+        Contract c = rp.escortContract == null ? null : contracts.get(rp.escortContract);
+        if (c == null || !c.client.equals(rp.uuid)) {
+            return;
+        }
+        contracts.remove(c.id);
+        refund(c);
     }
 
     public void create(Player client, long reward, String note) {

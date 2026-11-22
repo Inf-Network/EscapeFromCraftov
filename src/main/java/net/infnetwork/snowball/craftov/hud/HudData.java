@@ -222,8 +222,9 @@ public final class HudData {
         return raid == null ? "" : raid.tier.name();
     }
 
-    public long carried(Player p) {
-        return plugin.carry().carriedValue(p);
+    /** Gear value (战备值), the melee weapon left out: what is at stake in the raid. */
+    public long gearValue(Player p) {
+        return plugin.carry().gearValue(p);
     }
 
     public int extractPercent(Player p) {

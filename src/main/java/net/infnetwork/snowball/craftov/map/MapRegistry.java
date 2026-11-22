@@ -102,6 +102,53 @@ public final class MapRegistry {
         return new File(dir, id + ".yml");
     }
 
+    // ------------------------------------------------------------------ checks
+
+    /** Soldier and boss posts closer than this (flat) to a player spawn point are reported. */
+    public static final double SPAWN_CLEARANCE = 30;
+
+    /** A soldier or boss post too close to a player spawn point. */
+    public record CloseSpawn(String kind, Pos post, int group, double distance) {
+    }
+
+    /**
+     * Soldier and boss posts within {@link #SPAWN_CLEARANCE} blocks of a player spawn point, the
+     * nearest spawn for each: a squad landing there is in a fight before it can take a step.
+     */
+    public static List<CloseSpawn> closeSpawns(MapDef def) {
+        List<CloseSpawn> out = new ArrayList<>();
+        Map<Pos, String> posts = new LinkedHashMap<>();
+        def.ai().forEach(ai -> posts.putIfAbsent(ai.pos(), ai.kind()));
+        def.bosses().forEach(boss -> posts.putIfAbsent(boss.pos(), "boss"));
+        posts.forEach((post, kind) -> {
+            MapDef.SpawnDef nearest = null;
+            double best = Double.MAX_VALUE;
+            for (MapDef.SpawnDef spawn : def.spawns()) {
+                double d = Math.hypot(spawn.pos().x() - post.x(), spawn.pos().z() - post.z());
+                if (d < best) {
+                    best = d;
+                    nearest = spawn;
+                }
+            }
+            if (nearest != null && best < SPAWN_CLEARANCE) {
+                out.add(new CloseSpawn(kind, post, nearest.group(), best));
+            }
+        });
+        return out;
+    }
+
+    /** Logs every map's {@link #closeSpawns}. */
+    public void warnCloseSpawns() {
+        for (MapDef def : maps.values()) {
+            for (CloseSpawn close : closeSpawns(def)) {
+                logger.warning(String.format(Locale.ROOT, "Map %s (%s): %s post at %.1f %.1f %.1f is %.1f blocks from player spawn group %d"
+                                + " (keep soldiers %d+ blocks away so a landing squad is not shot on the spot)",
+                        def.name(), def.id(), close.kind(), close.post().x(), close.post().y(), close.post().z(), close.distance(),
+                        close.group(), (int) SPAWN_CLEARANCE));
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ reading
 
     private static MapDef read(YamlConfiguration y) {

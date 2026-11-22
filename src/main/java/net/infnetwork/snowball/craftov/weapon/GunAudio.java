@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
@@ -16,21 +18,37 @@ import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Gunfire as each listener should hear it. The shooter gets a wide stereo first-person shot; everyone
- * else gets a near, mid or far version picked by distance, a muffled one through walls, arriving
- * after the speed-of-sound delay. Loudness follows our own curve instead of Minecraft's linear
+ * Gunfire as each listener should hear it. The shooter gets a wide stereo first-person shot, as loud
+ * as the gun is (a pistol well under a sniper rifle); everyone else gets the near, mid and far
+ * versions crossfaded by distance (both of a pair play across a band edge, their weights adding up
+ * to one), and behind a wall a muffled version with a little of the open one under it, arriving
+ * after the speed-of-sound delay. As the far report takes over (weapons.audio.mid-far) the wall and
+ * the room fade out, since the far report is dull and echoing itself. Loudness follows our own curve instead of Minecraft's linear
  * roll-off: the sound is placed a few blocks from the listener in the shooter's direction, which
- * keeps the stereo direction while the volume is set exactly. The environment's tail (outdoor echoes
- * or a room's boom) follows the last shot of a burst, so automatic fire stays crisp.
+ * keeps the stereo direction while the volume is set exactly. The reports are recordings that carry
+ * the outdoor range's own decay; under a roof the room answers every shot as it is fired (a tail
+ * that starts with the shot), so a single shot is one sound and automatic fire fills the room.
+ * Someone the wall is between hears that room muffled too.
+ *
+ * <p>Each event has several recorded variants. The client picks one from the seed in the sound
+ * packet, so the server deals them like cards, per shooter and event (every variant once before any
+ * repeats), and sends the seed that picks the dealt one. Several variants can be copies of one
+ * recorded shot (the other microphone, the ears swapped, another speed); gun_variants.json says
+ * which, and the deal never puts a recorded shot right after itself where the recordings allow it.
+ * Each shot also varies by up to 1 dB.
  *
  * <p>Shots go out on 50 ms server ticks, and a sound sent in a tick plays when the tick's packets
  * arrive, so a gun whose interval does not fit the tick would sound uneven (the M4C's 75 ms comes
@@ -45,18 +63,91 @@ public final class GunAudio {
     /** Sound events use Minecraft's default 16-block linear attenuation (see build.py). */
     private static final double ATTENUATION = 16.0;
 
-    private record Delayed(long tick, UUID listener, Location source, String key, double gain, float pitch) {
+    /** A sound on its way to a listener; {@code restart} stops what still plays under the same key first. */
+    private record Delayed(long tick, UUID listener, Location source, String key, double gain, float pitch, long seed,
+                           boolean restart) {
     }
 
-    private record Burst(long lastShot, Location muzzle, String family, boolean indoor, boolean suppressed, double loudness,
-                         UUID shooter) {
+    /**
+     * The variants of one sound a shooter has not heard yet, in the order they come. Variant i starts
+     * on recorded shot heads[i] and ends on tails[i] (a multi-round sample can start and end on
+     * different ones). A round is a random order of every variant in which none starts on the shot
+     * the one before it ended on, the previous round's last included; where the recordings cannot
+     * allow that (one shot played at several speeds), it only keeps the same variant from coming
+     * twice in a row.
+     */
+    private static final class Deck {
+        /** Rounds are searched by shot only up to this size (the search is factorial). */
+        private static final int SEARCHED = 8;
+        private final int[] heads;
+        private final int[] tails;
+        private final int[] order;
+        private int next;
+        private int last = -1;
+        private long used;
+
+        Deck(int[] heads, int[] tails) {
+            this.heads = heads;
+            this.tails = tails;
+            order = new int[heads.length];
+            next = order.length;
+        }
+
+        int draw(Random rng, long now) {
+            used = now;
+            if (next >= order.length) {
+                if (order.length > SEARCHED || !place(0, new boolean[order.length], rng, true)) {
+                    place(0, new boolean[order.length], rng, false);
+                }
+                next = 0;
+            }
+            last = order[next++];
+            return last;
+        }
+
+        /** Fills the round from position {@code at} on, trying variants in random order; false if none fits. */
+        private boolean place(int at, boolean[] taken, Random rng, boolean byShot) {
+            if (at == order.length) {
+                return true;
+            }
+            int[] tries = new int[order.length];
+            for (int i = 0; i < tries.length; i++) {
+                int j = rng.nextInt(i + 1);
+                tries[i] = tries[j];
+                tries[j] = i;
+            }
+            int before = at > 0 ? order[at - 1] : last;
+            for (int c : tries) {
+                if (taken[c] || before >= 0 && (c == before && order.length > 1 || byShot && heads[c] == tails[before])) {
+                    continue;
+                }
+                taken[c] = true;
+                order[at] = c;
+                if (place(at + 1, taken, rng, byShot)) {
+                    return true;
+                }
+                taken[c] = false;
+            }
+            return false;
+        }
     }
+
+    /** Room sound under a roof, as a share of the shot's level (suppressed shots barely excite it). */
+    private static final double ROOM = 0.8;
+    private static final double ROOM_SUPPRESSED = 0.2;
+    /** Quietest sound worth a packet. */
+    private static final double AUDIBLE = 0.012;
+    /** items.yml volumes that map to the ends of weapons.audio.shooter-volume. */
+    private static final double QUIETEST_GUN = 3.5;
+    private static final double LOUDEST_GUN = 7.0;
+    private static final String[] OPEN = {".near", ".mid", ".far"};
+    private static final String[] SUPPRESSED = {".near_s", ".mid_s"};
 
     /** A multi-round sample: this many rounds, one every ticks / rounds ticks. */
     private record Rounds(int rounds, int ticks) {
     }
 
-    /** Sound sets with multi-round samples for automatic fire (GROUPS in tools/art/gunaudio.py). */
+    /** Sound sets with multi-round samples for automatic fire (GROUPS in tools/art/gunsamples.py). */
     private static final Map<String, Rounds> SAMPLES = Map.of(
             "m4c", new Rounds(2, 3),
             "sv9", new Rounds(3, 4),
@@ -64,12 +155,128 @@ public final class GunAudio {
 
     private final CraftovPlugin plugin;
     private final List<Delayed> queue = new ArrayList<>();
-    private final Map<UUID, Burst> bursts = new HashMap<>();
     private final Map<UUID, long[]> indoorCache = new HashMap<>();
+    /** Per listener, which of the two room keys the next tail takes (see {@link #roomKey}). */
+    private final Map<UUID, Integer> roomTurns = new HashMap<>();
+    /** Variants of each sound event in the pack (sounds.json in this jar), by full key. */
+    private final Map<String, Integer> variants;
+    /** Per sound event, the recorded shot each variant starts and ends on: {heads, tails}. */
+    private final Map<String, int[][]> shots;
+    /** Per shooter and sound event, the variants still to come. */
+    private final Map<String, Deck> decks = new HashMap<>();
+    /** Packet seeds that make the client pick variant i of n: SEEDS.get(n)[i]. */
+    private static final Map<Integer, long[]> SEEDS = new HashMap<>();
 
     public GunAudio(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.variants = readVariants(plugin);
+        this.shots = readShots(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+    }
+
+    /**
+     * gun_variants.json (written by tools/art/build.py with sounds.json): for every gun sound event,
+     * each variant's recorded shots round by round, numbered within the event.
+     */
+    private static Map<String, int[][]> readShots(CraftovPlugin plugin) {
+        Map<String, int[][]> out = new HashMap<>();
+        try (InputStream in = plugin.getResource("gun_variants.json")) {
+            if (in == null) {
+                plugin.getLogger().warning("No gun_variants.json in the jar: gun sound variants are dealt without their shots");
+                return out;
+            }
+            var root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            for (Map.Entry<String, JsonElement> event : root.entrySet()) {
+                var rows = event.getValue().getAsJsonArray();
+                int[] heads = new int[rows.size()];
+                int[] tails = new int[rows.size()];
+                for (int i = 0; i < heads.length; i++) {
+                    var row = rows.get(i).getAsJsonArray();
+                    heads[i] = row.get(0).getAsInt();
+                    tails[i] = row.get(row.size() - 1).getAsInt();
+                }
+                out.put("craftov:" + event.getKey(), new int[][]{heads, tails});
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not read gun_variants.json from the jar: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /** Variant counts from the pack's sounds.json, which the plugin jar carries. */
+    private static Map<String, Integer> readVariants(CraftovPlugin plugin) {
+        Map<String, Integer> out = new HashMap<>();
+        try (InputStream in = plugin.getResource("pack/craftov/resourcepack/assets/craftov/sounds.json")) {
+            if (in == null) {
+                plugin.getLogger().warning("No sounds.json in the jar: gun sound variants are left to the client");
+                return out;
+            }
+            var root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            for (Map.Entry<String, JsonElement> event : root.entrySet()) {
+                var sounds = event.getValue().getAsJsonObject().getAsJsonArray("sounds");
+                out.put("craftov:" + event.getKey(), sounds == null ? 1 : sounds.size());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not read sounds.json from the jar: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /**
+     * The packet seed for variant {@code index} of a sound with {@code count} variants. The vanilla
+     * client seeds a java.util.Random-compatible generator with it and picks the variant with
+     * nextInt(total weight); every variant of ours weighs 1.
+     */
+    static long seedFor(int count, int index) {
+        if (count <= 1) {
+            return ThreadLocalRandom.current().nextLong();
+        }
+        long[] seeds = SEEDS.computeIfAbsent(count, n -> {
+            long[] found = new long[n];
+            java.util.Arrays.fill(found, -1);
+            int missing = n;
+            for (long seed = 0; missing > 0; seed++) {
+                int i = new Random(seed).nextInt(n);
+                if (found[i] < 0) {
+                    found[i] = seed;
+                    missing--;
+                }
+            }
+            return found;
+        });
+        return seeds[Math.floorMod(index, count)];
+    }
+
+    /** The seed that plays the dealt variant of {@code key}, whatever its count. */
+    private long seed(String key, int pick) {
+        int count = variants.getOrDefault(key, 1);
+        return seedFor(count, pick % Math.max(1, count));
+    }
+
+    /** The next variant of sound event {@code key} for this shooter. */
+    private int deal(Entity shooter, String key, Random rng, long now) {
+        String id = shooter.getUniqueId() + key;
+        Deck deck = decks.get(id);
+        int size = Math.max(1, variants.getOrDefault(key, 1));
+        if (deck == null || deck.order.length != size) {
+            int[][] known = shots.get(key);
+            if (known == null || known[0].length != size) {
+                // Nothing known about the recordings: every variant counts as a shot of its own.
+                int[] own = new int[size];
+                for (int i = 0; i < size; i++) {
+                    own[i] = i;
+                }
+                known = new int[][]{own, own};
+            }
+            deck = new Deck(known[0], known[1]);
+            decks.put(id, deck);
+        }
+        return deck.draw(rng, now);
+    }
+
+    /** The variant of {@code key} dealt for this shot: one card per event and shot, however many hear it. */
+    private int dealt(Map<String, Integer> hand, Entity shooter, String key, Random rng, long now) {
+        return hand.computeIfAbsent(key, k -> deal(shooter, k, rng, now));
     }
 
     // ------------------------------------------------------------------ shots
@@ -90,26 +297,43 @@ public final class GunAudio {
 
     /**
      * A shot whose report holds {@code rounds} rounds (see {@link #roundsPerSample}); 0 for a round
-     * that a sample started by an earlier shot already played, which only holds back the tail.
+     * that a sample started by an earlier shot already played: nothing more to hear.
      */
     public void shot(LivingEntity shooter, Location muzzle, GunSpec gun, boolean suppressed, int rounds) {
-        World world = muzzle.getWorld();
-        long now = Bukkit.getCurrentTick();
         if (rounds <= 0) {
-            Burst burst = bursts.get(shooter.getUniqueId());
-            if (burst != null) {
-                bursts.put(shooter.getUniqueId(), new Burst(now, muzzle.clone(), burst.family(), burst.indoor(), burst.suppressed(),
-                        burst.loudness(), burst.shooter()));
-            }
             return;
         }
+        World world = muzzle.getWorld();
+        long now = Bukkit.getCurrentTick();
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         float pitch = 0.97f + rng.nextFloat() * 0.06f;
         String set = "craftov:gun." + gun.audio() + (rounds > 1 ? ".x" + rounds : "");
         double loudness = gun.soundVolume() / 5.0;
+        var config = plugin.getConfig();
+        // A variant of each sound this shot plays, and a level that varies a little from shot to shot.
+        Map<String, Integer> hand = new HashMap<>(8);
+        double jitterDb = config.getDouble("weapons.audio.level-jitter-db", 1.0);
+        double jitter = Math.pow(10, (rng.nextDouble() * 2 - 1) * jitterDb / 20);
+        // Under a roof the room answers in the same tick as the shot, for everyone who hears it.
+        @Nullable String room = indoor(shooter, muzzle) ? "craftov:gun.tail." + tailFamily(gun) + ".in" : null;
+        double roomShare = suppressed ? ROOM * ROOM_SUPPRESSED : ROOM;
+        float roomPitch = 0.98f + rng.nextFloat() * 0.04f;
         if (shooter instanceof Player player) {
-            player.playSound(player, set + (suppressed ? ".fp_s" : ".fp"), SoundCategory.PLAYERS, suppressed ? 0.8f : 1f, pitch);
+            // The suppressed recordings are already that much quieter: the level is the gun's own.
+            double own = shooterVolume(gun, pair(config, "weapons.audio.shooter-volume", 0.55, 1.0)) * jitter;
+            String fp = set + (suppressed ? ".fp_s" : ".fp");
+            player.playSound(player, fp, SoundCategory.PLAYERS, (float) Math.min(1.0, own), pitch,
+                    seed(fp, dealt(hand, shooter, fp, rng, now)));
+            if (room != null) {
+                schedule(now, player, muzzle, roomKey(player, room), own * roomShare * 0.8, roomPitch,
+                        dealt(hand, shooter, room, rng, now), true);
+            }
         }
+        double[] nearMid = pair(config, "weapons.audio.near-mid", 20, 32);
+        double[] midFar = pair(config, "weapons.audio.mid-far", 70, 110);
+        double muffled = config.getDouble("weapons.audio.muffled", 0.75);
+        double muffledDry = config.getDouble("weapons.audio.muffled-dry", 0.2);
+        String[] bands = suppressed ? SUPPRESSED : OPEN;
         // Private range plots share one world; nobody else should hear another plot's shots.
         boolean range = plugin.range().isRangeWorld(world);
         for (Player listener : world.getPlayers()) {
@@ -118,28 +342,81 @@ public final class GunAudio {
             }
             Location ear = listener.getEyeLocation();
             double d = ear.distance(muzzle);
-            double gain = gain(d, loudness, suppressed);
-            if (gain < 0.012) {
+            double gain = gain(d, loudness, suppressed) * jitter;
+            if (gain < AUDIBLE) {
                 continue;
             }
-            String band;
-            if (suppressed) {
-                band = ".near_s";
-            } else {
-                band = d < 26 ? ".near" : d < 90 ? ".mid" : ".far";
-            }
-            if (d > 2 && d < 90 && occluded(ear, muzzle)) {
-                if (suppressed) {
-                    gain *= 0.5;
-                } else {
-                    band = ".muff";
-                    gain *= 0.8;
+            long arrives = now + Math.round(d / SOUND_SPEED);
+            double[] weights = bandWeights(d, nearMid, midFar);
+            // The far report carries the terrain's echoes and is dull already, so walls and rooms
+            // matter less as it takes over: both fade out over the mid-far crossfade, instead of
+            // stopping at one distance where the sound would suddenly change.
+            double close = 1 - weights[2];
+            boolean blocked = d > 2 && close > 0 && occluded(ear, muzzle);
+            if (room != null) {
+                // Through a wall the room is muffled like the report, or it would ring out bright on
+                // every shot and give the wall away.
+                double share = roomShare * close * (blocked ? muffled : 1);
+                if (gain * share >= AUDIBLE) {
+                    // The muffled room is the same recordings: it takes the room's card.
+                    schedule(arrives, listener, muzzle, roomKey(listener, blocked ? room + "_muff" : room), gain * share,
+                            roomPitch, dealt(hand, shooter, room, rng, now), true);
                 }
             }
-            schedule(now + Math.round(d / SOUND_SPEED), listener, muzzle, set + band, gain, pitch);
+            double open = 1.0;
+            if (blocked) {
+                // Through a wall: dull, but with a little of the open report under it so it is still
+                // a gunshot. Suppressed reports are dull already and only lose level.
+                double dry = suppressed ? 0.4 : muffledDry;
+                open = dry + (1 - dry) * (1 - close);
+                if (!suppressed && gain * muffled * close >= AUDIBLE / 2) {
+                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled * close, pitch,
+                            dealt(hand, shooter, set + ".muff", rng, now), false);
+                }
+            }
+            for (int i = 0; i < bands.length; i++) {
+                // Suppressed reports have no far band: mid_s takes the far weight too.
+                double w = suppressed && i == bands.length - 1 ? 1 - weights[0] : weights[i];
+                // Equal power: two different recordings played together add up in energy.
+                double level = gain * open * Math.sqrt(w);
+                if (w > 0 && level >= AUDIBLE / 2) {
+                    schedule(arrives, listener, muzzle, set + bands[i], level, pitch,
+                            dealt(hand, shooter, set + bands[i], rng, now), false);
+                }
+            }
         }
-        bursts.put(shooter.getUniqueId(), new Burst(now, muzzle.clone(), tailFamily(gun), indoor(shooter, muzzle), suppressed,
-                loudness, shooter.getUniqueId()));
+    }
+
+    /**
+     * Share of the near, mid and far reports at distance d (they add up to 1 and change continuously):
+     * near fades into mid between nearMid[0] and nearMid[1] blocks, mid into far between midFar[0]
+     * and midFar[1].
+     */
+    static double[] bandWeights(double d, double[] nearMid, double[] midFar) {
+        double toMid = ramp(d, nearMid[0], nearMid[1]);
+        double toFar = ramp(d, Math.max(midFar[0], nearMid[1]), Math.max(midFar[1], nearMid[1]));
+        return new double[]{1 - toMid, toMid * (1 - toFar), toMid * toFar};
+    }
+
+    private static double ramp(double d, double from, double to) {
+        if (to <= from) {
+            return d < from ? 0 : 1;
+        }
+        return Math.clamp((d - from) / (to - from), 0.0, 1.0);
+    }
+
+    /**
+     * How loud the shooter hears their own gun: the items.yml volume from 3.5 (pistols) to 7 (the
+     * AWR), linear onto the configured range, so a pistol is a pop next to a rifle.
+     */
+    static double shooterVolume(GunSpec gun, double[] range) {
+        double t = Math.clamp((gun.soundVolume() - QUIETEST_GUN) / (LOUDEST_GUN - QUIETEST_GUN), 0.0, 1.0);
+        return Math.clamp(range[0] + t * (range[1] - range[0]), 0.0, 1.0);
+    }
+
+    private static double[] pair(org.bukkit.configuration.Configuration config, String path, double a, double b) {
+        List<Double> values = config.getDoubleList(path);
+        return values.size() >= 2 ? new double[]{values.get(0), values.get(1)} : new double[]{a, b};
     }
 
     /** Level at distance d: loud guns carry far, suppressed ones die out within ~50 blocks. */
@@ -158,33 +435,15 @@ public final class GunAudio {
         };
     }
 
-    private void tail(Burst burst) {
-        World world = burst.muzzle().getWorld();
-        if (world == null) {
-            return;
-        }
-        long now = Bukkit.getCurrentTick();
-        String key = "craftov:gun.tail." + burst.family() + (burst.indoor() ? ".in" : ".out");
-        float pitch = 0.98f + ThreadLocalRandom.current().nextFloat() * 0.04f;
-        double share = (burst.indoor() ? 0.8 : 0.65) * (burst.suppressed() ? 0.2 : 1.0);
-        boolean range = plugin.range().isRangeWorld(world);
-        for (Player listener : world.getPlayers()) {
-            if (range && !listener.getUniqueId().equals(burst.shooter())) {
-                continue;
-            }
-            double d = listener.getEyeLocation().distance(burst.muzzle());
-            if (d >= 90) {
-                continue; // the far shot already carries its echoes
-            }
-            double gain = gain(d, burst.loudness(), burst.suppressed()) * share;
-            if (listener.getUniqueId().equals(burst.shooter())) {
-                gain = share * 0.8;
-            }
-            if (gain < 0.012) {
-                continue;
-            }
-            schedule(now + Math.round(d / SOUND_SPEED), listener, burst.muzzle(), key, gain, pitch);
-        }
+    /**
+     * The room key for this listener's next tail. A room tail lasts a second or more, so automatic
+     * fire would stack a dozen of them: each listener alternates between two keys for the same sounds
+     * and every tail stops the one two shots back (still ringing under the new shot, which hides the
+     * cut), so no more than two play at once.
+     */
+    private String roomKey(Player listener, String room) {
+        int turn = roomTurns.merge(listener.getUniqueId(), 1, (a, b) -> (a + b) % 2);
+        return turn == 0 ? room : room + "2";
     }
 
     // ------------------------------------------------------------------ bullets
@@ -297,19 +556,25 @@ public final class GunAudio {
 
     // ------------------------------------------------------------------ helpers
 
-    private void schedule(long tick, Player listener, Location source, String key, double gain, float pitch) {
+    /** Plays variant {@code pick} of key to the listener at {@code tick} (see {@link #emit}). */
+    private void schedule(long tick, Player listener, Location source, String key, double gain, float pitch, int pick,
+                          boolean restart) {
+        long seed = seed(key, pick);
         if (tick <= Bukkit.getCurrentTick()) {
-            emit(listener, source, key, gain, pitch);
+            emit(listener, source, key, gain, pitch, seed, restart);
             return;
         }
-        queue.add(new Delayed(tick, listener.getUniqueId(), source.clone(), key, gain, pitch));
+        queue.add(new Delayed(tick, listener.getUniqueId(), source.clone(), key, gain, pitch, seed, restart));
     }
 
     /** Plays key at gain for this listener only, keeping the direction of source. */
-    private static void emit(Player listener, Location source, String key, double gain, float pitch) {
+    private static void emit(Player listener, Location source, String key, double gain, float pitch, long seed, boolean restart) {
         Location ear = listener.getEyeLocation();
         if (ear.getWorld() != source.getWorld()) {
             return;
+        }
+        if (restart) {
+            listener.stopSound(key, SoundCategory.PLAYERS);
         }
         Vector to = source.toVector().subtract(ear.toVector());
         double d = to.length();
@@ -323,7 +588,7 @@ public final class GunAudio {
             attenuation = 1 - PROXY / ATTENUATION;
         }
         float volume = (float) Math.min(1.0, gain / Math.max(0.05, attenuation));
-        listener.playSound(at, key, SoundCategory.PLAYERS, volume, pitch);
+        listener.playSound(at, key, SoundCategory.PLAYERS, volume, pitch, seed);
     }
 
     private static boolean occluded(Location ear, Location source) {
@@ -381,23 +646,14 @@ public final class GunAudio {
                 it.remove();
                 Player listener = Bukkit.getPlayer(delayed.listener());
                 if (listener != null) {
-                    emit(listener, delayed.source(), delayed.key(), delayed.gain(), delayed.pitch());
-                }
-            }
-        }
-        if (!bursts.isEmpty()) {
-            Iterator<Burst> it = bursts.values().iterator();
-            while (it.hasNext()) {
-                Burst burst = it.next();
-                // Three quiet ticks end a burst; a single shot gets its tail straight after.
-                if (now - burst.lastShot() >= 3) {
-                    it.remove();
-                    tail(burst);
+                    emit(listener, delayed.source(), delayed.key(), delayed.gain(), delayed.pitch(), delayed.seed(), delayed.restart());
                 }
             }
         }
         if (now % 200 == 0) {
             indoorCache.entrySet().removeIf(e -> now - e.getValue()[1] > 200);
+            roomTurns.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
+            decks.values().removeIf(deck -> now - deck.used > 6000);
         }
     }
 }

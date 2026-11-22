@@ -32,6 +32,11 @@ public final class Profile {
     public List<ItemRecord> secure = new ArrayList<>();
     /** Items returned by expired market listings or escort refunds, claimed from the stash menu. */
     public List<ItemRecord> mailbox = new ArrayList<>();
+    /**
+     * System mail (MailService): letters that say why they came, with money or items attached,
+     * read and claimed in the stash mailbox. Oldest first.
+     */
+    public List<Mail> mail = new ArrayList<>();
     /** Insured gear on its way back (InsuranceService): moves to the mailbox once it is ready. */
     public List<Claim> claims = new ArrayList<>();
 
@@ -75,9 +80,18 @@ public final class Profile {
     /** Last few login addresses, newest last (MarketService: same-address trades). */
     public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
+    /** Personal loot luck (LuckService, #80). */
+    public Luck luck = new Luck();
 
-    /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */
+    /** Raid id while the player is inside a raid; a crash leaves it set (see {@link #deployment}). */
     public @Nullable String activeRaid;
+    /**
+     * What the player took into the raid they are in, saved with the deploy (RaidManager.prepare)
+     * and cleared together with {@link #activeRaid} whenever the raid is settled for them. A raid
+     * that the server stops in, or crashes in, is void, and this is what it is undone to
+     * (RaidManager.voidRaid).
+     */
+    public @Nullable Deployment deployment;
 
     public Profile() {
     }
@@ -93,6 +107,30 @@ public final class Profile {
 
     public void addStat(String key, long delta) {
         stats.merge(key, delta, Long::sum);
+    }
+
+    /** The raid is settled for this player: out of it, with nothing left to undo. */
+    public void leaveRaid() {
+        activeRaid = null;
+        deployment = null;
+    }
+
+    /**
+     * Money the raid in progress has paid this player (a negative amount: taken), recorded so a
+     * void raid can take it back. Nothing is recorded outside a raid.
+     */
+    public void earnedInRaid(long amount) {
+        if (deployment != null) {
+            deployment.earned += amount;
+        }
+    }
+
+    /** A stat the raid in progress has counted, recorded so a void raid can take it back. */
+    public void statInRaid(String key, long delta) {
+        addStat(key, delta);
+        if (deployment != null) {
+            deployment.stats.merge(key, delta, Long::sum);
+        }
     }
 
     public int stashUsed() {
@@ -116,6 +154,86 @@ public final class Profile {
         }
     }
 
+    /**
+     * What a player took into a raid and what the raid has given them since (see
+     * {@link #deployment}). Saved with the profile, so a crash leaves it for the next login.
+     */
+    public static final class Deployment {
+        /** Raid.key: unique across restarts, unlike the raid id. */
+        public String raid = "";
+        /** Map and difficulty names, for the letter that says the raid was void. */
+        public String map = "";
+        public String tier = "";
+        /** When the player deployed (epoch millis). */
+        public long time;
+        /** The loadout and secure container as they went in, without insurance marks. */
+        public Map<Integer, ItemRecord> loadout = new HashMap<>();
+        public List<ItemRecord> secure = new ArrayList<>();
+        public long entryFee;
+        public long premium;
+        /**
+         * Money the raid has paid out so far less what it has cost on the way: daily contract
+         * rewards and swaps, the level rewards they brought, bounties collected.
+         */
+        public long earned;
+        /** Stats the raid has added so far: the raid itself, contracts done. */
+        public Map<String, Long> stats = new HashMap<>();
+        /** Daily contracts, account level and season pass as they stood at deploy. */
+        public long taskDay = -1;
+        public List<TaskState> tasks = new ArrayList<>();
+        public int level = 1;
+        public long xp;
+        public String seasonId = "";
+        public long seasonXp;
+        /** Bounties collected in the raid: they go back on the heads they came off. */
+        public List<BountyClaim> bounties = new ArrayList<>();
+        /** Items the raid put in the item mailbox: they come out of it again. */
+        public List<ItemRecord> mailed = new ArrayList<>();
+        /**
+         * Instance ids of gear in {@link #loadout} or {@link #secure} that has since left the raid
+         * with another player: extracted or sent home with it, or kept in their secure container
+         * through a death (RaidManager.leftWith). A void raid does not hand it back as well. Saved
+         * as it happens, so a crash voids the raid the same way a stop does.
+         */
+        public Set<String> gone = new LinkedHashSet<>();
+        /**
+         * The same for stacking items (ammo, meds, valuables), which have no instance id: item id ->
+         * how many of those in {@link #loadout} and {@link #secure} count as gone, worked out from
+         * counts (RaidManager.leftWith).
+         */
+        public Map<String, Long> goneStacks = new HashMap<>();
+    }
+
+    /** A bounty collected in a raid (BountyService.onKill). */
+    public static final class BountyClaim {
+        public UUID victim;
+        /** What other players had put on the victim's head. */
+        public long placed;
+        /** The house bounty was part of it: houseBountyDay went from {@link #dayBefore} to {@link #day}. */
+        public boolean house;
+        public long dayBefore = -1;
+        public long day = -1;
+    }
+
+    /** One system letter (MailService). */
+    public static final class Mail {
+        /** Short random id, unique among the player's letters. */
+        public String id = "";
+        /** When it was sent (epoch millis). */
+        public long time;
+        public String title = "";
+        /** Plain text, not MiniMessage: shown escaped, one line per paragraph. */
+        public String body = "";
+        public long money;
+        public List<ItemRecord> items = new ArrayList<>();
+        /** Opened and, if anything was attached, paid out. */
+        public boolean claimed;
+
+        public boolean hasAttachments() {
+            return money > 0 || items != null && !items.isEmpty();
+        }
+    }
+
     /** One insured item coming back: it reaches the mailbox once {@code readyAt} (epoch millis) has passed. */
     public static final class Claim {
         public ItemRecord item;
@@ -128,6 +246,70 @@ public final class Profile {
             this.item = item;
             this.readyAt = readyAt;
         }
+    }
+
+    /** Personal loot luck (LuckService): what the player is owed for going without. */
+    public static final class Luck {
+        /**
+         * Rarity (GOLD, RED) -> containers searched that could hold a single item of it since the
+         * player last found one.
+         */
+        public Map<String, Integer> pity = new HashMap<>();
+        /** Jackpot item id -> qualifying raids since the player last found it. */
+        public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota pool (◈): what the player is owed as gold and red items. */
+        public long quota;
+        /** Time (epoch millis) up to which idle decay has been taken off the quota. */
+        public long quotaAt;
+        /** When the player last finished a raid that counts for luck (epoch millis). */
+        public long playedAt;
+        /** Raids left with loss compensation: more gold and red handed out in the containers they search. */
+        public int boostRaids;
+        /**
+         * Raids that counted for luck, newest first: every one within the loss window
+         * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.
+         */
+        public List<LuckRaid> raids = new ArrayList<>();
+        /**
+         * Set while the player is in a raid that counts: what a server crash puts back, since the
+         * raid is then voided and the loadout restored to what it was at the deploy.
+         */
+        public @Nullable LuckDeploy deployed;
+    }
+
+    /** Luck as it was when the player deployed (Profile.Luck.deployed). */
+    public static final class LuckDeploy {
+        public String raid = "";
+        public Map<String, Integer> pity = new HashMap<>();
+        public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota spent on hand-outs in the raid so far. */
+        public long quotaSpent;
+    }
+
+    /** One raid as luck remembers it (LuckService). */
+    public static final class LuckRaid {
+        public long time;
+        public String tier = "";
+        /** The raid's key (its id and start time): ids start again at R1 after a restart. */
+        public String raid = "";
+        /**
+         * Change in what the player owns: carried out or kept, less brought in, fees and paid exits.
+         * A squadmate's gear is left out; the player's own that a squadmate carried out, or that
+         * insurance brought back, does not count as lost once the raid has closed.
+         */
+        public long net;
+        /** The raid has not closed yet: net may still come down (squadmates, insurance). */
+        public boolean open;
+        /** Its loss has set off a loss compensation already and counts for no other. */
+        public boolean compensated;
+        public int kills;
+        public int deaths;
+        /** Revives given, extracting beside a squadmate, escort jobs. */
+        public int coop;
+        /** Carried out a red item they did not bring in. */
+        public boolean red;
+        /** Long enough and with enough searches to count for the quota and the behaviour score. */
+        public boolean qualified;
     }
 
     /** A hideout production: recipe id and when it is done (epoch millis). */
@@ -146,6 +328,19 @@ public final class Profile {
         public long reward;
         public long xp;
         public boolean done;
+
+        public TaskState copy() {
+            TaskState copy = new TaskState();
+            copy.kind = kind;
+            copy.map = map;
+            copy.mapName = mapName;
+            copy.target = target;
+            copy.progress = progress;
+            copy.reward = reward;
+            copy.xp = xp;
+            copy.done = done;
+            return copy;
+        }
     }
 
     public static final class RaidReport {

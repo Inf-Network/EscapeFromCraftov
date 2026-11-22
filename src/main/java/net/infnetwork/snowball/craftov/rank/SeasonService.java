@@ -72,13 +72,13 @@ public final class SeasonService {
         return new Reward(3000 + 400L * tier, null, 0);
     }
 
-    /** Called with every experience grant. */
-    public void addXp(Player player, Profile profile, long xp) {
+    /** Called with every experience grant ({@code player} is null for someone offline). */
+    public void addXp(@Nullable Player player, Profile profile, long xp) {
         sync(profile);
         int before = tier(profile);
         profile.seasonXp += xp;
         int after = tier(profile);
-        if (after > before) {
+        if (after > before && player != null) {
             Text.send(player, "<#FFC23D>赛季通行证升至第 " + after + " 级！<#9AA0A6>到大厅菜单「赛季通行证」领取奖励。");
             player.playSound(player.getLocation(), "craftov:ui.levelup", SoundCategory.MASTER, 0.8f, 1.2f);
         }

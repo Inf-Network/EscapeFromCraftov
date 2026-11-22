@@ -35,7 +35,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * looter). Insured items still lying in bodies, containers or on the ground when the raid closes
  * go back to their owner, as they were insured: rigs and backpacks come back empty, and guns with
  * only the sight, attachments and rounds they had at deploy. What was fitted or packed in the raid
- * stays there.
+ * stays there. A player whose raid the server stop voided gets their gear back as it went in, and
+ * nothing of theirs is paid out on top.
  *
  * <p>A claim is not a full refund: each item is gone anyway with {@code insurance.loss-chance}
  * (someone else picked it up), so dying in a solo raid among soldiers no longer costs only the
@@ -184,23 +185,28 @@ public final class InsuranceService {
     /**
      * Raid closing: insured items left behind go home, also when they are packed inside a rig or
      * backpack lying around, each one unless the loss roll takes it. What comes back waits in the
-     * profile's claims until {@link #returnMinutes} have passed.
+     * profile's claims until {@link #returnMinutes} have passed. Returns the value coming back to
+     * each owner (their luck does not count it as lost).
      */
-    public void settle(Raid raid) {
-        settle(raid, Set.of());
+    public Map<UUID, Long> settle(Raid raid) {
+        return settle(raid, Set.of(), List.of());
     }
 
     /**
-     * As {@link #settle(Raid)}, except that the owners in {@code voided} get every claimed item
-     * back in the mailbox at once, with no loss roll: they were still in a raid the server called
-     * off (alive, downed, on the entry camera or within the reconnect window), which costs nothing.
+     * Raid closing, or the server stopping with players still in it. Those players' raid is void
+     * ({@code voided}): their gear goes home as it went in, so nothing of theirs is paid out here
+     * as well, wherever it lies. What they had on them ({@code carried}, copies) stays in the raid
+     * like anything lying around, and someone else's insured gear among it goes home to its owner,
+     * with the loss roll and the delay like any other claim. Returns the value coming back to each
+     * owner, as {@link #settle(Raid)} does.
      */
-    public void settle(Raid raid, Set<UUID> voided) {
+    public Map<UUID, Long> settle(Raid raid, Set<UUID> voided, List<ItemStack> carried) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
+        Map<UUID, Long> returned = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
-                ItemStack left = claim(raid, stack, returns);
+                ItemStack left = claim(raid, stack, returns, voided);
                 if (left != stack) {
                     container.set(slot, left);
                 }
@@ -208,27 +214,31 @@ public final class InsuranceService {
         }
         for (Item item : raid.world.getEntitiesByClass(Item.class)) {
             ItemStack stack = item.getItemStack();
-            ItemStack left = claim(raid, stack, returns);
+            ItemStack left = claim(raid, stack, returns, voided);
             if (left == null) {
                 item.remove();
             } else if (left != stack) {
                 item.setItemStack(left);
             }
         }
+        for (ItemStack stack : carried) {
+            claim(raid, stack, returns, voided);
+        }
         double loss = lossChance();
         long minutes = returnMinutes();
         long readyAt = System.currentTimeMillis() + minutes * 60_000L;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         returns.forEach((owner, claimed) -> {
-            boolean spared = voided.contains(owner);
-            boolean atOnce = spared || minutes <= 0;
             List<ItemRecord> records = new ArrayList<>();
             List<ItemRecord> lost = new ArrayList<>();
             for (ItemRecord record : claimed) {
-                (!spared && rng.nextDouble() < loss ? lost : records).add(record);
+                (rng.nextDouble() < loss ? lost : records).add(record);
+            }
+            for (ItemRecord record : records) {
+                returned.merge(owner, plugin.items().value(record), Long::sum);
             }
             if (!records.isEmpty()) {
-                if (atOnce) {
+                if (minutes <= 0) {
                     plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
                             + ProfileService.json(records), p -> p.mailbox.addAll(records));
                 } else {
@@ -239,17 +249,17 @@ public final class InsuranceService {
                 plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
             }
             plugin.getLogger().info("Insurance claim from raid " + raid.id + " for " + owner + ": " + records.size()
-                    + " returned" + (spared ? " (raid called off)" : "") + ", " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
+                    + " returned, " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
                 String back = records.isEmpty() ? "<#FF8A80>投保装备全部没能找回"
-                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (atOnce ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱")
-                        + (spared ? "（行动中止，全部找回）" : "");
+                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (minutes <= 0 ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱");
                 Text.send(player, "<#5BD16B>保险理赔：" + back
                         + (lost.isEmpty() || records.isEmpty() ? "" : "，<#FF8A80>" + lost.size() + " 件没能找回")
                         + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
         });
+        return returned;
     }
 
     /** Moves claims that are ready into their online owners' mailboxes (every ten seconds). */
@@ -294,15 +304,15 @@ public final class InsuranceService {
      * rig or backpack (which has no stored form) is searched too, and what stays behind keeps its
      * armory items and marks.
      */
-    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
+    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns, Set<UUID> voided) {
         if (stack == null || stack.isEmpty()) {
             return stack;
         }
         ItemRecord record = plugin.items().packRecord(stack);
-        if (record == null || !insuredIn(raid, record)) {
+        if (record == null || !insuredIn(raid, record, voided)) {
             return stack;
         }
-        ItemRecord left = claim(raid, record, returns);
+        ItemRecord left = claim(raid, record, returns, voided);
         if (left == null) {
             return null;
         }
@@ -311,14 +321,14 @@ public final class InsuranceService {
     }
 
     /**
-     * Record form of {@link #claim(Raid, ItemStack, Map)}: packed contents first (each insured item
-     * in there goes to its own owner), then the record itself, cut back to what was insured.
+     * Record form of {@link #claim(Raid, ItemStack, Map, Set)}: packed contents first (each insured
+     * item in there goes to its own owner), then the record itself, cut back to what was insured.
      */
-    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns) {
+    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns, Set<UUID> voided) {
         if (record.contents != null) {
-            record.contents.removeIf(child -> claim(raid, child, returns) == null);
+            record.contents.removeIf(child -> claim(raid, child, returns, voided) == null);
         }
-        UUID owner = owner(raid, record.insured);
+        UUID owner = owner(raid, record.insured, voided);
         if (owner == null || record.isTest()) {
             return record; // not insured here; an armory item never leaves its raid, mark or not
         }
@@ -328,13 +338,13 @@ public final class InsuranceService {
         return null;
     }
 
-    private static boolean insuredIn(Raid raid, ItemRecord record) {
-        if (owner(raid, record.insured) != null) {
+    private static boolean insuredIn(Raid raid, ItemRecord record, Set<UUID> voided) {
+        if (owner(raid, record.insured, voided) != null) {
             return true;
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                if (insuredIn(raid, child)) {
+                if (insuredIn(raid, child, voided)) {
                     return true;
                 }
             }
@@ -342,13 +352,17 @@ public final class InsuranceService {
         return false;
     }
 
-    /** The owner an insurance mark names for this raid, or null (no mark, another raid, garbage). */
-    private static @Nullable UUID owner(Raid raid, @Nullable String mark) {
+    /**
+     * The owner an insurance mark names for this raid, or null (no mark, another raid, garbage, or
+     * an owner whose raid was void).
+     */
+    private static @Nullable UUID owner(Raid raid, @Nullable String mark, Set<UUID> voided) {
         if (mark == null || !mark.endsWith(":" + raid.key) || mark.indexOf(':') <= 0) {
             return null;
         }
         try {
-            return UUID.fromString(mark.substring(0, mark.indexOf(':')));
+            UUID owner = UUID.fromString(mark.substring(0, mark.indexOf(':')));
+            return voided.contains(owner) ? null : owner;
         } catch (IllegalArgumentException ex) {
             return null;
         }

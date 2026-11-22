@@ -58,19 +58,18 @@ public final class KillFeedService implements Listener {
     // ------------------------------------------------------------------ kills
 
     /**
-     * A player died in a raid. {@code credited} is the player the kill counts for (an enemy still in
-     * the raid), or null: then the line names whoever dealt the last hit, or just the dead player.
+     * A player died in a raid, in person or (disconnected) through their stand-in. {@code credited}
+     * is the player the kill counts for (an enemy still in the raid), or null: then the line names
+     * whoever dealt the last hit, or just the dead player.
      */
-    public void playerDied(Raid raid, DamageService.@Nullable LastHit hit, Player victim, @Nullable Player credited) {
-        RaidPlayer dead = raid.player(victim.getUniqueId());
-        int victimSquad = dead == null ? -1 : dead.squad;
+    public void playerDied(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim, @Nullable Player credited) {
         Entry entry;
         if (hit == null || hit.attacker() == null) {
-            entry = new Entry(now(), null, "", -1, "", false, victim.getUniqueId(), victim.getName(), victimSquad, false);
+            entry = new Entry(now(), null, "", -1, "", false, victim.uuid, victim.name, victim.squad, false);
         } else {
             RaidPlayer by = raid.player(hit.attacker());
             entry = new Entry(now(), hit.attacker(), hit.attackerName(), by == null ? -1 : by.squad, hit.weapon(), hit.headshot(),
-                    victim.getUniqueId(), victim.getName(), victimSquad, false);
+                    victim.uuid, victim.name, victim.squad, false);
         }
         for (Player viewer : raid.online()) {
             add(viewer, entry, raid);

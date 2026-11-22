@@ -38,7 +38,7 @@ items:
     rarity: PURPLE
     value: 42000
     lore: "50 发大弹匣与 5.7mm 穿甲弹的组合。"
-    gun: { caliber: "5.7x28", slot: PRIMARY, mag: 50, rpm: 950, modes: [AUTO, SEMI], damage: 22, range: 28, max-range: 100,
+    gun: { caliber: "5.7x28", slot: PRIMARY, mag: 50, rpm: 900, modes: [AUTO, SEMI], damage: 22, range: 28, max-range: 100,
            hip-spread: 2.2, ads-spread: 0.55, recoil: 0.44, recoil-h: 0.4, recoil-return: 0.8, reload: 56, zoom: 1, sound: "craftov:gun.smg", volume: 3.5, move-speed: 0.95, action: pdw}
   # ------------------------------------------------------------------ rifles
   k47:
@@ -66,7 +66,7 @@ items:
     rarity: PURPLE
     value: 68000
     lore: "7.62x51 战斗步枪，中远距离一锤定音。"
-    gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 580, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
+    gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 600, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
            hip-spread: 3.2, ads-spread: 0.35, recoil: 1.6, recoil-h: 0.9, recoil-return: 0.6, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88, action: dmr}
   kl7:
     weight: 6.5
@@ -75,7 +75,7 @@ items:
     rarity: PURPLE
     value: 75000
     lore: "75 发弹鼓，持续火力压制。很重。"
-    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 34, range: 45, max-range: 150,
+    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 600, modes: [AUTO], damage: 34, range: 45, max-range: 150,
            hip-spread: 4.0, ads-spread: 0.6, recoil: 1.04, recoil-h: 0.9, recoil-return: 0.55, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72, action: lmg}
   r12:
     weight: 3.4

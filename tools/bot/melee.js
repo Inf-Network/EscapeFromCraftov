@@ -35,8 +35,9 @@
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node melee.js
 //
-// The bots are made op (test maps, /cv items) and get a karambit and money in the lobby to meet the
-// 机密 gear requirement; they are deopped when done. A match launches after match.wait-seconds
+// The bots are made op (test maps, /cv items) and get a karambit, a gold bar and money in the lobby:
+// the gold bar meets the 机密 gear requirement, which a knife does not count towards (issue #81);
+// they are deopped when done. A match launches after match.wait-seconds
 // (30 by default) and the boss appears 60 s into the raid. Exit code 0 when every check passes,
 // 1 when one fails, 2 when the scenario could not be set up.
 const fs = require('fs')
@@ -403,7 +404,8 @@ async function armourAttr (sel) {
   check('trader weapons page: the tactical dagger is sold, the machete and the karambit are not',
     sold.includes('knife_tactical') && !sold.includes('knife_machete') && !sold.includes('knife_karambit'), sold.filter(id => id.startsWith('knife')))
   for (const bot of bots) {
-    await rcon(`cv give ${bot.username} knife_karambit`) // also meets the 机密 gear requirement
+    await rcon(`cv give ${bot.username} knife_karambit`)
+    await rcon(`cv give ${bot.username} gold_bar`) // the 机密 gear requirement: the knife counts nothing
   }
   await waitFor(() => bots.every(b => pdc(b.inventory.slots[38], 'id') === 'knife_karambit'), 5000)
   const karambitLore = lore(attacker.inventory.slots[38])

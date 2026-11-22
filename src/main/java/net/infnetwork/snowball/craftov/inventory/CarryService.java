@@ -309,18 +309,6 @@ public final class CarryService {
 
     /** Everything the player carries (excluding UI stacks and test items), keyed by inventory slot. */
     public Map<Integer, ItemRecord> snapshot(Player player) {
-        return snapshot(player, false);
-    }
-
-    /**
-     * Like {@link #snapshot(Player)} but keeps proving-ground armory items, for a player who disconnects
-     * mid-raid and may rejoin it. Never store it as a loadout without {@link #persistent}.
-     */
-    public Map<Integer, ItemRecord> raidSnapshot(Player player) {
-        return snapshot(player, true);
-    }
-
-    private Map<Integer, ItemRecord> snapshot(Player player, boolean keepTest) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         PlayerInventory inv = player.getInventory();
         for (int slot = 0; slot <= HEAD; slot++) {
@@ -328,7 +316,7 @@ public final class CarryService {
             if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
                 continue;
             }
-            ItemRecord record = keepTest ? items.packRecord(stack) : items.toRecord(stack);
+            ItemRecord record = items.toRecord(stack);
             if (record != null) {
                 out.put(slot, record);
             }
@@ -355,18 +343,20 @@ public final class CarryService {
     }
 
     /**
-     * A {@link #raidSnapshot} without its test items, fit to be saved as the loadout of a player who is
-     * offline. An armory rig or backpack is left out, so the player's own items in its cells would land
-     * in locked cells and be dropped on the lobby floor at the next login: they move to free pockets
-     * instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
+     * A {@link #copyCarried} snapshot as records without its test items, fit to be saved as the loadout
+     * of a player who is offline. The raid's insurance mark is dropped like everywhere else a stack
+     * becomes a record. An armory rig or backpack is left out, so the player's own items in its cells
+     * would land in locked cells and be dropped on the lobby floor at the next login: they move to free
+     * pockets instead, and whatever does not fit is added to {@code homeless} for the caller to mail.
      */
-    public static Map<Integer, ItemRecord> persistent(Map<Integer, ItemRecord> layout, List<ItemRecord> homeless) {
-        boolean rigGone = isTestRecord(layout.get(LEGS));
-        boolean packGone = isTestRecord(layout.get(FEET));
+    public Map<Integer, ItemRecord> persistent(Map<Integer, ItemStack> carried, List<ItemRecord> homeless) {
+        boolean rigGone = ItemFactory.isTest(carried.get(LEGS));
+        boolean packGone = ItemFactory.isTest(carried.get(FEET));
         Map<Integer, ItemRecord> out = new HashMap<>();
         List<ItemRecord> orphans = new ArrayList<>();
-        layout.forEach((slot, record) -> {
-            ItemRecord kept = ItemFactory.persistent(record);
+        carried.forEach((slot, stack) -> {
+            // The record keeps the test marks of armory items packed inside, so they can be left out too.
+            ItemRecord kept = ItemFactory.persistent(items.packRecord(stack));
             if (kept == null) {
                 return;
             }
@@ -390,10 +380,6 @@ public final class CarryService {
             }
         }
         return out;
-    }
-
-    private static boolean isTestRecord(@Nullable ItemRecord record) {
-        return record != null && record.isTest();
     }
 
     public List<ItemRecord> allRecords(Player player) {

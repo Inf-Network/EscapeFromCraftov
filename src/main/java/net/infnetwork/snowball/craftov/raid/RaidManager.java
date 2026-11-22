@@ -1097,18 +1097,10 @@ public final class RaidManager implements Listener {
                     plugin.lobby().captureLoadout(player);
                     Text.send(player, "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
                 } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                    // The copies become records that still carry their test marks, so the armory
-                    // items can be left out; own items from an armory rig or backpack that find no
-                    // free pocket go to the mailbox.
-                    Map<Integer, ItemRecord> carried = new HashMap<>();
-                    rp.disconnectedInventory.forEach((slot, stack) -> {
-                        ItemRecord record = plugin.items().packRecord(stack);
-                        if (record != null) {
-                            carried.put(slot, record);
-                        }
-                    });
+                    // Armory items are left out; own items from an armory rig or backpack that find
+                    // no free pocket go to the mailbox.
                     List<ItemRecord> homeless = new ArrayList<>();
-                    Map<Integer, ItemRecord> inv = CarryService.persistent(carried, homeless);
+                    Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
                     plugin.profiles().edit(rp.uuid, profile -> {
                         profile.loadout = inv;
                         profile.mailbox.addAll(homeless);

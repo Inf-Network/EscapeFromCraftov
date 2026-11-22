@@ -155,6 +155,9 @@ public final class WeaponService implements Listener {
         boolean climbSettling;
         double climbStepUp;
         double climbStepRight;
+        /** What is left of the last shot's camera kick (degrees up, and right), sent on the next tick. */
+        double pendingUp;
+        double pendingRight;
         /** Mounted optic, or the gun's built-in scope; null = iron sights. */
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
@@ -461,6 +464,8 @@ public final class WeaponService implements Listener {
             return null;
         }
         long now = Bukkit.getCurrentTick();
+        // The rest of the last shot's kick still lands: switching away right after a shot dodges none of it.
+        kickPending(player, state, now);
         if (now < state.nextShotTick || state.bloom > 0) {
             stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
         }
@@ -524,6 +529,7 @@ public final class WeaponService implements Listener {
             if (state == null) {
                 continue;
             }
+            kickPending(player, state, now);
             settle(player, state, now);
             if (state.drawPending && !state.drawing()) {
                 drawn(player, state, now);
@@ -829,7 +835,9 @@ public final class WeaponService implements Listener {
         GunSpec gun = state.gun;
         var config = plugin.getConfig();
         long now = Bukkit.getCurrentTick();
-        double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
+        kickPending(player, state, now);
+        double scale = (isAiming(player) ? config.getDouble("weapons.recoil.ads", 0.6) : 1.0)
+                * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
         double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
@@ -838,16 +846,37 @@ public final class WeaponService implements Listener {
         if (share > 0) {
             climb(state, up * share, right * share);
         }
-        float pitchKick = (float) (up * (1 - share));
-        float yawKick = (float) (right * (1 - share));
+        double pitchKick = up * (1 - share);
+        double yawKick = right * (1 - share);
         if (state.freshPull || state.settling || Float.isNaN(state.anchorPitch)) {
             rebase(player, state, now);
         }
         state.freshPull = false;
-        state.kickUp += pitchKick;
-        state.kickRight += yawKick;
-        turned(state, now, pitchKick, yawKick);
-        Recoil.kick(player, yawKick, -pitchKick);
+        // The camera eases into the kick: this share now, the rest on the next tick, so a shot reads as
+        // a quick climb over two frames of the server's 20 a second rather than one jump.
+        double first = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.first-tick-share", 0.6)));
+        kick(player, state, now, pitchKick * first, yawKick * first);
+        state.pendingUp += pitchKick * (1 - first);
+        state.pendingRight += yawKick * (1 - first);
+    }
+
+    /** Turns the camera by a kick (degrees up, and right) and counts it toward the spray's recovery. */
+    private static void kick(Player player, GunState state, long now, double up, double right) {
+        if (Math.abs(up) < 1e-4 && Math.abs(right) < 1e-4) {
+            return;
+        }
+        state.kickUp += up;
+        state.kickRight += right;
+        turned(state, now, up, right);
+        Recoil.kick(player, (float) right, (float) -up);
+    }
+
+    /** The part of the last shot's kick held over to this tick (see {@link #recoil}). */
+    private static void kickPending(Player player, GunState state, long now) {
+        double up = state.pendingUp;
+        double right = state.pendingRight;
+        state.pendingUp = state.pendingRight = 0;
+        kick(player, state, now, up, right);
     }
 
     /**
@@ -992,9 +1021,12 @@ public final class WeaponService implements Listener {
             owe(state, above, right);
             double rate = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.return-per-tick", 0.1)));
             double share = Math.max(0.1, state.gun.recoilReturn());
+            // A long spray's recovery would otherwise jump several degrees a tick at 20 frames a second:
+            // it takes longer instead.
+            double most = Math.max(0.05, config.getDouble("weapons.recoil.return-max-step", 1.2));
             state.settling = true;
-            state.stepUp = state.returnUp * rate / share;
-            state.stepRight = Math.abs(state.returnRight) * rate / share;
+            state.stepUp = Math.min(most, state.returnUp * rate / share);
+            state.stepRight = Math.min(most, Math.abs(state.returnRight) * rate / share);
         }
         double margin = pulling * inFlightTicks(player);
         double up = Math.max(0, Math.min(Math.min(state.stepUp, state.returnUp), above - margin));

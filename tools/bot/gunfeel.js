@@ -9,6 +9,10 @@
 //           stack, and only then the long reload cooldown; the mark is gone once the reload is done.
 //   ads     K47 on full auto for 2 s with right mouse held (a use packet every 4 ticks, as the
 //           vanilla client sends them): every shot is logged as aimed.
+//   recoil  K47 10 rounds from the hip without touching the mouse: the camera eases into each kick
+//           (at least two turns per shot fired), never turns more than 1.5 degrees in one tick, kick
+//           or recovery, and once let go comes back down: some of the way 0.6 s later, and by 1.5 s
+//           to the gun's recoil-return share (0.65 for the K47, so 25-50% of the climb is left).
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node gunfeel.js [scenario ...]
 //
@@ -27,7 +31,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'kick', 'ads']
+const scenarios = wanted.length ? wanted : ['lobby', 'kick', 'ads', 'recoil']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -244,6 +248,58 @@ async function lobby () {
     `${shots.length} shots, cooldowns ${c.join(',')}`)
 }
 
+// ---------------------------------------------------------------- recoil
+/** Camera turns since `from` grouped by server tick (turns that arrive within 25 ms of each other). */
+function turnTicks (from) {
+  const out = []
+  for (const t of turns.slice(from)) {
+    const last = out[out.length - 1]
+    if (last && t.at - last.at < 25) last.pitch += t.pitch
+    else out.push({ at: t.at, pitch: t.pitch })
+  }
+  return out
+}
+
+async function recoil (spot) {
+  await arm('k47')
+  await aim(spot)
+  await bot.look(bot.entity.yaw, 0, true)
+  await sleep(800)
+  const start = pitchDeg()
+  const from = logSize()
+  const turnFrom = turns.length
+  const at = cell()
+  dig(START, at)
+  let peak = start
+  while (shotsSince(from).length < 10) {
+    swing()
+    await sleep(50)
+    peak = Math.min(peak, pitchDeg())
+  }
+  dig(ABORT, at)
+  const released = Date.now()
+  const fired = shotsSince(from).length
+  const firingTurns = turns.slice(turnFrom).filter(t => t.at <= released + 60).length
+  await sleep(100)
+  peak = Math.min(peak, pitchDeg())
+  await until(released, 600)
+  const at600 = pitchDeg()
+  await until(released, 1500)
+  const at1500 = pitchDeg()
+  const climb = start - peak
+  const steps = turnTicks(turnFrom)
+  const biggest = Math.max(...steps.map(s => Math.abs(s.pitch)))
+  log(`recoil: ${fired} shots, climbed ${climb.toFixed(2)} deg; left ${(start - at600).toFixed(2)} at 0.6 s, ${(start - at1500).toFixed(2)} at 1.5 s;`,
+    `${firingTurns} camera turns while firing, biggest tick ${biggest.toFixed(2)} deg`)
+  check('recoil: each shot eases in over two ticks', firingTurns >= 1.8 * fired, `${firingTurns} turns for ${fired} shots`)
+  check('recoil: no tick turns the camera more than 1.5 degrees', biggest <= 1.5, `${biggest.toFixed(2)} deg`)
+  check('recoil: 0.6 s after letting go it is coming back down', start - at600 < 0.85 * climb, `${((start - at600) / climb * 100).toFixed(0)}% of the climb left`)
+  check('recoil: by 1.5 s the recoil-return share is back (25-50% of the climb left)', start - at1500 >= 0.25 * climb && start - at1500 <= 0.5 * climb,
+    `${((start - at1500) / climb * 100).toFixed(0)}% of the climb left`)
+}
+/** Waits until `ms` after `from` (a Date.now()). */
+const until = (from, ms) => sleep(Math.max(0, from + ms - Date.now()))
+
 // ---------------------------------------------------------------- ads
 async function ads (spot) {
   await arm('k47')
@@ -274,6 +330,7 @@ async function ads (spot) {
     }
     if (scenario === 'kick') await kick(spot)
     else if (scenario === 'ads') await ads(spot)
+    else if (scenario === 'recoil') await recoil(spot)
     else log('unknown scenario', scenario)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

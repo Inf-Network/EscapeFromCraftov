@@ -224,13 +224,20 @@ weapons:
     sneak: 0.7
     airborne: 2.5
   recoil:
+    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming and while sneaking.
+    ads: 0.6
+    sneak: 0.8
+    # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.
+    first-tick-share: 0.6
     # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
     # drifts back toward where the spray began, return-per-tick (0..1, 0 = no recovery) of the kick
-    # each tick, until the gun's recoil-return share (items.yml, default 0.7) is given back. What the
-    # player pulled down themselves is not given back again, and it never drifts past the crosshair
-    # the spray started from.
+    # each tick but never more than return-max-step degrees in one tick (a long spray takes longer),
+    # until the gun's recoil-return share (items.yml, default 0.7) is given back. What the player
+    # pulled down themselves is not given back again, and it never drifts past the crosshair the
+    # spray started from.
     return-delay-ticks: 3
     return-per-tick: 0.1
+    return-max-step: 1.2
     # In full-auto and burst fire this share of every kick lifts only the bullets, not the camera. The
     # camera kick is a packet the client could ignore; this part cannot be. Each round lifts them less
     # the higher they already are: muzzle-soft is the climb (degrees) at which a round's lift has

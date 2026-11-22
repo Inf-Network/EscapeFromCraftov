@@ -3,8 +3,8 @@
 Usage: python3 tools/art/audiocheck.py [sounds folder]   (build.py runs it last; exit code 1 on failure)
 
 For every near file (what a player a few blocks from the shooter hears):
-  decay      from its peak to -20 dB within 30 ms (90 ms for bolt-action and .30-06 rifles): a shot is
-             a crack and a blast, not a drum hit with a hiss behind it.
+  decay      from its peak to -20 dB within 30 ms (90 ms for a bolt action in game, or a gun recorded
+             from a .30-06): a shot is a crack and a blast, not a drum hit with a hiss behind it.
   low-mids   at least 30 % of the first 120 ms's energy in 250 Hz - 1 kHz, where a recorded blast
              has most of its body (the old synthesis had 8-17 %).
   spectrum   the strongest frequency of the first 120 ms above 150 Hz (the synthesis peaked at
@@ -14,6 +14,7 @@ Automatic fire's multi-round files (x<n>_near, x<n>_fp) must hold n rounds exact
 apart (75 ms for the M4C's two, 66.7 ms for the SV9's and V57's three), within 2 ms.
 The envelope is the Hilbert magnitude smoothed over 2 ms, so a low sine is not mistaken for a decay.
 """
+import functools
 import glob
 import io
 import os
@@ -25,9 +26,7 @@ from scipy import signal
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOUNDS = os.path.join(HERE, '..', '..', 'src', 'main', 'resources', 'pack', 'craftov', 'resourcepack', 'assets', 'craftov',
                       'sounds')
-# Guns whose report is allowed the longer decay: recorded from bolt-action rifles (AWR: Springfield
-# 1917 .30-06, DM14: Tikka T3 .30-06, SCR: Mosin-Nagant 7.62x54R).
-SLOW = {'awr', 'dm14', 'scr'}
+ITEMS = os.path.join(HERE, '..', '..', 'src', 'main', 'resources', 'items.yml')
 MAX_PEAK_DB = -0.5
 
 
@@ -52,8 +51,21 @@ def decay_ms(x, sr):
     return below[0] / sr * 1000 if len(below) else float('inf')
 
 
+@functools.lru_cache(maxsize=None)
+def _actions():
+    import yaml
+    with open(ITEMS, encoding='utf-8') as f:
+        items = yaml.safe_load(f)['items']
+    return {gid: (item.get('gun') or {}).get('action') for gid, item in items.items() if isinstance(item, dict)}
+
+
 def decay_limit(gid):
-    return 90 if gid in SLOW else 30
+    """The longer decay only where the game gives the gun time for it: a bolt action (the AWR), or a
+    .30-06 recording that the game fires semi-automatic at most (the DM14). The SCR's Mosin recording
+    is a bolt action too, but the SCR fires 600 rpm automatic, so it keeps the 30 ms."""
+    import gunsamples
+    slow = _actions().get(gid) == 'bolt' or '.30-06' in gunsamples.GUNS.get(gid, {}).get('model', '')
+    return 90 if slow else 30
 
 
 def first_120ms(x, sr):

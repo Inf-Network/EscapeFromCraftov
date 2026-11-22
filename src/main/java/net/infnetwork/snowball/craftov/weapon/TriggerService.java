@@ -5,6 +5,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.util.Nms;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -12,7 +13,15 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.AreaEffectCloud;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.ExperienceOrb;
+import org.bukkit.entity.Item;
+import org.bukkit.entity.Marker;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -31,6 +40,7 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.BoundingBox;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -54,6 +64,14 @@ import java.util.UUID;
  * a full second without one, and that kind of release does not count as letting go of a
  * semi-automatic trigger.
  *
+ * <p>The client only digs while its crosshair lands on a block before anything else. An entity in
+ * front of the cobweb wins that pick: the client sends one attack (a short tap, see {@link #tap})
+ * and then nothing until the button is let go, so a spray at a target two blocks away used to stop
+ * after two or three rounds. Each tick the server traces the crosshair for the nearest entity the
+ * client could pick, and when one is that close, the cells go half a block in front of it instead.
+ * Only when there is no room between the eye and the entity (closer than about a block and a
+ * half, depending on where the player stands in the block) does the click still reach the entity.
+ *
  * <p>The cobweb is real on the client, and a body inside one is slowed to a crawl and stops
  * falling. The server only takes a cell away a round trip after the client walked or fell into
  * it, so cells keep clear of the body by how far it may get in that time: its recent movement per
@@ -62,6 +80,16 @@ import java.util.UUID;
 public final class TriggerService implements Listener {
 
     private static final double DISTANCE = 3.2;
+    /** Cells go this far in front of an entity on the crosshair, for its movement and the client's lag. */
+    private static final double LEAD = 0.5;
+    /** ...and never less than this: the client must still reach the cell before the entity. */
+    private static final double LEAST_LEAD = 0.15;
+    /** Entities this close along the crosshair get the cells in front of them; farther ones are behind the usual cells. */
+    private static final double REACH = DISTANCE + LEAD;
+    /** Nearest to the eye a cell in front of an entity is looked for (nearer ones are inside the body). */
+    private static final double NEAREST = 0.3;
+    /** No cell: the {@link #key} of a cell beyond the world border. */
+    private static final long NONE = Long.MIN_VALUE;
     /**
      * Ticks without a swing before a hold over a block counts as released anyway. Only a fallback: the
      * abort packet is the release, and lag spikes stall swings for longer than a few ticks.
@@ -257,17 +285,27 @@ public final class TriggerService implements Listener {
             c.world = world;
         }
         Location eye = player.getEyeLocation();
+        Vector from = eye.toVector();
         Vector dir = eye.getDirection();
-        Vector centre = eye.toVector().add(dir.clone().multiply(DISTANCE));
-        int cx = centre.getBlockX();
-        int cy = centre.getBlockY();
-        int cz = centre.getBlockZ();
-        double ax = Math.abs(dir.getX());
-        double ay = Math.abs(dir.getY());
-        double az = Math.abs(dir.getZ());
         BoundingBox body = clearance(player, c);
         double feet = player.getLocation().getY();
         boolean falling = falling(player, c);
+        Vector centre = from.clone().add(dir.clone().multiply(DISTANCE));
+        int cx = centre.getBlockX();
+        int cy = centre.getBlockY();
+        int cz = centre.getBlockZ();
+        RayTraceResult target = world.rayTrace(eye, dir, REACH, FluidCollisionMode.NEVER, false, 0.0, e -> pickable(player, e));
+        if (target != null && target.getHitEntity() != null) {
+            long cell = inFront(world, from, dir, target.getHitPosition().distance(from), body, falling, feet);
+            if (cell != NONE) {
+                cx = kx(cell);
+                cy = ky(cell);
+                cz = kz(cell);
+            }
+        }
+        double ax = Math.abs(dir.getX());
+        double ay = Math.abs(dir.getY());
+        double az = Math.abs(dir.getZ());
         Set<Long> wanted = new HashSet<>();
         for (int a = -1; a <= 1; a++) {
             for (int b = -1; b <= 1; b++) {
@@ -284,18 +322,9 @@ public final class TriggerService implements Listener {
                     x += a;
                     y += b;
                 }
-                if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
-                    continue;
+                if (fits(world, x, y, z, from, body, falling, feet)) {
+                    wanted.add(key(x, y, z));
                 }
-                Block block = world.getBlockAt(x, y, z);
-                if (!block.getType().isAir() || body.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))
-                        || falling && y < feet) {
-                    continue;
-                }
-                if (eye.toVector().distanceSquared(new Vector(x + 0.5, y + 0.5, z + 0.5)) > 4.3 * 4.3) {
-                    continue;
-                }
-                wanted.add(key(x, y, z));
             }
         }
         if (c.dirty) {
@@ -339,6 +368,78 @@ public final class TriggerService implements Listener {
         if (!changes.isEmpty()) {
             player.sendBlockChanges(changes);
         }
+    }
+
+    /**
+     * The cell to centre the patch on so that the crosshair enters cobweb before an entity {@code hit}
+     * blocks away: of the cells the crosshair passes through that fit, the farthest it enters at least
+     * {@link #LEAD} short of the entity, else the nearest it enters at least {@link #LEAST_LEAD} short.
+     * {@link #NONE} if there is no room: the usual cells stay, and the client attacks the entity (a tap).
+     */
+    private static long inFront(World world, Vector from, Vector dir, double hit, BoundingBox body, boolean falling, double feet) {
+        long lead = NONE;
+        long close = NONE;
+        long last = NONE;
+        for (double t = NEAREST; t < hit; t += 0.05) {
+            int x = (int) Math.floor(from.getX() + dir.getX() * t);
+            int y = (int) Math.floor(from.getY() + dir.getY() * t);
+            int z = (int) Math.floor(from.getZ() + dir.getZ() * t);
+            long cell = key(x, y, z);
+            if (cell == last) {
+                continue;
+            }
+            last = cell;
+            double in = Math.max(entry(from.getX(), dir.getX(), x), Math.max(entry(from.getY(), dir.getY(), y), entry(from.getZ(), dir.getZ(), z)));
+            if (in > hit - LEAST_LEAD) {
+                break;
+            }
+            if (!fits(world, x, y, z, from, body, falling, feet)) {
+                continue;
+            }
+            if (in <= hit - LEAD) {
+                lead = cell;
+            } else if (close == NONE) {
+                close = cell;
+            }
+        }
+        return lead != NONE ? lead : close;
+    }
+
+    /** Where a ray from {@code from} going {@code dir} along one axis enters the cell starting at {@code low}. */
+    private static double entry(double from, double dir, int low) {
+        if (Math.abs(dir) < 1e-9) {
+            return Double.NEGATIVE_INFINITY;
+        }
+        return Math.min((low - from) / dir, (low + 1 - from) / dir);
+    }
+
+    /** A cell the capture block may go in: air, clear of the body (see {@link #clearance}) and within reach. */
+    private static boolean fits(World world, int x, int y, int z, Vector eye, BoundingBox body, boolean falling, double feet) {
+        if (y < world.getMinHeight() || y >= world.getMaxHeight() || falling && y < feet) {
+            return false;
+        }
+        if (!world.getBlockAt(x, y, z).getType().isAir() || body.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))) {
+            return false;
+        }
+        return eye.distanceSquared(new Vector(x + 0.5, y + 0.5, z + 0.5)) <= 4.3 * 4.3;
+    }
+
+    /**
+     * What the client's crosshair can land on (vanilla's "pickable"): living things, hitboxes of loot boxes
+     * and racks, bodies. Not this player, nor a downed teammate: they are revived with a right-click on
+     * them, and cannot be shot anyway.
+     */
+    private boolean pickable(Player player, Entity entity) {
+        if (entity == player || !player.canSee(entity) || entity instanceof Display || entity instanceof Item
+                || entity instanceof ExperienceOrb || entity instanceof Projectile || entity instanceof AreaEffectCloud
+                || entity instanceof Marker || entity instanceof ArmorStand stand && stand.isMarker()) {
+            return false;
+        }
+        if (entity instanceof Player other) {
+            return other.getGameMode() != GameMode.SPECTATOR
+                    && !(plugin.downed().isDowned(other) && plugin.raids().sameSquad(player, other));
+        }
+        return true;
     }
 
     private void clearCells(Player player, Capture c) {

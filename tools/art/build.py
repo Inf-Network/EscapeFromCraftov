@@ -589,7 +589,8 @@ OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
 
 HUD_IMAGES = {
     'craftov/panel_vitals.png': lambda: hudart.panel(88, 38),
-    'craftov/panel_weapon.png': lambda: hudart.panel(124, 44, side='right'),
+    'craftov/panel_weapon.png': lambda: hudart.panel(118, 38, side='right'),
+    'craftov/panel_skill.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
     'craftov/panel_info.png': lambda: hudart.panel(132, 44),
     'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
     'craftov/alert_band.png': lambda: hudart.band(300, 14),
@@ -598,9 +599,9 @@ HUD_IMAGES = {
     'craftov/armor_empty.png': lambda: hudart.bar(30, 2, (0, 0, 0, 0), empty=True),
     'craftov/armor_bar.png': lambda: hudart.bar(30, 2, rgb(palette.INFO)),
     'craftov/helmet_bar.png': lambda: hudart.bar(30, 2, rgb(palette.TEXT)),
-    'craftov/reload_bar.png': lambda: hudart.bar(120, 2, rgb(palette.ACCENT)),
+    'craftov/reload_bar.png': lambda: hudart.bar(112, 2, rgb(palette.ACCENT)),
     # The gun coming up after a switch takes the reload bar's place, in grey.
-    'craftov/draw_bar.png': lambda: hudart.bar(120, 2, rgb(palette.MUTED)),
+    'craftov/draw_bar.png': lambda: hudart.bar(112, 2, rgb(palette.MUTED)),
     'craftov/progress_empty.png': lambda: hudart.bar(120, 3, (0, 0, 0, 0), empty=True),
     'craftov/extract_bar.png': lambda: hudart.bar(120, 3, rgb(palette.OK)),
     'craftov/downed_bar.png': lambda: hudart.bar(120, 3, rgb(palette.DANGER)),
@@ -696,7 +697,7 @@ def build_betterhud():
     for part in hudart.BODY_PARTS:
         for state in range(len(hudart.BODY_STATES)):
             save(hudart.body_part(part, state), os.path.join(BH, 'assets', 'craftov', 'body', '%s_%d.png' % (part, state)))
-    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'alert_band', 'hp_empty', 'armor_empty',
+    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'alert_band', 'hp_empty', 'armor_empty',
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
@@ -752,25 +753,27 @@ def build_betterhud():
                                  text(c(MUTED) + '甲' + c(INFO_HEX) + '[craftov_armor_class]', 56, 22)]),
             'conditions': cond(('craftov_in_raid', 'true')),
         },
+        # Bottom-right band, the same 38 px under the chat line as the vitals: on a 426 px GUI the chat
+        # reaches x 328, so anything higher up on the right would sit under it. The bottom line shows
+        # fire mode and ammo, or the weapon hint (reloading, empty, [Q]) when there is one.
         'craftov_weapon': {
             'images': numbered([image('craftov_panel_weapon', 0, 0),
-                                image('craftov_reload_bar', 2, 41, cond(('craftov_reloading', 'true'))),
-                                image('craftov_draw_bar', 2, 41, cond(('craftov_drawing', 'true')))]),
-            'texts': numbered([text(c(TEXT) + '[craftov_weapon]', 120, 1, align='right'),
-                               big('<white>[craftov_ammo]', 84, 13, 'right', cond(('craftov_ammo_empty', 'false'))),
-                               big(c(DANGER_HEX) + '[craftov_ammo]', 84, 13, 'right', cond(('craftov_ammo_empty', 'true'))),
-                               text(c(MUTED) + '／[craftov_reserve]', 86, 18),
-                               text(c(ACCENT_HEX) + '[craftov_firemode] ' + c(MUTED) + '· [craftov_ammo_type]', 120, 29, align='right')]),
+                                image('craftov_reload_bar', 2, 36, cond(('craftov_reloading', 'true'))),
+                                image('craftov_draw_bar', 2, 36, cond(('craftov_drawing', 'true')))]),
+            'texts': numbered([text(c(TEXT) + '[craftov_weapon]', 114, 0, align='right'),
+                               big('<white>[craftov_ammo]', 60, 12, 'right', cond(('craftov_ammo_empty', 'false'))),
+                               big(c(DANGER_HEX) + '[craftov_ammo]', 60, 12, 'right', cond(('craftov_ammo_empty', 'true'))),
+                               text(c(MUTED) + '／[craftov_reserve]', 62, 15),
+                               text(c(ACCENT_HEX) + '[craftov_firemode] ' + c(MUTED) + '· [craftov_ammo_type]', 114, 25, align='right',
+                                    conditions=cond(('craftov_has_hint', 'false'))),
+                               text('[craftov_weapon_hint]', 114, 25, align='right', conditions=cond(('craftov_has_hint', 'true')))]),
             'conditions': cond(('craftov_has_gun', 'true')),
         },
-        # Above the weapon panel: the operator skill, and over it the weapon hint when there is one.
+        # Top left, under the raid info: the operator skill and its cooldown.
         'craftov_skill': {
-            'texts': numbered([text(c(ACCENT_HEX) + '[craftov_operator] ' + c(MUTED) + '· [craftov_skill]', 120, 0, align='right')]),
+            'images': numbered([image('craftov_panel_skill', 0, 0)]),
+            'texts': numbered([text(c(ACCENT_HEX) + '[craftov_operator] ' + c(MUTED) + '· [craftov_skill]', 6, 0)]),
             'conditions': cond(('craftov_in_raid', 'true')),
-        },
-        'craftov_hint': {
-            'texts': numbered([text('[craftov_weapon_hint]', 120, 0, align='right')]),
-            'conditions': cond(('craftov_has_gun', 'true'), ('craftov_has_hint', 'true')),
         },
         'craftov_info': {
             'images': numbered([image('craftov_panel_info', 0, 0)]),
@@ -840,12 +843,11 @@ def build_betterhud():
 
     huds = {'craftov_hud': {'layouts': numbered([
         place('craftov_vitals', 0, 100, 2, -40),
-        place('craftov_weapon', 100, 100, -126, -70),
-        place('craftov_skill', 100, 100, -126, -83),
-        place('craftov_hint', 100, 100, -126, -96),
+        place('craftov_weapon', 100, 100, -120, -40),
         place('craftov_info', 0, 0, 4, 4),
-        place('craftov_mate_1', 0, 0, 4, 51),
-        place('craftov_mate_2', 0, 0, 4, 64),
+        place('craftov_skill', 0, 0, 4, 51),
+        place('craftov_mate_1', 0, 0, 4, 66),
+        place('craftov_mate_2', 0, 0, 4, 79),
         *[place('craftov_feed_%d' % i, 100, 0, -6, 4 + 12 * (i - 1)) for i in (1, 2, 3, 4)],
         place('craftov_alert', 50, 0, -150, 30),
         place('craftov_prompt', 50, 50, -100, 14),

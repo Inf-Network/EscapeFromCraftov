@@ -489,7 +489,7 @@ craftov_weapon:
     '2':
       name: craftov_reload_bar
       x: 2
-      y: 41
+      y: 36
       conditions:
         '1':
           first: craftov_reloading
@@ -498,7 +498,7 @@ craftov_weapon:
     '3':
       name: craftov_draw_bar
       x: 2
-      y: 41
+      y: 36
       conditions:
         '1':
           first: craftov_drawing
@@ -508,16 +508,16 @@ craftov_weapon:
     '1':
       name: craftov_pixel
       pattern: <#E9E5DA>[craftov_weapon]
-      x: 120
-      y: 10
+      x: 114
+      y: 9
       scale: 1.0
       align: right
       outline: true
     '2':
       name: craftov_font
       pattern: <white>[craftov_ammo]
-      x: 84
-      y: 13
+      x: 60
+      y: 12
       scale: 1.0
       align: right
       outline: true
@@ -529,8 +529,8 @@ craftov_weapon:
     '3':
       name: craftov_font
       pattern: <#E5484D>[craftov_ammo]
-      x: 84
-      y: 13
+      x: 60
+      y: 12
       scale: 1.0
       align: right
       outline: true
@@ -542,19 +542,37 @@ craftov_weapon:
     '4':
       name: craftov_pixel
       pattern: <#A4AAB3>／[craftov_reserve]
-      x: 86
-      y: 27
+      x: 62
+      y: 24
       scale: 1.0
       align: left
       outline: true
     '5':
       name: craftov_pixel
       pattern: <#F2B544>[craftov_firemode] <#A4AAB3>· [craftov_ammo_type]
-      x: 120
-      y: 38
+      x: 114
+      y: 34
       scale: 1.0
       align: right
       outline: true
+      conditions:
+        '1':
+          first: craftov_has_hint
+          second: 'false'
+          operation: ==
+    '6':
+      name: craftov_pixel
+      pattern: '[craftov_weapon_hint]'
+      x: 114
+      y: 34
+      scale: 1.0
+      align: right
+      outline: true
+      conditions:
+        '1':
+          first: craftov_has_hint
+          second: 'true'
+          operation: ==
   conditions:
     '1':
       first: craftov_has_gun
@@ -562,38 +580,23 @@ craftov_weapon:
       operation: ==
   offset: left
 craftov_skill:
+  images:
+    '1':
+      name: craftov_panel_skill
+      x: 0
+      y: 0
   texts:
     '1':
       name: craftov_pixel
       pattern: <#F2B544>[craftov_operator] <#A4AAB3>· [craftov_skill]
-      x: 120
+      x: 6
       y: 9
       scale: 1.0
-      align: right
+      align: left
       outline: true
   conditions:
     '1':
       first: craftov_in_raid
-      second: 'true'
-      operation: ==
-  offset: left
-craftov_hint:
-  texts:
-    '1':
-      name: craftov_pixel
-      pattern: '[craftov_weapon_hint]'
-      x: 120
-      y: 9
-      scale: 1.0
-      align: right
-      outline: true
-  conditions:
-    '1':
-      first: craftov_has_gun
-      second: 'true'
-      operation: ==
-    '2':
-      first: craftov_has_hint
       second: 'true'
       operation: ==
   offset: left

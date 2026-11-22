@@ -10,6 +10,9 @@ craftov_panel_info:
 craftov_panel_mate:
   type: single
   file: craftov/panel_mate.png
+craftov_panel_skill:
+  type: single
+  file: craftov/panel_skill.png
 craftov_alert_band:
   type: single
   file: craftov/alert_band.png

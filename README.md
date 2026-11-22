@@ -167,7 +167,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - 真客户端截图：`tools/shots/shots.py run`（Linux 上用 Xvfb + Mesa 软件渲染跑原版 1.21.11 客户端，自动进本地测试服、加载资源包，按 `tools/shots/scenes/` 里的场景截图到 `tools/shots/out/`；需要 Xvfb、xdotool、ImageMagick）
 - 护甲数值表：`python3 tools/combat/armor.py`（按 `items.yml` 和 `config.yml` 的 `combat.armor` 算每把枪每种子弹打倒穿各级护甲的玩家要几枪（霰弹枪一枪按所有弹丸都打中胸口算，每颗弹丸都磨损背心），并检查新手枪打 2 / 3 级甲、穿甲弹打 4 级甲的枪数下限，不满足时退出码为 1）
 - 近战数值表：`python3 tools/combat/melee.py`（同样按 `items.yml` 和 `config.yml` 算每把刀砍倒玩家（胸口对没穿和各级背心、头对没戴和各级头盔、手臂和腿）和首领（胸口、头、手脚）要几刀、要挥多少秒，并检查首领砍哪里都至少 10 刀、4 级以上背心的玩家砍胸口和 4 级以上头盔的玩家砍头（平视就砍在头上）至少 5 刀、砍手脚至少 4 刀、没穿护甲的胸口和头 2–3 刀，不满足时退出码为 1）
-- 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）
+- 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）；`fpview.py knife_karambit inspect sheet.png` 出刀检视动画的逐帧预览（关键帧在 `tools/art/knife_inspect.py`），`tools/shots/shots.py run inspect:knife_karambit` 在真客户端里截检视过程（不写刀就四把都截）
 
 ### 左键开火的实现
 

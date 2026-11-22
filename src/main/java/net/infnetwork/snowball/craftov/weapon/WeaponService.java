@@ -61,6 +61,8 @@ public final class WeaponService implements Listener {
     private static final double TURNED_AWAY = 2.0;
     /** What one shot costs from {@link GunState#shotBudget}: a minute in milliseconds. */
     private static final long SHOT_COST = 60_000L;
+    /** Bloom a gun sheds each tick, in hand or put away. */
+    private static final double BLOOM_DECAY = 0.08;
 
     /** Runtime state of the gun a player is holding. */
     public static final class GunState {
@@ -101,6 +103,8 @@ public final class WeaponService implements Listener {
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
+        /** First tick the gun may fire again on a trigger pull: it has cycled since the last shot. */
+        long nextShotTick;
         /** Camera kick (degrees up, and right) of the current spray that the player has not pulled back down. */
         double kickUp;
         double kickRight;
@@ -218,6 +222,8 @@ public final class WeaponService implements Listener {
     private final ImpactFx fx;
     private final MotionTracker motion = new MotionTracker();
     private final Map<UUID, GunState> states = new HashMap<>();
+    /** What guns put away still owe, by gun uid (see {@link Stowed}). */
+    private final Map<String, Stowed> stowed = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
     private final Map<UUID, Long> adsUntil = new HashMap<>();
@@ -237,6 +243,23 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> handledUse = new HashMap<>();
     /** How far a right-click reaches an entity: vanilla's entity interaction range. */
     private static final double USE_REACH = 3.0;
+
+    /**
+     * What a gun keeps once its state is dropped (switched away from, dropped, or reset): the tick it may
+     * fire again and its bloom as of {@code tick}. Without it, switching to another slot and back gave a
+     * fresh state, so a bolt or pump gun fired again at once instead of after its cycle, and a long
+     * spray's bloom was gone.
+     */
+    private record Stowed(UUID owner, long nextShotTick, double bloom, long tick) {
+        double bloomAt(long now) {
+            return Math.max(0, bloom - BLOOM_DECAY * Math.max(0, now - tick));
+        }
+
+        /** Nothing left to keep: the gun has cycled and its bloom has worn off. */
+        boolean spent(long now) {
+            return now >= nextShotTick && bloomAt(now) <= 0;
+        }
+    }
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -306,13 +329,19 @@ public final class WeaponService implements Listener {
         }
         if (current != null) {
             flush(player);
-            stopReloadAnimation(player, states.remove(player.getUniqueId()));
+            stow(player);
             setAds(player, false);
         }
         if (def == null || !def.isGun() || uid == null) {
             return null;
         }
         GunState state = new GunState(uid, slot, def, held, plugin.registry());
+        Stowed kept = stowed.remove(uid);
+        if (kept != null) {
+            long now = Bukkit.getCurrentTick();
+            state.nextShotTick = kept.nextShotTick();
+            state.bloom = kept.bloomAt(now);
+        }
         states.put(player.getUniqueId(), state);
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
@@ -354,14 +383,34 @@ public final class WeaponService implements Listener {
     /** Drops cached state entirely (raid transitions, death). */
     public void reset(Player player) {
         flush(player);
-        stopReloadAnimation(player, states.remove(player.getUniqueId()));
+        stow(player);
         setAds(player, false);
+    }
+
+    /**
+     * Drops the player's gun state, keeping its cycle and bloom for when the gun is next bound (see
+     * {@link Stowed}), and ends a reload animation it had running. Returns the dropped state.
+     */
+    private @Nullable GunState stow(Player player) {
+        GunState state = states.remove(player.getUniqueId());
+        if (state == null) {
+            return null;
+        }
+        long now = Bukkit.getCurrentTick();
+        if (now < state.nextShotTick || state.bloom > 0) {
+            stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
+        }
+        stopReloadAnimation(player, state);
+        return state;
     }
 
     // ------------------------------------------------------------------ tick
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        if (now % 20 == 0) {
+            stowed.values().removeIf(kept -> kept.spent(now));
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);
             if (sprinting(player)) {
@@ -382,7 +431,8 @@ public final class WeaponService implements Listener {
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
                         + " mode=" + state.fireMode() + " budget=" + state.shotBudget / Math.max(1, state.gun.rpm()) + " canFire=" + plugin.raids().canFire(player)
-                        + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player)));
+                        + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player))
+                        + " bloom=" + String.format("%.2f", state.bloom));
             }
             if (isAiming(player)) {
                 if (held) {
@@ -397,7 +447,7 @@ public final class WeaponService implements Listener {
             if (!held && state.triggerHeld) {
                 release(state, !plugin.triggers().stale(player));
             }
-            state.bloom = Math.max(0, state.bloom - 0.08);
+            state.bloom = Math.max(0, state.bloom - BLOOM_DECAY);
             if (state.fireMode() != FireMode.BURST) {
                 state.burstLeft = 0;
             }
@@ -509,12 +559,13 @@ public final class WeaponService implements Listener {
         firstShot(player, state);
     }
 
-    /** The shot a trigger pull fires at once, unless the gun has not cycled since the last one. */
+    /**
+     * The shot a trigger pull fires at once, unless the gun has not cycled since the last one: for semi,
+     * bolt and pump guns this is the only limit on the rate of fire. The cycle outlives switching away
+     * and back (see {@link Stowed}).
+     */
     private void firstShot(Player player, GunState state) {
-        GunSpec gun = state.gun;
-        long now = Bukkit.getCurrentTick();
-        long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
-        if (now - state.lastShotTick >= cooldownTicks || state.lastShotTick == 0) {
+        if (Bukkit.getCurrentTick() >= state.nextShotTick) {
             state.shotBudget = 0;
             state.burstLeft = state.fireMode() == FireMode.BURST ? 2 : 0;
             shoot(player, state);
@@ -541,6 +592,7 @@ public final class WeaponService implements Listener {
         }
         state.ammo--;
         state.lastShotTick = Bukkit.getCurrentTick();
+        state.nextShotTick = state.lastShotTick + gun.ticksBetweenShots();
         ItemDef ammoDef = plugin.registry().get(state.ammoType);
         AmmoSpec ammo = ammoDef == null ? null : ammoDef.ammo();
         Location eye = player.getEyeLocation();
@@ -548,9 +600,9 @@ public final class WeaponService implements Listener {
         Vector bore = bore(eye, state);
         double spread = currentSpread(player, state);
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f tick=%d",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
-                    eye.getPitch(), state.climbUp, Bukkit.getCurrentTick()));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick()));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -1305,7 +1357,7 @@ public final class WeaponService implements Listener {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
                 event.getItemDrop().setItemStack(dropped);
-                stopReloadAnimation(player, states.remove(player.getUniqueId()));
+                stow(player);
             }
             return;
         }
@@ -1336,8 +1388,7 @@ public final class WeaponService implements Listener {
     @EventHandler
     public void onHeld(PlayerItemHeldEvent event) {
         flush(event.getPlayer());
-        GunState state = states.remove(event.getPlayer().getUniqueId());
-        stopReloadAnimation(event.getPlayer(), state);
+        GunState state = stow(event.getPlayer());
         if (state != null && state.reloading()) {
             event.getPlayer().sendActionBar(Text.mm("<#9AA0A6>换弹已中断"));
         }
@@ -1369,6 +1420,8 @@ public final class WeaponService implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         motion.forget(event.getPlayer().getUniqueId());
         reset(event.getPlayer());
+        UUID id = event.getPlayer().getUniqueId();
+        stowed.values().removeIf(kept -> kept.owner().equals(id));
         ads.remove(event.getPlayer().getUniqueId());
         adsUntil.remove(event.getPlayer().getUniqueId());
         sentZoom.remove(event.getPlayer().getUniqueId());

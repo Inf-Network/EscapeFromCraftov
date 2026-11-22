@@ -961,7 +961,7 @@ public final class RaidManager implements Listener {
         settle(player, settlement);
     }
 
-    /** Results waiting for a dead player who is still watching a squadmate. */
+    /** Settlement screens waiting for dead players still watching a squadmate (the chat line went at death). */
     private final Map<UUID, SettlementMenu.Settlement> pendingSettlements = new HashMap<>();
 
     /**
@@ -970,6 +970,11 @@ public final class RaidManager implements Listener {
      */
     private void settle(Player player, SettlementMenu.Settlement settlement) {
         player.sendMessage(Text.mm(settlement.summary()));
+        showSettlement(player, settlement);
+    }
+
+    /** The settlement screen alone, once the curtain over the trip home has lifted. */
+    private void showSettlement(Player player, SettlementMenu.Settlement settlement) {
         UUID uuid = player.getUniqueId();
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player p = Bukkit.getPlayer(uuid);
@@ -1088,12 +1093,15 @@ public final class RaidManager implements Listener {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
+                // The record in chat at once, with the damage taken; only the screen waits for the
+                // lobby, should the player stay to watch a squadmate.
+                p.sendMessage(Text.mm(settlement.summary()));
                 sendDamageLog(p, hit, hits);
                 if (!spectateMate(p, raid, rp)) {
                     plugin.match().leaveTeam(p);
                     UiFont.blackout(p, 6, 16, 10);
                     plugin.lobby().enterLobby(p);
-                    settle(p, settlement);
+                    showSettlement(p, settlement);
                 } else {
                     pendingSettlements.put(uuid, settlement);
                 }
@@ -1153,7 +1161,7 @@ public final class RaidManager implements Listener {
         plugin.lobby().enterLobby(player);
         SettlementMenu.Settlement settlement = pendingSettlements.remove(player.getUniqueId());
         if (settlement != null) {
-            settle(player, settlement);
+            showSettlement(player, settlement);
         }
     }
 
@@ -1963,7 +1971,7 @@ public final class RaidManager implements Listener {
             // The dead who were still watching a squadmate get their results now.
             SettlementMenu.Settlement settlement = pendingSettlements.remove(player.getUniqueId());
             if (settlement != null) {
-                settle(player, settlement);
+                showSettlement(player, settlement);
             }
         }
         plugin.ai().clear(raid);

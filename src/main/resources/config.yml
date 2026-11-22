@@ -103,9 +103,10 @@ downed:
   # The revive starts over when the reviver walks more than this many blocks from where they began,
   # or takes damage (their own bleeding aside).
   revive-max-move: 0.5
+  # A lethal hit knocks a player down (below max-downs) while a squadmate is still up to revive
+  # them, or while they carry a self-revive injector: solo, or the last of the squad standing, they
+  # then bleed out as usual and can use it. Without either, the hit kills.
   max-downs: 2
-  # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
-  solo: false
 
 combat:
   friendly-fire: false

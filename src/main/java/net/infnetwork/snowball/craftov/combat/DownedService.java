@@ -1,6 +1,8 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -21,6 +23,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +40,10 @@ import java.util.UUID;
  *
  * <p>Crouching used to revive too, from behind a wall or a floor up: crouch is also the silent walk,
  * sneak+Q and sneak+F, and the client already refuses to click a player it cannot see.
+ *
+ * <p>A player carrying a self-revive injector is knocked down even with no teammate standing (solo,
+ * or the last of the squad up) and bleeds out as usual while they use it; without one, nobody left
+ * to revive means death at once rather than a wait.
  */
 public final class DownedService implements Listener {
 
@@ -107,13 +114,18 @@ public final class DownedService implements Listener {
         return click != null && downed.containsKey(click.getKey()) && Bukkit.getCurrentTick() - click.getValue() <= HOLD_TICKS;
     }
 
+    /**
+     * True when a lethal hit should knock the player down: below downed.max-downs, and either a
+     * squadmate is still up to revive them or they carry a self-revive injector.
+     */
     public boolean canBeDowned(Raid raid, RaidPlayer rp) {
         int maxDowns = plugin.getConfig().getInt("downed.max-downs", 2);
         if (rp.downs >= maxDowns) {
             return false;
         }
-        if (raid.squadOf(rp).size() <= 1) {
-            return plugin.getConfig().getBoolean("downed.solo", false);
+        Player player = Bukkit.getPlayer(rp.uuid);
+        if (player != null && carriesInjector(player)) {
+            return true;
         }
         for (RaidPlayer mate : raid.squadOf(rp)) {
             if (mate != rp && mate.state == RaidPlayer.State.ALIVE) {
@@ -136,8 +148,9 @@ public final class DownedService implements Listener {
         player.setHealth(1.0);
         player.setSprinting(false);
         plugin.health().forceSpeedUpdate(player);
+        String wait = hasStandingMate(raid, rp) ? "等待队友救援" : "<#FFC23D>使用自救注射器<#9AA0A6>";
         player.showTitle(Title.title(Text.mm("<#FF4D4D><b>" + (first ? "第一次倒地" : "第二次倒地")),
-                Text.mm("<#9AA0A6>等待队友救援 · " + (first ? "再次倒地将更加危险" : "<#FF8A80>下一次将直接阵亡")),
+                Text.mm("<#9AA0A6>" + wait + " · " + (first ? "再次倒地将更加危险" : "<#FF8A80>下一次将直接阵亡")),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(3), Duration.ofMillis(400))));
         player.playSound(player.getLocation(), "craftov:status.downed", SoundCategory.MASTER, 1f, 1f);
         for (RaidPlayer mate : raid.squadOf(rp)) {
@@ -225,12 +238,13 @@ public final class DownedService implements Listener {
                 continue;
             }
             crawl(player, state);
-            if (!hasStandingMate(raid, rp)) {
-                // Nobody left who could revive: bleeding out would only make everyone wait.
+            boolean mates = hasStandingMate(raid, rp);
+            if (!mates && !carriesInjector(player)) {
+                // Nobody left who could revive and no injector: bleeding out would only make everyone wait.
                 finish(raid, rp, player, state);
                 continue;
             }
-            Player reviver = findReviver(raid, rp, player, state);
+            Player reviver = mates ? findReviver(raid, rp, player, state) : null;
             if (reviver != null) {
                 Location at = reviver.getLocation();
                 if (!reviver.getUniqueId().equals(state.reviver)) {
@@ -267,7 +281,7 @@ public final class DownedService implements Listener {
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
             }
             player.sendActionBar(Text.mm("<#FF4D4D>倒地 " + Text.bar(state.fraction(), 24, "#FF4D4D", "#3A3F47")
-                    + " <#9AA0A6>" + (int) Math.ceil(state.pool) + "s"));
+                    + " <#9AA0A6>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <#FFC23D>没有队友能救你，使用自救注射器")));
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
             }
@@ -319,6 +333,24 @@ public final class DownedService implements Listener {
                 interrupt(state, hurt.getLocation());
             }
         }
+    }
+
+    /** True if the player has a self-revive injector anywhere on them, the cursor included. */
+    public boolean carriesInjector(Player player) {
+        for (ItemStack stack : player.getInventory().getContents()) {
+            if (isInjector(stack)) {
+                return true;
+            }
+        }
+        return isInjector(player.getItemOnCursor());
+    }
+
+    private boolean isInjector(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
+            return false;
+        }
+        ItemDef def = plugin.items().defOf(stack);
+        return def != null && def.med() != null && def.med().effect() == MedSpec.Effect.SELF_REVIVE;
     }
 
     private boolean hasStandingMate(Raid raid, RaidPlayer rp) {
@@ -463,7 +495,7 @@ public final class DownedService implements Listener {
         if (!isDowned(event.getPlayer())) {
             return;
         }
-        net.infnetwork.snowball.craftov.item.ItemDef def = plugin.items().defOf(event.getItem());
+        ItemDef def = plugin.items().defOf(event.getItem());
         if (def != null && def.med() != null && def.med().effect() == MedSpec.Effect.SELF_REVIVE) {
             return;
         }

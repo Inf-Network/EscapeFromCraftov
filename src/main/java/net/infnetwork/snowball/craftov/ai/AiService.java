@@ -323,7 +323,7 @@ public final class AiService implements Listener {
         bot.looting = null;
     }
 
-    private static final String[] CALLSIGNS = {"夜枭", "灰狼", "蝮蛇", "渡鸦", "铁砧", "猎隼", "幽灵", "黑曜"};
+    private static final String[] CALLSIGNS = {"夜鸮", "灰狼", "蝮蛇", "渡鸦", "铁砧", "猎隼", "幽灵", "黑曜"};
 
     /** A rival operator squad: better gear and aim, they move from container to container taking the best loot. */
     public void operatorSquad(Raid raid, Location at) {

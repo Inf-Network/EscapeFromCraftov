@@ -495,6 +495,8 @@ def build_screens():
     # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
     save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
     providers.append({'type': 'bitmap', 'file': 'craftov:font/blackout.png', 'height': 192, 'ascent': 93, 'chars': ['']})
+    # Anything the pixel font lacks (a rare character in a player-made name) falls back to the game's font.
+    providers.append({'type': 'reference', 'id': 'minecraft:default'})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
 

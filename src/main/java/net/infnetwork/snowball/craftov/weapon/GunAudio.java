@@ -29,8 +29,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * else gets a near, mid or far version picked by distance, a muffled one through walls, arriving
  * after the speed-of-sound delay. Loudness follows our own curve instead of Minecraft's linear
  * roll-off: the sound is placed a few blocks from the listener in the shooter's direction, which
- * keeps the stereo direction while the volume is set exactly. The environment's tail (outdoor echoes
- * or a room's boom) follows the last shot of a burst, so automatic fire stays crisp.
+ * keeps the stereo direction while the volume is set exactly. The reports are recordings that carry
+ * the outdoor range's own decay; under a roof the room answers every shot as it is fired (a tail
+ * that starts with the shot), so a single shot is one sound and automatic fire fills the room.
  *
  * <p>Shots go out on 50 ms server ticks, and a sound sent in a tick plays when the tick's packets
  * arrive, so a gun whose interval does not fit the tick would sound uneven (the M4C's 75 ms comes
@@ -45,12 +46,13 @@ public final class GunAudio {
     /** Sound events use Minecraft's default 16-block linear attenuation (see build.py). */
     private static final double ATTENUATION = 16.0;
 
-    private record Delayed(long tick, UUID listener, Location source, String key, double gain, float pitch) {
+    /** A sound on its way to a listener; {@code restart} stops what still plays under the same key first. */
+    private record Delayed(long tick, UUID listener, Location source, String key, double gain, float pitch, boolean restart) {
     }
 
-    private record Burst(long lastShot, Location muzzle, String family, boolean indoor, boolean suppressed, double loudness,
-                         UUID shooter) {
-    }
+    /** Room sound under a roof, as a share of the shot's level (suppressed shots barely excite it). */
+    private static final double ROOM = 0.8;
+    private static final double ROOM_SUPPRESSED = 0.2;
 
     /** A multi-round sample: this many rounds, one every ticks / rounds ticks. */
     private record Rounds(int rounds, int ticks) {
@@ -64,8 +66,9 @@ public final class GunAudio {
 
     private final CraftovPlugin plugin;
     private final List<Delayed> queue = new ArrayList<>();
-    private final Map<UUID, Burst> bursts = new HashMap<>();
     private final Map<UUID, long[]> indoorCache = new HashMap<>();
+    /** Per listener, which of the two room keys the next tail takes (see {@link #roomKey}). */
+    private final Map<UUID, Integer> roomTurns = new HashMap<>();
 
     public GunAudio(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -90,25 +93,27 @@ public final class GunAudio {
 
     /**
      * A shot whose report holds {@code rounds} rounds (see {@link #roundsPerSample}); 0 for a round
-     * that a sample started by an earlier shot already played, which only holds back the tail.
+     * that a sample started by an earlier shot already played: nothing more to hear.
      */
     public void shot(LivingEntity shooter, Location muzzle, GunSpec gun, boolean suppressed, int rounds) {
-        World world = muzzle.getWorld();
-        long now = Bukkit.getCurrentTick();
         if (rounds <= 0) {
-            Burst burst = bursts.get(shooter.getUniqueId());
-            if (burst != null) {
-                bursts.put(shooter.getUniqueId(), new Burst(now, muzzle.clone(), burst.family(), burst.indoor(), burst.suppressed(),
-                        burst.loudness(), burst.shooter()));
-            }
             return;
         }
+        World world = muzzle.getWorld();
+        long now = Bukkit.getCurrentTick();
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         float pitch = 0.97f + rng.nextFloat() * 0.06f;
         String set = "craftov:gun." + gun.audio() + (rounds > 1 ? ".x" + rounds : "");
         double loudness = gun.soundVolume() / 5.0;
+        // Under a roof the room answers in the same tick as the shot, for everyone who hears it.
+        @Nullable String room = indoor(shooter, muzzle) ? "craftov:gun.tail." + tailFamily(gun) + ".in" : null;
+        double roomShare = suppressed ? ROOM * ROOM_SUPPRESSED : ROOM;
+        float roomPitch = 0.98f + rng.nextFloat() * 0.04f;
         if (shooter instanceof Player player) {
             player.playSound(player, set + (suppressed ? ".fp_s" : ".fp"), SoundCategory.PLAYERS, suppressed ? 0.8f : 1f, pitch);
+            if (room != null) {
+                schedule(now, player, muzzle, roomKey(player, room), roomShare * 0.8, roomPitch, true);
+            }
         }
         // Private range plots share one world; nobody else should hear another plot's shots.
         boolean range = plugin.range().isRangeWorld(world);
@@ -121,6 +126,11 @@ public final class GunAudio {
             double gain = gain(d, loudness, suppressed);
             if (gain < 0.012) {
                 continue;
+            }
+            long arrives = now + Math.round(d / SOUND_SPEED);
+            // Beyond 90 blocks the far report already carries its echoes.
+            if (room != null && d < 90 && gain * roomShare >= 0.012) {
+                schedule(arrives, listener, muzzle, roomKey(listener, room), gain * roomShare, roomPitch, true);
             }
             String band;
             if (suppressed) {
@@ -136,10 +146,8 @@ public final class GunAudio {
                     gain *= 0.8;
                 }
             }
-            schedule(now + Math.round(d / SOUND_SPEED), listener, muzzle, set + band, gain, pitch);
+            schedule(arrives, listener, muzzle, set + band, gain, pitch, false);
         }
-        bursts.put(shooter.getUniqueId(), new Burst(now, muzzle.clone(), tailFamily(gun), indoor(shooter, muzzle), suppressed,
-                loudness, shooter.getUniqueId()));
     }
 
     /** Level at distance d: loud guns carry far, suppressed ones die out within ~50 blocks. */
@@ -158,34 +166,15 @@ public final class GunAudio {
         };
     }
 
-    private void tail(Burst burst) {
-        World world = burst.muzzle().getWorld();
-        // Outdoors the recording already carries the range answering the shot.
-        if (world == null || !burst.indoor()) {
-            return;
-        }
-        long now = Bukkit.getCurrentTick();
-        String key = "craftov:gun.tail." + burst.family() + ".in";
-        float pitch = 0.98f + ThreadLocalRandom.current().nextFloat() * 0.04f;
-        double share = 0.8 * (burst.suppressed() ? 0.2 : 1.0);
-        boolean range = plugin.range().isRangeWorld(world);
-        for (Player listener : world.getPlayers()) {
-            if (range && !listener.getUniqueId().equals(burst.shooter())) {
-                continue;
-            }
-            double d = listener.getEyeLocation().distance(burst.muzzle());
-            if (d >= 90) {
-                continue; // the far shot already carries its echoes
-            }
-            double gain = gain(d, burst.loudness(), burst.suppressed()) * share;
-            if (listener.getUniqueId().equals(burst.shooter())) {
-                gain = share * 0.8;
-            }
-            if (gain < 0.012) {
-                continue;
-            }
-            schedule(now + Math.round(d / SOUND_SPEED), listener, burst.muzzle(), key, gain, pitch);
-        }
+    /**
+     * The room key for this listener's next tail. A room tail lasts a second or more, so automatic
+     * fire would stack a dozen of them: each listener alternates between two keys for the same sounds
+     * and every tail stops the one two shots back (still ringing under the new shot, which hides the
+     * cut), so no more than two play at once.
+     */
+    private String roomKey(Player listener, String room) {
+        int turn = roomTurns.merge(listener.getUniqueId(), 1, (a, b) -> (a + b) % 2);
+        return turn == 0 ? room : room + "2";
     }
 
     // ------------------------------------------------------------------ bullets
@@ -298,19 +287,22 @@ public final class GunAudio {
 
     // ------------------------------------------------------------------ helpers
 
-    private void schedule(long tick, Player listener, Location source, String key, double gain, float pitch) {
+    private void schedule(long tick, Player listener, Location source, String key, double gain, float pitch, boolean restart) {
         if (tick <= Bukkit.getCurrentTick()) {
-            emit(listener, source, key, gain, pitch);
+            emit(listener, source, key, gain, pitch, restart);
             return;
         }
-        queue.add(new Delayed(tick, listener.getUniqueId(), source.clone(), key, gain, pitch));
+        queue.add(new Delayed(tick, listener.getUniqueId(), source.clone(), key, gain, pitch, restart));
     }
 
     /** Plays key at gain for this listener only, keeping the direction of source. */
-    private static void emit(Player listener, Location source, String key, double gain, float pitch) {
+    private static void emit(Player listener, Location source, String key, double gain, float pitch, boolean restart) {
         Location ear = listener.getEyeLocation();
         if (ear.getWorld() != source.getWorld()) {
             return;
+        }
+        if (restart) {
+            listener.stopSound(key, SoundCategory.PLAYERS);
         }
         Vector to = source.toVector().subtract(ear.toVector());
         double d = to.length();
@@ -382,23 +374,13 @@ public final class GunAudio {
                 it.remove();
                 Player listener = Bukkit.getPlayer(delayed.listener());
                 if (listener != null) {
-                    emit(listener, delayed.source(), delayed.key(), delayed.gain(), delayed.pitch());
-                }
-            }
-        }
-        if (!bursts.isEmpty()) {
-            Iterator<Burst> it = bursts.values().iterator();
-            while (it.hasNext()) {
-                Burst burst = it.next();
-                // Three quiet ticks end a burst; a single shot gets its tail straight after.
-                if (now - burst.lastShot() >= 3) {
-                    it.remove();
-                    tail(burst);
+                    emit(listener, delayed.source(), delayed.key(), delayed.gain(), delayed.pitch(), delayed.restart());
                 }
             }
         }
         if (now % 200 == 0) {
             indoorCache.entrySet().removeIf(e -> now - e.getValue()[1] > 200);
+            roomTurns.keySet().removeIf(id -> Bukkit.getPlayer(id) == null);
         }
     }
 }

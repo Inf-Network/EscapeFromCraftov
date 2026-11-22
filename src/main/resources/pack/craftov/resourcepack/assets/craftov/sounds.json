@@ -2890,7 +2890,35 @@
    }
   ]
  },
+ "gun.tail.light.in2": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/light_in_0",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/tail/light_in_1",
+    "attenuation_distance": 16,
+    "preload": true
+   }
+  ]
+ },
  "gun.tail.rifle.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/rifle_in_0",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/tail/rifle_in_1",
+    "attenuation_distance": 16,
+    "preload": true
+   }
+  ]
+ },
+ "gun.tail.rifle.in2": {
   "sounds": [
    {
     "name": "craftov:gun/tail/rifle_in_0",
@@ -2918,7 +2946,35 @@
    }
   ]
  },
+ "gun.tail.heavy.in2": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/heavy_in_0",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/tail/heavy_in_1",
+    "attenuation_distance": 16,
+    "preload": true
+   }
+  ]
+ },
  "gun.tail.sniper.in": {
+  "sounds": [
+   {
+    "name": "craftov:gun/tail/sniper_in_0",
+    "attenuation_distance": 16,
+    "preload": true
+   },
+   {
+    "name": "craftov:gun/tail/sniper_in_1",
+    "attenuation_distance": 16,
+    "preload": true
+   }
+  ]
+ },
+ "gun.tail.sniper.in2": {
   "sounds": [
    {
     "name": "craftov:gun/tail/sniper_in_0",

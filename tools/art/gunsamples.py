@@ -21,7 +21,7 @@ How a recording becomes the files GunAudio.java plays:
   _s        suppressed: a suppressed .45 pistol for pistols and SMGs, a suppressed machine gun for
             rifles (Freesound), mid_s low-passed and echoed like far.
   tail      indoor room sound only: a near take convolved with a synthetic room (no direct sound);
-            GunAudio plays it with the shot when the shooter is under a roof.
+            GunAudio plays it with each shot under a roof, alternating two keys (.in, .in2).
   x<n>      automatic fire that does not fit the 50 ms server tick: n rounds at the gun's real
             interval in one file (GROUPS).
 Loudness is set per gun class from the first 120 ms (where a gunshot's loudness is), then a
@@ -582,6 +582,9 @@ def catalogue():
     for family in TAIL_SOURCE:
         files = [add('', 'gun/tail/%s_in_%d' % (family, v), tail(family, v), 32000) for v in range(2)]
         out.append(('gun.tail.%s.in' % family, files, 16))
+        # The same sounds under a second key: GunAudio alternates the two so a new tail can stop the
+        # one two shots back without cutting the one still ringing under it.
+        out.append(('gun.tail.%s.in2' % family, files, 16))
     return out, sources
 
 

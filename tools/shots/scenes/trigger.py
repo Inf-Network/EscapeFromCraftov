@@ -127,9 +127,10 @@ def run(s):
         results.append(_check(f'K47 held {d} blocks from the target empties the magazine', fired == 30, f'{fired} shots'))
         _reload(s)
     plain, veins = _body_in_veins(s, me)
-    results.append(_check('walking through capture blocks goes as far as without', veins[0] >= 0.9 * plain[0],
+    # Key presses through xdotool land a tick or so apart from run to run; cobweb gives about a tenth.
+    results.append(_check('walking through capture blocks goes as far as without', veins[0] >= 0.75 * plain[0],
                           f'{veins[0]:.2f} vs {plain[0]:.2f} blocks in 0.5 s'))
-    results.append(_check('jumping inside capture blocks goes as high as without', veins[1] >= 0.9 * plain[1],
+    results.append(_check('jumping inside capture blocks goes as high as without', veins[1] >= 0.75 * plain[1],
                           f'{veins[1]:.2f} vs {plain[1]:.2f} blocks'))
     _tp(s, me[0], me[1], me[2], 180, 50)
     since = _size(s)

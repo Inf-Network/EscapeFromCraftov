@@ -485,10 +485,22 @@ public final class ReplayService implements Listener {
 
     @EventHandler
     public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
-        Playback playback = playing.get(event.getPlayer().getUniqueId());
-        if (playback != null && event.getPlayer().getCurrentInput().isSneak()) {
-            // Shift skips the replay. A camera lost any other way is picked up again by step().
+        Player viewer = event.getPlayer();
+        Playback playback = playing.get(viewer.getUniqueId());
+        if (playback == null) {
+            return;
+        }
+        if (viewer.getCurrentInput().isSneak()) {
+            // Shift skips the replay.
             Bukkit.getScheduler().runTask(plugin, () -> finish(playback));
+            return;
+        }
+        // Anything else (the spectator menu, whose teleport RaidManager refuses) keeps the camera.
+        // Paper also sends this when the game mode changes or the plugin lets go of the camera:
+        // those find the viewer out of spectator mode, or off the replay (finish), and go through.
+        Entity from = event.getSpectatorTarget();
+        if (viewer.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == viewer.getWorld()) {
+            event.setCancelled(true);
         }
     }
 

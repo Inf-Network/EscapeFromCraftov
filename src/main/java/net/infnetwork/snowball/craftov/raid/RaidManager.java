@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
+import com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent;
+import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.gui.UiItems;
@@ -32,6 +34,7 @@ import org.bukkit.block.data.Openable;
 import org.bukkit.block.data.Powerable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
@@ -48,6 +51,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -838,17 +842,84 @@ public final class RaidManager implements Listener {
         plugin.lobby().enterLobby(player);
     }
 
-    /** Shift leaves the camera; a target that died, extracted or left hands over to the next mate. */
-    @EventHandler
-    public void onStopSpectating(com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent event) {
+    /**
+     * The spectator menu (the number keys or the mouse wheel in spectator mode) teleports to any
+     * player on the server, in any world: to the lobby off the entry camera, or next to an enemy
+     * after death. Nobody in a raid, dead in one or watching a squadmate may use it. The client
+     * still opens the menu (it cannot be kept from doing so), but picking someone does nothing.
+     * Paper gives the same cause to the server's own camera moves (setSpectatorTarget snaps the
+     * player onto the entity they now watch); those land on that entity and are let through.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onSpectateTeleport(PlayerTeleportEvent event) {
+        if (event.getCause() != PlayerTeleportEvent.TeleportCause.SPECTATE) {
+            return;
+        }
         Player player = event.getPlayer();
+        if (!byPlayer.containsKey(player.getUniqueId()) && !spectators.containsKey(player.getUniqueId())) {
+            return;
+        }
+        Entity target = player.getSpectatorTarget();
+        Location to = event.getTo();
+        if (target != null && target.getWorld() == to.getWorld() && target.getLocation().distanceSquared(to) < 1.0E-6) {
+            return;
+        }
+        event.setCancelled(true);
+    }
+
+    /**
+     * Left-clicking an entity in spectator mode starts watching it, which would let the dead follow
+     * an enemy around. In a raid only the plugin's own cameras (item displays), the kill replay's
+     * stand-ins and squadmates can be watched; clicking anything else does nothing.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onStartSpectating(PlayerStartSpectatingEntityEvent event) {
+        UUID id = event.getPlayer().getUniqueId();
+        Map.Entry<Raid, RaidPlayer> watching = spectators.get(id);
+        Raid raid = watching != null ? watching.getKey() : byPlayer.get(id);
+        RaidPlayer own = watching != null ? watching.getValue() : raid == null ? null : raid.player(id);
+        if (raid == null || own == null) {
+            return;
+        }
+        Entity target = event.getNewSpectatorTarget();
+        if (target instanceof ItemDisplay || target instanceof Mannequin) {
+            return;
+        }
+        RaidPlayer mate = target instanceof Player p ? raid.player(p.getUniqueId()) : null;
+        if (mate == null || mate.squad != own.squad) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Keeps players on the camera the plugin gave them. Flying in, nothing takes them off the entry
+     * camera (Shift, the spectator menu, a teleport by command: Cinematic brings back whoever is
+     * moved to another world). Watching a squadmate, Shift leaves; a target that died, extracted
+     * or left hands over to the next mate; anything else (the spectator menu) stays on the mate.
+     * Paper sends this event too when the plugin moves the camera or changes the game mode, so a
+     * camera is only held on to while the player is still a spectator in the camera's world.
+     */
+    @EventHandler
+    public void onStopSpectating(PlayerStopSpectatingEntityEvent event) {
+        Player player = event.getPlayer();
+        Entity from = event.getSpectatorTarget();
+        boolean held = player.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == player.getWorld();
+        RaidPlayer flying = session(player);
+        if (held && from instanceof ItemDisplay && flying != null && flying.state == RaidPlayer.State.DEPLOYING && flying.inFlight) {
+            event.setCancelled(true);
+            return;
+        }
         Map.Entry<Raid, RaidPlayer> entry = spectators.get(player.getUniqueId());
         if (entry == null) {
             return;
         }
         Raid raid = entry.getKey();
-        RaidPlayer watched = event.getSpectatorTarget() instanceof Player t ? raid.player(t.getUniqueId()) : null;
-        boolean targetGone = watched == null || !watched.active() || event.getSpectatorTarget().getWorld() != raid.world;
+        RaidPlayer watched = from instanceof Player t ? raid.player(t.getUniqueId()) : null;
+        boolean targetGone = watched == null || !watched.active() || from.getWorld() != raid.world;
+        if (held && !targetGone && !player.getCurrentInput().isSneak()) {
+            event.setCancelled(true);
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !spectators.containsKey(player.getUniqueId())) {
                 return;
@@ -860,7 +931,10 @@ public final class RaidManager implements Listener {
         });
     }
 
-    /** Spectators drift if their target extracts or dies between events: re-check once a second. */
+    /**
+     * Spectators drift if their target extracts or dies between events, or if a command moves them
+     * to another world while their camera stays behind: re-check once a second.
+     */
     private void tickSpectators() {
         for (UUID uuid : new ArrayList<>(spectators.keySet())) {
             Player player = Bukkit.getPlayer(uuid);
@@ -869,9 +943,9 @@ public final class RaidManager implements Listener {
                 spectators.remove(uuid);
                 continue;
             }
-            org.bukkit.entity.Entity target = player.getSpectatorTarget();
+            Entity target = player.getSpectatorTarget();
             RaidPlayer watched = target instanceof Player t ? entry.getKey().player(t.getUniqueId()) : null;
-            if (watched == null || !watched.active()) {
+            if (watched == null || !watched.active() || target.getWorld() != player.getWorld()) {
                 if (!spectateMate(player, entry.getKey(), entry.getValue())) {
                     stopSpectating(player);
                 }

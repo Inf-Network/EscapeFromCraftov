@@ -18,8 +18,13 @@ import java.util.UUID;
  */
 public final class RaidLuck {
 
-    /** A hand-out its player did not carry out. */
-    public record Pending(UUID player, String name, LuckSession.Payout payout) {
+    /**
+     * A hand-out its player did not carry out.
+     *
+     * @param voided the raid was voided for them (server stop, evacuated): unless someone else
+     *               carried it out, what it cost comes back in full rather than as a refund
+     */
+    public record Pending(UUID player, String name, LuckSession.Payout payout, boolean voided) {
     }
 
     /** Instance ids of everything carried out of the raid so far (extracted, or kept in a secure container). */

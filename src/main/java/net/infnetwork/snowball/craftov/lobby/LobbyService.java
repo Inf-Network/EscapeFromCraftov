@@ -477,8 +477,9 @@ public final class LobbyService implements Listener {
         }
         if (profile.activeRaid != null && plugin.raids().raidOf(player) == null) {
             // Server stopped mid-raid without a clean shutdown: the raid is voided, the last
-            // lobby loadout is restored.
+            // lobby loadout is restored, and the luck it spent with it.
             profile.activeRaid = null;
+            plugin.luck().crashed(profile);
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
         }
         if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {

@@ -154,6 +154,20 @@ public final class Profile {
          * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.
          */
         public List<LuckRaid> raids = new ArrayList<>();
+        /**
+         * Set while the player is in a raid that counts: what a server crash puts back, since the
+         * raid is then voided and the loadout restored to what it was at the deploy.
+         */
+        public @Nullable LuckDeploy deployed;
+    }
+
+    /** Luck as it was when the player deployed (Profile.Luck.deployed). */
+    public static final class LuckDeploy {
+        public String raid = "";
+        public Map<String, Integer> pity = new HashMap<>();
+        public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota spent on hand-outs in the raid so far. */
+        public long quotaSpent;
     }
 
     /** One raid as luck remembers it (LuckService). */

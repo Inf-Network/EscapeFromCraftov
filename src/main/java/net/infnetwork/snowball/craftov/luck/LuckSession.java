@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.luck;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** One player's luck bookkeeping for the raid they are in ({@code RaidPlayer.luck}). */
@@ -16,8 +17,12 @@ public final class LuckSession {
      * @param source what paid for it: {@code jackpot}, {@code pity-GOLD}, {@code pity-RED}, {@code quota},
      *               {@code boost-GOLD} or {@code boost-RED}
      * @param value  the item's value
+     * @param pity     pity counts (GOLD, RED) the hand-out started again, as they were before it
+     * @param jackpots jackpot counts it started again or took back, as they were before it; a voided
+     *                 raid puts both back when the item did not go home
      */
-    public record Payout(String uid, String item, String source, long value) {
+    public record Payout(String uid, String item, String source, long value, Map<String, Integer> pity,
+                         Map<String, Integer> jackpots) {
     }
 
     /** Containers this player has opened themselves: each counts once. */

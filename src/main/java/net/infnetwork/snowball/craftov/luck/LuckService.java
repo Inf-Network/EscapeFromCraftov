@@ -71,6 +71,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * in it and searched {@code luck.qualify.min-searches} containers. Every hand-out and refund is
  * logged.
  *
+ * <p>A voided raid (server stop, evacuated) gives back what its hand-outs cost when they did not go
+ * home: the quota in full and the counts they started again. After a crash, which voids the raid
+ * and restores the loadout of the deploy, the counts and quota spent go back to the deploy too.
+ *
  * <p>A raid's net result counts from when the raid closes: gear handed around the squad is nobody's
  * loss (the receiver does not gain it either), insured gear that comes back is no loss, and gear
  * taken off enemies is a gain like any other find.
@@ -320,13 +324,21 @@ public final class LuckService {
         return cfg().getBoolean("luck.compensation.notify", false);
     }
 
-    /** {@code player} deploys into {@code raid}: whether their loss compensation applies to it. */
+    /**
+     * {@code player} deploys into {@code raid}: whether their loss compensation applies to it, and
+     * what a crash puts back. Called before the deploy is saved.
+     */
     public void onDeploy(Player player, Raid raid, RaidPlayer rp) {
         if (!counts(raid)) {
             return;
         }
         Profile.Luck luck = plugin.profiles().get(player).luck;
         decay(luck, System.currentTimeMillis());
+        Profile.LuckDeploy deployed = new Profile.LuckDeploy();
+        deployed.raid = raid.id;
+        deployed.pity = new java.util.HashMap<>(luck.pity);
+        deployed.jackpots = new java.util.HashMap<>(luck.jackpots);
+        luck.deployed = deployed;
         rp.luck.boosted = luck.boostRaids > 0;
         if (rp.luck.boosted && notifyBoost()) {
             Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>本局你搜出金色和红色物品的概率提高（含本局还剩 "
@@ -499,9 +511,17 @@ public final class LuckService {
         }
         if (choice.source().equals("quota")) {
             luck.quota -= def.value();
+            if (luck.deployed != null) {
+                luck.deployed.quotaSpent += def.value();
+            }
         }
-        rp.luck.payouts.add(new LuckSession.Payout(uid, def.id(), choice.source(), def.value()));
+        Map<String, Integer> pity = new java.util.HashMap<>(luck.pity);
+        Map<String, Integer> jackpots = new java.util.HashMap<>(luck.jackpots);
         found(rp.luck, luck, def);
+        // Only what this hand-out changed: a voided raid puts that back, never a natural find's reset.
+        pity.entrySet().removeIf(e -> e.getValue().equals(luck.pity.get(e.getKey())));
+        jackpots.entrySet().removeIf(e -> e.getValue().equals(luck.jackpots.get(e.getKey())));
+        rp.luck.payouts.add(new LuckSession.Payout(uid, def.id(), choice.source(), def.value(), pity, jackpots));
         plugin.getLogger().info("[luck] " + player.getName() + " is handed " + def.id() + " (◈" + def.value() + ", "
                 + choice.source() + (choice.source().equals("quota") ? ", quota left ◈" + luck.quota : "") + ") in "
                 + container.type.id() + " of raid " + raid.id + " (" + raid.map.id() + " " + raid.tier.id() + ")");
@@ -568,10 +588,11 @@ public final class LuckService {
         Profile.Luck luck = profile.luck;
         long now = System.currentTimeMillis();
         decay(luck, now);
+        luck.deployed = null;
         raid.luck.kept.addAll(outcome.kept());
         for (LuckSession.Payout payout : rp.luck.payouts) {
             if (!outcome.kept().contains(payout.uid())) {
-                raid.luck.pending.add(new RaidLuck.Pending(rp.uuid, rp.name, payout));
+                raid.luck.pending.add(new RaidLuck.Pending(rp.uuid, rp.name, payout, false));
             }
         }
         boolean qualified = qualifies(rp);
@@ -654,9 +675,47 @@ public final class LuckService {
         return false;
     }
 
-    /** Things carried home from a voided raid (evacuated, server stop): nobody gets a refund for them. */
-    public void keep(Raid raid, Collection<ItemRecord> records) {
-        collectUids(records, raid.luck.kept);
+    /**
+     * The raid was voided for {@code rp} (evacuated, server stop), who went home with
+     * {@code records}: nobody gets anything back for those, and what their hand-outs that did not
+     * go home cost comes back in full once the raid closes, unless someone else carried them out.
+     * {@code profile} is null for an offline player, whose {@code luck.deployed} the caller clears.
+     */
+    public void voided(Raid raid, RaidPlayer rp, @Nullable Profile profile, Collection<ItemRecord> records) {
+        if (!counts(raid)) {
+            return;
+        }
+        Set<String> home = new HashSet<>();
+        collectUids(records, home);
+        raid.luck.kept.addAll(home);
+        for (LuckSession.Payout payout : rp.luck.payouts) {
+            if (!home.contains(payout.uid())) {
+                raid.luck.pending.add(new RaidLuck.Pending(rp.uuid, rp.name, payout, true));
+            }
+        }
+        if (profile != null) {
+            profile.luck.deployed = null;
+        }
+    }
+
+    /**
+     * The player logs in with a raid that a crash voided (Profile.activeRaid still set): their loadout
+     * is the deploy's again, so the pity and jackpot counts are too, and the quota spent on hand-outs
+     * in it comes back. False when there was nothing to put back.
+     */
+    public boolean crashed(Profile profile) {
+        Profile.LuckDeploy deployed = profile.luck.deployed;
+        if (deployed == null) {
+            return false;
+        }
+        profile.luck.pity = new java.util.HashMap<>(deployed.pity);
+        profile.luck.jackpots = new java.util.HashMap<>(deployed.jackpots);
+        profile.luck.quota += deployed.quotaSpent;
+        profile.luck.deployed = null;
+        plugin.getLogger().info("[luck] " + profile.name + "'s raid " + deployed.raid + " was voided by a crash: pity "
+                + deployed.pity + " and jackpot counts " + deployed.jackpots + " as at the deploy, ◈" + deployed.quotaSpent
+                + " spent on hand-outs back into the quota (◈" + profile.luck.quota + ")");
+        return true;
     }
 
     /**
@@ -669,8 +728,15 @@ public final class LuckService {
         double share = Math.max(0, cfg().getDouble("luck.quota.refund", 0.5));
         for (RaidLuck.Pending pending : raid.luck.pending) {
             LuckSession.Payout payout = pending.payout();
+            if (raid.luck.kept.contains(payout.uid())) {
+                continue;
+            }
+            if (pending.voided()) {
+                giveBack(raid, pending);
+                continue;
+            }
             long back = Math.round(payout.value() * share);
-            if (raid.luck.kept.contains(payout.uid()) || payout.source().startsWith("boost-") || back <= 0) {
+            if (payout.source().startsWith("boost-") || back <= 0) {
                 continue;
             }
             plugin.profiles().edit(pending.player(), () -> "luck refund for " + payout.item() + " (" + payout.source()
@@ -690,6 +756,22 @@ public final class LuckService {
         }
         raid.luck.settled.clear();
         raid.luck.credit.clear();
+    }
+
+    /** A hand-out of a voided raid that did not go home: its quota back in full, its counts as before it. */
+    private void giveBack(Raid raid, RaidLuck.Pending pending) {
+        LuckSession.Payout payout = pending.payout();
+        long quota = payout.source().equals("quota") ? payout.value() : 0;
+        plugin.profiles().edit(pending.player(), () -> "luck: raid " + raid.id + " voided, " + payout.item() + " (" + payout.source()
+                + ") not carried out: luck.quota +" + quota + ", luck.pity at least " + payout.pity()
+                + ", luck.jackpots at least " + payout.jackpots(), profile -> {
+            profile.luck.quota += quota;
+            payout.pity().forEach((k, v) -> profile.luck.pity.merge(k, v, Math::max));
+            payout.jackpots().forEach((k, v) -> profile.luck.jackpots.merge(k, v, Math::max));
+        });
+        plugin.getLogger().info("[luck] " + pending.name() + "'s raid " + raid.id + " was voided and " + payout.item() + " ("
+                + payout.source() + ") did not go home: ◈" + quota + " back into the quota, counts back to "
+                + payout.pity() + " " + payout.jackpots());
     }
 
     /**

@@ -380,6 +380,7 @@ public final class RaidManager implements Listener {
         profile.money -= entryFee;
         rp.fees = entryFee + plugin.insurance().onDeploy(player, raid);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
+        plugin.luck().onDeploy(player, raid, rp);
         plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
         for (ItemRecord record : profile.secure) {
@@ -396,7 +397,6 @@ public final class RaidManager implements Listener {
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         rp.escorting = rp.escortContract != null && !plugin.escorts().isClient(rp.escortContract, player.getUniqueId());
-        plugin.luck().onDeploy(player, raid, rp);
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
         player.closeInventory();
         plugin.health().setupPlayer(player, true);
@@ -1466,8 +1466,8 @@ public final class RaidManager implements Listener {
         out.addAll(plugin.carry().snapshot(player).values());
         out.addAll(rp.secure);
         rp.carriedOut = stackCounts(out);
-        plugin.luck().keep(raid, out);
         Profile profile = plugin.profiles().get(player);
+        plugin.luck().voided(raid, rp, profile, out);
         profile.secure = new ArrayList<>(rp.secure);
         profile.activeRaid = null;
         plugin.escorts().voided(rp);
@@ -1557,7 +1557,7 @@ public final class RaidManager implements Listener {
             if (flyingIn) {
                 profile.money += rp.fees;
             }
-            plugin.luck().keep(raid, plugin.carry().snapshot(player).values());
+            plugin.luck().voided(raid, rp, profile, plugin.carry().snapshot(player).values());
             plugin.lobby().enterLobbyKeepInventory(player);
             plugin.lobby().captureLoadout(player);
             Text.send(player, flyingIn && rp.fees > 0
@@ -1568,20 +1568,22 @@ public final class RaidManager implements Listener {
             // no free pocket go to the mailbox.
             List<ItemRecord> homeless = new ArrayList<>();
             Map<Integer, ItemRecord> inv = plugin.carry().persistent(rp.disconnectedInventory, homeless);
-            plugin.luck().keep(raid, inv.values());
-            plugin.luck().keep(raid, homeless);
+            List<ItemRecord> home = new ArrayList<>(inv.values());
+            home.addAll(homeless);
+            plugin.luck().voided(raid, rp, null, home);
             // Dropped out during the entry camera: like those still watching it, they never
             // landed, so the fees come back too.
             long refund = rp.inFlight ? rp.fees : 0;
             plugin.profiles().edit(rp.uuid, () -> "server stopped during raid " + raid.id + ": loadout = "
                     + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
-                    + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null"
+                    + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, luck.deployed = null"
                     + (refund > 0 ? ", money +" + refund : ""), profile -> {
                 profile.loadout = inv;
                 profile.mailbox.addAll(homeless);
                 profile.secure = new ArrayList<>(rp.secure);
                 profile.activeRaid = null;
                 profile.money += refund;
+                profile.luck.deployed = null;
             });
         }
     }

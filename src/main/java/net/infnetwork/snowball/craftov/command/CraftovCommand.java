@@ -22,7 +22,7 @@ public final class CraftovCommand implements TabExecutor {
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "marketaudit");
+            "marketaudit", "lagcomp");
 
     private final CraftovPlugin plugin;
 
@@ -153,7 +153,7 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量]"));
+                    + " · marketaudit [数量] · lagcomp [on|off]"));
         }
     }
 
@@ -323,6 +323,17 @@ public final class CraftovCommand implements TabExecutor {
                     sender.sendMessage(Text.mm("<#9AA0A6>还没有人在交易行卖出过东西。"));
                 }
             }
+            case "lagcomp" -> {
+                // /cv lagcomp [on|off]: hit lag compensation, until the next /cv reload, to compare hits
+                // on moving targets with and without it.
+                boolean on = args.length < 2 ? !plugin.getConfig().getBoolean("combat.lag-compensation.enabled", true)
+                        : args[1].equalsIgnoreCase("on");
+                plugin.getConfig().set("combat.lag-compensation.enabled", on);
+                Text.send(sender, on
+                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 100)
+                                + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
+                        : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
+            }
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -380,6 +391,8 @@ public final class CraftovCommand implements TabExecutor {
             plugin.maps().all().forEach(m -> out.add(m.id()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
             out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("lagcomp")) {
+            out.addAll(List.of("on", "off"));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("tp"))) {
             plugin.raids().raids().forEach(r -> out.add(r.id));
         }

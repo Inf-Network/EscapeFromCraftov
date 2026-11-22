@@ -109,6 +109,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 - `/cv injure <玩家> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture>`（测试伤势）
 - `/cv reload`（重载配置、物品、掉落表、地图）、`/cv lobby`
 - `/cv marketaudit [数量]`：交易行成交笔数最多的账号，附等级、交易行收入、余额和累计带出价值，用来查刷过交易行的账号
+- `/cv lagcomp [on|off]`：临时开关命中延迟补偿（不带参数则切换），`/cv reload` 后恢复配置文件里的设置；用来对比开 / 关时打移动目标的手感
 
 ## 制作自己的地图
 

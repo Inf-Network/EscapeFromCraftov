@@ -112,12 +112,12 @@ items:
   ammo_57_ss:   { name: "5.7x28 SS190", category: AMMO, rarity: BLUE, value: 62, ammo: { caliber: "5.7x28", pen: 4, damage: 0.95, armor-damage: 1.1 } }
   ammo_556_m855: { name: "5.56x45 M855", category: AMMO, rarity: GREEN, value: 32, ammo: { caliber: "5.56x45", pen: 3, damage: 1.0, armor-damage: 1.0 } }
   ammo_556_a1:  { name: "5.56x45 M855A1", category: AMMO, rarity: BLUE, value: 85, ammo: { caliber: "5.56x45", pen: 4, damage: 1.0, armor-damage: 1.15 } }
-  ammo_556_m995: { name: "5.56x45 M995", category: AMMO, rarity: PURPLE, value: 220, ammo: { caliber: "5.56x45", pen: 5, damage: 0.95, armor-damage: 1.3 } }
+  ammo_556_m995: { name: "5.56x45 M995", category: AMMO, rarity: GOLD, value: 220, ammo: { caliber: "5.56x45", pen: 5, damage: 0.95, armor-damage: 1.3 } }
   ammo_762_ps:  { name: "7.62x39 PS", category: AMMO, rarity: GREEN, value: 30, ammo: { caliber: "7.62x39", pen: 3, damage: 1.0, armor-damage: 1.1 } }
   ammo_762_bp:  { name: "7.62x39 BP", category: AMMO, rarity: BLUE, value: 92, ammo: { caliber: "7.62x39", pen: 4, damage: 0.98, armor-damage: 1.25 } }
-  ammo_762_ap:  { name: "7.62x39 AP", category: AMMO, rarity: PURPLE, value: 210, ammo: { caliber: "7.62x39", pen: 5, damage: 0.95, armor-damage: 1.35 } }
+  ammo_762_ap:  { name: "7.62x39 AP", category: AMMO, rarity: GOLD, value: 210, ammo: { caliber: "7.62x39", pen: 5, damage: 0.95, armor-damage: 1.35 } }
   ammo_308_m80: { name: "7.62x51 M80", category: AMMO, rarity: GREEN, value: 58, ammo: { caliber: "7.62x51", pen: 3, damage: 1.0, armor-damage: 1.2 } }
-  ammo_308_m61: { name: "7.62x51 M61", category: AMMO, rarity: PURPLE, value: 260, ammo: { caliber: "7.62x51", pen: 5, damage: 1.0, armor-damage: 1.45 } }
+  ammo_308_m61: { name: "7.62x51 M61", category: AMMO, rarity: GOLD, value: 260, ammo: { caliber: "7.62x51", pen: 5, damage: 1.0, armor-damage: 1.45 } }
   ammo_338_fmj: { name: ".338 FMJ", category: AMMO, rarity: BLUE, value: 320, stack: 30, ammo: { caliber: ".338", pen: 4, damage: 1.0, armor-damage: 1.5 } }
   ammo_338_ap:  { name: ".338 AP", category: AMMO, rarity: GOLD, value: 950, stack: 30, ammo: { caliber: ".338", pen: 6, damage: 1.0, armor-damage: 1.8 } }
   ammo_12_buck: { name: "12号 00 鹿弹", category: AMMO, rarity: WHITE, value: 22, stack: 30, ammo: { caliber: "12ga", pen: 1, damage: 1.0, armor-damage: 0.6 } }

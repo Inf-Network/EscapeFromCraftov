@@ -66,6 +66,7 @@ public final class WeaponService implements Listener {
         boolean pendingPress;
         /** The trigger was pulled again since the last shot: the next shot starts a new spray. */
         boolean freshPull;
+        /** Rounds of the current three-round burst still to fire: they do, whether or not the trigger is held. */
         int burstLeft;
         double shotBudgetMs;
         long reloadStart = -1;
@@ -369,13 +370,17 @@ public final class WeaponService implements Listener {
                 release(state, !plugin.triggers().stale(player));
             }
             state.bloom = Math.max(0, state.bloom - 0.08);
-            if (!state.triggerHeld) {
+            if (state.fireMode() != FireMode.BURST) {
+                state.burstLeft = 0;
+            }
+            if (!state.triggerHeld && state.burstLeft <= 0) {
                 continue;
             }
             if (sprintLocked(player)) {
-                // Still held when the sprint ends: the gun fires once it is back up.
+                // Still held when the sprint ends: the gun fires once it is back up. A burst does not resume.
                 sprintHint(player);
                 state.shotBudgetMs = 0;
+                state.burstLeft = 0;
                 continue;
             }
             if (state.pendingPress) {
@@ -400,6 +405,7 @@ public final class WeaponService implements Listener {
                 state.shotBudgetMs -= interval;
                 if (!shoot(player, state)) {
                     state.shotBudgetMs = 0;
+                    state.burstLeft = 0;
                     break;
                 }
             }
@@ -442,11 +448,12 @@ public final class WeaponService implements Listener {
             state.needsRelease = false;
         }
         state.pendingPress = false;
-        state.burstLeft = 0;
+        // A burst under way still fires its remaining rounds (see tick): a quick click gets all three.
     }
 
     private void press(Player player, GunState state) {
-        if (state.reloading() || state.needsRelease) {
+        // A pull during a burst does nothing: the next burst needs a click after this one has fired.
+        if (state.reloading() || state.needsRelease || state.burstLeft > 0) {
             return;
         }
         state.triggerHeld = true;
@@ -921,6 +928,7 @@ public final class WeaponService implements Listener {
         player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
         state.reloadType = type;
         state.triggerHeld = false;
+        state.burstLeft = 0;
         state.reloadEmpty = state.ammo == 0;
         reloadFoley(player, state, state.reloadEnd - now);
     }
@@ -1216,6 +1224,7 @@ public final class WeaponService implements Listener {
             return;
         }
         state.mode = (state.mode + 1) % state.gun.modes().size();
+        state.burstLeft = 0;
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, 1f);
         player.sendActionBar(Text.mm("<#F2C94C>射击模式: <white>" + state.fireMode().displayName()));
     }

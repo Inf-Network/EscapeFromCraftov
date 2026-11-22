@@ -126,7 +126,8 @@ combat:
     # through one wooden door or one layer of planks, not two, and 9x19 FMJ (pen 1) through none.
     # Armour still meets the round's full pen. Keys are block ids, `*` standing for any part of one,
     # or `#tag` for a block tag; the first key that matches a block counts. Every other block stops a
-    # round: stone, metal doors and tinted glass stay bulletproof.
+    # round: stone, metal doors and tinted glass stay bulletproof. The glass panes here only count
+    # outside raids, where glass does not shatter.
     blocks:
       glass_pane: { level: 1, damage: 0.9 }
       "*_stained_glass_pane": { level: 1, damage: 0.9 }

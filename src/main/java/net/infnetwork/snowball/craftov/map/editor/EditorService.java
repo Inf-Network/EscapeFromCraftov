@@ -213,10 +213,20 @@ public final class EditorService implements Listener {
             Text.send(player, "<#9AA0A6>你不在编辑模式。");
             return;
         }
-        switch (key) {
+        // Every key but camera needs a value: without one, the list of keys below.
+        switch (value.isBlank() && !key.equals("camera") ? "" : key) {
             case "name" -> session.draft.name = value;
             case "description", "desc" -> session.draft.description = value;
-            case "minutes" -> session.draft.raidMinutes = Math.max(5, Integer.parseInt(value));
+            case "minutes" -> {
+                int minutes;
+                try {
+                    minutes = Integer.parseInt(value.trim());
+                } catch (IllegalArgumentException ex) {
+                    Text.send(player, "<#9AA0A6>用法：/cv editor set minutes <分钟数>（至少 5）");
+                    return;
+                }
+                session.draft.raidMinutes = Math.max(5, minutes);
+            }
             case "time" -> session.draft.time = value;
             case "test" -> session.draft.test = Boolean.parseBoolean(value);
             case "camera" -> session.draft.camera = Pos.of(player.getEyeLocation());

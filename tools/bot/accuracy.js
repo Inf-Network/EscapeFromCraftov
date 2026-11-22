@@ -61,9 +61,12 @@ let worldChanges = 0
 bot.on('respawn', () => worldChanges++)
 const bars = []
 bot._client.on('action_bar', p => bars.push({ at: Date.now(), text: JSON.stringify(p) }))
-// The shooter hears its own first-person report.
+// The shooter hears its own first-person report: gun.<id>.fp, or gun.<id>.x<n>.fp holding n rounds.
 let shots = 0
-const shotSound = p => { if (/gun\.[a-z0-9_]+\.fp/.test(JSON.stringify(p.sound || p.soundId || ''))) shots++ }
+const shotSound = p => {
+  const m = JSON.stringify(p.sound || p.soundId || '').match(/gun\.[a-z0-9_]+?(?:\.x(\d))?\.fp/)
+  if (m) shots += m[1] ? Number(m[1]) : 1
+}
 bot._client.on('entity_sound_effect', shotSound)
 bot._client.on('sound_effect', shotSound)
 // mineflayer applies player_rotation as absolute angles; recoil sends it relative, as vanilla expects.

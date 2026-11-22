@@ -418,8 +418,8 @@ public final class HealthService implements Listener {
                 } finally {
                     bleeding = false;
                 }
-                player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
-                        org.bukkit.Material.REDSTONE_BLOCK.createBlockData());
+                player.getWorld().spawnParticle(Particle.DUST, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2, 0,
+                        new Particle.DustOptions(org.bukkit.Color.fromRGB(88, 8, 10), 0.9f));
             }
             updateFood(player);
         }

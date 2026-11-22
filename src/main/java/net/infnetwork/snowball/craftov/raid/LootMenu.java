@@ -26,6 +26,9 @@ public final class LootMenu extends Menu {
     private int seenVersion = -1;
     /** The title still says "搜索中…"; it is dropped in place once nothing is left hidden. */
     private boolean searchingTitle;
+    /** A legendary find shines in its slot (enchantment glint) until this tick. */
+    private int glintSlot = -1;
+    private long glintUntil;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
         super(viewer, container.type.rows(), "loot_" + Math.max(1, Math.min(6, container.type.rows())),
@@ -56,6 +59,10 @@ public final class LootMenu extends Menu {
                 continue;
             }
             if (container.isRevealed(slot)) {
+                if (slot == glintSlot && Bukkit.getCurrentTick() < glintUntil) {
+                    stack = stack.clone();
+                    stack.setData(io.papermc.paper.datacomponent.DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                }
                 set(slot, stack);
             } else if (slot == next) {
                 set(slot, searching());
@@ -88,8 +95,11 @@ public final class LootMenu extends Menu {
             viewer.closeInventory();
             return;
         }
-        if (container.version() != seenVersion) {
-            redraw(); // another searcher revealed or took something
+        if (container.version() != seenVersion || glintSlot >= 0 && Bukkit.getCurrentTick() >= glintUntil) {
+            if (Bukkit.getCurrentTick() >= glintUntil) {
+                glintSlot = -1;
+            }
+            redraw(); // another searcher revealed or took something, or a find stopped shining
         }
         if (container.hiddenCount() == 0) {
             dropSearchingTitle();
@@ -107,9 +117,10 @@ public final class LootMenu extends Menu {
                 default -> "craftov:loot.reveal";
             };
             viewer.playSound(viewer.getLocation(), sound, SoundCategory.PLAYERS, 0.8f, 1f);
-            if (rarity == Rarity.RED && def != null) {
-                viewer.showTitle(net.kyori.adventure.title.Title.title(Text.mm(""),
-                        Text.mm(rarity.tag() + "★ 发现 " + Text.escape(def.name()) + " ★")));
+            if (rarity == Rarity.RED) {
+                // A title would be hidden behind this very window: the find shines in its slot instead.
+                glintSlot = revealed;
+                glintUntil = Bukkit.getCurrentTick() + 10;
             }
             redraw();
             lastProgressStep = -1;

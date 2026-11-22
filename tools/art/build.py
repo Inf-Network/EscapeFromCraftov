@@ -432,6 +432,9 @@ def build_ui():
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
     save(ui.suppression_overlay(), os.path.join(CV, 'textures', 'misc', 'suppressed.png'))
+    save(ui.hit_overlay(), os.path.join(CV, 'textures', 'misc', 'hit.png'))
+    for level in range(1, len(ui.BLOOD_ALPHA) + 1):
+        save(ui.blood_overlay(level), os.path.join(CV, 'textures', 'misc', 'blood_%d.png' % level))
     save(ui.strobe_overlay(), os.path.join(CV, 'textures', 'misc', 'strobe.png'))
     for level in range(1, len(ui.FLASH_ALPHA) + 1):
         save(ui.flash_overlay(level), os.path.join(CV, 'textures', 'misc', 'flash_%d.png' % level))

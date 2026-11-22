@@ -361,6 +361,48 @@ def body_shape(name):
     return c.img
 
 
+def hit_overlay(w=640, h=360):
+    """Camera overlay for the few ticks after taking a hit: a hard red rim, the middle left clear."""
+    import numpy as np
+    yy, xx = np.mgrid[0:h, 0:w]
+    nx = xx / (w - 1) * 2 - 1
+    ny = yy / (h - 1) * 2 - 1
+    r = np.sqrt(nx ** 2 * 0.8 + ny ** 2 * 1.2)
+    a = np.clip((r - 0.62) / 0.5, 0, 1) ** 1.3
+    alpha = (a * 150).astype(np.uint8)
+    rgb_ = np.zeros((h, w, 3), np.uint8)
+    rgb_[..., 0] = 170
+    rgb_[..., 1] = 18
+    rgb_[..., 2] = 16
+    return Image.fromarray(np.dstack([rgb_, alpha]))
+
+
+# Blood edge strength per step (BLOOD_STEPS in HudService): health under 35, 24 and 12.
+BLOOD_ALPHA = (95, 145, 200)
+
+
+def blood_overlay(level, w=640, h=360):
+    """Camera overlay while badly hurt: dark blood seeping in from the corners and edges, uneven, the
+    middle of the screen always clear. Level 1..3 grows as health drops."""
+    import numpy as np
+    rng = np.random.default_rng(11)
+    yy, xx = np.mgrid[0:h, 0:w]
+    nx = xx / (w - 1) * 2 - 1
+    ny = yy / (h - 1) * 2 - 1
+    ang = np.arctan2(ny, nx)
+    wobble = 0.07 * np.sin(ang * 5 + 1.3) + 0.05 * np.sin(ang * 11 + 0.4) + 0.03 * np.sin(ang * 23)
+    r = np.sqrt(nx ** 2 * 0.75 + ny ** 2 * 1.25) + wobble
+    reach = (0.95, 0.85, 0.75)[level - 1]
+    a = np.clip((r - reach) / 0.45, 0, 1) ** 1.1
+    grain = rng.uniform(0.85, 1.0, (h, w))
+    alpha = (a * grain * BLOOD_ALPHA[level - 1]).astype(np.uint8)
+    rgb_ = np.zeros((h, w, 3), np.uint8)
+    rgb_[..., 0] = 92
+    rgb_[..., 1] = 6
+    rgb_[..., 2] = 8
+    return Image.fromarray(np.dstack([rgb_, alpha]))
+
+
 def suppression_overlay(w=640, h=360):
     """Camera overlay while bullets snap past: dark, slightly blurred-looking edges, clear centre."""
     import numpy as np

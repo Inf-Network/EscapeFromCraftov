@@ -205,8 +205,11 @@ public final class DamageService implements Listener {
         RaidPlayer.@Nullable State before = stateOf(victim);
         deal(victim, shooter, damage);
         Outcome outcome = outcome(victim, before);
-        if (victim instanceof Player hurt && shooter != null) {
-            plugin.hud().damageFrom(hurt, shooter.getLocation());
+        if (victim instanceof Player hurt) {
+            plugin.hud().hurt(hurt);
+            if (shooter != null) {
+                plugin.hud().damageFrom(hurt, shooter.getLocation());
+            }
         }
         plugin.ai().onBotHurt(victim, shooter);
         if (shooter instanceof Player player) {
@@ -486,6 +489,7 @@ public final class DamageService implements Listener {
         deal(victim, player, damage);
         Outcome outcome = outcome(victim, before);
         if (victim instanceof Player hurt) {
+            plugin.hud().hurt(hurt);
             plugin.hud().damageFrom(hurt, player.getLocation());
         }
         plugin.ai().onBotHurt(victim, player);

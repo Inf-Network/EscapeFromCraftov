@@ -38,10 +38,17 @@ public final class HudService {
     private boolean betterHud;
     /**
      * Camera overlays share one client-side helmet, so the strongest wins: a flashbang white-out, a
-     * strobe flash, then a scope picture, then the suppression vignette, otherwise the real helmet.
+     * strobe flash, a scope picture, the red flash of a hit (6 ticks), the blood edge of low health
+     * (three steps under 35, 24 and 12 HP), then the suppression vignette, otherwise the real helmet.
+     * Camera overlays are drawn at every graphics setting; the world-border tint of HealthService is
+     * only a supplement to the blood edge.
      */
     private final Map<UUID, String> scopes = new HashMap<>();
     private final Map<UUID, Long> suppressedUntil = new HashMap<>();
+    private final Map<UUID, Long> hitUntil = new HashMap<>();
+    private static final int HIT_TICKS = 6;
+    /** Health below which the blood edge shows, one overlay step each (misc/blood_1..3). */
+    private static final double[] BLOOD_STEPS = {35, 24, 12};
     private final Map<UUID, Long> dazzledUntil = new HashMap<>();
     private final Map<UUID, Flash> flashed = new HashMap<>();
     /** Players blinded by {@link #flash} whose blindness has not been lifted yet. */
@@ -334,6 +341,27 @@ public final class HudService {
         refreshOverlay(player);
     }
 
+    /** The red flash of being hit (a shot or a cut): the screen rim goes red for a few ticks. */
+    public void hurt(Player player) {
+        hitUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + HIT_TICKS);
+        refreshOverlay(player);
+    }
+
+    /** 0 for none, else the blood edge step for this player's health (raids only). */
+    private int bloodLevel(@org.jspecify.annotations.Nullable Player player) {
+        if (player == null || player.isDead() || !data.inRaid(player)) {
+            return 0;
+        }
+        double hp = player.getHealth();
+        int level = 0;
+        for (double step : BLOOD_STEPS) {
+            if (hp < step) {
+                level++;
+            }
+        }
+        return level;
+    }
+
     private @org.jspecify.annotations.Nullable String wantedOverlay(UUID id, long now) {
         Flash flash = flashed.get(id);
         if (flash != null && flash.until() > now) {
@@ -347,6 +375,14 @@ public final class HudService {
         String scope = scopes.get(id);
         if (scope != null) {
             return scope;
+        }
+        Long hit = hitUntil.get(id);
+        if (hit != null && hit > now) {
+            return "hit";
+        }
+        int blood = bloodLevel(Bukkit.getPlayer(id));
+        if (blood > 0) {
+            return "blood_" + blood;
         }
         Long suppressed = suppressedUntil.get(id);
         return suppressed != null && suppressed > now ? "suppressed" : null;
@@ -464,13 +500,21 @@ public final class HudService {
     private static final int OVERLAY_RESEND_TICKS = 2;
 
     private void tickOverlays() {
-        if (shownOverlay.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()
-                && flashBlinded.isEmpty()) {
-            return;
-        }
         long now = Bukkit.getCurrentTick();
         java.util.Set<UUID> touched = new java.util.HashSet<>(shownOverlay.keySet());
+        // Low health shows the blood edge without any event to start it.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getHealth() < BLOOD_STEPS[0] && bloodLevel(player) > 0) {
+                touched.add(player.getUniqueId());
+            }
+        }
+        if (touched.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()
+                && flashBlinded.isEmpty() && hitUntil.isEmpty()) {
+            return;
+        }
         touched.addAll(suppressedUntil.keySet());
+        touched.addAll(hitUntil.keySet());
+        hitUntil.values().removeIf(until -> until <= now);
         touched.addAll(dazzledUntil.keySet());
         touched.addAll(flashed.keySet());
         touched.addAll(flashBlinded);

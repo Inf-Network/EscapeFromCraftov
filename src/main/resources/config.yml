@@ -540,13 +540,12 @@ luck:
     coop-target: 1.0
   # Loss compensation (高爆率局). Within window-hours each raid's net loss (settled as above, when
   # the raid closes) counts as a share of its tier's threshold (profits take it back, losses in
-  # different tiers add up); reaching 1 makes the
-  # player find gold and red about multiplier times as often in the next `raids` raids: every
-  # container they search may hand out one more, with (multiplier - 1) times the chance the
-  # container has of holding one by itself. The containers' own contents do not change, so nobody
-  # else in the raid finds more, and matchmaking stays the same. Only those losses count that came
-  # after the last compensation started. These hand-outs pay nothing back into the quota when they
-  # are not carried out. notify tells the player.
+  # different tiers add up); reaching 1 makes the player find gold and red about multiplier times
+  # as often in the next `raids` raids: every container they search may hand out one more, with
+  # (multiplier - 1) times the chance the container has of holding one by itself. The containers'
+  # own contents do not change, so nobody else in the raid finds more, and matchmaking stays the
+  # same. Raids a compensation was given for count for no other. These hand-outs pay nothing back
+  # into the quota when they are not carried out. notify tells the player.
   compensation:
     window-hours: 24
     threshold: { NORMAL: 200000, CONFIDENTIAL: 600000, SECRET: 1500000 }

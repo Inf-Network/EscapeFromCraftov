@@ -6,6 +6,10 @@
 # at shift 2 a container holds up to one item more. A roll whose category has nothing at the rarity
 # drawn takes the nearest lower rarity, or yields nothing. tools/econ/ev.py prints what this adds up
 # to per container and per raid.
+# Revision of this file. The server copies it from the jar only when it is missing, so raise this
+# whenever a change must reach servers that already have the file (prices, weights, new items):
+# a server whose copy has a lower revision warns at start-up and on /cv reload.
+revision: 1
 shift-bonus: { WHITE: -0.25, GREEN: -0.05, BLUE: 0.1, PURPLE: 0.3, GOLD: 0.5, RED: 1.0 }
 containers:
   crate:

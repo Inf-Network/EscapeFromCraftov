@@ -44,15 +44,25 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.logging.Level;
 
 /** Craftov: an extraction-shooter game mode for Paper 1.21.11. */
 public final class CraftovPlugin extends JavaPlugin {
 
     private static CraftovPlugin instance;
+
+    /** Data files copied from the jar only when missing, and so never updated by a new jar. */
+    private static final List<String> DATA_FILES = List.of("items.yml", "loot.yml");
+    private static final Pattern REVISION = Pattern.compile("(?m)^revision:\\s*(\\d+)");
 
     private ItemRegistry registry;
     private ItemFactory items;
@@ -107,6 +117,11 @@ public final class CraftovPlugin extends JavaPlugin {
         saveDefaultConfig();
         saveResourceIfMissing("items.yml");
         saveResourceIfMissing("loot.yml");
+        for (OutdatedData old : outdatedData()) {
+            getLogger().warning(old.file() + " is older than the one in this jar (revision " + old.local() + ", jar "
+                    + old.bundled() + "): its prices and loot stay as they were. Back it up, replace it with the jar's"
+                    + " copy (or merge the changes and set revision: " + old.bundled() + "), then /cv reload.");
+        }
         loadTiers();
         registry = new ItemRegistry(getLogger());
         if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
@@ -268,6 +283,44 @@ public final class CraftovPlugin extends JavaPlugin {
         if (!new File(getDataFolder(), name).exists()) {
             saveResource(name, false);
         }
+    }
+
+    /** A data file in the plugin folder whose revision is below the jar's copy. */
+    public record OutdatedData(String file, int local, int bundled) {
+    }
+
+    /**
+     * Data files in the plugin folder that are older than the jar's copy. items.yml and loot.yml
+     * are copied only when missing, so after an update that changes prices or loot weights the
+     * server would keep playing by its old copy without a word. Each file starts with
+     * {@code revision: n}, raised whenever servers need the change; a file without it counts as 0.
+     */
+    public List<OutdatedData> outdatedData() {
+        List<OutdatedData> out = new ArrayList<>();
+        for (String name : DATA_FILES) {
+            int bundled;
+            try (InputStream in = getResource(name)) {
+                bundled = in == null ? 0 : revision(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (IOException ex) {
+                continue;
+            }
+            File file = new File(getDataFolder(), name);
+            int local;
+            try {
+                local = revision(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+            } catch (IOException ex) {
+                continue; // missing or unreadable: the loader reports that itself
+            }
+            if (local < bundled) {
+                out.add(new OutdatedData(name, local, bundled));
+            }
+        }
+        return out;
+    }
+
+    private static int revision(String text) {
+        Matcher m = REVISION.matcher(text);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
     private void cleanupTeams() {

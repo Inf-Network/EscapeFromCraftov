@@ -1,6 +1,10 @@
 # Craftov item definitions.
 # value: trader reference price in 块币 (per round for ammo).
 # model: item_model key; defaults to craftov:<id>, rendered by the CraftEngine resource pack.
+# Revision of this file. The server copies it from the jar only when it is missing, so raise this
+# whenever a change must reach servers that already have the file (prices, weights, new items):
+# a server whose copy has a lower revision warns at start-up and on /cv reload.
+revision: 1
 items:
   # ------------------------------------------------------------------ handguns
   p18:

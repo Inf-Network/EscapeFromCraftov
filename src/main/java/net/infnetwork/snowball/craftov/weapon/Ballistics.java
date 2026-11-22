@@ -111,9 +111,10 @@ public final class Ballistics {
                 hitEntity = living;
                 end = hit.point();
                 replayEnd = hit.body();
-                // The wound, the blood and the hit zone go on the body where it stands now.
+                // The hit zone is read on the body the shooter saw (crouched or standing then); the wound
+                // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
-                BodyPart part = BodyPart.of(living, hit.body());
+                BodyPart part = BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point());
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);

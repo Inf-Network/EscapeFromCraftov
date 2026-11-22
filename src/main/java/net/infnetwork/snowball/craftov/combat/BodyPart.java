@@ -68,11 +68,19 @@ public enum BodyPart {
      * target's facing picks the arm or leg, and the upper or lower torso picks chest or stomach.
      */
     public static BodyPart of(LivingEntity target, Vector point) {
-        HitZone zone = HitZone.of(target, point);
+        return of(target, target.getBoundingBox(), target.getEyeHeight(), point);
+    }
+
+    /**
+     * Classifies a hit point on {@code box}, the target's body as the shooter saw it with its eyes
+     * {@code eyeHeight} above its feet ({@link HitZone#of(BoundingBox, double, Vector)}); facing still
+     * comes from the target.
+     */
+    public static BodyPart of(LivingEntity target, BoundingBox box, double eyeHeight, Vector point) {
+        HitZone zone = HitZone.of(box, eyeHeight, point);
         if (zone == HitZone.HEAD) {
             return HEAD;
         }
-        BoundingBox box = target.getBoundingBox();
         double yaw = Math.toRadians(target.getBodyYaw());
         // Facing (-sin, cos); the holder's right-hand side is (-cos, -sin).
         double side = (point.getX() - box.getCenterX()) * -Math.cos(yaw) + (point.getZ() - box.getCenterZ()) * -Math.sin(yaw);

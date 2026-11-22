@@ -64,11 +64,18 @@ public final class HitboxHistory {
     /**
      * A round meeting an entity's box as the shooter saw it.
      *
-     * @param point    where the round met the (rewound) box: where the shooter saw it land
-     * @param body     the same spot on the entity's box as it stands now, which hit zones are read from
-     * @param distance from the start of the ray to {@code point}
+     * @param point     where the round met the (rewound) box: where the shooter saw it land
+     * @param box       that box, which the hit zone is read from
+     *                  ({@link BodyPart#of(LivingEntity, BoundingBox, double, Vector)})
+     * @param eyeHeight how high above its feet the entity's eyes were then, which sets the head line
+     * @param body      the same spot on the entity's box as it stands now, where the wound shows
+     * @param distance  from the start of the ray to {@code point}
      */
-    public record Hit(LivingEntity entity, Vector point, Vector body, double distance) {
+    public record Hit(LivingEntity entity, Vector point, BoundingBox box, double eyeHeight, Vector body, double distance) {
+    }
+
+    /** An entity's box and eye height at one moment. */
+    private record Pose(BoundingBox box, double eyeHeight) {
     }
 
     private void record() {
@@ -79,7 +86,8 @@ public final class HitboxHistory {
                 if (entity instanceof ArmorStand || entity.isDead()) {
                     continue;
                 }
-                tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track()).add(raid.world, entity.getBoundingBox(), now, tick);
+                tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track())
+                        .add(raid.world, entity.getBoundingBox(), entity.getEyeHeight(), now, tick);
             }
         }
         if (tick % 20 == 0) {
@@ -120,32 +128,32 @@ public final class HitboxHistory {
             if (!(entity instanceof LivingEntity living)) {
                 continue;
             }
-            BoundingBox live = living.getBoundingBox();
-            BoundingBox box = rewind > 0 ? boxAt(living, live, now - rewind, now) : live;
-            RayTraceResult result = box.rayTrace(from, direction, maxDistance);
+            Pose live = new Pose(living.getBoundingBox(), living.getEyeHeight());
+            Pose seen = rewind > 0 ? poseAt(living, live, now - rewind, now) : live;
+            RayTraceResult result = seen.box().rayTrace(from, direction, maxDistance);
             if (result == null) {
                 continue;
             }
             Vector point = result.getHitPosition();
             double distance = from.distance(point);
             if (best == null || distance < best.distance()) {
-                best = new Hit(living, point, carry(point, box, live), distance);
+                best = new Hit(living, point, seen.box(), seen.eyeHeight(), carry(point, seen.box(), live.box()), distance);
             }
         }
         return best;
     }
 
-    /** {@code entity}'s box at {@code target} (nanoTime), blended between the samples either side of it. */
-    private BoundingBox boxAt(LivingEntity entity, BoundingBox live, long target, long now) {
+    /** {@code entity}'s box and eyes at {@code target} (nanoTime), blended between the samples either side of it. */
+    private Pose poseAt(LivingEntity entity, Pose live, long target, long now) {
         Track track = tracks.get(entity.getUniqueId());
         if (track == null || track.count == 0 || !entity.getWorld().getUID().equals(track.world)) {
             return live;
         }
         // The newer end of the bracket starts at the live box, now.
-        BoundingBox newer = live;
+        Pose newer = live;
         long newerAt = now;
         for (int back = 0; back < track.count; back++) {
-            BoundingBox older = track.box(back);
+            Pose older = track.pose(back);
             long olderAt = track.time(back);
             if (olderAt <= target) {
                 return blend(older, olderAt, newer, newerAt, target);
@@ -157,18 +165,21 @@ public final class HitboxHistory {
         return newer;
     }
 
-    private static BoundingBox blend(BoundingBox older, long olderAt, BoundingBox newer, long newerAt, long target) {
+    private static Pose blend(Pose olderPose, long olderAt, Pose newerPose, long newerAt, long target) {
         if (newerAt <= olderAt) {
-            return newer;
+            return newerPose;
         }
+        BoundingBox older = olderPose.box();
+        BoundingBox newer = newerPose.box();
         if (older.getCenter().distanceSquared(newer.getCenter()) > TELEPORT * TELEPORT) {
             // A teleport between the two: it was at one place or the other, never in between.
-            return target - olderAt < newerAt - target ? older : newer;
+            return target - olderAt < newerAt - target ? olderPose : newerPose;
         }
         double f = (double) (target - olderAt) / (newerAt - olderAt);
-        return new BoundingBox(
+        return new Pose(new BoundingBox(
                 lerp(older.getMinX(), newer.getMinX(), f), lerp(older.getMinY(), newer.getMinY(), f), lerp(older.getMinZ(), newer.getMinZ(), f),
-                lerp(older.getMaxX(), newer.getMaxX(), f), lerp(older.getMaxY(), newer.getMaxY(), f), lerp(older.getMaxZ(), newer.getMaxZ(), f));
+                lerp(older.getMaxX(), newer.getMaxX(), f), lerp(older.getMaxY(), newer.getMaxY(), f), lerp(older.getMaxZ(), newer.getMaxZ(), f)),
+                lerp(olderPose.eyeHeight(), newerPose.eyeHeight(), f));
     }
 
     private static double lerp(double a, double b, double f) {
@@ -176,9 +187,9 @@ public final class HitboxHistory {
     }
 
     /**
-     * Carries a point on box {@code from} to the same place on box {@code to}, scaled per axis: the
-     * height share and the offset from the middle that hit zones and limbs are read from stay the same,
-     * also when the box changed size (crouching, lying down) in between.
+     * Carries a point on box {@code from} to the same place on box {@code to}, scaled per axis, so the
+     * wound and the blood show on the body where it stands now, also when the box changed size
+     * (crouching, lying down) in between. Only for showing: the hit zone is read on {@code from}.
      */
     static Vector carry(Vector point, BoundingBox from, BoundingBox to) {
         return new Vector(
@@ -193,16 +204,17 @@ public final class HitboxHistory {
         return toMin + share * (toMax - toMin);
     }
 
-    /** One entity's recent boxes, newest at {@code head}. */
+    /** One entity's recent boxes and eye heights, newest at {@code head}. */
     private static final class Track {
         private final long[] at = new long[SAMPLES];
         private final double[] boxes = new double[SAMPLES * 6];
+        private final double[] eyes = new double[SAMPLES];
         private int head;
         private int count;
         private int lastTick;
         private @Nullable UUID world;
 
-        void add(World in, BoundingBox box, long now, int tick) {
+        void add(World in, BoundingBox box, double eyeHeight, long now, int tick) {
             if (!in.getUID().equals(world)) {
                 world = in.getUID();
                 count = 0;
@@ -216,6 +228,7 @@ public final class HitboxHistory {
             boxes[o + 3] = box.getMaxX();
             boxes[o + 4] = box.getMaxY();
             boxes[o + 5] = box.getMaxZ();
+            eyes[head] = eyeHeight;
             count = Math.min(SAMPLES, count + 1);
             lastTick = tick;
         }
@@ -229,9 +242,10 @@ public final class HitboxHistory {
             return at[index(back)];
         }
 
-        BoundingBox box(int back) {
-            int o = index(back) * 6;
-            return new BoundingBox(boxes[o], boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5]);
+        Pose pose(int back) {
+            int i = index(back);
+            int o = i * 6;
+            return new Pose(new BoundingBox(boxes[o], boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5]), eyes[i]);
         }
     }
 }

@@ -199,20 +199,31 @@ function look () {
 const captureId = () => bot.registry.blocksByName.sculk_vein.id
 const captures = () => bot.findBlocks({ matching: captureId(), maxDistance: 6, count: 64 })
 /**
- * Where the ray meets a capture block's outline in cell c: where it enters the cell, or, starting
- * inside, the 1/16-block plate on the face it leaves by. Null if it misses the cell.
+ * Where the ray meets a capture block's outline in cell c (six 1/16-block plates on its faces), as
+ * vanilla's VoxelShape.clip finds it: a probe point a thousandth of the 4.5-block reach ahead that is
+ * inside a plate is a hit right there; otherwise the nearest plate face the ray crosses strictly ahead
+ * (AABB.clip). Null if it misses. So a ray starting inside the cell meets the plate it leaves by, and
+ * one starting on that face itself meets nothing in this cell.
  */
 function shell (o, d, c) {
-  const inside = ['x', 'y', 'z'].every(a => o[a] >= c[a] && o[a] < c[a] + 1)
-  if (!inside) return rayBox(o, d, c, c.offset(1, 1, 1))
-  let out = Infinity
-  let across = 1
-  for (const a of ['x', 'y', 'z']) {
-    if (Math.abs(d[a]) < 1e-9) continue
-    const t = Math.max((c[a] - o[a]) / d[a], (c[a] + 1 - o[a]) / d[a])
-    if (t < out) { out = t; across = Math.abs(d[a]) }
+  const P = 1 / 16
+  const plates = [
+    [c, c.offset(P, 1, 1)], [c.offset(1 - P, 0, 0), c.offset(1, 1, 1)],
+    [c, c.offset(1, P, 1)], [c.offset(0, 1 - P, 0), c.offset(1, 1, 1)],
+    [c, c.offset(1, 1, P)], [c.offset(0, 0, 1 - P), c.offset(1, 1, 1)]
+  ]
+  const probe = o.plus(d.scaled(0.001 * 4.5))
+  if (plates.some(([min, max]) => ['x', 'y', 'z'].every(a => probe[a] >= min[a] && probe[a] < max[a]))) return 0.001 * 4.5
+  let best = null
+  for (const [min, max] of plates) {
+    for (const a of ['x', 'y', 'z']) {
+      if (Math.abs(d[a]) <= 1e-7) continue
+      const t = ((d[a] > 0 ? min[a] : max[a]) - o[a]) / d[a]
+      if (!(t > 0) || (best !== null && t >= best)) continue
+      if (['x', 'y', 'z'].every(b => b === a || (o[b] + t * d[b] > min[b] - 1e-7 && o[b] + t * d[b] < max[b] + 1e-7))) best = t
+    }
   }
-  return Math.max(0, out - 1 / 16 / across)
+  return best
 }
 /** Capture blocks by the bot's feet, where TriggerService.feet keeps them out. */
 function byFeet () {

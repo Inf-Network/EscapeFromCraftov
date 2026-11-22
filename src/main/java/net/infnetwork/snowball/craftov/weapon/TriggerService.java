@@ -95,6 +95,12 @@ public final class TriggerService implements Listener {
     private static final double REACH = DISTANCE + LEAD;
     /** Thickness of each face plate of the capture block's outline. */
     private static final double PLATE = 1.0 / 16;
+    /**
+     * How far ahead of the eye the client's block pick first probes (a thousandth of its 4.5-block
+     * reach, in VoxelShape.clip), with some margin: an eye closer than this to the face its crosshair
+     * leaves the cell by never meets that cell's plates, since the probe is already past them.
+     */
+    private static final double PROBE = 0.01;
     /** No cell: the {@link #key} of a cell beyond the world border. */
     private static final long NONE = Long.MIN_VALUE;
     /**
@@ -414,6 +420,9 @@ public final class TriggerService implements Listener {
             }
             last = cell;
             double at = meets(from, dir, x, y, z);
+            if (at == Double.POSITIVE_INFINITY) {
+                continue;
+            }
             if (at > hit - LEAST_LEAD) {
                 break;
             }
@@ -431,7 +440,8 @@ public final class TriggerService implements Listener {
 
     /**
      * How far along a ray from {@code from} going {@code dir} it meets the capture block's outline in
-     * this cell: where it enters the cell, or, starting inside, the plate on the face it leaves by.
+     * this cell: where it enters the cell (a ray starting on that face too), or, starting inside, the
+     * plate on the face it leaves by. Infinite if it starts too close to that face (see {@link #PROBE}).
      */
     private static double meets(Vector from, Vector dir, int x, int y, int z) {
         double[] f = {from.getX(), from.getY(), from.getZ()};
@@ -452,7 +462,10 @@ public final class TriggerService implements Listener {
                 across = Math.abs(d[i]);
             }
         }
-        return in > 0 ? in : Math.max(0, out - PLATE / across);
+        if (in > -1e-9) {
+            return Math.max(0, in);
+        }
+        return out <= PROBE ? Double.POSITIVE_INFINITY : Math.max(0, out - PLATE / across);
     }
 
     /** A cell the capture block may go in: air, not by the feet (see {@link #feet}) and within reach. */

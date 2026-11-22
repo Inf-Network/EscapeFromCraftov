@@ -9,8 +9,10 @@
 //   pump   R12 (70 rpm: 17 ticks, 14 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
 //   draw   M4C to P18 (6 ticks to draw): clicks in the first 200 ms after the switch fire nothing
 //          before the tick the gun is up, one at 500 ms fires, and the action bar says the gun is
-//          being drawn; the trigger held from the moment of the switch fires once, 6 ticks after
-//          the draw began; right mouse held from the switch aims only once the gun is up.
+//          being drawn; the pistol's stack carries the draw mark (damage 1, which keeps its model
+//          from aiming or flashing) from the switch until it is up, and a gun switched away from
+//          mid-draw loses it; the trigger held from the moment of the switch fires once, 6 ticks
+//          after the draw began; right mouse held from the switch aims on the tick the gun is up.
 //   bloom  M4C sprayed on full auto for 1.2 s, over to the P18 and back: the first shot after the draw
 //          still has the spray's bloom, less 0.08 for every tick since the spray's last shot.
 //   cut    M4C three rounds down, Q, and over to the P18 0.4 s into the reload: the action bar says
@@ -69,6 +71,11 @@ const cooldowns = []
 bot._client.on('action_bar', p => bars.push({ at: Date.now(), text: JSON.stringify(p) })) // raw: the event misses NBT text
 bot._client.on('set_cooldown', p => { if (JSON.stringify(p).includes('reload')) cooldowns.push({ at: Date.now(), ticks: p.cooldownTicks }) })
 
+/** The draw mark on a stack (ItemFactory.setDrawing): its damage component. */
+const damageOf = item => item && item.componentMap && item.componentMap.has('damage') ? item.componentMap.get('damage').data : 0
+/** Every slot update the bot was sent: { at, slot, damage }. */
+const slotUpdates = []
+bot.once('spawn', () => bot.inventory.on('updateSlot', (slot, before, after) => slotUpdates.push({ at: Date.now(), slot, damage: damageOf(after) })))
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
 const hotbar = id => bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && itemId(s) === id)
 let sequence = 1
@@ -96,6 +103,10 @@ const shotsSince = from => logSince(from).filter(l => l.includes(`[debug] ${name
 /** Guns this bot drew since `from`: { gun, tick, ready, next, bloom }. */
 const drawsSince = from => logSince(from).map(l => l.match(new RegExp(`\\[debug\\] ${name} draws ([a-z0-9_]+) tick=(\\d+) ready=(\\d+) next=(-?\\d+) bloom=([0-9.]+)`)))
   .filter(Boolean).map(m => ({ gun: m[1], tick: Number(m[2]), ready: Number(m[3]), next: Number(m[4]), bloom: Number(m[5]) }))
+
+/** Guns this bot brought up since `from`: { gun, tick, aim }. */
+const upsSince = from => logSince(from).map(l => l.match(new RegExp(`\\[debug\\] ${name} up ([a-z0-9_]+) tick=(\\d+) aim=(true|false)`)))
+  .filter(Boolean).map(m => ({ gun: m[1], tick: Number(m[2]), aim: m[3] === 'true' }))
 
 // ---------------------------------------------------------------- the trigger
 /** The capture cell the server keeps in front of the crosshair (TriggerService), as the client would dig it. */
@@ -201,6 +212,8 @@ async function draw (spot) {
   // Clicks before the pistol is up do nothing; one after it does.
   let from = logSize()
   const barsFrom = bars.length
+  const slotsFrom = slotUpdates.length
+  const pistolSlot = hotbar('p18')
   hold('p18')
   let swapped = Date.now()
   for (const ms of [50, 120, 200]) {
@@ -222,6 +235,24 @@ async function draw (spot) {
   check('draw: a click at 500 ms fires', late.length === 1, `${late.length} shots`)
   check('draw: a click while drawing says so', bars.slice(barsFrom).some(b => b.at - swapped < 400 && b.text.includes('拔枪中')),
     `${bars.length - barsFrom} action bar lines`)
+  // The mark goes on with the switch and comes off when the gun is up (6 ticks), by the slot updates.
+  const marks = slotUpdates.slice(slotsFrom).filter(u => u.slot === pistolSlot)
+  const on = marks.find(u => u.damage === 1)
+  const off = on && marks.find(u => u.at > on.at && u.damage === 0)
+  check('draw: the pistol carries the draw mark from the switch until it is up', !!on && !!off && on.at - swapped < 200 &&
+    off.at - on.at >= 200 && off.at - on.at <= 450 && damageOf(bot.inventory.slots[pistolSlot]) === 0,
+    on ? `marked ${on.at - swapped} ms after the switch, cleared ${off ? off.at - on.at + ' ms later' : 'never'}` : 'never marked')
+
+  // A gun switched away from before it is up loses the mark.
+  const rifleSlot = hotbar('m4c')
+  const leaveFrom = slotUpdates.length
+  hold('m4c')
+  await sleep(150) // the M4C takes 12 ticks
+  hold('p18')
+  await sleep(700)
+  const rifle = slotUpdates.slice(leaveFrom).filter(u => u.slot === rifleSlot).map(u => u.damage)
+  check('draw: a gun switched away from mid-draw loses the mark', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 0,
+    `M4C slot damage over the switch: ${rifle.join(',')}`)
 
   // The trigger held from the moment of the switch fires once, as the gun comes up.
   hold('m4c')
@@ -239,13 +270,20 @@ async function draw (spot) {
   hold('m4c')
   await sleep(1000)
   const adsFrom = adsHeard.length
+  from = logSize()
   hold('p18')
   swapped = Date.now()
   for (let i = 0; i < 5; i++) { useItem(); await sleep(200) }
   await sleep(300)
   const ads = adsHeard.slice(adsFrom)
-  check('draw: right mouse held from the switch aims only once the gun is up', ads.length >= 1 && ads[0] - swapped >= 280,
+  d = drawsSince(from).find(x => x.gun === 'p18')
+  const up = upsSince(from).find(x => x.gun === 'p18')
+  // It now aims on the very tick the gun is up (6 ticks, 300 ms), and the server's ticks are not all
+  // 50 ms long: a tick of slack here, the exact tick is the next check.
+  check('draw: right mouse held from the switch aims only once the gun is up', ads.length >= 1 && ads[0] - swapped >= 250,
     ads.length ? `aimed ${ads[0] - swapped} ms after the switch` : 'never aimed')
+  check('draw: and aims on the tick it is up, not with the next use packet', !!d && !!up && up.tick === d.ready && up.aim,
+    up ? `up at tick ${up.tick} (ready ${d && d.ready}), aiming ${up.aim}` : 'no up logged')
 }
 
 // ---------------------------------------------------------------- bloom

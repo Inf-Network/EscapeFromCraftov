@@ -4,7 +4,7 @@
 # Revision of this file. The server copies it from the jar only when it is missing, so raise this
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
-revision: 1
+revision: 2
 items:
   # ------------------------------------------------------------------ handguns
   p18:

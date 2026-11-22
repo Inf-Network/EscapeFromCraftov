@@ -618,8 +618,9 @@ public final class AiService implements Listener {
         Vector facing = mob.getLocation().getDirection().setY(0);
         for (Player player : bot.raid.online()) {
             RaidPlayer rp = bot.raid.player(player.getUniqueId());
-            if (rp == null || rp.state != RaidPlayer.State.ALIVE || !plugin.raids().canBeShot(player)
-                    || now < rp.aiGraceUntil) {
+            // A player who just rejoined is seen and aimed at through their 2 s of protection
+            // (shoot() holds fire until it ends), so soldiers fight on the moment it is over.
+            if (rp == null || rp.state != RaidPlayer.State.ALIVE || now < rp.aiGraceUntil) {
                 continue;
             }
             // At night soldiers see about half as far, but a lit tactical light gives you away from beyond
@@ -688,7 +689,7 @@ public final class AiService implements Listener {
 
     private void shoot(Bot bot, Player target, double distance, long now) {
         GunSpec gun = bot.gun.gun();
-        if (now < bot.reloadUntil || now < bot.nextShotTick) {
+        if (now < bot.reloadUntil || now < bot.nextShotTick || !plugin.raids().canBeShot(target)) {
             return;
         }
         if (bot.ammoLeft <= 0) {

@@ -91,9 +91,6 @@ public final class MarketService implements Listener {
     private Data data = new Data();
     private boolean dirty;
     private boolean closed;
-    /** Copies handed out for saving (main thread), and the newest one on disk (under the write lock). */
-    private long saves;
-    private long written;
     /** One writer, so saves land in the order they were taken. */
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-MarketIO");
@@ -187,8 +184,7 @@ public final class MarketService implements Listener {
         }
         dirty = false;
         String json = GSON.toJson(data);
-        long version = ++saves;
-        io.execute(() -> write(json, version));
+        io.execute(() -> write(json));
     }
 
     /** Shutdown: lets queued saves finish, then writes the current state last. */
@@ -200,7 +196,7 @@ public final class MarketService implements Listener {
             Thread.currentThread().interrupt();
         }
         if (!closed) {
-            write(GSON.toJson(data), ++saves);
+            write(GSON.toJson(data));
         }
     }
 
@@ -210,17 +206,9 @@ public final class MarketService implements Listener {
         save();
     }
 
-    /**
-     * Async saves run on Bukkit's thread pool and may overlap: an older copy must never land after
-     * a newer one, or after the final save on shutdown (which waits here for a running write).
-     */
-    private synchronized void write(String json, long version) {
-        if (version <= written) {
-            return;
-        }
+    private void write(String json) {
         try {
             AtomicFiles.write(file, json);
-            written = version;
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save market data: " + ex.getMessage());
         }

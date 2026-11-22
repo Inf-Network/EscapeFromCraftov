@@ -1120,20 +1120,21 @@ public final class RaidManager implements Listener {
         if (rp.state != RaidPlayer.State.DISCONNECTED && !rp.active()) {
             return;
         }
-        lostOffline(raid, rp, "失踪（" + reason + "）", "missing in raid " + raid.id);
+        lostOffline(raid, rp, "失踪（" + reason + "）", "missing in raid " + raid.id, false);
         announce(raid, "<#8A8F98>" + Text.escape(rp.name) + " 失去联络。");
     }
 
     /**
      * A disconnected player died where they stood: their stand-in was killed, or they bled out.
      * Settled like going missing, but it is a death in the raid like any other: the kill
-     * feed shows it and the kill counts for whoever made it.
+     * feed shows it, the kill counts for whoever made it, and the player's own kills and
+     * experience from the raid count as they would on any death.
      */
     private void diedOffline(Raid raid, RaidPlayer rp, DamageService.@Nullable LastHit hit) {
         if (rp.state != RaidPlayer.State.DISCONNECTED) {
             return;
         }
-        lostOffline(raid, rp, "断线后" + deathReason(hit), "killed while offline in raid " + raid.id);
+        lostOffline(raid, rp, "断线后" + deathReason(hit), "killed while offline in raid " + raid.id, true);
         creditKill(raid, hit, rp);
         killFeed(raid, hit, rp.name);
     }
@@ -1142,9 +1143,10 @@ public final class RaidManager implements Listener {
      * Settles a player who is gone from the raid for good while offline. Their body, in their skin
      * and with everything they carried but the melee weapon, lies where their stand-in stood (or
      * where they left, without one); the melee weapon goes back into the loadout and the secure
-     * container home, as on any death.
+     * container home, as on any death. A player who {@code died} (rather than went missing) also
+     * gets their raid kills into their stats and the experience die() grants.
      */
-    private void lostOffline(Raid raid, RaidPlayer rp, String outcome, String why) {
+    private void lostOffline(Raid raid, RaidPlayer rp, String outcome, String why, boolean died) {
         Location standing = removeStandIn(rp);
         Location at = standing != null ? standing : rp.lastLocation;
         rp.state = RaidPlayer.State.DEAD;
@@ -1188,6 +1190,7 @@ public final class RaidManager implements Listener {
             lost += plugin.items().value(stack);
         }
         long lostValue = lost;
+        long xp = died ? Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier()) : 0;
         // For the journal, should the profile be unreadable: the gear is in the raid now, so the
         // loadout must be emptied (but for the melee weapon) and the raid cleared, or a repaired
         // profile brings it back.
@@ -1197,6 +1200,8 @@ public final class RaidManager implements Listener {
                 + " (the rest of that gear stayed in the raid),"
                 + (unknown.isEmpty() ? "" : " add to mailbox " + ProfileService.json(unknown) + ",")
                 + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
+                + (died ? ", stats.kills +" + rp.kills + ", stats.ai_kills +" + rp.aiKills + ", xp +" + xp
+                + " and seasonXp +" + xp + " (each level reached pays 5000 x the level)" : "")
                 + (rp.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
                 + plugin.ranks().deathDelta(0, rp, lostValue) + " below 1100, never below 0)" : "");
         plugin.profiles().edit(rp.uuid, change, profile -> {
@@ -1206,8 +1211,13 @@ public final class RaidManager implements Listener {
             profile.secure = new ArrayList<>(rp.secure);
             profile.activeRaid = null;
             profile.addStat("deaths", 1);
+            if (died) {
+                profile.addStat("kills", rp.kills);
+                profile.addStat("ai_kills", rp.aiKills);
+                plugin.ranks().addXp(null, profile, xp);
+            }
             int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
-            profile.reports.add(0, report(raid, rp, outcome, 0, lostValue, delta, 0));
+            profile.reports.add(0, report(raid, rp, outcome, 0, lostValue, delta, xp));
             trimReports(profile);
         });
         plugin.escorts().settle(raid, rp, false);

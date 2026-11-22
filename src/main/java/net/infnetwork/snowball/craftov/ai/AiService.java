@@ -67,6 +67,16 @@ public final class AiService implements Listener {
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
 
+    /**
+     * What a soldier saw of a player on one look: how much of the sight lines to head, chest and
+     * pelvis got through (see {@link Sight}), and along which of them a round would get there.
+     */
+    private record Look(double[] seen, boolean[] open) {
+        double shown() {
+            return (seen[0] + seen[1] + seen[2]) / 3;
+        }
+    }
+
     static final class Bot {
         final Zombie mob;
         final Raid raid;
@@ -107,8 +117,8 @@ public final class AiService implements Listener {
         final Map<UUID, Double> awareness = new HashMap<>();
         /** The last player it fought (seen at lastSeenTick); unlike target it is not let go after 2 s. */
         @Nullable UUID lastFought;
-        /** What got through to the current target's head, chest and pelvis on the last look, or null. */
-        double @Nullable [] targetLines;
+        /** What it saw of the current target's head, chest and pelvis on the last look, or null. */
+        @Nullable Look targetLook;
         /** No new sidestep for a clear shot before this. */
         long nextMoveTick;
         /** Roughly where a shot from someone it had not spotted came from, who fired it, and until when it reacts. */
@@ -877,7 +887,7 @@ public final class AiService implements Listener {
         Zombie mob = bot.mob;
         Player best = null;
         double bestDist = Double.MAX_VALUE;
-        double[] bestLines = null;
+        Look bestLook = null;
         Player suspect = null;
         double suspicion = 0;
         double sight = "sniper".equals(bot.kind) ? 90 : 48;
@@ -922,11 +932,11 @@ public final class AiService implements Listener {
             if (noisy) {
                 view = Math.max(view, 0.8); // it turns towards the footsteps
             }
-            double[] lines = null;
+            Look look = null;
             double seen = 0;
             if (view > 0 || known || lit) {
-                lines = sightLines(mob, player);
-                seen = (lines[0] + lines[1] + lines[2]) / 3;
+                look = sightLines(mob, player);
+                seen = look.shown();
             }
             if (seen > 0 && (known || lit)) {
                 aware = 1;
@@ -949,7 +959,7 @@ public final class AiService implements Listener {
             if (spotted && d2 < bestDist) {
                 best = player;
                 bestDist = d2;
-                bestLines = lines;
+                bestLook = look;
             } else if (!spotted && seen > 0 && aware >= 0.4 && aware > suspicion) {
                 suspect = player;
                 suspicion = aware;
@@ -962,7 +972,7 @@ public final class AiService implements Listener {
             bot.alertPos = suspect.getLocation();
             bot.alertUntil = Math.max(bot.alertUntil, now + 20L * 4);
         }
-        bot.targetLines = bestLines;
+        bot.targetLook = bestLook;
         if (best != null) {
             if (!best.getUniqueId().equals(bot.target) || now - bot.lastSeenTick > 60) {
                 bot.engagedSince = now;
@@ -1003,20 +1013,26 @@ public final class AiService implements Listener {
 
     /**
      * How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets
-     * through: blocks as {@link Sight#through}, and smoke hides what is behind more than
-     * {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
+     * through, and whether a round would: blocks as {@link Sight#look}, and smoke hides what is
+     * behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
      */
-    private double[] sightLines(LivingEntity looker, Player player) {
+    private Look sightLines(LivingEntity looker, Player player) {
         Vector eye = looker.getEyeLocation().toVector();
         Vector feet = player.getLocation().toVector();
         double[] heights = aimHeights(player);
-        double[] out = new double[heights.length];
+        double[] seen = new double[heights.length];
+        boolean[] open = new boolean[heights.length];
         for (int i = 0; i < heights.length; i++) {
             Vector point = feet.clone().add(new Vector(0, heights[i], 0));
             double smoke = smokeAlong(player.getWorld(), eye, point);
-            out[i] = smoke > SMOKE_OPAQUE ? 0 : Sight.through(player.getWorld(), eye, point) * (1 - 0.5 * smoke / SMOKE_OPAQUE);
+            if (smoke > SMOKE_OPAQUE) {
+                continue;
+            }
+            Sight.Line line = Sight.look(player.getWorld(), eye, point);
+            seen[i] = line.seen() * (1 - 0.5 * smoke / SMOKE_OPAQUE);
+            open[i] = line.open();
         }
-        return out;
+        return new Look(seen, open);
     }
 
     /**
@@ -1080,9 +1096,10 @@ public final class AiService implements Listener {
             bot.burstLeft = burst(gun, distance, 3, 7);
         }
         Location eye = bot.mob.getEyeLocation();
-        Vector point = aimPoint(target, bot.targetLines);
+        Vector point = aimPoint(target, bot.targetLook);
         if (point == null) {
-            // Nothing of the target shows from here (it ducked behind cover): move, do not shoot the wall.
+            // It sees the target only through something that stops rounds (a fence, bars, a hedge):
+            // move for a clear shot rather than empty the magazine into it. Snipers hold fire.
             reposition(bot, target, now);
             return;
         }
@@ -1167,19 +1184,19 @@ public final class AiService implements Listener {
     }
 
     /**
-     * Where to aim at {@code target}: the chest if it shows (misses then land on the body or past it,
-     * rarely the head), else the head (someone crouched behind low cover), else the pelvis (under
-     * something). Null if none of them shows. {@code lines} is what got through to head, chest and
-     * pelvis on the last look; without it the chest.
+     * Where to aim at {@code target}, among the parts it sees and a round would reach (not through a
+     * fence, bars or leaves): the chest (misses then land on the body or past it, rarely the head),
+     * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
+     * none of them. {@code look} is the last look at the target; without one the chest.
      */
-    private static @Nullable Vector aimPoint(Player target, double @Nullable [] lines) {
+    private static @Nullable Vector aimPoint(Player target, @Nullable Look look) {
         double[] heights = aimHeights(target);
         Vector feet = target.getLocation().toVector();
-        if (lines == null) {
+        if (look == null) {
             return feet.add(new Vector(0, heights[1], 0));
         }
         for (int part : new int[]{1, 0, 2}) {
-            if (lines[part] > 0) {
+            if (look.seen()[part] > 0 && look.open()[part]) {
                 return feet.add(new Vector(0, heights[part], 0));
             }
         }

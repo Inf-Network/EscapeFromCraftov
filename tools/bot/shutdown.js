@@ -25,6 +25,14 @@
 //             the late 1000 kept, one letter.
 //   guard   - the escort, downed (a squadmate still up) when the server stops: voided, one letter.
 //   ranger  - on the private range: the lobby kit back, no range loaners, no letter.
+//   giver   - takes two gold bars, 60 .338 rounds and the master chip in with the kit. In the raid it
+//             leaves the pistol, the gold bars and the rounds in the proving ground's armory box for
+//             taker, and the chip for keeper, and uses a bandage. Voided: none of what it handed over
+//             comes back (the chip went home in keeper's secure container), the bandage does (taker's
+//             two "found" bandages do not count against it), the rest slot for slot as it went in, and
+//             the letter lists what was not handed back. The chat line says so too.
+//   taker   - takes the pistol, gold bars and rounds from the box, "finds" two bandages and extracts.
+//   keeper  - takes the chip, puts it in its secure container and is killed: it keeps the chip.
 // Also: no "Error occurred while disabling Craftov" or failed shutdown step in the log, a new
 // -shutdown.zip backup, and no craftov_raid_* folder left once the server is back.
 //
@@ -35,9 +43,10 @@
 // rejoins; once a second after the boss of a contract died in a raid whose escort had already died
 // and logged off, checking that the escort keeps the share and the boss is not refunded again (on
 // the way the dead escort, spectating the boss, must find the secure container and stash shut); and
-// once with a player in a raid, checking that their next login voids it like a stop (loadout and
-// secure container as they went in, the premium back, one letter) and that logging in again does
-// nothing more.
+// once with a player in a raid whose rifle a squadmate has just extracted with, checking that their
+// next login voids it like a stop (loadout and secure container as they went in but for the rifle,
+// which the letter and the chat line say was not handed back, the premium back, one letter) and
+// that logging in again does nothing more.
 //
 // COMPENSATION (5000) must match raid.void-compensation.money. Profiles of the bots are written
 // before they first join (insurance on, the raider's contracts and level). The server must be
@@ -64,10 +73,11 @@ const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).t
 const tag = String(Math.floor(1000 + Math.random() * 9000))
 const NAMES = {
   raider: 'SdRaid' + tag, dead: 'SdDead' + tag, gone: 'SdGone' + tag, flyer: 'SdFly' + tag, drop: 'SdDrop' + tag,
-  ranger: 'SdRng' + tag, boss: 'SdBoss' + tag, guard: 'SdGrd' + tag
+  ranger: 'SdRng' + tag, boss: 'SdBoss' + tag, guard: 'SdGrd' + tag,
+  giver: 'SdGive' + tag, taker: 'SdTake' + tag, keeper: 'SdKeep' + tag
 }
 // Only join for the --crash steps.
-const EXTRA = { escort: 'SdEsc' + tag, crasher: 'SdCrash' + tag }
+const EXTRA = { escort: 'SdEsc' + tag, crasher: 'SdCrash' + tag, mate: 'SdMate' + tag }
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a)
@@ -113,6 +123,17 @@ function clean (record) {
 const layout = loadout => JSON.stringify(Object.keys(loadout || {}).sort((a, b) => a - b).map(k => [k, clean(loadout[k])]))
 const records = list => JSON.stringify((list || []).map(clean))
 const stats = s => JSON.stringify(Object.entries(s || {}).filter(([, v]) => v !== 0).sort())
+// How many of an item the records hold, packed contents included.
+function deep (recs, fn) {
+  let n = 0
+  for (const r of Object.values(recs || {})) { n += fn(r); if (r.contents) n += deep(r.contents, fn) }
+  return n
+}
+const amountOf = (recs, id) => deep(recs, r => r.id === id ? (r.amount || 1) : 0)
+const held = (p, id) => amountOf(p.loadout, id) + amountOf(p.secure, id)
+// A loadout without the given items (packed contents included), to compare the rest of it.
+const stripRec = (r, gone) => { const c = JSON.parse(JSON.stringify(r)); if (c.contents) c.contents = c.contents.filter(x => !gone.includes(x.id)).map(x => stripRec(x, gone)); return c }
+const strip = (loadout, gone) => Object.fromEntries(Object.entries(loadout || {}).filter(([, r]) => !gone.includes(r.id)).map(([k, r]) => [k, stripRec(r, gone)]))
 
 // The contract day as TaskService counts it (it rolls over at 04:00 local time).
 const today = () => Math.floor((Date.now() - 4 * 3600e3 - new Date().getTimezoneOffset() * 60e3) / 86400e3)
@@ -179,6 +200,62 @@ const inRaidWorld = async name => /craftov_raid_/.test(await dimension(name))
 // Game mode as the server has it (the client's copy can lag behind a world change).
 const inMode = async (name, mode) => /passed/i.test(await rcon(`execute if entity @a[name=${name},gamemode=${mode}]`))
 const position = async name => (((await rcon(`data get entity ${name} Pos`)).match(/\[(.*)\]/) || [, ''])[1]).split(',').map(v => parseFloat(v))
+// The item id Craftov stores on the stack (custom data), for items whose model path differs from it.
+const cid = item => { const m = JSON.stringify(item ? item.components || '' : '').match(/"craftov:id":\{"type":"string","value":"([^"]+)"/); return m ? m[1] : null }
+/** Window slot of player inventory index i (0-8 hotbar, 9-35 main) in an open container window. */
+const bottom = (w, i) => i < 9 ? w.inventoryStart + 27 + i : w.inventoryStart + i - 9
+function findCarried (w, pred) {
+  for (let i = 0; i < 36; i++) {
+    if (i === 8) continue // the raid terminal
+    const it = w.slots[bottom(w, i)]
+    if (it && pred(it)) return i
+  }
+  return -1
+}
+const nameOf = role => NAMES[role] || EXTRA[role]
+/** Opens the proving ground's armory box (8.5 65 77.5), a container both players can reach. */
+async function openArmory (role) {
+  const bot = bots[role]
+  await rcon(`execute as ${nameOf(role)} at @s run tp @s 8.5 65 78.9 180 20`)
+  await sleep(1200)
+  const target = bot.nearestEntity(e => e.name === 'interaction')
+  if (!target) return null
+  await bot.lookAt(target.position.offset(0, 0.3, 0), true)
+  return openWindow(bot, () => bot.activateEntity(target))
+}
+/** Puts every carried stack of the wanted items in the armory box; returns [box slot, item id] pairs. */
+async function deposit (role, wanted) {
+  const bot = bots[role]
+  const w = await openArmory(role)
+  if (!w) { check(`${role}: the armory box opens`, false); return [] }
+  const empty = new Set()
+  for (let s = 0; s < w.inventoryStart; s++) if (!w.slots[s]) empty.add(s)
+  for (let round = 0; round < 12; round++) {
+    const i = findCarried(w, it => wanted.includes(cid(it)))
+    if (i < 0) break
+    await bot.clickWindow(bottom(w, i), 0, 0) // a click moves the stack into the box
+    await sleep(400)
+  }
+  const box = [...empty].filter(s => wanted.includes(cid(w.slots[s]))).map(s => [s, cid(w.slots[s])])
+  bot.closeWindow(w)
+  await sleep(400)
+  return box
+}
+async function takeFromBox (role, slots) {
+  const bot = bots[role]
+  const w = await openArmory(role)
+  if (!w) { check(`${role}: the armory box opens`, false); return }
+  for (const s of slots) { await bot.clickWindow(s, 0, 0); await sleep(400) }
+  bot.closeWindow(w)
+  await sleep(400)
+}
+const carries = (role, id) => bots[role].inventory.items().filter(i => cid(i) === id).reduce((a, i) => a + i.count, 0)
+/** Out through the proving ground's always-open extract. */
+async function extract (role) {
+  await rcon(`execute as ${nameOf(role)} at @s run tp @s 106.5 65 8.5`)
+  return waitFor(async () => (await dimension(nameOf(role))).includes('craftov_lobby'), 30000, 500)
+}
+const killSoldiers = async world => { for (const type of ['zombie', 'husk', 'drowned']) await rcon(`execute in minecraft:${world} run kill @e[type=minecraft:${type}]`) }
 
 async function queueSolo (role, ranked = false) {
   bots[role].chat(`/cv queue proving NORMAL SOLO${ranked ? ' true' : ''}`)
@@ -211,8 +288,10 @@ async function setup () {
     secure: [{ id: 'bandage', amount: 1 }]
   })
   seed(NAMES.dead, { bounty: BOUNTY })
-  for (const role of ['gone', 'flyer', 'drop', 'boss', 'guard']) seed(NAMES[role])
+  for (const role of ['gone', 'flyer', 'drop', 'boss', 'guard', 'giver', 'taker', 'keeper']) seed(NAMES[role])
   for (const role of Object.keys(NAMES)) { await make(role); await sleep(1500) }
+  // What the giver hands over in the raid goes in with its kit.
+  for (const gift of ['gold_bar 2', 'ammo_338_fmj 30', 'ammo_338_fmj 30', 'master_chip 1']) await rcon(`cv give ${NAMES.giver} ${gift}`)
   // The starter kit (rifle, pistol, medkit, bandages, ammo, rig, backpack, armour, helmet) is the
   // loadout; the lobby saves it every 2 s and the profile reaches the disk within 10 s.
   await sleep(12000)
@@ -232,6 +311,7 @@ async function setup () {
   const world = (await dimension(NAMES.raider)).replace(/^minecraft:/, '')
   const premium = before.raider.money - await balance(NAMES.raider)
   check('raider paid an insurance premium', premium > 0, String(premium))
+  expect.raiderFees = premium
   // Only the soldier posted below: the map's own would hunt the bots once the raider has fired.
   for (const type of ['zombie', 'husk', 'drowned']) await rcon(`execute in minecraft:${world} run kill @e[type=minecraft:${type}]`)
   await sleep(3500) // spawn protection
@@ -308,6 +388,8 @@ async function setup () {
     check('guard is downed', await waitFor(() => c.chatLog.some(m => m.includes(NAMES.guard) && m.includes('倒地')), 3000))
   }
 
+  if (!await handoff()) return false
+
   // Flyer and drop: one more raid (nobody joins a running one); stop while its entry camera runs.
   await queueSolo('flyer')
   await queueSolo('drop')
@@ -323,6 +405,78 @@ async function setup () {
   const shut = await openWindow(f, () => f.chat('/cv secure'), 800)
   if (shut) f.closeWindow(shut)
   check('flyer cannot open the secure container during the fly-in', !shut && f.chatLog.slice(from).some(m => m.includes('无法打开安全箱')))
+  return true
+}
+
+/**
+ * Giver, taker and keeper in one raid: the giver hands the taker the pistol, the gold bars and the
+ * .338 rounds through the armory box, and the keeper the master chip, and uses a bandage. The taker
+ * "finds" two bandages and extracts; the keeper puts the chip in its secure container and is
+ * killed. The giver stays in the raid until the stop.
+ */
+async function handoff () {
+  const trio = ['giver', 'taker', 'keeper'].map(nameOf)
+  for (const role of ['giver', 'taker', 'keeper']) await queueSolo(role)
+  const down = await landed(trio)
+  check('handoff: giver, taker and keeper land in a raid', down, (await Promise.all(trio.map(dimension))).join(' / '))
+  if (!down) return false
+  check('handoff: all three are in the same raid', new Set(await Promise.all(trio.map(dimension))).size === 1)
+  await killSoldiers((await dimension(NAMES.giver)).replace(/^minecraft:/, ''))
+  await sleep(3500) // spawn protection
+
+  const handed = ['p18', 'gold_bar', 'ammo_338_fmj', 'master_chip']
+  const box = await deposit('giver', handed)
+  check('handoff: the giver leaves the pistol, gold bars, .338 and the chip in the box', handed.every(id => box.some(([, i]) => i === id)),
+    JSON.stringify(box))
+  await takeFromBox('taker', box.filter(([, id]) => id !== 'master_chip').map(([slot]) => slot))
+  await takeFromBox('keeper', box.filter(([, id]) => id === 'master_chip').map(([slot]) => slot))
+  check('handoff: the taker holds the pistols, 2 gold bars and 60 .338', carries('taker', 'p18') === 2 && carries('taker', 'gold_bar') === 2
+    && carries('taker', 'ammo_338_fmj') === 60, ['p18', 'gold_bar', 'ammo_338_fmj'].map(id => id + ' ' + carries('taker', id)).join(', '))
+  check('handoff: the keeper holds the chip', carries('keeper', 'master_chip') === 1)
+
+  // The giver uses up a bandage; the taker finds two of its own.
+  const g = bots.giver
+  const hadBandages = carries('giver', 'bandage')
+  await rcon(`cv injure ${NAMES.giver} left_arm light`)
+  await sleep(500)
+  const med = hotbar(g, 'bandage')
+  if (med >= 0) {
+    g.setQuickBarSlot(med)
+    await sleep(300)
+    g.activateItem()
+    await sleep(4000)
+    g.deactivateItem()
+    await sleep(800)
+  }
+  check('handoff: the giver uses a bandage', carries('giver', 'bandage') === hadBandages - 1, `${hadBandages} -> ${carries('giver', 'bandage')}`)
+  await rcon(`cv give ${NAMES.taker} bandage 2`)
+  await sleep(800)
+  check('handoff: the taker extracts', await extract('taker'))
+
+  // The keeper: the chip into the secure container, then killed.
+  const k = bots.keeper
+  const secure = await openWindow(k, () => k.chat('/cv secure'))
+  if (secure) {
+    const slot = secure.slots.findIndex((it, i) => i >= secure.inventoryStart && it && cid(it) === 'master_chip')
+    if (slot >= 0) { await k.clickWindow(slot, 0, 0); await sleep(500) }
+    check('handoff: the keeper moves the chip into its secure container', secure.slots.slice(0, 9).some(it => it && cid(it) === 'master_chip'))
+    k.closeWindow(secure)
+    await sleep(500)
+  } else check('handoff: the keeper opens the secure container', false)
+  await rcon(`kill ${NAMES.keeper}`)
+  check('handoff: the keeper dies with the chip in the secure container',
+    await waitFor(() => { const p = profile(NAMES.keeper); return p.activeRaid == null && ids(p.secure).includes('master_chip') }, 8000, 250))
+
+  // On disk at once: what left the raid with the others is on the giver's deployment record.
+  const noted = await waitFor(() => {
+    const d = profile(NAMES.giver).deployment || {}
+    return (d.gone || []).length === 2 && (d.goneStacks || {}).gold_bar === 2 && (d.goneStacks || {}).ammo_338_fmj === 60
+  }, 5000, 250)
+  const record = profile(NAMES.giver).deployment || {}
+  check('handoff: the pistol, the chip, 2 gold bars and 60 .338 are on the giver\'s record as gone', noted,
+    JSON.stringify({ gone: record.gone, goneStacks: record.goneStacks }))
+  check('handoff: the bandage it used is not', !(record.goneStacks || {}).bandage)
+  check('handoff: the giver is still in the raid', await inMode(NAMES.giver, 'adventure') && await inRaidWorld(NAMES.giver))
   return true
 }
 
@@ -436,9 +590,15 @@ async function stopAndRestart () {
 
   // What the players saw before the connection dropped.
   const saw = (role, text) => bots[role] && bots[role].chatLog.some(m => m.includes(text))
-  for (const role of ['raider', 'flyer', 'boss', 'guard']) {
+  for (const role of ['raider', 'flyer', 'boss', 'guard', 'giver']) {
     check(`${role} is told the raid was voided`, saw(role, '服务器维护：本次行动已作废'))
   }
+  const line = (bots.raider.chatLog.find(m => m.includes('服务器维护：本次行动已作废')) || '')
+  const clawed = Number(((line.match(/悬赏共 ◈([\d,]+) 已扣回/) || [, 'NaN'])[1]).replace(/,/g, ''))
+  check('raider: the message says how much of what the raid paid was taken back', clawed === expect.raiderPaid + expect.raiderFees,
+    `expected ${expect.raiderPaid + expect.raiderFees}: ${line}`)
+  check('giver: the message says some gear was not handed back', saw('giver', '已被其他干员带出本局的不再退回'))
+  check('flyer: no word of anything taken back', !saw('flyer', '已扣回') && !saw('flyer', '不再退回'))
   check('dead is told the insured gear came back', saw('dead', '保险理赔'))
 
   const text = latestLog()
@@ -477,6 +637,34 @@ async function stopAndRestart () {
   check('raider: rank points as before', raider.rankPoints === rb.rankPoints, `${rb.rankPoints} -> ${raider.rankPoints}`)
   check('raider: contracts as before', JSON.stringify(raider.tasks) === JSON.stringify(rb.tasks), JSON.stringify(raider.tasks).slice(0, 300))
   check('raider: no raid report', (raider.reports || []).length === (rb.reports || []).length)
+  const rl = letters(raider)[0] || { body: '' }
+  check('raider: the letter says the raid\'s rewards and the bounty were taken back',
+    rl.body.includes('已从余额扣回') && rl.body.includes('领取的悬赏退回到被击杀者头上'), rl.body)
+
+  const giver = profile(NAMES.giver)
+  const gb = before.giver.p
+  const handed = ['p18', 'master_chip', 'gold_bar', 'ammo_338_fmj']
+  check('giver: went in with the pistol, the chip, 2 gold bars and 60 .338',
+    held(gb, 'p18') === 1 && held(gb, 'master_chip') === 1 && held(gb, 'gold_bar') === 2 && held(gb, 'ammo_338_fmj') === 60,
+    handed.map(id => id + ' ' + held(gb, id)).join(', '))
+  check('giver: out of the raid', giver.activeRaid == null && giver.deployment == null)
+  check('giver: none of what it handed over comes back', handed.every(id => held(giver, id) === 0), handed.map(id => id + ' ' + held(giver, id)).join(', '))
+  check('giver: the rest of the loadout slot for slot as it went in', layout(strip(giver.loadout, handed)) === layout(strip(gb.loadout, handed)),
+    `${layout(strip(gb.loadout, handed)).slice(0, 300)}\n   -> ${layout(strip(giver.loadout, handed)).slice(0, 300)}`)
+  check('giver: the bandage it used comes back (the taker\'s finds do not count against it)', held(giver, 'bandage') === held(gb, 'bandage'),
+    `${held(gb, 'bandage')} -> ${held(giver, 'bandage')}`)
+  check('giver: secure container as it went in', records(giver.secure) === records(gb.secure))
+  check('giver: balance as before deploying (fees back)', giver.money === before.giver.money, `${before.giver.money} -> ${giver.money}`)
+  const gl = letters(giver)
+  check('giver: one letter that lists what was not handed back', gl.length === 1 && gl[0].body.includes('已被其他干员带出本局的不再退回：2 件装备')
+    && gl[0].body.includes('金条 ×2') && gl[0].body.includes('.338 FMJ ×60') && !gl[0].body.includes('绷带'), gl[0] && gl[0].body)
+  const taker = profile(NAMES.taker)
+  check('taker: extracted with the pistol, the gold bars and the rounds',
+    held(taker, 'p18') === 2 && held(taker, 'gold_bar') === 2 && held(taker, 'ammo_338_fmj') === 60, ['p18', 'gold_bar', 'ammo_338_fmj'].map(id => id + ' ' + held(taker, id)).join(', '))
+  check('taker: no letter', letters(taker).length === 0)
+  const keeper = profile(NAMES.keeper)
+  check('keeper: the chip stays in its secure container', ids(keeper.secure).includes('master_chip'))
+  check('keeper: no letter', letters(keeper).length === 0)
 
   const gone = profile(NAMES.gone)
   check('gone: the rifle it threw is back once', count(gone.loadout, 'k47') === 1, ids(gone.loadout).join(','))
@@ -674,15 +862,31 @@ async function crashEscort () {
 async function crashVoid () {
   if (serverPids() === null) return
   seed(EXTRA.crasher)
+  seed(EXTRA.mate)
   const k = await make('crasher')
+  await make('mate')
   await sleep(12000) // the starter kit reaches the disk
   const was = profile(EXTRA.crasher)
   const money = await balance(EXTRA.crasher)
   k.chat('/cv queue proving NORMAL SOLO')
-  const down = await landed([EXTRA.crasher])
-  check('crash void: crasher lands in a raid', down)
+  bots.mate.chat('/cv queue proving NORMAL SOLO')
+  const down = await landed([EXTRA.crasher, EXTRA.mate])
+  check('crash void: crasher and mate land in a raid', down)
   if (!down) return
+  check('crash void: in the same raid', (await dimension(EXTRA.crasher)) === (await dimension(EXTRA.mate)))
   check('crash void: an insurance premium was paid', await balance(EXTRA.crasher) < money)
+  await killSoldiers((await dimension(EXTRA.crasher)).replace(/^minecraft:/, ''))
+  await sleep(3500) // spawn protection
+  // The crasher's rifle goes home with the mate, whose save lands first; the crasher's record notes
+  // it right after.
+  const box = await deposit('crasher', ['k47'])
+  await takeFromBox('mate', box.map(([slot]) => slot))
+  check('crash void: the mate holds both rifles', carries('mate', 'k47') === 2, String(carries('mate', 'k47')))
+  check('crash void: the mate extracts with them', await extract('mate'))
+  check('crash void: the rifle is on the crasher\'s record as gone, on disk at once',
+    await waitFor(() => ((profile(EXTRA.crasher).deployment || {}).gone || []).length === 1, 5000, 250),
+    JSON.stringify((profile(EXTRA.crasher).deployment || {}).gone))
+  quit('mate')
   await rcon(`cv give ${EXTRA.crasher} splint`)
   await sleep(11000) // the profile flush runs every 10 s
   const killedAt = Date.now()
@@ -697,15 +901,20 @@ async function crashVoid () {
   const back = await make('crasher')
   await sleep(5000)
   check('crash void: told the raid was voided', back.chatLog.filter(m => m.includes('因服务器中断已作废')).length === 1)
+  check('crash void: told the rifle the mate took out was not handed back', back.chatLog.some(m => m.includes('因服务器中断已作废') && m.includes('已被其他干员带出本局的不再退回')))
   check('crash void: told of the unread letter', back.chatLog.some(m => m.includes('封未读邮件')))
   quit('crasher')
   await sleep(2000) // the quit save
   const p = profile(EXTRA.crasher)
   check('crash void: out of the raid', p.activeRaid == null && p.deployment == null)
-  check('crash void: loadout slot for slot as it went in', layout(p.loadout) === layout(was.loadout), `${layout(was.loadout).slice(0, 300)}\n   -> ${layout(p.loadout).slice(0, 300)}`)
+  check('crash void: no rifle back (the mate took it out)', count(was.loadout, 'k47') === 1 && count(p.loadout, 'k47') === 0, ids(p.loadout).join(','))
+  check('crash void: the rest of the loadout slot for slot as it went in', layout(strip(p.loadout, ['k47'])) === layout(strip(was.loadout, ['k47'])),
+    `${layout(strip(was.loadout, ['k47'])).slice(0, 300)}\n   -> ${layout(strip(p.loadout, ['k47'])).slice(0, 300)}`)
   check('crash void: secure container as it went in', records(p.secure) === records(was.secure))
   check('crash void: balance as before deploying (premium back)', p.money === money, `${money} -> ${p.money}`)
   check('crash void: one compensation letter', letters(p).length === 1 && letters(p)[0].money === COMPENSATION, JSON.stringify(letters(p)).slice(0, 200))
+  check('crash void: the letter says one piece of gear was not handed back', (letters(p)[0] || { body: '' }).body.includes('已被其他干员带出本局的不再退回：1 件装备'),
+    (letters(p)[0] || {}).body)
   check('crash void: the raid is off the stats', stats(p.stats) === stats(was.stats), `${stats(was.stats)} -> ${stats(p.stats)}`)
   const again = await make('crasher')
   await sleep(4000)
@@ -733,4 +942,4 @@ async function crashVoid () {
   log(failures.length ? `FAILED ${failures.length}: ${failures.join('; ')}` : 'ALL PASSED')
   setTimeout(() => process.exit(failures.length ? 1 : 0), 500)
 })()
-setTimeout(() => { log('timeout'); process.exit(1) }, 900000)
+setTimeout(() => { log('timeout'); process.exit(1) }, 1500000)

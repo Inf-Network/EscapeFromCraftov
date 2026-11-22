@@ -241,9 +241,9 @@ public final class LobbyService implements Listener {
     /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
-        // The cursor item comes home too: back into the inventory, or the mailbox (the player is still
-        // in the raid world, where give's own overflow would drop to the floor).
-        plugin.carry().mailOrDrop(player, plugin.carry().reclaimCursor(player));
+        // The cursor item comes home too: back into the inventory, or the mailbox. An armory item on
+        // it is left there, emptied of the player's own items, for stripTestItems to take.
+        plugin.carry().reclaimCursorHome(player);
         int[] stripped = stripTestItems(player);
         // Whatever comes home from a raid (extracted, voided, server stop) is no longer insured.
         plugin.insurance().strip(player);
@@ -301,15 +301,7 @@ public final class LobbyService implements Listener {
         // floor, so what does not fit is mailed directly.
         int mailed = 0;
         for (ItemRecord record : handBack) {
-            ItemStack stack = plugin.items().fromRecord(record);
-            if (stack == null) {
-                // An id items.yml no longer has cannot be handed back, but its record is kept.
-                plugin.carry().mail(player, record);
-                mailed++;
-                continue;
-            }
-            ItemStack left = plugin.carry().give(player, stack, false);
-            if (left != null && plugin.carry().mail(player, left)) {
+            if (plugin.carry().handBack(player, record) != null) {
                 mailed++;
             }
         }

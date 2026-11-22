@@ -279,24 +279,78 @@ public final class CarryService {
     }
 
     /**
-     * Mails a stack the player cannot carry even in a raid: they are on their way out of it, so on
-     * the floor it would stay behind. A stack with no stored form (an armory item) drops and stays.
+     * Settles the cursor on the way home from a raid (extraction, voided raid, server stop): back
+     * into the carry cells, or straight to the stash mailbox when it does not fit, since give's own
+     * overflow would drop it in the raid world being left. A proving-ground armory item stays on
+     * the cursor for {@link net.infnetwork.snowball.craftov.lobby.LobbyService#stripTestItems} to
+     * take away, but what the player packed into an armory rig or backpack is theirs and comes home
+     * now, the same way. Putting the armory item back first would leave it packed on the cursor
+     * whenever its slot is taken, and with no stored form it could not be mailed: it dropped in the
+     * raid with the player's own items inside. A stack with no stored form at all (not a Craftov
+     * item) still drops. Returns the records that went to the mailbox. Calling it again changes
+     * nothing.
      */
-    public void mailOrDrop(Player player, @Nullable ItemStack stack) {
-        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
-            return;
+    public List<ItemRecord> reclaimCursorHome(Player player) {
+        List<ItemRecord> mailed = new ArrayList<>();
+        ItemStack cursor = player.getItemOnCursor();
+        if (ItemFactory.isTest(cursor)) {
+            List<ItemRecord> armory = new ArrayList<>();
+            List<ItemRecord> own = new ArrayList<>();
+            for (ItemRecord child : items.contents(cursor)) {
+                ItemRecord kept = ItemFactory.persistent(child);
+                if (kept == null) {
+                    armory.add(child);
+                } else {
+                    own.add(kept);
+                }
+            }
+            if (!own.isEmpty()) {
+                ItemStack shell = cursor.clone();
+                items.setContents(shell, armory);
+                player.setItemOnCursor(shell);
+                for (ItemRecord record : own) {
+                    ItemRecord sent = handBack(player, record);
+                    if (sent != null) {
+                        mailed.add(sent);
+                    }
+                }
+            }
+            return mailed;
         }
-        if (!mail(player, stack)) {
-            player.getWorld().dropItemNaturally(player.getLocation(), stack);
+        ItemStack left = reclaimCursor(player);
+        if (left != null) {
+            ItemRecord record = items.toRecord(left);
+            if (record == null) {
+                player.getWorld().dropItemNaturally(player.getLocation(), left);
+            } else {
+                mail(player, record);
+                mailed.add(record);
+            }
         }
+        return mailed;
+    }
+
+    /**
+     * Puts a record back into the carry cells, or into the stash mailbox when it does not fit or
+     * items.yml no longer knows its id, never onto the floor (the player may still be in a raid
+     * they are leaving). Returns what was mailed, or null.
+     */
+    public @Nullable ItemRecord handBack(Player player, ItemRecord record) {
+        ItemStack stack = items.fromRecord(record);
+        ItemRecord rest = stack == null ? record : items.toRecord(give(player, stack, false));
+        if (rest != null) {
+            mail(player, rest);
+        }
+        return rest;
     }
 
     /**
      * Puts the item held on the cursor (inventory screen open) back into the carry cells; a packed
      * rig or backpack is worn again if its slot is free. The cursor is empty afterwards. Returns what
      * did not fit, or null. The one way the cursor is settled: on closing the inventory and on
-     * logging off (CarryListener), before an extraction is counted, on the way home from a raid and
-     * before an explicit lobby loadout capture. Calling it again finds the cursor empty.
+     * logging off (CarryListener), before an extraction is counted and on the way home from a raid
+     * (both through {@link #reclaimCursorHome}), and before an explicit lobby loadout capture.
+     * Calling it again finds the cursor empty.
      */
     public @Nullable ItemStack reclaimCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();

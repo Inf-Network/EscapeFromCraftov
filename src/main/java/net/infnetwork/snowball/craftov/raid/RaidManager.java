@@ -642,7 +642,7 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         // Something held on the cursor is carried out too: back into the inventory (or the mailbox)
         // before the value is counted.
-        plugin.carry().mailOrDrop(player, plugin.carry().reclaimCursor(player));
+        plugin.carry().reclaimCursorHome(player);
         plugin.insurance().strip(player);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.EXTRACT);
         plugin.downed().clear(player);

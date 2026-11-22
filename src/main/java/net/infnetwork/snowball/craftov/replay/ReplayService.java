@@ -218,10 +218,13 @@ public final class ReplayService implements Listener {
     /**
      * Called when a raid player dies. Plays the kill replay first if there is a killer to follow,
      * then {@code after} (death report, spectating); without one, {@code after} runs as before.
+     *
+     * <p>Only a killer who hit the victim within the replayed seconds: a bleed-out, fall or shell
+     * credited to someone who last fired minutes ago would replay them looting a crate elsewhere.
      */
     public void afterDeath(Player victim, Raid raid, DamageService.@Nullable LastHit hit, Runnable after) {
-        Clip clip = hit == null || hit.attacker() == null || !plugin.getConfig().getBoolean("replay.enabled", true)
-                ? null : clip(victim, raid, hit);
+        Clip clip = hit == null || hit.attacker() == null || Bukkit.getCurrentTick() - hit.struck() > WINDOW_TICKS
+                || !plugin.getConfig().getBoolean("replay.enabled", true) ? null : clip(victim, raid, hit);
         if (clip == null) {
             Bukkit.getScheduler().runTaskLater(plugin, after, 20L * 5);
             return;

@@ -68,9 +68,13 @@ public final class DamageService implements Listener {
         static final ArmorHit NONE = new ArmorHit(1.0, true, false);
     }
 
-    /** Who last hurt an entity, for kill credit and kill feed; {@code melee} when it was a knife cut. */
+    /**
+     * Who last hurt an entity, for kill credit and kill feed; {@code melee} when it was a knife cut.
+     * {@code tick} starts the 30 seconds of credit (renewed while the attacker's wound bleeds);
+     * {@code struck} is when the attacker last hit the victim themselves, for the kill replay.
+     */
     public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick,
-                          boolean melee) {
+                          boolean melee, long struck) {
         /**
          * A shot to the head. A knife cut that lands on the head is not one: a level swing at a
          * standing target lands there, so counting it would hand out headshot credit for most knife kills.
@@ -150,11 +154,11 @@ public final class DamageService implements Listener {
         LastHit last = attacker == null ? lastHit(victim.getUniqueId()) : null;
         if (last != null && last.attacker() != null) {
             lastHits.put(victim.getUniqueId(), new LastHit(last.attacker(), last.attackerName(), weapon, part.zone(), part,
-                    renews ? now : last.tick(), false));
+                    renews ? now : last.tick(), false, last.struck()));
             return;
         }
         lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee));
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee, now));
     }
 
     public static String displayName(Entity entity) {

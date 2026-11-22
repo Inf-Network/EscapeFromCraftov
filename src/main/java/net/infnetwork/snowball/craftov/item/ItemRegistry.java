@@ -176,8 +176,10 @@ public final class ItemRegistry {
         net.infnetwork.snowball.craftov.weapon.MeleeSpec melee = null;
         ConfigurationSection me = s.getConfigurationSection("melee");
         if (me != null) {
-            melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getInt("hits-normal", 2), me.getInt("hits-special", 3),
-                    me.getInt("hits-boss", 4), me.getDouble("player-damage", 30), me.getInt("cooldown", 12), me.getDouble("reach", 3.0));
+            // An items.yml from before knives went through armour has player-damage instead of damage.
+            melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getDouble("damage", me.getDouble("player-damage", 34)),
+                    Math.max(0, me.getInt("pen", 1)), Math.max(0, me.getDouble("armor-damage", 1.0)), me.getDouble("head", 1.0),
+                    Math.max(1, me.getInt("cooldown", 12)), me.getDouble("reach", 3.0));
         }
         net.infnetwork.snowball.craftov.weapon.AttachSpec attach = null;
         ConfigurationSection at = s.getConfigurationSection("attach");

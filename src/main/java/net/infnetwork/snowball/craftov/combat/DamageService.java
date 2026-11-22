@@ -42,6 +42,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * linearly to nothing, and the part of a hit that wears more than the durability left goes straight
  * through. A round the class stops cannot make the chest or stomach bleed while the vest is at
  * full strength; once it is giving way, it may.
+ *
+ * <p>Knives go through the same armour with their own damage and penetration (items.yml
+ * {@code melee}), land where the blade meets the target's box, and are stopped by a shield from the
+ * front like a bullet.
  */
 public final class DamageService implements Listener {
 
@@ -135,7 +139,7 @@ public final class DamageService implements Listener {
             falloff = Math.max(0.5, 1.0 - over * 0.5);
         }
         double base = gun.damage() * (ammo == null ? 1.0 : ammo.damageMult()) * falloff;
-        double zoneMult = zoneMultiplier(part, gun);
+        double zoneMult = zoneMultiplier(part, gun.headMultiplier());
         ArmorHit armorHit = armor(victim, part, base, ammo == null ? 1 : ammo.penetration(),
                 ammo == null ? 1.0 : ammo.armorDamage());
         double damage = base * zoneMult * armorHit.damageMult();
@@ -237,13 +241,13 @@ public final class DamageService implements Listener {
     }
 
     /**
-     * Damage multiplier for where a round lands: the gun's own head multiplier, otherwise
+     * Damage multiplier for where a hit lands: the weapon's own head multiplier, otherwise
      * combat.zone-multipliers. Limbs take less because they share the one health pool with the
      * torso and are a big, unarmoured share of the hitbox (legs alone are 40% of it).
      */
-    private double zoneMultiplier(BodyPart part, GunSpec gun) {
+    private double zoneMultiplier(BodyPart part, double head) {
         return switch (part) {
-            case HEAD -> gun.headMultiplier();
+            case HEAD -> head;
             case CHEST -> plugin.getConfig().getDouble("combat.zone-multipliers.chest", 1.0);
             case STOMACH -> plugin.getConfig().getDouble("combat.zone-multipliers.stomach", 0.95);
             case LEFT_ARM, RIGHT_ARM -> plugin.getConfig().getDouble("combat.zone-multipliers.arm", 0.65);
@@ -324,40 +328,69 @@ public final class DamageService implements Listener {
 
     private final java.util.Map<UUID, Long> lastMelee = new java.util.HashMap<>();
 
-    /** A knife hit: AI die in a fixed number of hits per class, players take flat damage. */
+    /**
+     * A knife hit. It lands on the body part where the blade meets the victim's box, a shield in
+     * front stops it, and otherwise it goes through the helmet or vest on that part like a round
+     * with the knife's damage and penetration: armour takes off what its class stops and wears.
+     */
     private void melee(Player player, LivingEntity victim, ItemDef def) {
         net.infnetwork.snowball.craftov.weapon.MeleeSpec spec = def.melee();
-        long now = org.bukkit.Bukkit.getCurrentTick();
+        long now = Bukkit.getCurrentTick();
+        Location eye = player.getEyeLocation();
         if (now - lastMelee.getOrDefault(player.getUniqueId(), -1000L) < spec.cooldownTicks()
-                || player.getEyeLocation().distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
-                || !plugin.raids().canFire(player)) {
+                || !eye.getWorld().equals(victim.getWorld())
+                || eye.distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
+                || !plugin.raids().canFire(player)
+                || !(victim instanceof Player || plugin.ai().isAi(victim))
+                || (victim instanceof Player target && !plugin.raids().canBeShot(target))
+                || !plugin.raids().canDamage(player, victim)) {
             return;
         }
         lastMelee.put(player.getUniqueId(), now);
-        String cls = plugin.ai().meleeClass(victim);
-        double damage;
-        if (cls != null) {
-            int hits = switch (cls) {
-                case "boss" -> spec.hitsBoss();
-                case "special" -> spec.hitsSpecial();
-                default -> spec.hitsNormal();
-            };
-            org.bukkit.attribute.AttributeInstance max = victim.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
-            damage = (max == null ? victim.getHealth() : max.getValue()) / Math.max(1, hits) + 0.01;
-        } else if (victim instanceof Player) {
-            damage = spec.playerDamage();
-        } else {
+        org.bukkit.util.Vector dir = eye.getDirection();
+        org.bukkit.util.Vector point = meleePoint(eye, dir, victim, spec.reach() + 0.8);
+        BodyPart part = BodyPart.of(victim, point, dir);
+        victim.getWorld().playSound(victim.getLocation(), "minecraft:entity.player.attack.sweep", SoundCategory.PLAYERS, 1f, 1.2f);
+        if (plugin.ai().shieldBlocks(victim, player, part)) {
+            shieldHit(victim, player);
             return;
         }
-        recordHit(victim, player, def.name(), BodyPart.CHEST);
+        double base = spec.damage();
+        ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
+        double damage = base * zoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
+        if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
+            plugin.health().rollInjuries(target, part, damage);
+        }
+        recordHit(victim, player, def.name(), part);
         if (victim instanceof Player) {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
-                    .add(new HitRecord(player.getName(), def.name(), BodyPart.CHEST, damage, 1));
+                    .add(new HitRecord(player.getName(), def.name(), part, damage, (int) Math.round(eye.toVector().distance(point))));
         }
         deal(victim, player, damage);
+        if (victim instanceof Player hurt) {
+            plugin.hud().damageFrom(hurt, player.getLocation());
+        }
         plugin.ai().onBotHurt(victim, player);
-        victim.getWorld().playSound(victim.getLocation(), "minecraft:entity.player.attack.sweep", SoundCategory.PLAYERS, 1f, 1.2f);
-        feedback(player, victim, damage, HitZone.TORSO);
+        feedback(player, victim, damage, part.zone());
+    }
+
+    /**
+     * Where a swing from {@code eye} along {@code dir} meets the victim's box. The client picked the
+     * victim along its own view, which the server may see a little off, so a miss falls back to the
+     * point of the box nearest the line of the swing at the victim's distance.
+     */
+    private static org.bukkit.util.Vector meleePoint(Location eye, org.bukkit.util.Vector dir, LivingEntity victim, double reach) {
+        org.bukkit.util.BoundingBox box = victim.getBoundingBox();
+        org.bukkit.util.Vector from = eye.toVector();
+        org.bukkit.util.RayTraceResult hit = box.rayTrace(from, dir, reach);
+        if (hit != null) {
+            return hit.getHitPosition();
+        }
+        org.bukkit.util.Vector along = from.clone().add(dir.clone().multiply(from.distance(box.getCenter())));
+        return new org.bukkit.util.Vector(
+                Math.max(box.getMinX(), Math.min(box.getMaxX(), along.getX())),
+                Math.max(box.getMinY(), Math.min(box.getMaxY(), along.getY())),
+                Math.max(box.getMinZ(), Math.min(box.getMaxZ(), along.getZ())));
     }
 
     /** Guns and tactical items are not melee weapons; punches do token damage only. */

@@ -186,15 +186,6 @@ public final class AiService implements Listener {
         return bot == null ? null : bot.gun;
     }
 
-    /** Melee class of an AI: "boss", "special" (guards, snipers, escorts) or "normal", or null if not AI. */
-    public @Nullable String meleeClass(Entity entity) {
-        Bot bot = bots.get(entity.getUniqueId());
-        if (bot == null) {
-            return null;
-        }
-        return bot.boss ? "boss" : "patrol".equals(bot.kind) ? "normal" : "special";
-    }
-
     /** True if a shield soldier stops this round: it comes from the front and hits the head, torso or arms. */
     public boolean shieldBlocks(LivingEntity victim, @Nullable LivingEntity shooter, net.infnetwork.snowball.craftov.combat.BodyPart part) {
         Bot bot = bots.get(victim.getUniqueId());

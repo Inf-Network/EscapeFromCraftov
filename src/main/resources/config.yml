@@ -138,10 +138,11 @@ combat:
   lag-compensation:
     # A player's shots meet everyone where that player's screen showed them: hitboxes as they were
     # ping + extra-ms ago (the ping Paper reports is the round trip), at most max-ms. The extra covers
-    # how often positions are sent and the client's smoothing. The cost: someone who has just stepped
-    # behind cover can still be hit for up to max-ms. Soldiers' shots are never rewound.
+    # the client's smoothing of other players and soldiers (3 ticks behind the updates) and drawing
+    # between ticks. The cost: someone who has just stepped behind cover can still be hit for up to
+    # max-ms. Soldiers' shots are never rewound.
     enabled: true
-    extra-ms: 100
+    extra-ms: 150
     max-ms: 300
 
 weapons:

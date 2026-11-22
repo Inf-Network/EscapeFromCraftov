@@ -33,7 +33,8 @@ import java.util.function.Predicate;
  * {@link #SAMPLES} ticks, with the time each was taken), and a player's shot is tested against the boxes
  * as they were {@code ping + combat.lag-compensation.extra-ms} ago, at most {@code max-ms}, blended
  * between the two samples either side. The ping Paper reports is the round trip, which already covers
- * both legs; the extra covers the update interval and the client's smoothing. Blocks are not rewound,
+ * both legs; the extra (150 ms by default) covers the client's smoothing, which trails the updates by
+ * its 3 steps whether they come every 2 ticks or 3, and drawing between ticks. Blocks are not rewound,
  * so a target that has just stepped behind cover can still be hit for up to max-ms. Soldiers shoot at
  * the present (their aim is computed on the server).
  */
@@ -95,7 +96,7 @@ public final class HitboxHistory {
             return 0;
         }
         int max = Math.max(0, plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300));
-        int extra = plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 100);
+        int extra = plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 150);
         return Math.max(0, Math.min(max, player.getPing() + extra));
     }
 

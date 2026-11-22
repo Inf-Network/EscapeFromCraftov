@@ -330,7 +330,7 @@ public final class CraftovCommand implements TabExecutor {
                         : args[1].equalsIgnoreCase("on");
                 plugin.getConfig().set("combat.lag-compensation.enabled", on);
                 Text.send(sender, on
-                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 100)
+                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 150)
                                 + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
                         : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
             }

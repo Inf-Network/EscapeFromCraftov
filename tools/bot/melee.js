@@ -132,6 +132,21 @@ function make (name) {
   // raw NBT text keeps every string as "value":"...".
   bot.actionBars = []
   bot._client.on('action_bar', p => bot.actionBars.push(JSON.stringify(p.text)))
+  // A bullet snapping past jolts the view by a fraction of a degree, sent as a relative rotation.
+  // mineflayer applies that packet as absolute, so the bot's own look dropped to level and it sent
+  // that back on its next move: a chest cut became a head cut whenever a soldier's round flew by.
+  // mineflayer adds its own listener a tick after createBot, so this one goes on at login, after it.
+  bot.viewKicks = 0
+  bot.once('login', () => {
+    let before = null
+    bot._client.prependListener('player_rotation', () => { before = bot.entity && [bot.entity.yaw, bot.entity.pitch] })
+    bot._client.on('player_rotation', p => {
+      if (!before || !(p.relativeYaw || p.relativePitch)) return
+      bot.viewKicks++
+      if (p.relativeYaw) bot.entity.yaw = before[0] - p.yaw * Math.PI / 180
+      if (p.relativePitch) bot.entity.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, before[1] - p.pitch * Math.PI / 180))
+    })
+  })
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -626,6 +641,7 @@ async function armourAttr (sel) {
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 
 async function finish (code) {
+  log('view kicks (relative rotations) received:', bots.map(b => `${b.username} ${b.viewKicks}`).join(', '))
   for (const bot of bots) {
     try { await rcon(`effect clear ${bot.username}`) } catch (e) { }
     try { await rcon(`deop ${bot.username}`) } catch (e) { }

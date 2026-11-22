@@ -480,18 +480,46 @@ def start_client(cfg, display):
     return proc.pid
 
 
-def wait_joined(cfg, client_pid):
-    """Waits until the player is online with the server resource pack applied."""
+def server_log_size(cfg):
+    path = cfg.server_dir / 'logs' / 'latest.log'
+    return path.stat().st_size if path.exists() else 0
+
+
+def kick_reason(cfg, name, offset):
+    """Why the server dropped `name` since `offset` in its log (a kick, a ban, the whitelist, a
+    declined pack), or None."""
+    try:
+        with open(cfg.server_dir / 'logs' / 'latest.log', 'rb') as f:
+            f.seek(offset)
+            text = f.read().decode('utf-8', 'replace')
+    except OSError:
+        return None
+    n = re.escape(name)
+    found = re.search(rf'(?:Disconnecting {n}\b.*?|\b{n}\b[^\n]*? lost connection): (.*)', text)
+    return found.group(1).strip() if found else None
+
+
+def wait_joined(cfg, client_pid, log_offset):
+    """Waits until the player is online with the server resource pack applied. `log_offset` is the
+    size of the server log when the client started, so earlier disconnects do not count."""
     end = time.time() + 300
     joined = False
     while time.time() < end:
         if not pid_alive(client_pid):
             raise Fail(f'the client exited; see {GAME_DIR / "client-console.log"}')
+        reason = kick_reason(cfg, cfg.name, log_offset)
+        if reason:
+            raise Fail(f'the server dropped {cfg.name}: {reason}')
+        text = client_log()
+        refused = re.search(r"Couldn't connect to server.*|Client disconnected with reason: .*", text)
+        if refused:
+            raise Fail(f'the client could not stay on the server ({refused.group(0).strip()}); '
+                       f'see {GAME_DIR / "logs" / "latest.log"}')
         if not joined:
             joined = player_online(cfg)
             if joined:
                 log('joined the server')
-        state, detail = pack_state(client_log())
+        state, detail = pack_state(text)
         if state == 'failed':
             raise Fail(f'the resource pack did not load ({detail}); see {GAME_DIR / "logs" / "latest.log"}')
         if joined and state == 'applied':
@@ -773,13 +801,16 @@ class Session:
         if not (bot_dir / 'node_modules' / 'mineflayer').exists():
             raise Fail('tools/bot/node_modules is missing; run npm install in tools/bot')
         log_path = CACHE / 'puppet.log'
+        granted = grant(self.cfg, name, op=False)
         with open(log_path, 'wb') as out:
             proc = subprocess.Popen(['node', 'puppet.js', name], cwd=bot_dir, env=dict(os.environ, PORT=str(self.cfg.port)),
                                     stdin=subprocess.PIPE, stdout=out, stderr=subprocess.STDOUT)
         try:
             self.wait_until(lambda: b'ready' in log_path.read_bytes() or proc.poll() is not None, 60, f'{name} to join')
             if proc.poll() is not None:
-                raise Fail(f'{name} could not join; see {log_path}')
+                kicked = re.search(r'(?m)^(kicked|error) (.*)$', log_path.read_text(encoding='utf-8', errors='replace'))
+                raise Fail(f'{name} could not join' + (f' ({kicked.group(1)}: {kicked.group(2)})' if kicked else '')
+                           + f'; see {log_path}')
             self.wait_until(lambda: (self.data('Dimension', name) or '').strip('"').endswith('craftov_lobby'), 30, f'{name} in the lobby')
             time.sleep(2)
             yield Puppet(self, name, proc)
@@ -790,6 +821,7 @@ class Session:
                 proc.wait(10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+            revoke(self.cfg, name, granted)
 
     # -- output
 
@@ -889,12 +921,43 @@ def wait_rcon(cfg, pid):
         time.sleep(1)
 
 
+def wait_offline(cfg, timeout=15):
+    end = time.time() + timeout
+    while time.time() < end and player_online(cfg):
+        time.sleep(0.5)
+
+
+def grant(cfg, name, op=True):
+    """Lets `name` in on a whitelisted server and makes it op (chat commands such as /cv lobby).
+    Returns what it changed, so `revoke` takes back exactly that and keeps what was set up by hand."""
+    uid = offline_uuid(name)
+
+    def listed(file):
+        try:
+            return any(entry.get('uuid') == uid for entry in json.loads((cfg.server_dir / file).read_text(encoding='utf-8')))
+        except (OSError, ValueError, AttributeError):
+            return False
+    changed = []
+    whitelist_on = read_properties(cfg.server_dir / 'server.properties').get('white-list') == 'true'
+    if whitelist_on and not listed('whitelist.json'):
+        rcon(cfg, f'whitelist add {name}')  # the exact case: the offline UUID is made from it
+        changed.append('whitelist')
+    if op and not listed('ops.json'):
+        rcon(cfg, f'op {name}')
+        changed.append('op')
+    return changed
+
+
+def revoke(cfg, name, changed, rcon_port=None):
+    for what in changed:
+        with contextlib.suppress(OSError, Fail):
+            rcon(cfg, f'deop {name}' if what == 'op' else f'whitelist remove {name}', port=rcon_port)
+
+
 def reset_profile(cfg):
     """Deletes the player's Craftov profile, so it joins as a new player with the starter kit."""
     path = cfg.server_dir / 'plugins' / 'Craftov' / 'data' / 'players' / f'{offline_uuid(cfg.name)}.json'
-    end = time.time() + 15
-    while time.time() < end and player_online(cfg):
-        time.sleep(0.5)
+    wait_offline(cfg)
     time.sleep(2)  # the profile is saved asynchronously after a quit
     if path.exists():
         path.unlink()
@@ -939,19 +1002,22 @@ def up(cfg, state, started=None):
         log('reusing the client on', state['display'])
     else:
         down(cfg, state, ('client', 'display'))
+        wait_offline(cfg)  # the old client's disconnect must land in the log before the offset below
         if cfg.fresh:
             reset_profile(cfg)
         state['display'], state['xvfb_pid'] = start_display(cfg.size)
         save_state(state)
         if not client_up:
             started.append('display')  # a client that was up before stays up afterwards
+        state['client_grants'] = {'name': cfg.name, 'rcon_port': cfg.rcon_port, 'changed': grant(cfg, cfg.name)}
+        save_state(state)
+        log_offset = server_log_size(cfg)
         state['client_pid'] = start_client(cfg, state['display'])
         if not client_up:
             started.append('client')
         state.update(port=cfg.port, rcon_port=cfg.rcon_port, server_dir=str(cfg.server_dir))
         save_state(state)
-        rcon(cfg, f'op {cfg.name}')
-        wait_joined(cfg, state['client_pid'])
+        wait_joined(cfg, state['client_pid'], log_offset)
         # Terrain, the HUD, and the "chat messages can't be verified" toast an offline server
         # shows for ten seconds after joining.
         time.sleep(12)
@@ -967,6 +1033,11 @@ def down(cfg, state, parts=('client', 'display', 'server')):
     if 'client' in parts and pid_alive(state.get('client_pid'), 'net.minecraft.client'):
         log('stopping the client')
         stop_pid(state.pop('client_pid'), 'net.minecraft.client')
+    if 'client' in parts and state.get('client_grants'):
+        # Op and whitelist only last as long as the client: the name is public and the server is
+        # in offline mode, so anyone could log in as it.
+        grants = state.pop('client_grants')
+        revoke(cfg, grants['name'], grants['changed'], grants['rcon_port'])
     if 'display' in parts and pid_alive(state.get('xvfb_pid'), 'Xvfb'):
         stop_pid(state.pop('xvfb_pid'), 'Xvfb')
         state.pop('display', None)

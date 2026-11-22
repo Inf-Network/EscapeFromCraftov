@@ -7,7 +7,7 @@
 // quiet, as Minecraft.continueAttack does.
 //
 //   cadence  offline, no server: the tick loop at the items.yml rates, with the multi-round report
-//            table that gunaudio.py and GunAudio.java must agree on. Every full-auto gun has one
+//            table that gunsamples.py and GunAudio.java must agree on. Every full-auto gun has one
 //            interval between reports, and every report holds the same number of rounds.
 //   lag      DM14 (semi): start, a swing every tick, then 8 and then 30 ticks with neither swing nor
 //            abort (a lag spike), swings again and the abort: one shot each time. A click after the
@@ -68,13 +68,13 @@ function cadence () {
     const gun = line.match(/rpm: (\d+), modes: \[([A-Z, ]+)\]/)
     if (gun && id) guns[id] = { rpm: Number(gun[1]), modes: gun[2].split(',').map(s => s.trim()) }
   }
-  const py = fs.readFileSync(path.join(ROOT, 'tools/art/gunaudio.py'), 'utf8').match(/^GROUPS = \{(.*)\}$/m)
+  const py = fs.readFileSync(path.join(ROOT, 'tools/art/gunsamples.py'), 'utf8').match(/^GROUPS = \{(.*)\}$/m)
   const java = fs.readFileSync(path.join(ROOT, 'src/main/java/net/infnetwork/snowball/craftov/weapon/GunAudio.java'), 'utf8')
   const fromPy = {}
   for (const m of (py ? py[1] : '').matchAll(/'([a-z0-9_]+)': \((\d+), (\d+)\)/g)) fromPy[m[1]] = [Number(m[2]), Number(m[3])]
   const fromJava = {}
   for (const m of java.matchAll(/"([a-z0-9_]+)", new Rounds\((\d+), (\d+)\)/g)) fromJava[m[1]] = [Number(m[2]), Number(m[3])]
-  check('cadence: gunaudio.py GROUPS and GunAudio.SAMPLES agree', Object.keys(fromPy).length > 0 && JSON.stringify(fromPy) === JSON.stringify(
+  check('cadence: gunsamples.py GROUPS and GunAudio.SAMPLES agree', Object.keys(fromPy).length > 0 && JSON.stringify(fromPy) === JSON.stringify(
     Object.fromEntries(Object.keys(fromPy).map(k => [k, fromJava[k]]))) && Object.keys(fromJava).length === Object.keys(fromPy).length,
   `py ${JSON.stringify(fromPy)} java ${JSON.stringify(fromJava)}`)
   for (const [gid, [rounds, ticks]] of Object.entries(fromPy)) {

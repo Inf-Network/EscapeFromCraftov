@@ -16,7 +16,7 @@ import java.util.List;
  * @param reloadTicks reload duration
  * @param zoom        ADS zoom strength 0..3
  * @param soundVolume how loud the report is (3.5 pistol .. 7 sniper); sets audible range and level
- * @param audio       sound set id under craftov:gun.<audio>.* (see tools/art/gunaudio.py)
+ * @param audio       sound set id under craftov:gun.<audio>.* (see tools/art/gunsamples.py)
  * @param action      mechanical action family for reload, dry-fire and casing sounds
  */
 public record GunSpec(

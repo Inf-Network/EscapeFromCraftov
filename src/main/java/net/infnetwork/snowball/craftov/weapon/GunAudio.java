@@ -56,7 +56,7 @@ public final class GunAudio {
     private record Rounds(int rounds, int ticks) {
     }
 
-    /** Sound sets with multi-round samples for automatic fire (GROUPS in tools/art/gunaudio.py). */
+    /** Sound sets with multi-round samples for automatic fire (GROUPS in tools/art/gunsamples.py). */
     private static final Map<String, Rounds> SAMPLES = Map.of(
             "m4c", new Rounds(2, 3),
             "sv9", new Rounds(3, 4),
@@ -160,13 +160,14 @@ public final class GunAudio {
 
     private void tail(Burst burst) {
         World world = burst.muzzle().getWorld();
-        if (world == null) {
+        // Outdoors the recording already carries the range answering the shot.
+        if (world == null || !burst.indoor()) {
             return;
         }
         long now = Bukkit.getCurrentTick();
-        String key = "craftov:gun.tail." + burst.family() + (burst.indoor() ? ".in" : ".out");
+        String key = "craftov:gun.tail." + burst.family() + ".in";
         float pitch = 0.98f + ThreadLocalRandom.current().nextFloat() * 0.04f;
-        double share = (burst.indoor() ? 0.8 : 0.65) * (burst.suppressed() ? 0.2 : 1.0);
+        double share = 0.8 * (burst.suppressed() ? 0.2 : 1.0);
         boolean range = plugin.range().isRangeWorld(world);
         for (Player listener : world.getPlayers()) {
             if (range && !listener.getUniqueId().equals(burst.shooter())) {

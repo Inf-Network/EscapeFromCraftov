@@ -22,7 +22,9 @@ import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
 import sounds  # noqa: E402
+import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
+import gunsamples  # noqa: E402
 import oggenc  # noqa: E402
 import ui  # noqa: E402
 from px import gradient_bg, rgb  # noqa: E402
@@ -484,15 +486,28 @@ def build_sounds():
         if path in ('throw/explode',):
             entry['sounds'][0]['attenuation_distance'] = 32
         entries[key] = entry
-    # Gunfire, bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its
-    # variants; the client picks one at random per play. GunAudio.java sets the level per listener.
+    # Bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its variants;
+    # the client picks one at random per play.
     for key, variants, attenuation in gunaudio.catalogue():
         listed = []
         for path, data, sr in variants:
             oggenc.write(os.path.join(CV, 'sounds', path + '.ogg'), gunaudio.resample(data, sr), sr)
             listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation})
         entries[key] = {'sounds': listed}
+    # Gun reports, cut from CC0 recordings (tools/art/gunsamples.py). GunAudio.java picks the variant
+    # (through the packet's seed) and sets the level per listener. Preloaded, so the first shot after
+    # joining is not late while its file is read.
+    reports, sources = gunsamples.catalogue()
+    for key, variants, attenuation in reports:
+        listed = []
+        for path, data, sr in variants:
+            oggenc.write(os.path.join(CV, 'sounds', path + '.ogg'), gunsamples.resample(data, gunsamples.SR, sr), sr)
+            listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation, 'preload': True})
+        entries[key] = {'sounds': listed}
     write_json(os.path.join(CV, 'sounds.json'), entries)
+    write_json(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio_sources.json'), gunsamples.source_manifest(sources))
+    for what, target, reached in gunsamples.SHORT:
+        print('gunsamples: %s reaches %.1f dB of its %.1f dB loudness' % (what, reached, target))
 
 
 def build_pack_meta():
@@ -804,6 +819,14 @@ def main():
     build_betterhud()
     count = sum(len(files) for _, _, files in os.walk(PACK))
     print(f'pack files: {count}, betterhud files: {sum(len(f) for _, _, f in os.walk(BH))}')
+    # The gun reports as the client will decode them: a failure here means the pack must not ship.
+    failures = audiocheck.check(os.path.join(CV, 'sounds'), verbose=False)
+    if failures:
+        print('audiocheck: %d problem(s)' % len(failures))
+        for failure in failures:
+            print('  ' + failure)
+        sys.exit(1)
+    print('audiocheck: all gun reports pass')
 
 
 if __name__ == '__main__':

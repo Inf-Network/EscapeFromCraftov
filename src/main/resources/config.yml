@@ -430,6 +430,11 @@ hud:
     seconds: 5
     streak-seconds: 6
     badge-seconds: 2.5
+  # The crosshair's arms (BetterHud; the vanilla crosshair is cut to a dot) open with the cone of the next
+  # shot: this many GUI pixels from the centre per degree of spread, about right at the default
+  # 70 degree field of view. They are hidden while aiming down the sights.
+  crosshair:
+    pixels-per-degree: 5.5
 
 pack:
   # Rebuild the CraftEngine pack automatically after Craftov updates its resources.

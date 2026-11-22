@@ -15,12 +15,12 @@ public record HudSnapshot(
         String weapon, String fireMode, String ammoType, String time, String map, String tier, String nearest,
         String status, String operator, String skill, String valueShort, String extractLeft,
         int[] parts, int stamina, boolean usingMed, String medName, String medLeft, int medPct, String weaponHint,
-        boolean drawing, int draw, String downedHint, String[] feed, String streak
+        boolean drawing, int draw, String downedHint, String[] feed, String streak, int crosshair
 ) {
     public static final HudSnapshot EMPTY = new HudSnapshot(false, false, false, false, false, false,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", "", "", "", "", "", "", "", "", "", "", "",
             new int[net.infnetwork.snowball.craftov.combat.BodyPart.values().length], 100, false, "", "", 0, "", false, 0, "",
-            new String[KillFeedService.LINES], "");
+            new String[KillFeedService.LINES], "", HudData.CROSSHAIR_OFF);
 
     /** Kill feed line {@code n} (1 = oldest shown), or "" when there are fewer lines. */
     public String feedLine(int n) {
@@ -43,6 +43,7 @@ public record HudSnapshot(
                 value, d.money(p), d.weaponName(p), d.fireMode(p), d.ammoType(p), d.time(p), d.mapName(p), d.tierName(p),
                 d.nearestExtract(p), d.injuries(p), d.operator(p), d.skill(p), Text.moneyShort(value),
                 String.format("%.1f", d.extractSecondsLeft(p)), d.parts(p), d.stamina(p), d.usingMed(p), d.medName(p),
-                d.medLeft(p), d.medPercent(p), d.weaponHint(p), d.drawing(p), d.drawPercent(p), d.downedHint(p), d.feed(p), d.streakBadge(p));
+                d.medLeft(p), d.medPercent(p), d.weaponHint(p), d.drawing(p), d.drawPercent(p), d.downedHint(p), d.feed(p), d.streakBadge(p),
+                d.crosshair(p));
     }
 }

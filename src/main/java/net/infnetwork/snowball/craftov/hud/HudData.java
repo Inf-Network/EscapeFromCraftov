@@ -290,6 +290,40 @@ public final class HudData {
         return plugin.downed().isDowned(p);
     }
 
+    /** Gaps (GUI pixels from the centre to each arm) of the crosshair pictures the HUD has, narrowest first. */
+    public static final int[] CROSSHAIR_GAPS = {2, 4, 6, 8, 10, 13, 17, 22};
+    /** {@link #crosshair} when no crosshair is drawn: aiming down the sights, or spectating. */
+    public static final int CROSSHAIR_OFF = -1;
+    /** {@link #crosshair} without a gun in hand: a small plain cross for doors and boxes. */
+    public static final int CROSSHAIR_PLAIN = CROSSHAIR_GAPS.length;
+
+    /**
+     * Which crosshair the HUD draws: a gun's opens with the cone its next shot would have (moving,
+     * bloom, sneaking and jumping included), as an index into {@link #CROSSHAIR_GAPS}. The server
+     * knows neither the field of view nor the GUI scale, so the gap is hud.crosshair.pixels-per-degree
+     * GUI pixels per degree of half-angle, about right at the default 70 degrees. None while aiming:
+     * the sights are the crosshair then.
+     */
+    public int crosshair(Player p) {
+        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            return CROSSHAIR_OFF;
+        }
+        if (gun(p) == null) {
+            return CROSSHAIR_PLAIN;
+        }
+        if (plugin.weapons().isAiming(p)) {
+            return CROSSHAIR_OFF;
+        }
+        double gap = plugin.weapons().spreadNow(p) * plugin.getConfig().getDouble("hud.crosshair.pixels-per-degree", 5.5);
+        int best = 0;
+        for (int i = 1; i < CROSSHAIR_GAPS.length; i++) {
+            if (Math.abs(CROSSHAIR_GAPS[i] - gap) < Math.abs(CROSSHAIR_GAPS[best] - gap)) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
     /** The kill feed lines the HUD shows, oldest first, padded to {@link KillFeedService#LINES} with "". */
     public String[] feed(Player p) {
         String[] out = new String[KillFeedService.LINES];

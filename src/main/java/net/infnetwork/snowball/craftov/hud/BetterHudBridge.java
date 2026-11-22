@@ -89,6 +89,7 @@ public final class BetterHudBridge implements BetterHudHook {
         }
         string(pm, "craftov_streak", HudSnapshot::streak);
         bool(pm, "craftov_has_streak", s -> !s.streak().isEmpty());
+        number(pm, "craftov_crosshair", HudSnapshot::crosshair);
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

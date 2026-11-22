@@ -52,6 +52,33 @@ craftov_damage_6:
 craftov_damage_7:
   type: single
   file: craftov/damage_7.png
+craftov_crosshair_0:
+  type: single
+  file: craftov/crosshair/0.png
+craftov_crosshair_1:
+  type: single
+  file: craftov/crosshair/1.png
+craftov_crosshair_2:
+  type: single
+  file: craftov/crosshair/2.png
+craftov_crosshair_3:
+  type: single
+  file: craftov/crosshair/3.png
+craftov_crosshair_4:
+  type: single
+  file: craftov/crosshair/4.png
+craftov_crosshair_5:
+  type: single
+  file: craftov/crosshair/5.png
+craftov_crosshair_6:
+  type: single
+  file: craftov/crosshair/6.png
+craftov_crosshair_7:
+  type: single
+  file: craftov/crosshair/7.png
+craftov_crosshair_8:
+  type: single
+  file: craftov/crosshair/8.png
 craftov_hp_bar:
   type: listener
   file: craftov/hp_bar.png

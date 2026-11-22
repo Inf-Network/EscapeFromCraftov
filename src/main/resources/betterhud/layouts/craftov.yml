@@ -636,6 +636,90 @@ craftov_lobby:
       second: 'true'
       operation: ==
   offset: left
+craftov_crosshair:
+  images:
+    '1':
+      name: craftov_crosshair_0
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 0
+          operation: ==
+    '2':
+      name: craftov_crosshair_1
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 1
+          operation: ==
+    '3':
+      name: craftov_crosshair_2
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 2
+          operation: ==
+    '4':
+      name: craftov_crosshair_3
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 3
+          operation: ==
+    '5':
+      name: craftov_crosshair_4
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 4
+          operation: ==
+    '6':
+      name: craftov_crosshair_5
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 5
+          operation: ==
+    '7':
+      name: craftov_crosshair_6
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 6
+          operation: ==
+    '8':
+      name: craftov_crosshair_7
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 7
+          operation: ==
+    '9':
+      name: craftov_crosshair_8
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 8
+          operation: ==
+  offset: left
 craftov_feed:
   texts:
     '1':

@@ -656,6 +656,7 @@ public final class ProfileService implements Listener {
             if (d.mailed == null) d.mailed = new ArrayList<>();
             d.bounties.removeIf(claim -> claim == null || claim.victim == null);
         }
+        net.infnetwork.snowball.craftov.lobby.TutorialService.migrate(p);
     }
 
     private void writeAsync(Profile profile) {

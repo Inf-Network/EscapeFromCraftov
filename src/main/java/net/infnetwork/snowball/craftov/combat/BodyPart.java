@@ -1,6 +1,8 @@
 package net.infnetwork.snowball.craftov.combat;
 
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Pose;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
@@ -16,6 +18,10 @@ public enum BodyPart {
 
     /** Share of the torso's width on each side that is arm, seen from the front or back. */
     private static final double ARM_BAND = 0.38;
+    /** Share of a prone body's length that is head, from the front end. */
+    private static final double PRONE_HEAD = 0.25;
+    /** Share of a prone body's length that is legs, from the back end. */
+    private static final double PRONE_LEGS = 0.35;
 
     private final String displayName;
     private final String key;
@@ -76,8 +82,13 @@ public enum BodyPart {
      * when it walks or swings, so facing comes from the head yaw (the view the client sends); reading
      * arms off the body yaw turned centre-mass hits on a turned player into arm hits that skip the
      * vest.
+     *
+     * <p>A prone player has no height to go by and is classified along its body ({@link #ofProne}).
      */
     public static BodyPart of(LivingEntity target, Vector point, Vector shot) {
+        if (prone(target)) {
+            return ofProne(target, point, shot);
+        }
         HitZone zone = HitZone.of(target, point);
         if (zone == HitZone.HEAD) {
             return HEAD;
@@ -112,5 +123,56 @@ public enum BodyPart {
         double height = Math.max(0.1, box.getHeight());
         double rel = (point.getY() - box.getMinY()) / height;
         return rel >= 0.55 ? CHEST : STOMACH;
+    }
+
+    /**
+     * A player lying flat: crawling (downed, or squeezed into a one-block gap) or swimming. The box is
+     * then a 0.6 cube with the eyes 0.4 up, so the height split of {@link HitZone#of} put the head line
+     * 13% up the box and nearly every hit, and every hit on the top face, on the head.
+     */
+    public static boolean prone(LivingEntity target) {
+        return target instanceof HumanEntity
+                && (target.getPose() == Pose.SWIMMING || target.getBoundingBox().getHeight() < 1.0);
+    }
+
+    /**
+     * Classifies a hit on a prone body by where it lands along the body: the front quarter (the
+     * way the body faces) is the head, the back 35% the legs, and the middle the chest (front half)
+     * or stomach, with the outer edges across the body as the arms. The client draws the crawl along
+     * the body yaw, which only turns as far as it must to stay within reach of the head, so the
+     * body yaw is used here, not the view.
+     *
+     * <p>Arms show only to a round that comes down on the body or along it: one fired at the flank
+     * meets the side face, which is all arm or all chest by width alone, so the arm edges narrow to
+     * nothing as the line of fire turns side-on, as they do on an upright target.
+     */
+    private static BodyPart ofProne(LivingEntity target, Vector point, Vector shot) {
+        BoundingBox box = target.getBoundingBox();
+        double dx = point.getX() - box.getCenterX();
+        double dz = point.getZ() - box.getCenterZ();
+        double yaw = Math.toRadians(target.getBodyYaw());
+        double faceX = -Math.sin(yaw);
+        double faceZ = Math.cos(yaw);
+        double rightX = -Math.cos(yaw);
+        double rightZ = -Math.sin(yaw);
+        // How far the box reaches along the body and across it: 0.3 square-on, up to 0.42 diagonally.
+        double halfLength = box.getWidthX() / 2.0 * Math.abs(faceX) + box.getWidthZ() / 2.0 * Math.abs(faceZ);
+        double halfWidth = box.getWidthX() / 2.0 * Math.abs(rightX) + box.getWidthZ() / 2.0 * Math.abs(rightZ);
+        // 0 at the feet end, 1 at the head end.
+        double along = Math.max(0, Math.min(1, ((dx * faceX + dz * faceZ) / Math.max(1e-6, halfLength) + 1) / 2));
+        double side = dx * rightX + dz * rightZ;
+        if (along >= 1.0 - PRONE_HEAD) {
+            return HEAD;
+        }
+        if (along < PRONE_LEGS) {
+            return side >= 0 ? RIGHT_LEG : LEFT_LEG;
+        }
+        double length = shot.length();
+        double flank = length < 1e-6 ? 0 : Math.abs(shot.getX() * rightX + shot.getZ() * rightZ) / length;
+        double band = ARM_BAND * (1.0 - flank);
+        if (band > 1e-3 && Math.abs(side) > halfWidth * (1.0 - band)) {
+            return side >= 0 ? RIGHT_ARM : LEFT_ARM;
+        }
+        return along >= (PRONE_LEGS + 1.0 - PRONE_HEAD) / 2.0 ? CHEST : STOMACH;
     }
 }

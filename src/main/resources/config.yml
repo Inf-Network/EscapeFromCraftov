@@ -487,7 +487,8 @@ luck:
   # Pity per jackpot item (loot.yml jackpots), counted in qualifying raids without it. From
   # soft-raids on each container that can hold a red item may hand it out, up to soft-chance just
   # before hard-raids; after hard-raids raids without it the first such container of the next raid
-  # does.
+  # does. Finding any jackpot takes the others' counts back to soft-raids at most, and a raid hands
+  # out no jackpot after one was found in it, so the next one is at least hard - soft raids away.
   jackpot:
     soft-raids: 700
     hard-raids: 1000

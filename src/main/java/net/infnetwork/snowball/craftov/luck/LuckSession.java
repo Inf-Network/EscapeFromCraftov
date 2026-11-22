@@ -25,7 +25,10 @@ public final class LuckSession {
     /** Searches that counted: containers that still had something hidden when this player opened them. */
     public int searches;
     public final List<Payout> payouts = new ArrayList<>();
-    /** Jackpots found in this raid: their raid count starts again after it, not with it. */
+    /**
+     * Jackpots found in this raid: their raid count starts again after it, not with it, and no
+     * other jackpot is handed out in it.
+     */
     public final Set<String> jackpotsFound = new HashSet<>();
     /** Loss compensation was on when this raid started: the containers this player searches may hand out more. */
     public boolean boosted;

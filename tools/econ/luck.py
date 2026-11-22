@@ -20,7 +20,8 @@ numbers come from config.yml (luck, tiers), loot.yml and items.yml of the checko
 `check` plays a player who never finds a red item on their own (natural reds are taken out of
 every container) and one who never finds a jackpot, and verifies that the red is handed out no
 later than the hard-th container that can hold one, the jackpot in the raid after hard-raids
-raids, and that both counts start again from zero afterwards. It also checks that quota
+raids (one jackpot, not all of them), and that both counts start again from zero afterwards (the
+other jackpots' back to soft-raids). It also checks that quota
 hand-outs never spend more than the pool holds, that a loss over the threshold sets off the
 compensation and that a compensated player finds about multiplier times as many gold and red
 items while the containers' own rolls stay the same.
@@ -216,19 +217,21 @@ def pick(data, type_id, pool, rng):
     return rng.choice(by_cat[cat])
 
 
-def search(player, loot, data, type_id, shift, boosted, rng, no_red=False):
+def search(player, loot, data, type_id, shift, boosted, rng, no_red=False, no_jackpot=False):
     """One container: (natural item ids, hand-out (id, source) or None). Mirrors LuckService.onSearch."""
     s = player.s
     items = loot.roll(type_id, shift, rng)
     if no_red:
         items = [i for i in items if data.items[i].rarity != "RED"]
+    if no_jackpot:
+        items = [i for i in items if i not in data.jackpots]
     finds = {r: data.finds(type_id, shift, r) for r in PITY}
     finds = {r: f for r, f in finds.items() if f}
     for r in finds:
         player.pity[r] += 1
     choice = None
     if finds:
-        if "RED" in finds:
+        if "RED" in finds and not player.found_jackpots:
             for j in data.jackpots:
                 if rng.random() < s.jackpot_chance(player.jackpots.get(j, 0)):
                     choice = (j, "jackpot")
@@ -268,6 +271,8 @@ def found(player, data, item):
     if item.rarity in player.pity:
         player.pity[item.rarity] = 0
     if item.id in data.jackpots:
+        for j in player.jackpots:  # the drought is over for every jackpot
+            player.jackpots[j] = min(player.jackpots[j], player.s.jackpot_soft)
         player.jackpots[item.id] = 0
         player.found_jackpots.add(item.id)
 
@@ -281,9 +286,7 @@ def play_raid(player, loot, data, tier_id, kind, args, rng, raid_no, no_red=Fals
     values, handouts = [], []
     for type_id, bonus in rng.sample(data.map, args.containers):
         shift = data.shift(tier_id, bonus)
-        items, choice = search(player, loot, data, type_id, shift, boosted, rng, no_red)
-        if no_jackpot:
-            items = [i for i in items if i not in data.jackpots]
+        items, choice = search(player, loot, data, type_id, shift, boosted, rng, no_red, no_jackpot)
         for i in items:
             values.append((data.mean_value(data.items[i]), i, ""))
         if choice:
@@ -374,7 +377,7 @@ def report(args):
                   f"{100 * totals['pity-GOLD'] / n:>9.2f} {100 * totals['pity-RED'] / n:>9.2f} {100 * totals['quota'] / n:>9.2f} "
                   f"{100 * totals['jackpot'] / n:>8.3f} {totals['boosted'] / n:>7.1%} {money(totals['refund'] / n):>8} "
                   f"{money(totals['net'] / n):>9}")
-    print("(loot/raid = natural loot carried out, luck/raid = value handed out by pity, quota and jackpot pity, "
+    print("(loot/raid = natural loot carried out, luck/raid = value handed out by pity, quota, jackpot pity and compensation, "
           "income = quota paid in, x/100 = hand-outs per 100 raids, boosted = share of raids with loss compensation, "
           "net/raid = carried out less kit and fee)")
 
@@ -430,16 +433,20 @@ def check(args):
         p.jackpots = {j: s.jackpot_hard - 1 for j in data.jackpots}
         before = dict(p.jackpots)
         play_raid(p, loot, data, "NORMAL", "average", args, rng, 0, no_jackpot=True)
-        ok(f"after {s.jackpot_hard - 1} raids the count reaches hard-raids ({s.jackpot_hard})",
-           all(p.jackpots[j] == before[j] + 1 or p.jackpots[j] == 0 for j in data.jackpots), str(p.jackpots))
+        found_one = [j for j in data.jackpots if p.jackpots[j] == 0]
+        ok(f"after {s.jackpot_hard - 1} raids the count reaches hard-raids ({s.jackpot_hard}), unless one turns up",
+           all(p.jackpots[j] == before[j] + 1 for j in data.jackpots) if not found_one else len(found_one) == 1
+           and all(p.jackpots[j] == s.jackpot_soft + 1 for j in data.jackpots if j not in found_one), str(p.jackpots))
         for j in data.jackpots:
             p.jackpots[j] = s.jackpot_hard
         p.stats["handouts"] = {}
         play_raid(p, loot, data, "NORMAL", "average", args, rng, 1, no_jackpot=True)
         got = p.stats["handouts"].get("jackpot", 0)
-        ok(f"the raid after {s.jackpot_hard} raids without a jackpot hands one out", got >= 1, f"{got} handed out")
+        ok(f"the raid after {s.jackpot_hard} raids without a jackpot hands out exactly one", got == 1, f"{got} handed out")
         zero = [j for j in data.jackpots if p.jackpots[j] == 0]
-        ok("a handed-out jackpot's raid count restarts at 0 (it counts from the next raid)", len(zero) >= 1, str(p.jackpots))
+        ok("a handed-out jackpot's raid count restarts at 0 (it counts from the next raid)", len(zero) == 1, str(p.jackpots))
+        ok(f"the other jackpots go back to soft-raids ({s.jackpot_soft}) and count on from there",
+           all(p.jackpots[j] == s.jackpot_soft + 1 for j in data.jackpots if j not in zero), str(p.jackpots))
 
     # 3. The quota never pays more than it holds.
     p = Player(s)
@@ -478,8 +485,8 @@ def check(args):
         ratio = finds[True][r] / max(1, finds[False][r])
         ok(f"a compensated player finds about x{s.boost[r]} the {r.lower()} items", abs(ratio - s.boost[r]) <= 0.2 * s.boost[r],
            f"{finds[True][r]} against {finds[False][r]} in 40000 searches, x{ratio:.2f}")
-        rr = rolled[True][r] / max(1, rolled[False][r])
-        ok(f"the containers' own {r.lower()} rolls stay the same", abs(rr - 1) <= 0.1, f"{rolled[True][r]} against {rolled[False][r]}, x{rr:.2f}")
+        a, b = rolled[True][r], rolled[False][r]
+        ok(f"the containers' own {r.lower()} rolls stay the same", abs(a - b) <= 3 * math.sqrt(a + b), f"{a} against {b} (within 3 sigma)")
     return failures
 
 

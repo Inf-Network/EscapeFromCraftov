@@ -43,7 +43,9 @@ import java.util.concurrent.ThreadLocalRandom;
  *       does. Jackpot items (loot.yml {@code jackpots}) have their own pity, counted in qualifying
  *       raids ({@code luck.jackpot}): after {@code hard-raids} raids without one, the first container
  *       of the next raid that can hold a red item hands it out. Finding one in any way (searched,
- *       picked up or handed out), carried out or not, starts its count again.</li>
+ *       picked up or handed out), carried out or not, starts its count again and takes the other
+ *       jackpots' counts back to soft-raids at most, and no raid hands out a jackpot after one was
+ *       found in it: a player who never found any gets one, not all of them in the same raid.</li>
  *   <li>A <b>quota pool</b> (工资, {@code luck.quota}) that every qualifying raid pays into by time
  *       and searches, times the tier's factor and a behaviour multiplier from the last qualifying
  *       raids ({@code luck.behaviour}: profit against losses, kills against deaths and how often a
@@ -370,7 +372,7 @@ public final class LuckService {
         }
         decay(luck, System.currentTimeMillis());
         Random rng = ThreadLocalRandom.current();
-        Choice choice = choose(luck, rp.luck.boosted, container, finds, rng);
+        Choice choice = choose(luck, rp.luck, container, finds, rng);
         if (choice != null) {
             handOut(player, raid, rp, luck, container, choice);
         }
@@ -379,10 +381,10 @@ public final class LuckService {
     private record Choice(ItemDef def, String source) {
     }
 
-    private @Nullable Choice choose(Profile.Luck luck, boolean boosted, LootContainer container, Map<Rarity, List<ItemDef>> finds,
+    private @Nullable Choice choose(Profile.Luck luck, LuckSession session, LootContainer container, Map<Rarity, List<ItemDef>> finds,
                                     Random rng) {
         LootService loot = plugin.loot();
-        if (finds.containsKey(Rarity.RED)) {
+        if (finds.containsKey(Rarity.RED) && session.jackpotsFound.isEmpty()) {
             for (String id : loot.jackpots()) {
                 ItemDef def = plugin.registry().get(id);
                 if (def != null && rng.nextDouble() < jackpotChance(luck.jackpots.getOrDefault(id, 0))) {
@@ -400,7 +402,7 @@ public final class LuckService {
                 return new Choice(pick(container, pool, rng), "pity-" + rarity.name());
             }
         }
-        if (boosted) {
+        if (session.boosted) {
             // One more for the compensated player alone, as often as (multiplier - 1) times the
             // container holds one by itself: what they search holds about multiplier times as many.
             for (Rarity rarity : PITY) {
@@ -480,7 +482,7 @@ public final class LuckService {
 
     /**
      * {@code player} revealed or picked up {@code def} in a raid: a gold or red item starts that
-     * rarity's pity count again, a jackpot its own.
+     * rarity's pity count again, a jackpot its own (and takes the others back to soft-raids).
      */
     public void onFound(Player player, @Nullable ItemDef def) {
         Raid raid = plugin.raids().raidOf(player);
@@ -500,6 +502,12 @@ public final class LuckService {
             luck.pity.put(def.rarity().name(), 0);
         }
         if (plugin.loot().isJackpot(def)) {
+            // The other jackpots' pity was the same drought, now over: without this, a player who
+            // went hard-raids raids without any was handed every jackpot in the next raid.
+            int soft = jackpotSoft();
+            for (String id : plugin.loot().jackpots()) {
+                luck.jackpots.computeIfPresent(id, (k, raids) -> Math.min(raids, soft));
+            }
             luck.jackpots.put(def.id(), 0);
             session.jackpotsFound.add(def.id());
         }

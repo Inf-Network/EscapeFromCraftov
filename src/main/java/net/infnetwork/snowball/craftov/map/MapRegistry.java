@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -98,8 +99,17 @@ public final class MapRegistry {
         maps.put(def.id(), def);
     }
 
+    /**
+     * maps/&lt;id&gt;.yml. An id that would put the file anywhere else ("../config" is
+     * plugins/Craftov/config.yml) is refused with an IllegalArgumentException.
+     */
     public File file(String id) {
-        return new File(dir, id + ".yml");
+        Path base = dir.toPath().toAbsolutePath().normalize();
+        Path file = base.resolve(id + ".yml").normalize(); // InvalidPathException is an IllegalArgumentException too
+        if (!base.equals(file.getParent())) {
+            throw new IllegalArgumentException("map id \"" + id + "\" would write outside " + base);
+        }
+        return file.toFile();
     }
 
     // ------------------------------------------------------------------ checks
@@ -213,6 +223,12 @@ public final class MapRegistry {
     // ------------------------------------------------------------------ writing
 
     public void save(MapDef def) throws IOException {
+        File target;
+        try {
+            target = file(def.id());
+        } catch (IllegalArgumentException ex) {
+            throw new IOException(ex.getMessage(), ex);
+        }
         YamlConfiguration y = new YamlConfiguration();
         y.set("id", def.id());
         y.set("name", def.name());
@@ -288,7 +304,7 @@ public final class MapRegistry {
             return m;
         }).toList());
         dir.mkdirs();
-        y.save(file(def.id()));
+        y.save(target);
         maps.put(def.id(), def);
     }
 }

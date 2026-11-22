@@ -95,9 +95,15 @@ public final class EditorService implements Listener {
 
     // ------------------------------------------------------------------ commands
 
+    /**
+     * World names and map ids: both become file names (the world folder, maps/&lt;id&gt;.yml), so
+     * nothing that could leave the folder ("../config") gets through. The built-in maps fit.
+     */
+    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[a-z0-9_]{3,32}");
+
     public void createWorld(Player player, String name) {
-        if (!name.matches("[a-z0-9_]{3,32}")) {
-            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线。");
+        if (!NAME.matcher(name).matches()) {
+            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线，长度 3–32。");
             return;
         }
         World world = Bukkit.getWorld(name);
@@ -118,9 +124,14 @@ public final class EditorService implements Listener {
         Text.send(player, "<#5BD16B>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
     }
 
-    public void start(Player player, String id) {
+    public void start(Player player, String typed) {
         if (editing(player)) {
             Text.send(player, "<#FF8A80>你已经在编辑中，先 /cv editor exit。");
+            return;
+        }
+        String id = typed.toLowerCase(Locale.ROOT);
+        if (!NAME.matcher(id).matches()) {
+            Text.send(player, "<#FF8A80>地图ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         World world = player.getWorld();
@@ -138,8 +149,8 @@ public final class EditorService implements Listener {
             draft = MapDraft.of(existing);
         } else {
             draft = new MapDraft();
-            draft.id = id.toLowerCase(Locale.ROOT);
-            draft.name = id;
+            draft.id = id;
+            draft.name = typed;
             draft.template = world.getName();
         }
         plugin.weapons().reset(player);

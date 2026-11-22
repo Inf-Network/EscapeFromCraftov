@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -181,11 +182,20 @@ public final class InsuranceService {
     }
 
     /**
-     * Raid closing (or the server stopping): insured items left behind go home, also when they are
-     * packed inside a rig or backpack lying around, each one unless the loss roll takes it. What
-     * comes back waits in the profile's claims until {@link #returnMinutes} have passed.
+     * Raid closing: insured items left behind go home, also when they are packed inside a rig or
+     * backpack lying around, each one unless the loss roll takes it. What comes back waits in the
+     * profile's claims until {@link #returnMinutes} have passed.
      */
     public void settle(Raid raid) {
+        settle(raid, Set.of());
+    }
+
+    /**
+     * As {@link #settle(Raid)}, except that the owners in {@code voided} get every claimed item
+     * back in the mailbox at once, with no loss roll: they were still in a raid the server called
+     * off (alive, downed, on the entry camera or within the reconnect window), which costs nothing.
+     */
+    public void settle(Raid raid, Set<UUID> voided) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
@@ -210,13 +220,15 @@ public final class InsuranceService {
         long readyAt = System.currentTimeMillis() + minutes * 60_000L;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         returns.forEach((owner, claimed) -> {
+            boolean spared = voided.contains(owner);
+            boolean atOnce = spared || minutes <= 0;
             List<ItemRecord> records = new ArrayList<>();
             List<ItemRecord> lost = new ArrayList<>();
             for (ItemRecord record : claimed) {
-                (rng.nextDouble() < loss ? lost : records).add(record);
+                (!spared && rng.nextDouble() < loss ? lost : records).add(record);
             }
             if (!records.isEmpty()) {
-                if (minutes <= 0) {
+                if (atOnce) {
                     plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
                             + ProfileService.json(records), p -> p.mailbox.addAll(records));
                 } else {
@@ -227,11 +239,12 @@ public final class InsuranceService {
                 plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
             }
             plugin.getLogger().info("Insurance claim from raid " + raid.id + " for " + owner + ": " + records.size()
-                    + " returned, " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
+                    + " returned" + (spared ? " (raid called off)" : "") + ", " + lost.size() + " lost " + lost.stream().map(r -> r.id).toList());
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
                 String back = records.isEmpty() ? "<#FF8A80>投保装备全部没能找回"
-                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (minutes <= 0 ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱");
+                        : "<white>" + records.size() + " 件装备 <#9AA0A6>" + (atOnce ? "已退回仓库邮箱" : minutes + " 分钟后退回仓库邮箱")
+                        + (spared ? "（行动中止，全部找回）" : "");
                 Text.send(player, "<#5BD16B>保险理赔：" + back
                         + (lost.isEmpty() || records.isEmpty() ? "" : "，<#FF8A80>" + lost.size() + " 件没能找回")
                         + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");

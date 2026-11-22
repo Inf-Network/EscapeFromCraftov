@@ -1350,14 +1350,23 @@ public final class RaidManager implements Listener {
 
     /**
      * Plugin shutdown: the raid is voided and everybody in it goes home with what they carry (no
-     * losses, no rewards). Whoever was still flying in never set foot in it and also gets the entry
-     * fee and insurance premium back. Each player and each raid is handled on its own, so one
-     * failure cannot leave the others in a raid that no longer exists.
+     * losses, no rewards), and insured gear they had set down comes back whole and at once.
+     * Whoever was still flying in never set foot in it and also gets the entry fee and insurance
+     * premium back. The insured gear of those who had already died is settled as usual. Each
+     * player and each raid is handled on its own, so one failure cannot leave the others in a raid
+     * that no longer exists.
      */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
             // A loading raid has not taken anything from its squads yet: they are still in the lobby.
             boolean deployed = raid.state != Raid.State.LOADING;
+            // Read before sendHome, which may settle a player's state.
+            Set<UUID> voided = new java.util.HashSet<>();
+            for (RaidPlayer rp : raid.players.values()) {
+                if (rp.active() || rp.state == RaidPlayer.State.DEPLOYING || rp.state == RaidPlayer.State.DISCONNECTED) {
+                    voided.add(rp.uuid);
+                }
+            }
             for (RaidPlayer rp : raid.players.values()) {
                 try {
                     sendHome(raid, rp, deployed);
@@ -1368,10 +1377,11 @@ public final class RaidManager implements Listener {
             raid.state = Raid.State.CLOSED;
             try {
                 // As when a raid closes: insured gear still on bodies, in containers or on the ground
-                // goes back to its owners. The world is deleted below and nothing would be left to
-                // settle after the restart. On its own, so a failing settlement cannot keep the world
-                // and a failing teardown cannot cost the payouts.
-                plugin.insurance().settle(raid);
+                // goes back to its owners (all of it, at once, to those still in the raid). The world
+                // is deleted below and nothing would be left to settle after the restart. On its own,
+                // so a failing settlement cannot keep the world and a failing teardown cannot cost
+                // the payouts.
+                plugin.insurance().settle(raid, voided);
             } catch (RuntimeException ex) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
             }

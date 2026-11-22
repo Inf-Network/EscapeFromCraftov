@@ -182,7 +182,8 @@ async function replay () {
   // C fires at bare floor, away from everyone; C's own stand-in is around C's eye.
   const floor = await fire(c, c.entity.position.offset(4, 0, 2), 3)
   log('C heard (floor)', floor.join(' '))
-  check('C fired at the floor', floor.some(s => /gun\.[a-z0-9_]+\.fp/.test(s)))
+  // A full-auto M4C plays one report for every two rounds (craftov:gun.m4c.x2.fp, see GunAudio).
+  check('C fired at the floor', floor.some(s => /gun\.[a-z0-9_]+(\.x\d)?\.fp/.test(s)))
   check('shooting the floor gives no hit feedback', !floor.some(s => s.startsWith('craftov:hit.')))
   check('shooting the floor makes no body impact', !floor.some(s => /impact\.(flesh|armor|helmet)/.test(s)))
   check('the floor is hit', floor.some(s => s.startsWith('craftov:impact.') && !/impact\.(flesh|armor|helmet|ricochet)/.test(s)))

@@ -218,9 +218,10 @@ public final class CraftovPlugin extends JavaPlugin {
                 }
             });
         }
-        step("market", market, () -> market.saveSync());
-        // Offline edits made while sending everyone home finish landing before the final save.
+        // Offline edits made while sending everyone home and queued market saves (both go through
+        // the profile writer) finish landing before the final saves, so none lands on top of them.
         step("queued profile writes", profiles, () -> profiles.awaitWrites());
+        step("market", market, () -> market.saveSync());
         step("profiles", profiles, () -> profiles.shutdown());
         step("backup", backups, () -> backups.run("shutdown"));
         step("teams", this, this::cleanupTeams);

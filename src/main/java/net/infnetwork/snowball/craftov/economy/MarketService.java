@@ -34,10 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
@@ -48,8 +45,12 @@ import java.util.concurrent.TimeUnit;
  * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
  * 1.15 × buy price, and buying from the trader to resell never pays.
  *
- * <p>Every trade writes the market and the profiles it touched straight away, in order, so a crash
- * cannot leave a sold listing on the market after its seller was paid (or the other way round).
+ * <p>Every trade queues the market and the profiles it touched for writing straight away, all on
+ * the profile writer thread ({@link ProfileService#queueWrite}), so they reach the disk in the
+ * order queued, and what a trade takes away is queued before what it hands out: a listing leaves
+ * the market before its seller is paid, its buyer gets the item or its seller gets it back, and a
+ * listed item leaves the stash before it appears on the market. A crash between two of those
+ * writes can cost that one payout or item, but can never sell, return or list anything twice.
  */
 public final class MarketService implements Listener {
 
@@ -91,12 +92,6 @@ public final class MarketService implements Listener {
     private Data data = new Data();
     private boolean dirty;
     private boolean closed;
-    /** One writer, so saves land in the order they were taken. */
-    private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "Craftov-MarketIO");
-        t.setDaemon(true);
-        return t;
-    });
     /**
      * When system buyers took each seller's listings of each item in the last hour, oldest first
      * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
@@ -184,26 +179,34 @@ public final class MarketService implements Listener {
         }
         dirty = false;
         String json = GSON.toJson(data);
-        io.execute(() -> write(json));
+        // The profile writer, so a save lands in order with the profile writes around it.
+        plugin.profiles().queueWrite(() -> write(json));
     }
 
-    /** Shutdown: lets queued saves finish, then writes the current state last. */
+    /**
+     * Shutdown, once the profile writer has finished what was queued (CraftovPlugin.onDisable):
+     * writes the current state last, so no older copy can land on top of it.
+     */
     public void saveSync() {
-        io.shutdown();
-        try {
-            io.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
         if (!closed) {
             write(GSON.toJson(data));
         }
     }
 
-    /** Writes the market and the given player's profile now, after a trade changed both. */
-    private void commit(UUID player) {
-        plugin.profiles().saveNow(player);
+    /**
+     * Takes a listing off the market for good and queues the market write at once, before anything
+     * is paid out or handed back for it.
+     */
+    private void takeOff(Listing listing) {
+        data.listings.remove(listing);
+        dirty = true;
         save();
+    }
+
+    /** Queues the market, then the player's profile, after a trade took something off the market. */
+    private void commit(UUID player) {
+        save();
+        plugin.profiles().saveNow(player);
     }
 
     private void write(String json) {
@@ -388,7 +391,10 @@ public final class MarketService implements Listener {
         listing.expires = listing.created + plugin.getConfig().getLong("market.listing-hours", 48) * 3600_000L;
         data.listings.add(listing);
         dirty = true;
-        commit(player.getUniqueId());
+        // The stash first: a crash before the market write costs the listed item, but can never
+        // leave it both in the stash and on the market.
+        plugin.profiles().saveNow(player.getUniqueId());
+        save();
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
@@ -559,11 +565,10 @@ public final class MarketService implements Listener {
         if (listing == null || !listing.seller.equals(player.getUniqueId())) {
             return false;
         }
-        data.listings.remove(listing);
-        dirty = true;
+        takeOff(listing);
         Profile profile = plugin.profiles().get(player);
         profile.mailbox.add(listing.item);
-        commit(player.getUniqueId());
+        plugin.profiles().saveNow(player.getUniqueId());
         Text.send(player, "<#9AA0A6>已下架，物品已退回仓库邮箱。");
         return true;
     }
@@ -578,7 +583,7 @@ public final class MarketService implements Listener {
     }
 
     private void complete(Listing listing, String buyerName, boolean playerSale) {
-        data.listings.remove(listing);
+        takeOff(listing);
         long payout = payout(listing);
         long tax = listing.price - payout;
         // Both callers have checked canEdit, so the seller can be paid now and nothing is journaled.
@@ -644,11 +649,14 @@ public final class MarketService implements Listener {
         pruneVirtualSales(now);
         for (Listing listing : new ArrayList<>(data.listings)) {
             if (now >= listing.expires) {
-                if (plugin.profiles().tryEdit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
-                        + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item))) {
+                java.util.function.Supplier<String> change = () -> "market listing " + listing.id + " expired: add to mailbox "
+                        + ProfileService.json(listing.item);
+                if (plugin.profiles().canEdit(listing.seller)) {
+                    takeOff(listing); // off the market on disk before the item reaches the mailbox
+                    plugin.profiles().edit(listing.seller, change, p -> p.mailbox.add(listing.item));
                     plugin.profiles().saveNow(listing.seller);
-                    data.listings.remove(listing);
-                    dirty = true;
+                } else if (plugin.profiles().tryEdit(listing.seller, change, p -> p.mailbox.add(listing.item))) {
+                    takeOff(listing); // a seller with no account at all: the return is only logged
                 }
                 continue;
             }

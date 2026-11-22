@@ -370,6 +370,20 @@ public final class ProfileService implements Listener {
         }
     }
 
+    /**
+     * Runs another file write (the market's) on the profile writer, after every write queued so far
+     * and before any queued later, so a change that spans both files decides which of them reaches
+     * the disk first. Once the writer has stopped (shutdown, after {@link #awaitWrites}) it runs at
+     * once. Main thread only.
+     */
+    public void queueWrite(Runnable write) {
+        if (io.isShutdown()) {
+            write.run();
+            return;
+        }
+        io.execute(write);
+    }
+
     private void flushDirty() {
         for (UUID uuid : new ArrayList<>(dirty)) {
             Profile profile = cache.get(uuid);

@@ -7,9 +7,11 @@
 //   3. M next to P with its K47: a trigger pull fires (control), then while M holds right click on
 //      P its trigger pulls fire nothing; RCON `damage M 5` and then moving M 0.7 blocks each drop the
 //      revive bar back to (nearly) empty and say it was cut short; M then finishes and P is up;
-//   4. P gets an injector and is knocked down again, M is killed (no standing mate, no injector:
-//      dies at once); P is not finished for having nobody left, is told to use the injector, and
-//      stands up with it.
+//   4. P gets an injector and is knocked down again; M, carrying an injector too, revives P and is
+//      knocked down mid-revive: seen from P it crawls and never stands up in between (ending the
+//      revive used to clear its crawl), and its title says to use the injector (nobody standing);
+//      with its injector taken away M dies at once; P is not finished for having nobody left, is
+//      told to use the injector, and stands up with it.
 // solo: two solo bots (different squads), S shoots T with single K47 PS rounds:
 //   5. T in a one-block gap (crawling, server pose SWIMMING), no armour, healed before each shot:
 //      side-on to S most hits are chest, stomach or arm (not head), feet towards S most are legs;
@@ -268,7 +270,8 @@ async function squad () {
   await rcon(`damage ${M.username} 5 minecraft:generic`)
   await holdOn(M, pEntity(), 700)
   let next = barsSince(M, after).map(reviveFill).filter(f => f !== null)
-  check(`RCON damage M 5 mid-revive: the bar drops from ${before} cells back to at most 2`, next.length > 0 && next[0] <= 2, next)
+  // The action bar of the revive pass just before the hit can still arrive after it: one stale update is allowed.
+  check(`RCON damage M 5 mid-revive: the bar drops from ${before} cells back to at most 2`, next.slice(0, 2).some(f => f <= 2), next)
   check('mid-revive damage: the bar says the revive was cut short', barsSince(M, after).some(b => b.includes('救援被打断')), barsSince(M, after).slice(0, 2))
   // Moving 0.7 blocks: the bar drops back too.
   await holdOn(M, pEntity(), 1800)
@@ -277,7 +280,7 @@ async function squad () {
   await rcon(`execute as ${M.username} at @s run tp @s ~0.7 ~ ~`)
   await holdOn(M, pEntity(), 700)
   next = barsSince(M, after).map(reviveFill).filter(f => f !== null)
-  check(`M moved 0.7 blocks mid-revive: the bar drops from ${before} cells back to at most 2`, before >= 6 && next.length > 0 && next[0] <= 2, { before, next })
+  check(`M moved 0.7 blocks mid-revive: the bar drops from ${before} cells back to at most 2`, before >= 6 && next.slice(0, 2).some(f => f <= 2), { before, next })
   // Finish it.
   await waitFor(async () => { await holdOn(M, pEntity(), 300); return titled(P, '已被救起') }, 9000)
   check('M holding on next to P revives it', titled(P, '已被救起') && inRaid(P), P.titles.slice(-2))
@@ -288,11 +291,13 @@ async function squad () {
   for (let i = 0; i < 6 && M.shots === shots; i++) { M.swingArm(); await sleep(300) }
   check('after the revive M can shoot again', M.shots > shots, M.shots - shots)
 
-  // 4. P with an injector, M killed: P is not finished and stands up with it.
+  // 4. P with an injector goes down again; M, reviving it with an injector of its own, is knocked
+  // down mid-revive and stays down; M without its injector dies; P stands up with its own.
   await clearSoldiers()
   const key = await giveToHotbar(P, 'revive_kit', 7)
-  if (key < 0) {
-    log('SETUP: could not give P an injector')
+  const mKey = await giveToHotbar(M, 'revive_kit', 8)
+  if (key < 0 || mKey < 0) {
+    log('SETUP: could not give P and M an injector each')
     return 2
   }
   P.titles.length = 0
@@ -301,12 +306,39 @@ async function squad () {
     log('SETUP: P was not knocked down a second time', P.titles)
     return 2
   }
+  await tp(M, 45.5, 65, 92.8, 0, 50)
   await sleep(500)
-  M.titles.length = 0
+  await clearSoldiers()
+  // M's pose as P's client sees it (entity metadata; 0 standing, 3 crawling, 5 crouching).
+  const POSE = Math.max(0, P.registry.entitiesByName.player.metadataKeys.indexOf('pose'))
+  const poses = []
+  const onMeta = packet => {
+    const m = P.players[M.username] && P.players[M.username].entity
+    if (m && packet.entityId === m.id) for (const meta of packet.metadata) if (meta.key === POSE) poses.push({ at: Date.now(), pose: meta.value })
+  }
+  P._client.on('entity_metadata', onMeta)
   since = Date.now()
+  // M holds on through the knock-down, so P's revive check still has it as the reviver.
+  const holding = holdOn(M, pEntity(), 3000)
+  await sleep(1500)
+  const reviving = barsSince(M, since).some(b => b.includes('正在救援'))
+  M.titles.length = 0
+  const downAt = Date.now()
   await rcon(`damage ${M.username} 500 minecraft:generic`)
+  await holding
+  await sleep(1500)
+  P._client.removeListener('entity_metadata', onMeta)
+  // From the knock-down on, M only ever crawls: no standing pose before or after the crawl starts.
+  const afterDown = poses.filter(p => p.at >= downAt).map(p => p.pose)
+  check('M, knocked down (carrying an injector) while reviving P, crawls and never stands up in between',
+    reviving && titled(M, '第一次倒地') && afterDown.includes(3) && !afterDown.includes(0),
+    { reviving, poses: poses.map(p => (p.at >= downAt ? '' : 'before:') + p.pose), titles: M.titles })
+  check('M, knocked down with nobody else standing, is told to use its injector', titled(M, '使用自救注射器'), M.titles)
+  since = Date.now()
+  await rcon(`clear ${M.username}`)
   await waitFor(() => M.game.gameMode === 'spectator', 4000)
-  check('M, with P down and no injector, dies at once', M.game.gameMode === 'spectator' && !titled(M, '倒地'), { mode: M.game.gameMode, titles: M.titles })
+  check('M, down with P down and its injector gone, dies at once instead of bleeding out', M.game.gameMode === 'spectator',
+    { mode: M.game.gameMode, titles: M.titles.slice(-2) })
   await sleep(2500)
   check('P, down with an injector and nobody standing, is not finished', inRaid(P) && !titled(P, '行动失败'), { mode: P.game.gameMode, titles: P.titles })
   check('P is told to use the injector', barsSince(P, since).some(b => b.includes('使用自救注射器')), barsSince(P, since).slice(-1))

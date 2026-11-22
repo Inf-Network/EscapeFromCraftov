@@ -185,6 +185,13 @@ public final class Profile {
         public List<BountyClaim> bounties = new ArrayList<>();
         /** Items the raid put in the item mailbox: they come out of it again. */
         public List<ItemRecord> mailed = new ArrayList<>();
+        /**
+         * Instance ids of gear in {@link #loadout} or {@link #secure} that has since left the raid
+         * with another player: extracted or sent home with it, or kept in their secure container
+         * through a death (RaidManager.leftWith). A void raid does not hand it back as well. Saved
+         * as it happens, so a crash voids the raid the same way a stop does.
+         */
+        public Set<String> gone = new LinkedHashSet<>();
     }
 
     /** A bounty collected in a raid (BountyService.onKill). */

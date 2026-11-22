@@ -789,8 +789,8 @@ public final class RaidManager implements Listener {
                 // As far as other players' profit goes, they went home with all of it (see held).
                 List<ItemRecord> home = homeOffline(raid, rp, rp.fees, "raid " + raid.id + " ended during the entry camera");
                 rp.carriedOut = stackCounts(home);
-                instanceIds(home, raid.takenOut);
                 rp.disconnectedInventory = null;
+                leftWith(raid, rp, home);
             }
             // Otherwise (not expected: leaving turns DEPLOYING into DISCONNECTED in onQuit) the next
             // join finds the raid gone and keeps the lobby loadout (LobbyService.onJoin).
@@ -855,7 +855,6 @@ public final class RaidManager implements Listener {
         out.addAll(rp.secure);
         long handed = othersGear(raid, rp, out);
         rp.carriedOut = stackCounts(out);
-        instanceIds(out, raid.takenOut);
         long profit = total - handed - rp.startValue;
         profile.secure = new ArrayList<>(rp.secure);
         profile.addStat("extracts", 1);
@@ -887,6 +886,7 @@ public final class RaidManager implements Listener {
         plugin.lobby().enterLobbyKeepInventory(player);
         plugin.lobby().captureLoadout(player);
         plugin.profiles().saveNow(player.getUniqueId());
+        leftWith(raid, rp, out);
         sendReport(player, report, newCollectibles);
     }
 
@@ -969,6 +969,7 @@ public final class RaidManager implements Listener {
         profile.reports.add(0, report);
         trimReports(profile);
         plugin.profiles().saveNow(player.getUniqueId());
+        leftWith(raid, rp, keptThroughDeath(rp, melee, List.of()));
         plugin.escorts().settle(raid, rp, false);
         creditKill(raid, hit, rp);
         killFeed(raid, hit, player.getName());
@@ -1174,6 +1175,17 @@ public final class RaidManager implements Listener {
         }
     }
 
+    /** What a death leaves the player: the secure container, the melee weapon and {@code mailed}. */
+    private List<ItemRecord> keptThroughDeath(RaidPlayer rp, @Nullable ItemStack melee, List<ItemRecord> mailed) {
+        List<ItemRecord> kept = new ArrayList<>(rp.secure);
+        ItemRecord record = plugin.carry().isMelee(melee) ? plugin.items().toRecord(melee) : null;
+        if (record != null) {
+            kept.add(record);
+        }
+        kept.addAll(mailed);
+        return kept;
+    }
+
     /** The reconnect window or the raid ran out on a disconnected player: missing in action. */
     private void missing(Raid raid, RaidPlayer rp, String reason) {
         if (rp.state != RaidPlayer.State.DISCONNECTED && !rp.active()) {
@@ -1279,6 +1291,7 @@ public final class RaidManager implements Listener {
             profile.reports.add(0, report(raid, rp, outcome, 0, lostValue, delta, xp));
             trimReports(profile);
         });
+        leftWith(raid, rp, keptThroughDeath(rp, melee, unknown));
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
     }
@@ -1832,7 +1845,6 @@ public final class RaidManager implements Listener {
         out.addAll(plugin.carry().snapshot(player).values());
         out.addAll(rp.secure);
         rp.carriedOut = stackCounts(out);
-        instanceIds(out, raid.takenOut);
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
         profile.leaveRaid();
@@ -1841,6 +1853,8 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
         plugin.lobby().enterLobbyKeepInventory(player);
         plugin.lobby().captureLoadout(player);
+        plugin.profiles().saveNow(player.getUniqueId());
+        leftWith(raid, rp, out);
         Text.send(player, "<#FFC23D>" + message);
     }
 
@@ -1859,7 +1873,7 @@ public final class RaidManager implements Listener {
             List<RaidPlayer> voided = new ArrayList<>();
             if (raid.state != Raid.State.LOADING) {
                 for (RaidPlayer rp : raid.players.values()) {
-                    if (rp.state == RaidPlayer.State.DEPLOYING || rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
+                    if (stillIn(rp)) {
                         voided.add(rp);
                     }
                 }
@@ -1948,7 +1962,7 @@ public final class RaidManager implements Listener {
         if (raidOf(player) != null) {
             return;
         }
-        if (voidRaid(player.getUniqueId(), player.getName(), null, Set.of(), true) != null) {
+        if (voidRaid(player.getUniqueId(), player.getName(), null, true) != null) {
             Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废。<#9AA0A6>出发前的装备和安全箱已退回，"
                     + "入场费和保险费已退还，补偿邮件已发到仓库邮箱。");
         }
@@ -1963,7 +1977,7 @@ public final class RaidManager implements Listener {
         rp.disconnectedInventory = null;
         byPlayer.remove(rp.uuid, raid);
         plugin.escorts().callOff(rp);
-        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, raid.takenOut, false);
+        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, false);
         if (player == null) {
             return;
         }
@@ -1991,20 +2005,19 @@ public final class RaidManager implements Listener {
      * with the raid, only describes the change should the profile be unreadable). A profile that
      * still names a raid but has no record (left by an older build) gets the letter and keeps its
      * loadout, which a raid never changes. Gear that went in with them but has since left the raid
-     * with someone else ({@code gone}: instance ids taken out by extraction) does not come back to
-     * them as well. Returns the letter, or null when there was nothing to void (or it went to the
+     * with someone else (Profile.Deployment.gone, see {@link #leftWith}) does not come back to them
+     * as well. Returns the letter, or null when there was nothing to void (or it went to the
      * journal of an unreadable profile).
      */
-    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, Set<String> gone,
-                                            boolean crash) {
+    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
         long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
         Profile.Mail[] sent = new Profile.Mail[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
         String cause = (crash ? "raid lost when the server went down" : "server stopped during the raid") + ", voided for " + name;
         plugin.profiles().edit(uuid, () -> {
             int[] lost = new int[1];
-            Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, gone, lost);
-            List<ItemRecord> secure = known == null ? List.of() : without(known.secure, gone, lost);
+            Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, known.gone, lost);
+            List<ItemRecord> secure = known == null ? List.of() : without(known.secure, known.gone, lost);
             return describeVoid(cause, known, loadout, secure, voidLetter(known, lost[0], compensation, crash));
         }, p -> {
             Profile.Deployment d = p.deployment;
@@ -2013,8 +2026,8 @@ public final class RaidManager implements Listener {
             }
             // Everything is worked out before the profile is touched, so it changes all at once.
             int[] lost = new int[1];
-            Map<Integer, ItemRecord> loadout = d == null ? p.loadout : without(d.loadout, gone, lost);
-            List<ItemRecord> secure = d == null ? p.secure : without(d.secure, gone, lost);
+            Map<Integer, ItemRecord> loadout = d == null ? p.loadout : without(d.loadout, d.gone, lost);
+            List<ItemRecord> secure = d == null ? p.secure : without(d.secure, d.gone, lost);
             Profile.Mail letter = voidLetter(d, lost[0], compensation, crash);
             List<Profile.TaskState> tasks = new ArrayList<>();
             if (d != null) {
@@ -2147,6 +2160,57 @@ public final class RaidManager implements Listener {
             copy.contents = without(record.contents, gone, lost);
         }
         return copy;
+    }
+
+    /** Still in the raid: a stop would void it for them ({@link #shutdown}). */
+    private static boolean stillIn(RaidPlayer rp) {
+        return rp.state == RaidPlayer.State.DEPLOYING || rp.active() || rp.state == RaidPlayer.State.DISCONNECTED;
+    }
+
+    /**
+     * {@code leaver} is out of the raid for good and keeps {@code kept}: what they got out with, or
+     * what a death leaves them (the secure container, the melee weapon). Gear among it that someone
+     * still in the raid took in goes on that player's deployment record (Profile.Deployment.gone)
+     * and is saved at once, so a void raid, whether a stop or a crash voids it, does not hand it
+     * back to them as well. Called once the leaver's own save is queued (saves land in order):
+     * should the server die in between, the gear exists twice rather than not at all.
+     */
+    private void leftWith(Raid raid, RaidPlayer leaver, Collection<ItemRecord> kept) {
+        Set<String> ids = new java.util.HashSet<>();
+        instanceIds(kept, ids);
+        if (ids.isEmpty()) {
+            return;
+        }
+        for (RaidPlayer owner : raid.players.values()) {
+            if (owner == leaver || owner.deployment == null || !stillIn(owner)) {
+                continue;
+            }
+            Set<String> theirs = new java.util.LinkedHashSet<>(ids);
+            theirs.retainAll(owner.gearUids);
+            if (!theirs.isEmpty()) {
+                noteGone(raid, owner, theirs, leaver.name);
+            }
+        }
+    }
+
+    /** Adds gear of {@code owner}'s that {@code by} has taken out of the raid to their deployment record. */
+    private void noteGone(Raid raid, RaidPlayer owner, Set<String> uids, String by) {
+        Profile.Deployment known = owner.deployment;
+        plugin.profiles().edit(owner.uuid, () -> "gear " + owner.name + " took into raid " + raid.id + " left it with " + by
+                + ": deployment.gone add " + ProfileService.json(uids) + " (only while deployment.raid is \"" + raid.key + "\")", p -> {
+            Profile.Deployment d = p.deployment;
+            if (d != null && d.raid.equals(raid.key)) {
+                d.gone.addAll(uids);
+            }
+        });
+        if (known != null) {
+            // The copy kept with the raid (the profile's own while they are online): a stop reads
+            // the profile's, this only describes the void should that profile be unreadable.
+            known.gone.addAll(uids);
+        }
+        if (plugin.profiles().cached(owner.uuid) != null) {
+            plugin.profiles().saveNow(owner.uuid); // an offline profile was written by the edit
+        }
     }
 
     /** Adds the instance ids of these records (packed contents too) to {@code into}. */

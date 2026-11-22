@@ -150,7 +150,7 @@ async function claimFreeKit (bot) {
   if (!w) return '(main menu did not open)'
   const from = bot.chatLog.length
   await bot.clickWindow(30, 0, 0)
-  const said = await waitChat(bot, /免费补给|战备值超过/, 5000, from)
+  const said = await waitChat(bot, /免费补给|战备值超过|总资产/, 5000, from)
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
   await sleep(300)
   return said || '(nothing said)'
@@ -180,7 +180,9 @@ async function scenario (bot) {
   const dv = await deployValue(bot)
   check('deploy screen: 战备值 ◈0 with only a karambit', dv.value === 0, dv.text)
   let bar = ''
-  await waitFor(() => (bar = Object.values(bot.bars).find(t => t.includes('战备值')) || ''), 5000)
+  // The vanilla info bar spells it "战备值 ◈…"; BetterHud draws its HUD through boss bars of its own,
+  // full of private-use glyphs (mineflayer turns them into U+FFFD), which may carry the same label.
+  await waitFor(() => (bar = Object.values(bot.bars).find(t => t.includes('战备值 ◈') && !/[\ue000-\uf8ff\ud800-\udfff\ufffd]/.test(t)) || ''), 5000)
   if (bar) check('lobby HUD bar: 战备值 ◈0 with only a karambit', /战备值 ◈0(\s|$)/.test(bar), bar)
   else log('SKIP lobby HUD bar: no boss-bar HUD (BetterHud draws it; hud.vanilla-bars-with-betterhud is off)')
   await rcon(`cv money ${name} 100000`)

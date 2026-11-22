@@ -22,7 +22,7 @@ public final class CraftovCommand implements TabExecutor {
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "marketaudit", "ai", "lagcomp");
+            "marketaudit", "ai", "lagcomp", "luck");
 
     private final CraftovPlugin plugin;
 
@@ -156,7 +156,7 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id]"));
+                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家>"));
         }
     }
 
@@ -374,6 +374,7 @@ public final class CraftovCommand implements TabExecutor {
                                 + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
                         : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
             }
+            case "luck" -> luck(sender, args);
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -396,6 +397,40 @@ public final class CraftovCommand implements TabExecutor {
                 }
             }
             default -> help(sender);
+        }
+    }
+
+    /**
+     * /cv luck &lt;player&gt; [quota|pity|boost|reset ...]: shows a player's personal luck (pity counts,
+     * quota pool, behaviour multiplier, loss compensation), online or not, or changes it.
+     */
+    private void luck(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            Text.send(sender, "/cv luck <玩家> [quota <数量|+数量|-数量> | pity <GOLD|RED|大奖物品> <数量> | boost <局数> | reset]");
+            return;
+        }
+        Player online = Bukkit.getPlayerExact(args[1]);
+        java.util.UUID uuid = online != null ? online.getUniqueId() : plugin.profiles().findByName(args[1]);
+        if (uuid == null) {
+            Text.send(sender, "<#FF8A80>没有叫 " + Text.escape(args[1]) + " 的玩家。");
+            return;
+        }
+        if (args.length > 2) {
+            String error = plugin.luck().adjust(uuid, args[2].toLowerCase(Locale.ROOT),
+                    java.util.Arrays.copyOfRange(args, 3, args.length), sender.getName());
+            if (error != null) {
+                Text.send(sender, "<#FF8A80>" + Text.escape(error));
+                return;
+            }
+            Text.send(sender, "<#5BD16B>已修改。");
+        }
+        Profile profile = plugin.profiles().peek(uuid);
+        if (profile == null) {
+            Text.send(sender, "<#FF8A80>读不出这个玩家的档案。");
+            return;
+        }
+        for (String line : plugin.luck().describe(profile)) {
+            sender.sendMessage(Text.mm(line));
         }
     }
 
@@ -455,8 +490,15 @@ public final class CraftovCommand implements TabExecutor {
             out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
-        } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money"))) {
+        } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money")
+                || args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin"))) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin")) {
+            out.addAll(List.of("quota", "pity", "boost", "reset"));
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("luck") && args[2].equalsIgnoreCase("pity")
+                && sender.hasPermission("craftov.admin")) {
+            out.addAll(List.of("GOLD", "RED"));
+            out.addAll(plugin.loot().jackpots());
         } else if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
             out.addAll(plugin.registry().ids());
         } else if (args.length == 2 && args[0].equalsIgnoreCase("editor")) {

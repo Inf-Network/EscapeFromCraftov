@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Predicate;
 
 /** A searchable container in a raid: crates, safes, corpses, AI drops. Contents are shared. */
 @SuppressWarnings("UnstableApiUsage")
@@ -36,6 +37,7 @@ public final class LootContainer {
     private final ItemStack[] slots;
     private final boolean[] revealed;
     private boolean generated;
+    private boolean rolled;
     private double progressMs;
     private long lastSearchTick = -1;
     /** Bumped on every reveal or slot change so every open search screen can redraw. */
@@ -111,8 +113,49 @@ public final class LootContainer {
         return left;
     }
 
+    /** Fills the container with what loot.yml rolled for it (world containers, supply drops). */
     public void generate(List<ItemStack> items) {
         fill(items, type.allOf().isEmpty());
+        rolled = type.allOf().isEmpty();
+    }
+
+    /**
+     * Holds what loot.yml rolled for it, not what someone carried (bodies) or a test armory's fixed
+     * contents: only these count for a player's luck.
+     */
+    public boolean rolled() {
+        return rolled;
+    }
+
+    /**
+     * Puts one more item into a random free slot, hidden until searched (a player's luck hand-out).
+     * False when the container is full.
+     */
+    public boolean addHidden(ItemStack stack) {
+        List<Integer> free = new ArrayList<>();
+        for (int i = 0; i < slots.length; i++) {
+            if (slots[i] == null) {
+                free.add(i);
+            }
+        }
+        if (free.isEmpty()) {
+            return false;
+        }
+        int slot = free.get(ThreadLocalRandom.current().nextInt(free.size()));
+        slots[slot] = stack;
+        revealed[slot] = false;
+        version++;
+        return true;
+    }
+
+    /** Whether any item in the container, searched or not, passes {@code test}. */
+    public boolean holds(Predicate<ItemStack> test) {
+        for (ItemStack stack : slots) {
+            if (stack != null && test.test(stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int hiddenCount() {

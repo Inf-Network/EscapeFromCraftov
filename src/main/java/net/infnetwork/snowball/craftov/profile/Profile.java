@@ -80,6 +80,8 @@ public final class Profile {
     /** Last few login addresses, newest last (MarketService: same-address trades). */
     public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
+    /** Personal loot luck (LuckService, #80). */
+    public Luck luck = new Luck();
 
     /** Raid id while the player is inside a raid; a crash leaves it set (see {@link #deployment}). */
     public @Nullable String activeRaid;
@@ -244,6 +246,70 @@ public final class Profile {
             this.item = item;
             this.readyAt = readyAt;
         }
+    }
+
+    /** Personal loot luck (LuckService): what the player is owed for going without. */
+    public static final class Luck {
+        /**
+         * Rarity (GOLD, RED) -> containers searched that could hold a single item of it since the
+         * player last found one.
+         */
+        public Map<String, Integer> pity = new HashMap<>();
+        /** Jackpot item id -> qualifying raids since the player last found it. */
+        public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota pool (◈): what the player is owed as gold and red items. */
+        public long quota;
+        /** Time (epoch millis) up to which idle decay has been taken off the quota. */
+        public long quotaAt;
+        /** When the player last finished a raid that counts for luck (epoch millis). */
+        public long playedAt;
+        /** Raids left with loss compensation: more gold and red handed out in the containers they search. */
+        public int boostRaids;
+        /**
+         * Raids that counted for luck, newest first: every one within the loss window
+         * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.
+         */
+        public List<LuckRaid> raids = new ArrayList<>();
+        /**
+         * Set while the player is in a raid that counts: what a server crash puts back, since the
+         * raid is then voided and the loadout restored to what it was at the deploy.
+         */
+        public @Nullable LuckDeploy deployed;
+    }
+
+    /** Luck as it was when the player deployed (Profile.Luck.deployed). */
+    public static final class LuckDeploy {
+        public String raid = "";
+        public Map<String, Integer> pity = new HashMap<>();
+        public Map<String, Integer> jackpots = new HashMap<>();
+        /** Quota spent on hand-outs in the raid so far. */
+        public long quotaSpent;
+    }
+
+    /** One raid as luck remembers it (LuckService). */
+    public static final class LuckRaid {
+        public long time;
+        public String tier = "";
+        /** The raid's key (its id and start time): ids start again at R1 after a restart. */
+        public String raid = "";
+        /**
+         * Change in what the player owns: carried out or kept, less brought in, fees and paid exits.
+         * A squadmate's gear is left out; the player's own that a squadmate carried out, or that
+         * insurance brought back, does not count as lost once the raid has closed.
+         */
+        public long net;
+        /** The raid has not closed yet: net may still come down (squadmates, insurance). */
+        public boolean open;
+        /** Its loss has set off a loss compensation already and counts for no other. */
+        public boolean compensated;
+        public int kills;
+        public int deaths;
+        /** Revives given, extracting beside a squadmate, escort jobs. */
+        public int coop;
+        /** Carried out a red item they did not bring in. */
+        public boolean red;
+        /** Long enough and with enough searches to count for the quota and the behaviour score. */
+        public boolean qualified;
     }
 
     /** A hideout production: recipe id and when it is done (epoch millis). */

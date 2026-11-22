@@ -1,7 +1,7 @@
 // Leaving a raid by disconnecting, with headless bots.
 //
 //   node disconnect.js                         every scenario
-//   node disconnect.js combat standin          only these (combat standin rejoin timeout bleed soldiers)
+//   node disconnect.js combat standin          only these (combat standin shot relog rejoin protect timeout bleed soldiers)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
@@ -16,19 +16,28 @@
 //             a body lies where A stood, B gets the kill, and A comes back in the lobby
 //   standin   A quits outside a fight: a stand-in stands where A was; B stabs it to death, a
 //             body lies there, B gets the kill, and A comes back in the lobby
+//   shot      the same with B's rifle: bullets kill the stand-in, the report names B, and A's
+//             report still grants the experience of a death
+//   relog     A quits outside a fight, B puts two pistol rounds into the stand-in's vest (it
+//             wears down), A comes back and quits again a second later (inside the 2 s
+//             protection): that is leaving mid-fight, so A dies (report 交战中断线) and B gets
+//             the kill
 //   rejoin    A quits, the stand-in takes a hit, and A comes back 10 s later: in the stand-in's
 //             place, at its health, with the same gear, and the stand-in is gone
+//   protect   A quits and comes back: inside the 2 s protection the trigger only says why it
+//             cannot fire, but Q still reaches the reload (it starts, or says the magazine is full)
 //   timeout   A quits and does not come back: when the reconnect window ends the stand-in is
 //             gone and a body in A's skin and helmet lies there (report 失踪（断线超时）)
 //   bleed     A quits with a heavy bleed and comes back 30 s later (less with a short reconnect
 //             window): about 52 HP down (20 ticks of 2.6), and the stand-in bled as well
 //   soldiers  A, out of the insertion grace, quits next to a soldier post and comes back 5 s
 //             later: a grenade cannot be thrown for 2 s but can be after, and a soldier hits A
-//             well before the 14 s the old rejoin grace gave
+//             within 3 s of the rejoin (soldiers aim through the protection and fire as it ends)
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
+const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 
 const PORT = Number(process.env.PORT || 25565)
@@ -145,6 +154,12 @@ async function vec (selector, field = 'Pos') {
   return m ? m.slice(1).map(Number) : null
 }
 
+/** Durability left on the vest {@code selector} wears, or null. */
+async function vestDura (selector) {
+  const m = (await rcon(`data get entity ${selector} equipment.chest.components."minecraft:custom_data".PublicBukkitValues."craftov:dura"`)).match(/: (-?[\d.]+)d/)
+  return m ? Number(m[1]) : null
+}
+
 async function health (selector) {
   const m = (await rcon(`data get entity ${selector} Health`)).match(/: (-?[\d.]+)f/)
   return m ? Number(m[1]) : null
@@ -217,6 +232,38 @@ async function stab (B, target, entityOf) {
   return true
 }
 
+/**
+ * B steps up to the target and fires the gun in hotbar slot {@code slot} at its chest {@code taps}
+ * times (a tap is one round from a pistol, one or two from a rifle). Returns how many taps went off.
+ */
+async function shoot (B, target, entityOf, slot, taps) {
+  B.setQuickBarSlot(slot)
+  await sleep(800)
+  let done = 0
+  for (let i = 0; i < taps; i++) {
+    const at = await vec(target)
+    if (!at) break
+    await rcon(`execute as ${B.username} at ${target} run tp @s ^ ^ ^1.6`)
+    await sleep(300)
+    // The bot's own look packets win over a teleport's rotation, so it aims itself; looking away
+    // first makes it send a fresh look even if it thinks it still aims there (recoil moved it).
+    await B.look(B.entity.yaw + 0.5, 0, true)
+    await sleep(100)
+    await B.lookAt(new Vec3(at[0], at[1] + 1.1, at[2]), true)
+    await sleep(200)
+    const entity = entityOf()
+    if (!entity) break
+    B.attack(entity) // a left click on an entity with a gun in hand pulls the trigger
+    done++
+    await sleep(500)
+  }
+  return done
+}
+
+/** The mannequin B sees standing where {@code at} is. */
+const standInNear = (B, at) => () => Object.values(B.entities).find(e => e.name === 'mannequin'
+  && e.position.distanceTo(B.entity.position) < 4 && Math.hypot(e.position.x - at[0], e.position.z - at[2]) < 0.3)
+
 const scenarios = {
   async combat () {
     const log = logFrom()
@@ -281,6 +328,79 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'stand-in, killed, body, kill credited, back in the lobby'} | stand-in at ${startHp} HP, ${stabs} stabs, report "${report && report.outcome}"`]
   },
 
+  async shot () {
+    const log = logFrom()
+    const [A, B] = await pair()
+    const world = A.worldName
+    await leave(A)
+    await sleep(1000)
+    const problems = []
+    const sel = standInSel(A.username)
+    const standAt = await vec(sel)
+    if (!standAt) return ['FAIL', 'no stand-in']
+    const startHp = await health(sel)
+    // The starter rifle (slot 0) goes through the starter vest: about three hits for 100 HP.
+    let taps = 0
+    for (let round = 0; round < 6 && await vec(sel); round++) {
+      const fired = await shoot(B, sel, standInNear(B, standAt), 0, 1)
+      if (!fired) { problems.push('B cannot see the stand-in'); break }
+      taps += fired
+    }
+    if (await vec(sel)) problems.push(`stand-in still up after ${taps} taps (${await health(sel)} HP)`)
+    await sleep(500)
+    if (!await near(world, standAt, bodySel)) problems.push('no body where the stand-in stood')
+    const credited = B.chatLog.some(l => l.includes('击杀') && l.includes(A.username))
+    if (process.env.DEBUG) console.log(B.chatLog.slice(-15))
+    if (!credited) problems.push('B was not credited')
+    const report = lastReport(A.username)
+    if (!report || !report.outcome.startsWith('断线后被 ' + B.username + ' 击杀')) problems.push(`report: ${report && report.outcome}`)
+    if (!report || !(report.xp > 0)) problems.push(`no experience in the report (${report && report.xp})`)
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'shot dead, body, kill credited, experience granted'} | stand-in at ${startHp} HP, ${taps} taps, report "${report && report.outcome}", xp ${report && report.xp}`]
+  },
+
+  async relog () {
+    const log = logFrom()
+    const [A, B] = await pair()
+    const world = A.worldName
+    await leave(A)
+    await sleep(1000)
+    const problems = []
+    const sel = standInSel(A.username)
+    const standAt = await vec(sel)
+    if (!standAt) return ['FAIL', 'no stand-in']
+    const startHp = await health(sel)
+    const startVest = await vestDura(sel)
+    // Two rounds from the starter pistol (slot 1): about 11 each through the vest, far from lethal.
+    if (await shoot(B, sel, standInNear(B, standAt), 1, 2) < 2) return ['FAIL', 'B cannot see the stand-in']
+    await sleep(300)
+    const shotHp = await health(sel)
+    const shotVest = await vestDura(sel)
+    if (shotHp === null || shotHp >= startHp) problems.push(`the shots did not land (${startHp} -> ${shotHp})`)
+    if (shotVest === null || !(shotVest < startVest)) problems.push(`the vest did not wear (${startVest} -> ${shotVest})`)
+    const A2 = await make(A.username)
+    const back = Date.now()
+    if (!await waitFor(() => landed(A2), 8000)) return ['FAIL', `A came back in ${A2.worldName} ${A2.game.gameMode}`]
+    const at = await vec(A2.username)
+    await sleep(Math.max(0, 1000 - (Date.now() - back)))
+    const quitAfter = (Date.now() - back) / 1000
+    await leave(A2)
+    await sleep(1500)
+    if (!at || !await near(world, at, bodySel)) problems.push('no body where A stood')
+    if (await near(world, standAt, standInSel(A.username).replace(',limit=1', ''))) problems.push('a new stand-in')
+    const credited = B.chatLog.some(l => l.includes('击杀') && l.includes(A.username))
+    if (process.env.DEBUG) console.log(B.chatLog.slice(-15))
+    if (!credited) problems.push('B was not credited')
+    const report = lastReport(A.username)
+    if (!report || report.outcome !== '交战中断线') problems.push(`report: ${report && report.outcome}`)
+    const A3 = await make(A.username)
+    if (!await waitFor(() => inLobby(A3), 8000)) problems.push(`A came back in ${A3.worldName}`)
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'quitting again after the stand-in was shot is death, B credited'} | stand-in ${startHp} -> ${shotHp} HP, vest ${startVest} -> ${shotVest}, A quit ${quitAfter.toFixed(1)} s after rejoining, report "${report && report.outcome}"`]
+  },
+
   async rejoin () {
     const log = logFrom()
     const [A] = await pair()
@@ -309,6 +429,37 @@ const scenarios = {
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'back in its place, at its health, same gear, stand-in gone'} | ${hpBefore} HP on leaving, stand-in ${standHp}, back at ${hp}`]
+  },
+
+  async protect () {
+    const log = logFrom()
+    const [A] = await pair()
+    await leave(A)
+    await sleep(1500)
+    const A2 = await make(A.username)
+    const back = Date.now()
+    let cooldowns = 0
+    A2._client.on('set_cooldown', () => cooldowns++)
+    if (!await waitFor(() => landed(A2), 8000)) return ['FAIL', `A came back in ${A2.worldName} ${A2.game.gameMode}`]
+    A2.setQuickBarSlot(0) // the starter rifle
+    await sleep(300)
+    const mark = A2.chatLog.length
+    A2.swingArm() // the trigger
+    await sleep(250)
+    cooldowns = 0
+    A2._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }) // Q
+    await sleep(400)
+    const checkedAt = (Date.now() - back) / 1000
+    const said = A2.chatLog.slice(mark)
+    const problems = []
+    if (checkedAt > 1.9) problems.push(`checks took until ${checkedAt.toFixed(1)} s, past the protection`)
+    if (!said.some(l => l.includes('保护时间内不能开火'))) problems.push('the trigger gave no protection hint')
+    const reloaded = cooldowns > 0 || said.some(l => l.includes('弹匣已满'))
+    if (!reloaded) problems.push('Q did not reach the reload')
+    if (process.env.DEBUG) console.log(said)
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no shot inside the protection, but reload works'} | checked ${checkedAt.toFixed(1)} s after rejoining, reload ${cooldowns > 0 ? 'started' : 'refused: magazine full'}`]
   },
 
   async timeout () {
@@ -419,7 +570,7 @@ const scenarios = {
     const hitAfter = hitAt ? (hitAt - back) / 1000 : null
     if (hitAfter === null) problems.push('no soldier hit A within 12 s of rejoining')
     else if (hitAfter < 1.9) problems.push(`hit ${hitAfter.toFixed(1)} s after rejoining, inside the protection`)
-    else if (hitAfter > 6) problems.push(`hit only ${hitAfter.toFixed(1)} s after rejoining`)
+    else if (hitAfter > 3) problems.push(`hit only ${hitAfter.toFixed(1)} s after rejoining`)
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no throw inside the protection, a throw after it, soldiers fired right after it'} | throws tried ${earlyAt.toFixed(1)} s and ${lateAt === null ? '-' : lateAt.toFixed(1)} s, first hit ${hitAfter === null ? '-' : hitAfter.toFixed(1) + ' s'} after rejoining`]

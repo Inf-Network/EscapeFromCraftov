@@ -321,7 +321,7 @@ public final class HealthService implements Listener {
                 }
             }
             if (bleed > 0 && worst != null) {
-                plugin.damage().recordHit(player, null, "失血", worst);
+                plugin.damage().recordBleed(player, "失血", worst);
                 bleeding = true;
                 try {
                     plugin.damage().deal(player, null, bleed);

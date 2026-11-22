@@ -114,13 +114,37 @@ public final class DamageService implements Listener {
         recordHit(victim, attacker, weapon, BodyPart.defaultFor(zone));
     }
 
+    /**
+     * Records who hurt the victim and with what. Damage nobody dealt ({@code attacker} null: a fall,
+     * shelling, your own grenade) only names the cause: whoever hurt the victim in the last 30
+     * seconds keeps the credit, so a fall or a shell cannot take a kill away from them, and the
+     * death reads "killed by them (fall)". It does not restart their 30 seconds; {@link #recordBleed}
+     * does.
+     */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
-        recordHit(victim, attacker, weapon, part, false);
+        recordHit(victim, attacker, weapon, part, false, false);
     }
 
-    private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee) {
+    /**
+     * A wound bleeding: like a hit nobody dealt, but the wound is the doing of whoever last hurt the
+     * victim, so it also restarts their 30 seconds. A player shot and left bleeding who runs off and
+     * bleeds out is their kill, however long it takes.
+     */
+    public void recordBleed(LivingEntity victim, String weapon, BodyPart part) {
+        recordHit(victim, null, weapon, part, false, true);
+    }
+
+    private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee,
+                           boolean renews) {
+        long now = Bukkit.getCurrentTick();
+        LastHit last = attacker == null ? lastHit(victim.getUniqueId()) : null;
+        if (last != null && last.attacker() != null) {
+            lastHits.put(victim.getUniqueId(), new LastHit(last.attacker(), last.attackerName(), weapon, part.zone(), part,
+                    renews ? now : last.tick(), false));
+            return;
+        }
         lastHits.put(victim.getUniqueId(), new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, Bukkit.getCurrentTick(), melee));
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee));
     }
 
     public static String displayName(Entity entity) {
@@ -391,7 +415,7 @@ public final class DamageService implements Listener {
         if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
             plugin.health().rollInjuries(target, part, damage);
         }
-        recordHit(victim, player, def.name(), part, true);
+        recordHit(victim, player, def.name(), part, true, false);
         if (victim instanceof Player) {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
                     .add(new HitRecord(player.getName(), def.name(), part, damage, (int) Math.round(eye.toVector().distance(point))));

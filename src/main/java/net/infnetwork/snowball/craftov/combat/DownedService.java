@@ -216,7 +216,9 @@ public final class DownedService implements Listener {
         uncrawl(player, state);
         rp.state = RaidPlayer.State.ALIVE;
         DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
-        if (hit == null) {
+        // Whoever knocked the player down keeps the kill unless someone has hurt them since: past 30
+        // seconds the last hit has expired, and a shell landing after that names nobody.
+        if (hit == null || (hit.attacker() == null && state.cause != null && state.cause.attacker() != null)) {
             hit = state.cause;
         }
         plugin.raids().die(raid, player, rp, hit == null || hit.attacker() == null ? "倒地后失血过多"

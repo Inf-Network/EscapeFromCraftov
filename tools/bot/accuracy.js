@@ -491,8 +491,10 @@ const SOLDIERS = ['zombie', 'husk', 'drowned']
 async function ai () {
   const hits = []
   bot._client.on('damage_event', p => {
+    // A soldier's hit on a player names no attacking entity, only where it came from
+    // (DamageService.deal keeps vanilla's difficulty scaling out of it); nothing else hurts us here.
     const by = bot.entities[p.sourceCauseId - 1]
-    if (bot.entity && p.entityId === bot.entity.id && by && SOLDIERS.includes(by.name)) hits.push(Date.now())
+    if (bot.entity && p.entityId === bot.entity.id && (by ? SOLDIERS.includes(by.name) : !!p.sourcePosition)) hits.push(Date.now())
   })
   // Soldiers' reports reach us as positional sounds; every soldier in the raid is shooting at us.
   const reports = []

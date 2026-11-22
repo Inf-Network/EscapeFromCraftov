@@ -30,6 +30,7 @@ import argparse
 import contextlib
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -513,9 +514,10 @@ class Session:
 
     # -- game state through RCON
 
-    def data(self, path):
-        """`data get entity <player> <path>`, the value only (None if absent)."""
-        out = self.rcon(f'data get entity {self.name} {path}')
+    def data(self, path, who=None):
+        """`data get entity <player> <path>`, the value only (None if absent). `who` defaults to the
+        camera player; scenes pass a puppet's name to ask about it."""
+        out = self.rcon(f'data get entity {who or self.name} {path}')
         marker = 'has the following entity data: '
         return out.split(marker, 1)[1].strip() if marker in out else None
 
@@ -532,13 +534,14 @@ class Session:
     def in_raid(self):
         return 'craftov_raid' in self.dimension() and self.gamemode() == 2
 
-    def item_in(self, slot):
-        value = self.data(f'Inventory[{{Slot:{slot}b}}].components."minecraft:custom_data".PublicBukkitValues."craftov:id"')
+    def item_in(self, slot, who=None):
+        path = f'Inventory[{{Slot:{slot}b}}].components."minecraft:custom_data".PublicBukkitValues."craftov:id"'
+        value = self.data(path, who)
         return value.strip('"') if value else None
 
-    def slot_of(self, item):
+    def slot_of(self, item, who=None):
         """The hotbar slot (0-8) holding this Craftov item, or None."""
-        return next((slot for slot in range(9) if self.item_in(slot) == item), None)
+        return next((slot for slot in range(9) if self.item_in(slot, who) == item), None)
 
     def count(self, item):
         """How many of this Craftov item the player carries (inventory and equipment)."""
@@ -561,18 +564,23 @@ class Session:
                 return ammo.group(1) if ammo else None
         return None
 
-    def give(self, item, amount=1):
-        self.rcon(f'cv give {self.name} {item} {amount}')
+    def give(self, item, amount=1, who=None):
+        self.rcon(f'cv give {who or self.name} {item} {amount}')
+
+    def hotbar_slot(self, item, who=None):
+        """The hotbar slot holding the item, giving it first if it is not there yet."""
+        slot = self.slot_of(item, who)
+        if slot is None:
+            self.give(item, who=who)
+            time.sleep(0.5)
+            slot = self.slot_of(item, who)
+        if slot is None:
+            raise Fail(f'{item} did not land in the hotbar of {who or self.name}')
+        return slot
 
     def hold(self, item):
         """Puts the item in the hotbar if it is not there yet and selects it."""
-        slot = self.slot_of(item)
-        if slot is None:
-            self.give(item)
-            time.sleep(0.5)
-            slot = self.slot_of(item)
-        if slot is None:
-            raise Fail(f'{item} did not land in the hotbar')
+        slot = self.hotbar_slot(item)
         self.select(slot)
         return slot
 
@@ -622,6 +630,32 @@ class Session:
         self.wait_until(self.in_lobby, 90, 'the way back to the lobby')
         time.sleep(1.5)
 
+    @contextlib.contextmanager
+    def puppet(self, name='ShotMate'):
+        """A second player to put in front of the camera, for what other players see: a mineflayer
+        bot (tools/bot/puppet.js; needs `npm install` in tools/bot). It leaves when the block ends."""
+        bot_dir = ROOT / 'tools' / 'bot'
+        if not (bot_dir / 'node_modules' / 'mineflayer').exists():
+            raise Fail('tools/bot/node_modules is missing; run npm install in tools/bot')
+        log_path = CACHE / 'puppet.log'
+        with open(log_path, 'wb') as out:
+            proc = subprocess.Popen(['node', 'puppet.js', name], cwd=bot_dir, env=dict(os.environ, PORT=str(self.cfg.port)),
+                                    stdin=subprocess.PIPE, stdout=out, stderr=subprocess.STDOUT)
+        try:
+            self.wait_until(lambda: b'ready' in log_path.read_bytes() or proc.poll() is not None, 60, f'{name} to join')
+            if proc.poll() is not None:
+                raise Fail(f'{name} could not join; see {log_path}')
+            self.wait_until(lambda: (self.data('Dimension', name) or '').strip('"').endswith('craftov_lobby'), 30, f'{name} in the lobby')
+            time.sleep(2)
+            yield Puppet(self, name, proc)
+        finally:
+            with contextlib.suppress(OSError):
+                proc.stdin.close()
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
     # -- output
 
     def shot(self, name):
@@ -632,6 +666,40 @@ class Session:
         self.shots.append(name)
         log('shot', path.relative_to(ROOT))
         return path
+
+
+class Puppet:
+    """A second player driven through tools/bot/puppet.js; see Session.puppet."""
+
+    def __init__(self, session, name, proc):
+        self.session = session
+        self.name = name
+        self.proc = proc
+
+    def send(self, line):
+        """One puppet.js command: slot N, sneak on|off, use on|off, chat <text>."""
+        self.proc.stdin.write((line + '\n').encode('utf-8'))
+        self.proc.stdin.flush()
+        time.sleep(0.3)
+
+    def hold(self, item):
+        self.send(f'slot {self.session.hotbar_slot(item, self.name)}')
+
+    def tp(self, x, y, z, yaw=0):
+        """Moves the puppet within its world and turns it to `yaw` (0 south, 90 west, 180 north)."""
+        self.session.rcon(f'execute as {self.name} at @s run tp @s {x} {y} {z} {yaw} 0')
+        time.sleep(0.5)
+
+    def orbit(self, degrees, distance=3):
+        """Moves the camera player around the puppet and turns it to look at it: 0 is in front of
+        the puppet, 90 on its right, 180 behind it. The puppet itself never turns, because other
+        clients swing a player's body after its head only slowly."""
+        s = self.session
+        side = -distance * math.sin(math.radians(degrees))
+        ahead = distance * math.cos(math.radians(degrees))
+        # Feet to feet: on level ground that is a level look, with the puppet's body mid-screen.
+        s.rcon(f'execute as {s.name} at {self.name} run tp @s ^{side:.2f} ^ ^{ahead:.2f} facing entity {self.name} feet')
+        time.sleep(1)
 
 
 def load_scene(name):

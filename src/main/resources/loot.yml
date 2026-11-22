@@ -106,11 +106,14 @@ containers:
     rarity: { WHITE: 1 }
 
   # Test-map armory: fixed contents, one of every item in the listed categories (searches fast).
+  # Everything rolled from an all-of container is a test item: usable in the raid, worth nothing, never
+  # stored, sold or collected, and taken back when its holder returns to the lobby.
+  # Armory guns only take armory parts in the gunsmith, so the parts come in the same case.
   test_weapons:
-    name: "测试军械库 · 武器"
+    name: "测试军械库 · 武器配件"
     model: "craftov:container/weapon_case"
-    rows: 2
-    all-of: [WEAPON]
+    rows: 3
+    all-of: [WEAPON, ATTACHMENT]
     hitbox-width: 1.2
     hitbox-height: 0.5
   test_ammo:

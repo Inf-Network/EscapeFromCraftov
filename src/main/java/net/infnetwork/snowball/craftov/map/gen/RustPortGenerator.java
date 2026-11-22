@@ -65,7 +65,7 @@ public final class RustPortGenerator implements MapGenerator {
         return new MapDef(ID, "锈港", "被遗弃的军用港口。指挥中心机房藏着最值钱的东西，码头和铁道是你的退路。",
                 "craftov_tpl_" + ID, 25 * 60, new Pos(104, 128, 104, 0),
                 List.copyOf(bp.spawns), List.copyOf(bp.extracts), List.copyOf(bp.containers), List.copyOf(bp.ai),
-                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, S - 1, S - 1, "dusk");
+                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, S - 1, S - 1, "dusk", false);
     }
 
     @Override

@@ -158,7 +158,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -194,41 +194,53 @@ public final class CraftovPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Each step runs on its own: one system failing to shut down must never cost the players
+        // their saves, which are written at the end.
         if (editor != null) {
-            editor.shutdown();
+            shutdownStep("editor", editor::shutdown);
         }
         if (replays != null) {
-            replays.shutdown();
+            shutdownStep("replays", replays::shutdown);
         }
         if (drones != null) {
-            drones.shutdown();
+            shutdownStep("drones", drones::shutdown);
         }
         if (raids != null) {
-            raids.shutdown();
+            shutdownStep("raids", raids::shutdown);
         }
         if (escorts != null) {
-            escorts.shutdown();
+            shutdownStep("escorts", escorts::shutdown);
         }
         if (range != null) {
-            range.shutdown();
+            shutdownStep("range", range::shutdown);
         }
         if (lobby != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (lobby.isLobby(player.getWorld())) {
-                    lobby.captureLoadout(player);
+                    shutdownStep("loadout of " + player.getName(), () -> lobby.captureLoadout(player));
                 }
             }
         }
         if (market != null) {
-            market.saveSync();
+            shutdownStep("market", market::saveSync);
         }
         if (profiles != null) {
-            profiles.shutdown();
+            // Offline edits made while sending everyone home finish landing before the final save.
+            shutdownStep("queued profile writes", profiles::awaitWrites);
+            shutdownStep("profiles", profiles::shutdown);
         }
         if (backups != null) {
-            backups.run("shutdown");
+            shutdownStep("backup", () -> backups.run("shutdown"));
         }
-        cleanupTeams();
+        shutdownStep("teams", this::cleanupTeams);
+    }
+
+    private void shutdownStep(String what, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException ex) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Shutdown step failed: " + what, ex);
+        }
     }
 
     private void hookBetterHud() {
@@ -316,6 +328,14 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {
         return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
+    }
+
+    /**
+     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
+     * hands out one of everything) need the same access as the catalog.
+     */
+    public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
+        return !map.test() || canUseCatalog(player);
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }

@@ -951,7 +951,7 @@ public final class AiService implements Listener {
             Look look = null;
             double seen = 0;
             if (view > 0 || known || lit) {
-                look = sightLines(mob, player);
+                look = sightLines(bot, player);
                 seen = look.shown();
             }
             if (seen > 0 && (known || lit)) {
@@ -1029,11 +1029,14 @@ public final class AiService implements Listener {
 
     /**
      * How much of each sight line from the soldier's eyes to the player's head, chest and pelvis gets
-     * through, and whether a round would: blocks as {@link Sight#look}, and smoke hides what is
-     * behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
+     * through, and whether one of its rounds would: blocks as {@link Sight#look}, and smoke hides
+     * what is behind more than {@link #SMOKE_OPAQUE} blocks of it (a thinner stretch only dims it).
      */
-    private Look sightLines(LivingEntity looker, Player player) {
-        Vector eye = looker.getEyeLocation().toVector();
+    private Look sightLines(Bot bot, Player player) {
+        Vector eye = bot.mob.getEyeLocation().toVector();
+        AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
+        int pen = ammo == null ? 1 : ammo.penetration();
+        Ballistics ballistics = plugin.weapons().ballistics();
         Vector feet = player.getLocation().toVector();
         double[] heights = aimHeights(player);
         double[] seen = new double[heights.length];
@@ -1044,7 +1047,7 @@ public final class AiService implements Listener {
             if (smoke > SMOKE_OPAQUE) {
                 continue;
             }
-            Sight.Line line = Sight.look(player.getWorld(), eye, point);
+            Sight.Line line = Sight.look(player.getWorld(), eye, point, block -> ballistics.passes(block, pen));
             seen[i] = line.seen() * (1 - 0.5 * smoke / SMOKE_OPAQUE);
             open[i] = line.open();
         }
@@ -1114,7 +1117,7 @@ public final class AiService implements Listener {
         Location eye = bot.mob.getEyeLocation();
         Vector point = aimPoint(target, bot.targetLook);
         if (point == null) {
-            // It sees the target only through something that stops rounds (a fence, bars, a hedge):
+            // It sees the target only through something that stops its rounds (a fence, say):
             // move for a clear shot rather than empty the magazine into it. Snipers hold fire.
             reposition(bot, target, now);
             return;
@@ -1225,7 +1228,7 @@ public final class AiService implements Listener {
 
     /**
      * Where to aim at {@code target}, among the parts it sees and a round would reach (not through a
-     * fence, bars or leaves): the chest (misses then land on the body or past it, rarely the head),
+     * fence, say): the chest (misses then land on the body or past it, rarely the head),
      * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
      * none of them. {@code look} is the last look at the target; without one the chest.
      */

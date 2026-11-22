@@ -299,6 +299,20 @@ public final class Ballistics {
         return out;
     }
 
+    /**
+     * Whether a round with {@code pen} penetration gets through {@code block} on its own: glass in a
+     * raid it shatters, or a block in combat.penetration.blocks it has the level for. Soldiers ask it
+     * of the see-through blocks on their line of fire, so they shoot back through the bars and the
+     * leaves a player's rounds go through.
+     */
+    public boolean passes(Block block, int pen) {
+        if (shatters(block)) {
+            return true;
+        }
+        BlockPenetration.Rule rule = penetration.of(plugin.getConfig(), block.getType());
+        return rule != null && pen >= rule.level();
+    }
+
     /** Glass in a raid, other than tinted glass, breaks under any round. */
     private boolean shatters(Block block) {
         Material type = block.getType();

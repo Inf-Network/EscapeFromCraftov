@@ -32,7 +32,8 @@ public final class CraftovCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (label.equalsIgnoreCase("party")) {
+        // The label is whatever was typed (/squad, /craftov:party); the command's own name is not.
+        if (command.getName().equalsIgnoreCase("party")) {
             String[] shifted = new String[args.length + 1];
             shifted[0] = "party";
             System.arraycopy(args, 0, shifted, 1, args.length);
@@ -86,12 +87,17 @@ public final class CraftovCommand implements TabExecutor {
                 if (player != null) plugin.menus().openGunsmith(player);
             }
             case "queue" -> {
-                if (player != null && args.length >= 3) {
-                    RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
-                    // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]
-                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
-                            args.length < 6 || Boolean.parseBoolean(args[5]));
+                // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
+                if (player == null) {
+                    return true;
                 }
+                RaidMode mode = args.length >= 4 ? mode(args[3]) : RaidMode.SOLO;
+                if (args.length < 3 || mode == null) {
+                    Text.send(player, "<#9AA0A6>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
+                    return true;
+                }
+                plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
+                        args.length < 6 || Boolean.parseBoolean(args[5]));
             }
             default -> {
                 if (!sender.hasPermission("craftov.admin")) {
@@ -163,8 +169,10 @@ public final class CraftovCommand implements TabExecutor {
     private void admin(CommandSender sender, String sub, String[] args) {
         switch (sub) {
             case "give" -> {
-                if (args.length < 3) {
-                    Text.send(sender, "/cv give <玩家> <物品> [数量]");
+                String usage = "<#9AA0A6>用法：/cv give <玩家> <物品ID> [数量]";
+                int amount = args.length > 3 ? positiveInt(args[3]) : 1;
+                if (args.length < 3 || amount <= 0) {
+                    Text.send(sender, usage);
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
@@ -173,10 +181,10 @@ public final class CraftovCommand implements TabExecutor {
                     Text.send(sender, "<#FF8A80>玩家或物品不存在。");
                     return;
                 }
-                int amount = args.length > 3 ? Integer.parseInt(args[3]) : 1;
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
                 plugin.carry().give(target, stack, true);
-                Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + amount);
+                // The stack is capped at the item's stack size: say what was handed out.
+                Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + stack.getAmount());
             }
             case "injure" -> {
                 // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
@@ -219,15 +227,26 @@ public final class CraftovCommand implements TabExecutor {
                 sender.sendMessage(Text.mm("<#9AA0A6>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
             }
             case "money" -> {
-                if (args.length < 3) {
+                // /cv money <player> <amount>: adds the amount (negative takes money away).
+                Long delta = args.length < 3 ? null : parseLong(args[2]);
+                if (delta == null) {
+                    Text.send(sender, "<#9AA0A6>用法：/cv money <玩家> <数量>（负数为扣除）");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
                 if (target == null) {
+                    Text.send(sender, "<#FF8A80>玩家不在线。");
                     return;
                 }
                 Profile profile = plugin.profiles().get(target);
-                profile.money += Long.parseLong(args[2]);
+                long balance;
+                try {
+                    balance = Math.addExact(profile.money, delta);
+                } catch (ArithmeticException ex) {
+                    Text.send(sender, "<#FF8A80>数额过大。");
+                    return;
+                }
+                profile.money = balance;
                 plugin.profiles().markDirty(target.getUniqueId());
                 Text.send(sender, "<#5BD16B>" + target.getName() + " 余额 ◈" + Text.money(profile.money));
             }
@@ -282,6 +301,10 @@ public final class CraftovCommand implements TabExecutor {
                     try {
                         at = new org.bukkit.Location(raid.world, Double.parseDouble(args[3]), Double.parseDouble(args[4]), Double.parseDouble(args[5]));
                     } catch (NumberFormatException ex) {
+                        at = null;
+                    }
+                    // NaN and Infinity parse too.
+                    if (at == null || !Double.isFinite(at.getX() + at.getY() + at.getZ())) {
                         Text.send(sender, "<#FF8A80>坐标无效。");
                         return;
                     }
@@ -328,20 +351,20 @@ public final class CraftovCommand implements TabExecutor {
                     return;
                 }
                 String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "help";
+                // Missing arguments fall through to the help lines below.
+                if (args.length < 3 && List.of("world", "start", "set").contains(action)) {
+                    action = "help";
+                }
                 switch (action) {
-                    case "world" -> {
-                        if (args.length > 2) plugin.editor().createWorld(p, args[2]);
-                    }
-                    case "start" -> {
-                        if (args.length > 2) plugin.editor().start(p, args[2]);
-                    }
+                    case "world" -> plugin.editor().createWorld(p, args[2]);
+                    case "start" -> plugin.editor().start(p, args[2]);
                     case "save" -> plugin.editor().save(p);
                     case "exit" -> plugin.editor().exit(p, true);
                     case "discard" -> plugin.editor().exit(p, false);
                     case "info" -> plugin.editor().info(p);
-                    case "set" -> {
-                        if (args.length > 3) plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT), String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
-                    }
+                    // "set camera" takes no value: it uses where the editor is looking from.
+                    case "set" -> plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT),
+                            String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
                     default -> {
                         Text.send(p, "<#F2E6C8>地图编辑器");
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
@@ -478,6 +501,32 @@ public final class CraftovCommand implements TabExecutor {
         return null;
     }
 
+    /** SOLO or TRIO in any case, null for anything else. */
+    private static @org.jspecify.annotations.Nullable RaidMode mode(String arg) {
+        try {
+            return RaidMode.valueOf(arg.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /** The number if it is a whole number above 0, else 0. */
+    private static int positiveInt(String arg) {
+        try {
+            return Math.max(0, Integer.parseInt(arg));
+        } catch (IllegalArgumentException ex) {
+            return 0;
+        }
+    }
+
+    private static @org.jspecify.annotations.Nullable Long parseLong(String arg) {
+        try {
+            return Long.parseLong(arg);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
     private String firstAmmo(ItemDef gun) {
         List<ItemDef> ammo = plugin.registry().ammoFor(gun.gun().caliber());
         return ammo.isEmpty() ? null : ammo.get(0).id();
@@ -486,7 +535,7 @@ public final class CraftovCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         List<String> out = new ArrayList<>();
-        if (label.equalsIgnoreCase("party")) {
+        if (command.getName().equalsIgnoreCase("party")) {
             if (args.length == 1) {
                 out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
             } else if (args.length == 2) {

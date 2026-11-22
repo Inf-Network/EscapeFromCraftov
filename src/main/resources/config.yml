@@ -660,3 +660,26 @@ test:
   # for free, top up money and reset health, and can see and queue for test maps (the proving ground).
   # Admins (craftov.admin) can always do both. Keep off on live servers.
   enabled: false
+
+security:
+  # With online-mode=false nothing checks who a player is: anyone who types an operator's name into an
+  # offline launcher logs in as that operator (/op, /stop, /cv money ...). While that is so, an operator
+  # (ops.json) may only log in from the addresses below; logins from anywhere else are refused.
+  # This protects operators only. Every other account, stash and all, is open to whoever types its name,
+  # and craftov.admin given by a permissions plugin is not covered: before opening the port to the
+  # internet, set online-mode=true or install a login plugin.
+  # "auto": only in offline mode (not behind a proxy that does the online check); "always"; "off".
+  admin-guard: "auto"
+  # IP addresses or blocks (CIDR), written as numbers: host names are not looked up, and an entry that is
+  # not a valid address (192.168.1.300) is ignored with a warning. The default is this machine and the
+  # private networks (the LAN).
+  # An empty list lets no operator in. A tunnel or proxy on this machine (frp, ngrok, playit, Velocity
+  # without forwarding) makes every player look like 127.0.0.1: then take 127.0.0.0/8 and ::1/128 out.
+  admin-addresses:
+    - 127.0.0.0/8
+    - "::1/128"
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - "fc00::/7"
+    - "fe80::/10"

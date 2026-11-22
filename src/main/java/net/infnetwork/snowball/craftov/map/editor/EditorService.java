@@ -95,9 +95,15 @@ public final class EditorService implements Listener {
 
     // ------------------------------------------------------------------ commands
 
+    /**
+     * World names and map ids: both become file names (the world folder, maps/&lt;id&gt;.yml), so
+     * nothing that could leave the folder ("../config") gets through. The built-in maps fit.
+     */
+    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[a-z0-9_]{3,32}");
+
     public void createWorld(Player player, String name) {
-        if (!name.matches("[a-z0-9_]{3,32}")) {
-            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线。");
+        if (!NAME.matcher(name).matches()) {
+            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线，长度 3–32。");
             return;
         }
         World world = Bukkit.getWorld(name);
@@ -118,9 +124,20 @@ public final class EditorService implements Listener {
         Text.send(player, "<#5BD16B>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
     }
 
-    public void start(Player player, String id) {
+    public void start(Player player, String typed) {
         if (editing(player)) {
             Text.send(player, "<#FF8A80>你已经在编辑中，先 /cv editor exit。");
+            return;
+        }
+        String id = typed.toLowerCase(Locale.ROOT);
+        // Only a new id has to fit NAME. A map saved before ids were checked ("废弃工厂", "my-map")
+        // still opens: its file is already in maps/, and MapRegistry.file keeps the save there.
+        MapDef existing = plugin.maps().get(typed);
+        if (existing == null) {
+            existing = plugin.maps().get(id);
+        }
+        if (existing == null && !NAME.matcher(id).matches()) {
+            Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         World world = player.getWorld();
@@ -128,18 +145,17 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
             return;
         }
-        MapDef existing = plugin.maps().get(id);
         MapDraft draft;
         if (existing != null) {
             if (!existing.template().equals(world.getName())) {
-                Text.send(player, "<#FF8A80>地图 " + id + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
+                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
                 return;
             }
             draft = MapDraft.of(existing);
         } else {
             draft = new MapDraft();
-            draft.id = id.toLowerCase(Locale.ROOT);
-            draft.name = id;
+            draft.id = id;
+            draft.name = typed;
             draft.template = world.getName();
         }
         plugin.weapons().reset(player);
@@ -149,7 +165,7 @@ public final class EditorService implements Listener {
         player.setGameMode(GameMode.CREATIVE);
         giveTools(player, session);
         refreshLabels(player, session);
-        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + draft.id + ")");
+        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
         Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
         Text.send(player, "<#9AA0A6>完成后用“保存”工具或 <white>/cv editor save</white>；<white>/cv editor set name|minutes|time <值></white> 修改属性。");
     }
@@ -213,10 +229,20 @@ public final class EditorService implements Listener {
             Text.send(player, "<#9AA0A6>你不在编辑模式。");
             return;
         }
-        switch (key) {
+        // Every key but camera needs a value: without one, the list of keys below.
+        switch (value.isBlank() && !key.equals("camera") ? "" : key) {
             case "name" -> session.draft.name = value;
             case "description", "desc" -> session.draft.description = value;
-            case "minutes" -> session.draft.raidMinutes = Math.max(5, Integer.parseInt(value));
+            case "minutes" -> {
+                int minutes;
+                try {
+                    minutes = Integer.parseInt(value.trim());
+                } catch (IllegalArgumentException ex) {
+                    Text.send(player, "<#9AA0A6>用法：/cv editor set minutes <分钟数>（至少 5）");
+                    return;
+                }
+                session.draft.raidMinutes = Math.max(5, minutes);
+            }
             case "time" -> session.draft.time = value;
             case "test" -> session.draft.test = Boolean.parseBoolean(value);
             case "camera" -> session.draft.camera = Pos.of(player.getEyeLocation());

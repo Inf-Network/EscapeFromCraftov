@@ -25,6 +25,8 @@ How a recording becomes the files GunAudio.java plays:
             a wall the listener gets the same room muffled like muff (.in_muff, .in_muff2).
   x<n>      automatic fire that does not fit the 50 ms server tick: n rounds at the gun's real
             interval in one file (GROUPS), no round the same recorded shot as the one before it.
+GunAudio deals the variants itself; gun_variants.json (src/main/resources) tells it which recorded
+shot every variant is, so copies of one shot are never dealt back to back.
 Loudness is set per gun class from the first 120 ms (where a gunshot's loudness is), then a
 look-ahead limiter holds every file to -1 dBTP. A pistol is a little quieter than an SMG, which is
 quieter than a rifle; GunAudio scales the rest by the gun's items.yml volume.
@@ -656,6 +658,22 @@ def catalogue():
         out.append(('gun.tail.%s.in_muff' % family, files, 16))
         out.append(('gun.tail.%s.in_muff2' % family, files, 16))
     return out, sources
+
+
+def variant_manifest(reports, sources):
+    """gun_variants.json, read by GunAudio.java: for every gun sound event, the recorded shot of
+    each round of each variant (numbered within the event), so the server never deals the same shot
+    twice in a row however many variants are copies of it (other channel, ears swapped, played at
+    another speed)."""
+    out = {}
+    for key, files, _ in reports:
+        ids = {}
+        rows = []
+        for path, _, _ in files:
+            origin = sources[path][0]
+            rows.append([ids.setdefault(shot_id(o), len(ids)) for o in (origin if isinstance(origin, list) else [origin])])
+        out[key] = rows
+    return out
 
 
 def source_manifest(sources):

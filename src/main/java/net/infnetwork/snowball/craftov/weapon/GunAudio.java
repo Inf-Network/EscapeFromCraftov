@@ -44,9 +44,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * Someone the wall is between hears that room muffled too.
  *
  * <p>Each event has several recorded variants. The client picks one from the seed in the sound
- * packet, so the server deals them like cards per shooter (every variant once before any repeats,
- * never the same twice in a row) and sends the seed that picks the dealt one; each shot also varies
- * by up to 1 dB.
+ * packet, so the server deals them like cards, per shooter and event (every variant once before any
+ * repeats), and sends the seed that picks the dealt one. Several variants can be copies of one
+ * recorded shot (the other microphone, the ears swapped, another speed); gun_variants.json says
+ * which, and the deal never puts a recorded shot right after itself where the recordings allow it.
+ * Each shot also varies by up to 1 dB.
  *
  * <p>Shots go out on 50 ms server ticks, and a sound sent in a tick plays when the tick's packets
  * arrive, so a gun whose interval does not fit the tick would sound uneven (the M4C's 75 ms comes
@@ -66,40 +68,67 @@ public final class GunAudio {
                            boolean restart) {
     }
 
-    /** The variants a shooter has not heard yet, in the order they come. */
+    /**
+     * The variants of one sound a shooter has not heard yet, in the order they come. Variant i starts
+     * on recorded shot heads[i] and ends on tails[i] (a multi-round sample can start and end on
+     * different ones). A round is a random order of every variant in which none starts on the shot
+     * the one before it ended on, the previous round's last included; where the recordings cannot
+     * allow that (one shot played at several speeds), it only keeps the same variant from coming
+     * twice in a row.
+     */
     private static final class Deck {
+        /** Rounds are searched by shot only up to this size (the search is factorial). */
+        private static final int SEARCHED = 8;
+        private final int[] heads;
+        private final int[] tails;
         private final int[] order;
         private int next;
         private int last = -1;
         private long used;
 
-        Deck(int size) {
-            order = new int[size];
-            next = size;
+        Deck(int[] heads, int[] tails) {
+            this.heads = heads;
+            this.tails = tails;
+            order = new int[heads.length];
+            next = order.length;
         }
 
         int draw(Random rng, long now) {
             used = now;
             if (next >= order.length) {
-                for (int i = 0; i < order.length; i++) {
-                    order[i] = i;
-                }
-                for (int i = order.length - 1; i > 0; i--) {
-                    int j = rng.nextInt(i + 1);
-                    int t = order[i];
-                    order[i] = order[j];
-                    order[j] = t;
-                }
-                // A new round starts with something other than what the last one ended on.
-                if (order.length > 1 && order[0] == last) {
-                    int j = 1 + rng.nextInt(order.length - 1);
-                    order[0] = order[j];
-                    order[j] = last;
+                if (order.length > SEARCHED || !place(0, new boolean[order.length], rng, true)) {
+                    place(0, new boolean[order.length], rng, false);
                 }
                 next = 0;
             }
             last = order[next++];
             return last;
+        }
+
+        /** Fills the round from position {@code at} on, trying variants in random order; false if none fits. */
+        private boolean place(int at, boolean[] taken, Random rng, boolean byShot) {
+            if (at == order.length) {
+                return true;
+            }
+            int[] tries = new int[order.length];
+            for (int i = 0; i < tries.length; i++) {
+                int j = rng.nextInt(i + 1);
+                tries[i] = tries[j];
+                tries[j] = i;
+            }
+            int before = at > 0 ? order[at - 1] : last;
+            for (int c : tries) {
+                if (taken[c] || before >= 0 && (c == before && order.length > 1 || byShot && heads[c] == tails[before])) {
+                    continue;
+                }
+                taken[c] = true;
+                order[at] = c;
+                if (place(at + 1, taken, rng, byShot)) {
+                    return true;
+                }
+                taken[c] = false;
+            }
+            return false;
         }
     }
 
@@ -131,7 +160,9 @@ public final class GunAudio {
     private final Map<UUID, Integer> roomTurns = new HashMap<>();
     /** Variants of each sound event in the pack (sounds.json in this jar), by full key. */
     private final Map<String, Integer> variants;
-    /** Per shooter and sound set, the variants still to come. */
+    /** Per sound event, the recorded shot each variant starts and ends on: {heads, tails}. */
+    private final Map<String, int[][]> shots;
+    /** Per shooter and sound event, the variants still to come. */
     private final Map<String, Deck> decks = new HashMap<>();
     /** Packet seeds that make the client pick variant i of n: SEEDS.get(n)[i]. */
     private static final Map<Integer, long[]> SEEDS = new HashMap<>();
@@ -139,7 +170,37 @@ public final class GunAudio {
     public GunAudio(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.variants = readVariants(plugin);
+        this.shots = readShots(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+    }
+
+    /**
+     * gun_variants.json (written by tools/art/build.py with sounds.json): for every gun sound event,
+     * each variant's recorded shots round by round, numbered within the event.
+     */
+    private static Map<String, int[][]> readShots(CraftovPlugin plugin) {
+        Map<String, int[][]> out = new HashMap<>();
+        try (InputStream in = plugin.getResource("gun_variants.json")) {
+            if (in == null) {
+                plugin.getLogger().warning("No gun_variants.json in the jar: gun sound variants are dealt without their shots");
+                return out;
+            }
+            var root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            for (Map.Entry<String, JsonElement> event : root.entrySet()) {
+                var rows = event.getValue().getAsJsonArray();
+                int[] heads = new int[rows.size()];
+                int[] tails = new int[rows.size()];
+                for (int i = 0; i < heads.length; i++) {
+                    var row = rows.get(i).getAsJsonArray();
+                    heads[i] = row.get(0).getAsInt();
+                    tails[i] = row.get(row.size() - 1).getAsInt();
+                }
+                out.put("craftov:" + event.getKey(), new int[][]{heads, tails});
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not read gun_variants.json from the jar: " + e.getMessage());
+        }
+        return out;
     }
 
     /** Variant counts from the pack's sounds.json, which the plugin jar carries. */
@@ -192,16 +253,30 @@ public final class GunAudio {
         return seedFor(count, pick % Math.max(1, count));
     }
 
-    /** The next variant of {@code set} for this shooter, out of as many as its near report has. */
-    private int deal(Entity shooter, String set, Random rng, long now) {
-        String key = shooter.getUniqueId() + set;
-        Deck deck = decks.get(key);
-        int size = Math.max(1, variants.getOrDefault(set, 1));
+    /** The next variant of sound event {@code key} for this shooter. */
+    private int deal(Entity shooter, String key, Random rng, long now) {
+        String id = shooter.getUniqueId() + key;
+        Deck deck = decks.get(id);
+        int size = Math.max(1, variants.getOrDefault(key, 1));
         if (deck == null || deck.order.length != size) {
-            deck = new Deck(size);
-            decks.put(key, deck);
+            int[][] known = shots.get(key);
+            if (known == null || known[0].length != size) {
+                // Nothing known about the recordings: every variant counts as a shot of its own.
+                int[] own = new int[size];
+                for (int i = 0; i < size; i++) {
+                    own[i] = i;
+                }
+                known = new int[][]{own, own};
+            }
+            deck = new Deck(known[0], known[1]);
+            decks.put(id, deck);
         }
         return deck.draw(rng, now);
+    }
+
+    /** The variant of {@code key} dealt for this shot: one card per event and shot, however many hear it. */
+    private int dealt(Map<String, Integer> hand, Entity shooter, String key, Random rng, long now) {
+        return hand.computeIfAbsent(key, k -> deal(shooter, k, rng, now));
     }
 
     // ------------------------------------------------------------------ shots
@@ -235,8 +310,8 @@ public final class GunAudio {
         String set = "craftov:gun." + gun.audio() + (rounds > 1 ? ".x" + rounds : "");
         double loudness = gun.soundVolume() / 5.0;
         var config = plugin.getConfig();
-        // One variant for this shot in every band, and a level that varies a little from shot to shot.
-        int pick = deal(shooter, set + (suppressed ? ".near_s" : ".near"), rng, now);
+        // A variant of each sound this shot plays, and a level that varies a little from shot to shot.
+        Map<String, Integer> hand = new HashMap<>(8);
         double jitterDb = config.getDouble("weapons.audio.level-jitter-db", 1.0);
         double jitter = Math.pow(10, (rng.nextDouble() * 2 - 1) * jitterDb / 20);
         // Under a roof the room answers in the same tick as the shot, for everyone who hears it.
@@ -247,9 +322,11 @@ public final class GunAudio {
             // The suppressed recordings are already that much quieter: the level is the gun's own.
             double own = shooterVolume(gun, pair(config, "weapons.audio.shooter-volume", 0.55, 1.0)) * jitter;
             String fp = set + (suppressed ? ".fp_s" : ".fp");
-            player.playSound(player, fp, SoundCategory.PLAYERS, (float) Math.min(1.0, own), pitch, seed(fp, pick));
+            player.playSound(player, fp, SoundCategory.PLAYERS, (float) Math.min(1.0, own), pitch,
+                    seed(fp, dealt(hand, shooter, fp, rng, now)));
             if (room != null) {
-                schedule(now, player, muzzle, roomKey(player, room), own * roomShare * 0.8, roomPitch, pick, true);
+                schedule(now, player, muzzle, roomKey(player, room), own * roomShare * 0.8, roomPitch,
+                        dealt(hand, shooter, room, rng, now), true);
             }
         }
         double[] nearMid = pair(config, "weapons.audio.near-mid", 20, 32);
@@ -281,8 +358,9 @@ public final class GunAudio {
                 // every shot and give the wall away.
                 double share = roomShare * close * (blocked ? muffled : 1);
                 if (gain * share >= AUDIBLE) {
+                    // The muffled room is the same recordings: it takes the room's card.
                     schedule(arrives, listener, muzzle, roomKey(listener, blocked ? room + "_muff" : room), gain * share,
-                            roomPitch, pick, true);
+                            roomPitch, dealt(hand, shooter, room, rng, now), true);
                 }
             }
             double open = 1.0;
@@ -292,7 +370,8 @@ public final class GunAudio {
                 double dry = suppressed ? 0.4 : muffledDry;
                 open = dry + (1 - dry) * (1 - close);
                 if (!suppressed && gain * muffled * close >= AUDIBLE / 2) {
-                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled * close, pitch, pick, false);
+                    schedule(arrives, listener, muzzle, set + ".muff", gain * muffled * close, pitch,
+                            dealt(hand, shooter, set + ".muff", rng, now), false);
                 }
             }
             for (int i = 0; i < bands.length; i++) {
@@ -301,7 +380,8 @@ public final class GunAudio {
                 // Equal power: two different recordings played together add up in energy.
                 double level = gain * open * Math.sqrt(w);
                 if (w > 0 && level >= AUDIBLE / 2) {
-                    schedule(arrives, listener, muzzle, set + bands[i], level, pitch, pick, false);
+                    schedule(arrives, listener, muzzle, set + bands[i], level, pitch,
+                            dealt(hand, shooter, set + bands[i], rng, now), false);
                 }
             }
         }

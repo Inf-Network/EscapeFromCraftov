@@ -506,6 +506,9 @@ def build_sounds():
         entries[key] = {'sounds': listed}
     write_json(os.path.join(CV, 'sounds.json'), entries)
     write_json(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio_sources.json'), gunsamples.source_manifest(sources))
+    variants = gunsamples.variant_manifest(reports, sources)
+    write_text(os.path.join(RES, 'gun_variants.json'),
+               '{\n' + ',\n'.join(' %s: %s' % (json.dumps(k), json.dumps(v, separators=(',', ':'))) for k, v in variants.items()) + '\n}\n')
     for what, target, reached in gunsamples.SHORT:
         print('gunsamples: %s reaches %.1f dB of its %.1f dB loudness' % (what, reached, target))
 

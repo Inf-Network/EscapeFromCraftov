@@ -12,6 +12,10 @@ For every near file (what a player a few blocks from the shooter hears):
 And for every gun file, decoded as the client decodes it: a peak no higher than -0.5 dBFS.
 Automatic fire's multi-round files (x<n>_near, x<n>_fp) must hold n rounds exactly the gun's interval
 apart (75 ms for the M4C's two, 66.7 ms for the SV9's and V57's three), within 2 ms.
+Variants (gun_variants.json, checked with the pack it was built with): no multi-round sample has the
+same recorded shot twice in a row, and every event's variants can be dealt round after round without
+a recorded shot following itself (the order GunAudio's deck looks for). An event cut from a single
+recorded shot (the suppressed pistol) cannot be and is only listed.
 The envelope is the Hilbert magnitude smoothed over 2 ms, so a low sine is not mistaken for a decay.
 """
 import functools
@@ -27,6 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOUNDS = os.path.join(HERE, '..', '..', 'src', 'main', 'resources', 'pack', 'craftov', 'resourcepack', 'assets', 'craftov',
                       'sounds')
 ITEMS = os.path.join(HERE, '..', '..', 'src', 'main', 'resources', 'items.yml')
+VARIANTS = os.path.join(HERE, '..', '..', 'src', 'main', 'resources', 'gun_variants.json')
 MAX_PEAK_DB = -0.5
 
 
@@ -108,7 +113,8 @@ def round_starts_ms(x, sr):
 def dealable(rows):
     """Whether the variants (each a list of recorded shots, one per round) have a cyclic order in
     which no variant starts on the shot the one before it ended on: then they can be dealt round
-    after round without a recorded shot following itself."""
+    after round without a recorded shot following itself, and GunAudio's deck finds a valid round
+    whatever the last one ended on."""
     import itertools
     n = len(rows)
     if n < 2:
@@ -118,6 +124,26 @@ def dealable(rows):
         if all(rows[order[(i + 1) % n]][0] != rows[order[i]][-1] for i in range(n)):
             return True
     return False
+
+
+def check_variants(path=VARIANTS, verbose=True):
+    import json
+    with open(path, encoding='utf-8') as f:
+        events = json.load(f)
+    failures = []
+    single = []
+    for key, rows in sorted(events.items()):
+        if len({o for r in rows for o in r}) < 2:
+            single.append(key)
+            continue
+        for v, r in enumerate(rows):
+            if any(a == b for a, b in zip(r, r[1:])):
+                failures.append('%s variant %d: the same recorded shot twice in a row (%s)' % (key, v, r))
+        if not dealable(rows):
+            failures.append('%s: no order deals its variants without a recorded shot following itself %s' % (key, rows))
+    if verbose and single:
+        print('one recorded shot only (variants differ in speed): ' + ', '.join(single))
+    return failures
 
 
 def peak_db(x):
@@ -166,6 +192,8 @@ def check(folder=SOUNDS, verbose=True):
         p = peak_db(x)
         if p > MAX_PEAK_DB:
             failures.append('%s: decodes to %+.2f dBFS (limit %.1f)' % (os.path.relpath(path, folder), p, MAX_PEAK_DB))
+    if os.path.samefile(folder, SOUNDS) and os.path.exists(VARIANTS):
+        failures += check_variants(verbose=verbose)
     return failures
 
 

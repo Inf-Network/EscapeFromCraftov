@@ -192,27 +192,34 @@ public final class EscortService {
             if (c.state == State.IN_RAID) {
                 continue;
             }
-            boolean changed;
             if (c.client.equals(uuid)) {
-                changed = !c.escorts.isEmpty();
-                for (UUID escort : c.escorts) {
+                for (UUID escort : new ArrayList<>(c.escorts)) {
+                    dropEscort(c, escort);
                     Player p = Bukkit.getPlayer(escort);
                     if (p != null) {
                         Text.send(p, "<#FFC23D>委托人 " + Text.escape(c.clientName) + " 离开了小队，你的护航委托已取消。");
                     }
                 }
-                c.escorts.clear();
-            } else {
-                changed = c.escorts.remove(uuid);
-                Player p = changed ? Bukkit.getPlayer(uuid) : null;
+            } else if (dropEscort(c, uuid)) {
+                Player p = Bukkit.getPlayer(uuid);
                 if (p != null) {
                     Text.send(p, "<#FFC23D>你离开了 " + Text.escape(c.clientName) + " 的小队，护航委托已放弃。");
                 }
             }
-            if (changed && c.escorts.isEmpty() && c.state == State.ACCEPTED) {
-                c.state = State.OPEN;
-            }
         }
+    }
+
+    /**
+     * Takes an escort off a contract that has not deployed: the one way an escort gives one up,
+     * whether they left the party or dropped out while the map loaded. An accepted contract with
+     * nobody left on it opens up again. True if they were on it.
+     */
+    private static boolean dropEscort(Contract c, UUID escort) {
+        boolean was = c.escorts.remove(escort);
+        if (was && c.escorts.isEmpty() && c.state == State.ACCEPTED) {
+            c.state = State.OPEN;
+        }
+        return was;
     }
 
     /**
@@ -242,10 +249,7 @@ public final class EscortService {
             }
             return;
         }
-        c.escorts.remove(uuid);
-        if (c.escorts.isEmpty()) {
-            c.state = State.OPEN;
-        }
+        dropEscort(c, uuid);
         Player client = Bukkit.getPlayer(c.client);
         if (client != null) {
             Text.send(client, "<#FFC23D>护航 " + Text.escape(name) + " 在部署前断开连接，已退出你的护航委托。");

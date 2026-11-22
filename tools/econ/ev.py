@@ -18,10 +18,9 @@ the new ones.
   python3 tools/econ/ev.py --map server/run/plugins/Craftov/maps/rustport.yml
 
 A "run" is N containers picked at random from the whole map, of which the C most valuable items
-are carried out (one cell each), valued at item value. Exits 1 when a check fails:
-
-  * 常规: the median run (10 containers, 14 cells) is worth at most 3x the starter kit
-  * 常规: a high-grade safe (vault) holds a RED item at most 10% of the time
+are carried out (one cell each), valued at item value. It only prints: the owner keeps the regular
+loot generous on purpose and evens out bad luck with personal pity and a quota pool (#80,
+tools/econ/luck.py), so there is no ceiling on what a run may be worth.
 """
 
 import argparse
@@ -29,7 +28,6 @@ import json
 import random
 import statistics
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
@@ -38,9 +36,6 @@ ROOT = Path(__file__).resolve().parents[2]
 RARITIES = ["WHITE", "GREEN", "BLUE", "PURPLE", "GOLD", "RED"]
 DEFAULT_STACK = {"AMMO": 60, "VALUABLE": 1, "COLLECTIBLE": 1, "MEDICAL": 3, "THROWABLE": 3}
 DEFAULT_BONUS = {"WHITE": -0.25, "GREEN": -0.05, "BLUE": 0.1, "PURPLE": 0.3, "GOLD": 0.5, "RED": 1.0}
-# Checks (常规).
-MAX_RUN_KITS = 3.0
-MAX_VAULT_RED = 0.10
 
 
 class Source:
@@ -280,7 +275,7 @@ def money(x):
 
 
 def report(data, containers, cells, trials, seed):
-    """Prints the tables and returns the list of failed checks."""
+    """Prints the tables."""
     starter, free = data.starter_value(), data.free_kit_value()
     rules = ("bounded shift" if data.bounded else "old unbounded shift") + (
         ", fallback to either side" if data.two_way else ", fallback to lower rarities only")
@@ -290,7 +285,6 @@ def report(data, containers, cells, trials, seed):
     print()
     print(f"{'tier':14} {'entry fee':>9} {'map EV':>11} {'run p10':>9} {'median':>9} {'mean':>9} {'p90':>10} "
           f"{'median/kit':>10}  vault RED  safe RED")
-    failures = []
     for tier_id, t in data.tiers.items():
         totals = data.runs(tier_id, containers, cells, trials, seed)
         med = statistics.median(totals)
@@ -299,11 +293,6 @@ def report(data, containers, cells, trials, seed):
         print(f"{t.get('name', tier_id) + ' ' + tier_id:14} {money(t.get('entry-fee', 0)):>9} {money(data.map_ev(tier_id)):>11} "
               f"{money(totals[len(totals) // 10]):>9} {money(med):>9} {money(statistics.mean(totals)):>9} "
               f"{money(totals[len(totals) * 9 // 10]):>10} {med / starter:>10.2f}  {vault_red:>8.1%}  {safe_red:>8.1%}")
-        if tier_id == "NORMAL":
-            if med > MAX_RUN_KITS * starter:
-                failures.append(f"常规 median run {money(med)} is more than {MAX_RUN_KITS:g}x the starter kit ({money(starter)})")
-            if vault_red > MAX_VAULT_RED:
-                failures.append(f"常规 vault holds a RED item {vault_red:.1%} of the time (at most {MAX_VAULT_RED:.0%})")
     print(f"(run = {containers} random containers, best {cells} items carried out, {trials} trials, item value)")
     print()
     shifts = sorted({data.shift(tid, b) for tid in data.tiers for _, b in data.map})
@@ -323,7 +312,6 @@ def report(data, containers, cells, trials, seed):
               f"(~{soldiers:.0f} soldiers, {money(parcel * soldiers)} in all)"
               + (f"; the boss adds a vault roll worth {money(boss)}" if boss else ""))
     print()
-    return failures
 
 
 def main():
@@ -337,12 +325,7 @@ def main():
     args = parser.parse_args()
     if args.before:
         report(Data(Source(args.before), args.map), args.containers, args.cells, args.trials, args.seed)
-    failures = report(Data(Source(), args.map), args.containers, args.cells, args.trials, args.seed)
-    for failure in failures:
-        print("FAIL: " + failure)
-    if failures:
-        sys.exit(1)
-    print("loot checks pass")
+    report(Data(Source(), args.map), args.containers, args.cells, args.trials, args.seed)
 
 
 if __name__ == "__main__":

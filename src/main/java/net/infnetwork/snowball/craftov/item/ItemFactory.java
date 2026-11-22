@@ -50,10 +50,14 @@ public final class ItemFactory {
      * mark. 5: med lore, and armour lore says it weakens when worn. 6: gun prices, and knife lore gives
      * damage and penetration. 7: weights, and the self-revive injector's lore no longer calls it instant.
      * 8: both lines of changes above together (#22 economy and the #26-#29 combat fixes each used 5-7).
+     * 10: knives carry the inspect cooldown group (#82). It skips 9, which the weapon-handling line
+     * (#32-#34) uses for the gun draw mark: whichever line merges second must go above the other's number.
      */
-    public static final int VERSION = 8;
+    public static final int VERSION = 10;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
+    /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
+    public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
@@ -256,6 +260,10 @@ public final class ItemFactory {
                     .addModifier(Attribute.ATTACK_SPEED, new AttributeModifier(GUN_ATTACK, 100.0,
                             AttributeModifier.Operation.ADD_NUMBER), EquipmentSlotGroup.MAINHAND)
                     .build());
+        } else if (def.isMelee()) {
+            // Knives have no use action either: only F (InspectService) sets this cooldown, and the
+            // client plays the inspect frames of the item model while it counts down.
+            stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(INSPECT_GROUP).build());
         } else if (med != null) {
             ItemUseAnimation animation;
             try {

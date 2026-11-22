@@ -221,13 +221,13 @@ public final class DownedService implements Listener {
     }
 
     /**
-     * Who gets the kill when a player dies without a hit of their own to blame: bleeding out while
-     * down, quitting while down, giving up. That is whoever hurt them last, if within 30 seconds
-     * and not on their own squad; otherwise, for a downed player, whoever knocked them down. Past
-     * 30 seconds the last hit has expired, a shell landing after that names nobody, and a
-     * squadmate's round (friendly fire on) earns no kill, so none of them takes the kill off the
-     * knocker: a squad could otherwise shoot its own crawling member to deny the enemy the bounty.
-     * Ask before {@link #clear}, which forgets the knock-down.
+     * Who gets the kill when a downed player dies (finished off, bled out, quit) or a player gives
+     * up. That is whoever hurt them last, if within 30 seconds and not on their own squad;
+     * otherwise, for a downed player, whoever knocked them down. Past 30 seconds the last hit has
+     * expired, a shell landing after that names nobody, and a squadmate's round (friendly fire on)
+     * earns no kill, so none of them takes the kill off the knocker: a squad could otherwise shoot
+     * its own crawling member to deny the enemy the bounty. Ask before {@link #clear}, which
+     * forgets the knock-down.
      */
     public DamageService.@Nullable LastHit killingHit(Player player) {
         return killingHit(player, downed.get(player.getUniqueId()));

@@ -103,6 +103,8 @@ public final class WeaponService implements Listener {
          * neither aims nor flashes meanwhile.
          */
         boolean drawMarked;
+        /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
+        long aimAsked = -100;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -271,6 +273,8 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> handledUse = new HashMap<>();
     /** How far a right-click reaches an entity: vanilla's entity interaction range. */
     private static final double USE_REACH = 3.0;
+    /** Ticks between the use packets vanilla repeats while right mouse is held. */
+    private static final int USE_REPEAT = 4;
 
     /**
      * What a gun keeps once its state is dropped (switched away from, dropped, or reset): the tick it may
@@ -481,9 +485,18 @@ public final class WeaponService implements Listener {
         }
     }
 
-    /** The gun is up: its model may aim and flash again. */
+    /**
+     * The gun is up: its model may aim and flash again, and right mouse held through the draw aims at
+     * once rather than with the next use packet, which on a scoped gun would leave up to 4 ticks of
+     * neither gun nor scope (the model hides the gun as soon as the mark is gone).
+     */
     private void drawn(Player player, GunState state, long now) {
         unmark(player, state);
+        if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
+                && !player.isSprinting()) {
+            adsUntil.put(player.getUniqueId(), now + 6);
+            setAds(player, true);
+        }
         if (plugin.getConfig().getBoolean("debug", false)) {
             plugin.getLogger().info(String.format("[debug] %s up %s tick=%d aim=%b",
                     player.getName(), state.def.id(), now, isAiming(player)));
@@ -1368,8 +1381,12 @@ public final class WeaponService implements Listener {
         }
         // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
         // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.
-        if (state.reloading() || state.drawing() || !plugin.raids().canFire(player) || player.isSprinting()) {
-            return; // still held once the gun is up, the next use packet (every 4 ticks) aims
+        if (state.drawing()) {
+            state.aimAsked = Bukkit.getCurrentTick(); // still held once the gun is up, it aims then (see drawn)
+            return;
+        }
+        if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
+            return;
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
         setAds(player, true);

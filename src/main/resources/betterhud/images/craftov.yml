@@ -1,12 +1,18 @@
-craftov_panel_left:
+craftov_panel_vitals:
   type: single
-  file: craftov/panel_left.png
-craftov_panel_right:
+  file: craftov/panel_vitals.png
+craftov_panel_weapon:
   type: single
-  file: craftov/panel_right.png
+  file: craftov/panel_weapon.png
 craftov_panel_info:
   type: single
   file: craftov/panel_info.png
+craftov_panel_mate:
+  type: single
+  file: craftov/panel_mate.png
+craftov_alert_band:
+  type: single
+  file: craftov/alert_band.png
 craftov_hp_empty:
   type: single
   file: craftov/hp_empty.png
@@ -16,6 +22,9 @@ craftov_armor_empty:
 craftov_progress_empty:
   type: single
   file: craftov/progress_empty.png
+craftov_stamina_empty:
+  type: single
+  file: craftov/stamina_empty.png
 craftov_hit:
   type: single
   file: craftov/hit.png
@@ -28,6 +37,18 @@ craftov_hit_kill:
 craftov_hit_knock:
   type: single
   file: craftov/hit_knock.png
+craftov_icon_bleed:
+  type: single
+  file: craftov/icon_bleed.png
+craftov_icon_heavy:
+  type: single
+  file: craftov/icon_heavy.png
+craftov_icon_fracture:
+  type: single
+  file: craftov/icon_fracture.png
+craftov_icon_pain:
+  type: single
+  file: craftov/icon_pain.png
 craftov_damage_0:
   type: single
   file: craftov/damage_0.png
@@ -55,7 +76,7 @@ craftov_damage_7:
 craftov_hp_bar:
   type: listener
   file: craftov/hp_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -65,7 +86,7 @@ craftov_hp_bar:
 craftov_armor_bar:
   type: listener
   file: craftov/armor_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -75,7 +96,7 @@ craftov_armor_bar:
 craftov_helmet_bar:
   type: listener
   file: craftov/helmet_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -85,7 +106,7 @@ craftov_helmet_bar:
 craftov_reload_bar:
   type: listener
   file: craftov/reload_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -95,7 +116,7 @@ craftov_reload_bar:
 craftov_draw_bar:
   type: listener
   file: craftov/draw_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -105,7 +126,7 @@ craftov_draw_bar:
 craftov_extract_bar:
   type: listener
   file: craftov/extract_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -115,7 +136,7 @@ craftov_extract_bar:
 craftov_downed_bar:
   type: listener
   file: craftov/downed_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
@@ -125,20 +146,27 @@ craftov_downed_bar:
 craftov_med_bar:
   type: listener
   file: craftov/med_bar.png
-  split: 25
+  split: 32
   split-type: left
   setting:
     listener:
       class: placeholder
       value: craftov_med_pct
       max: '100'
-craftov_stamina_empty:
-  type: single
-  file: craftov/stamina_empty.png
 craftov_stamina_bar:
   type: listener
   file: craftov/stamina_bar.png
-  split: 25
+  split: 32
+  split-type: left
+  setting:
+    listener:
+      class: placeholder
+      value: craftov_stamina
+      max: '100'
+craftov_stamina_bar_heavy:
+  type: listener
+  file: craftov/stamina_bar_heavy.png
+  split: 32
   split-type: left
   setting:
     listener:

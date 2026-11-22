@@ -1,19 +1,51 @@
-"""Images used by the BetterHud layout."""
+"""Images used by the BetterHud layout, in the design palette (palette.py)."""
 from PIL import Image, ImageDraw
+import palette as PAL
 from px import rgb, shade
 
-BG = (12, 14, 18, 165)
-ACCENT = rgb('#F2C94C')
+BG = rgb(PAL.PANEL, 190)
+ACCENT = rgb(PAL.ACCENT)
 
 
 def panel(w, h, accent=ACCENT, side='left'):
+    """A translucent panel with a hairline top edge and the amber tick on the outer side."""
     img = Image.new('RGBA', (w, h), BG)
     d = ImageDraw.Draw(img)
+    d.line([(0, 0), (w - 1, 0)], fill=rgb(PAL.LINE, 230))
     if side == 'left':
-        d.rectangle([0, 0, 1, h - 1], fill=accent)
+        d.rectangle([0, 1, 1, h - 1], fill=accent)
     else:
-        d.rectangle([w - 2, 0, w - 1, h - 1], fill=accent)
-    d.rectangle([0, h - 1, w - 1, h - 1], fill=(255, 255, 255, 30))
+        d.rectangle([w - 2, 1, w - 1, h - 1], fill=accent)
+    return img
+
+
+def band(w, h, accent=ACCENT):
+    """The alert banner: darker, with amber ticks at both ends."""
+    img = Image.new('RGBA', (w, h), rgb(PAL.BG, 215))
+    d = ImageDraw.Draw(img)
+    d.line([(0, 0), (w - 1, 0)], fill=accent)
+    d.line([(0, h - 1), (w - 1, h - 1)], fill=rgb(PAL.LINE, 230))
+    return img
+
+
+def icon(kind, size=9):
+    """9x9 status icons for the vitals panel: bleeding, heavy bleeding, fracture, painkiller, and the
+    tiny helmet and vest marks in front of the armour bars."""
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    red, dark, amber, ok = rgb(PAL.DANGER), rgb('#A3242A'), rgb(PAL.ACCENT), rgb(PAL.OK)
+    if kind == 'bleed':
+        d.polygon([(4, 0), (7, 5), (4, 8), (1, 5)], fill=red)
+        d.ellipse([1, 3, 7, 8], fill=red)
+    elif kind == 'heavy':
+        for x in (0, 4):
+            d.polygon([(x + 2, 0), (x + 4, 4), (x + 2, 6), (x, 4)], fill=dark)
+            d.ellipse([x, 3, x + 4, 7], fill=red)
+    elif kind == 'fracture':
+        d.line([(1, 7), (3, 4), (5, 5), (7, 1)], fill=amber, width=2)
+    elif kind == 'pain':
+        d.rounded_rectangle([0, 2, 8, 6], 2, fill=ok)
+        d.rectangle([4, 2, 8, 6], fill=rgb(PAL.TEXT))
     return img
 
 
@@ -104,15 +136,15 @@ def pointer(color=ACCENT):
 
 # Front-view body figure for the vitals panel: each part is its own full-size layer so BetterHud can
 # colour them independently. The character's right side is drawn on the viewer's left.
-BODY_W, BODY_H = 22, 40
+BODY_W, BODY_H = 16, 34
 BODY_PARTS = {
-    'head': ('ellipse', 8, 0, 13, 5),
-    'chest': ('rect', 7, 7, 14, 13),
-    'stomach': ('rect', 7, 14, 14, 19),
-    'right_arm': ('rect', 3, 7, 5, 19),
-    'left_arm': ('rect', 16, 7, 18, 19),
-    'right_leg': ('rect', 7, 21, 10, 37),
-    'left_leg': ('rect', 11, 21, 14, 37),
+    'head': ('ellipse', 5, 0, 10, 5),
+    'chest': ('rect', 5, 7, 10, 12),
+    'stomach': ('rect', 5, 13, 10, 17),
+    'right_arm': ('rect', 2, 7, 3, 17),
+    'left_arm': ('rect', 12, 7, 13, 17),
+    'right_leg': ('rect', 5, 19, 7, 33),
+    'left_leg': ('rect', 8, 19, 10, 33),
 }
 BODY_STATES = ['#7E848C', '#FF8A80', '#FF2D2D', '#FFB74D', '#FF6B3D']
 
@@ -127,6 +159,11 @@ def body_part(part, state):
         d.ellipse([x0, y0, x1, y1], fill=fill, outline=edge)
     else:
         d.rectangle([x0, y0, x1, y1], fill=fill, outline=edge)
+    # BetterHud crops transparent borders off single images, which would slide every part to the
+    # same corner; a barely-there pixel in two corners keeps the layer full size (the HUD shader
+    # discards anything under 10% alpha, so they never show).
+    img.putpixel((0, 0), (0, 0, 0, 1))
+    img.putpixel((BODY_W - 1, BODY_H - 1), (0, 0, 0, 1))
     return img
 
 

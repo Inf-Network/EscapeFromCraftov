@@ -64,6 +64,7 @@ public final class BetterHudBridge implements BetterHudHook {
         string(pm, "craftov_operator", HudSnapshot::operator);
         string(pm, "craftov_skill", HudSnapshot::skill);
         string(pm, "craftov_value_short", HudSnapshot::valueShort);
+        string(pm, "craftov_money_text", s -> net.infnetwork.snowball.craftov.util.Text.money(s.money()));
         string(pm, "craftov_extract_left", HudSnapshot::extractLeft);
         bool(pm, "craftov_in_raid", HudSnapshot::inRaid);
         bool(pm, "craftov_in_lobby", HudSnapshot::inLobby);
@@ -83,6 +84,29 @@ public final class BetterHudBridge implements BetterHudHook {
         number(pm, "craftov_med_pct", HudSnapshot::medPct);
         string(pm, "craftov_weapon_hint", HudSnapshot::weaponHint);
         string(pm, "craftov_downed_hint", HudSnapshot::downedHint);
+        bool(pm, "craftov_has_hint", s -> !s.weaponHint().isEmpty());
+        number(pm, "craftov_hp_state", s -> s.extra().hpState());
+        number(pm, "craftov_time_state", s -> s.extra().timeState());
+        bool(pm, "craftov_ammo_empty", s -> s.extra().ammoEmpty());
+        bool(pm, "craftov_inj_bleed", s -> s.extra().flag(HudExtra.BLEED));
+        bool(pm, "craftov_inj_heavy", s -> s.extra().flag(HudExtra.HEAVY));
+        bool(pm, "craftov_inj_fracture", s -> s.extra().flag(HudExtra.FRACTURE));
+        bool(pm, "craftov_inj_pain", s -> s.extra().flag(HudExtra.PAIN));
+        bool(pm, "craftov_overloaded", s -> s.extra().flag(HudExtra.OVERLOADED));
+        for (int i = 0; i < 2; i++) {
+            int index = i;
+            string(pm, "craftov_mate_" + (i + 1), s -> s.extra().mate(index));
+            bool(pm, "craftov_has_mate_" + (i + 1), s -> !s.extra().mate(index).isEmpty());
+        }
+        for (int i = 0; i < 4; i++) {
+            int index = i;
+            string(pm, "craftov_feed_" + (i + 1), s -> s.extra().feed(index));
+            bool(pm, "craftov_has_feed_" + (i + 1), s -> !s.extra().feed(index).isEmpty());
+        }
+        string(pm, "craftov_alert", s -> s.extra().alert());
+        bool(pm, "craftov_has_alert", s -> !s.extra().alert().isEmpty());
+        string(pm, "craftov_prompt", s -> s.extra().prompt());
+        bool(pm, "craftov_has_prompt", s -> !s.extra().prompt().isEmpty());
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

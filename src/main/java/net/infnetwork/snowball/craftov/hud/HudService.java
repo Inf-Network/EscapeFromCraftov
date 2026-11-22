@@ -49,6 +49,15 @@ public final class HudService {
     private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
 
+    /** A line shown until a tick: the alert banner and the kill feed (BetterHud only). */
+    private record Timed(String text, long until) {
+    }
+
+    private static final int FEED_LINES = 4;
+    private static final int FEED_TICKS = 100;
+    private final Map<UUID, Timed> alerts = new HashMap<>();
+    private final Map<UUID, java.util.ArrayDeque<Timed>> feeds = new HashMap<>();
+
     public HudService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.data = new HudData(plugin);
@@ -65,12 +74,79 @@ public final class HudService {
         for (Player player : Bukkit.getOnlinePlayers()) {
             online.add(player.getUniqueId());
             try {
-                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player)));
+                boolean inLobby = plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player);
+                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, inLobby, extra(player, inLobby)));
             } catch (RuntimeException ex) {
                 snapshots.put(player.getUniqueId(), HudSnapshot.EMPTY);
             }
         }
         snapshots.keySet().retainAll(online);
+        alerts.keySet().retainAll(online);
+        feeds.keySet().retainAll(online);
+    }
+
+    private HudExtra extra(Player player, boolean inLobby) {
+        long now = Bukkit.getCurrentTick();
+        Timed alert = alerts.get(player.getUniqueId());
+        if (alert != null && alert.until() <= now) {
+            alerts.remove(player.getUniqueId());
+            alert = null;
+        }
+        String[] feed = {"", "", "", ""};
+        java.util.ArrayDeque<Timed> lines = feeds.get(player.getUniqueId());
+        if (lines != null) {
+            lines.removeIf(line -> line.until() <= now);
+            int i = 0;
+            for (Timed line : lines) {
+                feed[i++] = line.text();
+            }
+        }
+        boolean inRaid = data.inRaid(player);
+        var gun = data.gun(player);
+        return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
+                gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
+                alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "");
+    }
+
+    /**
+     * The alert banner under the compass (raid clock warnings, extracts opening, random events,
+     * intel): one line for {@code ticks}, with its sound. Without BetterHud it goes to chat. The text
+     * is MiniMessage with only {@code <#RRGGBB>} and named colours, which BetterHud reads as well.
+     */
+    public void alert(Player player, String text, int ticks, net.infnetwork.snowball.craftov.gui.@org.jspecify.annotations.Nullable UiSound sound) {
+        if (sound != null) {
+            sound.play(player);
+        }
+        if (!betterHud) {
+            player.sendMessage(Text.mm(text));
+            return;
+        }
+        alerts.put(player.getUniqueId(), new Timed(text, Bukkit.getCurrentTick() + ticks));
+    }
+
+    /** A kill-feed line (top right, five seconds, four at most); chat without BetterHud. */
+    public void feed(Player player, String text) {
+        if (!betterHud) {
+            player.sendMessage(Text.mm(text));
+            return;
+        }
+        java.util.ArrayDeque<Timed> lines = feeds.computeIfAbsent(player.getUniqueId(), k -> new java.util.ArrayDeque<>());
+        lines.addFirst(new Timed(text, Bukkit.getCurrentTick() + FEED_TICKS));
+        while (lines.size() > FEED_LINES) {
+            lines.removeLast();
+        }
+    }
+
+    /** What the HUD shows besides the panels, for `cv hud` and the bots (they cannot see BetterHud). */
+    public String describe(Player player) {
+        HudSnapshot s = snapshotOf(player.getUniqueId());
+        HudExtra e = s.extra();
+        return "alert=" + Text.plain(Text.mm(e.alert())) + " | feed=" + String.join(" / ", java.util.Arrays.stream(e.feed())
+                .filter(line -> !line.isEmpty()).map(line -> Text.plain(Text.mm(line))).toList())
+                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | time=" + s.time() + "@" + e.timeState()
+                + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
+                + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
+                .map(m -> Text.plain(Text.mm(m))).toList());
     }
 
     /** Thread-safe: safe to call from BetterHud worker threads. */

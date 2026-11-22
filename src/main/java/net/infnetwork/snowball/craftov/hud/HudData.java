@@ -323,4 +323,109 @@ public final class HudData {
     public int armorSlot() {
         return CarryService.CHEST;
     }
+
+    /** 0 healthy, 1 hurt (60 or less), 2 critical (30 or less): the colour of the HP number. */
+    public int hpState(Player p) {
+        int hp = hp(p);
+        return hp > 60 ? 0 : hp > 30 ? 1 : 2;
+    }
+
+    /** 0 more than five minutes left, 1 five minutes or less (amber), 2 a minute or less (red). */
+    public int timeState(Player p) {
+        int left = remaining(p);
+        return !inRaid(p) || left > 300 ? 0 : left > 60 ? 1 : 2;
+    }
+
+    /** The wound icons of the vitals panel, as HudExtra bits. */
+    public int injuryFlags(Player p) {
+        int flags = 0;
+        for (Set<Injury> set : plugin.health().wounds(p).values()) {
+            for (Injury injury : set) {
+                flags |= switch (injury) {
+                    case LIGHT_BLEED -> HudExtra.BLEED;
+                    case HEAVY_BLEED -> HudExtra.BLEED | HudExtra.HEAVY;
+                    case FRACTURE -> HudExtra.FRACTURE;
+                };
+            }
+        }
+        if (plugin.health().painkilled(p)) {
+            flags |= HudExtra.PAIN;
+        }
+        if (plugin.stamina().overloaded(p)) {
+            flags |= HudExtra.OVERLOADED;
+        }
+        return flags;
+    }
+
+    /** One line per squadmate (two at most): name, health or state, in the state's colour. */
+    public String[] mates(Player p) {
+        String[] out = {"", ""};
+        Raid raid = plugin.raids().raidOf(p);
+        RaidPlayer self = raid == null ? null : raid.player(p.getUniqueId());
+        if (self == null) {
+            return out;
+        }
+        int i = 0;
+        for (RaidPlayer mate : raid.squadOf(self)) {
+            if (mate == self || i >= out.length) {
+                continue;
+            }
+            Player online = org.bukkit.Bukkit.getPlayer(mate.uuid);
+            String name = Text.escape(mate.name);
+            out[i++] = switch (mate.state) {
+                case ALIVE -> Style.tag(Style.TEXT) + name + " " + Style.tag(online != null && online.getHealth() <= 30 ? Style.DANGER : Style.OK)
+                        + "❤" + (online == null ? 0 : (int) Math.ceil(online.getHealth()));
+                case DOWNED -> Style.tag(Style.DANGER) + name + " 倒地";
+                case DEAD -> Style.tag(Style.DIM) + name + " 阵亡";
+                case EXTRACTED -> Style.tag(Style.INFO) + name + " 已撤离";
+                case DISCONNECTED -> Style.tag(Style.ACCENT) + name + " 断线";
+                default -> Style.tag(Style.MUTED) + name;
+            };
+        }
+        return out;
+    }
+
+    /**
+     * What right mouse does at what the crosshair is on, within reach: search a container or a body,
+     * revive a downed squadmate, use a lobby station. Empty when there is nothing to do.
+     */
+    public String prompt(Player p) {
+        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || plugin.downed().isDowned(p)) {
+            return "";
+        }
+        org.bukkit.util.RayTraceResult hit = p.getWorld().rayTraceEntities(p.getEyeLocation(), p.getEyeLocation().getDirection(),
+                3.0, 0.1, e -> e != p);
+        if (hit == null || hit.getHitEntity() == null) {
+            return "";
+        }
+        org.bukkit.entity.Entity entity = hit.getHitEntity();
+        String key = Style.tag(Style.ACCENT) + "[右键] ";
+        String role = entity.getPersistentDataContainer().get(net.infnetwork.snowball.craftov.item.Keys.ENTITY_ROLE,
+                org.bukkit.persistence.PersistentDataType.STRING);
+        if ("container".equals(role)) {
+            Raid raid = plugin.raids().raidOf(p);
+            String ref = entity.getPersistentDataContainer().get(net.infnetwork.snowball.craftov.item.Keys.ENTITY_REF,
+                    org.bukkit.persistence.PersistentDataType.STRING);
+            net.infnetwork.snowball.craftov.raid.LootContainer container = raid == null || ref == null ? null : raid.containers.get(ref);
+            if (container == null) {
+                return "";
+            }
+            boolean searched = container.generated() && container.hiddenCount() == 0;
+            return key + Style.tag(Style.TEXT) + (searched ? "打开 " : "搜索 ") + Text.escape(container.title);
+        }
+        String station = entity.getPersistentDataContainer().get(net.infnetwork.snowball.craftov.item.Keys.key("station"),
+                org.bukkit.persistence.PersistentDataType.STRING);
+        if (station != null) {
+            return key + Style.tag(Style.TEXT) + "使用";
+        }
+        if (entity instanceof Player other && plugin.downed().isDowned(other)) {
+            Raid raid = plugin.raids().raidOf(p);
+            RaidPlayer self = raid == null ? null : raid.player(p.getUniqueId());
+            RaidPlayer them = raid == null ? null : raid.player(other.getUniqueId());
+            if (self != null && them != null && self.squad == them.squad) {
+                return Style.tag(Style.ACCENT) + "[按住右键] " + Style.tag(Style.TEXT) + "救援 " + Text.escape(other.getName());
+            }
+        }
+        return "";
+    }
 }

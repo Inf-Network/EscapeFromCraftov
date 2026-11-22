@@ -199,48 +199,31 @@ public final class CraftovPlugin extends JavaPlugin {
         // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
         step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
         step("betterhud", betterHud, () -> betterHud.shutdown());
-        // Each step runs on its own: one system failing to shut down must never cost the players
-        // their saves, which are written at the end.
-        if (editor != null) {
-            shutdownStep("editor", editor::shutdown);
-        }
-        if (replays != null) {
-            shutdownStep("replays", replays::shutdown);
-        }
-        if (drones != null) {
-            shutdownStep("drones", drones::shutdown);
-        }
-        if (raids != null) {
-            shutdownStep("raids", raids::shutdown);
-        }
-        if (escorts != null) {
-            shutdownStep("escorts", escorts::shutdown);
-        }
-        if (range != null) {
-            shutdownStep("range", range::shutdown);
-        }
-        if (lobby != null) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
+        step("editor", editor, () -> editor.shutdown());
+        step("replays", replays, () -> replays.shutdown());
+        step("drones", drones, () -> drones.shutdown());
+        step("raids", raids, () -> raids.shutdown());
+        step("escorts", escorts, () -> escorts.shutdown());
+        step("range", range, () -> range.shutdown());
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("loadout of " + player.getName(), lobby, () -> {
                 if (lobby.isLobby(player.getWorld())) {
-                    shutdownStep("loadout of " + player.getName(), () -> lobby.captureLoadout(player));
+                    lobby.captureLoadout(player);
                 }
-            }
+            });
         }
-        if (market != null) {
-            shutdownStep("market", market::saveSync);
-        }
-        if (profiles != null) {
-            // Offline edits made while sending everyone home finish landing before the final save.
-            shutdownStep("queued profile writes", profiles::awaitWrites);
-            shutdownStep("profiles", profiles::shutdown);
-        }
-        if (backups != null) {
-            shutdownStep("backup", () -> backups.run("shutdown"));
-        }
-        shutdownStep("teams", this::cleanupTeams);
+        step("market", market, () -> market.saveSync());
+        // Offline edits made while sending everyone home finish landing before the final save.
+        step("queued profile writes", profiles, () -> profiles.awaitWrites());
+        step("profiles", profiles, () -> profiles.shutdown());
+        step("backup", backups, () -> backups.run("shutdown"));
+        step("teams", this, this::cleanupTeams);
     }
 
-    /** Runs one shutdown step if its service was created, logging instead of throwing. */
+    /**
+     * Runs one shutdown step if its service was created, logging instead of throwing. A linkage
+     * error counts too: after the jar was replaced on disk a step can fail to load a class.
+     */
     private void step(String name, @Nullable Object service, Runnable action) {
         if (service == null) {
             return;
@@ -249,14 +232,6 @@ public final class CraftovPlugin extends JavaPlugin {
             action.run();
         } catch (RuntimeException | LinkageError ex) {
             getLogger().log(Level.SEVERE, "Shutdown step '" + name + "' failed; carrying on with the rest", ex);
-        }
-    }
-
-    private void shutdownStep(String what, Runnable step) {
-        try {
-            step.run();
-        } catch (RuntimeException ex) {
-            getLogger().log(java.util.logging.Level.SEVERE, "Shutdown step failed: " + what, ex);
         }
     }
 

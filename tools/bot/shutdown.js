@@ -277,7 +277,7 @@ async function stopAndRestart () {
 
   const text = latestLog()
   check('no "Error occurred while disabling Craftov"', !text.includes('Error occurred while disabling Craftov'))
-  check('no failed shutdown step', !text.includes('Shutdown step failed'), (text.match(/Shutdown step failed.*/) || [''])[0])
+  check('no failed shutdown step', !/Shutdown step .*failed/.test(text), (text.match(/Shutdown step .*failed.*/) || [''])[0])
   check('no IllegalPluginAccessException', !text.includes('IllegalPluginAccessException'))
   const zips = backups().filter(f => f.endsWith('-shutdown.zip') && !zipsBefore.includes(f))
   check('a -shutdown.zip backup was written', zips.length === 1, zips.join(' '))

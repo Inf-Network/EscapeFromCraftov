@@ -268,7 +268,7 @@ public final class CraftovCommand implements TabExecutor {
                 // /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [raid id]: one soldier posted there.
                 boolean spawn = args.length > 1 && args[1].equalsIgnoreCase("spawn");
                 if (spawn && args.length < 6) {
-                    Text.send(sender, "<#9AA0A6>/cv ai [对局ID] · /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [对局ID]");
+                    Text.send(sender, "<muted>/cv ai [对局ID] · /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [对局ID]");
                     return;
                 }
                 Raid raid = pickRaid(sender, spawn ? (args.length > 6 ? args[6] : null) : (args.length > 1 ? args[1] : null));
@@ -278,24 +278,24 @@ public final class CraftovCommand implements TabExecutor {
                 if (spawn) {
                     String kind = args[2].toLowerCase(Locale.ROOT);
                     if (!List.of("patrol", "guard", "sniper", "shield", "operator").contains(kind)) {
-                        Text.send(sender, "<#FF8A80>未知敌兵类型：" + Text.escape(args[2]));
+                        Text.send(sender, "<danger>未知敌兵类型：" + Text.escape(args[2]));
                         return;
                     }
                     org.bukkit.Location at;
                     try {
                         at = new org.bukkit.Location(raid.world, Double.parseDouble(args[3]), Double.parseDouble(args[4]), Double.parseDouble(args[5]));
                     } catch (NumberFormatException ex) {
-                        Text.send(sender, "<#FF8A80>坐标无效。");
+                        Text.send(sender, "<danger>坐标无效。");
                         return;
                     }
                     String name = plugin.ai().spawnSoldier(raid, at, kind);
-                    Text.send(sender, name == null ? "<#FF8A80>生成失败。" : "<#5BD16B>已在 " + raid.id + " 生成 " + Text.escape(name));
+                    Text.send(sender, name == null ? "<danger>生成失败。" : "<ok>已在 " + raid.id + " 生成 " + Text.escape(name));
                     return;
                 }
                 List<String> lines = plugin.ai().describe(raid);
-                Text.send(sender, "<#F2C94C>" + raid.id + " · 敌兵 " + lines.size());
+                Text.send(sender, "<accent>" + raid.id + " · 敌兵 " + lines.size());
                 for (String line : lines) {
-                    sender.sendMessage(Text.mm("<#9AA0A6>" + Text.escape(line)));
+                    sender.sendMessage(Text.mm("<muted>" + Text.escape(line)));
                 }
             }
             case "end" -> {
@@ -389,9 +389,9 @@ public final class CraftovCommand implements TabExecutor {
                         : args[1].equalsIgnoreCase("on");
                 plugin.getConfig().set("combat.lag-compensation.enabled", on);
                 Text.send(sender, on
-                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
+                        ? "<ok>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
                                 + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
-                        : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
+                        : "<danger>命中延迟补偿已关闭，<muted>/cv reload 后恢复配置文件里的设置。");
             }
             case "reload" -> {
                 plugin.reloadConfig();
@@ -432,7 +432,7 @@ public final class CraftovCommand implements TabExecutor {
                     return raid;
                 }
             }
-            Text.send(sender, "<#FF8A80>没有进行中的对局 " + Text.escape(id));
+            Text.send(sender, "<danger>没有进行中的对局 " + Text.escape(id));
             return null;
         }
         Raid own = sender instanceof Player p ? plugin.raids().raidOf(p) : null;
@@ -442,7 +442,7 @@ public final class CraftovCommand implements TabExecutor {
         if (running.size() == 1) {
             return running.get(0);
         }
-        Text.send(sender, running.isEmpty() ? "<#9AA0A6>没有进行中的行动。" : "<#FF8A80>有多个对局，请指定对局ID。");
+        Text.send(sender, running.isEmpty() ? "<muted>没有进行中的行动。" : "<danger>有多个对局，请指定对局ID。");
         return null;
     }
 

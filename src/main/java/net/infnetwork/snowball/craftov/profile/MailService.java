@@ -79,7 +79,7 @@ public final class MailService {
 
     /** Tells an online player a letter has just arrived. */
     public void announce(Player player, Profile.Mail mail) {
-        Text.send(player, "<#F2C94C>新邮件：<white>" + Text.escape(mail.title) + " <#9AA0A6>· 打开仓库 → 邮箱查看"
+        Text.send(player, "<accent>新邮件：<white>" + Text.escape(mail.title) + " <muted>· 打开仓库 → 邮箱查看"
                 + (mail.hasAttachments() ? "并领取附件" : ""));
         player.playSound(player.getLocation(), "craftov:ui.queue", SoundCategory.MASTER, 0.6f, 1.5f);
     }
@@ -149,7 +149,7 @@ public final class MailService {
     public void remind(Player player) {
         int count = unclaimed(plugin.profiles().get(player));
         if (count > 0) {
-            Text.send(player, "<#F2C94C>你有 " + count + " 封未读邮件，<#9AA0A6>打开仓库 → 邮箱查看（也可以输入 <white>/cv mail</white>）。");
+            Text.send(player, "<accent>你有 " + count + " 封未读邮件，<muted>打开仓库 → 邮箱查看（也可以输入 <white>/cv mail</white>）。");
         }
     }
 }

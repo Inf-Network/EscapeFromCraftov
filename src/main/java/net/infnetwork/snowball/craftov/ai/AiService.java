@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.ai;
 
+import com.destroystokyo.paper.entity.Pathfinder;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.Category;
@@ -51,8 +52,12 @@ public final class AiService implements Listener {
 
     private static final String[] NAMES = {"港区巡逻兵", "雇佣兵", "守备队员", "武装分子"};
 
+    /** How long a soldier holds at the end of a path that cannot reach its goal before trying again. */
+    private static final long HOLD_TICKS = 20L * 4;
+
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
+    private final AiDoors doors;
 
     static final class Bot {
         final Zombie mob;
@@ -88,6 +93,8 @@ public final class AiService implements Listener {
         @Nullable LootContainer looting;
         long lootUntil;
         @Nullable UUID leader;
+        /** Its path could not reach the goal (a locked door, a wall): it waits where it got to until then. */
+        long holdUntil;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -107,6 +114,7 @@ public final class AiService implements Listener {
 
     public AiService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.doors = new AiDoors(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, 2L);
     }
 
@@ -295,9 +303,14 @@ public final class AiService implements Listener {
         LootContainer target = bot.looting;
         if (mob.getLocation().distanceSquared(target.location) > 2.8 * 2.8) {
             if (!mob.getPathfinder().hasPath()) {
-                if (!mob.getPathfinder().moveTo(target.location, 1.0)) {
-                    bot.visited.add(target.id); // unreachable
+                Pathfinder.PathResult path = mob.getPathfinder().findPath(target.location);
+                if (path == null || !reaches(path, target.location, 2.5)) {
+                    // Unreachable (behind a locked door, up a ladder): walking to the end of a partial
+                    // path and planning it again would keep it there for the rest of the raid.
+                    bot.visited.add(target.id);
                     bot.looting = null;
+                } else {
+                    mob.getPathfinder().moveTo(path, 1.0);
                 }
             }
             return;
@@ -448,6 +461,9 @@ public final class AiService implements Listener {
             z.getPersistentDataContainer().set(Keys.key("ai"), PersistentDataType.STRING, kind);
         });
         Bukkit.getMobGoals().removeAllGoals(mob);
+        // Paths may run through wooden doors; AiDoors opens them on the way (setCanBreakDoors(false)
+        // above turned this off again).
+        mob.getPathfinder().setCanOpenDoors(true);
         Bot bot = new Bot(mob, raid, at.clone(), Math.max(3, leash), kind, gun, ammo, name, boss, accuracy);
         bot.nextWanderTick = Bukkit.getCurrentTick() + rng.nextInt(40, 200);
         bots.put(mob.getUniqueId(), bot);
@@ -532,10 +548,16 @@ public final class AiService implements Listener {
             think(bot, now);
         }
         dead.forEach(bots::remove);
+        doors.tick(now);
     }
 
     private void think(Bot bot, long now) {
         Zombie mob = bot.mob;
+        if (doors.ahead(mob, bot.raid, now) == AiDoors.Ahead.LOCKED) {
+            // A door it cannot open: it guards the doorway for a while instead of pushing at it.
+            mob.getPathfinder().stopPathfinding();
+            bot.holdUntil = now + HOLD_TICKS;
+        }
         Player target = acquire(bot, now);
         Location eye = mob.getEyeLocation();
         if (target != null) {
@@ -552,7 +574,9 @@ public final class AiService implements Listener {
             }
             double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
-                mob.getPathfinder().moveTo(target.getLocation(), 1.0);
+                if (!mob.getPathfinder().hasPath() || now % 10 == 0) {
+                    go(bot, target.getLocation(), 1.0, now);
+                }
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
                 Vector away = mob.getLocation().toVector().subtract(target.getLocation().toVector()).setY(0);
                 if (away.lengthSquared() > 0.01) {
@@ -576,8 +600,8 @@ public final class AiService implements Listener {
             return;
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
-            if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
-                mob.getPathfinder().moveTo(bot.lastSeen, 0.9);
+            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 == 0 && !heading(mob, bot.lastSeen))) {
+                go(bot, bot.lastSeen, 0.9, now);
             }
             return;
         }
@@ -588,7 +612,7 @@ public final class AiService implements Listener {
                     Vector dir = toward.toVector().subtract(bot.home.toVector()).normalize().multiply(bot.leash * 3);
                     toward = bot.home.clone().add(dir);
                 }
-                mob.getPathfinder().moveTo(toward, 0.9);
+                go(bot, toward, 0.9, now);
             }
             return;
         }
@@ -603,6 +627,43 @@ public final class AiService implements Listener {
         if (bot.ammoLeft < bot.gun.gun().magazine()) {
             bot.ammoLeft = bot.gun.gun().magazine();
         }
+    }
+
+    /**
+     * Heads for {@code dest}. A path that cannot get there (a locked or iron door, a wall) still
+     * takes the soldier as close as it gets, and it then holds there for a few seconds instead of
+     * planning the same dead end again every tick.
+     */
+    private void go(Bot bot, Location dest, double speed, long now) {
+        if (now < bot.holdUntil) {
+            return;
+        }
+        Pathfinder pathfinder = bot.mob.getPathfinder();
+        Pathfinder.PathResult path = pathfinder.findPath(dest);
+        if (path == null) {
+            bot.holdUntil = now + HOLD_TICKS;
+            return;
+        }
+        if (!reaches(path, dest, 2.5)) {
+            bot.holdUntil = now + HOLD_TICKS;
+        }
+        pathfinder.moveTo(path, speed);
+    }
+
+    /** Whether {@code path} ends within {@code slack} blocks of {@code dest}. */
+    private static boolean reaches(Pathfinder.PathResult path, Location dest, double slack) {
+        if (path.canReachFinalPoint()) {
+            return true;
+        }
+        Location end = path.getFinalPoint();
+        return end != null && end.getWorld() == dest.getWorld() && end.distanceSquared(dest) <= slack * slack;
+    }
+
+    /** Whether the soldier's current path already ends near {@code dest}. */
+    private static boolean heading(Zombie mob, Location dest) {
+        Pathfinder.PathResult path = mob.getPathfinder().getCurrentPath();
+        Location end = path == null ? null : path.getFinalPoint();
+        return end != null && end.getWorld() == dest.getWorld() && end.distanceSquared(dest) <= 2.5 * 2.5;
     }
 
     private long reactionTicks(Bot bot) {
@@ -668,6 +729,13 @@ public final class AiService implements Listener {
             bot.lastSeenTick = now;
         } else if (now - bot.lastSeenTick > 40) {
             bot.target = null;
+        } else if (bot.target != null && now - bot.lastSeenTick <= 30) {
+            // It saw where you went in the moment you vanished (round a corner, through a door it
+            // then has to open), so it follows you there rather than to the spot you left.
+            Player gone = Bukkit.getPlayer(bot.target);
+            if (gone != null && gone.getWorld() == mob.getWorld()) {
+                bot.lastSeen = gone.getLocation();
+            }
         }
         return best;
     }

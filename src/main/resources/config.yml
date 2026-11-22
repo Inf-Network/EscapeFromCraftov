@@ -142,6 +142,9 @@ ai:
   # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # Soldiers open the wooden doors on their way and close them again this many ticks after the last
+  # one went through (once nobody stands in the doorway). Iron and locked doors stay shut.
+  door-close-ticks: 40
   # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep
   # moving and shooting back, but their next shot waits shot-delay-ticks and their spread is multiplied
   # until the dazzle ends. Then a strobe cannot dazzle them again for immune-ticks.

@@ -2132,7 +2132,8 @@ public final class RaidManager implements Listener {
         door.getWorld().playSound(door.getLocation(), "minecraft:block.iron_door.open", 1f, 1f);
     }
 
-    private static void setDoor(Block lower, boolean open) {
+    /** Opens or closes both halves of a door without block updates (soldiers use it too). */
+    public static void setDoor(Block lower, boolean open) {
         for (Block part : new Block[]{lower, lower.getRelative(org.bukkit.block.BlockFace.UP)}) {
             if (part.getBlockData() instanceof Openable openable) {
                 openable.setOpen(open);

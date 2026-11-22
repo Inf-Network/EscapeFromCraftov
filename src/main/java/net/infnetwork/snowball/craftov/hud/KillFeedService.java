@@ -177,7 +177,7 @@ public final class KillFeedService implements Listener {
             return "<#8A8F98>☠ " + victim;
         }
         return name(entry.killer(), entry.killerName(), entry.killerSquad(), viewer, raid, false)
-                + " <#8A8F98>[" + Text.escape(entry.weapon()) + "]" + (entry.headshot() ? " <#FF4D4D>⊕" : "")
+                + " <#8A8F98>[" + Text.escape(entry.weapon()) + "]" + (entry.headshot() ? " <#FF4D4D>◎" : "")
                 + " <#8A8F98>→ " + victim;
     }
 

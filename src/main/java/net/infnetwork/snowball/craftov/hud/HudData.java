@@ -24,7 +24,14 @@ import java.util.Set;
 /** Read-only view of everything the HUD shows, shared by the vanilla HUD and BetterHud. */
 public final class HudData {
 
+    /** Bearings relative to where the player looks, clockwise from ahead, for menus and the chat. */
     private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
+    /**
+     * The same bearings in words, for the HUD. BetterHud's font has only the four straight arrows, and
+     * a character it lacks is drawn as a box in the top bar, wider than BetterHud counts it: that
+     * pushed the whole HUD, the crosshair's arms included, two pixels to one side for the whole raid.
+     */
+    private static final String[] BEARINGS = {"前方", "右前", "右侧", "右后", "后方", "左后", "左侧", "左前"};
     private final CraftovPlugin plugin;
 
     public HudData(CraftovPlugin plugin) {
@@ -247,7 +254,7 @@ public final class HudData {
         return 0;
     }
 
-    /** "北门检查站 ↗ 85m" for the nearest usable extract. */
+    /** "北门检查站 右前 85m" for the nearest usable extract. */
     public String nearestExtract(Player p) {
         Raid raid = plugin.raids().raidOf(p);
         if (raid == null || p.getWorld() != raid.world) {
@@ -268,17 +275,25 @@ public final class HudData {
         if (best == null) {
             return "暂无可用撤离点";
         }
-        return best.def.name() + " " + arrow(p, best.center) + " " + (int) Math.sqrt(bestD) + "m";
+        int bearing = bearing(p, best.center);
+        return best.def.name() + " " + (bearing < 0 ? "" : BEARINGS[bearing] + " ") + (int) Math.sqrt(bestD) + "m";
     }
 
+    /** An arrow pointing at the target from where the player looks, or "" in another world. */
     public String arrow(Player p, Location target) {
+        int bearing = bearing(p, target);
+        return bearing < 0 ? "" : ARROWS[bearing];
+    }
+
+    /** Which eighth around the player the target is in, 0 ahead and clockwise, or -1 in another world. */
+    private static int bearing(Player p, Location target) {
         Location from = p.getLocation();
         if (from.getWorld() != target.getWorld()) {
-            return "";
+            return -1;
         }
         double angle = Math.toDegrees(Math.atan2(-(target.getX() - from.getX()), target.getZ() - from.getZ()));
         double rel = ((angle - from.getYaw()) % 360 + 360 + 22.5) % 360;
-        return ARROWS[(int) (rel / 45) % 8];
+        return (int) (rel / 45) % 8;
     }
 
     public int downedPercent(Player p) {

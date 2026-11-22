@@ -660,7 +660,14 @@ class Session:
         scale = self.gui_scale()
         gw, gh = -(-width // scale), -(-height // scale)
         left, top = (gw - 176) // 2, (gh - (114 + rows * 18)) // 2
-        x, y = left + 8 + (index % 9) * 18 + 8, top + 18 + (index // 9) * 18 + 8
+        x = left + 8 + (index % 9) * 18 + 8
+        own = index - rows * 9   # past the menu's rows: the player's inventory, then the hotbar
+        if own < 0:
+            y = top + 18 + (index // 9) * 18 + 8
+        elif own < 27:
+            y = top + rows * 18 + 31 + (own // 9) * 18 + 8
+        else:
+            y = top + rows * 18 + 89 + 8
         return x * scale, y * scale
 
     def click_slot(self, index, rows, button=1):

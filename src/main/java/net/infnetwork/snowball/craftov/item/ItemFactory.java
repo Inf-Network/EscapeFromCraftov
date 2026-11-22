@@ -53,8 +53,9 @@ public final class ItemFactory {
      * 9: the weapon-handling line (#32-#34, which used 5-6) on top: gun lore shows the new rates of the
      * V57, KL7 and SCR, and guns carry max_damage and unbreakable for the draw mark (see
      * {@link #setDrawing}).
+     * 10: the tooltip is framed in the item's rarity colour (tooltip_style craftov:rarity_*).
      */
-    public static final int VERSION = 9;
+    public static final int VERSION = 10;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
@@ -237,6 +238,8 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.MAX_STACK_SIZE, def.maxStack());
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(def.model()));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(def.coloredName()));
+        // The tooltip's frame takes the rarity colour (tools/art/build.py, build_tooltips).
+        stack.setData(DataComponentTypes.TOOLTIP_STYLE, Key.key("craftov", "rarity_" + def.rarity().name().toLowerCase(java.util.Locale.ROOT)));
         stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay()
                 .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK,
                         DataComponentTypes.UNBREAKABLE)

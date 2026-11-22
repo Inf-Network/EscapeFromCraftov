@@ -491,6 +491,21 @@ def build_screens():
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
 
 
+def build_tooltips():
+    """Tooltip styles (ItemFactory, UiItems): craftov:rarity_<rarity> frames an item's tooltip in its
+    rarity colour, craftov:ui is the plain one for interface buttons. Same nine-slice sizes as vanilla."""
+    styles = {'rarity_' + r.lower(): c for r, c in RARITY_COLORS.items()}
+    styles['ui'] = '#3A424E'
+    base = os.path.join(CV, 'textures', 'gui', 'sprites', 'tooltip')
+    for name, color in styles.items():
+        save(screens.tooltip_background(), os.path.join(base, name + '_background.png'))
+        write_json(os.path.join(base, name + '_background.png.mcmeta'),
+                   {'gui': {'scaling': {'type': 'nine_slice', 'width': 100, 'height': 100, 'border': 9}}})
+        save(screens.tooltip_frame(color), os.path.join(base, name + '_frame.png'))
+        write_json(os.path.join(base, name + '_frame.png.mcmeta'),
+                   {'gui': {'scaling': {'type': 'nine_slice', 'width': 100, 'height': 100, 'border': 10, 'stretch_inner': True}}})
+
+
 def build_skins():
     save(skins.soldier_skin(), os.path.join(MC, 'textures', 'entity', 'zombie', 'zombie.png'))
     for asset, fn in skins.EQUIPMENT.items():
@@ -845,6 +860,7 @@ def main():
     build_fx()
     build_ui()
     build_screens()
+    build_tooltips()
     build_skins()
     build_vanilla_hud()
     build_sounds()

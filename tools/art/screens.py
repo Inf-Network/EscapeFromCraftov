@@ -382,3 +382,29 @@ SCREENS = {
     'health': health_screen,
     'gunsmith': gunsmith_screen,
 }
+
+
+# ---------------------------------------------------------------- tooltips
+
+def tooltip_background():
+    """Tooltip body (nine-slice, 100x100, border 9 like vanilla's): a near-opaque dark panel."""
+    img = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle([8, 9, 91, 90], fill=rgb('#0F1317', 246))
+    d.rectangle([9, 8, 90, 91], fill=rgb('#0F1317', 246))
+    return img
+
+
+def tooltip_frame(color):
+    """Tooltip frame (nine-slice, border 10): a hairline in `color`, brightest along the top, with a
+    short solid bar at the top-left corner like the tick in front of every window title."""
+    img = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = rgb(color)
+    side, bottom = mix(c, rgb(P.PANEL), 0.45), mix(c, rgb(P.PANEL), 0.65)
+    d.line([10, 9, 89, 9], fill=c)
+    d.line([9, 10, 9, 89], fill=side)
+    d.line([90, 10, 90, 89], fill=side)
+    d.line([10, 90, 89, 90], fill=bottom)
+    d.rectangle([9, 9, 10, 15], fill=c)
+    return img

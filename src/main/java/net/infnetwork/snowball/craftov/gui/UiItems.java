@@ -32,6 +32,8 @@ public final class UiItems {
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(model));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(name));
         stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
+        // Interface buttons get the plain dark tooltip; item tooltips are framed by rarity.
+        stack.setData(DataComponentTypes.TOOLTIP_STYLE, Key.key("craftov", "ui"));
         if (!lore.isEmpty()) {
             stack.setData(DataComponentTypes.LORE, ItemLore.lore(Text.mm(lore)));
         }

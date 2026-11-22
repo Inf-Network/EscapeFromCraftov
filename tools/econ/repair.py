@@ -6,21 +6,19 @@ short of full, compares what the trader charges to repair it (TraderService.repa
 what the repair adds to what the piece sells for:
 
   trader  the trader's price (ItemFactory.value x trader.sell-multiplier)
-  market  the most the market's system buyers pay: the reference price x 1.25 (the highest price
-          ratio they accept), less market.listing-fee and market.sale-tax
+  market  the most the market's system buyers pay: the listing's anchor price x 1.25 (the highest
+          price ratio they accept), less market.listing-fee and market.sale-tax
 
-The reference price is item value x market.reference-multiplier, which holds while the market
-keeps it anchored to item value (the market price fixes of issue #13). On a build where every sale,
-system buyers' included, pulls the reference up, the margin shrinks as armour keeps selling; pass
-the server's market.json to check against the prices it has learned:
+The anchor (MarketService.anchorFor) is item value x market.reference-multiplier and no sale ever
+moves it; the trade price learned from player sales is shown for information only and pays out
+nothing, so it plays no part here.
 
-  python3 tools/econ/repair.py [items.yml] [config.yml] [--market plugins/Craftov/data/market.json]
+  python3 tools/econ/repair.py [items.yml] [config.yml]
 
 The arithmetic mirrors the Java code, including Math.round. Exits 1 if any repair is profitable.
 """
 
 import argparse
-import json
 import math
 from pathlib import Path
 import sys
@@ -28,7 +26,7 @@ import sys
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-# MarketService.tick: system buyers never take a listing priced above 1.25x the reference price.
+# MarketService.tick: system buyers never take a listing priced above 1.25x its anchor price.
 VIRTUAL_MAX_RATIO = 1.25
 
 
@@ -47,13 +45,9 @@ def main():
     parser = argparse.ArgumentParser(description="Checks that repairing armour never pays.")
     parser.add_argument("items", nargs="?", default=ROOT / "src/main/resources/items.yml", type=Path)
     parser.add_argument("config", nargs="?", default=ROOT / "src/main/resources/config.yml", type=Path)
-    parser.add_argument("--market", type=Path, help="market.json whose learned reference prices to use")
     args = parser.parse_args()
     items = yaml.safe_load(args.items.read_text(encoding="utf-8"))["items"]
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    learned = {}
-    if args.market:
-        learned = json.loads(args.market.read_text(encoding="utf-8")).get("reference") or {}
     trader = config.get("trader", {})
     market = config.get("market", {})
     rate = trader.get("repair-rate", 0.75)
@@ -61,17 +55,13 @@ def main():
     reference = market.get("reference-multiplier", 0.85)
     keep = 1 - market.get("listing-fee", 0.02) - market.get("sale-tax", 0.05)
 
-    source = f"learned prices from {args.market}" if args.market else f"{reference} x value"
-    print(f"repair-rate {rate}  trader sells at {sell}  market at most reference ({source}) x {VIRTUAL_MAX_RATIO} x {keep:.2f}")
+    print(f"repair-rate {rate}  trader sells at {sell}  market at most {reference} x value x {VIRTUAL_MAX_RATIO} x {keep:.2f}")
     print(f"{'item':10} {'value':>8} {'repair':>8} {'trader+':>8} {'market+':>8} {'margin':>8}")
     failures = 0
     for item_id, defn in items.items():
         if defn.get("category") not in ("HELMET", "ARMOR") or not defn.get("durability"):
             continue
         full = defn["durability"]
-        # MarketService.reference: the learned price if there is one, else value x multiplier;
-        # referenceFor scales it by the worn piece's share of the full value.
-        ratio = learned.get(item_id, defn["value"] * reference) / defn["value"]
         worst = None
         steps = int(full * 10)
         for step in range(steps):
@@ -80,7 +70,8 @@ def main():
             cost = jround(missing / full * defn["value"] * rate)
             before, after = value(defn, dura), value(defn, full)
             trader_gain = jround(after * sell) - jround(before * sell)
-            market_gain = (after - before) * ratio * VIRTUAL_MAX_RATIO * keep
+            # anchorFor scales with the piece's value, durability included.
+            market_gain = (after - before) * reference * VIRTUAL_MAX_RATIO * keep
             margin = cost - max(trader_gain, market_gain)
             if margin < 0:
                 failures += 1

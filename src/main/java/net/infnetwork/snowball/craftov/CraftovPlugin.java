@@ -65,6 +65,10 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Data files copied from the jar only when missing, and so never updated by a new jar. */
     private static final List<String> DATA_FILES = List.of("items.yml", "loot.yml");
     private static final Pattern REVISION = Pattern.compile("(?m)^revision:\\s*(\\d+)");
+    /** Entry fees the plugin shipped before #80, when raids paid out a fraction of what they do now. */
+    private static final Map<String, Long> OLD_ENTRY_FEES = Map.of("CONFIDENTIAL", 8000L, "SECRET", 20000L);
+    private static final Pattern TIER_LINE = Pattern.compile("^ {2}([A-Za-z0-9_-]+):\\s*(#.*)?$");
+    private static final Pattern FEE_LINE = Pattern.compile("^( {4}entry-fee:\\s*)(\\d+)(\\s*(#.*)?)$");
 
     private ItemRegistry registry;
     private ItemFactory items;
@@ -91,6 +95,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.rank.SeasonService season;
     private net.infnetwork.snowball.craftov.lobby.TutorialService tutorial;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
+    private net.infnetwork.snowball.craftov.luck.LuckService luck;
     private DownedService downed;
     private WeaponService weapons;
     private RaidManager raids;
@@ -105,6 +110,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private CollectionService collection;
     private EscortService escorts;
     private HudService hud;
+    private net.infnetwork.snowball.craftov.hud.KillFeedService killFeed;
     private MenuService menus;
     private net.infnetwork.snowball.craftov.map.editor.EditorService editor;
     private BetterHudHook betterHud = BetterHudHook.NONE;
@@ -119,6 +125,7 @@ public final class CraftovPlugin extends JavaPlugin {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
         saveDefaultConfig();
+        migrateEntryFees();
         saveResourceIfMissing("items.yml");
         saveResourceIfMissing("loot.yml");
         for (OutdatedData old : outdatedData()) {
@@ -180,7 +187,9 @@ public final class CraftovPlugin extends JavaPlugin {
         collection = new CollectionService(this);
         escorts = new EscortService(this);
         tasks = new net.infnetwork.snowball.craftov.task.TaskService(this);
+        luck = new net.infnetwork.snowball.craftov.luck.LuckService(this);
         hud = new HudService(this);
+        killFeed = new net.infnetwork.snowball.craftov.hud.KillFeedService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
         var adminGuard = new net.infnetwork.snowball.craftov.security.AdminGuardService(this);
@@ -189,7 +198,7 @@ public final class CraftovPlugin extends JavaPlugin {
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
-                new InspectService(this), market, profiles);
+                new InspectService(this), market, profiles, killFeed);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -290,6 +299,68 @@ public final class CraftovPlugin extends JavaPlugin {
         }
     }
 
+    /**
+     * A config.yml written before #80 still charges that build's entry fees (机密 ◈8,000, 绝密
+     * ◈20,000), and since every tier has the key, the jar's new fees never reach it. Such a file is
+     * told by its tiers' max-shift lines, which only that build wrote and nothing reads any more:
+     * a fee still at the old default moves to the jar's, the max-shift lines go, and every other
+     * line stays as written. A fee an admin changed is left alone; the old file is kept as
+     * config.yml.pre-80.
+     */
+    private void migrateEntryFees() {
+        File file = new File(getDataFolder(), "config.yml");
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            return;
+        }
+        org.bukkit.configuration.Configuration jar = getConfig().getDefaults();
+        List<String> out = new ArrayList<>();
+        List<String> changes = new ArrayList<>();
+        boolean inTiers = false;
+        String tier = null;
+        for (String line : lines) {
+            if (!line.isEmpty() && !line.startsWith(" ") && !line.startsWith("#")) {
+                inTiers = line.startsWith("tiers:");
+                tier = null;
+            } else if (inTiers) {
+                Matcher name = TIER_LINE.matcher(line);
+                Matcher fee = FEE_LINE.matcher(line);
+                if (name.matches()) {
+                    tier = name.group(1);
+                } else if (tier != null && line.startsWith("    max-shift:")) {
+                    changes.add(tier + " max-shift dropped");
+                    continue;
+                } else if (tier != null && fee.matches() && jar != null && OLD_ENTRY_FEES.containsKey(tier)
+                        && Long.parseLong(fee.group(2)) == OLD_ENTRY_FEES.get(tier) && jar.contains("tiers." + tier + ".entry-fee")) {
+                    long now = jar.getLong("tiers." + tier + ".entry-fee");
+                    if (now != OLD_ENTRY_FEES.get(tier)) {
+                        line = fee.group(1) + now + fee.group(3);
+                        changes.add(tier + " entry-fee " + OLD_ENTRY_FEES.get(tier) + " -> " + now);
+                    }
+                }
+            }
+            out.add(line);
+        }
+        if (changes.stream().noneMatch(c -> c.contains("max-shift"))) {
+            return; // not a file from before #80: its fees are the admin's
+        }
+        try {
+            File backup = new File(getDataFolder(), "config.yml.pre-80");
+            if (!backup.exists()) {
+                Files.copy(file.toPath(), backup.toPath());
+            }
+            Files.write(file.toPath(), out, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Could not update the entry fees in config.yml (" + String.join(", ", changes) + ")", ex);
+            return;
+        }
+        reloadConfig();
+        getLogger().warning("config.yml was written before the loot luck update (#80): " + String.join(", ", changes)
+                + ". The old file is config.yml.pre-80.");
+    }
+
     private void saveResourceIfMissing(String name) {
         if (!new File(getDataFolder(), name).exists()) {
             saveResource(name, false);
@@ -354,7 +425,7 @@ public final class CraftovPlugin extends JavaPlugin {
             }
         }
         if (tiers.isEmpty()) {
-            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 1, 0.8, 0.55, 0, false, 1.0, 0));
+            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
         }
     }
 
@@ -416,7 +487,9 @@ public final class CraftovPlugin extends JavaPlugin {
     public CollectionService collection() { return collection; }
     public EscortService escorts() { return escorts; }
     public net.infnetwork.snowball.craftov.task.TaskService tasks() { return tasks; }
+    public net.infnetwork.snowball.craftov.luck.LuckService luck() { return luck; }
     public HudService hud() { return hud; }
+    public net.infnetwork.snowball.craftov.hud.KillFeedService killFeed() { return killFeed; }
     public MenuService menus() { return menus; }
     public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }
     public BetterHudHook betterHud() { return betterHud; }

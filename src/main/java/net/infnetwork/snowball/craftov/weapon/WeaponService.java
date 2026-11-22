@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -11,6 +12,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
@@ -98,11 +101,10 @@ public final class WeaponService implements Listener {
          */
         long drawStart;
         long readyAt;
-        /**
-         * The gun's stack carries the draw mark (ItemFactory.setDrawing) until the draw is over: its model
-         * neither aims nor flashes meanwhile.
-         */
-        boolean drawMarked;
+        /** The gun is coming up and {@link WeaponService#drawn} has not run for it yet. */
+        boolean drawPending;
+        /** The reload cooldown, which plays the reload frames, has been sent for the reload under way. */
+        boolean reloadShown;
         /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
         long aimAsked = -100;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
@@ -156,6 +158,9 @@ public final class WeaponService implements Listener {
         boolean climbSettling;
         double climbStepUp;
         double climbStepRight;
+        /** What is left of the last shot's camera kick (degrees up, and right), sent on the next tick. */
+        double pendingUp;
+        double pendingRight;
         /** Mounted optic, or the gun's built-in scope; null = iron sights. */
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
@@ -381,14 +386,11 @@ public final class WeaponService implements Listener {
                     player.getName(), def.id(), now, state.readyAt, state.nextShotTick, state.bloom));
         }
         states.put(player.getUniqueId(), state);
-        if (state.drawing()) {
-            ItemFactory.setDrawing(held, true);
-            state.drawMarked = true;
-        } else {
-            // A mark that left the inventory mid-draw (put in a box) would keep a gun with no draw
-            // time (weapons.draw-ticks 0) from ever aiming: it comes off whenever the gun is bound.
-            ItemFactory.setDrawing(held, false);
-        }
+        // A mark that left the inventory mid-draw or mid-reload (put in a box) would keep a gun with no
+        // draw time (weapons.draw-ticks 0) from ever aiming, or show it reloading: whatever mark the
+        // stack carries is replaced whenever the gun is bound.
+        state.drawPending = state.drawing();
+        ItemFactory.setHandMark(held, state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE);
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -432,6 +434,19 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /**
+     * Puts the magazine in memory into a record of the player's bound gun (by its uid), so a snapshot
+     * of the inventory counts the rounds really loaded without writing the stack, which would lower
+     * and raise the gun in the hand.
+     */
+    public void liveMagazine(Player player, ItemRecord record) {
+        GunState state = states.get(player.getUniqueId());
+        if (state != null && state.uid.equals(record.uid)) {
+            record.ammo = state.ammo;
+            record.ammoType = state.ammoType;
+        }
+    }
+
     /** The live stack of the state's gun in the player's inventory (its slot first), or null once it left. */
     private @Nullable ItemStack stackOf(Player player, GunState state) {
         PlayerInventory inv = player.getInventory();
@@ -465,33 +480,44 @@ public final class WeaponService implements Listener {
             return null;
         }
         long now = Bukkit.getCurrentTick();
+        // The rest of the last shot's kick still lands: switching away right after a shot dodges none of it.
+        kickPending(player, state, now);
         if (now < state.nextShotTick || state.bloom > 0) {
             stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
         }
-        unmark(player, state);
-        stopReloadAnimation(player, state);
+        // The cooldown belongs to every gun: the next one must not show this one's kick or reload.
+        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks()) {
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
+        setMark(player, state, ItemFactory.MARK_NONE);
         return state;
     }
 
-    /** Takes the draw mark off the gun's stack, if it is still in the inventory. */
-    private void unmark(Player player, GunState state) {
-        if (!state.drawMarked) {
-            return;
-        }
-        state.drawMarked = false;
+    /** The hand mark the gun's state calls for: reloading, coming up, or none. */
+    private static int wantedMark(GunState state) {
+        return state.reloading() ? ItemFactory.MARK_RELOAD : state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE;
+    }
+
+    /**
+     * Puts this hand mark on the gun's stack, if it is in the inventory and carries another. A gun dropped
+     * with Q (a reload) is out of the inventory while the drop event runs and put back after: it is
+     * marked from the next tick (see {@link #showReload}).
+     */
+    private void setMark(Player player, GunState state, int mark) {
         ItemStack stack = stackOf(player, state);
-        if (stack != null) {
-            ItemFactory.setDrawing(stack, false);
+        if (stack != null && ItemFactory.handMark(stack) != mark) {
+            ItemFactory.setHandMark(stack, mark);
         }
     }
 
     /**
-     * The gun is up: its model may aim and flash again, and right mouse held through the draw aims at
+     * The gun is up: its model may aim and kick again, and right mouse held through the draw aims at
      * once rather than with the next use packet, which on a scoped gun would leave up to 4 ticks of
      * neither gun nor scope (the model hides the gun as soon as the mark is gone).
      */
     private void drawn(Player player, GunState state, long now) {
-        unmark(player, state);
+        state.drawPending = false;
+        setMark(player, state, wantedMark(state));
         if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
                 && !player.isSprinting()) {
             adsUntil.put(player.getUniqueId(), now + 6);
@@ -519,13 +545,16 @@ public final class WeaponService implements Listener {
             if (state == null) {
                 continue;
             }
+            kickPending(player, state, now);
             settle(player, state, now);
-            if (state.drawMarked && !state.drawing()) {
+            if (state.drawPending && !state.drawing()) {
                 drawn(player, state, now);
             }
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
                     finishReload(player, state);
+                } else if (!state.reloadShown) {
+                    showReload(player, state, now);
                 }
                 continue;
             }
@@ -714,16 +743,27 @@ public final class WeaponService implements Listener {
         Vector dir = eye.getDirection();
         Vector bore = bore(eye, state);
         double spread = currentSpread(player, state);
+        net.infnetwork.snowball.craftov.raid.RaidPlayer session = plugin.raids().session(player);
+        if (session != null && session.active()) {
+            // The raid report counts the shots fired with movement costing no accuracy: stopped first.
+            session.shots++;
+            if (moveLevel(player) <= 0) {
+                session.stillShots++;
+            }
+        }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
-                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick()));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
+        // The first-person kick and muzzle flash: the item model plays them while this cooldown counts
+        // down on the client, so they follow the shots the server fires, not the trigger finger.
+        player.setCooldown(ItemFactory.RELOAD_GROUP, gun.kickTicks());
         Location muzzle = Ballistics.muzzlePoint(player, dir);
         audio.shot(player, muzzle, gun, state.suppressed, reportRounds(state));
         if (!state.suppressed) {
@@ -743,8 +783,8 @@ public final class WeaponService implements Listener {
             audio.casing(player, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
         if (state.ammo == 0) {
-            // Writing the empty magazine back marks the item "dry": its model stops flashing on the trigger.
-            flush(player);
+            // Not written back to the stack here: a changed stack in the hand makes the client lower and
+            // raise the gun. It is written whenever the item could move (see flush).
             player.playSound(player.getLocation(), "craftov:gun.empty", SoundCategory.PLAYERS, 0.6f, 1.2f);
         }
         return true;
@@ -775,9 +815,10 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Cone half-angle of the next shot. Moving widens it in proportion to how close the player is to
-     * their full walking pace, the gun's bloom included: walking hip fire is half as wide again, aiming
-     * while walking twice as wide (weapons.spread).
+     * Cone half-angle of the next shot. Moving widens it by the gun's own amount (items.yml `move`, in
+     * degrees, half of it while aiming) in proportion to how close the player is to their full walking
+     * pace past a small dead zone (see {@link #moveLevel}): a pistol barely minds, a sniper rifle
+     * cannot hit a thing on the move, and stopping before the shot puts it back.
      */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
@@ -793,13 +834,37 @@ public final class WeaponService implements Listener {
         if (state.fireMode() != FireMode.BOLT) {
             spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
-        double moving = config.getDouble(aiming ? "weapons.spread.move-ads" : "weapons.spread.move-hip", aiming ? 1.0 : 0.5);
-        spread *= 1.0 + moving * motion.moveFactor(player);
+        spread += gun.moveSpread() * moveLevel(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
             spread *= 1.0 + 0.35 * arms;
         }
         return spread;
+    }
+
+    /**
+     * How much moving counts against accuracy, 0 to 1: how close the player is to their full walking
+     * pace (measured on the server, against what their movement-speed attribute allows right now, so a
+     * player slowed by aiming or armour who walks as fast as they can counts as fully moving), less a
+     * dead zone (weapons.spread.move-deadzone of that pace) so the last ticks of stopping and a nudge do
+     * not count. Vanilla movement stops in about two ticks when the opposite key is pressed: stopping
+     * before the shot is the skill. Sneaking walks at the sneaking-speed attribute's share of that pace
+     * (0.3), over the dead zone, but costs nothing either: while sneaking the dead zone is that share
+     * and a tenth more, so only a sneak faster than the client allows (a cheat) counts.
+     */
+    private double moveLevel(Player player) {
+        double dead = Math.max(0, Math.min(0.9, plugin.getConfig().getDouble("weapons.spread.move-deadzone", 0.25)));
+        if (player.isSneaking()) {
+            AttributeInstance sneak = player.getAttribute(Attribute.SNEAKING_SPEED);
+            dead = Math.max(dead, Math.min(0.9, (sneak == null ? 0.3 : sneak.getValue()) + 0.1));
+        }
+        return Math.max(0, Math.min(1, (motion.moveFactor(player) - dead) / (1 - dead)));
+    }
+
+    /** Cone half-angle (degrees) the player's held gun would fire with right now, or -1 without one. */
+    public double spreadNow(Player player) {
+        GunState state = states.get(player.getUniqueId());
+        return state == null ? -1 : currentSpread(player, state);
     }
 
     /** Where the bullets go: the crosshair, raised by the climb only the bullets get. */
@@ -823,7 +888,9 @@ public final class WeaponService implements Listener {
         GunSpec gun = state.gun;
         var config = plugin.getConfig();
         long now = Bukkit.getCurrentTick();
-        double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
+        kickPending(player, state, now);
+        double scale = (isAiming(player) ? config.getDouble("weapons.recoil.ads", 0.6) : 1.0)
+                * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
         double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
@@ -832,16 +899,37 @@ public final class WeaponService implements Listener {
         if (share > 0) {
             climb(state, up * share, right * share);
         }
-        float pitchKick = (float) (up * (1 - share));
-        float yawKick = (float) (right * (1 - share));
+        double pitchKick = up * (1 - share);
+        double yawKick = right * (1 - share);
         if (state.freshPull || state.settling || Float.isNaN(state.anchorPitch)) {
             rebase(player, state, now);
         }
         state.freshPull = false;
-        state.kickUp += pitchKick;
-        state.kickRight += yawKick;
-        turned(state, now, pitchKick, yawKick);
-        Recoil.kick(player, yawKick, -pitchKick);
+        // The camera eases into the kick: this share now, the rest on the next tick, so a shot reads as
+        // a quick climb over two frames of the server's 20 a second rather than one jump.
+        double first = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.first-tick-share", 0.6)));
+        kick(player, state, now, pitchKick * first, yawKick * first);
+        state.pendingUp += pitchKick * (1 - first);
+        state.pendingRight += yawKick * (1 - first);
+    }
+
+    /** Turns the camera by a kick (degrees up, and right) and counts it toward the spray's recovery. */
+    private static void kick(Player player, GunState state, long now, double up, double right) {
+        if (Math.abs(up) < 1e-4 && Math.abs(right) < 1e-4) {
+            return;
+        }
+        state.kickUp += up;
+        state.kickRight += right;
+        turned(state, now, up, right);
+        Recoil.kick(player, (float) right, (float) -up);
+    }
+
+    /** The part of the last shot's kick held over to this tick (see {@link #recoil}). */
+    private static void kickPending(Player player, GunState state, long now) {
+        double up = state.pendingUp;
+        double right = state.pendingRight;
+        state.pendingUp = state.pendingRight = 0;
+        kick(player, state, now, up, right);
     }
 
     /**
@@ -986,9 +1074,12 @@ public final class WeaponService implements Listener {
             owe(state, above, right);
             double rate = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.return-per-tick", 0.1)));
             double share = Math.max(0.1, state.gun.recoilReturn());
+            // A long spray's recovery would otherwise jump several degrees a tick at 20 frames a second:
+            // it takes longer instead.
+            double most = Math.max(0.05, config.getDouble("weapons.recoil.return-max-step", 1.2));
             state.settling = true;
-            state.stepUp = state.returnUp * rate / share;
-            state.stepRight = Math.abs(state.returnRight) * rate / share;
+            state.stepUp = Math.min(most, state.returnUp * rate / share);
+            state.stepRight = Math.min(most, Math.abs(state.returnRight) * rate / share);
         }
         double margin = pulling * inFlightTicks(player);
         double up = Math.max(0, Math.min(Math.min(state.stepUp, state.returnUp), above - margin));
@@ -1154,8 +1245,11 @@ public final class WeaponService implements Listener {
                 * (1.0 + 0.2 * plugin.health().activeFractures(player, true));
         state.reloadStart = now;
         state.reloadEnd = now + Math.max(5, Math.round(duration));
-        // The client animates the reload from this cooldown on its own (see tools/art/reload.py).
-        player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
+        // A shot's kick still running ends now; the reload frames start on the next tick (showReload),
+        // once the stack carries the reload mark.
+        player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        state.reloadShown = false;
+        setMark(player, state, ItemFactory.MARK_RELOAD);
         state.reloadType = type;
         state.triggerHeld = false;
         state.burstLeft = 0;
@@ -1217,11 +1311,17 @@ public final class WeaponService implements Listener {
         return best;
     }
 
-    /** Ends the client-side reload animation if the dropped state was mid-reload. */
-    private static void stopReloadAnimation(Player player, @Nullable GunState state) {
-        if (state != null && state.reloading()) {
-            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
-        }
+    /**
+     * Starts the client's reload frames: the reload mark first, sent at once rather than at the end of
+     * the tick, then the cooldown that runs the frames. The other way round, the model would read the
+     * cooldown as a shot and flash. A tick after the reload began, so a gun reloaded with Q (out of the
+     * inventory while the drop event ran) is back in it and can carry the mark.
+     */
+    private void showReload(Player player, GunState state, long now) {
+        state.reloadShown = true;
+        setMark(player, state, ItemFactory.MARK_RELOAD);
+        Nms.syncInventory(player);
+        player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.max(1, state.reloadEnd - now));
     }
 
     private void finishReload(Player player, GunState state) {
@@ -1230,6 +1330,7 @@ public final class WeaponService implements Listener {
         state.reloadStart = -1;
         state.reloadEnd = -1;
         state.reloadType = null;
+        setMark(player, state, wantedMark(state));
         if (type == null) {
             return;
         }
@@ -1238,7 +1339,6 @@ public final class WeaponService implements Listener {
             // Free, unlimited ammo on the range; nothing is taken from the inventory.
             state.ammo = gun.magazine();
             state.ammoType = type;
-            flush(player);
             reloadDone(player, state);
             return;
         }
@@ -1256,7 +1356,9 @@ public final class WeaponService implements Listener {
         }
         state.ammo += taken;
         state.ammoType = type;
-        flush(player);
+        // The full magazine stays in memory like every round fired from it: writing it to the stack now
+        // would make the client lower and raise the gun right after the reload frames brought it back
+        // up. It is written whenever the item could move (see flush).
         reloadDone(player, state);
     }
 

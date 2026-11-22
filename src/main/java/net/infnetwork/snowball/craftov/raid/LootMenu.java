@@ -83,6 +83,7 @@ public final class LootMenu extends Menu {
         int revealed = container.searchTick(speed, Bukkit.getCurrentTick());
         if (revealed >= 0) {
             ItemDef def = plugin.items().defOf(container.get(revealed));
+            plugin.luck().onFound(viewer, def);
             Rarity rarity = def == null ? Rarity.WHITE : def.rarity();
             String sound = switch (rarity) {
                 case GOLD -> "craftov:loot.reveal_gold";

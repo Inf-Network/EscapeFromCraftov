@@ -10,6 +10,7 @@ import java.util.List;
  * @param maxRange    hitscan distance
  * @param hipSpread   cone half-angle in degrees when hip firing
  * @param adsSpread   cone half-angle in degrees when aiming
+ * @param moveSpread  degrees the cone widens by at full walking pace (half that while aiming)
  * @param recoil      vertical camera kick per shot in degrees
  * @param recoilH     max horizontal kick per shot in degrees
  * @param recoilReturn share (0..1) of a spray's camera kick that drifts back once the gun stops firing
@@ -31,6 +32,7 @@ public record GunSpec(
         double maxRange,
         double hipSpread,
         double adsSpread,
+        double moveSpread,
         double recoil,
         double recoilH,
         double recoilReturn,
@@ -62,13 +64,26 @@ public record GunSpec(
         return Math.max(1, (int) Math.round(1200.0 / rpm));
     }
 
+    /** Longest first-person kick of one shot, in ticks (tools/art/models.py KICK_MAX_TICKS). */
+    public static final int KICK_MAX_TICKS = 6;
+
+    /**
+     * Ticks the first-person kick and flash of one shot last: the time between shots, so every round
+     * of a spray kicks on its own, but at least 2 (a frame to snap back, one to settle) and at most
+     * {@link #KICK_MAX_TICKS} so a bolt-action rifle does not hold its kick for its whole cycle. The
+     * item model is built with the same rule (tools/art/models.py kick_ticks).
+     */
+    public int kickTicks() {
+        return Math.max(2, Math.min(KICK_MAX_TICKS, ticksBetweenShots()));
+    }
+
     public double millisBetweenShots() {
         return 60_000.0 / rpm;
     }
 
     /** The same gun with {@code damage} per pellet, for a round that lost some of its punch on the way. */
     public GunSpec withDamage(double damage) {
-        return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, recoil, recoilH,
+        return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, moveSpread, recoil, recoilH,
                 recoilReturn, reloadTicks, zoom, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action);
     }
 }

@@ -64,3 +64,29 @@ craftov_hud:
       pixel:
         x: 6
         y: 6
+    '9':
+      name: craftov_feed
+      gui:
+        x: 100
+        y: 0
+      pixel:
+        x: -6
+        y: 52
+    '10':
+      name: craftov_streak
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: 0
+        y: -44
+craftov_crosshair:
+  layouts:
+    '1':
+      name: craftov_crosshair
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -46
+        y: -47

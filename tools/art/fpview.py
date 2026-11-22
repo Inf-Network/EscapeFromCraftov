@@ -4,6 +4,7 @@
 
     python3 tools/art/fpview.py k47 [firstperson_righthand|ads] out.png
     python3 tools/art/fpview.py k47 reload sheet.png [optic id]     # contact sheet of reload frames
+    python3 tools/art/fpview.py k47 kick sheet.png                  # one shot's kick frames (kick-ads: aimed)
     python3 tools/art/fpview.py knife_karambit inspect sheet.png    # contact sheet of a knife inspect
 """
 import json
@@ -259,6 +260,43 @@ def reload_sheet(gid, out, optic=None, cols=6, step=2):
     print(out)
 
 
+def kick_sheet(gid, out, kind='hip'):
+    """The gun at rest, then each part of one shot's kick as the item model steps through it
+    (models.kick_frames), the first with the muzzle flash. kind: hip or ads."""
+    sys.path.insert(0, os.path.dirname(__file__))
+    import yaml
+    import models
+    items = os.path.join(os.path.dirname(__file__), '..', '..', 'src', 'main', 'resources', 'items.yml')
+    with open(items, encoding='utf-8') as f:
+        rpm = (yaml.safe_load(f)['items'][gid].get('gun') or {}).get('rpm', 600)
+    rest = load_model(os.path.join(ROOT, 'models', 'item', 'gun_ads' if kind == 'ads' else 'gun', gid + '.json'))
+    tiles = []
+    frames = [(None, None, False)] + models.kick_frames(rpm)
+    ticks = models.kick_ticks(rpm)
+    for threshold, level, lit in frames:
+        if level is None:
+            posed = [(rest, rest['display']['firstperson_righthand'])]
+            label = '%s %s at rest' % (gid, kind)
+        else:
+            pose = load_model(os.path.join(ROOT, 'models', 'item', 'gun_pose', '%s_kick%d' % (kind, level), gid + '.json'))
+            posed = [(pose, pose['display']['firstperson_righthand'])]
+            if lit:
+                flash = load_model(os.path.join(ROOT, 'models', 'item', 'gun_flash', kind, gid + '.json'))
+                posed.append((flash, flash['display']['firstperson_righthand']))
+            label = '%s %s until %.0f ms: kick %.0f%%%s' % (gid, kind, (1 - threshold) * ticks * 50,
+                                                          models.KICK_LEVELS[level] * 100, ' + flash' if lit else '')
+        tmp = '/tmp/_fp_kick.png'
+        render_many(posed, tmp, label)
+        tiles.append(Image.open(tmp).resize((W // 2, H // 2)))
+    cols = 3
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new('RGB', (cols * W // 2, rows * H // 2))
+    for i, t in enumerate(tiles):
+        sheet.paste(t, ((i % cols) * W // 2, (i // cols) * H // 2))
+    sheet.save(out)
+    print(out)
+
+
 def inspect_sheet(knife, out, cols=5, step=5):
     """Contact sheet of a knife's inspect frames (every `step`-th frame, plus the last)."""
     folder = os.path.join(ROOT, 'models', 'item', 'knife_inspect', knife)
@@ -283,6 +321,9 @@ def main():
     out = sys.argv[3] if len(sys.argv) > 3 else '/tmp/fp_%s_%s.png' % (gid, which)
     if which == 'reload':
         reload_sheet(gid, out, sys.argv[4] if len(sys.argv) > 4 else None)
+        return
+    if which in ('kick', 'kick-ads'):
+        kick_sheet(gid, out, 'ads' if which == 'kick-ads' else 'hip')
         return
     if which == 'inspect':
         inspect_sheet(gid, out)

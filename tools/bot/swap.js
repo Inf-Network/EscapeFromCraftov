@@ -347,7 +347,9 @@ async function cut (spot) {
   const said = bars.slice(barsFrom).map(b => b.text)
   const cools = cooldowns.slice(coolFrom).map(c => c.ticks)
   check('cut: switching away mid-reload says the reload was cut short', said.some(t => t.includes('换弹已中断')), `${said.length} action bar lines`)
-  check('cut: and stops the reload animation', cools.length >= 2 && cools[0] > 0 && cools[cools.length - 1] === 0, `reload cooldowns ${cools.join(',')}`)
+  // Shots run the same cooldown for a few ticks (GunSpec.kickTicks, at most 6), and the reload clears
+  // any kick still running before it starts: the reload is the long one.
+  check('cut: and stops the reload animation', cools.some(t => t > 6) && cools[cools.length - 1] === 0, `reload cooldowns ${cools.join(',')}`)
 }
 
 ;(async () => {

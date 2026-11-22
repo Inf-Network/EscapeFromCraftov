@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.raid;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.luck.LuckSession;
 import org.bukkit.Location;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.inventory.ItemStack;
@@ -30,6 +31,9 @@ public final class RaidPlayer {
     public int kills;
     public int aiKills;
     public int downs;
+    /** Rounds fired, and of those the ones fired standing still or stopped in time (moving cost no accuracy). */
+    public int shots;
+    public int stillShots;
     /** Value carried in and in the secure container at deploy (raid profit is measured against it). */
     public long startValue;
     /**
@@ -114,6 +118,12 @@ public final class RaidPlayer {
     public double armorWear = 1.0;
     public @Nullable String escortContract;
     public int containersSearched;
+    /** Personal luck in this raid: containers searched, hand-outs (LuckService). */
+    public final LuckSession luck = new LuckSession();
+    /** Squadmates this player revived (the luck behaviour score counts it as cooperation). */
+    public int revives;
+    /** Deployed as an escort on someone else's contract (not as its client). */
+    public boolean escorting;
 
     public RaidPlayer(UUID uuid, String name, int squad, boolean ranked) {
         this.uuid = uuid;

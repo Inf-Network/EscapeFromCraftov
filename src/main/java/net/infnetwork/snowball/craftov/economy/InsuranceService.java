@@ -185,10 +185,11 @@ public final class InsuranceService {
     /**
      * Raid closing: insured items left behind go home, also when they are packed inside a rig or
      * backpack lying around, each one unless the loss roll takes it. What comes back waits in the
-     * profile's claims until {@link #returnMinutes} have passed.
+     * profile's claims until {@link #returnMinutes} have passed. Returns the value coming back to
+     * each owner (their luck does not count it as lost).
      */
-    public void settle(Raid raid) {
-        settle(raid, Set.of(), List.of());
+    public Map<UUID, Long> settle(Raid raid) {
+        return settle(raid, Set.of(), List.of());
     }
 
     /**
@@ -196,10 +197,12 @@ public final class InsuranceService {
      * ({@code voided}): their gear goes home as it went in, so nothing of theirs is paid out here
      * as well, wherever it lies. What they had on them ({@code carried}, copies) stays in the raid
      * like anything lying around, and someone else's insured gear among it goes home to its owner,
-     * with the loss roll and the delay like any other claim.
+     * with the loss roll and the delay like any other claim. Returns the value coming back to each
+     * owner, as {@link #settle(Raid)} does.
      */
-    public void settle(Raid raid, Set<UUID> voided, List<ItemStack> carried) {
+    public Map<UUID, Long> settle(Raid raid, Set<UUID> voided, List<ItemStack> carried) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
+        Map<UUID, Long> returned = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
@@ -231,6 +234,9 @@ public final class InsuranceService {
             for (ItemRecord record : claimed) {
                 (rng.nextDouble() < loss ? lost : records).add(record);
             }
+            for (ItemRecord record : records) {
+                returned.merge(owner, plugin.items().value(record), Long::sum);
+            }
             if (!records.isEmpty()) {
                 if (minutes <= 0) {
                     plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
@@ -253,6 +259,7 @@ public final class InsuranceService {
                         + "<#8A8F98>（按出发时的样子：局内装上的配件、多装的子弹和包里的物品不在理赔范围）");
             }
         });
+        return returned;
     }
 
     /** Moves claims that are ready into their online owners' mailboxes (every ten seconds). */

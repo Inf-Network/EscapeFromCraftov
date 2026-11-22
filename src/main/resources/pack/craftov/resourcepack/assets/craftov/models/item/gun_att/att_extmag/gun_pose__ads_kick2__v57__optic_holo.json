@@ -1,0 +1,144 @@
+{
+ "parent": "craftov:item/gun_pose/ads_kick2/v57__optic_holo",
+ "textures": {
+  "a": "craftov:item/gun_palette"
+ },
+ "elements": [
+  {
+   "from": [
+    7.8,
+    1.746,
+    7.49
+   ],
+   "to": [
+    9.7,
+    3.921,
+    8.74
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      5,
+      1,
+      7,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  },
+  {
+   "from": [
+    7.7,
+    1.396,
+    7.39
+   ],
+   "to": [
+    9.8,
+    1.746,
+    8.84
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "south": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "east": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "west": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "up": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    },
+    "down": {
+     "uv": [
+      1,
+      1,
+      3,
+      3
+     ],
+     "texture": "#a"
+    }
+   }
+  }
+ ]
+}

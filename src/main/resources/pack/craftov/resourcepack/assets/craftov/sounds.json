@@ -371,6 +371,48 @@
    }
   ]
  },
+ "kill.1": {
+  "sounds": [
+   {
+    "name": "craftov:kill/1"
+   }
+  ]
+ },
+ "kill.2": {
+  "sounds": [
+   {
+    "name": "craftov:kill/2"
+   }
+  ]
+ },
+ "kill.3": {
+  "sounds": [
+   {
+    "name": "craftov:kill/3"
+   }
+  ]
+ },
+ "kill.4": {
+  "sounds": [
+   {
+    "name": "craftov:kill/4"
+   }
+  ]
+ },
+ "kill.5": {
+  "sounds": [
+   {
+    "name": "craftov:kill/5"
+   }
+  ]
+ },
+ "kill.6": {
+  "sounds": [
+   {
+    "name": "craftov:kill/6"
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {

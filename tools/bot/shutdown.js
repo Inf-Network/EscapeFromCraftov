@@ -336,7 +336,9 @@ async function setup () {
   // raider. The raider collects the bounty on dead's head; voided, it goes back on that head.
   const r = bots.raider
   r.setQuickBarSlot(2) // the melee slot
-  for (let i = 0; i < 12 && !r.chatLog.some(m => m.includes('→') && m.includes(NAMES.dead)); i++) {
+  // The kill feed is on the HUD (/cv feed reads it), not in the chat.
+  const killed = async () => (await rcon(`cv feed ${NAMES.raider}`)).split('\n').some(m => m.includes('→') && m.includes(NAMES.dead))
+  for (let i = 0; i < 12 && !await killed(); i++) {
     await rcon(`execute as ${NAMES.raider} at ${NAMES.dead} run tp @s ^ ^ ^-1.2`)
     const seen = () => r.players[NAMES.dead] && r.players[NAMES.dead].entity
     await waitFor(() => seen() && seen().position.distanceTo(r.entity.position) < 3, 3000, 100)
@@ -347,7 +349,7 @@ async function setup () {
     r.attack(victim)
     await sleep(700)
   }
-  const died = await waitFor(() => r.chatLog.some(m => m.includes('→') && m.includes(NAMES.dead)), 4000)
+  const died = await waitFor(killed, 4000, 300)
   check('the raider kills dead in the raid', died)
   check('the raider collects the bounty on dead', r.chatLog.some(m => m.includes('领取了') && m.includes(NAMES.dead)))
 

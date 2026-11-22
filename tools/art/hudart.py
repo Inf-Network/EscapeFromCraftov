@@ -42,6 +42,61 @@ def marker(color, size=15, thick=2, gap=3):
     return img
 
 
+# Crosshair gaps in GUI pixels, narrowest first: HudData.CROSSHAIR_GAPS has the same list (the HUD picks
+# one by the cone of the next shot, hud.crosshair.pixels-per-degree). One more picture after them is the
+# dot alone, without a gun. Steps of one pixel where a pistol's or a sneaking rifleman's cone sits, wider
+# ones up to a sniper rifle on the move.
+CROSSHAIR_GAPS = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40]
+CROSSHAIR_ARM = 5
+CROSSHAIR_SIZE = 2 * (CROSSHAIR_GAPS[-1] + CROSSHAIR_ARM) + 1 + 2   # the widest one, outline included: every picture is this big
+
+CROSSHAIR_COLOR = (240, 240, 240, 235)
+CROSSHAIR_EDGE = (0, 0, 0, 150)
+
+
+def crosshair(gap, arm=CROSSHAIR_ARM):
+    """Four arms `gap` pixels out from a centre dot, each `arm` long, all one pixel wide with a dark
+    outline so they read on sky, snow and grey concrete alike. The vanilla crosshair under it is a
+    single dot too (vanilla_crosshair), which this dot covers: drawn by inverting what is behind it,
+    the vanilla one vanishes on mid-grey."""
+    n = CROSSHAIR_SIZE
+    c = n // 2
+    img = Image.new('RGBA', (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    boxes = [(c, c, c, c)]
+    if gap:
+        boxes += [(c - gap - arm + 1, c, c - gap, c), (c + gap, c, c + gap + arm - 1, c),
+                  (c, c - gap - arm + 1, c, c - gap), (c, c + gap, c, c + gap + arm - 1)]
+    for x0, y0, x1, y1 in boxes:
+        d.rectangle([x0 - 1, y0 - 1, x1 + 1, y1 + 1], fill=CROSSHAIR_EDGE)
+    for x0, y0, x1, y1 in boxes:
+        d.rectangle([x0, y0, x1, y1], fill=CROSSHAIR_COLOR)
+    return pin_corners(img)
+
+
+def pin_corners(img):
+    """BetterHud trims fully transparent rows off an image, so pictures of one size with smaller
+    content would sit lower or higher: a barely visible pixel in each corner keeps the whole canvas."""
+    w, h = img.size
+    for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+        img.putpixel((x, y), (0, 0, 0, 2))
+    return img
+
+
+def dot_crosshair():
+    """The crosshair without a gun: the outlined dot alone, for doors, boxes and the knife."""
+    return crosshair(0)
+
+
+def vanilla_crosshair():
+    """The vanilla crosshair sprite (15x15, drawn centred and inverting what is behind it): one dot in
+    the middle, exactly where the shot goes. It is all there is while aiming, where the sights are the
+    aim point and an outlined dot would cover a red dot's reticle, and if BetterHud is missing."""
+    img = Image.new('RGBA', (15, 15), (0, 0, 0, 0))
+    img.putpixel((7, 7), (255, 255, 255, 255))
+    return img
+
+
 def knock_marker(color, size=19, ring=2, inner=3, outer=5):
     """
     The knock-down marker: a ring around a small cross, so it reads apart at a glance from the plain

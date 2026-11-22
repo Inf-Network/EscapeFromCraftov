@@ -2,7 +2,7 @@
 //
 // squad: an enemy S (solo) against V and M in a party (TRIO), all in one raid, friendly fire off:
 //   1. control: M, standing, falls 10 blocks and breaks a leg (the fall check below can see one);
-//   2. S shoots V once, V is given a heavy chest bleed (`cv injure`) and bleeds until it goes down,
+//   2. S shoots V once, V is given S's heavy chest bleed (`cv injure`) and bleeds until it goes down,
 //      over 30 s after the shot: S is told it knocked V down;
 //   3. S shoots the crawling V: a plain body or head hit sound, neither the kill nor the knock-down;
 //   4. V, down, is lifted 10 blocks and falls: no fracture; M revives V, still no fracture;
@@ -14,7 +14,7 @@
 //      M's report shows no player kills;
 //   8. S, at 20 health, blows itself up: "阵亡（破片手雷）", and its report shows the two kills only.
 // solo: two solo bots A and B:
-//   9. A shoots B once, B is given a heavy chest bleed and bleeds out, over 30 s after the shot:
+//   9. A shoots B once, B is given A's heavy chest bleed and bleeds out, over 30 s after the shot:
 //      B's death reads "被 A 击杀（失血）", A gets "✖ 击杀", the kill feed names A.
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node credit.js [squad|solo]
@@ -297,7 +297,7 @@ async function squad () {
   const shotAt = Date.now()
   const vHealth = await health(V.username)
   check('S shooting V once: a plain hit sound', first !== null && first.length > 0 && first.every(s => s === 'body' || s === 'head'), { sounds: first, health: vHealth })
-  await rcon(`cv injure ${V.username} chest heavy`)
+  await rcon(`cv injure ${V.username} chest heavy ${S.username}`)
   log(`V at ${vHealth} health, bleeding heavily; waiting for it to go down`)
   await waitFor(() => titled(V, '第一次倒地'), 70000)
   const downAfter = (Date.now() - shotAt) / 1000
@@ -447,7 +447,7 @@ async function solo () {
   const first = await shot(A, B, 1.2)
   const shotAt = Date.now()
   log(`A's shot: ${JSON.stringify(first)}, B at ${await health(B.username)}`)
-  await rcon(`cv injure ${B.username} chest heavy`)
+  await rcon(`cv injure ${B.username} chest heavy ${A.username}`)
   await waitFor(() => B.game.gameMode === 'spectator', 70000)
   const after = (Date.now() - shotAt) / 1000
   await sleep(1500)

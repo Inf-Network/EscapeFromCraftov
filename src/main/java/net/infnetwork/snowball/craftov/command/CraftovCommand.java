@@ -176,9 +176,10 @@ public final class CraftovCommand implements TabExecutor {
                 Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + amount);
             }
             case "injure" -> {
-                // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture>
+                // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
+                // A bleed with a source is that player's wound: it keeps their kill credit going.
                 if (args.length < 4) {
-                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture>");
+                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture> [造成伤口的玩家]");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
@@ -190,11 +191,12 @@ public final class CraftovCommand implements TabExecutor {
                     case "fracture" -> net.infnetwork.snowball.craftov.combat.Injury.FRACTURE;
                     default -> null;
                 };
-                if (target == null || part == null || injury == null) {
-                    Text.send(sender, "<#FF8A80>玩家、部位或伤势无效。");
+                Player source = args.length > 4 ? Bukkit.getPlayerExact(args[4]) : null;
+                if (target == null || part == null || injury == null || (args.length > 4 && source == null)) {
+                    Text.send(sender, "<#FF8A80>玩家、部位、伤势或造成伤口的玩家无效。");
                     return;
                 }
-                plugin.health().addInjury(target, part, injury);
+                plugin.health().addInjury(target, part, injury, source == null ? null : source.getUniqueId());
                 Text.send(sender, "<#5BD16B>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
             }
             case "money" -> {

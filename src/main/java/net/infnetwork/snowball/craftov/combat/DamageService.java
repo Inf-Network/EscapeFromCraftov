@@ -124,20 +124,24 @@ public final class DamageService implements Listener {
      * Records who hurt the victim and with what. Damage nobody dealt ({@code attacker} null: a fall,
      * shelling, your own grenade) only names the cause: whoever hurt the victim in the last 30
      * seconds keeps the credit, so a fall or a shell cannot take a kill away from them, and the
-     * death reads "killed by them (fall)". It does not restart their 30 seconds; {@link #recordBleed}
-     * does.
+     * death reads "killed by them (fall)". It does not restart their 30 seconds; the bleeding of a
+     * wound they made does ({@link #recordBleed}).
      */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
         recordHit(victim, attacker, weapon, part, false, false);
     }
 
     /**
-     * A wound bleeding: like a hit nobody dealt, but the wound is the doing of whoever last hurt the
-     * victim, so it also restarts their 30 seconds. A player shot and left bleeding who runs off and
-     * bleeds out is their kill, however long it takes.
+     * Wounds bleeding, made by {@code sources}: like a hit nobody dealt, and when the victim's last
+     * attacker made one of them, it also restarts their 30 seconds. A player shot and left bleeding
+     * who runs off and bleeds out is the shooter's kill, however long it takes. A wound someone else
+     * made (an earlier attacker, a soldier) keeps nobody's credit going: a later attacker whose
+     * round only struck armour must not ride it to a kill minutes on.
      */
-    public void recordBleed(LivingEntity victim, String weapon, BodyPart part) {
-        recordHit(victim, null, weapon, part, false, true);
+    public void recordBleed(LivingEntity victim, String weapon, BodyPart part, java.util.Set<UUID> sources) {
+        LastHit last = lastHit(victim.getUniqueId());
+        boolean theirs = last != null && last.attacker() != null && sources.contains(last.attacker());
+        recordHit(victim, null, weapon, part, false, theirs);
     }
 
     private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee,
@@ -186,7 +190,7 @@ public final class DamageService implements Listener {
                 ammo == null ? 1.0 : ammo.armorDamage());
         double damage = base * zoneMult * armorHit.damageMult();
         if (victim instanceof Player target && armorHit.penetrated() && zone != HitZone.HEAD) {
-            plugin.health().rollInjuries(target, part, damage);
+            plugin.health().rollInjuries(target, part, damage, shooter);
         }
         recordHit(victim, shooter, weaponName, part);
         if (victim instanceof Player) {
@@ -459,7 +463,7 @@ public final class DamageService implements Listener {
         ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
         double damage = base * meleeZoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
         if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
-            plugin.health().rollInjuries(target, part, damage);
+            plugin.health().rollInjuries(target, part, damage, player);
         }
         recordHit(victim, player, def.name(), part, true, false);
         if (victim instanceof Player) {

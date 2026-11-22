@@ -14,6 +14,7 @@ import org.bukkit.WorldBorder;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -35,6 +36,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +71,11 @@ public final class HealthService implements Listener {
 
     private final CraftovPlugin plugin;
     private final Map<UUID, EnumMap<BodyPart, EnumSet<Injury>>> wounds = new HashMap<>();
+    /**
+     * Who made the bleeding wound on each part (absent: nobody, or unknown). Only that attacker's
+     * kill credit is kept going while it bleeds.
+     */
+    private final Map<UUID, EnumMap<BodyPart, UUID>> bleedSources = new HashMap<>();
     private final Map<UUID, Long> painkillerUntil = new HashMap<>();
     private final Map<UUID, Long> adrenalineUntil = new HashMap<>();
     private final Map<UUID, Double> lastSpeed = new HashMap<>();
@@ -108,6 +115,7 @@ public final class HealthService implements Listener {
     public void clear(Player player) {
         UUID id = player.getUniqueId();
         wounds.remove(id);
+        bleedSources.remove(id);
         painkillerUntil.remove(id);
         adrenalineUntil.remove(id);
         medUse.remove(id);
@@ -152,6 +160,15 @@ public final class HealthService implements Listener {
     }
 
     public void addInjury(Player player, BodyPart part, Injury injury) {
+        addInjury(player, part, injury, null);
+    }
+
+    /**
+     * Adds an injury made by {@code source} (null: nobody, or unknown). A new or worsened bleed on
+     * the part becomes the source's wound, whose bleeding keeps their kill credit going; one already
+     * there as bad stays with whoever made it.
+     */
+    public void addInjury(Player player, BodyPart part, Injury injury, @Nullable UUID source) {
         if (injury == Injury.FRACTURE && !part.canFracture()) {
             return;
         }
@@ -164,6 +181,14 @@ public final class HealthService implements Listener {
             set.remove(Injury.LIGHT_BLEED);
         }
         if (set.add(injury)) {
+            if (injury != Injury.FRACTURE) {
+                EnumMap<BodyPart, UUID> sources = bleedSources.computeIfAbsent(player.getUniqueId(), k -> new EnumMap<>(BodyPart.class));
+                if (source == null) {
+                    sources.remove(part);
+                } else {
+                    sources.put(part, source);
+                }
+            }
             player.sendActionBar(Text.mm("<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName()));
             player.playSound(player.getLocation(), "craftov:status.injury", SoundCategory.PLAYERS, 0.8f, 1f);
             updateFood(player);
@@ -249,14 +274,16 @@ public final class HealthService implements Listener {
         return count;
     }
 
-    public void rollInjuries(Player player, BodyPart part, double damage) {
+    /** The wounds a hit of {@code damage} on {@code part} may cause, made by {@code source}. */
+    public void rollInjuries(Player player, BodyPart part, double damage, @Nullable LivingEntity source) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         double scale = Math.min(2.0, damage / 30.0);
         double heavy = part.armored() ? 0.08 : 0.04;
+        UUID from = source == null ? null : source.getUniqueId();
         if (rng.nextDouble() < heavy * scale) {
-            addInjury(player, part, Injury.HEAVY_BLEED);
+            addInjury(player, part, Injury.HEAVY_BLEED, from);
         } else if (rng.nextDouble() < 0.26 * scale) {
-            addInjury(player, part, Injury.LIGHT_BLEED);
+            addInjury(player, part, Injury.LIGHT_BLEED, from);
         }
         if (part.canFracture() && rng.nextDouble() < 0.2 * scale) {
             addInjury(player, part, Injury.FRACTURE);
@@ -309,6 +336,8 @@ public final class HealthService implements Listener {
             }
             double bleed = 0;
             BodyPart worst = null;
+            EnumMap<BodyPart, UUID> by = bleedSources.get(player.getUniqueId());
+            Set<UUID> sources = new HashSet<>();
             for (Map.Entry<BodyPart, EnumSet<Injury>> e : map.entrySet()) {
                 if (e.getValue().contains(Injury.HEAVY_BLEED)) {
                     bleed += 2.6;
@@ -318,10 +347,16 @@ public final class HealthService implements Listener {
                     if (worst == null) {
                         worst = e.getKey();
                     }
+                } else {
+                    continue;
+                }
+                UUID source = by == null ? null : by.get(e.getKey());
+                if (source != null) {
+                    sources.add(source);
                 }
             }
             if (bleed > 0 && worst != null) {
-                plugin.damage().recordBleed(player, "失血", worst);
+                plugin.damage().recordBleed(player, "失血", worst, sources);
                 bleeding = true;
                 try {
                     plugin.damage().deal(player, null, bleed);

@@ -309,7 +309,8 @@ async function escortMia () {
     const p = profile(bossName)
     log('client profile', { money: p.money, escrow: p.escortEscrow, loadout: Object.keys(p.loadout || {}), activeRaid: p.activeRaid, report: p.reports && p.reports[0] })
     check('escort-mia: settled as missing', settled && String(p.reports[0].outcome).includes('失踪'), p.reports && p.reports[0] && p.reports[0].outcome)
-    check('escort-mia: loadout emptied', Object.keys(p.loadout || {}).length === 0, p.loadout)
+    // Going missing keeps the melee weapon (slot 2), nothing else.
+    check('escort-mia: loadout emptied but for the melee weapon', Object.keys(p.loadout || {}).every(slot => slot === '2'), p.loadout)
     check('escort-mia: refund of 70% kept with it', p.money === bossBefore + 14000 && !p.escortEscrow, { money: p.money, expected: bossBefore + 14000, escrow: p.escortEscrow })
     check('escort-mia: guard got 30%', await balance(guardName) === guardBefore + 6000)
     const back = await online(bossName)
@@ -361,7 +362,9 @@ async function lostEdit () {
     const journaled = await waitFile(journal, s => s.includes('escort contract'), 40000)
     const text = journaled ? fs.readFileSync(journal, 'utf8') : ''
     log('journal', text)
-    check('lost-edit: the timeout is journaled with its resets', /missing in raid \S+: loadout = \{\}.*activeRaid = null, stats\.deaths \+1/.test(text))
+    const left = text.match(/missing in raid \S+: loadout = (\{.*?\}) \(the rest of that gear stayed in the raid\)/)
+    check('lost-edit: the timeout is journaled with its resets', !!left && Object.keys(JSON.parse(left[1])).every(slot => slot === '2')
+      && /missing in raid .*activeRaid = null, stats\.deaths \+1/.test(text), left && left[1])
     check('lost-edit: the escrow release is journaled after it', text.indexOf('escortEscrow -20000') > text.indexOf('missing in raid')
       && text.includes('money +14000'))
     check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
@@ -378,7 +381,7 @@ async function lostEdit () {
     // Apply the journal by hand, as the README says, then delete it.
     const p = JSON.parse(good)
     const secure = text.match(/secure = (\[.*?\]), activeRaid/)
-    p.loadout = {}
+    p.loadout = left ? JSON.parse(left[1]) : {}
     p.secure = secure ? JSON.parse(secure[1]) : p.secure
     p.activeRaid = null
     p.stats = p.stats || {}

@@ -1168,7 +1168,12 @@ def main(argv):
                     raise Fail(f'{tool} is not installed')
             ensure_venv()
             if cfg.command == 'up':
-                up(cfg, load_state())
+                state, started = load_state(), []
+                try:
+                    up(cfg, state, started)
+                except BaseException:
+                    down(cfg, state, started)  # a half-started setup is no use to keep
+                    raise
             else:
                 shots = run_scenes(cfg, cfg.scenes or DEFAULT_SCENES)
                 log('done:', ', '.join(shots) or 'no shots', f'in {OUT}')

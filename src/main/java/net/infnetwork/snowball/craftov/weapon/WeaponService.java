@@ -393,7 +393,8 @@ public final class WeaponService implements Listener {
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
-            Notify.info(player, "<white>左键<muted> 开火  <white>右键<muted> 瞄准  <white>Q<muted> 换弹  "
+            // A hint, not a result: it must not push aside the answer to whatever put the gun in hand.
+            Notify.hint(player, "<white>左键<muted> 开火  <white>右键<muted> 瞄准  <white>Q<muted> 换弹  "
                     + "<white>潜行+Q<muted> 换弹种  <white>F<muted> 射击模式");
         }
         return state;

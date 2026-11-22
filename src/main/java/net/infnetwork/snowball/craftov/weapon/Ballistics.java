@@ -89,6 +89,8 @@ public final class Ballistics {
         // Where the round stops in the kill replay, which shows everyone where the server had them.
         Vector replayEnd = null;
         boolean hitAnything = false;
+        double dealt = 0;
+        String partHit = "-";
         LivingEntity hitEntity = null;
         for (int segment = 1; end == null; segment++) {
             double left = gun.maxRange() - travelled;
@@ -112,7 +114,8 @@ public final class Ballistics {
                 // The wound, the blood and the hit zone go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
                 BodyPart part = BodyPart.of(living, hit.body());
-                plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
+                partHit = part.key();
+                dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);
                 if (plugin.drones().isDrone(living)) {
                     world.spawnParticle(Particle.ELECTRIC_SPARK, point, 8, 0.1, 0.1, 0.1, 0.3);
@@ -166,9 +169,9 @@ public final class Ballistics {
             plugin.getLogger().info(!hitAnything
                     ? String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=none through=%d rewind=%dms", shooter.getName(),
                             eye.getX(), eye.getY(), eye.getZ(), passed.size(), rewind)
-                    : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s rewind=%dms",
+                    : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s part=%s damage=%.1f rewind=%dms",
                             shooter.getName(), eye.getX(), eye.getY(), eye.getZ(), end.getX(), end.getY(), end.getZ(),
-                            passed.size(), keep, hitEntity == null ? "-" : hitEntity.getName(), rewind));
+                            passed.size(), keep, hitEntity == null ? "-" : hitEntity.getName(), partHit, dealt, rewind));
         }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), stop);

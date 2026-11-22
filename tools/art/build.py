@@ -649,7 +649,8 @@ def build_betterhud():
         },
         'craftov_downed': {
             'images': numbered([image('craftov_progress_empty', 0, 12), image('craftov_downed_bar', 0, 12)]),
-            'texts': numbered([text('<#FF4D4D>倒地 · 等待队友救援', 60, 0, 0.5, 'center')]),
+            # The hint says to use the injector when no squadmate is up to revive (HudData.downedHint).
+            'texts': numbered([text('<#FF4D4D>倒地 · [craftov_downed_hint]', 60, 0, 0.5, 'center')]),
             'conditions': cond(('craftov_is_downed', 'true')),
         },
         'craftov_med': {

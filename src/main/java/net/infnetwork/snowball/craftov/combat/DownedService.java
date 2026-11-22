@@ -353,6 +353,16 @@ public final class DownedService implements Listener {
         return def != null && def.med() != null && def.med().effect() == MedSpec.Effect.SELF_REVIVE;
     }
 
+    /**
+     * True if a downed player has a squadmate standing who could revive them; false when only their
+     * own injector can (solo, or the last of the squad up).
+     */
+    public boolean mateCanRevive(Player player) {
+        Raid raid = plugin.raids().raidOf(player);
+        RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
+        return raid != null && rp != null && hasStandingMate(raid, rp);
+    }
+
     private boolean hasStandingMate(Raid raid, RaidPlayer rp) {
         for (RaidPlayer mate : raid.squadOf(rp)) {
             if (mate != rp && mate.state == RaidPlayer.State.ALIVE && Bukkit.getPlayer(mate.uuid) != null) {

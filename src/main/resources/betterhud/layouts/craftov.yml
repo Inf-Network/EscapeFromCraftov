@@ -553,7 +553,7 @@ craftov_downed:
   texts:
     '1':
       name: craftov_font
-      pattern: <#FF4D4D>倒地 · 等待队友救援
+      pattern: <#FF4D4D>倒地 · [craftov_downed_hint]
       x: 60
       y: 0
       scale: 0.5

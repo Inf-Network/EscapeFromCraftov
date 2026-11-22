@@ -274,6 +274,14 @@ public final class HudData {
         return plugin.downed().isDowned(p);
     }
 
+    /** What a downed player should do: wait for a squadmate, or use their own injector when none is up. */
+    public String downedHint(Player p) {
+        if (!plugin.downed().isDowned(p)) {
+            return "";
+        }
+        return plugin.downed().mateCanRevive(p) ? "等待队友救援" : "使用自救注射器";
+    }
+
     public String operator(Player p) {
         return plugin.operators().of(p).name();
     }

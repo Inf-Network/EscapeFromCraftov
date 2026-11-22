@@ -45,11 +45,12 @@ public final class ProfileService {
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
     /**
-     * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, kept until
-     * every write queued for them has reached the disk. Without this, back-to-back edits (several
-     * market listings of one offline seller returned or sold in the same tick, or a sale right as
-     * the seller logs off) each re-read a file the previous write had not replaced yet, and all but
-     * one of the changes were lost. Main thread only.
+     * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, used instead
+     * of the file while a write queued for them has not reached the disk. Without this, back-to-back
+     * edits (several market listings of one offline seller returned or sold in the same tick, or a
+     * sale right as the seller logs off) each re-read a file the previous write had not replaced
+     * yet, and all but one of the changes were lost. Once the writes have landed the file is read
+     * again, so a file edited by hand while its owner is offline still counts. Main thread only.
      */
     private final Map<UUID, Pending> offline = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
@@ -93,7 +94,8 @@ public final class ProfileService {
         Profile profile = cache.get(uuid);
         if (profile == null) {
             // A profile edited while offline may still be on its way to the disk: take that copy.
-            Pending pending = offline.remove(uuid);
+            Pending pending = inFlight(uuid);
+            offline.remove(uuid);
             profile = pending != null ? pending.profile() : load(uuid);
             if (profile == null) {
                 profile = new Profile(uuid, name);
@@ -119,7 +121,7 @@ public final class ProfileService {
         if (profile != null) {
             return profile;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         return pending != null ? pending.profile() : load(uuid);
     }
 
@@ -132,7 +134,7 @@ public final class ProfileService {
         if (profile != null) {
             return profile.level;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         if (pending != null) {
             return pending.profile().level;
         }
@@ -148,7 +150,7 @@ public final class ProfileService {
             markDirty(uuid);
             return;
         }
-        Pending pending = offline.get(uuid);
+        Pending pending = inFlight(uuid);
         if (pending == null) {
             Profile loaded = load(uuid);
             if (loaded == null) {
@@ -159,6 +161,19 @@ public final class ProfileService {
         }
         mutation.accept(pending.profile());
         writeAsync(pending.profile(), pending.writes());
+    }
+
+    /**
+     * The in-memory copy of an offline profile while a write of it is still queued, else null.
+     * Only this thread queues writes, so a count of 0 means the file holds that copy.
+     */
+    private @Nullable Pending inFlight(UUID uuid) {
+        Pending pending = offline.get(uuid);
+        if (pending == null || pending.writes().get() > 0) {
+            return pending;
+        }
+        offline.remove(uuid);
+        return null;
     }
 
     public void markDirty(UUID uuid) {

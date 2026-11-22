@@ -41,6 +41,7 @@ import subprocess
 import sys
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -216,17 +217,21 @@ def setup_server(cfg):
         'server-port': cfg.port, 'enable-rcon': 'true', 'rcon.port': cfg.rcon_port,
         'rcon.password': cfg.rcon_password, 'white-list': 'false', 'online-mode': 'false',
     })
-    # Keys missing from the plugin's config fall back to the defaults in the jar, so a fresh server
-    # only needs the two that differ; an existing config is edited in place.
+    # A fresh server starts from the plugin's full default config. Writing only the two keys that
+    # differ would not do: a section that exists only in the jar's defaults reads back as an empty
+    # section (Bukkit's getConfigurationSection), so the difficulty tiers and the starter loadout
+    # would be missing. An existing config is edited in place.
     conf = run_dir / 'plugins' / 'Craftov' / 'config.yml'
     conf.parent.mkdir(parents=True, exist_ok=True)
-    if conf.exists():
-        text = conf.read_text(encoding='utf-8')
-        text = re.sub(r'(?m)^(test:\n(?:[ \t]*#.*\n)*[ \t]+enabled:) *false', r'\1 true', text)
-        text = re.sub(r'(?m)^(match:\n(?:[ \t]*#.*\n|[ \t]+\S.*\n)*?[ \t]+wait-seconds:) *\d+', r'\1 5', text)
-        conf.write_text(text, encoding='utf-8')
-    else:
-        conf.write_text('test:\n  enabled: true\nmatch:\n  wait-seconds: 5\n', encoding='utf-8')
+    if not conf.exists():
+        with zipfile.ZipFile(run_dir / 'plugins' / 'Craftov.jar') as jar:
+            conf.write_bytes(jar.read('config.yml'))
+    text = conf.read_text(encoding='utf-8')
+    text = re.sub(r'(?m)^(test:\n(?:[ \t]*#.*\n)*[ \t]+enabled:) *false', r'\1 true', text)
+    text = re.sub(r'(?m)^(match:\n(?:[ \t]*#.*\n|[ \t]+\S.*\n)*?[ \t]+wait-seconds:) *\d+', r'\1 5', text)
+    conf.write_text(text, encoding='utf-8')
+    if not re.search(r'(?m)^test:\n(?:[ \t]*#.*\n)*[ \t]+enabled: true', text):
+        log('warning: could not turn on test.enabled in', conf)
     log('test server ready: port', cfg.port, 'rcon', cfg.rcon_port)
 
 

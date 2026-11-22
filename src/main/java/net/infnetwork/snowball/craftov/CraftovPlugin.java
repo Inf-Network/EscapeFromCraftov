@@ -225,6 +225,8 @@ public final class CraftovPlugin extends JavaPlugin {
             shutdownStep("market", market::saveSync);
         }
         if (profiles != null) {
+            // Offline edits made while sending everyone home finish landing before the final save.
+            shutdownStep("queued profile writes", profiles::awaitWrites);
             shutdownStep("profiles", profiles::shutdown);
         }
         if (backups != null) {

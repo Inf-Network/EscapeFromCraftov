@@ -197,17 +197,33 @@ public final class ProfileService {
         offline.values().removeIf(pending -> pending.writes().get() == 0);
     }
 
-    public void shutdown() {
-        // Let queued writes finish first: an older copy still in the queue would otherwise land
-        // on top of the final save below.
+    /**
+     * Stops taking writes and waits up to 10 s for the queued ones to land. Runs before the final
+     * save: an older copy still in the queue would otherwise land on top of it.
+     */
+    public void awaitWrites() {
         io.shutdown();
         try {
-            io.awaitTermination(10, TimeUnit.SECONDS);
+            if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
+                plugin.getLogger().warning("Queued profile writes did not finish in time.");
+            }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Final save of every cached profile, after {@link #awaitWrites}. */
+    public void shutdown() {
+        if (!io.isShutdown()) {
+            awaitWrites();
+        }
         for (Profile profile : cache.values()) {
-            writeSync(GSON.toJson(profile), profile.uuid);
+            // One profile that cannot be written must not cost the others theirs.
+            try {
+                writeSync(GSON.toJson(profile), profile.uuid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not save profile " + profile.uuid, ex);
+            }
         }
         dirty.clear();
         offline.clear();

@@ -489,19 +489,34 @@ def wait_joined(cfg, client_pid):
             joined = player_online(cfg)
             if joined:
                 log('joined the server')
-        text = client_log()
-        if 'Pack application failed' in text or 'Failed to download resource pack' in text:
-            raise Fail(f'the resource pack did not load; see {GAME_DIR / "logs" / "latest.log"}')
-        if joined and pack_applied(text):
+        state, detail = pack_state(client_log())
+        if state == 'failed':
+            raise Fail(f'the resource pack did not load ({detail}); see {GAME_DIR / "logs" / "latest.log"}')
+        if joined and state == 'applied':
             log('server resource pack applied')
             return
         time.sleep(1)
     raise Fail(f'not in game with the resource pack after 5 minutes; see {GAME_DIR / "logs" / "latest.log"}')
 
 
-def pack_applied(text):
-    """True once the client has reloaded its resources with a server pack in the stack."""
-    return any('server' in line for line in re.findall(r'Reloading ResourceManager: (.*)', text))
+# Client log lines (1.21.11) meaning the server pack is not on screen: the download failed, or the
+# resource reload with the pack failed, after which the client drops every selected pack and reloads
+# vanilla only.
+PACK_FAILED = re.compile(r'Caught error loading resourcepacks|Pack \S+ failed to download|Failed to apply pack')
+
+
+def pack_state(text):
+    """('applied' | 'failed' | None, detail) for the client log so far. The client logs a reload when
+    it starts, so a pack only counts as applied when the last reload has a server pack in its stack,
+    has stitched its atlases (`Created: ...`) and nothing failed."""
+    failed = PACK_FAILED.search(text)
+    if failed:
+        start = text.rfind('\n', 0, failed.start()) + 1
+        return 'failed', text[start:].split('\n', 1)[0].strip()
+    reloads = list(re.finditer(r'Reloading ResourceManager: (.*)', text))
+    if reloads and 'server/' in reloads[-1].group(1) and 'Created: ' in text[reloads[-1].end():]:
+        return 'applied', reloads[-1].group(1)
+    return None, ''
 
 
 # ---------------------------------------------------------------------------------------- session
@@ -938,6 +953,10 @@ def up(cfg, state, started=None):
         # Terrain, the HUD, and the "chat messages can't be verified" toast an offline server
         # shows for ten seconds after joining.
         time.sleep(12)
+        state_now, detail = pack_state(client_log())
+        if state_now != 'applied':
+            raise Fail(f'the resource pack was dropped after loading ({detail or "vanilla reload"}); '
+                       f'see {GAME_DIR / "logs" / "latest.log"}')
     save_state(state)
     return started
 

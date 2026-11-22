@@ -56,7 +56,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 
 ## 真客户端截图（`tools/shots/`）
 
-mineflayer 不渲染画面。要看「长什么样」时，`tools/shots/shots.py` 在这台机器上跑真正的 1.21.11 原版客户端：Xvfb 虚拟显示 + Mesa llvmpipe 软件渲染，离线账号 `ShotCam`（自动 op），Quick Play 直接进本地测试服；`servers.dat` 里给这个地址设了 `acceptTextures`，资源包不弹提示直接加载（客户端日志出现 `Reloading ResourceManager: vanilla, server/...` 才算进服完成）。
+mineflayer 不渲染画面。要看「长什么样」时，`tools/shots/shots.py` 在这台机器上跑真正的 1.21.11 原版客户端：Xvfb 虚拟显示 + Mesa llvmpipe 软件渲染，离线账号 `ShotCam`（自动 op），Quick Play 直接进本地测试服；`servers.dat` 里给这个地址设了 `acceptTextures`，资源包不弹提示直接加载（客户端日志里最后一次 `Reloading ResourceManager` 带着 `server/...` 并且拼好了贴图集才算进服完成；资源包下载失败或重载失败被客户端回滚成原版时直接报错，不会拿原版贴图去截图）。
 
 ```bash
 tools/shots/shots.py run                         # 默认场景：lobby gun inventory deploy raid，约 100 秒

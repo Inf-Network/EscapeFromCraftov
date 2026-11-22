@@ -1,6 +1,10 @@
 # Craftov item definitions.
 # value: trader reference price in 块币 (per round for ammo).
 # model: item_model key; defaults to craftov:<id>, rendered by the CraftEngine resource pack.
+# Revision of this file. The server copies it from the jar only when it is missing, so raise this
+# whenever a change must reach servers that already have the file (prices, weights, new items):
+# a server whose copy has a lower revision warns at start-up and on /cv reload.
+revision: 1
 items:
   # ------------------------------------------------------------------ handguns
   p18:
@@ -64,7 +68,7 @@ items:
     name: "SCR 战斗步枪"
     category: WEAPON
     rarity: PURPLE
-    value: 68000
+    value: 48000
     lore: "7.62x51 战斗步枪，中远距离一锤定音。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 580, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
            hip-spread: 3.2, ads-spread: 0.35, recoil: 2.0, recoil-h: 0.9, reload: 56, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.88, action: dmr}
@@ -73,10 +77,10 @@ items:
     name: "KL7 轻机枪"
     category: WEAPON
     rarity: PURPLE
-    value: 75000
+    value: 40000
     lore: "75 发弹鼓，持续火力压制。很重。"
-    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 34, range: 45, max-range: 150,
-           hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.72, action: lmg}
+    gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 650, modes: [AUTO], damage: 37, range: 45, max-range: 150,
+           hip-spread: 4.0, ads-spread: 0.6, recoil: 1.3, recoil-h: 0.9, reload: 110, zoom: 1, sound: "craftov:gun.rifle_heavy", volume: 5.5, move-speed: 0.8, action: lmg}
   r12:
     weight: 3.4
     name: "R12 泵动霰弹枪"
@@ -153,9 +157,9 @@ items:
   bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住一处轻度出血。", med: { use: 2.5, cures: [LIGHT_BLEED], anim: brush, sound: med.bandage } }
   hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住一处重度或轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED], anim: brush, sound: med.bandage } }
   splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定一处骨折的肢体。", med: { use: 4.0, cures: [FRACTURE], anim: crossbow, sound: med.splint } }
-  medkit_s:   { weight: 0.5, name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次最多回复 60 点生命，可多次使用。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED], anim: bundle, sound: med.kit } }
-  medkit_l:   { weight: 1.2, name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱，每次最多处理 3 处出血。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED], count: 3, anim: bundle, sound: med.kit } }
-  surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 18000, stack: 1, lore: "处理全身所有骨折与出血，并回复少量生命。", med: { use: 8.0, pool: 40, per-use: 40, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, anim: brush, sound: med.kit } }
+  medkit_s:   { weight: 0.5, name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次处理一处轻度出血，再回复最多 60 点生命，可多次使用。处理伤口也消耗治疗量。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED], anim: bundle, sound: med.kit } }
+  medkit_l:   { weight: 1.2, name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱。每次处理一处出血，再回复最多 100 点生命。处理伤口也消耗治疗量。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED], anim: bundle, sound: med.kit } }
+  surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 15000, stack: 1, lore: "每次处理伤得最重的一个部位的骨折与出血，再回复最多 20 点生命。每处伤口都消耗治疗量。", med: { use: 12.0, pool: 160, per-use: 20, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, one-part: true, anim: brush, sound: med.kit } }
   painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, sound: med.pills } }
   adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: trident, sound: med.inject } }
   revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
@@ -217,25 +221,25 @@ items:
   drone:       { name: "侦察无人机", category: VALUABLE, rarity: PURPLE, value: 30000 }
   optics:      { name: "精密光学镜组", category: VALUABLE, rarity: PURPLE, value: 18000 }
   # gold
-  gold_bar:    { name: "金条", category: VALUABLE, rarity: GOLD, value: 68000, stack: 2 }
+  gold_bar:    { weight: 1.0, name: "金条", category: VALUABLE, rarity: GOLD, value: 68000, stack: 2 }
   server_drive: { name: "加密服务器硬盘", category: VALUABLE, rarity: GOLD, value: 92000 }
   dossier:     { name: "机密文件袋", category: VALUABLE, rarity: GOLD, value: 56000 }
-  reactor_cell: { name: "便携式反应堆电池", category: VALUABLE, rarity: GOLD, value: 120000 }
+  reactor_cell: { weight: 3.0, name: "便携式反应堆电池", category: VALUABLE, rarity: GOLD, value: 120000 }
 
   # ------------------------------------------------------------------ collectibles (tracked in the collection book)
   pocket_watch: { name: "古董怀表", category: COLLECTIBLE, rarity: GOLD, value: 75000, lore: "表盖内刻着一行褪色的字。" }
-  gilded_teaset: { name: "鎏金茶具", category: COLLECTIBLE, rarity: GOLD, value: 110000, lore: "某位指挥官的私人收藏。" }
+  gilded_teaset: { weight: 2.0, name: "鎏金茶具", category: COLLECTIBLE, rarity: GOLD, value: 110000, lore: "某位指挥官的私人收藏。" }
   star_crystal: { name: "星核水晶", category: COLLECTIBLE, rarity: RED, value: 680000, lore: "在黑暗中会发出微弱的蓝光。" }
-  gold_crown:   { name: "铸金王冠", category: COLLECTIBLE, rarity: RED, value: 1200000, lore: "一顶来历不明的黄金王冠。" }
+  gold_crown:   { weight: 2.5, name: "铸金王冠", category: COLLECTIBLE, rarity: RED, value: 1200000, lore: "一顶来历不明的黄金王冠。" }
   quantum_cpu:  { name: "量子处理器", category: COLLECTIBLE, rarity: RED, value: 420000, lore: "实验室流出的原型芯片。" }
   meteor_knife: { name: "陨铁短刀", category: COLLECTIBLE, rarity: RED, value: 260000, lore: "刀身布满维德曼花纹。" }
-  lion_statue:  { name: "黄金狮像", category: COLLECTIBLE, rarity: RED, value: 880000, lore: "沉甸甸的纯金雕像。" }
-  gramophone:   { name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
+  lion_statue:  { weight: 10.0, name: "黄金狮像", category: COLLECTIBLE, rarity: RED, value: 880000, lore: "沉甸甸的纯金雕像。" }
+  gramophone:   { weight: 6.0, name: "古董留声机", category: COLLECTIBLE, rarity: RED, value: 320000, lore: "还能播放一首老歌。" }
   pearl_necklace: { name: "深海珍珠项链", category: COLLECTIBLE, rarity: RED, value: 540000, lore: "每一颗都完美无瑕。" }
   master_chip:  { name: "机密主控芯片", category: COLLECTIBLE, rarity: RED, value: 1800000, lore: "整座港口防御系统的心脏。" }
-  seawater_filter: { name: "海水过滤器", category: COLLECTIBLE, rarity: GOLD, value: 95000, lore: "多层滤芯，一桶海水能滤出半桶淡水。" }
-  urine_purifier:  { name: "尿液净水机", category: COLLECTIBLE, rarity: PURPLE, value: 48000, lore: "别问水是从哪来的，能喝就行。" }
-  eel_generator:   { name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
+  seawater_filter: { weight: 4.0, name: "海水过滤器", category: COLLECTIBLE, rarity: GOLD, value: 95000, lore: "多层滤芯，一桶海水能滤出半桶淡水。" }
+  urine_purifier:  { weight: 4.0, name: "尿液净水机", category: COLLECTIBLE, rarity: PURPLE, value: 48000, lore: "别问水是从哪来的，能喝就行。" }
+  eel_generator:   { weight: 8.0, name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
 
   # ------------------------------------------------------------------ melee (always kept, hotbar key 3)
   knife_starter:

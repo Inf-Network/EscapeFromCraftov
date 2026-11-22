@@ -44,8 +44,8 @@ public final class ItemFactory {
     private static final Gson GSON = new Gson();
     private static final Type RECORD_LIST = new TypeToken<List<ItemRecord>>() { }.getType();
     private static final Key SILENT = Key.key("minecraft", "intentionally_empty");
-    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark. */
-    public static final int VERSION = 4;
+    /** Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit mark, 5: med lore, 6: gun prices, 7: weights. */
+    public static final int VERSION = 7;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");

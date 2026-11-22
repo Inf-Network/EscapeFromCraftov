@@ -5,7 +5,8 @@
 //
 // Env: PORT (25565), RCON_PORT (25575), RCON_PASSWORD (craftov-local), and CRAFTOV_RUN, the
 // server's run folder (../../server/run), whose plugins/Craftov/config.yml is edited to switch
-// test.enabled per scenario (restored at the end) and whose profiles are read for the armory check.
+// test.enabled per scenario (and insurance.loss-chance / return-minutes to 0 for insured; restored
+// at the end) and whose profiles are read for the armory check.
 // The bots are never op unless a scenario says so. Run `gate` once more after a server restart:
 // the deploy screen must still default to a map that is not a test map.
 //
@@ -48,6 +49,7 @@ const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const pinInsurance = require('./insurance')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
@@ -712,11 +714,15 @@ const scenarios = {
   try {
     for (const name of names) {
       let ok, detail
+      // insured checks what the claim sends back, so every insured item must come back at once.
+      const restore = name === 'insured' ? await pinInsurance(path.join(RUN, 'plugins/Craftov'), rcon) : null
       try {
         [ok, detail] = await scenarios[name]()
       } catch (e) {
         ok = false
         detail = { error: e.stack }
+      } finally {
+        if (restore) await restore()
       }
       if (!ok) failures++
       console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${JSON.stringify(detail)}`)

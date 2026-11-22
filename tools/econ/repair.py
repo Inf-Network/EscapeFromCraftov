@@ -6,12 +6,13 @@ short of full, compares what the trader charges to repair it (TraderService.repa
 what the repair adds to what the piece sells for:
 
   trader  the trader's price (ItemFactory.value x trader.sell-multiplier)
-  market  the most the market's system buyers pay: the listing's anchor price x 1.25 (the highest
-          price ratio they accept), less market.listing-fee and market.sale-tax
+  market  the most the market's system buyers pay: item value x market.virtual-max-value
+          (MarketService.virtualPrice), less market.listing-fee and market.sale-tax
 
-The anchor (MarketService.anchorFor) is item value x market.reference-multiplier and no sale ever
-moves it; the trade price learned from player sales is shown for information only and pays out
-nothing, so it plays no part here.
+System buyers judge a listing by the piece's value (durability included) and no sale ever moves
+that; the trade price learned from player sales is shown for information only and pays out
+nothing, so it plays no part here. Gold and red pieces are not bought by system buyers at all,
+which only makes repairing them to sell worse; they are checked like the rest.
 
   python3 tools/econ/repair.py [items.yml] [config.yml]
 
@@ -26,8 +27,6 @@ import sys
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-# MarketService.tick: system buyers never take a listing priced above 1.25x its anchor price.
-VIRTUAL_MAX_RATIO = 1.25
 
 
 def jround(x):
@@ -52,10 +51,10 @@ def main():
     market = config.get("market", {})
     rate = trader.get("repair-rate", 0.75)
     sell = trader.get("sell-multiplier", 0.55)
-    reference = market.get("reference-multiplier", 0.85)
+    virtual = market.get("virtual-max-value", 0.7)
     keep = 1 - market.get("listing-fee", 0.02) - market.get("sale-tax", 0.05)
 
-    print(f"repair-rate {rate}  trader sells at {sell}  market at most {reference} x value x {VIRTUAL_MAX_RATIO} x {keep:.2f}")
+    print(f"repair-rate {rate}  trader sells at {sell}  market at most value x {virtual} x {keep:.2f}")
     print(f"{'item':10} {'value':>8} {'repair':>8} {'trader+':>8} {'market+':>8} {'margin':>8}")
     failures = 0
     for item_id, defn in items.items():
@@ -70,8 +69,8 @@ def main():
             cost = jround(missing / full * defn["value"] * rate)
             before, after = value(defn, dura), value(defn, full)
             trader_gain = jround(after * sell) - jround(before * sell)
-            # anchorFor scales with the piece's value, durability included.
-            market_gain = (after - before) * reference * VIRTUAL_MAX_RATIO * keep
+            # virtualPrice scales with the piece's value, durability included.
+            market_gain = (after - before) * virtual * keep
             margin = cost - max(trader_gain, market_gain)
             if margin < 0:
                 failures += 1

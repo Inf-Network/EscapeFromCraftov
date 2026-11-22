@@ -87,7 +87,7 @@ public enum BodyPart {
      */
     public static BodyPart of(LivingEntity target, Vector point, Vector shot) {
         if (prone(target)) {
-            return ofProne(target, point, shot);
+            return ofProne(target, point);
         }
         HitZone zone = HitZone.of(target, point);
         if (zone == HitZone.HEAD) {
@@ -138,15 +138,15 @@ public enum BodyPart {
     /**
      * Classifies a hit on a prone body by where it lands along the body: the front quarter (the
      * way the body faces) is the head, the back 35% the legs, and the middle the chest (front half)
-     * or stomach, with the outer edges across the body as the arms. The client draws the crawl along
-     * the body yaw, which only turns as far as it must to stay within reach of the head, so the
-     * body yaw is used here, not the view.
+     * or stomach, with the outer edges of the top of the body as the arms. The client draws the
+     * crawl along the body yaw, which only turns as far as it must to stay within reach of the head,
+     * so the body yaw is used here, not the view.
      *
-     * <p>Arms show only to a round that comes down on the body or along it: one fired at the flank
-     * meets the side face, which is all arm or all chest by width alone, so the arm edges narrow to
-     * nothing as the line of fire turns side-on, as they do on an upright target.
+     * <p>Arms are only on the top (or underside) of the box: a round that meets one of its sides
+     * lands right on the edge across the body, so judging arms by width there would make every hit
+     * on a flank an arm; a flank hit is the chest or stomach, and a front or back hit the head or legs.
      */
-    private static BodyPart ofProne(LivingEntity target, Vector point, Vector shot) {
+    private static BodyPart ofProne(LivingEntity target, Vector point) {
         BoundingBox box = target.getBoundingBox();
         double dx = point.getX() - box.getCenterX();
         double dz = point.getZ() - box.getCenterZ();
@@ -167,10 +167,8 @@ public enum BodyPart {
         if (along < PRONE_LEGS) {
             return side >= 0 ? RIGHT_LEG : LEFT_LEG;
         }
-        double length = shot.length();
-        double flank = length < 1e-6 ? 0 : Math.abs(shot.getX() * rightX + shot.getZ() * rightZ) / length;
-        double band = ARM_BAND * (1.0 - flank);
-        if (band > 1e-3 && Math.abs(side) > halfWidth * (1.0 - band)) {
+        boolean onTop = point.getY() >= box.getMaxY() - 0.01 || point.getY() <= box.getMinY() + 0.01;
+        if (onTop && Math.abs(side) > halfWidth * (1.0 - ARM_BAND)) {
             return side >= 0 ? RIGHT_ARM : LEFT_ARM;
         }
         return along >= (PRONE_LEGS + 1.0 - PRONE_HEAD) / 2.0 ? CHEST : STOMACH;

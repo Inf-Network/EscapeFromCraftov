@@ -174,6 +174,7 @@ public final class Profile {
     public static final class LuckRaid {
         public long time;
         public String tier = "";
+        /** The raid's key (its id and start time): ids start again at R1 after a restart. */
         public String raid = "";
         /**
          * Change in what the player owns: carried out or kept, less brought in, fees and paid exits.

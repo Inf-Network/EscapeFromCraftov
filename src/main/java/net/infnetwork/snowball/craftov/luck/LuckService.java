@@ -53,10 +53,10 @@ import java.util.concurrent.ThreadLocalRandom;
  *       container could hold, a search may hand that out and take its value. It is capped and wastes
  *       away while the player stays away.</li>
  *   <li><b>Loss compensation</b> (高爆率局, {@code luck.compensation}): a net loss within the window
- *       (a day) over the tier's threshold, settled when each raid closes, makes the player find gold and red items about
- *       {@code multiplier} times as often for the next few raids: each container they search may
- *       hand out one more, with (multiplier - 1) times the chance the container itself has of
- *       holding one. The containers' own rolls stay as they are, shared by everyone, so nobody
+ *       (a day) over the tier's threshold, settled when each raid closes, makes the player find
+ *       gold and red items about {@code multiplier} times as often for the next few raids: each
+ *       container they search may hand out one more, with (multiplier - 1) times the chance the
+ *       container itself has of holding one. The containers' own rolls stay as they are, shared by everyone, so nobody
  *       else in the raid finds more; matchmaking does not change either. Whether the player is
  *       told is up to {@code notify}.</li>
  * </ul>
@@ -64,9 +64,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>A hand-out is one item more, put hidden into the container being searched so it is revealed
  * like the rest; at most one per container. A pity or quota hand-out its player does not carry out
  * themselves (death, missing) pays {@code luck.quota.refund} of its value back into their quota
- * when the raid closes, unless someone else carried it out. A container counts once per player, and only when it still
- * had something hidden when they opened it. The proving ground (test maps) counts for nothing,
- * and neither does the range, which is no raid. A raid pays into the quota, counts for raid-based
+ * when the raid closes, unless someone else carried it out. A container counts once per player,
+ * and only when it still had something hidden when they opened it. The proving ground (test maps)
+ * counts for nothing, and neither does the range, which is no raid. A raid pays into the quota, counts for raid-based
  * pity and joins the behaviour history only when the player spent {@code luck.qualify.min-seconds}
  * in it and searched {@code luck.qualify.min-searches} containers. Every hand-out and refund is
  * logged.
@@ -162,7 +162,7 @@ public final class LuckService {
             return true;
         }
         for (Raid raid : plugin.raids().raids()) {
-            if (raid.id.equals(line.raid) && raid.state != Raid.State.CLOSED) {
+            if (raid.key.equals(line.raid) && raid.state != Raid.State.CLOSED) {
                 return false;
             }
         }
@@ -601,7 +601,7 @@ public final class LuckService {
         Profile.LuckRaid line = new Profile.LuckRaid();
         line.time = now;
         line.tier = raid.tier.id();
-        line.raid = raid.id;
+        line.raid = raid.key;
         line.open = true;
         line.net = outcome.net();
         line.kills = rp.kills;
@@ -787,7 +787,7 @@ public final class LuckService {
         long now = System.currentTimeMillis();
         decay(profile.luck, now);
         for (Profile.LuckRaid line : profile.luck.raids) {
-            if (!line.open || !raid.id.equals(line.raid)) {
+            if (!line.open || !raid.key.equals(line.raid)) {
                 continue;
             }
             long back = Math.min(squad + insured, Math.max(0, -line.net));

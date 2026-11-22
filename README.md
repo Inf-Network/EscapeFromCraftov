@@ -167,3 +167,23 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 原版客户端按住左键时不会发送任何数据包，除非准星正在“挖”一个方块。所以手持枪械时，服务器会在准星前方约 3 格的空气里只对该玩家放置一小片蛛网（资源包里贴图透明、敲击音效静音，没有碰撞，枪的挖掘速度为 0 所以永远挖不坏），并用资源包着色器隐藏方块选框。按住左键就变成每 tick 一次挥手、松开时一次中止，服务器据此判断扳机按下和松开。右键开镜由物品模型的 `keybind_down` 条件在客户端即时切换姿势。
 
 没有 BetterHud 时会自动改用 BossBar 显示血量、弹药与对局信息；没有 CraftEngine 时玩法照常但没有自定义贴图与音效。
+
+## 参与贡献
+
+欢迎提 issue 和 PR：开发环境、代码约定、提交格式和测试方式见 [CONTRIBUTING.md](CONTRIBUTING.md)，参与时请遵守 [行为准则](CODE_OF_CONDUCT.md)。刷物品、刷钱、越权、崩服这类漏洞请按 [安全政策](SECURITY.md) 私下报告。
+
+## 许可
+
+Copyright (C) 2026 Inf Network 及贡献者。
+
+本项目的代码和自制素材（`tools/art/` 生成的贴图、模型、音效与 HUD 布局）以 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）授权：可以自由使用、修改和分发；把修改后的版本拿去开放给其他玩家游玩的服务器，也必须向这些玩家公开对应的源代码。
+
+第三方内容：
+
+| 内容 | 来源 | 许可 |
+|---|---|---|
+| 枪械网格（转换为 `tools/art/voxguns/`） | [Quaternius · Ultimate Gun Pack](https://opengameart.org/content/low-poly-guns-pack) | CC0（公有领域） |
+| 运行依赖（不随本项目分发） | [Paper](https://papermc.io/)、[CraftEngine](https://modrinth.com/plugin/craftengine)、[BetterHud](https://modrinth.com/plugin/betterhud2) | 各自的许可 |
+| 开发工具（不随本项目分发） | [mineflayer](https://github.com/PrismarineJS/mineflayer)（`tools/bot/`）、[minecraft-launcher-lib](https://pypi.org/project/minecraft-launcher-lib/)（`tools/shots/`） | MIT、BSD-2-Clause |
+
+Minecraft 是 Mojang Studios 的商标，本项目与 Mojang、Microsoft 无关。

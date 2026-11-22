@@ -1114,8 +1114,8 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * A disconnected player died where they stood: their stand-in was killed, or (step 3) they bled
-     * out. Settled like going missing, but it is a death in the raid like any other: the kill
+     * A disconnected player died where they stood: their stand-in was killed, or they bled out.
+     * Settled like going missing, but it is a death in the raid like any other: the kill
      * feed shows it and the kill counts for whoever made it.
      */
     private void diedOffline(Raid raid, RaidPlayer rp, DamageService.@Nullable LastHit hit) {
@@ -1337,6 +1337,28 @@ public final class RaidManager implements Listener {
             hit = plugin.damage().lastHit(standIn.getUniqueId());
         }
         diedOffline(raid, rp, hit);
+    }
+
+    /**
+     * A disconnected player's wounds bleed on (HealthService): out of their stand-in, which dies of
+     * it like the player would, or out of the health kept for them while they have none.
+     */
+    public void bleedOffline(Raid raid, RaidPlayer rp, double amount, net.infnetwork.snowball.craftov.combat.BodyPart worst) {
+        if (rp.state != RaidPlayer.State.DISCONNECTED) {
+            return;
+        }
+        Mannequin standIn = rp.standIn != null && rp.standIn.isValid() ? rp.standIn : null;
+        if (standIn != null) {
+            plugin.damage().recordHit(standIn, null, "失血", worst);
+            plugin.damage().deal(standIn, null, amount); // a lethal amount ends in onStandInDamage
+            standIn.getWorld().spawnParticle(Particle.BLOCK, standIn.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
+                    Material.REDSTONE_BLOCK.createBlockData());
+            return;
+        }
+        rp.offlineHealth -= amount;
+        if (rp.offlineHealth <= 0) {
+            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, Bukkit.getCurrentTick()));
+        }
     }
 
     /** Should a stand-in die all the same (a /kill), it drops nothing: its gear is the player's. */

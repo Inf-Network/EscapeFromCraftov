@@ -4,6 +4,8 @@ import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.raid.Raid;
+import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -299,32 +301,57 @@ public final class HealthService implements Listener {
 
     // ------------------------------------------------------------------ ticking
 
+    /** Health lost to bleeding every 1.5 s, and the part bleeding worst. */
+    private record Bleed(double amount, BodyPart worst) {
+    }
+
+    private static @Nullable Bleed bleed(@Nullable EnumMap<BodyPart, EnumSet<Injury>> map) {
+        if (map == null) {
+            return null;
+        }
+        double bleed = 0;
+        BodyPart worst = null;
+        for (Map.Entry<BodyPart, EnumSet<Injury>> e : map.entrySet()) {
+            if (e.getValue().contains(Injury.HEAVY_BLEED)) {
+                bleed += 2.6;
+                worst = e.getKey();
+            } else if (e.getValue().contains(Injury.LIGHT_BLEED)) {
+                bleed += 1.0;
+                if (worst == null) {
+                    worst = e.getKey();
+                }
+            }
+        }
+        return bleed > 0 && worst != null ? new Bleed(bleed, worst) : null;
+    }
+
     private void tickWounds() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             EnumMap<BodyPart, EnumSet<Injury>> map = wounds.get(player.getUniqueId());
             if (map == null || !plugin.raids().isInRaid(player) || plugin.downed().isDowned(player)) {
                 continue;
             }
-            double bleed = 0;
-            BodyPart worst = null;
-            for (Map.Entry<BodyPart, EnumSet<Injury>> e : map.entrySet()) {
-                if (e.getValue().contains(Injury.HEAVY_BLEED)) {
-                    bleed += 2.6;
-                    worst = e.getKey();
-                } else if (e.getValue().contains(Injury.LIGHT_BLEED)) {
-                    bleed += 1.0;
-                    if (worst == null) {
-                        worst = e.getKey();
-                    }
-                }
-            }
-            if (bleed > 0 && worst != null) {
-                plugin.damage().recordHit(player, null, "失血", worst);
-                plugin.damage().deal(player, null, bleed);
+            Bleed bleed = bleed(map);
+            if (bleed != null) {
+                plugin.damage().recordHit(player, null, "失血", bleed.worst());
+                plugin.damage().deal(player, null, bleed.amount());
                 player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                         org.bukkit.Material.REDSTONE_BLOCK.createBlockData());
             }
             updateFood(player);
+        }
+        // Leaving the game stopped the bleeding: the wounds stayed as they were until the player
+        // came back. They bleed on now, into the stand-in or the health kept for the player.
+        for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
+            if (raid.state != Raid.State.RUNNING) {
+                continue;
+            }
+            for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
+                Bleed bleed = rp.state == RaidPlayer.State.DISCONNECTED && !rp.inFlight ? bleed(wounds.get(rp.uuid)) : null;
+                if (bleed != null) {
+                    plugin.raids().bleedOffline(raid, rp, bleed.amount(), bleed.worst());
+                }
+            }
         }
     }
 

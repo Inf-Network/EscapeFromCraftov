@@ -255,6 +255,8 @@ weapons:
     # muffled-dry so it still sounds like a gunshot.
     muffled: 0.75
     muffled-dry: 0.2
+    # Each shot's level varies at random by up to this many dB either way.
+    level-jitter-db: 1.0
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

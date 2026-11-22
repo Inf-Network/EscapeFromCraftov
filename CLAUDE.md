@@ -53,9 +53,17 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - **扩展本身**：Mac 上的 `~/.local/libexec/remote-gate/craftov` 会在每次 `sync`（包括 `deploy`）之后自动换成同步过去的 `tools/mac/craftov`，所以改扩展只要提交再 `deploy`；没提交时用 `tools/mac/mac selfupdate` 直接推工作区里的版本。替换前新版本必须在 Mac 上跑通 `selfupdate --check`，否则保留旧的，所以**新版本必须保留 `selfupdate` 指令**，不然以后就只能请用户手动装（`ssh mac put craftov < tools/mac/craftov`，用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`）。门卫 `~/.local/bin/remote-gate` 不会自动更新，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库，改它要用户手动装。
 - **本机无头测试服**（给 bot 用）：在这台机器上 `server/setup.sh --local` 生成 `server/run/`，`server/run/start.sh` 开服；控制台命令用 `cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（需要在 `server.properties` 里打开 RCON，密码和 `tools/bot/rcon.js` 一致）。
 
+## 协作方式
+
+- **服主只负责策划和最终测试，合并由 Claude 操作。** 问题都记成 GitHub issue（`Inf-Network/EscapeFromCraftov`，标签：`P0-严重`…`P3-低`、`用户反馈` / `审查发现`、模块）。每个 issue 一个分支和一个 PR，不直接往 `main` 推。
+- PR 测试（编译 + `tools/bot/` 无头场景）和独立审查都通过后，由 Claude 用**普通合并提交**合进 `main`（不要 squash：后面叠着的分支要能干净接上）。PR 的目标分支是别的分支时，合并前先改成 `main`；**不要在还有 PR 以它为目标分支时删除这个分支**，GitHub 会直接关掉那些 PR。
+- PR 不是以 `main` 为目标时，`Closes #N` 不会生效，合并后要手动关掉对应 issue 并注明 PR 编号。
+- 合并后 `tools/mac/mac deploy` 部署到 Mac 测试服（items.yml / loot.yml 有改动时先 `yml diff` 再 `yml copy`），再把「需要进游戏确认」的清单整理给服主，**告诉服主具体测什么**，而不是只说"已修复"。
+- 几个修复并行写时会互相重叠（同一个问题修两遍、关服 / 存档 / 保险 / 护航等路径改到同一处）。合并前要按依赖顺序整合成一条线，并专门检查同一件事有没有被执行两次。
+
 ## 提交规范
 
-- **每做完一个小模块就提交并 `git push origin main`**，不用等用户要求。一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
+- 一个提交只做一件事，每个提交都要能单独编译。不要攒一大堆改动一次提交。
 - **提交信息和 PR 里不加任何 Co-Authored-By / AI 署名**（用户明确要求过，优先于默认的署名设置）。
 - 格式：英文 Conventional Commits 前缀（`feat:` / `fix:` / `tune:` / `docs:` / `refactor:` / `chore:`），主题行小写、描述玩家能感知到的行为（例如 `feat: bounties on players`、`fix: no flash on an empty gun, and a tactical light you can see`）。正文用几句完整的英文解释做了什么、数值是多少，约 75 列换行。
 - 新功能要同步更新 `README.md`（中文，玩法表 / 操作 / 指令 / 配置），可以和功能放在同一个提交里。

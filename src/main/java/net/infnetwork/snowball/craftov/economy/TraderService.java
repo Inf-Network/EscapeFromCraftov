@@ -1,7 +1,6 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
-import net.infnetwork.snowball.craftov.escort.EscortService;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -135,11 +134,13 @@ public final class TraderService {
 
     /**
      * Everything the player owns, at item value: money, stash, mailbox, what they carry, the secure
-     * container, their market listings and an escrowed escort reward.
+     * container, their market listings and an escrowed escort reward. The escrow is read from the
+     * profile, where EscortService records it with the deduction: that also covers a contract lost
+     * in a crash whose reward has not been handed back yet.
      */
     public long assets(Player player) {
         Profile profile = plugin.profiles().get(player);
-        long total = profile.money + plugin.carry().carriedValue(player);
+        long total = profile.money + profile.escortEscrow + plugin.carry().carriedValue(player);
         for (List<ItemRecord> records : List.of(profile.stash, profile.mailbox, profile.secure)) {
             for (ItemRecord record : records) {
                 total += plugin.items().value(record);
@@ -147,10 +148,6 @@ public final class TraderService {
         }
         for (MarketService.Listing listing : plugin.market().mine(player.getUniqueId())) {
             total += plugin.items().value(listing.item);
-        }
-        EscortService.Contract escrow = plugin.escorts().byClient(player.getUniqueId());
-        if (escrow != null) {
-            total += escrow.reward;
         }
         return total;
     }

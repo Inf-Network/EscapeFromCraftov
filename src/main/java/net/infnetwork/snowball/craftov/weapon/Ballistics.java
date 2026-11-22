@@ -13,6 +13,7 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.SoundCategory;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -23,7 +24,9 @@ import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 
@@ -32,6 +35,17 @@ public final class Ballistics {
 
     /** Pieces a round's path can have: it goes on through glass or a thin block at most twice. */
     private static final int MAX_SEGMENTS = 3;
+    /** Blocks drawn see-through: glass of every kind but tinted, glass panes and iron bars. */
+    private static final Set<Material> SEE_THROUGH = EnumSet.noneOf(Material.class);
+
+    static {
+        for (Material type : Material.values()) {
+            if (!type.name().startsWith("LEGACY_") && type.isBlock()
+                    && (type.name().contains("GLASS") && type != Material.TINTED_GLASS || type == Material.IRON_BARS)) {
+                SEE_THROUGH.add(type);
+            }
+        }
+    }
 
     private final CraftovPlugin plugin;
     private final BlockPenetration penetration;
@@ -182,6 +196,37 @@ public final class Ballistics {
         plugin.replays().shot(shooter, muzzlePoint(shooter, dir), replayEnd == null ? stop : replayEnd.toLocation(world), gun);
         plugin.weapons().audio().flyby(shooter, eye, stop, hitEntity, gun);
         return hitEntity;
+    }
+
+    /**
+     * Whether a soldier (or a drone) with its eyes at {@code from} can see {@code to}: blocks count by
+     * their outline, as they do for rounds ({@link #fire}), so a fence or wall hides what is behind it up
+     * to the 1 block it is drawn, not the 1.5 it collides at, and glass, glass panes and iron bars are
+     * seen through. Vanilla line of sight tested collision boxes, so once rounds went by the outline a
+     * player could shoot over a railing, a parapet or through bars at a soldier who could not see back.
+     * Leaves hide what is behind them unless {@code foliage}: a soldier that already knows where you
+     * are sees you in a bush, and its rounds go through the leaves as yours do.
+     */
+    public static boolean sees(Location from, Location to, boolean foliage) {
+        World world = from.getWorld();
+        if (world == null || world != to.getWorld()) {
+            return false;
+        }
+        Vector line = to.toVector().subtract(from.toVector());
+        double length = line.length();
+        if (length < 1e-6) {
+            return true;
+        }
+        Vector dir = line.multiply(1 / length);
+        RayTraceResult result = world.rayTrace(b -> b.start(from).direction(dir).maxDistance(length)
+                .fluidCollisionMode(FluidCollisionMode.NEVER).blockCollisionMode(BlockCollisionMode.OUTLINE)
+                .blockFilter(block -> !block.isPassable() && !seeThrough(block.getType(), foliage))
+                .targets(RayTraceTarget.BLOCK));
+        return result == null;
+    }
+
+    private static boolean seeThrough(Material type, boolean foliage) {
+        return SEE_THROUGH.contains(type) || foliage && Tag.LEAVES.isTagged(type);
     }
 
     /** Glass in a raid, other than tinted glass, breaks under any round. */

@@ -631,7 +631,7 @@ public final class AiService implements Listener {
                 continue;
             }
             boolean known = player.getUniqueId().equals(bot.target) && now - bot.lastSeenTick < 40;
-            if (lit && mob.hasLineOfSight(player)) {
+            if (lit && sees(mob, player, false)) {
                 known = true;
             }
             // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
@@ -647,7 +647,7 @@ public final class AiService implements Listener {
                     continue;
                 }
             }
-            if (!mob.hasLineOfSight(player)) {
+            if (!sees(mob, player, known)) {
                 if (noisy && bot.target == null) {
                     // Footsteps behind a wall: go and look.
                     bot.alertPos = player.getLocation();
@@ -669,6 +669,36 @@ public final class AiService implements Listener {
             bot.target = null;
         }
         return best;
+    }
+
+    /**
+     * Whether a soldier sees the player: its eyes or, failing that, the middle of its body, past blocks
+     * as rounds see them ({@link Ballistics#sees}), through leaves only once it knows where the player is.
+     */
+    private static boolean sees(Zombie mob, Player player, boolean known) {
+        Location eye = mob.getEyeLocation();
+        return Ballistics.sees(eye, player.getEyeLocation(), known)
+                || Ballistics.sees(eye, player.getLocation().add(0, player.getHeight() / 2, 0), known);
+    }
+
+    /**
+     * Where on {@code target} a soldier aims: the centre of mass, so misses land on the body or past it
+     * and rarely on the head, unless cover hides it; then the highest part that shows, up to the eyes.
+     * A player behind a parapet or a railing, or crouched behind a wall, only shows its head and
+     * shoulders, and a soldier that kept aiming at the hidden middle only ever hit the cover. Returns
+     * the height above the target's feet.
+     */
+    private static double aimHeight(Zombie mob, Player target) {
+        double centre = target.isSneaking() ? 0.7 : 0.95;
+        double eyes = target.getEyeHeight();
+        Location eye = mob.getEyeLocation();
+        Location feet = target.getLocation();
+        for (double height : new double[]{centre, eyes - 0.4, eyes - 0.1, eyes}) {
+            if (Ballistics.sees(eye, feet.clone().add(0, height, 0), true)) {
+                return height;
+            }
+        }
+        return centre;
     }
 
     private static boolean moving(Player player) {
@@ -704,10 +734,11 @@ public final class AiService implements Listener {
         bot.burstLeft--;
         bot.ammoLeft--;
         Location eye = bot.mob.getEyeLocation();
-        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head. Rounds
-        // are hitscan, so there is no lead to give; a moving target is just harder to hold on (x1.4 at a
-        // walk). Bukkit's velocity reads zero while a player walks, so use the measured speed.
-        Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
+        // Centre of mass where it shows (aimHeight). Rounds are hitscan, so there is no lead to give; a
+        // moving target is just harder to hold on (x1.4 at a walk). Bukkit's velocity reads zero while a
+        // player walks, so use the measured speed.
+        double aimAt = aimHeight(bot.mob, target);
+        Vector aim = target.getLocation().add(0, aimAt, 0).toVector()
                 .subtract(eye.toVector()).normalize();
         double moving = 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
                 / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
@@ -729,8 +760,8 @@ public final class AiService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
-                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), moving, settle, spread, gun.pellets(), hits));
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d aim=%.2f",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), moving, settle, spread, gun.pellets(), hits, aimAt));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);

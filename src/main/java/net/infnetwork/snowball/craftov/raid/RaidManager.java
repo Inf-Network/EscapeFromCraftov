@@ -1794,7 +1794,9 @@ public final class RaidManager implements Listener {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
-        if (def != null && (def.rarity().tier() >= 5)) {
+        // Gold and red finds are worth telling the squad about; ammo is not, even gold rounds, which
+        // come in several stacks and would send a line for each one taken.
+        if (def != null && def.rarity().tier() >= 5 && def.category() != Category.AMMO) {
             Raid raid = raidOf(player);
             if (raid != null) {
                 for (RaidPlayer mate : raid.squadOf(rp)) {

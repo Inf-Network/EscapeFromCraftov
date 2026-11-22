@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -19,6 +20,8 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Duration;
@@ -28,7 +31,11 @@ import java.util.UUID;
 
 /**
  * Knock-down and rescue. The first down gives a long bleed-out, the second a short one, and a third
- * lethal hit kills outright. Teammates revive by crouching next to the downed player.
+ * lethal hit kills outright. A teammate revives by holding right click on the downed player, close
+ * by, on the same level and with nothing in between.
+ *
+ * <p>Crouching used to revive too, from behind a wall or a floor up: crouch is also the silent walk,
+ * sneak+Q and sneak+F, and the client already refuses to click a player it cannot see.
  */
 public final class DownedService implements Listener {
 
@@ -59,6 +66,11 @@ public final class DownedService implements Listener {
     private final Map<UUID, Downed> downed = new HashMap<>();
     /** reviver -> (downed player, tick of last right-click). */
     private final Map<UUID, Map.Entry<UUID, Long>> clicks = new HashMap<>();
+    /**
+     * Ticks a right click on a downed mate counts as still held: a held button repeats every 4
+     * ticks, and the revive check runs every 5.
+     */
+    private static final int HOLD_TICKS = 8;
 
     public DownedService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -109,7 +121,7 @@ public final class DownedService implements Listener {
         for (RaidPlayer mate : raid.squadOf(rp)) {
             Player p = Bukkit.getPlayer(mate.uuid);
             if (p != null && p != player) {
-                p.sendMessage(Text.mm(Text.PREFIX + "<#FF8A80>队友 " + Text.escape(player.getName()) + " 倒地了！靠近后潜行或按住右键救援。"));
+                p.sendMessage(Text.mm(Text.PREFIX + "<#FF8A80>队友 " + Text.escape(player.getName()) + " 倒地了！靠近后对准他按住右键救援。"));
                 p.playSound(p.getLocation(), "craftov:status.mate_down", SoundCategory.MASTER, 1f, 1f);
             }
         }
@@ -196,7 +208,7 @@ public final class DownedService implements Listener {
                 finish(raid, rp, player, state);
                 continue;
             }
-            Player reviver = findReviver(raid, rp, player);
+            Player reviver = findReviver(raid, rp, player, state);
             if (reviver != null) {
                 if (!reviver.getUniqueId().equals(state.reviver)) {
                     state.reviver = reviver.getUniqueId();
@@ -263,21 +275,79 @@ public final class DownedService implements Listener {
         }
     }
 
-    private @Nullable Player findReviver(Raid raid, RaidPlayer rp, Player downedPlayer) {
+    /**
+     * The squadmate holding right click on the downed player who is close enough to work on them,
+     * the current reviver first. A mate who holds on but cannot reach is told why.
+     */
+    private @Nullable Player findReviver(Raid raid, RaidPlayer rp, Player downedPlayer, Downed state) {
+        Player found = null;
         for (RaidPlayer mate : raid.squadOf(rp)) {
             if (mate == rp || mate.state != RaidPlayer.State.ALIVE) {
                 continue;
             }
             Player p = Bukkit.getPlayer(mate.uuid);
-            Map.Entry<UUID, Long> click = p == null ? null : clicks.get(p.getUniqueId());
-            boolean holding = click != null && click.getKey().equals(downedPlayer.getUniqueId())
-                    && Bukkit.getCurrentTick() - click.getValue() <= 8;
-            if (p != null && (p.isSneaking() || holding) && p.getWorld() == downedPlayer.getWorld()
-                    && p.getLocation().distanceSquared(downedPlayer.getLocation()) <= 2.2 * 2.2) {
+            if (p == null || !holding(p, downedPlayer)) {
+                continue;
+            }
+            String blocked = reviveBlocker(p, downedPlayer);
+            if (blocked != null) {
+                p.sendActionBar(Text.mm("<#FF8A80>" + blocked));
+                continue;
+            }
+            if (p.getUniqueId().equals(state.reviver)) {
                 return p;
             }
+            if (found == null) {
+                found = p;
+            }
+        }
+        return found;
+    }
+
+    /** True while {@code reviver} holds right click on {@code downedPlayer}. */
+    private boolean holding(Player reviver, Player downedPlayer) {
+        Map.Entry<UUID, Long> click = clicks.get(reviver.getUniqueId());
+        return click != null && click.getKey().equals(downedPlayer.getUniqueId())
+                && Bukkit.getCurrentTick() - click.getValue() <= HOLD_TICKS;
+    }
+
+    /**
+     * Why {@code reviver} cannot work on {@code downedPlayer} from where they are, or null if they
+     * can: within downed.revive-range, feet less than downed.revive-max-height apart (a stair or a
+     * slab, not the floor above or a ledge), and a clear line from the reviver's eyes to the
+     * downed player. The client cannot click a player behind a wall, but a modified one can, and
+     * the range alone reached through a wall or up a flight of stairs.
+     */
+    private @Nullable String reviveBlocker(Player reviver, Player downedPlayer) {
+        Location from = reviver.getLocation();
+        Location to = downedPlayer.getLocation();
+        double range = plugin.getConfig().getDouble("downed.revive-range", 2.2);
+        if (from.getWorld() != to.getWorld() || from.distanceSquared(to) > range * range) {
+            return "离得太远，靠近一些再救援";
+        }
+        if (Math.abs(from.getY() - to.getY()) >= plugin.getConfig().getDouble("downed.revive-max-height", 1.0)) {
+            return "不在同一高度，无法救援";
+        }
+        if (!inSight(reviver, downedPlayer)) {
+            return "中间有遮挡，无法救援";
         }
         return null;
+    }
+
+    /** A block-free line from the reviver's eyes to the middle or the top of the downed player's box. */
+    private static boolean inSight(Player reviver, Player downedPlayer) {
+        Location eye = reviver.getEyeLocation();
+        BoundingBox box = downedPlayer.getBoundingBox();
+        Vector[] targets = {box.getCenter(), new Vector(box.getCenterX(), box.getMaxY() - 0.05, box.getCenterZ())};
+        for (Vector target : targets) {
+            Vector line = target.clone().subtract(eye.toVector());
+            double length = line.length();
+            if (length < 1e-3 || eye.getWorld().rayTraceBlocks(eye, line.multiply(1 / length), length,
+                    FluidCollisionMode.NEVER, true) == null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Forces the crawling pose by placing a client-side barrier above the player's head. */

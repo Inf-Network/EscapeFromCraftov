@@ -95,6 +95,11 @@ downed:
   first-seconds: 60
   second-seconds: 30
   revive-seconds: 5
+  # A teammate revives by holding right click on the downed player: within revive-range blocks,
+  # feet less than revive-max-height apart (a stair or a slab, not a ledge or the floor above), and
+  # with a clear line from their eyes to the downed player.
+  revive-range: 2.2
+  revive-max-height: 1.0
   max-downs: 2
   # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
   solo: false

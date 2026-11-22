@@ -111,7 +111,7 @@ public final class WeaponService implements Listener {
         /**
          * Climb (degrees up, and right) that only the bullets get, on top of the crosshair, in automatic
          * fire: the camera never shows it, so a client that ignores the camera kick still cannot hold a
-         * spray level. It comes back down on its own once firing stops, at climbStep per tick.
+         * spray level. Once firing stops it comes back down at climbStep per tick.
          */
         double climbUp;
         double climbRight;
@@ -569,9 +569,10 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Kicks the camera, all but weapons.recoil.muzzle-share of the gun's recoil. That share goes to the
-     * bullets alone (up to muzzle-max degrees): the camera kick is only a packet the client may ignore,
-     * and this part still lifts the shots.
+     * Kicks the camera. In automatic fire (full auto and bursts) weapons.recoil.muzzle-share of the kick
+     * goes to the bullets alone instead (see {@link #climb}): the camera kick is only a packet the client
+     * may ignore, and this part still lifts the shots. Single shots kick the camera only, so a scope
+     * held on target after a semi-auto shot is where the next one goes.
      */
     private void recoil(Player player, GunState state) {
         GunSpec gun = state.gun;
@@ -581,11 +582,11 @@ public final class WeaponService implements Listener {
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
         double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
-        double share = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.muzzle-share", 0.2)));
-        double cap = config.getDouble("weapons.recoil.muzzle-max", 3.0);
-        state.climbUp = Math.min(cap, state.climbUp + up * share);
-        state.climbRight = Math.max(-cap, Math.min(cap, state.climbRight + right * share));
-        state.climbSettling = false;
+        boolean automatic = state.fireMode() == FireMode.AUTO || state.fireMode() == FireMode.BURST;
+        double share = automatic ? Math.max(0, Math.min(1, config.getDouble("weapons.recoil.muzzle-share", 0.2))) : 0;
+        if (share > 0) {
+            climb(state, up * share, right * share);
+        }
         float pitchKick = (float) (up * (1 - share));
         float yawKick = (float) (right * (1 - share));
         if (state.freshPull || state.settling || Float.isNaN(state.anchorPitch)) {
@@ -716,7 +717,7 @@ public final class WeaponService implements Listener {
         boolean spraying = state.triggerHeld && state.fireMode() == FireMode.AUTO && !state.reloading();
         int rtt = rttTicks(player);
         boolean firing = spraying || now - state.lastShotTick < config.getInt("weapons.recoil.return-delay-ticks", 3) + rtt;
-        settleClimb(state, firing, config.getDouble("weapons.recoil.return-per-tick", 0.1));
+        settleClimb(state, firing, config.getInt("weapons.recoil.muzzle-return-ticks", 6));
         if (Float.isNaN(state.anchorPitch)) {
             state.lastAbove = Double.NaN;
             return;
@@ -770,8 +771,29 @@ public final class WeaponService implements Listener {
         }
     }
 
-    /** The bullets' own climb comes back to the crosshair once firing stops, along the camera's curve. */
-    private static void settleClimb(GunState state, boolean firing, double rate) {
+    /**
+     * Adds a round's lift to the bullets' own climb. Each round lifts them less the higher they already
+     * are (weapons.recoil.muzzle-soft is the climb at which a round's lift has halved): a long spray
+     * stays only a little above the crosshair, yet keeps creeping up to the end of the magazine instead
+     * of settling at a fixed height that could simply be aimed under. muzzle-max is a hard ceiling no
+     * magazine reaches.
+     */
+    private void climb(GunState state, double up, double right) {
+        var config = plugin.getConfig();
+        double soft = Math.max(0.05, config.getDouble("weapons.recoil.muzzle-soft", 0.5));
+        double cap = Math.max(0, config.getDouble("weapons.recoil.muzzle-max", 6.0));
+        state.climbUp = Math.min(cap, state.climbUp + up * soft / (soft + state.climbUp));
+        double side = state.climbRight + right * soft / (soft + Math.abs(state.climbRight));
+        state.climbRight = Math.max(-cap, Math.min(cap, side));
+        state.climbSettling = false;
+    }
+
+    /**
+     * The bullets' own climb comes back to the crosshair once firing stops, when the camera starts
+     * drifting back, over weapons.recoil.muzzle-return-ticks. It does not depend on camera recovery,
+     * so turning that off leaves no climb behind.
+     */
+    private static void settleClimb(GunState state, boolean firing, int ticks) {
         if (state.climbUp == 0 && state.climbRight == 0) {
             return;
         }
@@ -780,11 +802,10 @@ public final class WeaponService implements Listener {
             return;
         }
         if (!state.climbSettling) {
-            // Never stuck: with recovery turned off (return-per-tick 0) the climb still goes away.
-            double step = Math.max(0.1, Math.min(1, rate));
+            int over = Math.max(1, ticks);
             state.climbSettling = true;
-            state.climbStepUp = state.climbUp * step;
-            state.climbStepRight = Math.abs(state.climbRight) * step;
+            state.climbStepUp = state.climbUp / over;
+            state.climbStepRight = Math.abs(state.climbRight) / over;
         }
         state.climbUp = Math.max(0, state.climbUp - state.climbStepUp);
         state.climbRight = Math.copySign(Math.max(0, Math.abs(state.climbRight) - state.climbStepRight), state.climbRight);

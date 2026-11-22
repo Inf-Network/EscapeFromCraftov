@@ -12,6 +12,10 @@
 //            second spray 0.3 s after a pulled-down one, turned 8 degrees up or 9 down to another
 //            target, recovers toward its own crosshair and not past it. The bullets' own climb starts at 0, stays within 3 degrees, lifts the rounds of a
 //            client that ignores the camera kick, and is gone a moment after the spray.
+//   impact   (not in the default run) where rounds land on a wall 30 and 100 m away with the camera
+//            held exactly on the crosshair: an M4C magazine aimed and from the hip, and DM14 shots as
+//            fast as it cycles. Semi-auto rounds must not be lifted; automatic ones only a little,
+//            still creeping up at the end of the magazine.
 //   ai       (not in the default run, about 3 minutes) a solo raid on the proving ground: hits
 //            per soldier shot while standing still versus strafing, in alternating 7 s phases.
 //            Noisy: the rates swing with where the soldiers stand (seen 19% to 44% fewer hits when
@@ -353,12 +357,15 @@ async function recoil (spot) {
   // Part of the climb lifts only the bullets, capped, and is gone again a second after the spray.
   const climbs = free.lines.map(l => l.climb)
   check('recoil: the first round goes where the crosshair is', free.lines.length > 0 && free.lines[0].climb === 0, String(climbs[0]))
-  check('recoil: the bullets climb above the crosshair, capped at 3 degrees', Math.max(...climbs) > 1 && Math.max(...climbs) <= 3.0001, climbs.map(c => c.toFixed(2)).join(' '))
+  check('recoil: the bullets climb above the crosshair, gently (1 to 2.5 degrees after 30 rounds)', Math.max(...climbs) > 1 && Math.max(...climbs) <= 2.5,
+    climbs.map(c => c.toFixed(2)).join(' '))
+  check('recoil: and still climb over the last 10 rounds', climbs.length >= 30 && climbs[29] - climbs[19] >= 0.15,
+    climbs.length >= 30 ? (climbs[29] - climbs[19]).toFixed(2) : 'too few shots')
   // A client that ignores the camera kick still sees its rounds climb.
   deaf = true
   const cheat = await spray(spot, 0)
   deaf = false
-  check('recoil: ignoring the camera kick does not keep the rounds level', Math.abs(cheat.atRelease - cheat.start) < 0.5 && cheat.shotPitch <= cheat.start - 1.5,
+  check('recoil: ignoring the camera kick does not keep the rounds level', Math.abs(cheat.atRelease - cheat.start) < 0.5 && cheat.shotPitch <= cheat.start - 1.0,
     `camera ${cheat.start.toFixed(2)} -> ${cheat.atRelease.toFixed(2)}, last round at pitch ${cheat.shotPitch.toFixed(2)}`)
   // And it all comes back: a single shot after the reload goes where the crosshair is.
   await sleep(2500)
@@ -367,6 +374,94 @@ async function recoil (spot) {
   await sleep(300)
   const single = shotLines(from)
   check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0, single.map(l => l.climb).join(','))
+}
+
+// ---------------------------------------------------------------- impact
+const IMPACT = new RegExp(`\\[debug\\] ${name} impact eye=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) hit=(?:(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+)|none)`)
+/** Impacts logged since `from`, each with the climb of the shot it belongs to. */
+function impacts (from) {
+  const out = []
+  let climb = 0
+  for (const line of logSince(from)) {
+    const shot = line.match(new RegExp(`\\[debug\\] ${name} shot .* climb=([0-9.]+)`))
+    if (shot) { climb = Number(shot[1]); continue }
+    const m = line.match(IMPACT)
+    if (m) out.push({ eye: m.slice(1, 4).map(Number), hit: m[4] === undefined ? null : m.slice(4, 7).map(Number), climb })
+  }
+  return out
+}
+const deg = rad => rad * 180 / Math.PI
+const mean = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN
+
+/**
+ * Where rounds land on a wall 30 and 100 m away while the camera stays exactly on the crosshair, as
+ * perfect compensation (or a client ignoring the kick) keeps it: the bot ignores the kick, standing on
+ * a block above the range roof, facing north. Offsets are measured from the server's impact log
+ * against the crosshair's point on the wall, in degrees up.
+ */
+async function impact (spot) {
+  const dim = 'minecraft:craftov_range'
+  const run = cmd => rcon(`execute in ${dim} run ${cmd}`)
+  const x = Math.floor(spot.x)
+  const z = Math.floor(spot.z)
+  await run(`setblock ${x} 79 ${z} minecraft:stone`)
+  const table = []
+  for (const dist of [30, 100]) {
+    const wall = z - dist
+    await run(`fill ${x - 15} 70 ${wall} ${x + 15} 95 ${wall} minecraft:stone`)
+    for (const [gun, how] of [['m4c', 'auto, aimed'], ['m4c', 'auto, hip'], ['dm14', 'semi, scoped, as fast as it cycles']]) {
+      await arm(gun)
+      await rcon(`execute as ${name} at @s run tp @s ${spot.x.toFixed(2)} 80 ${spot.z.toFixed(2)} 180 0`)
+      await sleep(1200)
+      dropKey()
+      await sleep(4000)
+      const stopAim = how.includes('hip') ? null : aimWhile()
+      await sleep(800)
+      deaf = true
+      const from = logSize()
+      const hold = () => bot._client.write('look', { yaw: conv.toNotchianYaw(bot.entity.yaw), pitch: 0, flags: { onGround: true, hasHorizontalCollision: false } })
+      if (how.startsWith('auto')) {
+        shots = 0
+        const release = triggerWhile()
+        const began = Date.now()
+        while (shots < 30 && Date.now() - began < 5000) { hold(); await sleep(50) }
+        release()
+      } else {
+        for (let i = 0; i < 10; i++) {
+          bot.swingArm()
+          for (let t = 0; t < 5; t++) { hold(); await sleep(50) }
+        }
+      }
+      await sleep(600)
+      deaf = false
+      if (stopAim) stopAim()
+      const hits = impacts(from).filter(i => i.hit && Math.abs(i.hit[2] - (wall + 1)) < 0.05)
+      const up = hits.map(i => deg(Math.atan2(i.hit[1] - i.eye[1], i.eye[2] - i.hit[2])))
+      const climbs = hits.map(i => i.climb)
+      const band = (a, b) => mean(up.slice(a - 1, b))
+      const row = { dist, gun, how, rounds: hits.length, up, climbs }
+      table.push(row)
+      const span = how.startsWith('auto')
+        ? `rounds 1-5 ${band(1, 5).toFixed(2)}, 6-10 ${band(6, 10).toFixed(2)}, 11-20 ${band(11, 20).toFixed(2)}, 21-30 ${band(21, 30).toFixed(2)} deg`
+        : `all ${mean(up).toFixed(3)} deg, spread ${Math.max(...up.map(Math.abs)).toFixed(3)} at most`
+      const metres = how.startsWith('auto') ? band(21, 30) : mean(up)
+      log(`impact ${dist} m ${gun} ${how}: ${hits.length} on the wall; mean rise ${span}; climb at round 10 ${(climbs[9] || 0).toFixed(2)}, last ${(climbs[climbs.length - 1] || 0).toFixed(2)};`,
+        `${how.startsWith('auto') ? 'rounds 21-30' : 'all rounds'} land ${(dist * Math.tan(metres * Math.PI / 180)).toFixed(2)} m above the crosshair point`)
+    }
+    await run(`fill ${x - 15} 70 ${wall} ${x + 15} 95 ${wall} minecraft:air`)
+  }
+  await run(`setblock ${x} 79 ${z} minecraft:air`)
+  for (const row of table) {
+    if (row.how.startsWith('semi')) {
+      check(`impact: ${row.dist} m semi-auto DM14 follow-ups are not lifted`, row.rounds >= 8 && row.climbs.every(c => c === 0) && Math.abs(mean(row.up)) <= 0.1,
+        `${row.rounds} rounds, climbs ${row.climbs.join(',')}, mean rise ${mean(row.up).toFixed(3)} deg`)
+    } else {
+      const c = row.climbs
+      check(`impact: ${row.dist} m M4C ${row.how}: lifted gently and still creeping up at the end`,
+        row.rounds >= 28 && c[0] === 0 && c[9] >= 0.3 && c[9] <= 1.2 && c[29] <= 2.5 && c[29] - c[19] >= 0.15,
+        `${row.rounds} rounds, climb at 1/10/20/30: ${[0, 9, 19, 29].map(i => (c[i] || 0).toFixed(2)).join('/')}`)
+    }
+  }
 }
 
 // ---------------------------------------------------------------- ai
@@ -445,6 +540,7 @@ async function ai () {
     if (scenario === 'spread') await spread(spot)
     else if (scenario === 'sprint') await sprint(spot)
     else if (scenario === 'recoil') await recoil(spot)
+    else if (scenario === 'impact') await impact(spot)
     else if (scenario === 'ai') await ai()
     else log('unknown scenario', scenario)
   }

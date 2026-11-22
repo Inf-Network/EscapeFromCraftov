@@ -756,8 +756,8 @@ public final class AiService implements Listener {
         // Only a killer still in the raid: one who has died or got out had their kills saved then.
         if (killer != null && rp != null && rp.active()) {
             rp.aiKills++;
-            plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(),
-                    plugin.carry().isMelee(killer.getInventory().getItemInMainHand()));
+            // A knife kill is one the killing record says was a cut, not whatever is in hand now.
+            plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
             if (bot.boss) {

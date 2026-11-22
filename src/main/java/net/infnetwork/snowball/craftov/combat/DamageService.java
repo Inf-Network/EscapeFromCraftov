@@ -129,7 +129,8 @@ public final class DamageService implements Listener {
      * shelling, your own grenade) only names the cause: whoever hurt the victim in the last 30
      * seconds keeps the credit, so a fall or a shell cannot take a kill away from them, and the
      * death reads "killed by them (fall)". It does not restart their 30 seconds; the bleeding of a
-     * wound they made does ({@link #recordBleed}).
+     * wound they made does ({@link #recordBleed}). Only players are covered: a shell that kills a
+     * soldier somebody shot a moment ago is nobody's kill, as before.
      */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
         recordHit(victim, attacker, weapon, part, false, false);
@@ -151,7 +152,7 @@ public final class DamageService implements Listener {
     private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee,
                            boolean renews) {
         long now = Bukkit.getCurrentTick();
-        LastHit last = attacker == null ? lastHit(victim.getUniqueId()) : null;
+        LastHit last = attacker == null && victim instanceof Player ? lastHit(victim.getUniqueId()) : null;
         if (last != null && last.attacker() != null) {
             lastHits.put(victim.getUniqueId(), new LastHit(last.attacker(), last.attackerName(), weapon, part.zone(), part,
                     renews ? now : last.tick(), false, last.struck()));

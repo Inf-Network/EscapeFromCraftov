@@ -481,8 +481,8 @@ def build_vanilla_hud():
     for n in set(hearts):
         save(blank9, os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'heart', n + '.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_background.png'))
-    # The crosshair's arms are BetterHud's (craftov_crosshair: they open with the spread and hide while
-    # aiming); the vanilla one is just the dot in the middle.
+    # The crosshair is BetterHud's (craftov_crosshair: an outlined dot whose arms open with the spread,
+    # hidden while aiming); the vanilla one is just a dot in the middle, under it.
     save(hudart.vanilla_crosshair(), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'crosshair.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_progress.png'))
 
@@ -542,7 +542,7 @@ HUD_IMAGES = {
     'craftov/hit_knock.png': lambda: hudart.knock_marker(rgb('#FF9A3C')),
     **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
     **{'craftov/crosshair/%d.png' % i: (lambda g=g: hudart.crosshair(g)) for i, g in enumerate(hudart.CROSSHAIR_GAPS)},
-    'craftov/crosshair/%d.png' % len(hudart.CROSSHAIR_GAPS): lambda: hudart.plain_crosshair(),
+    'craftov/crosshair/%d.png' % len(hudart.CROSSHAIR_GAPS): lambda: hudart.dot_crosshair(),
     'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
     'craftov/compass/s.png': lambda: hudart.glyph('S'),
     'craftov/compass/e.png': lambda: hudart.glyph('E'),
@@ -695,8 +695,9 @@ def build_betterhud():
                                text('<#9AA0A6>战备值 [craftov_value_short] · 干员 [craftov_operator]', 8, 33, 0.45)]),
             'conditions': cond(('craftov_in_lobby', 'true')),
         },
-        # The crosshair's arms (HudData.crosshair): one picture per gap, opening with the cone of the next
-        # shot; a small plus without a gun; none while aiming down the sights. The vanilla dot is the centre.
+        # The crosshair (HudData.crosshair): an outlined dot and four arms, one picture per gap, opening
+        # with the cone of the next shot; the dot alone without a gun; none while aiming down the sights,
+        # where the vanilla dot under it is left on the sights.
         'craftov_crosshair': {
             'images': numbered([image('craftov_crosshair_%d' % i, 0, 0, cond(('craftov_crosshair', i)))
                                 for i in range(len(hudart.CROSSHAIR_GAPS) + 1)]),
@@ -737,11 +738,13 @@ def build_betterhud():
         place('craftov_feed', 100, 0, -6, 52),
         place('craftov_streak', 50, 50, 0, -44),
     ])},
-        # The crosshair's arms are a HUD of their own (PackService turns both on), so the main HUD's
-        # layout never moves them. BetterHud's elements can still all sit two GUI pixels to one side in a
-        # raid, depending on what else it shows; the vanilla dot in the middle is exact.
+        # The crosshair is a HUD of its own (PackService turns both on), so the main HUD's layout never
+        # moves it. Its centre pixel lands on the vanilla dot's (column W/2 - 1, row H/2 - 1 of a GUI W x H
+        # with even sides, checked with the real client at GUI 2, 3 and 4): BetterHud puts the middle
+        # of the picture there in columns but one row lower, hence the extra pixel up. A character
+        # BetterHud's font lacks anywhere in the HUD pushes all of it sideways (HudData.BEARINGS).
         'craftov_crosshair': {'layouts': numbered([
-            place('craftov_crosshair', 50, 50, -(hudart.CROSSHAIR_SIZE // 2), -(hudart.CROSSHAIR_SIZE // 2)),
+            place('craftov_crosshair', 50, 50, -(hudart.CROSSHAIR_SIZE // 2), -(hudart.CROSSHAIR_SIZE // 2) - 1),
         ])}}
     write_text(os.path.join(BH, 'huds', 'craftov.yml'), yaml.safe_dump(huds, allow_unicode=True, sort_keys=False))
 

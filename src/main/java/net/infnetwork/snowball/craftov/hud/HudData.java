@@ -306,30 +306,31 @@ public final class HudData {
     }
 
     /** Gaps (GUI pixels from the centre to each arm) of the crosshair pictures the HUD has, narrowest first. */
-    public static final int[] CROSSHAIR_GAPS = {2, 4, 6, 8, 10, 13, 17, 22};
-    /** {@link #crosshair} when no crosshair is drawn: aiming down the sights, or spectating. */
+    public static final int[] CROSSHAIR_GAPS = {3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40};
+    /** {@link #crosshair} when the HUD draws none (the vanilla dot is left): aiming down the sights, or spectating. */
     public static final int CROSSHAIR_OFF = -1;
-    /** {@link #crosshair} without a gun in hand: a small plain cross for doors and boxes. */
-    public static final int CROSSHAIR_PLAIN = CROSSHAIR_GAPS.length;
+    /** {@link #crosshair} without a gun in hand: the outlined dot alone, for doors, boxes and the knife. */
+    public static final int CROSSHAIR_DOT = CROSSHAIR_GAPS.length;
 
     /**
-     * Which crosshair the HUD draws: a gun's opens with the cone its next shot would have (moving,
+     * Which crosshair the HUD draws: a gun's arms open with the cone its next shot would have (moving,
      * bloom, sneaking and jumping included), as an index into {@link #CROSSHAIR_GAPS}. The server
      * knows neither the field of view nor the GUI scale, so the gap is hud.crosshair.pixels-per-degree
-     * GUI pixels per degree of half-angle, about right at the default 70 degrees. None while aiming:
-     * the sights are the crosshair then.
+     * GUI pixels per degree of half-angle. At the default 70 degree field of view the true figure is
+     * about an eightieth of the GUI's height: 3.4 at 1080p on GUI scale 4, 3.7 at 900p on 3, 4.5 at 1080p
+     * on 3. None while aiming: the sights are the crosshair then, with the vanilla dot on them.
      */
     public int crosshair(Player p) {
         if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
             return CROSSHAIR_OFF;
         }
         if (gun(p) == null) {
-            return CROSSHAIR_PLAIN;
+            return CROSSHAIR_DOT;
         }
         if (plugin.weapons().isAiming(p)) {
             return CROSSHAIR_OFF;
         }
-        double gap = plugin.weapons().spreadNow(p) * plugin.getConfig().getDouble("hud.crosshair.pixels-per-degree", 5.5);
+        double gap = plugin.weapons().spreadNow(p) * plugin.getConfig().getDouble("hud.crosshair.pixels-per-degree", 4.0);
         int best = 0;
         for (int i = 1; i < CROSSHAIR_GAPS.length; i++) {
             if (Math.abs(CROSSHAIR_GAPS[i] - gap) < Math.abs(CROSSHAIR_GAPS[best] - gap)) {

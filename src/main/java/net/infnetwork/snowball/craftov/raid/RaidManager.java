@@ -792,8 +792,12 @@ public final class RaidManager implements Listener {
             }
         }
         // Whatever was held on the cursor (a picked-up backpack with everything in it, say) is carried too.
+        // A knife too: only the one in the melee slot is kept, so one on the cursor is a second knife and
+        // goes into the body like a second knife in a pocket. It used to be left out and then deleted by
+        // setItemOnCursor(null), while extracting or leaving mails it home. Nothing in normal play puts
+        // a knife there (the melee slot cannot be picked up and loot screens never use the cursor).
         ItemStack cursor = player.getItemOnCursor();
-        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor) && !plugin.carry().isMelee(cursor)) {
+        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor)) {
             drop.add(cursor.clone());
         }
         // What was lost is what the body holds, as in missing(). The kept knife used to count too,

@@ -43,7 +43,7 @@ public final class ThrowableService implements Listener {
         }
         event.setCancelled(true);
         Player player = event.getPlayer();
-        if (!plugin.raids().canFire(player) || plugin.lobby().isLobby(player.getWorld())) {
+        if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())) {
             return;
         }
         if (player.hasCooldown(event.getItem())) {

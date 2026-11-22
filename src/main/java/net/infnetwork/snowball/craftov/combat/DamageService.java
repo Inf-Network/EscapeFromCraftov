@@ -257,7 +257,7 @@ public final class DamageService implements Listener {
         long now = org.bukkit.Bukkit.getCurrentTick();
         if (now - lastMelee.getOrDefault(player.getUniqueId(), -1000L) < spec.cooldownTicks()
                 || player.getEyeLocation().distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
-                || !plugin.raids().canFire(player)) {
+                || !plugin.raids().canAttack(player)) {
             return;
         }
         lastMelee.put(player.getUniqueId(), now);

@@ -280,7 +280,7 @@ public final class WeaponService implements Listener {
             boolean held = plugin.triggers().held(player);
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
-                        + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
+                        + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canAttack=" + plugin.raids().canAttack(player)
                         + " interval=" + state.gun.millisBetweenShots());
             }
             if (isAiming(player)) {
@@ -375,7 +375,7 @@ public final class WeaponService implements Listener {
     // ------------------------------------------------------------------ shooting
 
     private boolean shoot(Player player, GunState state) {
-        if (!plugin.raids().canFire(player)) {
+        if (!plugin.raids().canAttack(player)) {
             return false;
         }
         GunSpec gun = state.gun;
@@ -708,7 +708,7 @@ public final class WeaponService implements Listener {
 
     /** Why this player cannot fire right now, or null if they can. */
     private @Nullable String fireBlocker(Player player) {
-        if (plugin.raids().canFire(player)) {
+        if (plugin.raids().canAttack(player)) {
             return null;
         }
         if (plugin.lobby().isLobby(player.getWorld())) {

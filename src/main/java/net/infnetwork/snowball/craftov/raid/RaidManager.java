@@ -135,17 +135,26 @@ public final class RaidManager implements Listener {
         return byWorld.containsKey(world);
     }
 
+    /** Whether the player may handle a weapon at all: aim, reload, and (see {@link #canAttack}) use it. */
     public boolean canFire(Player player) {
         if (plugin.lobby().inRange(player)) {
             return true;
         }
         RaidPlayer rp = session(player);
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
-                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX) && !isProtected(rp);
+                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
     }
 
     /**
-     * Spawn protection after landing or rejoining: no damage taken, and no shots fired either, so
+     * Whether the player may shoot, stab or throw something now: as {@link #canFire}, but not from
+     * behind spawn protection. Aiming and reloading are still fine then.
+     */
+    public boolean canAttack(Player player) {
+        return canFire(player) && !isProtected(player);
+    }
+
+    /**
+     * Spawn protection after landing or rejoining: no damage taken, and no attacks made either, so
      * nobody fights from behind it.
      */
     public boolean isProtected(Player player) {
@@ -1891,7 +1900,7 @@ public final class RaidManager implements Listener {
             return true;
         }
         rp.state = RaidPlayer.State.ALIVE;
-        // Two seconds to load in, and no more: no shots either, and soldiers react as usual (the
+        // Two seconds to load in, and no more: no attacks either, and soldiers react as usual (the
         // insertion grace is not handed out again, or rejoining would shake off a fight with them).
         rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         player.setGameMode(GameMode.ADVENTURE);

@@ -50,7 +50,7 @@ public final class RaidPlayer {
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;
     public int extractTicks;
-    /** Until this tick the player takes no damage and cannot fire (landing, rejoining). */
+    /** Until this tick the player takes no damage and cannot shoot, stab or throw (landing, rejoining). */
     public long protectedUntil;
     /**
      * Soldiers leave a freshly landed player alone until this tick (ai.insertion-grace-ticks), or

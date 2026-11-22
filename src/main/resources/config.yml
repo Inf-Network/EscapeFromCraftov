@@ -132,7 +132,7 @@ ai:
   count-multiplier: 1.0
   # Soldiers ignore freshly inserted players for this many ticks after the 3 s landing protection
   # (20 ticks = 1 s), unless the player fires, throws something or hurts someone first. Rejoining
-  # after a disconnect gives none of it: 2 s of protection (no damage, no shots) and that is all.
+  # after a disconnect gives none of it: 2 s of protection (no damage, no attacks) and that is all.
   insertion-grace-ticks: 240
   damage-multiplier: 0.65
   reaction-ticks: 14

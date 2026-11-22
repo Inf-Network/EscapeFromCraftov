@@ -105,7 +105,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 
 ## 指令
 
-玩家：`/cv`（菜单）、`/cv deploy`、`/cv stash`、`/cv mail`（邮箱）、`/cv trader`、`/cv market`、`/cv secure`、`/cv leave`（取消匹配）、`/party invite|accept|leave|kick <玩家>`。在个人靶场里 `/cv` 打开靶场武器架，`deploy`、`stash`、`mail`、`trader`、`market`、`secure` 要先离开靶场。
+玩家：`/cv`（菜单）、`/cv deploy`、`/cv stash`、`/cv mail`（邮箱）、`/cv trader`、`/cv market`、`/cv secure`、`/cv leave`（取消匹配）、`/party invite|accept|leave|kick <玩家>`（也可以写成 `/squad`，不带参数时列出小队成员）。在个人靶场里 `/cv` 打开靶场武器架，`deploy`、`stash`、`mail`、`trader`、`market`、`secure` 要先离开靶场。
 
 管理（`craftov.admin`，默认 OP）：
 

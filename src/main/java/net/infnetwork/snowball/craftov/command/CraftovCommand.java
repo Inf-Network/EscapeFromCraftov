@@ -32,7 +32,8 @@ public final class CraftovCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (label.equalsIgnoreCase("party")) {
+        // The label is whatever was typed (/squad, /craftov:party); the command's own name is not.
+        if (command.getName().equalsIgnoreCase("party")) {
             String[] shifted = new String[args.length + 1];
             shifted[0] = "party";
             System.arraycopy(args, 0, shifted, 1, args.length);
@@ -435,7 +436,7 @@ public final class CraftovCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         List<String> out = new ArrayList<>();
-        if (label.equalsIgnoreCase("party")) {
+        if (command.getName().equalsIgnoreCase("party")) {
             if (args.length == 1) {
                 out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
             } else if (args.length == 2) {

@@ -164,14 +164,17 @@ async function cancelAll (bot) {
   await sleep(300)
 }
 
-/** In the market browser, opens `id`'s listings and clicks the first one; returns the window. */
-async function tryBuy (bot, id) {
+/**
+ * In the market browser, opens `id`'s listings and clicks the cheapest one by `seller` (listings
+ * other bots left behind on a reused server are passed over); returns its lore and the chat after.
+ */
+async function tryBuy (bot, id, seller) {
   const w = await openWith(bot, () => bot.chat('/cv market'))
   if (!w) throw new Error('market did not open')
   const b = find(w, id, 0, 45)
   if (b < 0) { bot.closeWindow(w); throw new Error('no offer for ' + id) }
   await click(bot, b, 500)
-  const l = find(w, id, 0, 45)
+  const l = find(w, id, 0, 45, it => lore(it).some(x => x.includes('卖家 ' + seller)))
   const lines = l >= 0 ? lore(w.slots[l]) : []
   const from = bot.chatLog.length
   if (l >= 0) await click(bot, l, 800)
@@ -214,6 +217,9 @@ async function main () {
   await rcon(`cv give ${name} armor_4`)
   await sleep(400)
   let pm = await priceMenu(S, 'armor_4', { deposit: true })
+  // Trade prices persist in market.json: on a reused server earlier runs may have set some, so the
+  // checks below compare with what was there at the start instead of expecting none.
+  const vestTradeBefore = line(pm, '玩家成交均价')
   check('vest reference price is value x 0.85', line(pm, '参考价').startsWith('参考价 ◈51,000'), line(pm, '参考价'))
   check('vest highest price shown', info(pm).includes('最高售价 ◈153,000'), info(pm).join(' | '))
   check('pricing screen tells a level-1 seller only system buyers buy', info(pm).includes('账号等级 3 前只有系统买家会收购'), info(pm).join(' | '))
@@ -228,6 +234,7 @@ async function main () {
   await sleep(300)
 
   pm = await priceMenu(S, 'ammo_9_fmj', { pred: it => it.count === 60 })
+  const ammoTradeBefore = line(pm, '玩家成交均价')
   check('60 rounds of 9mm: reference 306', line(pm, '参考价').startsWith('参考价 ◈306'), line(pm, '参考价'))
   for (let i = 0; i < 20; i++) await click(S, 16, 150)
   check('60 rounds of 9mm cannot be listed above 918', priceOf(pm) === 918, title(pm.slots[13]))
@@ -276,11 +283,19 @@ async function main () {
   await sleep(300)
   pm = await priceMenu(S, 'armor_4', { deposit: true })
   check('after the sales the vest reference price is still 51,000', line(pm, '参考价').startsWith('参考价 ◈51,000'), line(pm, '参考价'))
-  check('system-buyer sales leave no player trade price', !info(pm).some(l => l.startsWith('玩家成交均价')), info(pm).join(' | '))
+  check('system-buyer sales leave the vest player trade price alone', line(pm, '玩家成交均价') === vestTradeBefore,
+    `${vestTradeBefore || 'none'} -> ${line(pm, '玩家成交均价') || 'none'}`)
   S.closeWindow(pm)
   await sleep(300)
 
-  // 3. A scoped and suppressed M4C sold to a system buyer.
+  // 3. A scoped and suppressed M4C sold to a system buyer. A bare M4C goes to the stash first, for
+  // the bare gun's player trade price before the sale.
+  await rcon(`cv give ${name} m4c`)
+  await sleep(300)
+  pm = await priceMenu(S, 'm4c', { deposit: true })
+  const m4cTradeBefore = line(pm, '玩家成交均价')
+  S.closeWindow(pm)
+  await sleep(300)
   await rcon(`cv give ${name} m4c`)
   await rcon(`cv give ${name} optic_4x`)
   await rcon(`cv give ${name} att_suppressor`)
@@ -300,7 +315,8 @@ async function main () {
   pm = await priceMenu(S, 'm4c', { deposit: true })
   const hist = line(pm, '近期成交').replace('近期成交 ', '').replace(' (单件)', '').trim().split(' ')
   const lastSale = short(hist[hist.length - 1])
-  check('bare M4C has no player trade price after a system sale', !info(pm).some(l => l.startsWith('玩家成交均价')), info(pm).join(' | '))
+  check('a system sale leaves the bare M4C player trade price alone', line(pm, '玩家成交均价') === m4cTradeBefore,
+    `${m4cTradeBefore || 'none'} -> ${line(pm, '玩家成交均价') || 'none'}`)
   check('kitted sale enters history per plain M4C (0.9 x 28,900)', Math.abs(lastSale - 26010) <= 100, line(pm, '近期成交'))
   S.closeWindow(pm)
   await sleep(300)
@@ -313,7 +329,7 @@ async function main () {
   await confirm(S)
   const note = await waitChat(S, /只有系统买家会收购/, 3000, from)
   check('a level-1 seller is told only system buyers will buy', !!note, note || S.chatLog.slice(from).join(' | '))
-  let r = await tryBuy(B, 'splint')
+  let r = await tryBuy(B, 'splint', name)
   check('market list tells a level-1 buyer about the level', r.lines.some(l => l.includes('需要账号等级 3')), r.lines.slice(-2).join(' | '))
   check('level-1 buyer is refused', r.chat.some(m => m.includes('需要账号等级 3')), r.chat.join(' | '))
   if (!cfgPath) {
@@ -331,21 +347,21 @@ async function main () {
       profile.level = 3
       fs.writeFileSync(file, JSON.stringify(profile, null, 2))
       B = await spawnBot('MkB', bName)
-      r = await tryBuy(B, 'splint')
+      r = await tryBuy(B, 'splint', name)
       check('market list tells a level-3 buyer the level-1 seller cannot sell to players', r.lines.some(l => l.includes('卖家账号等级不足 3')),
         r.lines.slice(-2).join(' | '))
       check('level-3 buyer cannot buy from a level-1 seller', r.chat.some(m => m.includes('卖家账号等级不足 3')), r.chat.join(' | '))
 
       await setMarket({ 'min-buy-level': 1, 'block-same-ip': true, 'daily-player-income-cap': 0 })
-      r = await tryBuy(B, 'splint')
+      r = await tryBuy(B, 'splint', name)
       check('same-address buyer is refused', r.chat.some(m => m.includes('同一网络地址')), r.chat.join(' | '))
 
       await setMarket({ 'block-same-ip': false, 'daily-player-income-cap': 5000 })
-      r = await tryBuy(B, 'splint')
+      r = await tryBuy(B, 'splint', name)
       check('cheap purchase under the daily cap goes through', r.chat.some(m => m.includes('购入')), r.chat.join(' | '))
       pm = await priceMenu(S, 'armor_4')
       await confirm(S)
-      r = await tryBuy(B, 'armor_4')
+      r = await tryBuy(B, 'armor_4', name)
       check('purchase past the seller\'s daily income cap is refused', r.chat.some(m => m.includes('收入已达上限')), r.chat.join(' | '))
       // A vest at 0.9x hands the buyer 5,100 below the reference price: past a 5,000 cap.
       await rcon(`cv give ${name} armor_4`)
@@ -353,7 +369,7 @@ async function main () {
       pm = await priceMenu(S, 'armor_4', { deposit: true })
       await click(S, 21)
       await confirm(S)
-      r = await tryBuy(B, 'armor_4')
+      r = await tryBuy(B, 'armor_4', name)
       check('purchase handing the buyer more than its daily cap below the reference is refused',
         r.chat.some(m => m.includes('比参考价低 ◈5,100') && m.includes('收益已达上限')), r.chat.join(' | '))
       await setMarket({ 'daily-player-income-cap': 0 })
@@ -386,14 +402,18 @@ async function main () {
       const kitPrice = priceOf(pm)
       from = S.chatLog.length
       await confirm(S)
-      r = await tryBuy(B, 'm4c')
+      r = await tryBuy(B, 'm4c', name)
       const bought = await waitChat(S, /M4C 卡宾枪 ×1 已被 MkB/, 5000, from)
       check('player bought the kitted M4C', !!bought, (bought || r.chat.join(' | ')) + ' at ' + kitPrice)
       pm = await priceMenu(S, 'm4c')
       const ref = money(line(pm, '参考价'))
       const traded = money(line(pm, '玩家成交均价'))
-      check('bare M4C player trade price equals its reference after a kitted sale', Math.abs(traded - ref) <= ref * 0.01,
-        `参考价 ${ref}, 玩家成交均价 ${traded} (the old rule gave ~${Math.round(28900 * 0.85 + kitPrice * 0.15)} per gun)`)
+      // A sale at the reference price moves the bare gun's trade price 15% of the way to it (it starts
+      // at the reference on a fresh server, so it stays there).
+      const prior = m4cTradeBefore ? money(m4cTradeBefore) : ref
+      const expected = Math.round(prior * 0.85 + ref * 0.15)
+      check('bare M4C player trade price moves towards its reference after a kitted sale', Math.abs(traded - expected) <= ref * 0.01,
+        `参考价 ${ref}, 玩家成交均价 ${traded}, expected ${expected} (the old rule gave ~${Math.round(prior * 0.85 + kitPrice * 0.15)} per gun)`)
       S.closeWindow(pm)
       await sleep(300)
 
@@ -402,11 +422,12 @@ async function main () {
       for (let i = 0; i < 20; i++) await click(S, 16, 150)
       await confirm(S)
       from = S.chatLog.length
-      r = await tryBuy(B, 'ammo_9_fmj')
+      r = await tryBuy(B, 'ammo_9_fmj', name)
       const ammo = await waitChat(S, /9x19 FMJ ×60 已被 MkB/, 5000, from)
       check('player bought 60 rounds of 9mm at 3x', !!ammo, ammo || r.chat.join(' | '))
       pm = await priceMenu(S, 'ammo_9_fmj', { pred: it => it.count === 60 })
-      check('a sale at 3x does not create a 9mm trade price', !info(pm).some(l => l.startsWith('玩家成交均价')), info(pm).join(' | '))
+      check('a sale at 3x leaves the 9mm trade price alone', line(pm, '玩家成交均价') === ammoTradeBefore,
+        `${ammoTradeBefore || 'none'} -> ${line(pm, '玩家成交均价') || 'none'}`)
       S.closeWindow(pm)
       await sleep(300)
     } finally {

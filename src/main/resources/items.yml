@@ -158,7 +158,7 @@ items:
   surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 18000, stack: 1, lore: "处理全身所有骨折与出血，并回复少量生命。", med: { use: 8.0, pool: 40, per-use: 40, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, anim: brush, sound: med.kit } }
   painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, sound: med.pills } }
   adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: trident, sound: med.inject } }
-  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
+  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，打完针自己站起来。带在身上时，没有队友能救也会先倒地。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
 
   # ------------------------------------------------------------------ throwables
   frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "右键投掷，3.5 秒后爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }

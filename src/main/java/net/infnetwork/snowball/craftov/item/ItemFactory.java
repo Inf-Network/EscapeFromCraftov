@@ -48,9 +48,9 @@ public final class ItemFactory {
     /**
      * Bump when item components change; older stacks are rebuilt from their records on join. 4: free-kit
      * mark. 5: armour lore says it weakens when worn. 6: knife lore gives damage and penetration, not
-     * hits to kill.
+     * hits to kill. 7: the self-revive injector's lore no longer calls it instant.
      */
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
     /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");

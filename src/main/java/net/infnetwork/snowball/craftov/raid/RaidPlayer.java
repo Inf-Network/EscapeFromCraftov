@@ -48,7 +48,13 @@ public final class RaidPlayer {
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;
     public int extractTicks;
+    /** Until this tick the player takes no damage and cannot fire (landing, rejoining). */
     public long protectedUntil;
+    /**
+     * Soldiers leave a freshly landed player alone until this tick (ai.insertion-grace-ticks), or
+     * until the player fires or hurts someone. Only landing sets it; rejoining does not.
+     */
+    public long aiGraceUntil;
     /**
      * Tick of the last hit this player took from, or dealt to, another player or a soldier (-1:
      * none yet). Leaving the game within raid.combat-logout-seconds of it counts as death.

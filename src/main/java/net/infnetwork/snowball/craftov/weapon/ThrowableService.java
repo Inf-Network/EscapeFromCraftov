@@ -49,6 +49,7 @@ public final class ThrowableService implements Listener {
         if (player.hasCooldown(event.getItem())) {
             return;
         }
+        plugin.raids().onAttack(player);
         ItemStack hand = player.getInventory().getItemInMainHand();
         ItemStack thrownStack = hand.clone();
         thrownStack.setAmount(1);

@@ -392,6 +392,7 @@ public final class WeaponService implements Listener {
         }
         state.ammo--;
         state.lastShotTick = Bukkit.getCurrentTick();
+        plugin.raids().onAttack(player);
         ItemDef ammoDef = plugin.registry().get(state.ammoType);
         AmmoSpec ammo = ammoDef == null ? null : ammoDef.ammo();
         Location eye = player.getEyeLocation();
@@ -714,7 +715,7 @@ public final class WeaponService implements Listener {
             return "<#9AA0A6>大厅里不能开火，请到靶场入口进入个人靶场";
         }
         if (plugin.raids().isInRaid(player)) {
-            return "<#9AA0A6>现在不能开火";
+            return plugin.raids().isProtected(player) ? "<#9AA0A6>保护时间内不能开火" : "<#9AA0A6>现在不能开火";
         }
         return "<#9AA0A6>只能在行动或靶场中开火";
     }

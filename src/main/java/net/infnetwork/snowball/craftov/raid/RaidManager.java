@@ -141,7 +141,28 @@ public final class RaidManager implements Listener {
         }
         RaidPlayer rp = session(player);
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
-                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
+                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX) && !isProtected(rp);
+    }
+
+    /**
+     * Spawn protection after landing or rejoining: no damage taken, and no shots fired either, so
+     * nobody fights from behind it.
+     */
+    public boolean isProtected(Player player) {
+        RaidPlayer rp = session(player);
+        return rp != null && isProtected(rp);
+    }
+
+    private static boolean isProtected(RaidPlayer rp) {
+        return Bukkit.getCurrentTick() < rp.protectedUntil;
+    }
+
+    /** The player fired, threw something or hurt someone: soldiers stop holding back. */
+    public void onAttack(Player player) {
+        RaidPlayer rp = session(player);
+        if (rp != null) {
+            rp.aiGraceUntil = 0;
+        }
     }
 
     public boolean canBeShot(Player player) {
@@ -186,6 +207,7 @@ public final class RaidManager implements Listener {
         RaidPlayer ra = attacker instanceof Player a ? session(a) : null;
         if (ra != null && ra.active()) {
             ra.lastCombatTick = now;
+            ra.aiGraceUntil = 0;
         }
     }
 
@@ -405,6 +427,7 @@ public final class RaidManager implements Listener {
         player.setFallDistance(0);
         rp.state = RaidPlayer.State.ALIVE;
         rp.protectedUntil = Bukkit.getCurrentTick() + 60L;
+        rp.aiGraceUntil = rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240);
         plugin.carry().refreshLocks(player);
         player.showTitle(Title.title(Text.mm("<#F2C94C><b>行动开始"), Text.mm("<#9AA0A6>搜索物资，活着撤离"),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
@@ -1630,6 +1653,8 @@ public final class RaidManager implements Listener {
             return true;
         }
         rp.state = RaidPlayer.State.ALIVE;
+        // Two seconds to load in, and no more: no shots either, and soldiers react as usual (the
+        // insertion grace is not handed out again, or rejoining would shake off a fight with them).
         rp.protectedUntil = Bukkit.getCurrentTick() + 40;
         player.setGameMode(GameMode.ADVENTURE);
         player.setFallDistance(0);

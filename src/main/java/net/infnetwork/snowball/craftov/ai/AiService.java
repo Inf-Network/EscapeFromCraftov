@@ -619,7 +619,7 @@ public final class AiService implements Listener {
         for (Player player : bot.raid.online()) {
             RaidPlayer rp = bot.raid.player(player.getUniqueId());
             if (rp == null || rp.state != RaidPlayer.State.ALIVE || !plugin.raids().canBeShot(player)
-                    || now < rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240)) {
+                    || now < rp.aiGraceUntil) {
                 continue;
             }
             // At night soldiers see about half as far, but a lit tactical light gives you away from beyond

@@ -700,11 +700,13 @@ public final class AiService implements Listener {
         Location eye = bot.mob.getEyeLocation();
         // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
         // The middle of the box follows the pose: 0.9 up standing, 0.75 crouched, 0.3 crawling (a
-        // fixed 0.95 aimed over the 0.6 box of a player in a one-block gap).
+        // fixed 0.95 aimed over the 0.6 box of a player in a one-block gap). Rounds are hitscan, so
+        // there is no lead to give; a moving target is just harder to hold on (x1.4 at a walk).
+        // Bukkit's velocity reads zero while a player walks, so use the measured speed.
         Vector aim = target.getLocation().toVector().setY(target.getBoundingBox().getCenterY())
-                .add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)))
                 .subtract(eye.toVector()).normalize();
-        double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
+        double moving = 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
+                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
         double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
         double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
         if ("sniper".equals(bot.kind)) {
@@ -715,9 +717,16 @@ public final class AiService implements Listener {
         }
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
+        int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
-            plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
-                    scaled, ammo, bot.gun.name(), i == 0);
+            if (plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
+                    scaled, ammo, bot.gun.name(), i == 0) == target) {
+                hits++;
+            }
+        }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), moving, settle, spread, gun.pellets(), hits));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);
@@ -735,7 +744,7 @@ public final class AiService implements Listener {
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
-                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
+                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.zoom(),
                 gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
     }
 

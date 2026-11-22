@@ -4,11 +4,15 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,13 +22,19 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
@@ -42,6 +52,18 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class WeaponService implements Listener {
 
+    /** Ticks of camera turns kept per gun: enough for a round trip of up to about 850 ms. */
+    private static final int TURN_TICKS = 20;
+    /**
+     * Degrees the view may sit away from where the last spray's kicks and recovery would put it before
+     * a new spray counts as aimed somewhere else, and the old spray's recovery is dropped.
+     */
+    private static final double TURNED_AWAY = 2.0;
+    /** What one shot costs from {@link GunState#shotBudget}: a minute in milliseconds. */
+    private static final long SHOT_COST = 60_000L;
+    /** Bloom a gun sheds each tick, in hand or put away. */
+    private static final double BLOOM_DECAY = 0.08;
+
     /** Runtime state of the gun a player is holding. */
     public static final class GunState {
         final String uid;
@@ -52,10 +74,37 @@ public final class WeaponService implements Listener {
         int mode;
         boolean triggerHeld;
         boolean needsRelease;
+        /** The trigger went down while sprinting: the first shot waits until the gun is up again. */
+        boolean pendingPress;
+        /** The trigger was pulled again since the last shot: the next shot starts a new spray. */
+        boolean freshPull;
+        /** Rounds of the current three-round burst still to fire: they do, whether or not the trigger is held. */
         int burstLeft;
-        double shotBudgetMs;
+        /**
+         * Rounds a multi-round report already playing still holds (see {@link GunAudio#roundsPerSample}):
+         * they fire even if the trigger is let go, so what is heard is what is fired.
+         */
+        int sampleLeft;
+        /**
+         * Time banked toward the next shot, in milliseconds times rpm: a tick adds 50 x rpm and a shot
+         * costs 60000. Whole numbers keep the rhythm exact, where 66.67 ms steps would drift a tick.
+         */
+        long shotBudget;
         long reloadStart = -1;
         long reloadEnd = -1;
+        /**
+         * The gun came into the hand at drawStart and is up at readyAt: until then it neither fires nor
+         * aims (see {@link WeaponService#drawTicks}).
+         */
+        long drawStart;
+        long readyAt;
+        /**
+         * The gun's stack carries the draw mark (ItemFactory.setDrawing) until the draw is over: its model
+         * neither aims nor flashes meanwhile.
+         */
+        boolean drawMarked;
+        /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
+        long aimAsked = -100;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -67,6 +116,46 @@ public final class WeaponService implements Listener {
         @Nullable String reloadType;
         double bloom;
         long lastShotTick;
+        /** First tick the gun may fire again on a trigger pull: it has cycled since the last shot. */
+        long nextShotTick;
+        /** Camera kick (degrees up, and right) of the current spray that the player has not pulled back down. */
+        double kickUp;
+        double kickRight;
+        /**
+         * The crosshair recovery heads for and never passes: where the spray's first shot was aimed,
+         * lowered by whatever the previous spray's recovery still owed then. NaN while nothing is owed.
+         */
+        float anchorPitch = Float.NaN;
+        float anchorYaw;
+        /** What the previous spray's recovery still owed when this spray began (recoil-return applied). */
+        double carryUp;
+        double carryRight;
+        /** Last tick's view above the anchor as the server read it, and how far the player turned it down then. */
+        double lastAbove = Double.NaN;
+        double lastOwn;
+        /** The camera is drifting back: what is left to give back, and how much per tick. */
+        boolean settling;
+        double returnUp;
+        double returnRight;
+        double stepUp;
+        double stepRight;
+        /**
+         * Camera turns sent each recent tick (degrees up, and right; kicks positive, recovery negative),
+         * by tick: the client reports its view a round trip late, so these may not show in it yet.
+         */
+        final long[] turnTick = new long[TURN_TICKS];
+        final double[] turnUp = new double[TURN_TICKS];
+        final double[] turnRight = new double[TURN_TICKS];
+        /**
+         * Climb (degrees up, and right) that only the bullets get, on top of the crosshair, in automatic
+         * fire: the camera never shows it, so a client that ignores the camera kick still cannot hold a
+         * spray level. Once firing stops it comes back down at climbStep per tick.
+         */
+        double climbUp;
+        double climbRight;
+        boolean climbSettling;
+        double climbStepUp;
+        double climbStepRight;
         /** Mounted optic, or the gun's built-in scope; null = iron sights. */
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
@@ -138,13 +227,33 @@ public final class WeaponService implements Listener {
             long now = Bukkit.getCurrentTick();
             return Math.min(1.0, (now - reloadStart) / (double) Math.max(1, reloadEnd - reloadStart));
         }
+
+        /** The gun is still coming up after being switched to. */
+        public boolean drawing() {
+            return Bukkit.getCurrentTick() < readyAt;
+        }
+
+        public double drawSecondsLeft() {
+            return Math.max(0, (readyAt - Bukkit.getCurrentTick()) / 20.0);
+        }
+
+        public double drawProgress() {
+            if (!drawing()) {
+                return 1;
+            }
+            long now = Bukkit.getCurrentTick();
+            return Math.max(0, Math.min(1.0, (now - drawStart) / (double) Math.max(1, readyAt - drawStart)));
+        }
     }
 
     private final CraftovPlugin plugin;
     private final Ballistics ballistics;
     private final GunAudio audio;
     private final ImpactFx fx;
+    private final MotionTracker motion = new MotionTracker();
     private final Map<UUID, GunState> states = new HashMap<>();
+    /** What guns put away still owe, by gun uid (see {@link Stowed}). */
+    private final Map<String, Stowed> stowed = new HashMap<>();
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
     private final Map<UUID, Long> adsUntil = new HashMap<>();
@@ -153,6 +262,36 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastHint = new HashMap<>();
     private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
+    /** Last tick each player was sprinting: the gun takes a moment to come back up afterwards. */
+    private final Map<UUID, Long> lastSprint = new HashMap<>();
+    /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
+    private final Map<UUID, Long> lastEntityUse = new HashMap<>();
+    /**
+     * Last tick a right-click on an entity did something (opened a box or a rack, started a revive). The
+     * client follows such a click with a plain use of the gun in the same tick, which must not aim.
+     */
+    private final Map<UUID, Long> handledUse = new HashMap<>();
+    /** How far a right-click reaches an entity: vanilla's entity interaction range. */
+    private static final double USE_REACH = 3.0;
+    /** Ticks between the use packets vanilla repeats while right mouse is held. */
+    private static final int USE_REPEAT = 4;
+
+    /**
+     * What a gun keeps once its state is dropped (switched away from, dropped, or reset): the tick it may
+     * fire again and its bloom as of {@code tick}. Without it, switching to another slot and back gave a
+     * fresh state, so a bolt or pump gun fired again at once instead of after its cycle, and a long
+     * spray's bloom was gone.
+     */
+    private record Stowed(UUID owner, long nextShotTick, double bloom, long tick) {
+        double bloomAt(long now) {
+            return Math.max(0, bloom - BLOOM_DECAY * Math.max(0, now - tick));
+        }
+
+        /** Nothing left to keep: the gun has cycled and its bloom has worn off. */
+        boolean spent(long now) {
+            return now >= nextShotTick && bloomAt(now) <= 0;
+        }
+    }
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -180,6 +319,18 @@ public final class WeaponService implements Listener {
 
     public boolean isAiming(Player player) {
         return ads.getOrDefault(player.getUniqueId(), false);
+    }
+
+    /** Vanilla walking pace in blocks per tick, the unit of {@link #horizontalSpeed}. */
+    public static final double WALK_SPEED = MotionTracker.WALK_SPEED;
+
+    /**
+     * How fast the player is really moving, in blocks per tick, measured from their position each tick
+     * (vanilla walking is about {@value #WALK_SPEED}). Bukkit's velocity reads about zero while a player
+     * walks or runs, so this is what moving-target checks use.
+     */
+    public double horizontalSpeed(Player player) {
+        return motion.speed(player);
     }
 
     public double adsSpeedFactor(Player player) {
@@ -210,14 +361,34 @@ public final class WeaponService implements Listener {
         }
         if (current != null) {
             flush(player);
-            stopReloadAnimation(player, states.remove(player.getUniqueId()));
+            stow(player);
             setAds(player, false);
         }
         if (def == null || !def.isGun() || uid == null) {
             return null;
         }
         GunState state = new GunState(uid, slot, def, held, plugin.registry());
+        long now = Bukkit.getCurrentTick();
+        state.drawStart = now;
+        state.readyAt = now + drawTicks(state.gun);
+        Stowed kept = stowed.remove(uid);
+        if (kept != null) {
+            state.nextShotTick = kept.nextShotTick();
+            state.bloom = kept.bloomAt(now);
+        }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s draws %s tick=%d ready=%d next=%d bloom=%.2f",
+                    player.getName(), def.id(), now, state.readyAt, state.nextShotTick, state.bloom));
+        }
         states.put(player.getUniqueId(), state);
+        if (state.drawing()) {
+            ItemFactory.setDrawing(held, true);
+            state.drawMarked = true;
+        } else {
+            // A mark that left the inventory mid-draw (put in a box) would keep a gun with no draw
+            // time (weapons.draw-ticks 0) from ever aiming: it comes off whenever the gun is bound.
+            ItemFactory.setDrawing(held, false);
+        }
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -227,24 +398,30 @@ public final class WeaponService implements Listener {
         return state;
     }
 
+    /**
+     * Ticks a gun takes to come up once it is in the hand, by its action (weapons.draw-ticks): quick for
+     * a pistol, slow for a machine gun or a bolt-action rifle. Switching guns used to be free, so going
+     * to the sidearm instead of reloading cost nothing. Not in items.yml, whose copy on the server is
+     * not updated from the jar.
+     */
+    private int drawTicks(GunSpec gun) {
+        int fallback = switch (gun.action()) {
+            case "pistol", "pistol_heavy" -> 6;
+            case "smg", "pdw" -> 10;
+            case "pump" -> 14;
+            case "lmg", "bolt" -> 18;
+            default -> 12; // ak, ar, dmr
+        };
+        return Math.max(0, plugin.getConfig().getInt("weapons.draw-ticks." + gun.action(), fallback));
+    }
+
     /** Writes the in-memory magazine back onto the stack (wherever it is now). */
     public void flush(Player player) {
         GunState state = states.get(player.getUniqueId());
         if (state == null) {
             return;
         }
-        PlayerInventory inv = player.getInventory();
-        ItemStack stack = inv.getItem(state.slot);
-        if (!state.uid.equals(ItemFactory.uid(stack))) {
-            stack = null;
-            for (int i = 0; i < inv.getSize(); i++) {
-                ItemStack candidate = inv.getItem(i);
-                if (state.uid.equals(ItemFactory.uid(candidate))) {
-                    stack = candidate;
-                    break;
-                }
-            }
-        }
+        ItemStack stack = stackOf(player, state);
         if (stack == null) {
             return;
         }
@@ -255,21 +432,96 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /** The live stack of the state's gun in the player's inventory (its slot first), or null once it left. */
+    private @Nullable ItemStack stackOf(Player player, GunState state) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack stack = inv.getItem(state.slot);
+        if (state.uid.equals(ItemFactory.uid(stack))) {
+            return stack;
+        }
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack candidate = inv.getItem(i);
+            if (state.uid.equals(ItemFactory.uid(candidate))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
     /** Drops cached state entirely (raid transitions, death). */
     public void reset(Player player) {
         flush(player);
-        stopReloadAnimation(player, states.remove(player.getUniqueId()));
+        stow(player);
         setAds(player, false);
+    }
+
+    /**
+     * Drops the player's gun state, keeping its cycle and bloom for when the gun is next bound (see
+     * {@link Stowed}), and ends a reload animation it had running. Returns the dropped state.
+     */
+    private @Nullable GunState stow(Player player) {
+        GunState state = states.remove(player.getUniqueId());
+        if (state == null) {
+            return null;
+        }
+        long now = Bukkit.getCurrentTick();
+        if (now < state.nextShotTick || state.bloom > 0) {
+            stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
+        }
+        unmark(player, state);
+        stopReloadAnimation(player, state);
+        return state;
+    }
+
+    /** Takes the draw mark off the gun's stack, if it is still in the inventory. */
+    private void unmark(Player player, GunState state) {
+        if (!state.drawMarked) {
+            return;
+        }
+        state.drawMarked = false;
+        ItemStack stack = stackOf(player, state);
+        if (stack != null) {
+            ItemFactory.setDrawing(stack, false);
+        }
+    }
+
+    /**
+     * The gun is up: its model may aim and flash again, and right mouse held through the draw aims at
+     * once rather than with the next use packet, which on a scoped gun would leave up to 4 ticks of
+     * neither gun nor scope (the model hides the gun as soon as the mark is gone).
+     */
+    private void drawn(Player player, GunState state, long now) {
+        unmark(player, state);
+        if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
+                && !player.isSprinting()) {
+            adsUntil.put(player.getUniqueId(), now + 6);
+            setAds(player, true);
+        }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s up %s tick=%d aim=%b",
+                    player.getName(), state.def.id(), now, isAiming(player)));
+        }
     }
 
     // ------------------------------------------------------------------ tick
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        if (now % 20 == 0) {
+            stowed.values().removeIf(kept -> kept.spent(now));
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
+            motion.sample(player);
+            if (sprinting(player)) {
+                lastSprint.put(player.getUniqueId(), now);
+            }
             GunState state = bind(player);
             if (state == null) {
                 continue;
+            }
+            settle(player, state, now);
+            if (state.drawMarked && !state.drawing()) {
+                drawn(player, state, now);
             }
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
@@ -280,8 +532,9 @@ public final class WeaponService implements Listener {
             boolean held = plugin.triggers().held(player);
             if (plugin.getConfig().getBoolean("debug", false) && state.triggerHeld) {
                 plugin.getLogger().info("[debug] " + player.getName() + " held=" + held + " uid=" + state.uid + " ammo=" + state.ammo
-                        + " mode=" + state.fireMode() + " budget=" + state.shotBudgetMs + " canFire=" + plugin.raids().canFire(player)
-                        + " interval=" + state.gun.millisBetweenShots());
+                        + " mode=" + state.fireMode() + " budget=" + state.shotBudget / Math.max(1, state.gun.rpm()) + " canFire=" + plugin.raids().canFire(player)
+                        + " interval=" + state.gun.millisBetweenShots() + " speed=" + String.format("%.3f", motion.speed(player))
+                        + " bloom=" + String.format("%.2f", state.bloom));
             }
             if (isAiming(player)) {
                 if (held) {
@@ -294,29 +547,54 @@ public final class WeaponService implements Listener {
                 }
             }
             if (!held && state.triggerHeld) {
-                release(state);
+                release(state, !plugin.triggers().stale(player));
             }
-            state.bloom = Math.max(0, state.bloom - 0.08);
-            if (!state.triggerHeld) {
+            state.bloom = Math.max(0, state.bloom - BLOOM_DECAY);
+            if (state.fireMode() != FireMode.BURST) {
+                state.burstLeft = 0;
+            }
+            if (state.fireMode().singleAction()) {
+                state.sampleLeft = 0;
+            }
+            if (!state.triggerHeld && state.burstLeft <= 0 && state.sampleLeft <= 0) {
+                continue;
+            }
+            if (sprintLocked(player)) {
+                // Still held when the sprint ends: the gun fires once it is back up. A burst does not resume.
+                sprintHint(player);
+                state.shotBudget = 0;
+                state.burstLeft = 0;
+                state.sampleLeft = 0;
+                continue;
+            }
+            if (state.drawing()) {
+                continue; // a pull while the gun comes up fires once it is up, if still held (see press)
+            }
+            if (state.pendingPress) {
+                state.pendingPress = false;
+                firstShot(player, state);
                 continue;
             }
             FireMode mode = state.fireMode();
             GunSpec gun = state.gun;
-            state.shotBudgetMs += 50.0;
-            double interval = gun.millisBetweenShots();
+            state.shotBudget += 50L * gun.rpm();
             int guard = 0;
-            while (state.shotBudgetMs >= interval && guard++ < 4) {
+            while (state.shotBudget >= SHOT_COST && guard++ < 4) {
                 if (mode.singleAction() || mode == FireMode.BURST) {
                     if (mode == FireMode.BURST && state.burstLeft > 0) {
                         state.burstLeft--;
                     } else {
-                        state.shotBudgetMs = Math.min(state.shotBudgetMs, interval);
+                        state.shotBudget = Math.min(state.shotBudget, SHOT_COST);
                         break;
                     }
+                } else if (!state.triggerHeld && state.sampleLeft <= 0) {
+                    break; // let go: automatic fire only finishes the rounds already heard
                 }
-                state.shotBudgetMs -= interval;
+                state.shotBudget -= SHOT_COST;
                 if (!shoot(player, state)) {
-                    state.shotBudgetMs = 0;
+                    state.shotBudget = 0;
+                    state.burstLeft = 0;
+                    state.sampleLeft = 0;
                     break;
                 }
             }
@@ -341,32 +619,65 @@ public final class WeaponService implements Listener {
         press(player, state);
     }
 
-    public void triggerUp(Player player) {
+    /**
+     * Left mouse went up. {@code letGo} is false when the trigger only timed out (no abort packet, see
+     * {@link TriggerService}): the gun stops, but a semi-automatic does not take the swings that a lag
+     * spike delivers late as a fresh pull.
+     */
+    public void triggerUp(Player player, boolean letGo) {
         GunState state = states.get(player.getUniqueId());
         if (state != null) {
-            release(state);
+            release(state, letGo);
         }
     }
 
-    private void release(GunState state) {
+    private void release(GunState state, boolean letGo) {
         state.triggerHeld = false;
-        state.needsRelease = false;
-        state.burstLeft = 0;
+        if (letGo) {
+            state.needsRelease = false;
+        }
+        state.pendingPress = false;
+        // A burst under way still fires its remaining rounds (see tick): a quick click gets all three.
     }
 
     private void press(Player player, GunState state) {
-        if (state.reloading() || state.needsRelease) {
+        // A pull during a burst does nothing: the next burst needs a click after this one has fired.
+        if (state.reloading() || state.needsRelease || state.burstLeft > 0) {
             return;
         }
-        GunSpec gun = state.gun;
-        long now = Bukkit.getCurrentTick();
-        long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
+        if (state.sampleLeft > 0) {
+            // Pulled again while the rounds of the last report are still firing: the spray just goes on.
+            state.triggerHeld = true;
+            return;
+        }
         state.triggerHeld = true;
+        state.freshPull = true;
         if (state.fireMode().singleAction() || state.fireMode() == FireMode.BURST) {
             state.needsRelease = true;
         }
-        if (now - state.lastShotTick >= cooldownTicks || state.lastShotTick == 0) {
-            state.shotBudgetMs = 0;
+        if (sprintLocked(player)) {
+            // A pull while sprinting does nothing; kept held, it fires once the gun is back up (see tick).
+            state.pendingPress = true;
+            sprintHint(player);
+            return;
+        }
+        if (state.drawing()) {
+            // Likewise while the gun comes up after a switch: no shot until it is up.
+            state.pendingPress = true;
+            hint(player, "<#9AA0A6>拔枪中…");
+            return;
+        }
+        firstShot(player, state);
+    }
+
+    /**
+     * The shot a trigger pull fires at once, unless the gun has not cycled since the last one: for semi,
+     * bolt and pump guns this is the only limit on the rate of fire. The cycle outlives switching away
+     * and back (see {@link Stowed}).
+     */
+    private void firstShot(Player player, GunState state) {
+        if (Bukkit.getCurrentTick() >= state.nextShotTick) {
+            state.shotBudget = 0;
             state.burstLeft = state.fireMode() == FireMode.BURST ? 2 : 0;
             shoot(player, state);
         }
@@ -375,7 +686,7 @@ public final class WeaponService implements Listener {
     // ------------------------------------------------------------------ shooting
 
     private boolean shoot(Player player, GunState state) {
-        if (!plugin.raids().canFire(player)) {
+        if (!plugin.raids().canFire(player) || sprintLocked(player)) {
             return false;
         }
         GunSpec gun = state.gun;
@@ -392,18 +703,25 @@ public final class WeaponService implements Listener {
         }
         state.ammo--;
         state.lastShotTick = Bukkit.getCurrentTick();
+        state.nextShotTick = state.lastShotTick + gun.ticksBetweenShots();
         ItemDef ammoDef = plugin.registry().get(state.ammoType);
         AmmoSpec ammo = ammoDef == null ? null : ammoDef.ammo();
         Location eye = player.getEyeLocation();
         Vector dir = eye.getDirection();
+        Vector bore = bore(eye, state);
         double spread = currentSpread(player, state);
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d",
+                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick()));
+        }
         for (int i = 0; i < gun.pellets(); i++) {
-            Vector pellet = Ballistics.spread(dir, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
+            Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
         Location muzzle = Ballistics.muzzlePoint(player, dir);
-        audio.shot(player, muzzle, gun, state.suppressed);
+        audio.shot(player, muzzle, gun, state.suppressed, reportRounds(state));
         if (!state.suppressed) {
             fx.muzzleLight(player, muzzle);
         }
@@ -428,23 +746,51 @@ public final class WeaponService implements Listener {
         return true;
     }
 
+    /**
+     * Rounds the report of the shot just fired holds: 0 while a multi-round sample from an earlier shot
+     * still covers it; in automatic fire at a rate the pack has a sample for, that many rounds when that
+     * many will surely follow (the magazine holds them, a burst has them left; the trigger cannot cut
+     * them short, see tick); otherwise 1.
+     */
+    private static int reportRounds(GunState state) {
+        if (state.sampleLeft > 0) {
+            state.sampleLeft--;
+            return 0;
+        }
+        FireMode mode = state.fireMode();
+        if (mode != FireMode.AUTO && mode != FireMode.BURST) {
+            return 1;
+        }
+        int rounds = GunAudio.roundsPerSample(state.gun);
+        int coming = mode == FireMode.BURST ? state.burstLeft : Integer.MAX_VALUE;
+        if (rounds > 1 && state.ammo >= rounds - 1 && coming >= rounds - 1) {
+            state.sampleLeft = rounds - 1;
+            return rounds;
+        }
+        return 1;
+    }
+
+    /**
+     * Cone half-angle of the next shot. Moving widens it in proportion to how close the player is to
+     * their full walking pace, the gun's bloom included: walking hip fire is half as wide again, aiming
+     * while walking twice as wide (weapons.spread).
+     */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
-        double spread = isAiming(player) ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
-        Vector velocity = player.getVelocity();
-        boolean moving = velocity.getX() * velocity.getX() + velocity.getZ() * velocity.getZ() > 0.003;
-        if (moving) {
-            spread *= isAiming(player) ? 1.8 : 1.4;
-        }
+        boolean aiming = isAiming(player);
+        var config = plugin.getConfig();
+        double spread = aiming ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
         if (player.isSneaking()) {
-            spread *= 0.7;
+            spread *= config.getDouble("weapons.spread.sneak", 0.7);
         }
         if (!player.isOnGround()) {
-            spread *= 2.5;
+            spread *= config.getDouble("weapons.spread.airborne", 2.5);
         }
         if (state.fireMode() != FireMode.BOLT) {
-            spread += state.bloom * (isAiming(player) ? 0.25 : 0.6);
+            spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
+        double moving = config.getDouble(aiming ? "weapons.spread.move-ads" : "weapons.spread.move-hip", aiming ? 1.0 : 0.5);
+        spread *= 1.0 + moving * motion.moveFactor(player);
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
             spread *= 1.0 + 0.35 * arms;
@@ -452,13 +798,272 @@ public final class WeaponService implements Listener {
         return spread;
     }
 
+    /** Where the bullets go: the crosshair, raised by the climb only the bullets get. */
+    private static Vector bore(Location eye, GunState state) {
+        if (state.climbUp == 0 && state.climbRight == 0) {
+            return eye.getDirection();
+        }
+        Location raised = eye.clone();
+        raised.setPitch((float) Math.max(-90, eye.getPitch() - state.climbUp));
+        raised.setYaw((float) (eye.getYaw() + state.climbRight));
+        return raised.getDirection();
+    }
+
+    /**
+     * Kicks the camera. In automatic fire (full auto and bursts) weapons.recoil.muzzle-share of the kick
+     * goes to the bullets alone instead (see {@link #climb}): the camera kick is only a packet the client
+     * may ignore, and this part still lifts the shots. Single shots kick the camera only, so a scope
+     * held on target after a semi-auto shot is where the next one goes.
+     */
     private void recoil(Player player, GunState state) {
         GunSpec gun = state.gun;
+        var config = plugin.getConfig();
+        long now = Bukkit.getCurrentTick();
         double scale = (isAiming(player) ? 0.7 : 1.0) * (player.isSneaking() ? 0.8 : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
-        float pitchKick = (float) (gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3));
-        float yawKick = (float) ((ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale);
+        double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
+        double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
+        boolean automatic = state.fireMode() == FireMode.AUTO || state.fireMode() == FireMode.BURST;
+        double share = automatic ? Math.max(0, Math.min(1, config.getDouble("weapons.recoil.muzzle-share", 0.2))) : 0;
+        if (share > 0) {
+            climb(state, up * share, right * share);
+        }
+        float pitchKick = (float) (up * (1 - share));
+        float yawKick = (float) (right * (1 - share));
+        if (state.freshPull || state.settling || Float.isNaN(state.anchorPitch)) {
+            rebase(player, state, now);
+        }
+        state.freshPull = false;
+        state.kickUp += pitchKick;
+        state.kickRight += yawKick;
+        turned(state, now, pitchKick, yawKick);
         Recoil.kick(player, yawKick, -pitchKick);
+    }
+
+    /**
+     * Starts a new spray: a new trigger pull, or firing again once the last spray began drifting back.
+     * Whatever the last spray's recovery still owes carries over, measured from where the player aims
+     * now, so recovery heads for that crosshair lowered by the carry, which never lies past the one the
+     * last spray started from. If the player turned the view away since (to another target, say), the
+     * carry is dropped: drifting on would pull them off what they turned to.
+     */
+    private void rebase(Player player, GunState state, long now) {
+        double inUp = inFlight(state, state.turnUp, player, now);
+        double inRight = inFlight(state, state.turnRight, player, now);
+        double carryUp = 0;
+        double carryRight = 0;
+        if (!Float.isNaN(state.anchorPitch)) {
+            double above = state.anchorPitch - player.getPitch() + inUp;
+            double right = wrapDegrees(player.getYaw() - state.anchorYaw) + inRight;
+            fold(state, above, right);
+            if (!state.settling) {
+                owe(state, above, right);
+            }
+            // Folding took out what the player pulled down; anything left over is the view turned away.
+            double away = Math.max(above - state.carryUp - state.kickUp, Math.abs(right - state.carryRight - state.kickRight));
+            if (away <= TURNED_AWAY) {
+                carryUp = Math.max(0, Math.min(state.returnUp, above));
+                carryRight = state.returnRight >= 0 ? Math.max(0, Math.min(state.returnRight, right))
+                        : Math.min(0, Math.max(state.returnRight, right));
+            }
+        }
+        // Where the view will be once the turns still in flight land, then lowered by the carry.
+        float anchor = (float) (player.getPitch() - inUp + carryUp);
+        state.lastAbove = Float.isNaN(state.anchorPitch) ? Double.NaN : state.lastAbove + (anchor - state.anchorPitch);
+        state.anchorPitch = anchor;
+        state.anchorYaw = (float) (player.getYaw() + inRight - carryRight);
+        state.carryUp = carryUp;
+        state.carryRight = carryRight;
+        state.kickUp = state.kickRight = 0;
+        state.returnUp = state.returnRight = 0;
+        state.settling = false;
+    }
+
+    /**
+     * What the player has pulled back down of this spray's kick (or turned past the anchor) is theirs:
+     * it is no longer owed. {@code above} and {@code right} are where the view sits from the anchor.
+     */
+    private static void fold(GunState state, double above, double right) {
+        state.kickUp = Math.min(state.kickUp, Math.max(0, above - state.carryUp));
+        double beyond = right - state.carryRight;
+        state.kickRight = state.kickRight >= 0 ? Math.min(state.kickRight, Math.max(0, beyond))
+                : Math.max(state.kickRight, Math.min(0, beyond));
+    }
+
+    /** What recovery gives back for the spray: the carry, plus the gun's recoil-return of the kick still owed. */
+    private static void owe(GunState state, double above, double right) {
+        double share = state.gun.recoilReturn();
+        double ownUp = Math.max(0, Math.min(state.kickUp, above - state.carryUp));
+        double beyond = right - state.carryRight;
+        double ownRight = state.kickRight >= 0 ? Math.max(0, Math.min(state.kickRight, beyond))
+                : Math.min(0, Math.max(state.kickRight, beyond));
+        state.returnUp = state.carryUp + ownUp * share;
+        state.returnRight = state.carryRight + ownRight * share;
+    }
+
+    /** Records a camera turn sent this tick (degrees up, and right). */
+    private static void turned(GunState state, long now, double up, double right) {
+        int slot = (int) Math.floorMod(now, (long) TURN_TICKS);
+        if (state.turnTick[slot] != now) {
+            state.turnTick[slot] = now;
+            state.turnUp[slot] = 0;
+            state.turnRight[slot] = 0;
+        }
+        state.turnUp[slot] += up;
+        state.turnRight[slot] += right;
+    }
+
+    /** The camera turn up sent in the given tick, if it is still on record. */
+    private static double turnedUp(GunState state, long tick) {
+        int slot = (int) Math.floorMod(tick, (long) TURN_TICKS);
+        return state.turnTick[slot] == tick ? state.turnUp[slot] : 0;
+    }
+
+    /** Whole ticks of the player's round trip. */
+    private static int rttTicks(Player player) {
+        return (int) Math.ceil(Math.max(0, player.getPing()) / 50.0);
+    }
+
+    /** Ticks of camera turns the view the client reports may not show yet: a round trip, plus the tick phases. */
+    private static int inFlightTicks(Player player) {
+        return Math.min(TURN_TICKS - 1, 2 + rttTicks(player));
+    }
+
+    /**
+     * Camera turns of the last round trip and a bit, which the view the client reports may not show yet:
+     * what the server reads now plus this is where the view ends up once they land.
+     */
+    private static double inFlight(GunState state, double[] turns, Player player, long now) {
+        int ticks = inFlightTicks(player);
+        double sum = 0;
+        for (int i = 0; i < TURN_TICKS; i++) {
+            if (now - state.turnTick[i] <= ticks) {
+                sum += turns[i];
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * Recoil recovery. A few ticks after the gun stops firing (weapons.recoil.return-delay-ticks, plus
+     * the player's round trip so the server has seen what they did on letting go) the camera drifts back
+     * toward where it pointed before the spray, return-per-tick of the kick each tick, until the gun's
+     * recoil-return share of it is given back. What the player pulled down themselves, while firing or
+     * after, is not given back again, and the drift never goes past the crosshair the spray started
+     * from: it counts the turns the client has not reported back yet, and while the player is pulling
+     * down it stops short by as far as they would get in a round trip at that pace.
+     */
+    private void settle(Player player, GunState state, long now) {
+        var config = plugin.getConfig();
+        boolean spraying = state.triggerHeld && state.fireMode() == FireMode.AUTO && !state.reloading();
+        int rtt = rttTicks(player);
+        boolean firing = spraying || now - state.lastShotTick < config.getInt("weapons.recoil.return-delay-ticks", 3) + rtt;
+        settleClimb(state, firing, config.getInt("weapons.recoil.muzzle-return-ticks", 6));
+        if (Float.isNaN(state.anchorPitch)) {
+            state.lastAbove = Double.NaN;
+            return;
+        }
+        // How fast the player is turning the view down themselves: the change the server sees, less
+        // the turn it sent that should just have shown up in it. Kept up while firing too, so it is
+        // known the moment the drift starts.
+        double raw = state.anchorPitch - player.getPitch();
+        double own = Double.isNaN(state.lastAbove) ? 0 : state.lastAbove - raw + turnedUp(state, now - 1 - rtt);
+        double pulling = Math.max(0, (own + state.lastOwn) / 2);
+        state.lastOwn = own;
+        state.lastAbove = raw;
+        // Degrees the view will sit above / right of the anchor once the turns in flight land.
+        double above = raw + inFlight(state, state.turnUp, player, now);
+        double right = wrapDegrees(player.getYaw() - state.anchorYaw) + inFlight(state, state.turnRight, player, now);
+        fold(state, above, right);
+        if (firing) {
+            return;
+        }
+        if (!state.settling) {
+            owe(state, above, right);
+            double rate = Math.max(0, Math.min(1, config.getDouble("weapons.recoil.return-per-tick", 0.1)));
+            double share = Math.max(0.1, state.gun.recoilReturn());
+            state.settling = true;
+            state.stepUp = state.returnUp * rate / share;
+            state.stepRight = Math.abs(state.returnRight) * rate / share;
+        }
+        double margin = pulling * inFlightTicks(player);
+        double up = Math.max(0, Math.min(Math.min(state.stepUp, state.returnUp), above - margin));
+        double back = Math.min(state.stepRight, Math.abs(state.returnRight));
+        double room = state.returnRight >= 0 ? right : -right;
+        double side = Math.copySign(Math.max(0, Math.min(back, room)), state.returnRight);
+        if (up >= 1e-3 || Math.abs(side) >= 1e-3) {
+            Recoil.kick(player, (float) -side, (float) up);
+            turned(state, now, -up, -side);
+            state.returnUp -= up;
+            state.returnRight -= side;
+            state.kickUp -= up;
+            state.kickRight -= side;
+        }
+        boolean upDone = state.returnUp < 1e-3 || above < 1e-3;
+        boolean sideDone = Math.abs(state.returnRight) < 1e-3 || room < 1e-3;
+        if (upDone && sideDone) {
+            // All given back, or the view is already at (or past) the anchor.
+            state.anchorPitch = Float.NaN;
+            state.lastAbove = Double.NaN;
+            state.kickUp = state.kickRight = 0;
+            state.carryUp = state.carryRight = 0;
+            state.returnUp = state.returnRight = 0;
+            state.settling = false;
+        }
+    }
+
+    /**
+     * Adds a round's lift to the bullets' own climb. Each round lifts them less the higher they already
+     * are (weapons.recoil.muzzle-soft is the climb at which a round's lift has halved): a long spray
+     * stays only a little above the crosshair, yet keeps creeping up to the end of the magazine instead
+     * of settling at a fixed height that could simply be aimed under. muzzle-max is a hard ceiling no
+     * magazine reaches.
+     */
+    private void climb(GunState state, double up, double right) {
+        var config = plugin.getConfig();
+        double soft = Math.max(0.05, config.getDouble("weapons.recoil.muzzle-soft", 0.5));
+        double cap = Math.max(0, config.getDouble("weapons.recoil.muzzle-max", 6.0));
+        state.climbUp = Math.min(cap, state.climbUp + up * soft / (soft + state.climbUp));
+        double side = state.climbRight + right * soft / (soft + Math.abs(state.climbRight));
+        state.climbRight = Math.max(-cap, Math.min(cap, side));
+        state.climbSettling = false;
+    }
+
+    /**
+     * The bullets' own climb comes back to the crosshair once firing stops, when the camera starts
+     * drifting back, over weapons.recoil.muzzle-return-ticks. It does not depend on camera recovery,
+     * so turning that off leaves no climb behind.
+     */
+    private static void settleClimb(GunState state, boolean firing, int ticks) {
+        if (state.climbUp == 0 && state.climbRight == 0) {
+            return;
+        }
+        if (firing) {
+            state.climbSettling = false;
+            return;
+        }
+        if (!state.climbSettling) {
+            int over = Math.max(1, ticks);
+            state.climbSettling = true;
+            state.climbStepUp = state.climbUp / over;
+            state.climbStepRight = Math.abs(state.climbRight) / over;
+        }
+        state.climbUp = Math.max(0, state.climbUp - state.climbStepUp);
+        state.climbRight = Math.copySign(Math.max(0, Math.abs(state.climbRight) - state.climbStepRight), state.climbRight);
+        if (state.climbUp < 1e-3 && Math.abs(state.climbRight) < 1e-3) {
+            state.climbUp = state.climbRight = 0;
+            state.climbSettling = false;
+        }
+    }
+
+    private static double wrapDegrees(double degrees) {
+        double d = degrees % 360.0;
+        if (d >= 180.0) {
+            d -= 360.0;
+        } else if (d < -180.0) {
+            d += 360.0;
+        }
+        return d;
     }
 
     // ------------------------------------------------------------------ reload
@@ -549,6 +1154,8 @@ public final class WeaponService implements Listener {
         player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
         state.reloadType = type;
         state.triggerHeld = false;
+        state.burstLeft = 0;
+        state.sampleLeft = 0;
         state.reloadEmpty = state.ammo == 0;
         reloadFoley(player, state, state.reloadEnd - now);
     }
@@ -705,6 +1312,34 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /**
+     * Sprinting carries the gun lowered: no shot while sprinting (see {@link #sprinting}), nor for a few
+     * ticks after the sprint ends (weapons.sprint-recovery-ticks) while it comes back up. The vanilla
+     * client keeps sprinting with the attack button held, and the server cannot stop a client that
+     * holds the sprint key, so the trigger is what gives.
+     */
+    private boolean sprintLocked(Player player) {
+        if (sprinting(player)) {
+            return true;
+        }
+        Long last = lastSprint.get(player.getUniqueId());
+        return last != null && Bukkit.getCurrentTick() - last <= plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
+    }
+
+    /**
+     * Sprinting by the client's word, or running at a sprint by the server's measure: a modified client
+     * can move at sprint speed without ever saying it started sprinting.
+     */
+    private boolean sprinting(Player player) {
+        return player.isSprinting() || motion.running(player);
+    }
+
+    private void sprintHint(Player player) {
+        if (sprinting(player)) {
+            hint(player, "<#9AA0A6>冲刺时不能开火");
+        }
+    }
+
     /** Why this player cannot fire right now, or null if they can. */
     private @Nullable String fireBlocker(Player player) {
         if (plugin.raids().canFire(player)) {
@@ -739,6 +1374,9 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
+        if (Bukkit.getCurrentTick() - handledUse.getOrDefault(player.getUniqueId(), -100L) <= 1 || useEntityBehindCell(player)) {
+            return; // opened a box or a rack, or reviving: no aiming at it
+        }
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
                 && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()
                 && event.getClickedBlock().getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
@@ -746,11 +1384,51 @@ public final class WeaponService implements Listener {
         }
         // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
         // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.
+        if (state.drawing()) {
+            state.aimAsked = Bukkit.getCurrentTick(); // still held once the gun is up, it aims then (see drawn)
+            return;
+        }
         if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
             return;
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
         setAds(player, true);
+    }
+
+    /**
+     * The trigger keeps client-only capture blocks in front of whatever the crosshair is on (see
+     * {@link TriggerService}), so a right-click at a loot box, a body, a weapon rack or a downed teammate
+     * lands on one and reaches the server as a click on air. This passes it on as the click it would have
+     * been, but only to the first thing the client could have picked within reach, with nothing solid in
+     * the way: an enemy or a range target standing in front of a box means the player is aiming at them.
+     * True if something took it.
+     */
+    private boolean useEntityBehindCell(Player player) {
+        long now = Bukkit.getCurrentTick();
+        if (!plugin.triggers().capturing(player) || now - lastEntityUse.getOrDefault(player.getUniqueId(), -100L) <= 1) {
+            // The client already clicked it (or the block click of this same press did): once is enough.
+            return false;
+        }
+        Location eye = player.getEyeLocation();
+        RayTraceResult hit = player.getWorld().rayTrace(eye, eye.getDirection(), USE_REACH, FluidCollisionMode.NEVER, false, 0.0,
+                entity -> plugin.triggers().pickable(player, entity));
+        Entity first = hit == null ? null : hit.getHitEntity();
+        if (first == null || !(first instanceof Interaction || plugin.triggers().downedMate(player, first)
+                || "container".equals(first.getPersistentDataContainer().get(Keys.ENTITY_ROLE, PersistentDataType.STRING)))) {
+            return false;
+        }
+        PlayerInteractEntityEvent click = new PlayerInteractEntityEvent(player, first, EquipmentSlot.HAND);
+        Bukkit.getPluginManager().callEvent(click);
+        return click.isCancelled();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityUse(PlayerInteractEntityEvent event) {
+        long now = Bukkit.getCurrentTick();
+        lastEntityUse.put(event.getPlayer().getUniqueId(), now);
+        if (event.isCancelled()) {
+            handledUse.put(event.getPlayer().getUniqueId(), now);
+        }
     }
 
     /** Clicking straight at a close entity sends an attack, not a dig; it still pulls the trigger. */
@@ -796,8 +1474,9 @@ public final class WeaponService implements Listener {
         if (fromInventoryScreen) {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
+                ItemFactory.setDrawing(dropped, false);
                 event.getItemDrop().setItemStack(dropped);
-                stopReloadAnimation(player, states.remove(player.getUniqueId()));
+                stow(player);
             }
             return;
         }
@@ -819,6 +1498,8 @@ public final class WeaponService implements Listener {
             return;
         }
         state.mode = (state.mode + 1) % state.gun.modes().size();
+        state.burstLeft = 0;
+        state.sampleLeft = 0;
         player.playSound(player.getLocation(), "craftov:gun.mode", SoundCategory.PLAYERS, 0.7f, 1f);
         player.sendActionBar(Text.mm("<#F2C94C>射击模式: <white>" + state.fireMode().displayName()));
     }
@@ -826,8 +1507,7 @@ public final class WeaponService implements Listener {
     @EventHandler
     public void onHeld(PlayerItemHeldEvent event) {
         flush(event.getPlayer());
-        GunState state = states.remove(event.getPlayer().getUniqueId());
-        stopReloadAnimation(event.getPlayer(), state);
+        GunState state = stow(event.getPlayer());
         if (state != null && state.reloading()) {
             event.getPlayer().sendActionBar(Text.mm("<#9AA0A6>换弹已中断"));
         }
@@ -838,16 +1518,36 @@ public final class WeaponService implements Listener {
     public void onSprint(PlayerToggleSprintEvent event) {
         if (event.isSprinting()) {
             setAds(event.getPlayer(), false);
+        } else {
+            lastSprint.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
         }
+    }
+
+    /** A teleport is not movement: measure speed again from where the player lands. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) {
+        motion.reset(event.getPlayer());
+    }
+
+    /** Nor is respawning, which fires no teleport event even within the same world. */
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        motion.reset(event.getPlayer());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        motion.forget(event.getPlayer().getUniqueId());
         reset(event.getPlayer());
+        UUID id = event.getPlayer().getUniqueId();
+        stowed.values().removeIf(kept -> kept.owner().equals(id));
         ads.remove(event.getPlayer().getUniqueId());
         adsUntil.remove(event.getPlayer().getUniqueId());
         sentZoom.remove(event.getPlayer().getUniqueId());
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
+        lastSprint.remove(event.getPlayer().getUniqueId());
+        lastEntityUse.remove(event.getPlayer().getUniqueId());
+        handledUse.remove(event.getPlayer().getUniqueId());
     }
 }

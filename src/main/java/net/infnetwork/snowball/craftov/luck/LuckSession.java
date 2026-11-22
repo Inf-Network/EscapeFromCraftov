@@ -25,4 +25,6 @@ public final class LuckSession {
     public final List<Payout> payouts = new ArrayList<>();
     /** Jackpots found in this raid: their raid count starts again after it, not with it. */
     public final Set<String> jackpotsFound = new HashSet<>();
+    /** Loss compensation was on when this raid started: it boosts the containers this player rolls. */
+    public boolean boosted;
 }

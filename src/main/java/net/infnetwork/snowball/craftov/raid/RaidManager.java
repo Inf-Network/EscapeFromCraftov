@@ -396,6 +396,7 @@ public final class RaidManager implements Listener {
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         rp.escorting = rp.escortContract != null && !plugin.escorts().isClient(rp.escortContract, player.getUniqueId());
+        plugin.luck().onDeploy(player, raid, rp);
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
         player.closeInventory();
         plugin.health().setupPlayer(player, true);
@@ -1666,7 +1667,8 @@ public final class RaidManager implements Listener {
         plugin.weapons().flush(player);
         boolean fresh = !container.generated();
         if (fresh) {
-            container.generate(plugin.loot().roll(container.type, container.shift));
+            // Rolled for whoever opens it first: their loss compensation, if any, boosts it.
+            container.generate(plugin.loot().roll(container.type, container.shift, plugin.luck().boost(raid, rp)));
             rp.containersSearched++;
             plugin.tasks().onSearch(player);
         }

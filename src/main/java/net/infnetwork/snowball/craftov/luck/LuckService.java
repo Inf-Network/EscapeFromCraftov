@@ -49,6 +49,10 @@ import java.util.concurrent.ThreadLocalRandom;
  *       red came out slow it down, cooperation speeds it up). Once it covers a gold or red item the
  *       container could hold, a search may hand that out and take its value. It is capped and wastes
  *       away while the player stays away.</li>
+ *   <li><b>Loss compensation</b> (高爆率局, {@code luck.compensation}): a net loss within the window
+ *       (a day) over the tier's threshold boosts the gold and red weights of the containers the
+ *       player rolls (opens first) for the next few raids. Matchmaking does not change and nobody
+ *       else in the raid is affected; whether the player is told is up to {@code notify}.</li>
  * </ul>
  *
  * <p>A hand-out is one item more, put hidden into the container being searched so it is revealed
@@ -234,6 +238,98 @@ public final class LuckService {
         return Math.max(0, Math.round(base * tier * multiplier));
     }
 
+    // ------------------------------------------------------------------ loss compensation
+
+    /**
+     * Net loss of a tier that sets off the compensation (luck.compensation.threshold.TIER); a tier
+     * the config does not name gets six times its gear requirement, at least ◈200,000.
+     */
+    public long lossThreshold(String tierId) {
+        long fallback = switch (tierId) {
+            case "NORMAL" -> 200000;
+            case "CONFIDENTIAL" -> 600000;
+            case "SECRET" -> 1500000;
+            default -> {
+                net.infnetwork.snowball.craftov.raid.Tier tier = plugin.tier(tierId);
+                yield Math.max(200000, tier == null ? 0 : tier.minValue() * 6);
+            }
+        };
+        return Math.max(1, cfg().getLong("luck.compensation.threshold." + tierId, fallback));
+    }
+
+    /**
+     * How far the player's losses within the window (and since the last compensation) have got
+     * towards it: each raid's net loss as a share of its tier's threshold, profits taking it back.
+     * 1 or more sets it off.
+     */
+    public double lossScore(Profile.Luck luck, long now) {
+        long since = Math.max(luck.lossSince, now - Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000));
+        double score = 0;
+        for (Profile.LuckRaid raid : luck.raids) {
+            if (raid.time > since) {
+                score += -raid.net / (double) lossThreshold(raid.tier);
+            }
+        }
+        return score;
+    }
+
+    /** Gold and red weights of a boosted roll (luck.compensation.multiplier). */
+    public Map<Rarity, Double> boostWeights() {
+        Map<Rarity, Double> out = new EnumMap<>(Rarity.class);
+        out.put(Rarity.GOLD, Math.max(1, cfg().getDouble("luck.compensation.multiplier.GOLD", 2.0)));
+        out.put(Rarity.RED, Math.max(1, cfg().getDouble("luck.compensation.multiplier.RED", 2.5)));
+        return out;
+    }
+
+    /**
+     * The rarity boost for a container {@code rp} is the first to open, or null: only while their
+     * loss compensation runs, and only for their own rolls, never anyone else's.
+     */
+    public @Nullable Map<Rarity, Double> boost(Raid raid, RaidPlayer rp) {
+        return counts(raid) && rp.luck.boosted ? boostWeights() : null;
+    }
+
+    private boolean notifyBoost() {
+        return cfg().getBoolean("luck.compensation.notify", false);
+    }
+
+    /** {@code player} deploys into {@code raid}: whether their loss compensation applies to it. */
+    public void onDeploy(Player player, Raid raid, RaidPlayer rp) {
+        if (!counts(raid)) {
+            return;
+        }
+        Profile.Luck luck = plugin.profiles().get(player).luck;
+        decay(luck, System.currentTimeMillis());
+        rp.luck.boosted = luck.boostRaids > 0;
+        if (rp.luck.boosted && notifyBoost()) {
+            net.infnetwork.snowball.craftov.util.Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>本局你搜出金色和红色物品的概率提高（含本局还剩 "
+                    + luck.boostRaids + " 局）。");
+        }
+    }
+
+    /** Uses up one compensated raid, or starts the compensation when the losses call for it. */
+    private void compensate(Raid raid, RaidPlayer rp, Profile.Luck luck, long now) {
+        if (rp.luck.boosted && luck.boostRaids > 0) {
+            luck.boostRaids--;
+        }
+        if (luck.boostRaids > 0) {
+            return;
+        }
+        double score = lossScore(luck, now);
+        int raids = Math.max(0, cfg().getInt("luck.compensation.raids", 3));
+        if (score < 1 || raids == 0) {
+            return;
+        }
+        luck.boostRaids = raids;
+        luck.lossSince = now;
+        plugin.getLogger().info("[luck] " + rp.name + " lost enough within the window (" + String.format("%.2f", score)
+                + " x the threshold, last raid " + raid.id + " " + raid.tier.id() + "): loss compensation for the next " + raids + " raids");
+        Player player = Bukkit.getPlayer(rp.uuid);
+        if (player != null && notifyBoost()) {
+            net.infnetwork.snowball.craftov.util.Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
+        }
+    }
+
     private static double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -388,9 +484,9 @@ public final class LuckService {
     }
 
     /**
-     * The player's raid is over for them (extracted, dead or missing). It joins their history; a
-     * qualifying one pays into the quota and adds one to the raid count of every jackpot they did
-     * not find in it. Hand-outs they did not carry out wait for the raid to close ({@link #closeRaid}).
+     * The player's raid is over for them (extracted, dead or missing). It joins their history, uses
+     * up a compensated raid or sets off the compensation; a qualifying one pays into the quota and
+     * adds one to the raid count of every jackpot they did not find in it. Hand-outs they did not carry out wait for the raid to close ({@link #closeRaid}).
      * {@code profile} may be an offline one being edited (missing).
      */
     public void settle(Raid raid, RaidPlayer rp, Profile profile, Outcome outcome) {
@@ -418,6 +514,7 @@ public final class LuckService {
         line.qualified = qualified;
         luck.raids.add(0, line);
         prune(luck, now);
+        compensate(raid, rp, luck, now);
         if (qualified) {
             for (String id : plugin.loot().jackpots()) {
                 if (!rp.luck.jackpotsFound.contains(id)) {

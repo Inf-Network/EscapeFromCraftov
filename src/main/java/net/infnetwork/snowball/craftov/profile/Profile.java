@@ -147,6 +147,10 @@ public final class Profile {
         public long quotaAt;
         /** When the player last finished a raid that counts for luck (epoch millis). */
         public long playedAt;
+        /** Raids left with loss compensation: boosted gold and red weights in the containers they roll. */
+        public int boostRaids;
+        /** Losses up to this moment (epoch millis) have been compensated already. */
+        public long lossSince;
         /**
          * Raids that counted for luck, newest first: every one within the loss window
          * (luck.compensation.window-hours) and the last luck.behaviour.raids qualifying ones.

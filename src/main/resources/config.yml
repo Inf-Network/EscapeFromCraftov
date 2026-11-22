@@ -534,6 +534,17 @@ luck:
     red-scale: 0.3
     coop-weight: 0.25
     coop-target: 1.0
+  # Loss compensation (高爆率局). Within window-hours each raid's net loss counts as a share of its
+  # tier's threshold (profits take it back, losses in different tiers add up); reaching 1 gives the
+  # next `raids` raids gold and red weights times multiplier in every container the player is the
+  # first to open. Only those losses count that came after the last compensation started. Nothing
+  # changes for anyone else in the raid, and matchmaking stays the same. notify tells the player.
+  compensation:
+    window-hours: 24
+    threshold: { NORMAL: 200000, CONFIDENTIAL: 600000, SECRET: 1500000 }
+    raids: 3
+    multiplier: { GOLD: 2.0, RED: 2.5 }
+    notify: false
 
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item

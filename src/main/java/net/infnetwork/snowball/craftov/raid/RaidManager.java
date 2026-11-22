@@ -491,7 +491,12 @@ public final class RaidManager implements Listener {
             }
             case NO_BACKPACK -> {
                 ItemStack pack = player.getInventory().getItem(CarryService.FEET);
-                if (pack != null && !pack.isEmpty()) {
+                // A backpack taken off onto the cursor with its contents is put back on when the
+                // extraction settles the cursor, so holding one counts as wearing it.
+                ItemStack held = player.getItemOnCursor();
+                ItemDef heldDef = plugin.items().defOf(held);
+                if (pack != null && !pack.isEmpty()
+                        || heldDef != null && heldDef.category() == Category.BACKPACK && ItemFactory.hasContents(held)) {
                     return "此撤离点无法携带背包通过";
                 }
             }

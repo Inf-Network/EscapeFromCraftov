@@ -87,7 +87,7 @@ tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/Remote
 - 几个修复并行写时会互相重叠（同一个问题修两遍、关服 / 存档 / 保险 / 护航等路径改到同一处）。合并前要按依赖顺序整合成一条线，并专门检查同一件事有没有被执行两次。
 - **批量修复的做法**：用 Workflow 按「实现 → 独立审查 → 修复审查意见」处理每个 issue，每个 issue 在 `.claude/worktrees/` 下自己的 worktree 和分支里做（已写进 `.git/info/exclude`），各自用不同端口起自己的测试服（25611、26011… 这类，RCON 为端口 +10），绝不碰主检出的 `server/run` 和 25565。会改到同一处的 issue 放进同一条链依次叠放；几条链之间并行，做完后合进一个整合分支解决冲突，再做一次「有没有执行两次」的全栈审查，然后才合并。
 - **会话中断**：Workflow 的运行记录存在当次会话的目录（`~/.claude/projects/<项目>/<会话 id>/subagents/workflows/<运行 id>/journal.jsonl`），换了会话就不能直接 resume。要从旧会话的 journal 里取出已完成的结果，手写一个续跑脚本只跑剩下的步骤；中断的代理可能在 worktree 里留下未提交的改动，续跑前先检查。
-- 外部的人（例如 ImCZFy）也会在 GitHub 提 issue：打上模块和优先级标签，归到对应的大 issue 里一起处理。
+- 团队成员也会在 GitHub 提 issue（例如 ImCZFy，是服主的队友）：打上模块和优先级标签，归到对应的大 issue 里一起处理，并在 issue 里回复一句会在哪里处理。
 
 ## 提交规范
 

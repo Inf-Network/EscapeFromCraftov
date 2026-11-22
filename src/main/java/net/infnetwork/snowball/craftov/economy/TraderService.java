@@ -175,8 +175,9 @@ public final class TraderService {
         long assets = assets(player);
         long maxAssets = freeKitMaxAssets();
         if (assets > maxAssets) {
-            Notify.error(player, "免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、理赔途中的装备、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
-                    + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<muted>可以从仓库取出装备或到商人处购买。");
+            // Short enough for the action bar; what counts as assets is on the button itself.
+            Notify.error(player, "总资产约 ◈" + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets)
+                    + "<muted>，可以从仓库取出装备或到商人处购买");
             return;
         }
         long last = profile.stat("free_kit_at");

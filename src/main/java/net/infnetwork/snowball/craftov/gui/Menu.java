@@ -37,6 +37,8 @@ public abstract class Menu implements InventoryHolder {
     private int lastSlot = -1;
     /** A result line shown on {@link #flashSlot}'s tooltip (or after the title) until {@link #flashUntil}. */
     private @Nullable Component flashLine;
+    /** The same result broken into tooltip lines (a long reason would run off the screen as one). */
+    private java.util.List<Component> flashLore = java.util.List.of();
     private int flashSlot = -1;
     /** What {@link #flashSlot} showed when the result came: a redraw that puts something else there drops it. */
     private @Nullable ItemStack flashFor;
@@ -46,6 +48,8 @@ public abstract class Menu implements InventoryHolder {
     /** A redraw moved the result from a button that is gone to the title. */
     private boolean flashMoved;
     private boolean quietOpen;
+    /** Tooltip width of a result line, in Text.wrap units (about 22 Chinese characters). */
+    private static final int FLASH_WIDTH = 44;
 
     protected Menu(Player viewer, int rows, Component title) {
         this(viewer, rows, null, title);
@@ -153,8 +157,10 @@ public abstract class Menu implements InventoryHolder {
         if (!clicking || inventory == null || viewer.getOpenInventory().getTopInventory() != inventory) {
             return false;
         }
-        Component line = net.infnetwork.snowball.craftov.util.Text.mm((good == null ? "" : good ? Style.MARK_OK : Style.MARK_FAIL) + miniMessage);
+        String text = (good == null ? "" : good ? Style.MARK_OK : Style.MARK_FAIL) + miniMessage;
+        Component line = net.infnetwork.snowball.craftov.util.Text.mm(text);
         flashLine = line;
+        flashLore = net.infnetwork.snowball.craftov.util.Text.mm(net.infnetwork.snowball.craftov.util.Text.wrap(text, FLASH_WIDTH));
         flashSlot = lastSlot >= 0 && inventory.getItem(lastSlot) != null ? lastSlot : -1;
         flashFor = flashSlot >= 0 ? inventory.getItem(flashSlot) : null;
         flashUntil = Bukkit.getCurrentTick() + 40;
@@ -192,7 +198,7 @@ public abstract class Menu implements InventoryHolder {
         if (data != null) {
             lore.addAll(data.lines());
         }
-        lore.add(flashLine);
+        lore.addAll(flashLore);
         copy.setData(io.papermc.paper.datacomponent.DataComponentTypes.LORE, io.papermc.paper.datacomponent.item.ItemLore.lore(lore));
         return copy;
     }

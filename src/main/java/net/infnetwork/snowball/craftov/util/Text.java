@@ -83,6 +83,89 @@ public final class Text {
         return String.format("%02d:%02d", seconds / 60, seconds % 60);
     }
 
+    /**
+     * Breaks a MiniMessage line into lines of at most {@code width} units (a CJK character is two,
+     * anything else one), for tooltips: after punctuation or a space where one is near the end,
+     * anywhere otherwise. Tags still open at a break are opened again on the next line, so each line
+     * parses on its own with the colours it had.
+     */
+    public static List<String> wrap(String miniMessage, int width) {
+        List<String> lines = new ArrayList<>();
+        List<String> open = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        int used = 0;
+        int breakAt = -1; // index in line just after the last good break point
+        List<String> openAtBreak = List.of();
+        int usedAtBreak = 0;
+        for (int i = 0; i < miniMessage.length(); i++) {
+            char c = miniMessage.charAt(i);
+            if (c == '<') {
+                int end = miniMessage.indexOf('>', i);
+                if (end > i) {
+                    String tag = miniMessage.substring(i + 1, end);
+                    if (tag.startsWith("/")) {
+                        int at = open.lastIndexOf(tag.substring(1));
+                        if (at >= 0) {
+                            open.remove(at);
+                        }
+                    } else {
+                        open.add(tag);
+                    }
+                    line.append(miniMessage, i, end + 1);
+                    i = end;
+                    continue;
+                }
+            }
+            String glyph = c == '\\' && i + 1 < miniMessage.length() ? miniMessage.substring(i, i + 2) : String.valueOf(c);
+            int w = glyph.charAt(glyph.length() - 1) >= 0x2E80 ? 2 : 1;
+            if (used + w > width && used > 0) {
+                String rest = "";
+                List<String> carried = new ArrayList<>(open);
+                if (breakAt > 0 && usedAtBreak >= width * 2 / 3) {
+                    rest = line.substring(breakAt);
+                    carried = new ArrayList<>(openAtBreak);
+                    line.setLength(breakAt);
+                }
+                lines.add(line.toString());
+                line = new StringBuilder();
+                for (String tag : carried) {
+                    line.append('<').append(tag).append('>');
+                }
+                line.append(rest);
+                used = width(rest);
+                breakAt = -1;
+            }
+            line.append(glyph);
+            used += w;
+            i += glyph.length() - 1;
+            if ("，。；：、）！？ ".indexOf(c) >= 0) { // not "," or ".": they sit inside figures (◈50,000)
+                breakAt = line.length();
+                openAtBreak = new ArrayList<>(open);
+                usedAtBreak = used;
+            }
+        }
+        if (used > 0 || lines.isEmpty()) {
+            lines.add(line.toString());
+        }
+        return lines;
+    }
+
+    /** The display width of MiniMessage text in {@link #wrap} units, tags left out. */
+    private static int width(String miniMessage) {
+        int w = 0;
+        for (int i = 0; i < miniMessage.length(); i++) {
+            char c = miniMessage.charAt(i);
+            if (c == '\\' && i + 1 < miniMessage.length()) {
+                c = miniMessage.charAt(++i); // an escaped character counts as itself
+            } else if (c == '<' && miniMessage.indexOf('>', i) > i) {
+                i = miniMessage.indexOf('>', i);
+                continue;
+            }
+            w += c >= 0x2E80 ? 2 : 1;
+        }
+        return w;
+    }
+
     /** Text progress bar such as ▮▮▮▮▯▯▯; colours are token tag names ({@code ok}, {@code dim}) or {@code #RRGGBB}. */
     public static String bar(double fraction, int width, String filledColor, String emptyColor) {
         fraction = Math.max(0, Math.min(1, fraction));

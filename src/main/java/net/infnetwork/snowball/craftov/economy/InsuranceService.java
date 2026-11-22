@@ -1,7 +1,6 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import com.google.gson.Gson;
-import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -113,7 +112,11 @@ public final class InsuranceService {
             return 0;
         }
         if (profile.money < fee) {
-            Notify.error(player, "块币不足，本局装备未投保（需要 ◈" + Text.money(fee) + "）");
+            // Not the answer to a click, and easy to miss during the fly-in: it stays in chat, where
+            // the player can still read it when they wonder why their gear did not come back.
+            net.infnetwork.snowball.craftov.gui.UiSound.ERROR.play(player);
+            Text.send(player, "<danger>块币不足，本局装备未投保 <muted>（自动投保需要 ◈" + Text.money(fee) + "，余额 ◈"
+                    + Text.money(profile.money) + "）");
             return 0;
         }
         profile.money -= fee;

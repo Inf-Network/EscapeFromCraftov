@@ -59,6 +59,8 @@ final class MainMenu extends Menu {
                 });
         button(30, UiItems.button("craftov:ui/icon_freekit", "<text><b>免费补给", List.of("<muted>战备值低于 ◈" + Text.money(plugin.getConfig().getLong("free-kit.max-value", 15000))
                 , "<muted>且总资产不超过 ◈" + Text.money(plugin.traders().freeKitMaxAssets()) + " 时可领取",
+                "<dim>总资产：块币、仓库、邮箱、理赔途中的装备、",
+                "<dim>携带、安全箱、交易行上架、托管中的护航赏金",
                 "<muted>冷却 " + plugin.getConfig().getInt("free-kit.cooldown-minutes", 20) + " 分钟")), e -> {
             plugin.traders().claimFreeKit(viewer);
             redraw();

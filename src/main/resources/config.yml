@@ -156,6 +156,11 @@ ai:
   threat:
     seconds: 8
     error-meters: 5
+  # What a fallen soldier leaves: its gun by difficulty (常规, 机密, 绝密; bosses always), and a
+  # helmet or vest (45% each) at this share of full durability, never more than it had left.
+  drop:
+    gun-chance: [0.6, 0.45, 0.35]
+    armor-durability: [0.3, 0.7]
   # Soldiers notice players gradually. Every look (10 a second) adds rate/10 times how close you are
   # ((1 - distance/sight)^1.5, x3 within 6 blocks straight ahead; sight is 48 blocks, a sniper's 90,
   # x0.55 at night), crouching (x0.5), standing still (x0.7) or sprinting (x1.5), light on you

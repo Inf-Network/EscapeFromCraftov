@@ -1160,7 +1160,11 @@ public final class AiService implements Listener {
         List<ItemStack> items = new ArrayList<>();
         EntityEquipment eq = bot.mob.getEquipment();
         ItemStack gun = eq.getItemInMainHand();
-        if (!gun.isEmpty() && rng.nextDouble() < (bot.boss ? 1.0 : 0.75)) {
+        var config = plugin.getConfig();
+        // Bodies are worth farming less the harder the raid: its guns are worth more there.
+        List<Double> gunChances = config.getDoubleList("ai.drop.gun-chance");
+        double gunChance = gunChances.isEmpty() ? 0.6 : gunChances.get(Math.min(gunChances.size() - 1, Math.max(0, bot.raid.tier.aiGear())));
+        if (!gun.isEmpty() && rng.nextDouble() < (bot.boss ? 1.0 : gunChance)) {
             ItemStack copy = gun.clone();
             plugin.items().setAmmo(copy, rng.nextInt(bot.gun.gun().magazine() / 2 + 1), bot.ammo == null ? null : bot.ammo.id());
             items.add(copy);
@@ -1168,12 +1172,17 @@ public final class AiService implements Listener {
         if (bot.ammo != null) {
             items.add(plugin.items().create(bot.ammo, Math.min(bot.ammo.maxStack(), rng.nextInt(10, 40))));
         }
+        List<Double> wear = config.getDoubleList("ai.drop.armor-durability");
+        double least = wear.isEmpty() ? 0.3 : wear.get(0);
+        double most = wear.size() < 2 ? 0.7 : Math.max(least, wear.get(1));
         for (ItemStack armor : new ItemStack[]{eq.getHelmet(), eq.getChestplate()}) {
             if (armor != null && !armor.isEmpty() && rng.nextDouble() < 0.45) {
                 ItemStack copy = armor.clone();
                 ItemDef def = plugin.items().defOf(copy);
                 if (def != null) {
-                    plugin.items().setDura(copy, Math.max(1, def.durability() * rng.nextDouble(0.2, 0.7)));
+                    // Never better than it was when it fell (the fight wore it down).
+                    double left = def.durability() * (least + (most - least) * rng.nextDouble());
+                    plugin.items().setDura(copy, Math.max(1, Math.min(net.infnetwork.snowball.craftov.item.ItemFactory.dura(copy, def.durability()), left)));
                 }
                 items.add(copy);
             }

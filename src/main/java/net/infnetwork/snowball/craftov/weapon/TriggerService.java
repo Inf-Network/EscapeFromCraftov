@@ -64,6 +64,12 @@ import java.util.UUID;
  * a full second without one, and that kind of release does not count as letting go of a
  * semi-automatic trigger.
  *
+ * <p>Only a real dig start presses the trigger. In adventure mode (raids, the range) the server also
+ * turns every arm swing into a left-click on whatever block its own ray finds, and the client swings
+ * after Q, after opening a door or pulling a lever, and after some menu clicks, with no abort ever
+ * following. The network layer reports dig starts and swings in the order they came (see
+ * {@link Nms.DigInputs}), so each left-click on a block is matched to the packet that caused it.
+ *
  * <p>The client only digs while its crosshair lands on a block before anything else. An entity in
  * front of the cobweb wins that pick: the client sends one attack (a short tap, see {@link #tap})
  * and then nothing until the button is let go, so a spray at a target two blocks away used to stop
@@ -105,11 +111,28 @@ public final class TriggerService implements Listener {
     private static final double MAX_STEP = 4.0;
     /** Most ticks of ping the clearance allows for, so a bad connection does not push every cell away. */
     private static final double MAX_LEAD = 12;
+    /** An arm swing in {@link Capture#inputs} (no block key is this: it is beyond the world border). */
+    private static final long SWING = Long.MIN_VALUE + 1;
+    /**
+     * Ticks without a dig start or swing read before what is left in {@link Capture#inputs} is dropped:
+     * by then every packet read has been handled, so leftovers (a swing the server ignored while the
+     * player was dead) would only misalign the matching.
+     */
+    private static final int INPUTS_QUIET = 10;
 
-    private static final class Capture {
+    private static final class Capture implements Nms.DigInputs {
         @Nullable World world;
         /** Read by the network thread (see Nms#protectCells), so it must be concurrent. */
         final Set<Long> cells = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        /**
+         * Dig starts (block keys) and swings ({@link #SWING}) in the order the client sent them, added on
+         * the network thread before the server handles each packet and taken off as their events come.
+         */
+        final java.util.Queue<Long> inputs = new java.util.concurrent.ConcurrentLinkedQueue<>();
+        /** Starts and swings read so far (network thread); a quiet spell lets the main thread drop leftovers. */
+        final java.util.concurrent.atomic.AtomicLong reads = new java.util.concurrent.atomic.AtomicLong();
+        long lastReads;
+        int quiet;
         boolean protectedChannel;
         long lastInput = -100;
         long abortTick = -100;
@@ -138,6 +161,18 @@ public final class TriggerService implements Listener {
         /** Movement (x, y, z) in each of the last {@link #MOTION_WINDOW} ticks. */
         final double[][] steps = new double[MOTION_WINDOW][3];
         int nextStep;
+
+        @Override
+        public void started(long pos) {
+            inputs.offer(pos);
+            reads.incrementAndGet();
+        }
+
+        @Override
+        public void swung() {
+            inputs.offer(SWING);
+            reads.incrementAndGet();
+        }
     }
 
     private final CraftovPlugin plugin;
@@ -183,6 +218,7 @@ public final class TriggerService implements Listener {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Capture c = capture(player);
             track(player, c);
+            settleInputs(c);
             boolean active = canCapture(player);
             if (active) {
                 updateCells(player, c);
@@ -212,6 +248,37 @@ public final class TriggerService implements Listener {
                 plugin.weapons().triggerUp(player, !c.stale);
             }
         }
+    }
+
+    /** Drops what is left of {@link Capture#inputs} once the client has been quiet for a while. */
+    private static void settleInputs(Capture c) {
+        long reads = c.reads.get();
+        if (reads != c.lastReads) {
+            c.lastReads = reads;
+            c.quiet = 0;
+        } else if (++c.quiet >= INPUTS_QUIET && !c.inputs.isEmpty()) {
+            c.inputs.clear();
+        }
+    }
+
+    /**
+     * Whether a left-click on {@code pos} came from a dig start (true) or from the server's own ray for
+     * an arm swing (false), or null if that cannot be told (the network hook is missing, or the packet
+     * was read before it was in place). Events come in packet order, so the click belongs to the oldest
+     * input still queued: a swing, or a start at that block. Starts at other blocks before it were
+     * dropped by the server without an event (out of reach) and are skipped.
+     */
+    private static @Nullable Boolean fromDigStart(Capture c, long pos) {
+        for (Long head = c.inputs.peek(); head != null; head = c.inputs.peek()) {
+            if (head == SWING) {
+                return false; // taken off by its PlayerArmSwingEvent, which follows this one
+            }
+            c.inputs.poll();
+            if (head == pos) {
+                return true;
+            }
+        }
+        return null;
     }
 
     /** Records how far the player moved since last tick (see {@link #clearance}). */
@@ -283,7 +350,7 @@ public final class TriggerService implements Listener {
     private void updateCells(Player player, Capture c) {
         if (!c.protectedChannel) {
             c.protectedChannel = true;
-            Nms.protectCells(player, c.cells);
+            Nms.protectCells(player, c.cells, c);
         }
         World world = player.getWorld();
         if (c.world != world) {
@@ -497,20 +564,31 @@ public final class TriggerService implements Listener {
     /** Start of "mining": the button went down over a capture cell or a real block. */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onLeftClick(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND || !holdingGun(event.getPlayer())) {
+        Player player = event.getPlayer();
+        Block block = event.getClickedBlock();
+        Boolean dig = null;
+        if (event.getAction() == Action.LEFT_CLICK_BLOCK && block != null) {
+            // Matched for every player and item, so the queue stays in step with the packets.
+            dig = fromDigStart(capture(player), key(block.getX(), block.getY(), block.getZ()));
+        }
+        if (event.getHand() != EquipmentSlot.HAND || !holdingGun(player)) {
             return;
         }
-        Player player = event.getPlayer();
         Capture c = capture(player);
         long now = Bukkit.getCurrentTick();
         if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
             // Never cancel: a cancelled dig makes the server resend the real block, erasing the capture cell.
             event.setUseItemInHand(Event.Result.DENY);
             event.setUseInteractedBlock(Event.Result.DENY);
+            // The server's ray for a swing only ever lands on a real block, never on a capture cell (air
+            // here). Without the network hook, swings right after Q, a door or a menu are the stray ones.
+            boolean real = block == null || block.getType().isAir() || (dig != null ? dig : now > c.muteUntil);
+            if (!real) {
+                return;
+            }
             c.mining = true;
             c.pressed = true;
-            if (event.getClickedBlock() != null) {
-                Block block = event.getClickedBlock();
+            if (block != null) {
                 c.digCell = key(block.getX(), block.getY(), block.getZ());
                 if (c.stale && c.abortTick == now && c.abortCell == c.digCell) {
                     // Let go and pressed again on the same block: a real click, even if it arrives in
@@ -551,9 +629,15 @@ public final class TriggerService implements Listener {
     /** The client swings every tick while the button is held over a block. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onSwing(PlayerArmSwingEvent event) {
+        Capture c = capture(event.getPlayer());
+        // This swing's turn in the queue (and any start before it the server dropped without an event).
+        Long head;
+        do {
+            head = c.inputs.poll();
+        } while (head != null && head != SWING);
         if (event.getHand() == EquipmentSlot.HAND && holdingGun(event.getPlayer())
-                && Bukkit.getCurrentTick() > capture(event.getPlayer()).muteUntil) {
-            capture(event.getPlayer()).lastInput = Bukkit.getCurrentTick();
+                && Bukkit.getCurrentTick() > c.muteUntil) {
+            c.lastInput = Bukkit.getCurrentTick();
         }
     }
 

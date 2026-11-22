@@ -25,6 +25,11 @@
 //   fall     a 12-block fall looking straight down with a gun out: the cobweb the bot is sent never
 //            overlaps its body (with the old 0.6-block clearance it did), and the fall is a free fall
 //            (18 ticks; cobweb holds it up).
+//   stray    looking at the floor with a K47 on full auto, Q on a full magazine followed by the arm
+//            swing a vanilla client sends after it, and then a swing alone (as after opening a door or
+//            pulling a lever): neither fires, although in adventure mode the server turns each swing
+//            into a left-click on the floor. Then a DM14 gets the same, and a real click after it fires
+//            once (a stray hold used to leave the next click swallowed).
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node trigger.js [scenario ...]
 //
@@ -41,7 +46,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['cadence', 'lag', 'burst', 'close', 'rhythm', 'open', 'fall']
+const scenarios = wanted.length ? wanted : ['cadence', 'lag', 'burst', 'close', 'rhythm', 'open', 'fall', 'stray']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -442,6 +447,39 @@ async function open () {
   await sleep(500)
 }
 
+// ---------------------------------------------------------------- stray
+async function stray (spot) {
+  await arm('k47')
+  await tp(spot.x, spot.y, spot.z, 180, 50) // the floor about 1.4 blocks ahead, well inside the server's 4.5
+  let from = logSize()
+  dropKey() // full magazine: no reload
+  swing()
+  await sleep(1500)
+  check('stray: Q on a full magazine and its swing fire nothing', shotsSince(from).length === 0, `${shotsSince(from).length} shots`)
+  await sleep(300)
+  from = logSize()
+  swing()
+  await sleep(1500)
+  check('stray: an arm swing alone fires nothing', shotsSince(from).length === 0, `${shotsSince(from).length} shots`)
+  await arm('dm14')
+  await tp(spot.x, spot.y, spot.z, 180, 50)
+  from = logSize()
+  dropKey()
+  swing()
+  await sleep(1500)
+  const phantom = shotsSince(from).length
+  await home(spot)
+  const at = await cell()
+  from = logSize()
+  dig(START, at)
+  swing()
+  await sleep(100)
+  dig(ABORT, at)
+  await sleep(500)
+  check('stray: a DM14 fires nothing on Q and its swing, and once on the next click', phantom === 0 && shotsSince(from).length === 1,
+    `${phantom} shots on Q, ${shotsSince(from).length} on the click`)
+}
+
 // ---------------------------------------------------------------- fall
 async function fall (spot) {
   await arm('k47')
@@ -491,6 +529,7 @@ async function fall (spot) {
     else if (scenario === 'rhythm') await rhythm(spot)
     else if (scenario === 'open') await open(spot)
     else if (scenario === 'fall') await fall(spot)
+    else if (scenario === 'stray') await stray(spot)
     else log('unknown scenario', scenario)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

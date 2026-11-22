@@ -290,7 +290,7 @@ public final class CraftovPlugin extends JavaPlugin {
             }
         }
         if (tiers.isEmpty()) {
-            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
+            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 1, 0.8, 0.55, 0, false, 1.0, 0));
         }
     }
 

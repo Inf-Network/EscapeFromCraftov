@@ -256,7 +256,7 @@ public final class RaidManager implements Listener {
                 continue;
             }
             LootContainer container = new LootContainer(LootContainer.newId(), type, def.pos().at(world),
-                    raid.tier.lootShift() + def.tier(), type.name());
+                    raid.tier.shift(def.tier()), type.name());
             container.spawn(def.pos().yaw());
             raid.containers.put(container.id, container);
         }

@@ -46,12 +46,17 @@ free-kit:
     - "medkit_s"
 
 # Difficulty tiers shown in the deploy menu (first entry is the default).
+# loot-shift is where every loot roll of the raid starts; a container's tier on the map (and the
+# boss, supply drops) add to it, never above max-shift (loot.yml shift-bonus says what a shift does).
+# A server config.yml without max-shift takes it from the plugin's own config.yml for the same
+# tier (one shift above loot-shift, at most 2, for a tier the plugin does not ship).
 tiers:
   NORMAL:
     name: "常规"
     color: "#5BD16B"
     min-value: 0
     loot-shift: 0
+    max-shift: 1
     ai-count: 0.8
     ai-accuracy: 0.55
     ai-gear: 0
@@ -62,6 +67,7 @@ tiers:
     color: "#4FA3FF"
     min-value: 60000
     loot-shift: 1
+    max-shift: 2
     ai-count: 1.0
     ai-accuracy: 0.75
     ai-gear: 1
@@ -72,6 +78,7 @@ tiers:
     color: "#FF4D4D"
     min-value: 250000
     loot-shift: 2
+    max-shift: 2
     ai-count: 1.25
     ai-accuracy: 0.95
     ai-gear: 2

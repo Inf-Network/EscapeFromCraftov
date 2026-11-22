@@ -9,7 +9,7 @@ the generator has a fixed seed, so it only changes when RustPortGenerator does).
 
 The rules follow LootService.java of the same commit: the old unbounded shift
 (x (1 + 0.55 s)^rarity / (1 + 0.4 s), container tiers added without a cap) or the bounded one
-(x (1 + loot.shift-bonus x s), capped at the tier's max-shift), and a fallback to the nearest
+(x (1 + shift-bonus x s) from loot.yml, capped at the tier's max-shift), and a fallback to the nearest
 rarity either way or only to lower ones. So `--before origin/main` shows the old numbers next to
 the new ones.
 
@@ -37,6 +37,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 RARITIES = ["WHITE", "GREEN", "BLUE", "PURPLE", "GOLD", "RED"]
 DEFAULT_STACK = {"AMMO": 60, "VALUABLE": 1, "COLLECTIBLE": 1, "MEDICAL": 3, "THROWABLE": 3}
+DEFAULT_BONUS = {"WHITE": -0.25, "GREEN": -0.05, "BLUE": 0.1, "PURPLE": 0.3, "GOLD": 0.5, "RED": 1.0}
 # Checks (常规).
 MAX_RUN_KITS = 3.0
 MAX_VAULT_RED = 0.10
@@ -83,7 +84,10 @@ class Data:
     def __init__(self, source, map_path=None):
         self.source = source
         self.items = {k: Item(k, v) for k, v in source.yaml("src/main/resources/items.yml")["items"].items()}
-        self.containers = source.yaml("src/main/resources/loot.yml")["containers"]
+        loot = source.yaml("src/main/resources/loot.yml")
+        self.containers = loot["containers"]
+        # LootService.DEFAULT_BONUS when loot.yml has no shift-bonus.
+        self.bonus = dict(DEFAULT_BONUS, **{r.upper(): float(v) for r, v in (loot.get("shift-bonus") or {}).items()})
         self.config = source.yaml("src/main/resources/config.yml")
         if map_path:
             raw = yaml.safe_load(Path(map_path).read_text(encoding="utf-8"))
@@ -98,8 +102,6 @@ class Data:
         code = source.text("src/main/java/net/infnetwork/snowball/craftov/loot/LootService.java")
         self.bounded = "0.55 * shift" not in code
         self.two_way = "new int[]{-1, 1}" in code
-        loot = self.config.get("loot") or {}
-        self.bonus = {r.upper(): float(v) for r, v in (loot.get("shift-bonus") or {}).items()}
         self.tiers = self.config["tiers"]
         self.by_category = {}
         for item in self.items.values():

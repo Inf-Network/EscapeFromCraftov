@@ -23,13 +23,24 @@ import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
-/** Rolls container contents from loot.yml. */
+/**
+ * Rolls container contents from loot.yml. A roll's loot shift (the tier's own plus the container's
+ * tier on the map, capped by the tier, see {@link net.infnetwork.snowball.craftov.raid.Tier#shift})
+ * multiplies each rarity weight by (1 + shift-bonus x shift): a bounded lift for the rare tiers
+ * instead of the old (1 + 0.55 s)^rarity / (1 + 0.4 s), which at shift 2 made red finds 11 times
+ * as likely as the container's own weights said.
+ */
 public final class LootService {
+
+    /** loot.yml shift-bonus when the file has none (a loot.yml from before it existed). */
+    private static final Map<Rarity, Double> DEFAULT_BONUS = Map.of(Rarity.WHITE, -0.25, Rarity.GREEN, -0.05,
+            Rarity.BLUE, 0.1, Rarity.PURPLE, 0.3, Rarity.GOLD, 0.5, Rarity.RED, 1.0);
 
     private final ItemRegistry registry;
     private final ItemFactory items;
     private final Logger logger;
     private final Map<String, ContainerType> types = new LinkedHashMap<>();
+    private final Map<Rarity, Double> shiftBonus = new EnumMap<>(DEFAULT_BONUS);
 
     public LootService(ItemFactory items, Logger logger) {
         this.items = items;
@@ -40,6 +51,14 @@ public final class LootService {
     public void load(File file) {
         types.clear();
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        shiftBonus.clear();
+        shiftBonus.putAll(DEFAULT_BONUS);
+        ConfigurationSection bonus = yaml.getConfigurationSection("shift-bonus");
+        if (bonus != null) {
+            for (String key : bonus.getKeys(false)) {
+                shiftBonus.put(Rarity.parse(key), bonus.getDouble(key));
+            }
+        }
         ConfigurationSection root = yaml.getConfigurationSection("containers");
         if (root == null) {
             logger.severe("loot.yml has no 'containers' section");
@@ -90,7 +109,7 @@ public final class LootService {
      * Rolls items for a container. An all-of container (the proving-ground armory) holds one of every item
      * in its categories, each marked as a test item: usable in the raid, worth nothing outside it.
      *
-     * @param shift quality shift: map difficulty plus container hotness (0 = baseline)
+     * @param shift loot shift: the tier's own plus the container's tier, capped by the tier (0 = baseline)
      */
     public List<ItemStack> roll(ContainerType type, int shift) {
         if (!type.allOf().isEmpty()) {
@@ -166,13 +185,13 @@ public final class LootService {
         return null;
     }
 
-    private static Map<Rarity, Double> shifted(Map<Rarity, Double> base, int shift) {
+    private Map<Rarity, Double> shifted(Map<Rarity, Double> base, int shift) {
         if (shift <= 0) {
             return base;
         }
         Map<Rarity, Double> out = new EnumMap<>(Rarity.class);
         for (Map.Entry<Rarity, Double> e : base.entrySet()) {
-            out.put(e.getKey(), e.getValue() * Math.pow(1.0 + 0.55 * shift, e.getKey().ordinal()) / (1.0 + 0.4 * shift));
+            out.put(e.getKey(), e.getValue() * Math.max(0, 1 + shiftBonus.getOrDefault(e.getKey(), 0.0) * shift));
         }
         return out;
     }

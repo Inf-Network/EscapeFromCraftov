@@ -704,11 +704,13 @@ public final class AiService implements Listener {
         bot.burstLeft--;
         bot.ammoLeft--;
         Location eye = bot.mob.getEyeLocation();
-        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head.
+        // Centre of mass, not the neck: misses should land on the body or past it, rarely the head. Rounds
+        // are hitscan, so there is no lead to give; a moving target is just harder to hold on (x1.4 at a
+        // walk). Bukkit's velocity reads zero while a player walks, so use the measured speed.
         Vector aim = target.getLocation().add(0, target.isSneaking() ? 0.7 : 0.95, 0).toVector()
-                .add(target.getVelocity().clone().multiply(Math.min(6, distance / 20.0)))
                 .subtract(eye.toVector()).normalize();
-        double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
+        double moving = 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
+                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
         double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
         double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
         if ("sniper".equals(bot.kind)) {

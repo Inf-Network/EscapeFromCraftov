@@ -188,10 +188,13 @@ public final class WeaponService implements Listener {
         return ads.getOrDefault(player.getUniqueId(), false);
     }
 
+    /** Vanilla walking pace in blocks per tick, the unit of {@link #horizontalSpeed}. */
+    public static final double WALK_SPEED = MotionTracker.WALK_SPEED;
+
     /**
      * How fast the player is really moving, in blocks per tick, measured from their position each tick
-     * (vanilla walking is about {@value MotionTracker#WALK_SPEED}). Bukkit's velocity reads about zero
-     * while a player walks or runs, so this is what moving-target checks use.
+     * (vanilla walking is about {@value #WALK_SPEED}). Bukkit's velocity reads about zero while a player
+     * walks or runs, so this is what moving-target checks use.
      */
     public double horizontalSpeed(Player player) {
         return motion.speed(player);

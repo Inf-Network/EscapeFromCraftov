@@ -53,6 +53,8 @@ public final class WeaponService implements Listener {
         int mode;
         boolean triggerHeld;
         boolean needsRelease;
+        /** The trigger went down while sprinting: the first shot waits until the gun is up again. */
+        boolean pendingPress;
         int burstLeft;
         double shotBudgetMs;
         long reloadStart = -1;
@@ -155,6 +157,8 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastHint = new HashMap<>();
     private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
+    /** Last tick each player was sprinting: the gun takes a moment to come back up afterwards. */
+    private final Map<UUID, Long> lastSprint = new HashMap<>();
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -279,6 +283,9 @@ public final class WeaponService implements Listener {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);
+            if (player.isSprinting()) {
+                lastSprint.put(player.getUniqueId(), now);
+            }
             GunState state = bind(player);
             if (state == null) {
                 continue;
@@ -310,6 +317,17 @@ public final class WeaponService implements Listener {
             }
             state.bloom = Math.max(0, state.bloom - 0.08);
             if (!state.triggerHeld) {
+                continue;
+            }
+            if (sprintLocked(player)) {
+                // Still held when the sprint ends: the gun fires once it is back up.
+                sprintHint(player);
+                state.shotBudgetMs = 0;
+                continue;
+            }
+            if (state.pendingPress) {
+                state.pendingPress = false;
+                firstShot(player, state);
                 continue;
             }
             FireMode mode = state.fireMode();
@@ -363,6 +381,7 @@ public final class WeaponService implements Listener {
     private void release(GunState state) {
         state.triggerHeld = false;
         state.needsRelease = false;
+        state.pendingPress = false;
         state.burstLeft = 0;
     }
 
@@ -370,13 +389,24 @@ public final class WeaponService implements Listener {
         if (state.reloading() || state.needsRelease) {
             return;
         }
-        GunSpec gun = state.gun;
-        long now = Bukkit.getCurrentTick();
-        long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
         state.triggerHeld = true;
         if (state.fireMode().singleAction() || state.fireMode() == FireMode.BURST) {
             state.needsRelease = true;
         }
+        if (sprintLocked(player)) {
+            // A pull while sprinting does nothing; kept held, it fires once the gun is back up (see tick).
+            state.pendingPress = true;
+            sprintHint(player);
+            return;
+        }
+        firstShot(player, state);
+    }
+
+    /** The shot a trigger pull fires at once, unless the gun has not cycled since the last one. */
+    private void firstShot(Player player, GunState state) {
+        GunSpec gun = state.gun;
+        long now = Bukkit.getCurrentTick();
+        long cooldownTicks = Math.max(1, Math.round(gun.millisBetweenShots() / 50.0));
         if (now - state.lastShotTick >= cooldownTicks || state.lastShotTick == 0) {
             state.shotBudgetMs = 0;
             state.burstLeft = state.fireMode() == FireMode.BURST ? 2 : 0;
@@ -387,7 +417,7 @@ public final class WeaponService implements Listener {
     // ------------------------------------------------------------------ shooting
 
     private boolean shoot(Player player, GunState state) {
-        if (!plugin.raids().canFire(player)) {
+        if (!plugin.raids().canFire(player) || sprintLocked(player)) {
             return false;
         }
         GunSpec gun = state.gun;
@@ -725,6 +755,26 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /**
+     * Sprinting carries the gun lowered: no shot while sprinting, nor for a few ticks after the sprint
+     * ends (weapons.sprint-recovery-ticks) while it comes back up. The vanilla client keeps sprinting
+     * with the attack button held, and the server cannot stop a client that holds the sprint key, so
+     * the trigger is what gives.
+     */
+    private boolean sprintLocked(Player player) {
+        if (player.isSprinting()) {
+            return true;
+        }
+        Long last = lastSprint.get(player.getUniqueId());
+        return last != null && Bukkit.getCurrentTick() - last <= plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
+    }
+
+    private void sprintHint(Player player) {
+        if (player.isSprinting()) {
+            hint(player, "<#9AA0A6>冲刺时不能开火");
+        }
+    }
+
     /** Why this player cannot fire right now, or null if they can. */
     private @Nullable String fireBlocker(Player player) {
         if (plugin.raids().canFire(player)) {
@@ -855,6 +905,8 @@ public final class WeaponService implements Listener {
     public void onSprint(PlayerToggleSprintEvent event) {
         if (event.isSprinting()) {
             setAds(event.getPlayer(), false);
+        } else {
+            lastSprint.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
         }
     }
 
@@ -873,5 +925,6 @@ public final class WeaponService implements Listener {
         sentZoom.remove(event.getPlayer().getUniqueId());
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
+        lastSprint.remove(event.getPlayer().getUniqueId());
     }
 }

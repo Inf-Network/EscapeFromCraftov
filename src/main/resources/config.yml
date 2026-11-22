@@ -119,6 +119,9 @@ combat:
     blind-while-white: true
 
 weapons:
+  # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
+  # back up). A trigger held through it fires as soon as it is over.
+  sprint-recovery-ticks: 5
   spread:
     # Moving widens the cone (bloom included) by 1 + move × how close the player is to their full
     # walking pace (measured on the server, 0 standing .. 1 walking or faster): hip fire and aiming.

@@ -508,6 +508,8 @@ HUD_IMAGES = {
     'craftov/armor_bar.png': lambda: hudart.bar(52, 3, rgb('#4FA3FF')),
     'craftov/helmet_bar.png': lambda: hudart.bar(52, 3, rgb('#C8CCD2')),
     'craftov/reload_bar.png': lambda: hudart.bar(132, 2, rgb('#F2C94C')),
+    # The gun coming up after a switch takes the reload bar's place, in grey.
+    'craftov/draw_bar.png': lambda: hudart.bar(132, 2, rgb('#C8CCD2')),
     'craftov/progress_empty.png': lambda: hudart.bar(120, 5, (0, 0, 0, 0), empty=True),
     'craftov/extract_bar.png': lambda: hudart.bar(120, 5, rgb('#5BD16B')),
     'craftov/downed_bar.png': lambda: hudart.bar(120, 5, rgb('#FF4D4D')),
@@ -589,6 +591,7 @@ def build_betterhud():
     images['craftov_armor_bar'] = listener('craftov/armor_bar.png', 'craftov_armor', '100')
     images['craftov_helmet_bar'] = listener('craftov/helmet_bar.png', 'craftov_helmet', '100')
     images['craftov_reload_bar'] = listener('craftov/reload_bar.png', 'craftov_reload', '100')
+    images['craftov_draw_bar'] = listener('craftov/draw_bar.png', 'craftov_draw', '100')
     images['craftov_extract_bar'] = listener('craftov/extract_bar.png', 'craftov_extract', '100')
     images['craftov_downed_bar'] = listener('craftov/downed_bar.png', 'craftov_downed', '100')
     images['craftov_med_bar'] = listener('craftov/med_bar.png', 'craftov_med_pct', '100')
@@ -623,7 +626,8 @@ def build_betterhud():
         },
         'craftov_weapon': {
             'images': numbered([image('craftov_panel_right', 0, 0),
-                                image('craftov_reload_bar', 9, 44, cond(('craftov_reloading', 'true')))]),
+                                image('craftov_reload_bar', 9, 44, cond(('craftov_reloading', 'true'))),
+                                image('craftov_draw_bar', 9, 44, cond(('craftov_drawing', 'true')))]),
             'texts': numbered([text('<#E8E4D8>[craftov_weapon]', 142, 3, 0.5, 'right'),
                                text('<white>[craftov_ammo]</white> <#8A8F98>/ [craftov_reserve]', 142, 13, 0.75, 'right'),
                                text('<#F2C94C>[craftov_firemode] <#8A8F98>· [craftov_ammo_type]', 142, 27, 0.45, 'right'),

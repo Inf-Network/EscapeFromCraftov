@@ -415,6 +415,15 @@ craftov_weapon:
           first: craftov_reloading
           second: 'true'
           operation: ==
+    '3':
+      name: craftov_draw_bar
+      x: 9
+      y: 44
+      conditions:
+        '1':
+          first: craftov_drawing
+          second: 'true'
+          operation: ==
   texts:
     '1':
       name: craftov_font

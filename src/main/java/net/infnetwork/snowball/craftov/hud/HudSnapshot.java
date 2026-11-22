@@ -14,11 +14,12 @@ public record HudSnapshot(
         int helmetClass, int armorClass, int downedPct, int skillCooldown, long value, long money,
         String weapon, String fireMode, String ammoType, String time, String map, String tier, String nearest,
         String status, String operator, String skill, String valueShort, String extractLeft,
-        int[] parts, int stamina, boolean usingMed, String medName, String medLeft, int medPct, String weaponHint
+        int[] parts, int stamina, boolean usingMed, String medName, String medLeft, int medPct, String weaponHint,
+        boolean drawing, int draw
 ) {
     public static final HudSnapshot EMPTY = new HudSnapshot(false, false, false, false, false, false,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", "", "", "", "", "", "", "", "", "", "", "",
-            new int[net.infnetwork.snowball.craftov.combat.BodyPart.values().length], 100, false, "", "", 0, "");
+            new int[net.infnetwork.snowball.craftov.combat.BodyPart.values().length], 100, false, "", "", 0, "", false, 0);
 
     /** HUD colour state of one body part (see HealthService#partState). */
     public int part(net.infnetwork.snowball.craftov.combat.BodyPart part) {
@@ -35,6 +36,6 @@ public record HudSnapshot(
                 value, d.money(p), d.weaponName(p), d.fireMode(p), d.ammoType(p), d.time(p), d.mapName(p), d.tierName(p),
                 d.nearestExtract(p), d.injuries(p), d.operator(p), d.skill(p), Text.moneyShort(value),
                 String.format("%.1f", d.extractSecondsLeft(p)), d.parts(p), d.stamina(p), d.usingMed(p), d.medName(p),
-                d.medLeft(p), d.medPercent(p), d.weaponHint(p));
+                d.medLeft(p), d.medPercent(p), d.weaponHint(p), d.drawing(p), d.drawPercent(p));
     }
 }

@@ -83,6 +83,17 @@ public final class HudData {
         return s == null || !s.reloading() ? 0 : (int) Math.round(s.reloadProgress() * 100);
     }
 
+    /** The gun is still coming up after a switch (a reload started meanwhile shows instead). */
+    public boolean drawing(Player p) {
+        WeaponService.GunState s = gun(p);
+        return s != null && s.drawing() && !s.reloading();
+    }
+
+    public int drawPercent(Player p) {
+        WeaponService.GunState s = gun(p);
+        return s == null || !drawing(p) ? 0 : (int) Math.round(s.drawProgress() * 100);
+    }
+
     public int armorPercent(Player p, int slot) {
         ItemStack stack = p.getInventory().getItem(slot);
         ItemDef def = plugin.items().defOf(stack);
@@ -129,7 +140,7 @@ public final class HudData {
         return out;
     }
 
-    /** One short line under the ammo counter: reload progress, what to press, or why it is empty. */
+    /** One short line under the ammo counter: reload or draw progress, what to press, or why it is empty. */
     public String weaponHint(Player p) {
         WeaponService.GunState s = gun(p);
         if (s == null) {
@@ -138,6 +149,9 @@ public final class HudData {
         if (s.reloading()) {
             double left = s.reloadSecondsLeft();
             return "<#FFB74D>换弹中 " + String.format("%.1f", left) + "s";
+        }
+        if (s.drawing()) {
+            return "<#C8CCD2>拔枪中 " + String.format("%.1f", s.drawSecondsLeft()) + "s";
         }
         int reserve = reserve(p);
         int mag = s.gun().magazine();

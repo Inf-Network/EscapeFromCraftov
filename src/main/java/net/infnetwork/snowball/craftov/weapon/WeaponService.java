@@ -225,6 +225,18 @@ public final class WeaponService implements Listener {
         public boolean drawing() {
             return Bukkit.getCurrentTick() < readyAt;
         }
+
+        public double drawSecondsLeft() {
+            return Math.max(0, (readyAt - Bukkit.getCurrentTick()) / 20.0);
+        }
+
+        public double drawProgress() {
+            if (!drawing()) {
+                return 1;
+            }
+            long now = Bukkit.getCurrentTick();
+            return Math.max(0, Math.min(1.0, (now - drawStart) / (double) Math.max(1, readyAt - drawStart)));
+        }
     }
 
     private final CraftovPlugin plugin;

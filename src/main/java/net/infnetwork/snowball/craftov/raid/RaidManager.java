@@ -1243,6 +1243,9 @@ public final class RaidManager implements Listener {
                 m.customName(net.kyori.adventure.text.Component.text(rp.name));
                 m.setImmovable(true);
                 m.setPersistent(false);
+                // Facing the way the player faced, body too: hit zones read the body's yaw, and a
+                // body left 50 degrees off its head would take chest shots in an arm.
+                m.setBodyYaw(at.getYaw());
                 org.bukkit.attribute.AttributeInstance max = m.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
                 if (max != null) {
                     max.setBaseValue(net.infnetwork.snowball.craftov.combat.HealthService.MAX_HP);

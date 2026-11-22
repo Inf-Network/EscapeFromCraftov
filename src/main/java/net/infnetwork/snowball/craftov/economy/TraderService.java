@@ -168,7 +168,7 @@ public final class TraderService {
         long assets = assets(player);
         long maxAssets = freeKitMaxAssets();
         if (assets > maxAssets) {
-            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、携带、安全箱、交易行上架）约 ◈"
+            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
                     + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<#9AA0A6>可以从仓库取出装备或到商人处购买。");
             return;
         }

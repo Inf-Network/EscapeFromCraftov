@@ -142,6 +142,12 @@ ai:
   # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
   damage-multiplier: 0.65
   reaction-ticks: 14
+  # How far from the point it aims at a soldier's rounds land, in metres at the target, the same at
+  # any distance: from the first value at the lowest accuracy (常规 0.55) to the second at 1.0 and up
+  # (绝密 operators and bosses). x1.4 on a moving target, x2.6 when it has just started shooting
+  # (settling over 3 s). Past the gun's effective range it fires one or two rounds at a time.
+  aim-error: [0.6, 0.25]
+  sniper-aim-error: [0.2, 0.1]
   # Soldiers notice players gradually. Every look (10 a second) adds rate/10 times how close you are
   # ((1 - distance/sight)^1.5, x3 within 6 blocks straight ahead; sight is 48 blocks, a sniper's 90,
   # x0.55 at night), crouching (x0.5), standing still (x0.7) or sprinting (x1.5), light on you

@@ -963,8 +963,7 @@ public final class AiService implements Listener {
             return;
         }
         if (bot.burstLeft <= 0) {
-            boolean auto = gun.modes().contains(net.infnetwork.snowball.craftov.weapon.FireMode.AUTO);
-            bot.burstLeft = auto ? ThreadLocalRandom.current().nextInt(3, 7) : 1;
+            bot.burstLeft = burst(gun, distance, 3, 7);
         }
         Location eye = bot.mob.getEyeLocation();
         Vector point = aimPoint(target, bot.targetLines);
@@ -980,23 +979,56 @@ public final class AiService implements Listener {
             reposition(bot, target, now);
             return;
         }
-        bot.burstLeft--;
-        bot.ammoLeft--;
-        Vector aim = point.clone().subtract(eye.toVector()).normalize();
         double moving = target.getVelocity().setY(0).lengthSquared() > 0.004 ? 1.4 : 1.0;
         double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
-        double spread = (2.6 + distance * 0.05) * moving * settle / Math.max(0.25, bot.accuracy);
-        if ("sniper".equals(bot.kind)) {
-            spread *= 0.45;
+        fireRound(bot, eye, point, aimError(bot) * moving * settle, now);
+    }
+
+    /**
+     * Rounds in the next burst: {@code min} to {@code max - 1} from an automatic gun, one or two past
+     * the gun's effective range (single aimed shots there), one from anything else.
+     */
+    private static int burst(GunSpec gun, double distance, int min, int max) {
+        if (!gun.modes().contains(net.infnetwork.snowball.craftov.weapon.FireMode.AUTO)) {
+            return 1;
         }
+        return distance > gun.range() ? ThreadLocalRandom.current().nextInt(1, 3) : ThreadLocalRandom.current().nextInt(min, max);
+    }
+
+    /**
+     * How far from the point it aims at a soldier's rounds land, in metres at the target whatever the
+     * distance: ai.aim-error goes from its first value at the lowest accuracy (常规, 0.55) to its second
+     * at 1.0 and above (绝密 operators and bosses); snipers use ai.sniper-aim-error.
+     */
+    private double aimError(Bot bot) {
+        boolean sniper = "sniper".equals(bot.kind);
+        List<Double> range = plugin.getConfig().getDoubleList(sniper ? "ai.sniper-aim-error" : "ai.aim-error");
+        double worst = range.isEmpty() ? (sniper ? 0.2 : 0.6) : range.get(0);
+        double best = range.size() < 2 ? (sniper ? 0.1 : 0.25) : range.get(1);
+        double skill = Math.max(0, Math.min(1, (bot.accuracy - 0.55) / 0.45));
+        return worst + (best - worst) * skill;
+    }
+
+    /**
+     * One pull of the trigger at {@code point}: the rounds land within {@code error} metres of it
+     * (more when dazzled or shooting past smoke), with the muzzle flash, sound and casing, and the next
+     * shot timed by the gun's rate of fire and the burst.
+     */
+    private void fireRound(Bot bot, Location eye, Vector point, double error, long now) {
+        GunSpec gun = bot.gun.gun();
+        bot.burstLeft--;
+        bot.ammoLeft--;
+        double distance = Math.max(1, eye.toVector().distance(point));
+        Vector aim = point.clone().subtract(eye.toVector()).normalize();
         if (now < bot.dazzledUntil) {
-            spread *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
+            error *= plugin.getConfig().getDouble("ai.dazzle.spread-multiplier", 3.0);
         }
         // Shooting past the edge of a smoke cloud: it sees you only dimly and goes wide.
-        double haze = smokeAlong(eye.getWorld(), eye.toVector(), eye.toVector().add(aim.clone().multiply(distance)));
+        double haze = smokeAlong(eye.getWorld(), eye.toVector(), point);
         if (haze > 0) {
-            spread *= 1 + Math.min(SMOKE_OPAQUE, haze);
+            error *= 1 + Math.min(SMOKE_OPAQUE, haze);
         }
+        double spread = Math.toDegrees(Math.atan(error / distance));
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         // A share of what a player deals with the same gun and ammo to the body and limbs (headshots
         // get less: scaledGun halves the head multiplier); nothing scales it again on the way

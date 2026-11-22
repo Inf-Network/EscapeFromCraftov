@@ -64,7 +64,7 @@ public final class BetterHudBridge implements BetterHudHook {
         string(pm, "craftov_operator", HudSnapshot::operator);
         string(pm, "craftov_skill", HudSnapshot::skill);
         string(pm, "craftov_value_short", HudSnapshot::valueShort);
-        string(pm, "craftov_money_text", s -> net.infnetwork.snowball.craftov.util.Text.money(s.money()));
+        string(pm, "craftov_money_text", HudSnapshot::moneyText);
         string(pm, "craftov_extract_left", HudSnapshot::extractLeft);
         bool(pm, "craftov_in_raid", HudSnapshot::inRaid);
         bool(pm, "craftov_in_lobby", HudSnapshot::inLobby);

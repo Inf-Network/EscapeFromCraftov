@@ -8,7 +8,6 @@ import net.infnetwork.snowball.craftov.gui.Style;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.command.CommandSender;
 
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +19,6 @@ public final class Text {
 
     private static final MiniMessage MM = MiniMessage.builder()
             .tags(TagResolver.resolver(TagResolver.standard(), Style.tags())).build();
-    private static final DecimalFormat MONEY = new DecimalFormat("#,###");
 
     private Text() {
     }
@@ -50,8 +48,9 @@ public final class Text {
         sender.sendMessage(mm(miniMessage));
     }
 
+    /** 1,234,567. Stateless, so any thread may call it (a shared DecimalFormat is not thread-safe). */
     public static String money(long amount) {
-        return MONEY.format(amount);
+        return String.format(java.util.Locale.ROOT, "%,d", amount);
     }
 
     /** Short money format: 12.3万 / 1.25亿. */

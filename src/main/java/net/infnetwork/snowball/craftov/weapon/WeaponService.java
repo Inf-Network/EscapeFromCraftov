@@ -367,6 +367,10 @@ public final class WeaponService implements Listener {
             state.nextShotTick = kept.nextShotTick();
             state.bloom = kept.bloomAt(now);
         }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s draws %s tick=%d ready=%d next=%d bloom=%.2f",
+                    player.getName(), def.id(), now, state.readyAt, state.nextShotTick, state.bloom));
+        }
         states.put(player.getUniqueId(), state);
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {

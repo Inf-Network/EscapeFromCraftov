@@ -243,6 +243,12 @@ rank:
   extract-xp: 150
   extract-xp-min-gear: 15000
 
+hideout:
+  # Intel centre income per hour by level (level 0 first); at most 24 hours of it add up between
+  # collections. Workbench and med station recipes are set in HideoutService (tools/econ/balance.py
+  # checks they save money against the trader without selling for more than they cost).
+  intel-income: [0, 1000, 2000, 4000]
+
 tasks:
   # Cost of swapping an unfinished daily contract, and the bonus for finishing all three.
   reroll-cost: 3000

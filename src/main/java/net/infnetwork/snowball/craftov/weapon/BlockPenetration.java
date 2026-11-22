@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * wooden doors, trapdoors, a single layer of planks, leaves and iron bars. Each needs at least its
  * {@code level} of the round's penetration (the ammo's {@code pen} in items.yml), uses that much up and
  * leaves the round {@code damage} of its damage, so a common rifle round (pen 3) goes through one door
- * or one plank wall but not two. Anything not listed stops a round; stone and tinted glass stay
+ * or one plank wall but not two; a run of same-rule blocks crossed without a gap is one layer
+ * ({@code Ballistics#fire}). Anything not listed stops a round; stone and tinted glass stay
  * bulletproof.
  *
  * <p>Keys are block ids, with {@code *} standing for any part of one ({@code *_glass_pane}), or a block

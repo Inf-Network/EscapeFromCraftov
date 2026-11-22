@@ -119,8 +119,14 @@ combat:
     blind-while-white: true
   penetration:
     # Glass in a raid (not tinted glass) shatters under any round, which flies on with this share of
-    # its damage. A round's path goes on through at most two blocks.
+    # its damage. A round goes on through at most two layers (a pane, a door, a plank wall...).
     glass-damage: 0.9
+    # Blocks with the same rule below that a round goes from one straight into the next count as one
+    # layer, paid for once: a plank wall shot at an angle takes the round out of one plank through its
+    # side into the next. Only while the path through the layer is at most this many blocks long: a
+    # 1-block wall goes through up to about 55 degrees off square, and two walls back to back (2 deep)
+    # never do.
+    layer-depth: 1.8
     # Blocks a round goes through. It needs at least `level` penetration left (the ammo's `pen` in
     # items.yml), uses that much up and keeps `damage` of its damage: a common rifle round (pen 3) goes
     # through one wooden door or one layer of planks, not two, and 9x19 FMJ (pen 1) through none.

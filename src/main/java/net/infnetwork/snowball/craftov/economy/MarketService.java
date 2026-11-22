@@ -360,7 +360,7 @@ public final class MarketService implements Listener {
         Map<String, Offer> out = new LinkedHashMap<>();
         for (Listing listing : data.listings) {
             ItemDef def = plugin.registry().get(listing.item.id);
-            if (def == null || (category != null && def.category() != category)) {
+            if (def == null || !def.tradeable() || (category != null && def.category() != category)) {
                 continue;
             }
             long unit = listing.price / Math.max(1, listing.item.amount);
@@ -478,6 +478,10 @@ public final class MarketService implements Listener {
         }
         if (listing.seller.equals(player.getUniqueId())) {
             Text.send(player, "<#FF8A80>不能购买自己的商品，可在“我的上架”中下架。");
+            return false;
+        }
+        if (!tradeable(listing.item)) {
+            Text.send(player, "<#FF8A80>这件物品已经不能在交易行买卖，会退回卖家。");
             return false;
         }
         Profile buyer = plugin.profiles().get(player);
@@ -712,9 +716,12 @@ public final class MarketService implements Listener {
         boolean counting = virtualCap() > 0;
         rollVirtualDay();
         for (Listing listing : new ArrayList<>(data.listings)) {
-            if (now >= listing.expires) {
-                java.util.function.Supplier<String> change = () -> "market listing " + listing.id + " expired: add to mailbox "
-                        + ProfileService.json(listing.item);
+            // An item items.yml has since made untradeable (the machete and the karambit) goes back
+            // to its seller like an expired listing instead of staying buyable until it expires.
+            boolean withdrawn = !tradeable(listing.item);
+            if (now >= listing.expires || withdrawn) {
+                java.util.function.Supplier<String> change = () -> "market listing " + listing.id
+                        + (withdrawn ? " is no longer tradeable" : " expired") + ": add to mailbox " + ProfileService.json(listing.item);
                 if (plugin.profiles().canEdit(listing.seller)) {
                     takeOff(listing); // off the market on disk before the item reaches the mailbox
                     plugin.profiles().edit(listing.seller, change, p -> p.mailbox.add(listing.item));
@@ -738,6 +745,12 @@ public final class MarketService implements Listener {
             }
         }
         save();
+    }
+
+    /** False for an item that items.yml no longer lets onto the market; an unknown id is left alone. */
+    private boolean tradeable(ItemRecord item) {
+        ItemDef def = plugin.registry().get(item.id);
+        return def == null || def.tradeable();
     }
 
     public int listingCount() {

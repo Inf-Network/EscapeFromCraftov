@@ -4,7 +4,7 @@
 # Revision of this file. The server copies it from the jar only when it is missing, so raise this
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
-revision: 1
+revision: 2
 items:
   # ------------------------------------------------------------------ handguns
   p18:
@@ -116,12 +116,12 @@ items:
   ammo_57_ss:   { name: "5.7x28 SS190", category: AMMO, rarity: BLUE, value: 62, ammo: { caliber: "5.7x28", pen: 4, damage: 0.95, armor-damage: 1.1 } }
   ammo_556_m855: { name: "5.56x45 M855", category: AMMO, rarity: GREEN, value: 32, ammo: { caliber: "5.56x45", pen: 3, damage: 1.0, armor-damage: 1.0 } }
   ammo_556_a1:  { name: "5.56x45 M855A1", category: AMMO, rarity: BLUE, value: 85, ammo: { caliber: "5.56x45", pen: 4, damage: 1.0, armor-damage: 1.15 } }
-  ammo_556_m995: { name: "5.56x45 M995", category: AMMO, rarity: PURPLE, value: 220, ammo: { caliber: "5.56x45", pen: 5, damage: 0.95, armor-damage: 1.3 } }
+  ammo_556_m995: { name: "5.56x45 M995", category: AMMO, rarity: GOLD, value: 220, ammo: { caliber: "5.56x45", pen: 5, damage: 0.95, armor-damage: 1.3 } }
   ammo_762_ps:  { name: "7.62x39 PS", category: AMMO, rarity: GREEN, value: 30, ammo: { caliber: "7.62x39", pen: 3, damage: 1.0, armor-damage: 1.1 } }
   ammo_762_bp:  { name: "7.62x39 BP", category: AMMO, rarity: BLUE, value: 92, ammo: { caliber: "7.62x39", pen: 4, damage: 0.98, armor-damage: 1.25 } }
-  ammo_762_ap:  { name: "7.62x39 AP", category: AMMO, rarity: PURPLE, value: 210, ammo: { caliber: "7.62x39", pen: 5, damage: 0.95, armor-damage: 1.35 } }
+  ammo_762_ap:  { name: "7.62x39 AP", category: AMMO, rarity: GOLD, value: 210, ammo: { caliber: "7.62x39", pen: 5, damage: 0.95, armor-damage: 1.35 } }
   ammo_308_m80: { name: "7.62x51 M80", category: AMMO, rarity: GREEN, value: 58, ammo: { caliber: "7.62x51", pen: 3, damage: 1.0, armor-damage: 1.2 } }
-  ammo_308_m61: { name: "7.62x51 M61", category: AMMO, rarity: PURPLE, value: 260, ammo: { caliber: "7.62x51", pen: 5, damage: 1.0, armor-damage: 1.45 } }
+  ammo_308_m61: { name: "7.62x51 M61", category: AMMO, rarity: GOLD, value: 260, ammo: { caliber: "7.62x51", pen: 5, damage: 1.0, armor-damage: 1.45 } }
   ammo_338_fmj: { name: ".338 FMJ", category: AMMO, rarity: BLUE, value: 320, stack: 30, ammo: { caliber: ".338", pen: 4, damage: 1.0, armor-damage: 1.5 } }
   ammo_338_ap:  { name: ".338 AP", category: AMMO, rarity: GOLD, value: 950, stack: 30, ammo: { caliber: ".338", pen: 6, damage: 1.0, armor-damage: 1.8 } }
   ammo_12_buck: { name: "12号 00 鹿弹", category: AMMO, rarity: WHITE, value: 22, stack: 30, ammo: { caliber: "12ga", pen: 1, damage: 1.0, armor-damage: 0.6 } }
@@ -162,7 +162,7 @@ items:
   surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 15000, stack: 1, lore: "每次处理伤得最重的一个部位的骨折与出血，再回复最多 20 点生命。每处伤口都消耗治疗量。", med: { use: 12.0, pool: 160, per-use: 20, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, one-part: true, anim: brush, sound: med.kit } }
   painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, sound: med.pills } }
   adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: trident, sound: med.inject } }
-  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，立即自我救援。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
+  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，打完针自己站起来。带在身上时，没有队友能救也会先倒地。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
 
   # ------------------------------------------------------------------ throwables
   frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "右键投掷，3.5 秒后爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }
@@ -242,6 +242,10 @@ items:
   eel_generator:   { weight: 8.0, name: "电鳗发电机", category: COLLECTIBLE, rarity: RED, value: 460000, lore: "鱼缸里的电鳗还活着，接线柱有点烫手。" }
 
   # ------------------------------------------------------------------ melee (always kept, hotbar key 3)
+  # A knife hit goes through armour like a round: damage per hit, pen against the armour's class,
+  # armor-damage scales the durability it wears off, head is the head-hit multiplier (1.0 unless
+  # set; a level swing at a standing target lands on the head, so it is no headshot bonus).
+  # cooldown is in ticks, reach in blocks. tools/combat/melee.py prints the hits to down.
   knife_starter:
     name: "新手战术刀"
     category: MELEE
@@ -249,26 +253,28 @@ items:
     value: 0
     tradeable: false
     lootable: false
-    lore: "配发的基础战术刀。死亡不会丢失。"
-    melee: { hits-normal: 2, hits-special: 3, hits-boss: 4, player-damage: 30, cooldown: 12, reach: 3.0 }
+    lore: "配发的基础战术刀，对付没穿护甲的目标还行，砍在护甲上几乎没用。死亡不会丢失。"
+    melee: { damage: 34, pen: 1, armor-damage: 0.6, cooldown: 12, reach: 3.0 }
   knife_tactical:
     name: "战术匕首"
     category: MELEE
     rarity: GREEN
     value: 18000
-    lore: "双刃匕首，出手快。普通敌兵 2 刀、精英 2 刀、首领 3 刀。死亡不会丢失。"
-    melee: { hits-normal: 2, hits-special: 2, hits-boss: 3, player-damage: 38, cooldown: 10, reach: 3.0 }
+    lore: "双刃匕首，出手快，能刺透 2 级及以下的护甲。死亡不会丢失。"
+    melee: { damage: 36, pen: 2, armor-damage: 0.8, cooldown: 10, reach: 3.0 }
   knife_machete:
     name: "开山刀"
     category: MELEE
     rarity: BLUE
     value: 42000
-    lore: "又长又沉，普通敌兵一刀倒地，挥得慢一些。死亡不会丢失。"
-    melee: { hits-normal: 1, hits-special: 2, hits-boss: 3, player-damage: 50, cooldown: 16, reach: 3.4 }
+    tradeable: false
+    lore: "又长又沉，砍在没穿护甲的胸腹上伤害很高，砍头反而不顺手；挥得慢一些，砍不透 3 级及以上的护甲。死亡不会丢失。"
+    melee: { damage: 52, pen: 2, armor-damage: 1.0, head: 0.75, cooldown: 16, reach: 3.4 }
   knife_karambit:
     name: "爪刀"
     category: MELEE
     rarity: PURPLE
     value: 95000
-    lore: "弧形刃，出手极快。普通敌兵一刀、精英与首领两刀。死亡不会丢失。"
-    melee: { hits-normal: 1, hits-special: 2, hits-boss: 2, player-damage: 45, cooldown: 8, reach: 2.9 }
+    tradeable: false
+    lore: "弧形刃，出手极快，能割开 3 级及以下的护甲。死亡不会丢失。"
+    melee: { damage: 36, pen: 3, armor-damage: 0.8, cooldown: 8, reach: 2.9 }

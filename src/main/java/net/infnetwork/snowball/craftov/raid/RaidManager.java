@@ -137,7 +137,8 @@ public final class RaidManager implements Listener {
         }
         RaidPlayer rp = session(player);
         return rp != null && rp.state == RaidPlayer.State.ALIVE && player.getGameMode() == GameMode.ADVENTURE
-                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX);
+                && player.getWorld().getName().startsWith(WorldService.RAID_PREFIX)
+                && !plugin.downed().isReviving(player);
     }
 
     public boolean canBeShot(Player player) {
@@ -814,11 +815,14 @@ public final class RaidManager implements Listener {
         plugin.profiles().saveNow(player.getUniqueId());
         plugin.escorts().settle(raid, rp, false);
         // Your own grenade is no kill: it would count for the daily contract and pay the top player
-        // his own house bounty.
+        // his own house bounty. Nor is a squadmate's, with friendly fire on: a squad could otherwise
+        // cash in its own member's bounty. Nor does a killer who has already died or got out get one
+        // (a wound of theirs bleeding out later, say): their kills were counted and saved when they
+        // left, so a late one would pay the bounty and the contract but never reach their stats.
         if (hit != null && hit.attacker() != null && !hit.attacker().equals(player.getUniqueId())) {
             Player killer = Bukkit.getPlayer(hit.attacker());
             RaidPlayer kr = killer == null ? null : raid.player(killer.getUniqueId());
-            if (kr != null) {
+            if (kr != null && kr.active() && kr.squad != rp.squad) {
                 kr.kills++;
                 plugin.tasks().onPlayerKill(killer);
                 plugin.bounties().onKill(killer, player, raid);
@@ -1057,7 +1061,7 @@ public final class RaidManager implements Listener {
         String line = hit == null || hit.attacker() == null
                 ? "<#8A8F98>☠ <white>" + Text.escape(victim)
                 : "<#FF8A80>" + Text.escape(hit.attackerName()) + " <#8A8F98>[" + Text.escape(hit.weapon()) + "]"
-                + (hit.zone() == net.infnetwork.snowball.craftov.combat.HitZone.HEAD ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
+                + (hit.headshot() ? " <#FF4D4D>⊕" : "") + " <#8A8F98>→ <white>" + Text.escape(victim);
         for (Player player : raid.online()) {
             player.sendMessage(Text.mm(line));
         }
@@ -1317,12 +1321,16 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ voluntary exit / shutdown
 
-    /** Gives up the raid (counts as death). */
+    /**
+     * Gives up the raid (counts as death). Whoever hurt the player in the last 30 seconds, or
+     * knocked them down, still gets the kill: giving up from the terminal while crawling or about to
+     * die would otherwise deny them it and the bounty.
+     */
     public void surrender(Player player) {
         Raid raid = raidOf(player);
         RaidPlayer rp = session(player);
         if (raid != null && rp != null && rp.active()) {
-            die(raid, player, rp, "放弃行动", null);
+            die(raid, player, rp, "放弃行动", plugin.downed().killingHit(player));
         }
     }
 
@@ -1534,6 +1542,11 @@ public final class RaidManager implements Listener {
         }
         if (event.getFinalDamage() >= player.getHealth()) {
             event.setCancelled(true);
+            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+                // Cancelled, so HealthService.onFallen never sees it: the legs still break, and the
+                // fall is named as the cause.
+                plugin.health().fallen(player, event.getDamage());
+            }
             DamageService.LastHit hit = plugin.damage().lastHit(player.getUniqueId());
             if (hit == null && event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof LivingEntity living) {
                 plugin.damage().recordHit(player, living, "近战", net.infnetwork.snowball.craftov.combat.HitZone.TORSO);
@@ -1794,7 +1807,8 @@ public final class RaidManager implements Listener {
         }
         plugin.weapons().reset(player);
         if (rp.state == RaidPlayer.State.DOWNED) {
-            die(raid, player, rp, "倒地后断线", plugin.damage().lastHit(player.getUniqueId()));
+            // As if bleeding out: the knocker keeps the kill and the bounty past the 30 seconds.
+            die(raid, player, rp, "倒地后断线", plugin.downed().killingHit(player));
             byPlayer.remove(player.getUniqueId());
             player.getInventory().clear();
             return;
@@ -1842,7 +1856,9 @@ public final class RaidManager implements Listener {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
-        if (def != null && (def.rarity().tier() >= 5)) {
+        // Gold and red finds are worth telling the squad about; ammo is not, even gold rounds, which
+        // come in several stacks and would send a line for each one taken.
+        if (def != null && def.rarity().tier() >= 5 && def.category() != Category.AMMO) {
             Raid raid = raidOf(player);
             if (raid != null) {
                 for (RaidPlayer mate : raid.squadOf(rp)) {

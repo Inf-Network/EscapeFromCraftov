@@ -71,7 +71,7 @@ public final class Ballistics {
             end = result.getHitPosition().toLocation(world);
             if (result.getHitEntity() instanceof LivingEntity living) {
                 hitEntity = living;
-                BodyPart part = BodyPart.of(living, result.getHitPosition());
+                BodyPart part = BodyPart.of(living, result.getHitPosition(), dir);
                 double distance = eye.toVector().distance(result.getHitPosition());
                 plugin.damage().bullet(shooter, living, part, gun, ammo, distance, weaponName);
                 if (plugin.drones().isDrone(living)) {

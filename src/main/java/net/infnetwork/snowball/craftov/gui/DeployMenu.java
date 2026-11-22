@@ -122,7 +122,7 @@ final class DeployMenu extends Menu {
             });
         }
         button(29, UiItems.button("craftov:ui/icon_solo", (mode == RaidMode.SOLO ? "<#F2C94C>▶ " : "<white>") + "单人行动",
-                List.of("<#9AA0A6>独自潜入，倒地即阵亡")), e -> {
+                List.of("<#9AA0A6>独自潜入，致命伤直接阵亡", "<#9AA0A6>带着自救注射器时会倒地，可自己救起")), e -> {
             mode = RaidMode.SOLO;
             redraw();
         });

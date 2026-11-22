@@ -106,9 +106,18 @@ downed:
   first-seconds: 60
   second-seconds: 30
   revive-seconds: 5
+  # A teammate revives by holding right click on the downed player: within revive-range blocks,
+  # feet less than revive-max-height apart (a stair or a slab, not a ledge or the floor above), and
+  # with a clear line from their eyes to the downed player.
+  revive-range: 2.2
+  revive-max-height: 1.0
+  # The revive starts over when the reviver walks more than this many blocks from where they began,
+  # or takes damage (their own bleeding aside).
+  revive-max-move: 0.5
+  # A lethal hit knocks a player down (below max-downs) while a squadmate is still up to revive
+  # them, or while they carry a self-revive injector: solo, or the last of the squad standing, they
+  # then bleed out as usual and can use it. Without either, the hit kills.
   max-downs: 2
-  # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
-  solo: false
 
 medical:
   # Healing pool a medkit or surgery kit (items.yml med.pool) uses up per wound it treats; what is
@@ -151,6 +160,42 @@ combat:
     # a second). In first person the opaque white hides the fog, and the effect is lifted before the
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
+  # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
+  # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take
+  # combat.melee.zone-multipliers on the arms and legs). Arms and legs share the one 100-point health
+  # pool with the torso and are about half the hitbox (legs alone 40%), and no armour covers them:
+  # lowering arm and leg (0.5 each makes a K47 with PS need six leg hits instead of four) is the
+  # short-term way to keep limb shots from downing a player in any armour.
+  zone-multipliers:
+    chest: 1.0
+    stomach: 0.95
+    arm: 0.65
+    leg: 0.7
+  # Helmets cover the head, vests the chest and stomach, against bullets and knives alike (a knife
+  # is a round with its own damage, pen and armor-damage from items.yml).
+  armor:
+    # Share of a hit's damage that gets through armour at full strength, by the round's penetration
+    # minus the armour's class: +1 or more, 0, -1, -2, -3 or less (the first and last entries also
+    # cover everything beyond them). Armour always takes something off, even against a stronger round.
+    damage-taken: [0.85, 0.6, 0.4, 0.25, 0.15]
+    # Armour protects fully above this share of its durability; below it, its protection fades
+    # linearly to none at 0. The part of a hit that wears more durability than is left goes straight
+    # through. A round the class stops can still make the chest or stomach bleed through a vest
+    # below full strength, with the chance growing as the protection fades.
+    full-protection-above: 0.5
+    # Durability a hit wears off: the round's damage (after range falloff, before the hit zone) x its
+    # armor-damage x this; wear-blocked when the class stops the round, wear-penetrated when it does
+    # not. The engineer's passive takes a quarter off.
+    wear-blocked: 0.3
+    wear-penetrated: 0.3
+  melee:
+    # Knife damage multiplier on the arms and legs, in place of zone-multipliers (the chest and
+    # stomach are the same as for a bullet). No armour covers the limbs: at a bullet's 0.65 / 0.7 the
+    # machete (52) downed a player in any armour with three limb cuts; at 0.6 it takes four, as many
+    # as a K47 with PS takes in the legs. tools/combat/melee.py prints and checks the hits.
+    zone-multipliers:
+      arm: 0.6
+      leg: 0.6
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

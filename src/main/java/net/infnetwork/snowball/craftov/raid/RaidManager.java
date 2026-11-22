@@ -1134,17 +1134,6 @@ public final class RaidManager implements Listener {
      * failure cannot leave the others in a raid that no longer exists.
      */
     public void shutdown() {
-        // Insured gear in bodies and on the ground goes home as at a normal raid end: the worlds are
-        // deleted below and nothing would be left to settle after the restart. Every raid is settled
-        // before any of them is torn down, so a teardown step failing during shutdown (sending
-        // players home, deleting a world) cannot cost a later raid its payouts.
-        for (Raid raid : raids.values()) {
-            try {
-                plugin.insurance().settle(raid);
-            } catch (RuntimeException ex) {
-                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
-            }
-        }
         for (Raid raid : new ArrayList<>(raids.values())) {
             // A loading raid has not taken anything from its squads yet: they are still in the lobby.
             boolean deployed = raid.state != Raid.State.LOADING;
@@ -1155,11 +1144,18 @@ public final class RaidManager implements Listener {
                     plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not send " + rp.name + " home from raid " + raid.id, ex);
                 }
             }
+            raid.state = Raid.State.CLOSED;
             try {
-                raid.state = Raid.State.CLOSED;
                 // As when a raid closes: insured gear still on bodies, in containers or on the ground
-                // goes back to its owners, and the dead watching a squadmate are sent home too.
+                // goes back to its owners. The world is deleted below and nothing would be left to
+                // settle after the restart. On its own, so a failing settlement cannot keep the world
+                // and a failing teardown cannot cost the payouts.
                 plugin.insurance().settle(raid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
+            }
+            try {
+                // The dead watching a squadmate are sent home too.
                 spectators.values().removeIf(entry -> entry.getKey() == raid);
                 for (Player player : raid.world.getPlayers()) {
                     plugin.lobby().enterLobby(player);

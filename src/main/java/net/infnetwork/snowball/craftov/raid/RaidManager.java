@@ -643,11 +643,10 @@ public final class RaidManager implements Listener {
             }
             int remaining = raid.remainingSeconds();
             int elapsed = raid.elapsedSeconds();
-            if (!raid.bossWoken && raid.tier.boss()) {
+            if (raid.tier.boss()) {
                 for (MapDef.BossDef boss : raid.map.bosses()) {
-                    if (elapsed >= boss.delaySeconds()) {
-                        raid.bossWoken = true;
-                        // Asleep at its post since the raid began (deploy); now it is up and about.
+                    // Asleep at its post since the raid began (deploy); at its own time it is up and about.
+                    if (elapsed >= boss.delaySeconds() && raid.bossesWoken.add(boss.id())) {
                         String name = plugin.ai().wakeBoss(raid, boss.id());
                         if (name != null) {
                             announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(name) + "</white> 出现在地图中，携带高价值物资。");

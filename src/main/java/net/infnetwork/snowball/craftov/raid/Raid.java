@@ -42,8 +42,8 @@ public final class Raid {
     /** Locked doors someone has opened with a key: they stay unlocked for the rest of the raid. */
     public final java.util.Set<String> unlockedDoors = new java.util.HashSet<>();
     public final Map<String, MapDef.SwitchDef> switchBlocks = new HashMap<>();
-    /** The map's bosses (in place, asleep, since the raid began) have been woken and announced. */
-    public boolean bossWoken;
+    /** Ids of the map's bosses (in place, asleep, since the raid began) whose time has come: woken and announced. */
+    public final java.util.Set<String> bossesWoken = new java.util.HashSet<>();
     public boolean warned5;
     public boolean warned1;
     public long endTick;

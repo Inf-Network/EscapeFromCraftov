@@ -1934,6 +1934,22 @@ public final class RaidManager implements Listener {
         return out;
     }
 
+    /**
+     * Join: the profile still names a raid, yet none is running for the player. The server went
+     * down without stopping cleanly (a crash, a kill, a power cut), or a stop could not void it:
+     * it is voided now, exactly as a stop would have ({@link #voidRaid}). The raid's world and
+     * everything in it are gone, so there is nothing to keep out of an insurance payout either.
+     */
+    public void voidLost(Player player) {
+        if (raidOf(player) != null) {
+            return;
+        }
+        if (voidRaid(player.getUniqueId(), player.getName(), null, true) != null) {
+            Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废。<#9AA0A6>出发前的装备和安全箱已退回，"
+                    + "入场费和保险费已退还，补偿邮件已发到仓库邮箱。");
+        }
+    }
+
     /** Shutdown: voids the raid for one player still in it and, if they are online, sends them home. */
     private void voidOnStop(Raid raid, RaidPlayer rp) {
         Player player = rp.state == RaidPlayer.State.DISCONNECTED ? null : Bukkit.getPlayer(rp.uuid);
@@ -1959,8 +1975,9 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Voids a raid for a player who was still in it when the server stopped ({@link #shutdown}):
-     * the one way a raid is voided. The loadout and secure container go back to how they went in;
+     * Voids a raid for a player who was still in it when the server stopped ({@link #shutdown}) or
+     * went down ({@link #voidLost}, on their next login): the one way a raid is voided, so a stop
+     * and a crash come out the same. The loadout and secure container go back to how they went in;
      * the entry fee and insurance premium are refunded; what the raid paid out or counted is taken
      * back (contract rewards and progress, the experience and level rewards they brought, the raid
      * in the stats, items it mailed) and bounties collected go back on the heads they came off; and

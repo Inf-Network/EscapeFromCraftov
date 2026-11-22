@@ -136,15 +136,26 @@ public final class ProfileService implements Listener {
         Files.createDirectories(dir);
         AtomicFiles.cleanTemp(dir);
         File[] files = dir.toFile().listFiles((d, name) -> name.endsWith(".json"));
+        int inRaid = 0;
         if (files != null) {
             for (File file : files) {
                 Profile profile = read(file.toPath());
                 if (profile != null) {
                     index.put(profile.uuid, summarize(profile));
+                    if (profile.activeRaid != null || profile.deployment != null) {
+                        inRaid++;
+                    }
                 } else {
                     broken(file.toPath());
                 }
             }
+        }
+        if (inRaid > 0) {
+            // Raids are not saved: a profile still in one went down with the server (a crash, a
+            // kill, a power cut). RaidManager.voidLost settles it on the owner's next login.
+            plugin.getLogger().warning(inRaid + " player(s) were still in a raid when the server last went down without"
+                    + " stopping cleanly; each one's raid is voided when they next log in (gear and secure container as"
+                    + " they went in, fees refunded, a compensation letter).");
         }
         String[] journals = dir.toFile().list((d, name) -> name.endsWith(".json" + JOURNAL));
         if (journals != null && journals.length > 0) {

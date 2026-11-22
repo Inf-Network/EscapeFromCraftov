@@ -479,11 +479,10 @@ public final class LobbyService implements Listener {
         if (!profile.receivedStarter) {
             giveStarter(player, profile);
         }
-        if (profile.activeRaid != null && plugin.raids().raidOf(player) == null) {
-            // Server stopped mid-raid without a clean shutdown: the raid is voided, the last
-            // lobby loadout is restored.
-            profile.leaveRaid();
-            Text.send(player, "<#FFC23D>上一次行动因服务器中断已作废，已恢复出发前的装备。");
+        if ((profile.activeRaid != null || profile.deployment != null) && plugin.raids().raidOf(player) == null) {
+            // The server went down mid-raid without a clean stop (or the stop could not void it):
+            // voided now, the way a stop voids it, before the lobby puts the loadout on them.
+            plugin.raids().voidLost(player);
         }
         if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {
             Text.send(player, "<#FF4D4D>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))

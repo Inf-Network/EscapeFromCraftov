@@ -559,13 +559,13 @@ def rounds(gid, name, v, n, ticks):
 
 def catalogue():
     """[(event key, [(file path, samples, rate)], attenuation)] for every gun report, plus
-    sources: {file path: what it was cut from}."""
+    sources: {file path: (what it was cut from, its loudness in dB)}."""
     out = []
     sources = {}
 
     def add(key, path, made, sr):
         data, origin = made
-        sources[path] = origin
+        sources[path] = (origin, round(float(loudness(data)), 2))
         return path, data, sr
 
     for gid in GUNS:
@@ -589,17 +589,20 @@ def catalogue():
 
 
 def source_manifest(sources):
-    """audio_sources.json: every gun file, the recording it was cut from and its license."""
-    def entry(origin):
-        if isinstance(origin, list):
-            return [entry(o) for o in origin]
+    """audio_sources.json: every gun file, the recording(s) it was cut from with their license, and
+    its loudness (dB, RMS of the first 120 ms, see loudness()) for tools/bot/gunaudio.js."""
+    def cut(origin):
         src = fetch_audio.SOURCES[origin['source']]
         e = dict(source=origin['source'], title=src['title'], author=src['author'], page=src['page'],
                  license=src['license'])
         for k in ('file', 'shot', 'channel', 'at', 'rate'):
             if k in origin:
-                e[k] = origin[k]
+                e[k] = float(origin[k]) if isinstance(origin[k], np.floating) else origin[k]
         return e
+
+    def entry(made):
+        origin, loud = made
+        return dict(loudness=loud, cut_from=[cut(o) for o in (origin if isinstance(origin, list) else [origin])])
     return {
         'sources': {sid: {k: s[k] for k in ('title', 'author', 'page', 'url', 'sha256', 'license')}
                     for sid, s in fetch_audio.SOURCES.items()},

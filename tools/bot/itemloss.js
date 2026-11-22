@@ -260,7 +260,10 @@ async function raid () {
   check('gold bar saved in the loadout', countIds(Object.values(p.loadout), 'gold_bar') === 1, Object.values(p.loadout).map(r => r.id))
 }
 
-const insuredLoadout = () => ({ 0: gun('m4c'), 1: rec('optic_reddot'), 18: gun('k47'), 36: rec('pack_3'), 38: rec('armor_3', { dura: 80 }) })
+// The guns are loaded, so a claim that lost the deploy snapshot (which would empty them) shows.
+const loaded = (id, ammoType) => Object.assign(gun(id), { ammo: 20, ammoType })
+const insuredLoadout = () => ({ 0: loaded('m4c', 'ammo_556_m855'), 1: rec('optic_reddot'), 18: loaded('k47', 'ammo_762_ps'),
+  36: rec('pack_3'), 38: rec('armor_3', { dura: 80 }) })
 
 async function stopServer () {
   log('stopping the server with the raid still running')
@@ -338,7 +341,12 @@ async function insure () {
   const p = readProfile(name)
   const ids = p.mailbox.map(r => r.id).sort()
   check('mailbox has all 4 insured items', JSON.stringify(ids) === JSON.stringify(['armor_3', 'k47', 'm4c', 'pack_3']), ids)
-  check('the m4c came back with its red dot', p.mailbox.some(r => r.id === 'm4c' && r.optic === 'optic_reddot'))
+  // Insurance returns an item as it was at deploy (issue #21): the red dot fitted in the raid stays there.
+  check('the m4c came back as it was insured, without the red dot fitted in the raid',
+    p.mailbox.some(r => r.id === 'm4c' && !r.optic), p.mailbox.filter(r => r.id === 'm4c').map(r => r.optic || 'no optic'))
+  // The snapshot travelled with the m4c through the gunsmith and the reconnect, and with the k47 packed in the backpack.
+  check('both guns came back with the 20 rounds they were insured with',
+    ['m4c', 'k47'].every(id => p.mailbox.some(r => r.id === id && r.ammo === 20)), p.mailbox.filter(r => r.ammo !== undefined).map(r => `${r.id} ${r.ammo}`))
   check('no insurance mark left on mailed items', noMarks(p.mailbox))
 }
 

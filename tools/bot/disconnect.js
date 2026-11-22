@@ -31,8 +31,11 @@
 //   bleed     A quits with a heavy bleed and comes back 30 s later (less with a short reconnect
 //             window): about 52 HP down (20 ticks of 2.6), and the stand-in bled as well
 //   soldiers  A, out of the insertion grace, quits next to a soldier post and comes back 5 s
-//             later: a grenade cannot be thrown for 2 s but can be after, and a soldier hits A
-//             within 3 s of the rejoin (soldiers aim through the protection and fire as it ends)
+//             later: a grenade cannot be thrown for 2 s but can be after, and the soldiers open fire
+//             2-3 s after the rejoin and hit nothing before 2 s (they aim through the protection and
+//             fire as it ends; the post's soldiers are turned to face A, since soldiers only see
+//             what is ahead of them, and a hit is not required: a soldier that has only just taken
+//             aim misses by up to 1.5 m)
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -535,7 +538,14 @@ const scenarios = {
     await sleep(5000)
     const A2 = await make(A.username)
     const back = Date.now()
+    // The soldiers' gunshots A hears (not their reload foley): the first should come as the protection ends.
+    const shots = []
+    A2.on('soundEffectHeard', s => { const n = String(s); if (n.includes('gun.') && !n.includes('foley')) shots.push(Date.now()) })
     if (!await waitFor(() => landed(A2), 8000)) return ['FAIL', `A came back in ${A2.worldName} ${A2.game.gameMode}`]
+    // Soldiers only see what is in front of them: the post's soldiers face A as it comes back.
+    for (const type of ['zombie', 'husk']) {
+      await rcon(`execute in minecraft:${A2.worldName} positioned ${POST} as @e[type=minecraft:${type},distance=..12] at @s run tp @s ~ ~ ~ facing entity ${A2.username}`)
+    }
     const hp0 = await health(A2.username)
     // A smoke grenade in hand: right-click throws it only once the 2 s protection is over.
     const slot = hotbarSlot(A2, 'smoke')
@@ -568,12 +578,14 @@ const scenarios = {
     }, 12000)
     if (!thrownLate) problems.push(`no throw ${lateAt === null ? '-' : lateAt.toFixed(1)} s after rejoining either`)
     const hitAfter = hitAt ? (hitAt - back) / 1000 : null
-    if (hitAfter === null) problems.push('no soldier hit A within 12 s of rejoining')
-    else if (hitAfter < 1.9) problems.push(`hit ${hitAfter.toFixed(1)} s after rejoining, inside the protection`)
-    else if (hitAfter > 3) problems.push(`hit only ${hitAfter.toFixed(1)} s after rejoining`)
+    const firstShot = shots.length ? (shots[0] - back) / 1000 : null
+    if (firstShot === null) problems.push('no soldier fired within 12 s of rejoining')
+    else if (firstShot < 1.9) problems.push(`soldiers fired ${firstShot.toFixed(1)} s after rejoining, inside the protection`)
+    else if (firstShot > 3) problems.push(`soldiers fired only ${firstShot.toFixed(1)} s after rejoining`)
+    if (hitAfter !== null && hitAfter < 1.9) problems.push(`hit ${hitAfter.toFixed(1)} s after rejoining, inside the protection`)
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no throw inside the protection, a throw after it, soldiers fired right after it'} | throws tried ${earlyAt.toFixed(1)} s and ${lateAt === null ? '-' : lateAt.toFixed(1)} s, first hit ${hitAfter === null ? '-' : hitAfter.toFixed(1) + ' s'} after rejoining`]
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no throw inside the protection, a throw after it, soldiers fired right after it'} | throws tried ${earlyAt.toFixed(1)} s and ${lateAt === null ? '-' : lateAt.toFixed(1)} s, first shot ${firstShot === null ? '-' : firstShot.toFixed(1) + ' s'}, first hit ${hitAfter === null ? '-' : hitAfter.toFixed(1) + ' s'} after rejoining`]
   }
 }
 

@@ -2,9 +2,8 @@
 //
 //   lobby   The trigger held in the lobby, off the range, fires nothing and kicks nothing.
 //   feed    With a second bot, solo on the proving ground (test mode, test.enabled: true): the feed
-//           starts empty (after magazine, nothing of the bot's death there). Two
-//           soldiers frozen at 1 health and the second bot at 3 health, shot dead one after the
-//           other within 6 s. The shooter's kill feed (/cv feed) holds three lines, the bot last, and
+//           starts empty; two soldiers frozen at 1 health and the second bot at 3 health, shot dead one
+//           after the other within 6 s. The shooter's kill feed (/cv feed) holds three lines, the bot last, and
 //           a streak of 3; the shooter hears kill.1, kill.2 and kill.3 and no plain kill sound; no kill
 //           line reaches the chat; the other bot's feed holds its own death but not the soldiers. The
 //           shooter's raid report (after /kill) counts every round fired as fired standing still.
@@ -25,10 +24,12 @@
 //           server measured for most strafing shots is within 10% of what the bot really walked, strafing
 //           hip fire is at least 1.8x as wide as standing and strafing aimed fire at least 2.5x;
 //           standing shots count no movement at all, and neither do 10 shots strafing while sneaking.
-//   magazine Solo on the proving ground: a K47 loaded with PS switched to AP (sneak+Q) leaves the 价值
-//           on the HUD where it was, and so does writing the magazine to the stack after: the new
-//           magazine is in memory, the stack still says 30 PS, the inventory has the PS back and 30 AP
-//           fewer, and the inventory's value counts the magazine in memory.
+//   magazine Solo on the proving ground, after feed: the kill feed starts empty (nothing of feed's raid).
+//           A K47 loaded with PS switched to AP (sneak+Q) leaves the 价值 on the HUD where it was, and
+//           so does writing the magazine to the stack after: the new magazine is in memory, the stack
+//           still says 30 PS, the inventory has the PS back and 30 AP fewer, and the inventory's value
+//           counts the magazine in memory. It dies at the end: run it after lore, which needs the
+//           starting kit's pockets for eleven guns.
 //   batch   K47 single shots while strafing with the movement packets held back and sent four at a
 //           time every 200 ms (a lagging or cheating client): every shot still reads as moving.
 //   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
@@ -53,7 +54,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'magazine', 'lore', 'feed', 'kick', 'ads', 'recoil', 'move', 'batch']
+const scenarios = wanted.length ? wanted : ['lobby', 'lore', 'feed', 'magazine', 'kick', 'ads', 'recoil', 'move', 'batch']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -310,6 +311,8 @@ async function magazine () {
   if (!inRaid(worldName)) throw new Error('not in a raid: ' + worldName)
   await sleep(7000) // the insertion camera and spawn protection
   try {
+    const fresh = await feedOf(name)
+    check('magazine: the raid starts with an empty kill feed (after feed\'s raid)', fresh.some(l => l.includes('击杀栏是空的')), fresh)
     await rcon(`clear ${name}`) // no other 7.62x39 rounds for sneak+Q to pick
     await sleep(500)
     await rcon(`cv give ${name} k47`) // loaded with 30 PS

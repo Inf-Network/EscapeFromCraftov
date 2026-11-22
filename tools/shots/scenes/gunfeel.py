@@ -2,8 +2,9 @@
 
 In the lobby: the K47's tooltip in the inventory (feel-tooltip: the seven stat bars) and the gunsmith
 with a vertical grip to fit, the pointer on the grip (feel-gunsmith: the accuracy bar it would add,
-in green). Then a solo raid on the proving ground with the K47: the crosshair standing (feel-cross-
-stand) and strafing (feel-cross-strafe: wider), none while aiming (feel-ads); a 0.4 s full-auto
+in green). Then a solo raid on the proving ground: the outlined dot alone with the knife in hand
+(feel-cross-knife), and with the K47 the crosshair standing (feel-cross-stand: arms 12 GUI pixels
+out) and strafing (feel-cross-strafe: wider), none while aiming (feel-ads); a 0.4 s full-auto
 burst captured every 0.07 s (feel-burst-a..f: each round snaps the gun back with the flash, the
 frames between show it settling); one AWR shot captured through its 0.3 s kick (feel-awr-a..e). Last
 two soldiers frozen at 1 health are shot one after the other (feel-feed: two lines in the kill
@@ -115,6 +116,11 @@ def raid(s):
     soldiers(s, ',tag=!gf_keep')
 
     s.rcon(f'execute as {s.name} at @s run tp @s 45.5 65 86.5 0 0')
+    s.select(2)  # the melee slot: no gun, the dot alone
+    s.wait(1.2)
+    s.clear_chat()
+    s.wait(0.3)
+    s.shot('feel-cross-knife')
     s.hold('k47')
     s.wait(1.5)
     s.clear_chat()
@@ -154,6 +160,7 @@ def raid(s):
     s.wait(1.5)
 
     # Two soldiers in a row: the kill feed and the double-kill badge.
+    soldiers(s, ',tag=!gf_keep')  # any that turned up since, before they shoot the camera
     s.hold('k47')
     s.key('f')  # AUTO -> SEMI: one round per click
     s.wait(1.2)

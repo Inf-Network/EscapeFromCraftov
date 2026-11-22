@@ -1,6 +1,6 @@
 """The settlement screen after a raid (#6): a solo proving-ground raid left through the always-open
 extract (settlement-ok), then a second raid ended by dying (settlement-fail). The second leaves the
-player with nothing but the knife, so run it on a throwaway profile (`run --fresh settlement`)."""
+player with nothing but the knife, so run it last or on a throwaway profile (`run --fresh`)."""
 
 
 def raid(s):
@@ -13,17 +13,20 @@ def raid(s):
 
 def run(s):
     s.lobby()
-    mine = raid(s)
-    s.extract('proving', mine)
-    s.wait(1.5)  # the curtain lifts and the screen opens 30 ticks after arriving
+    raid(s)
+    spot = s.always_extract('proving')
+    s.rcon(f'execute as {s.name} at @s run tp @s {spot[0]} {spot[1]} {spot[2]}')
+    s.wait_until(s.in_lobby, 40, 'the extract')
+    s.wait(2.5)  # the curtain lifts and the screen opens 30 ticks after arriving
     s.park_mouse()
     s.shot('settlement-ok')
-    s.key('Escape')
+    s.rcon(f'cv close {s.name}')
     s.wait(1)
-    mine = raid(s)
+    raid(s)
     s.rcon(f'damage {s.name} 1000 minecraft:generic')
     s.wait_until(s.in_lobby, 40, 'the way home after dying')
-    s.wait(3)
+    s.wait(2.5)
     s.park_mouse()
     s.shot('settlement-fail')
-    s.key('Escape')
+    s.rcon(f'cv close {s.name}')
+    s.wait(0.5)

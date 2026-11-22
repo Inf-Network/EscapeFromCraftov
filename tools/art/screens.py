@@ -333,7 +333,8 @@ def loot_screen(rows):
     def make():
         s = Screen(rows)
         s.wells(slots(0, 0, rows - 1, 8))
-        s.hazard(W - 44, 4, W - 6, 13)
+        # A hazard-striped lip along the top edge marks a container; the title keeps its band clear.
+        s.hazard(3, 2, W - 4, 3)
         return s.done()
     return make
 

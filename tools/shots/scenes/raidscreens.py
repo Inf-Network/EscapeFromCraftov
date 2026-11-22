@@ -22,6 +22,8 @@ def run(s):
         s.shot('screen-loot')
         s.key('Escape')
         s.wait(0.8)
+        s.look(0, 0)  # away from the crate, or right mouse would open it again
+        s.wait(0.8)
         s.rcon(f'cv injure {s.name} left_leg fracture')
         s.rcon(f'cv injure {s.name} chest light')
         s.select(8)  # the raid terminal

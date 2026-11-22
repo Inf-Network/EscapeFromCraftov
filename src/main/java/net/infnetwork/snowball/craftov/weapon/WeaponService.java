@@ -11,6 +11,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
@@ -826,12 +828,18 @@ public final class WeaponService implements Listener {
      * How much moving counts against accuracy, 0 to 1: how close the player is to their full walking
      * pace (measured on the server, against what their movement-speed attribute allows right now, so a
      * player slowed by aiming or armour who walks as fast as they can counts as fully moving), less a
-     * dead zone (weapons.spread.move-deadzone of that pace) so the last ticks of stopping, sneaking and
-     * a nudge do not count. Vanilla movement stops in about two ticks when the opposite key is pressed:
-     * stopping before the shot is the skill.
+     * dead zone (weapons.spread.move-deadzone of that pace) so the last ticks of stopping and a nudge do
+     * not count. Vanilla movement stops in about two ticks when the opposite key is pressed: stopping
+     * before the shot is the skill. Sneaking walks at the sneaking-speed attribute's share of that pace
+     * (0.3), over the dead zone, but costs nothing either: while sneaking the dead zone is that share
+     * and a tenth more, so only a sneak faster than the client allows (a cheat) counts.
      */
     private double moveLevel(Player player) {
         double dead = Math.max(0, Math.min(0.9, plugin.getConfig().getDouble("weapons.spread.move-deadzone", 0.25)));
+        if (player.isSneaking()) {
+            AttributeInstance sneak = player.getAttribute(Attribute.SNEAKING_SPEED);
+            dead = Math.max(dead, Math.min(0.9, (sneak == null ? 0.3 : sneak.getValue()) + 0.1));
+        }
         return Math.max(0, Math.min(1, (motion.moveFactor(player) - dead) / (1 - dead)));
     }
 

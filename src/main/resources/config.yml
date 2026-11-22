@@ -219,8 +219,9 @@ weapons:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.
     # How much counts goes from 0 at move-deadzone of the player's walking pace (measured on the
-    # server, against what their movement speed allows right now) to 1 at full pace, so sneaking and
-    # the last ticks of stopping cost nothing: stopping before the shot is what makes it accurate.
+    # server, against what their movement speed allows right now) to 1 at full pace, so the last ticks
+    # of stopping cost nothing: stopping before the shot is what makes it accurate. Sneaking costs
+    # nothing either: while sneaking the dead zone is the sneaking speed (0.3 of walking pace) + 0.1.
     move-ads-share: 0.5
     move-deadzone: 0.25
     # Multipliers of the gun's base spread while sneaking and while off the ground.

@@ -23,7 +23,7 @@
 //   move    K47, 10 single shots each standing and strafing, from the hip and aimed: the speed the
 //           server measured for most strafing shots is within 10% of what the bot really walked, strafing
 //           hip fire is at least 1.8x as wide as standing and strafing aimed fire at least 2.5x;
-//           standing shots count no movement at all.
+//           standing shots count no movement at all, and neither do 10 shots strafing while sneaking.
 //   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
 //           弹匣 穿透) and the line under them; a gun with the better number never has the shorter
 //           bar; in the gunsmith the vertical grip's button previews a longer accuracy bar (green), and
@@ -340,17 +340,19 @@ async function move (spot) {
   await arm('k47')
   const series = {}
   const walked = []
-  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads']) {
+  const sneaked = []
+  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads', 'sneak-walk']) {
     await aim(spot)
     dig(4) // a full magazine for each series
     await sleep(3200)
+    if (mode === 'sneak-walk') bot.setControlState('sneak', true)
     let stopAim = null
     if (mode.endsWith('ads')) { useItem(); const t = setInterval(useItem, 200); stopAim = () => clearInterval(t) }
     await sleep(600)
     const from = logSize()
     for (let leg = 0; leg < 5; leg++) {
       const dir = leg % 2 ? 'right' : 'left'
-      if (mode.startsWith('walk')) bot.setControlState(dir, true)
+      if (mode.includes('walk')) bot.setControlState(dir, true)
       await sleep(450)
       for (let shot = 0; shot < 2; shot++) {
         // What the bot really walks over the 200 ms before the shot, in blocks per tick.
@@ -358,15 +360,17 @@ async function move (spot) {
         await sleep(200)
         const b = bot.entity.position
         if (mode === 'walk') walked.push(Math.hypot(b.x - a.x, b.z - a.z) / 4)
+        if (mode === 'sneak-walk') sneaked.push(Math.hypot(b.x - a.x, b.z - a.z) / 4)
         // A strafing bot can dig a capture cell the server has just moved on: click again until it fires.
         const before = shotsSince(from).length
         for (let tries = 0; tries < 3 && shotsSince(from).length === before; tries++) { click(); await sleep(120) }
         await sleep(130)
       }
-      if (mode.startsWith('walk')) bot.setControlState(dir, false)
+      if (mode.includes('walk')) bot.setControlState(dir, false)
       await sleep(300)
     }
     if (stopAim) stopAim()
+    bot.setControlState('sneak', false)
     await sleep(400)
     series[mode] = shotsSince(from)
     const s = series[mode]
@@ -382,6 +386,8 @@ async function move (spot) {
   check('move: the server measures the strafing pace within 10% (7 of 10 shots)', real > 0.1 && close >= 0.7 * series.walk.length,
     `walked ${real.toFixed(3)} blocks/tick, server read ${series.walk.map(x => x.speed.toFixed(3)).join(' ')}`)
   check('move: standing shots count no movement', series.stand.concat(series['stand-ads']).every(x => x.level === 0))
+  check('move: sneak-strafing shots count no movement', avg(sneaked) > 0.04 && series['sneak-walk'].every(x => x.level === 0),
+    `sneaked ${avg(sneaked).toFixed(3)} blocks/tick, levels ${series['sneak-walk'].map(x => x.level.toFixed(2)).join(' ')}`)
   check('move: strafing hip fire >= 1.8x standing', sp('walk') >= 1.8 * sp('stand'), `${sp('walk').toFixed(2)} vs ${sp('stand').toFixed(2)} = ${(sp('walk') / sp('stand')).toFixed(2)}x`)
   check('move: strafing aimed fire >= 2.5x standing aimed', sp('walk-ads') >= 2.5 * sp('stand-ads'),
     `${sp('walk-ads').toFixed(2)} vs ${sp('stand-ads').toFixed(2)} = ${(sp('walk-ads') / sp('stand-ads')).toFixed(2)}x`)

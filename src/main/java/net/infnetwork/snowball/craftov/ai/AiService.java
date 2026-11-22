@@ -433,6 +433,9 @@ public final class AiService implements Listener {
             setAttr(z, Attribute.FOLLOW_RANGE, 48);
             setAttr(z, Attribute.KNOCKBACK_RESISTANCE, 0.8);
             setAttr(z, Attribute.SPAWN_REINFORCEMENTS, 0);
+            // Zombies, husks and drowned are born with 2 points of vanilla armour, which took 1.6%
+            // off every bullet and knife on top of the plugin's own armour.
+            setAttr(z, Attribute.ARMOR, 0);
             if (boss) {
                 setAttr(z, Attribute.SCALE, 1.12);
             }

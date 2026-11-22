@@ -31,6 +31,7 @@ import net.infnetwork.snowball.craftov.raid.RaidManager;
 import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
+import net.infnetwork.snowball.craftov.weapon.InspectService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
 import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
@@ -185,7 +186,8 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market, profiles);
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
+                new InspectService(this), market, profiles);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);

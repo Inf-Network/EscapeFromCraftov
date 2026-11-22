@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_tactical",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    55.39,
+    -44.829,
+    132.574
+   ],
+   "translation": [
+    -4.215,
+    6.302,
+    -7.108
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -124.61,
+    44.829,
+    47.426
+   ],
+   "translation": [
+    -4.215,
+    6.302,
+    -7.108
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

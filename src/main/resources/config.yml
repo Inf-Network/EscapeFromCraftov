@@ -248,6 +248,10 @@ combat:
     zone-multipliers:
       arm: 0.6
       leg: 0.6
+    # F with a knife in hand inspects it (first person only) for this many ticks. The animation is
+    # baked into the resource pack as 50 frames over the inspect (tools/art/knife_inspect.py): a
+    # different length plays the same motion faster or slower.
+    inspect-ticks: 50
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming

@@ -12,7 +12,9 @@
 //          being drawn; the pistol's stack carries the draw mark (damage 1, which keeps its model
 //          from aiming or flashing) from the switch until it is up, and a gun switched away from
 //          mid-draw loses it; the trigger held from the moment of the switch fires once, 6 ticks
-//          after the draw began; right mouse held from the switch aims on the tick the gun is up.
+//          after the draw began, though the dig starts over (abort and start) each time the mark
+//          goes on or comes off, as the vanilla client does when the held stack changes; right
+//          mouse held from the switch aims on the tick the gun is up.
 //   bloom  M4C sprayed on full auto for 1.2 s, over to the P18 and back: the first shot after the draw
 //          still has the spray's bloom, less 0.08 for every tick since the spray's last shot.
 //   cut    M4C three rounds down, Q, and over to the P18 0.4 s into the reload: the action bar says
@@ -124,13 +126,29 @@ function click () {
   swing()
   dig(ABORT, at)
 }
-/** The trigger held for `ms`: a dig start, a swing every tick, the abort at the end. */
+/** The held stack as vanilla compares it to the one a dig began with (ItemStack.isSameItemSameComponents). */
+const heldKey = () => JSON.stringify(bot.heldItem ? [bot.heldItem.name, bot.heldItem.components] : null)
+/** The trigger held for `ms`: a dig start, a swing every tick, the abort at the end. Returns the restarts. */
 async function press (ms) {
   const at = cell()
   dig(START, at)
+  let digging = heldKey()
+  let restarts = 0
   const until = Date.now() + ms
-  while (Date.now() < until) { swing(); await sleep(50) }
+  while (Date.now() < until) {
+    // The vanilla client starts the dig over (abort and start on the same block, back to back) once
+    // the held stack differs in any component, as when the draw mark goes on and comes off.
+    if (heldKey() !== digging) {
+      digging = heldKey()
+      dig(ABORT, at)
+      dig(START, at)
+      restarts++
+    }
+    swing()
+    await sleep(50)
+  }
   dig(ABORT, at)
+  return restarts
 }
 /** Waits until `ms` after `from` (a Date.now()). */
 const until = (from, ms) => sleep(Math.max(0, from + ms - Date.now()))
@@ -259,12 +277,12 @@ async function draw (spot) {
   await sleep(1000)
   from = logSize()
   hold('p18')
-  await press(700)
+  const restarts = await press(700) // the dig starts over as the mark goes on and comes off
   await sleep(300)
   d = drawsSince(from).find(x => x.gun === 'p18')
   const held = shotsSince(from)
   check('draw: the trigger held through the draw fires once, when the gun is up', !!d && held.length === 1 && held[0].tick >= d.ready && held[0].tick <= d.ready + 2,
-    `${held.length} shots at ${held.map(s => s.tick).join(',')}; drawn at ${d && d.tick}, up at ${d && d.ready}`)
+    `${held.length} shots at ${held.map(s => s.tick).join(',')}; drawn at ${d && d.tick}, up at ${d && d.ready}; dig started over ${restarts} times`)
 
   // Right mouse held from the switch (a use packet every 4 ticks, as vanilla repeats it) aims once the gun is up.
   hold('m4c')

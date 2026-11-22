@@ -262,6 +262,7 @@ items:
     category: MELEE
     rarity: BLUE
     value: 42000
+    tradeable: false
     lore: "又长又沉，砍在没有护甲的地方伤害很高，挥得慢一些，砍不透 3 级及以上的护甲。死亡不会丢失。"
     melee: { damage: 52, pen: 2, armor-damage: 1.0, cooldown: 16, reach: 3.4 }
   knife_karambit:
@@ -269,5 +270,6 @@ items:
     category: MELEE
     rarity: PURPLE
     value: 95000
+    tradeable: false
     lore: "弧形刃，出手极快，能割开 3 级及以下的护甲。死亡不会丢失。"
     melee: { damage: 36, pen: 3, armor-damage: 0.8, cooldown: 8, reach: 2.9 }

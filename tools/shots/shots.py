@@ -820,7 +820,11 @@ class Session:
             self.rcon(f'execute as {self.name} at @s run tp @s {spot[0]} {spot[1]} {spot[2]}')
             with contextlib.suppress(Fail):
                 self.wait_until(self.in_lobby, 40, 'the extract')
-                time.sleep(1.5)
+                # The settlement screen opens 30 ticks after arriving; close it so the next scene
+                # can type commands again.
+                time.sleep(2.5)
+                self.rcon(f'cv close {self.name}')
+                time.sleep(0.5)
                 return
         candidates = {rid: n for rid, n in self.raid_players().items() if rid in raids}
         if len(candidates) != 1 or next(iter(candidates.values())) != 1:

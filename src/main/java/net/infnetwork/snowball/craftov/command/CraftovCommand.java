@@ -21,7 +21,7 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "marketaudit");
 
     private final CraftovPlugin plugin;
@@ -152,7 +152,7 @@ public final class CraftovCommand implements TabExecutor {
             sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · raids · end <id> · tp <id> · lobby · reload"
+            sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
                     + " · marketaudit [数量]"));
         }
     }
@@ -211,6 +211,16 @@ public final class CraftovCommand implements TabExecutor {
                 profile.money += Long.parseLong(args[2]);
                 plugin.profiles().markDirty(target.getUniqueId());
                 Text.send(sender, "<ok>" + target.getName() + " 余额 ◈" + Text.money(profile.money));
+            }
+            case "close" -> {
+                // /cv close <player>: closes whatever screen the player has open (the settlement
+                // screen after an extraction, say), for scripts driving a real client.
+                Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+                if (target == null) {
+                    Text.send(sender, "/cv close <玩家>");
+                    return;
+                }
+                target.closeInventory();
             }
             case "hud" -> {
                 // /cv hud <player>: what that player's BetterHud shows besides the panels (bots cannot see it).

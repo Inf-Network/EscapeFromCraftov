@@ -62,6 +62,19 @@ public record GunSpec(
         return Math.max(1, (int) Math.round(1200.0 / rpm));
     }
 
+    /** Longest first-person kick of one shot, in ticks (tools/art/models.py KICK_MAX_TICKS). */
+    public static final int KICK_MAX_TICKS = 6;
+
+    /**
+     * Ticks the first-person kick and flash of one shot last: the time between shots, so every round
+     * of a spray kicks on its own, but at least 2 (a frame to snap back, one to settle) and at most
+     * {@link #KICK_MAX_TICKS} so a bolt-action rifle does not hold its kick for its whole cycle. The
+     * item model is built with the same rule (tools/art/models.py kick_ticks).
+     */
+    public int kickTicks() {
+        return Math.max(2, Math.min(KICK_MAX_TICKS, ticksBetweenShots()));
+    }
+
     public double millisBetweenShots() {
         return 60_000.0 / rpm;
     }

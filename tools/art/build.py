@@ -167,11 +167,21 @@ def build_items(item_defs):
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), generated('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
-            # Pose trees, all picked on the client from held keys (no packet, no delay): right mouse aims
-            # down sights; left mouse kicks the gun back and flashes the muzzle; sprinting carries it low
-            # and canted; strafing leans it. Scoped guns hide the gun while aiming, so they keep plain ADS.
-            # A gun still coming up after a switch ignores right and left mouse.
-            def posed_aim(name, hip, ads, hip_display, ads_display):
+            gun_spec = spec.get('gun') or {}
+            kicks = models.kick_frames(gun_spec.get('rpm', 600))
+            strength = models.kick_strength(gun_spec.get('recoil', 1.0))
+
+            # Pose trees picked on the client from held keys (no packet, no delay): right mouse aims down
+            # sights, sprinting carries the gun low and canted, strafing leans it. Scoped guns hide the gun
+            # while aiming, so they keep plain ADS. Shots are not a key: the server starts the gun's
+            # cooldown on every shot it really fires (WeaponService.shoot), and the gun kicks back and
+            # flashes while the client counts it down (models.kick_frames), so a held trigger that fires
+            # nothing (between bolt-action shots, a semi-auto held down, outside the range) shows nothing.
+            # The stack's damage says what else the gun is doing (ItemFactory.setHandMark): 1 while it comes
+            # up after a switch (it neither aims nor kicks), 2 while it reloads (the same cooldown then runs
+            # the reload frames). Damage is the one component the client swaps in without lowering and
+            # raising the gun again.
+            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
                             'on_true': on, 'on_false': off}
@@ -191,41 +201,39 @@ def build_items(item_defs):
                 def strafe(base, poses):
                     return key('key.left', poses['left'], key('key.right', poses['right'], base))
 
-                def unless_dry(fire, idle):
-                    # custom_model_data string 5 is "dry" while the magazine is empty: no flash, no kick.
-                    return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 5,
-                            'cases': [{'when': 'dry', 'model': idle}], 'fallback': fire}
+                def kicked(kind, base, display, rest):
+                    entries = []
+                    for threshold, level, lit in kicks:
+                        kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength)
+                        model = pose(kind, base, display, 'kick%d' % level, kick)
+                        if lit:
+                            model = {'type': 'minecraft:composite', 'models': [model, flash(kind, base, display, kick)]}
+                        entries.append({'threshold': threshold, 'model': model})
+                    return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                            'fallback': rest}
 
                 hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
                 hip_idle = strafe(model_ref(hip), hp)
-                hip_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
-                    hp['fire'], flash('hip', hip, hip_display, models.HIP_POSES['fire'])]}, hip_idle),
-                    key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle))
+                hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                hip_tree = kicked('hip', hip, hip_display, hip_rest)
                 if ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
                     ads_tree = model_ref(ads)
                 else:
                     ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
-                    ads_idle = strafe(model_ref(ads), ap)
-                    ads_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
-                        ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, ads_idle), ads_idle)
-                # While the gun comes up after a switch the server marks it with damage 1 (ItemFactory
-                # .setDrawing): it neither aims nor fires yet, so neither key changes the pose. Damage is
-                # the one component the client swaps in without playing the lower-and-raise animation
-                # again; not normalized, so a stack without max_damage reads 0.
-                draw_tree = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                    ads_tree = kicked('ads', ads, ads_display, strafe(model_ref(ads), ap))
+                normal = key('key.use', ads_tree, hip_tree)
+                # While the reload cooldown runs, the client steps through the reload frames itself.
+                entries = [{'threshold': threshold, 'model': {
+                    'type': 'minecraft:composite', 'models': [model_ref(n) for n in reload_frames[k]]}}
+                    for k, threshold in enumerate(models.reload.thresholds())]
+                reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                               'fallback': hip_rest}
                 return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
-                        'entries': [{'threshold': 0.5, 'model': draw_tree}], 'fallback': key('key.use', ads_tree, hip_tree)}
-            # While the gun's reload cooldown runs, the client steps through the reload frames itself.
-            def reloading(normal, optic_frames=None):
-                entries = []
-                for k, threshold in enumerate(models.reload.thresholds()):
-                    names = frames[k] + ([optic_frames[k]] if optic_frames else [])
-                    entries.append({'threshold': threshold, 'model': {
-                        'type': 'minecraft:composite', 'models': [model_ref(n) for n in names]}})
-                return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                        'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree}],
                         'fallback': normal}
-            in_hand = reloading(posed_aim(item_id, held, 'craftov:item/gun_ads/' + item_id,
-                                          models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display']))
+            in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
+                               models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display'],
+                               [frames[k] for k in range(len(frames))])
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.
             write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
@@ -247,10 +255,10 @@ def build_items(item_defs):
                 write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', combo + '.json'),
                            models.gun_aimed_model(item_id, 'craftov:item/gun_opt/' + combo))
                 aimed_cases.append({'when': oid, 'model': model_ref('craftov:item/gun_aimed/' + combo)})
-                cases.append({'when': oid, 'model': reloading(posed_aim(
+                cases.append({'when': oid, 'model': gun_tree(
                     combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
-                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display']),
-                    optic_frames)})
+                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display'],
+                    [frames[k] + [optic_frames[k]] for k in range(len(frames))])})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}
@@ -346,11 +354,13 @@ def bullet_hole(metal, seed):
 
 
 def build_fx():
-    """Animated muzzle flash (bright, off, medium, off - one tick each) and bullet-hole decals."""
-    blank = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+    """Muzzle flash, tactical light, drone and bullet-hole decals.
+
+    The flash is a still picture: the gun's item model shows it for the first tick of each shot the
+    server fires (models.kick_frames), so it no longer needs to flicker on its own.
+    """
     for kind in ('side', 'front'):
-        frames = [flash_frame(kind, 1.0, 1), blank, flash_frame(kind, 0.75, 2), blank]
-        save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind), frametime=1)
+        save(flash_frame(kind, 1.0, 1), os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind))
     # Tactical light (TacticalLight.java): a glowing spot laid on the lit surface and a lens flare at the
     # muzzle for onlookers, both full-bright item displays, double-sided planes at z=8.
     import numpy as np

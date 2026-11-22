@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_ads/k47",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.62,
+    90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.34,
+    -2.17
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.62,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    -8.96,
+    5.34,
+    -2.17
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

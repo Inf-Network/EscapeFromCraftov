@@ -468,4 +468,29 @@ public final class Nms {
             // nothing to undo
         }
     }
+
+    private static @Nullable Field containerMenu;
+    private static @Nullable Method broadcastChanges;
+    private static boolean syncUnavailable;
+
+    /**
+     * Sends the changes to the player's open inventory now rather than at the end of their tick, so a
+     * packet sent right after (a cooldown, say) reaches the client after them. Does nothing if the
+     * server's internals cannot be reached; the changes then go out at the end of the tick as usual.
+     */
+    public static void syncInventory(Player player) {
+        if (!ready || syncUnavailable) {
+            return;
+        }
+        try {
+            Object handle = getHandle.invoke(player);
+            if (containerMenu == null) {
+                containerMenu = Class.forName("net.minecraft.world.entity.player.Player").getField("containerMenu");
+                broadcastChanges = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu").getMethod("broadcastChanges");
+            }
+            broadcastChanges.invoke(containerMenu.get(handle));
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            syncUnavailable = true;
+        }
+    }
 }

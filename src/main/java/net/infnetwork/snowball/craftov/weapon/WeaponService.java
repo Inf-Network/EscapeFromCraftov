@@ -98,11 +98,10 @@ public final class WeaponService implements Listener {
          */
         long drawStart;
         long readyAt;
-        /**
-         * The gun's stack carries the draw mark (ItemFactory.setDrawing) until the draw is over: its model
-         * neither aims nor flashes meanwhile.
-         */
-        boolean drawMarked;
+        /** The gun is coming up and {@link WeaponService#drawn} has not run for it yet. */
+        boolean drawPending;
+        /** The reload cooldown, which plays the reload frames, has been sent for the reload under way. */
+        boolean reloadShown;
         /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
         long aimAsked = -100;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
@@ -381,14 +380,11 @@ public final class WeaponService implements Listener {
                     player.getName(), def.id(), now, state.readyAt, state.nextShotTick, state.bloom));
         }
         states.put(player.getUniqueId(), state);
-        if (state.drawing()) {
-            ItemFactory.setDrawing(held, true);
-            state.drawMarked = true;
-        } else {
-            // A mark that left the inventory mid-draw (put in a box) would keep a gun with no draw
-            // time (weapons.draw-ticks 0) from ever aiming: it comes off whenever the gun is bound.
-            ItemFactory.setDrawing(held, false);
-        }
+        // A mark that left the inventory mid-draw or mid-reload (put in a box) would keep a gun with no
+        // draw time (weapons.draw-ticks 0) from ever aiming, or show it reloading: whatever mark the
+        // stack carries is replaced whenever the gun is bound.
+        state.drawPending = state.drawing();
+        ItemFactory.setHandMark(held, state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE);
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -468,30 +464,39 @@ public final class WeaponService implements Listener {
         if (now < state.nextShotTick || state.bloom > 0) {
             stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
         }
-        unmark(player, state);
-        stopReloadAnimation(player, state);
+        // The cooldown belongs to every gun: the next one must not show this one's kick or reload.
+        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks()) {
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
+        setMark(player, state, ItemFactory.MARK_NONE);
         return state;
     }
 
-    /** Takes the draw mark off the gun's stack, if it is still in the inventory. */
-    private void unmark(Player player, GunState state) {
-        if (!state.drawMarked) {
-            return;
-        }
-        state.drawMarked = false;
+    /** The hand mark the gun's state calls for: reloading, coming up, or none. */
+    private static int wantedMark(GunState state) {
+        return state.reloading() ? ItemFactory.MARK_RELOAD : state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE;
+    }
+
+    /**
+     * Puts this hand mark on the gun's stack, if it is in the inventory and carries another. A gun dropped
+     * with Q (a reload) is out of the inventory while the drop event runs and put back after: it is
+     * marked from the next tick (see {@link #showReload}).
+     */
+    private void setMark(Player player, GunState state, int mark) {
         ItemStack stack = stackOf(player, state);
-        if (stack != null) {
-            ItemFactory.setDrawing(stack, false);
+        if (stack != null && ItemFactory.handMark(stack) != mark) {
+            ItemFactory.setHandMark(stack, mark);
         }
     }
 
     /**
-     * The gun is up: its model may aim and flash again, and right mouse held through the draw aims at
+     * The gun is up: its model may aim and kick again, and right mouse held through the draw aims at
      * once rather than with the next use packet, which on a scoped gun would leave up to 4 ticks of
      * neither gun nor scope (the model hides the gun as soon as the mark is gone).
      */
     private void drawn(Player player, GunState state, long now) {
-        unmark(player, state);
+        state.drawPending = false;
+        setMark(player, state, wantedMark(state));
         if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
                 && !player.isSprinting()) {
             adsUntil.put(player.getUniqueId(), now + 6);
@@ -520,12 +525,14 @@ public final class WeaponService implements Listener {
                 continue;
             }
             settle(player, state, now);
-            if (state.drawMarked && !state.drawing()) {
+            if (state.drawPending && !state.drawing()) {
                 drawn(player, state, now);
             }
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
                     finishReload(player, state);
+                } else if (!state.reloadShown) {
+                    showReload(player, state, now);
                 }
                 continue;
             }
@@ -720,6 +727,9 @@ public final class WeaponService implements Listener {
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
         Ballistics.muzzle(player, dir);
+        // The first-person kick and muzzle flash: the item model plays them while this cooldown counts
+        // down on the client, so they follow the shots the server fires, not the trigger finger.
+        player.setCooldown(ItemFactory.RELOAD_GROUP, gun.kickTicks());
         Location muzzle = Ballistics.muzzlePoint(player, dir);
         audio.shot(player, muzzle, gun, state.suppressed, reportRounds(state));
         if (!state.suppressed) {
@@ -739,8 +749,8 @@ public final class WeaponService implements Listener {
             audio.casing(player, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
         if (state.ammo == 0) {
-            // Writing the empty magazine back marks the item "dry": its model stops flashing on the trigger.
-            flush(player);
+            // Not written back to the stack here: a changed stack in the hand makes the client lower and
+            // raise the gun. It is written whenever the item could move (see flush).
             player.playSound(player.getLocation(), "craftov:gun.empty", SoundCategory.PLAYERS, 0.6f, 1.2f);
         }
         return true;
@@ -1150,8 +1160,11 @@ public final class WeaponService implements Listener {
                 * (1.0 + 0.2 * plugin.health().activeFractures(player, true));
         state.reloadStart = now;
         state.reloadEnd = now + Math.max(5, Math.round(duration));
-        // The client animates the reload from this cooldown on its own (see tools/art/reload.py).
-        player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.reloadEnd - now));
+        // A shot's kick still running ends now; the reload frames start on the next tick (showReload),
+        // once the stack carries the reload mark.
+        player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        state.reloadShown = false;
+        setMark(player, state, ItemFactory.MARK_RELOAD);
         state.reloadType = type;
         state.triggerHeld = false;
         state.burstLeft = 0;
@@ -1213,11 +1226,17 @@ public final class WeaponService implements Listener {
         return best;
     }
 
-    /** Ends the client-side reload animation if the dropped state was mid-reload. */
-    private static void stopReloadAnimation(Player player, @Nullable GunState state) {
-        if (state != null && state.reloading()) {
-            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
-        }
+    /**
+     * Starts the client's reload frames: the reload mark first, sent at once rather than at the end of
+     * the tick, then the cooldown that runs the frames. The other way round, the model would read the
+     * cooldown as a shot and flash. A tick after the reload began, so a gun reloaded with Q (out of the
+     * inventory while the drop event ran) is back in it and can carry the mark.
+     */
+    private void showReload(Player player, GunState state, long now) {
+        state.reloadShown = true;
+        setMark(player, state, ItemFactory.MARK_RELOAD);
+        Nms.syncInventory(player);
+        player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.max(1, state.reloadEnd - now));
     }
 
     private void finishReload(Player player, GunState state) {
@@ -1226,6 +1245,7 @@ public final class WeaponService implements Listener {
         state.reloadStart = -1;
         state.reloadEnd = -1;
         state.reloadType = null;
+        setMark(player, state, wantedMark(state));
         if (type == null) {
             return;
         }

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun/r12",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -178.47,
+    86.0,
+    -177.0
+   ],
+   "translation": [
+    -1.2,
+    3.34,
+    -1.04
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    1.53,
+    -86.0,
+    -3.0
+   ],
+   "translation": [
+    -1.2,
+    3.34,
+    -1.04
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

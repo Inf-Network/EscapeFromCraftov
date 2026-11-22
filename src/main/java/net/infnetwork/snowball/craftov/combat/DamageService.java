@@ -195,7 +195,16 @@ public final class DamageService implements Listener {
         return damage;
     }
 
-    /** Deals raw damage without knockback or invulnerability frames. */
+    /**
+     * Deals raw damage without knockback or invulnerability frames. When a soldier (or any
+     * non-player) hurts a player, the damage source names no attacking entity, only the place the
+     * hit came from (so the screen still tilts away from the shooter): vanilla scales damage from
+     * a mob to a player with the world's difficulty, and soldiers' damage is meant to be set by
+     * ai.damage-multiplier alone, whatever difficulty a world ends up on. Kill credit comes from
+     * {@link #recordHit}, RaidManager counts any damage dealt here as hostile, and a soldier may
+     * always hurt a player, so nothing needs the entity there. Other pairs keep it: friendly fire
+     * between players and stand-ins is sorted out on EntityDamageByEntityEvent.
+     */
     public void deal(LivingEntity victim, @Nullable LivingEntity attacker, double amount) {
         if (amount <= 0 || victim.isDead()) {
             return;
@@ -203,7 +212,9 @@ public final class DamageService implements Listener {
         victim.setNoDamageTicks(0);
         DamageSource.Builder builder = DamageSource.builder(attacker instanceof Player ? DamageType.PLAYER_ATTACK
                 : attacker != null ? DamageType.MOB_ATTACK : DamageType.GENERIC);
-        if (attacker != null) {
+        if (attacker != null && victim instanceof Player && !(attacker instanceof Player)) {
+            builder.withDamageLocation(attacker.getLocation());
+        } else if (attacker != null) {
             builder.withCausingEntity(attacker).withDirectEntity(attacker);
         }
         applying = true;

@@ -71,12 +71,12 @@ final class TerminalMenu extends Menu {
             viewer.closeInventory();
             plugin.operators().activate(viewer);
         });
-        button(24, UiItems.button("craftov:ui/icon_start", "<accent><b>每日任务", List.of("<muted>查看今日任务进度")),
+        button(24, UiItems.button("craftov:ui/icon_tasks", "<accent><b>每日任务", List.of("<muted>查看今日任务进度")),
                 e -> new TaskMenu(plugin, viewer, true).open());
-        button(20, UiItems.button("craftov:ui/tab_attachment", "<accent><b>改枪台", List.of("<muted>安装 / 拆下瞄准镜")),
+        button(20, UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {
-            button(26, UiItems.button("craftov:ui/tab_weapon", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）")),
+            button(26, UiItems.button("craftov:ui/icon_catalog", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）")),
                     e -> plugin.menus().openCatalog(viewer));
         }
         button(22, UiItems.button("craftov:ui/icon_cancel", confirmSurrender ? "<danger><b>再次点击确认放弃" : "<danger>放弃行动",

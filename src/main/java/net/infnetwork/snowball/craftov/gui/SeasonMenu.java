@@ -28,7 +28,7 @@ final class SeasonMenu extends Menu {
         Profile profile = season.sync(plugin.profiles().get(viewer));
         int tier = season.tier(profile);
         long into = profile.seasonXp - tier * season.xpPerTier();
-        set(4, UiItems.button("craftov:ui/icon_rank", "<accent><b>" + Text.escape(season.name()) + " · 第 " + tier + " 级", List.of(
+        set(4, UiItems.button("craftov:ui/icon_season", "<accent><b>" + Text.escape(season.name()) + " · 第 " + tier + " 级", List.of(
                 tier >= SeasonService.TIERS ? "<ok>已满级" : "<muted>下一级 " + into + "/" + season.xpPerTier() + " 经验",
                 "<muted>行动、击败敌人和完成任务获得的经验都会计入",
                 "<muted>物品奖励送到仓库邮箱")));

@@ -37,7 +37,7 @@ final class RangeMenu extends Menu {
             ItemDef def = optics.get(i);
             button(18 + i, plugin.items().markRange(plugin.items().create(def, 1)), e -> take(def));
         }
-        button(38, UiItems.button("craftov:ui/tab_attachment", "<accent><b>改枪台", List.of("<muted>给靶场武器装上 / 拆下瞄准镜和配件")),
+        button(38, UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>给靶场武器装上 / 拆下瞄准镜和配件")),
                 e -> plugin.menus().openGunsmith(viewer));
         button(40, UiItems.button("craftov:ui/icon_help", "<text><b>说明", List.of(
                 "<muted>点击领取，子弹无限（弹匣/999）",

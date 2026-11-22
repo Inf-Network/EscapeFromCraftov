@@ -45,9 +45,9 @@ final class MainMenu extends Menu {
                 e -> new CollectionMenu(plugin, viewer).open());
         button(21, UiItems.button("craftov:ui/icon_rank", "<accent><b>排位 · 战绩", List.of("<muted>排行榜与最近行动报告")),
                 e -> new RankMenu(plugin, viewer).open());
-        button(19, UiItems.button("craftov:ui/icon_stash", "<info><b>配装方案", List.of("<muted>保存当前配装，下次一键补齐")),
+        button(19, UiItems.button("craftov:ui/icon_preset", "<info><b>配装方案", List.of("<muted>保存当前配装，下次一键补齐")),
                 e -> new PresetMenu(plugin, viewer).open());
-        button(25, UiItems.button("craftov:ui/icon_upgrade", "<ok><b>免费补给", List.of("<muted>战备值低于 ◈" + Text.money(plugin.getConfig().getLong("free-kit.max-value", 15000))
+        button(25, UiItems.button("craftov:ui/icon_freekit", "<ok><b>免费补给", List.of("<muted>战备值低于 ◈" + Text.money(plugin.getConfig().getLong("free-kit.max-value", 15000))
                 , "<muted>且总资产不超过 ◈" + Text.money(plugin.traders().freeKitMaxAssets()) + " 时可领取",
                 "<muted>冷却 " + plugin.getConfig().getInt("free-kit.cooldown-minutes", 20) + " 分钟")), e -> {
             plugin.traders().claimFreeKit(viewer);
@@ -64,19 +64,19 @@ final class MainMenu extends Menu {
                     redraw();
                 });
         long tasksDone = plugin.tasks().of(p).stream().filter(t -> t.done).count();
-        button(28, UiItems.button("craftov:ui/icon_upgrade", "<ok><b>藏身处", List.of("<muted>发电机 · 工作台 · 医疗站 · 情报中心",
+        button(28, UiItems.button("craftov:ui/icon_hideout", "<ok><b>藏身处", List.of("<muted>发电机 · 工作台 · 医疗站 · 情报中心",
                 "<muted>制作弹药药品，挂机产出块币")), e -> new HideoutMenu(plugin, viewer).open());
-        button(33, UiItems.button("craftov:ui/icon_rank", "<accent><b>赛季通行证", List.of("<muted>行动经验解锁 40 级奖励",
+        button(33, UiItems.button("craftov:ui/icon_season", "<accent><b>赛季通行证", List.of("<muted>行动经验解锁 40 级奖励",
                 "<muted>块币 · 药品 · 配件 · 每 10 级一把枪")), e -> new SeasonMenu(plugin, viewer).open());
-        button(32, UiItems.button("craftov:ui/icon_rank", "<danger><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
+        button(32, UiItems.button("craftov:ui/icon_bounty", "<danger><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
                 "<muted>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
-        button(29, UiItems.button("craftov:ui/icon_start", "<accent><b>每日任务", List.of("<muted>今日进度 " + tasksDone + "/"
+        button(29, UiItems.button("craftov:ui/icon_tasks", "<accent><b>每日任务", List.of("<muted>今日进度 " + tasksDone + "/"
                 + net.infnetwork.snowball.craftov.task.TaskService.COUNT, "<muted>完成即得块币与经验，每天 04:00 刷新")),
                 e -> new TaskMenu(plugin, viewer, false).open());
-        button(30, UiItems.button("craftov:ui/tab_attachment", "<accent><b>改枪台", List.of("<muted>给身上的枪安装 / 拆下瞄准镜")),
+        button(30, UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>给身上的枪安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {
-            button(31, UiItems.button("craftov:ui/tab_weapon", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）",
+            button(31, UiItems.button("craftov:ui/icon_catalog", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）",
                     "<muted>也可以输入 <white>/cv items")), e -> plugin.menus().openCatalog(viewer));
         }
         button(24, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(

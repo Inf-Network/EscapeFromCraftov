@@ -1,14 +1,21 @@
-"""Interface pictograms, the sniper scope overlay and HUD images."""
+"""Interface pictograms, the sniper scope overlay and HUD images.
+
+Pictograms are drawn in the design palette (palette.py) on a raised plate: light strokes for the
+object, amber for what matters (money, the main action), the semantic colours for state. Every key
+has a picture of its own; no two menu buttons share one.
+"""
 import math
 from PIL import Image, ImageDraw
+import palette as PAL
 from px import Canvas, rgb, shade
 
-W = rgb('#E8E4D8'); D = rgb('#1E2126'); G = rgb('#8A8F98'); Y = rgb('#F2C94C'); GR = rgb('#5BD16B')
-R = rgb('#FF4D4D'); B = rgb('#4FA3FF'); P = rgb('#B66BFF'); O = rgb('#FF9F43'); C = rgb('#7FE0D0')
+W = rgb(PAL.TEXT); D = rgb('#0F1318'); G = rgb(PAL.MUTED); Y = rgb(PAL.ACCENT); GR = rgb(PAL.OK)
+R = rgb(PAL.DANGER); B = rgb(PAL.INFO); P = rgb('#9C8CF0'); O = shade(Y, 0.85); C = rgb('#7FC8D1')
+PLATE = rgb(PAL.RAISED)
 
 
-def plate(c, color=rgb('#2A2E35')):
-    c.box(1, 1, 30, 30, color, 1.15, 0.6)
+def plate(c, color=PLATE):
+    c.box(1, 1, 30, 30, color, 1.35, 0.55)
 
 
 def icon(draw_fn, bg=True):
@@ -117,10 +124,126 @@ UI.update({
     'op_recon': operator_badge(B, lambda c: (c.ellipse(12, 9, 20, 15, D), c.ellipse(15, 11, 17, 13, W))),
     'op_engineer': operator_badge(rgb('#C8CCD2'), lambda c: c.rect(11, 10, 21, 14, D)),
 })
-for tab, base in (('weapon', 'icon_deploy'), ('ammo', 'icon_ammo'), ('armor', 'icon_secure'), ('helmet', 'icon_operator'),
-                  ('carry', 'icon_stash'), ('medical', 'icon_help'), ('throwable', 'icon_cancel_small'), ('service', 'icon_repair'),
-                  ('market', 'icon_market')):
-    UI['tab_' + tab] = UI[base]
+
+
+def rifle(c, y=15, col=W):
+    """A side-on rifle: stock, receiver, magazine, barrel."""
+    c.poly([(4, y + 1), (9, y - 1), (9, y + 4), (5, y + 5)], col)
+    c.rect(9, y - 2, 22, y + 1, col)
+    c.rect(22, y - 1, 28, y, col)
+    c.poly([(14, y + 1), (17, y + 1), (16, y + 6), (13, y + 6)], col)
+    c.rect(18, y + 1, 19, y + 3, col)
+    c.rect(12, y - 4, 16, y - 3, col)
+
+
+def tab_weapon(c):
+    rifle(c)
+
+
+def tab_ammo(c):
+    # A curved box magazine with a round showing at the top.
+    c.poly([(11, 9), (19, 9), (21, 26), (14, 27)], G)
+    c.poly([(12, 11), (18, 11), (19, 24), (15, 25)], shade(G, 0.75))
+    c.ellipse(13, 5, 17, 10, rgb('#C9A24A'))
+
+
+def tab_armor(c):
+    c.poly([(8, 6), (12, 6), (16, 9), (20, 6), (24, 6), (26, 11), (25, 26), (7, 26), (6, 11)], G)
+    c.rect(11, 13, 21, 22, shade(G, 0.7))
+    c.rect(12, 15, 20, 16, W)
+
+
+def tab_helmet(c):
+    c.d.chord([6, 7, 26, 31], 180, 360, fill=G)
+    c.rect(5, 18, 27, 20, shade(G, 0.75))
+    c.rect(22, 13, 25, 15, W)
+
+
+def tab_carry(c):
+    c.d.rounded_rectangle([8, 7, 24, 27], 4, fill=G)
+    c.rect(11, 16, 21, 23, shade(G, 0.7))
+    c.line([(12, 5), (20, 5)], G, 2)
+    c.rect(11, 18, 21, 18, W)
+
+
+def tab_throwable(c):
+    # A frag grenade: ribbed body, spoon and pin ring.
+    c.ellipse(9, 11, 23, 27, rgb('#6E7A55'))
+    for y in (15, 19, 23):
+        c.line([(10, y), (22, y)], shade(rgb('#6E7A55'), 0.7))
+    c.rect(13, 7, 19, 11, G)
+    c.line([(19, 8), (24, 13)], G, 2)
+    c.d.ellipse([20, 3, 26, 9], outline=Y)
+
+
+def tab_service(c):
+    # A spanner over a cog.
+    for a in range(0, 360, 45):
+        x, y = 16 + 9 * math.cos(math.radians(a)), 16 + 9 * math.sin(math.radians(a))
+        c.ellipse(x - 2, y - 2, x + 2, y + 2, G)
+    c.ellipse(9, 9, 23, 23, G)
+    c.ellipse(13, 13, 19, 19, PLATE)
+    c.line([(8, 25), (22, 11)], W, 3)
+    c.ellipse(19, 6, 27, 14, W)
+    c.ellipse(21, 8, 25, 12, PLATE)
+
+
+def tab_market(c):
+    # Candles on a baseline.
+    for x, lo, hi, col in ((8, 16, 24, R), (14, 12, 20, GR), (20, 8, 17, GR), (26, 11, 18, R)):
+        c.line([(x, lo - 3), (x, hi + 3)], G)
+        c.rect(x - 2, lo, x + 2, hi, col)
+    c.rect(5, 26, 27, 26, G)
+
+
+for _tab in (tab_weapon, tab_ammo, tab_armor, tab_helmet, tab_carry, tab_throwable, tab_service, tab_market):
+    UI[_tab.__name__] = (lambda fn: lambda: icon(fn))(_tab)
+
+
+def clipboard(c, col=W):
+    c.box(8, 6, 24, 28, shade(G, 0.55))
+    c.rect(10, 9, 22, 26, col)
+    c.rect(13, 4, 19, 8, G)
+
+
+UI.update({
+    # Season pass: three rank chevrons under a star.
+    'icon_season': lambda: icon(lambda c: (c.poly([(16, 4), (18, 8), (22, 8), (19, 11), (20, 15), (16, 12), (12, 15), (13, 11),
+                                                   (10, 8), (14, 8)], Y),
+                                          [c.poly([(7, y), (16, y + 5), (25, y), (25, y + 3), (16, y + 8), (7, y + 3)], W)
+                                           for y in (15, 20)])),
+    # Bounty board: a skull under crosshair ticks.
+    'icon_bounty': lambda: icon(lambda c: (c.ellipse(9, 7, 23, 20, W), c.rect(12, 19, 20, 24, W),
+                                          c.ellipse(11, 11, 15, 15, PLATE), c.ellipse(17, 11, 21, 15, PLATE),
+                                          c.rect(14, 21, 14, 24, PLATE), c.rect(17, 21, 17, 24, PLATE),
+                                          c.rect(15, 2, 16, 5, R), c.rect(15, 26, 16, 29, R), c.rect(3, 15, 6, 16, R),
+                                          c.rect(26, 15, 29, 16, R))),
+    # Hideout: a bunker door set into a mound, with an antenna.
+    'icon_hideout': lambda: icon(lambda c: (c.d.chord([3, 10, 29, 40], 180, 360, fill=rgb('#5B6B4E')),
+                                           c.rect(12, 16, 20, 25, D), c.rect(13, 17, 19, 25, G), c.rect(17, 20, 18, 21, Y),
+                                           c.line([(23, 13), (23, 4)], G), c.line([(21, 6), (25, 6)], G))),
+    # Free supply drop: a crate under a parachute.
+    'icon_freekit': lambda: icon(lambda c: (c.d.chord([6, 3, 26, 17], 180, 360, fill=GR), c.line([(7, 10), (13, 18)], G),
+                                           c.line([(25, 10), (19, 18)], G), c.box(11, 17, 21, 27, rgb('#8A6A3E')),
+                                           c.rect(11, 21, 21, 22, shade(rgb('#8A6A3E'), 0.7)))),
+    # Loadout presets: a clipboard with ticked rows.
+    'icon_preset': lambda: icon(lambda c: (clipboard(c), [c.rect(14, y, 21, y + 1, G) for y in (12, 17, 22)],
+                                          [c.line([(11, y + 1), (12, y + 2), (13, y)], GR) for y in (12, 17, 22)])),
+    # Daily tasks: a list with one tick and two boxes.
+    'icon_tasks': lambda: icon(lambda c: (clipboard(c, rgb('#D9D4C6')), c.line([(11, 13), (12, 14), (14, 11)], GR, 2),
+                                         c.rect(16, 12, 21, 13, G), c.d.rectangle([11, 17, 13, 19], outline=G),
+                                         c.rect(16, 18, 21, 19, G), c.d.rectangle([11, 22, 13, 24], outline=G),
+                                         c.rect(16, 23, 21, 24, G))),
+    # Gunsmith: a scope over a spanner.
+    'icon_gunsmith': lambda: icon(lambda c: (c.line([(7, 26), (24, 9)], G, 3), c.ellipse(20, 4, 28, 12, G),
+                                            c.ellipse(22, 6, 26, 10, PLATE), c.box(5, 9, 21, 14, W), c.box(3, 8, 7, 15, shade(W, 0.6)),
+                                            c.rect(21, 10, 22, 13, B))),
+    # Test armory: a rack of three rifles standing up.
+    'icon_catalog': lambda: icon(lambda c: ([(c.rect(x, 6, x + 2, 24, W), c.rect(x - 1, 20, x + 3, 26, G)) for x in (8, 15, 22)],
+                                           c.rect(5, 27, 27, 28, Y))),
+    'report_fail': lambda: icon(lambda c: (c.d.ellipse([6, 6, 26, 26], outline=R, width=2), c.line([(12, 12), (20, 20)], R, 2),
+                                          c.line([(20, 12), (12, 20)], R, 2))),
+})
 
 
 def medical_tab():

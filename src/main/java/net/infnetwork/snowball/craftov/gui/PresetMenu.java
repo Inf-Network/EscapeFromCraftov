@@ -58,7 +58,7 @@ final class PresetMenu extends Menu {
                 lore.add("");
                 lore.add("<muted>商人有售的部分全部购买约 ◈" + Text.money(cost) + "（优先使用仓库中的物品）");
                 lore.add("<ok>左键 一键配装  <danger>潜行右键 删除  <accent>右键 覆盖保存");
-                button(slot, UiItems.button("craftov:ui/icon_stash", "<text><b>" + Text.escape(preset.name), lore), e -> {
+                button(slot, UiItems.button("craftov:ui/icon_preset", "<text><b>" + Text.escape(preset.name), lore), e -> {
                     if (e.isShiftClick() && e.isRightClick()) {
                         p.presets.remove(index);
                     } else if (e.isRightClick()) {

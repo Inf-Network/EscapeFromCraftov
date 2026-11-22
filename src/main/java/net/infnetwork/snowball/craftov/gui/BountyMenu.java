@@ -27,7 +27,7 @@ final class BountyMenu extends Menu {
     @Override
     protected void draw() {
         UUID champion = plugin.bounties().champion();
-        set(4, UiItems.button("craftov:ui/icon_rank", "<danger><b>悬赏榜", List.of(
+        set(4, UiItems.button("craftov:ui/icon_bounty", "<danger><b>悬赏榜", List.of(
                 "<muted>点击玩家头像，花 ◈" + Text.money(plugin.bounties().step()) + " 追加悬赏",
                 "<muted>在行动中击杀被悬赏的玩家即可领取全部赏金",
                 "<muted>排位第一的玩家自带 ◈" + Text.money(plugin.bounties().houseBounty()) + " 系统悬赏",

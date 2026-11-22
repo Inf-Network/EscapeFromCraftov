@@ -50,7 +50,7 @@ final class TaskMenu extends Menu {
             }
             String name = (task.done ? "<ok><b>✔ " : "<text><b>") + Text.escape(TaskService.describe(task));
             int index = i;
-            button(SLOTS[i], UiItems.button(task.done ? "craftov:ui/report_ok" : "craftov:ui/icon_start", name, lore), event -> {
+            button(SLOTS[i], UiItems.button(task.done ? "craftov:ui/report_ok" : "craftov:ui/icon_tasks", name, lore), event -> {
                 if (event.getClick() == ClickType.RIGHT && plugin.tasks().reroll(viewer, index)) {
                     viewer.playSound(viewer.getLocation(), "minecraft:ui.button.click", SoundCategory.MASTER, 0.6f, 1.2f);
                     redraw();

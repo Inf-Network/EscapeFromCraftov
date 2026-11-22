@@ -714,6 +714,9 @@ public final class WeaponService implements Listener {
         if (plugin.lobby().isLobby(player.getWorld())) {
             return "<#9AA0A6>大厅里不能开火，请到靶场入口进入个人靶场";
         }
+        if (plugin.downed().isReviving(player)) {
+            return "<#9AA0A6>救援时不能开火";
+        }
         if (plugin.raids().isInRaid(player)) {
             return plugin.raids().isProtected(player) ? "<#9AA0A6>保护时间内不能开火" : "<#9AA0A6>现在不能开火";
         }

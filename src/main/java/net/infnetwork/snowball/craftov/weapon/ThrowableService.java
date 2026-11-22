@@ -93,6 +93,13 @@ public final class ThrowableService implements Listener {
             if (entity instanceof Player p && !plugin.raids().canBeShot(p)) {
                 continue;
             }
+            // Squadmates with friendly fire off are spared outright: recording the thrower first
+            // let a downed mate who later bled out count as their kill, bounty and all. The
+            // thrower is not spared, but nobody gets the credit for blowing yourself up.
+            boolean self = entity == thrower;
+            if (!self && !plugin.raids().canDamage(thrower, entity)) {
+                continue;
+            }
             Location target = entity.getLocation().add(0, entity.getHeight() / 2, 0);
             Vector to = target.toVector().subtract(at.toVector());
             double distance = to.length();
@@ -101,8 +108,8 @@ public final class ThrowableService implements Listener {
                 continue;
             }
             double damage = spec.damage() * Math.max(0.1, 1 - distance / spec.radius());
-            plugin.damage().recordHit(entity, thrower, name, HitZone.TORSO);
-            plugin.damage().deal(entity, entity == thrower ? null : thrower, damage);
+            plugin.damage().recordHit(entity, self ? null : thrower, name, HitZone.TORSO);
+            plugin.damage().deal(entity, self ? null : thrower, damage);
             // A soldier caught in the blast knows roughly where it came from, and a sleeping boss
             // group wakes, as it would to a bullet.
             plugin.ai().onBotHurt(entity, thrower);

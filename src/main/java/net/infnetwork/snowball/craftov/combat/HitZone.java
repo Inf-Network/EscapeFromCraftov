@@ -19,7 +19,10 @@ public enum HitZone {
         return displayName;
     }
 
-    /** Classifies a hit by its height within the target's bounding box. */
+    /**
+     * Classifies a hit by its height within the target's bounding box. Only right for an upright
+     * target: {@link BodyPart#of} classifies a prone player along its body instead.
+     */
     public static HitZone of(LivingEntity target, Vector point) {
         BoundingBox box = target.getBoundingBox();
         double height = Math.max(0.1, box.getHeight());

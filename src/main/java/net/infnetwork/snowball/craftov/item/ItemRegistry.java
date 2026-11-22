@@ -163,7 +163,7 @@ public final class ItemRegistry {
                 cures.add(Injury.valueOf(c.toUpperCase(Locale.ROOT)));
             }
             med = new MedSpec(m.getDouble("use", 2.0), m.getDouble("pool", 0), m.getDouble("per-use", 0),
-                    Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)),
+                    Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)), m.getBoolean("one-part", false),
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
                     m.getInt("effect-seconds", 0), m.getString("anim", "brush"), m.getString("sound", "med.bandage"));
         }
@@ -176,8 +176,16 @@ public final class ItemRegistry {
         net.infnetwork.snowball.craftov.weapon.MeleeSpec melee = null;
         ConfigurationSection me = s.getConfigurationSection("melee");
         if (me != null) {
-            melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getInt("hits-normal", 2), me.getInt("hits-special", 3),
-                    me.getInt("hits-boss", 4), me.getDouble("player-damage", 30), me.getInt("cooldown", 12), me.getDouble("reach", 3.0));
+            // An items.yml from before knives went through armour has player-damage instead of damage.
+            // It still loads, but the knife cuts at pen 1, keeps its old lore and stays tradeable.
+            if (!me.contains("damage") && (me.contains("player-damage") || me.contains("hits-normal"))) {
+                logger.warning("items.yml: " + id + " still has the old melee keys (hits-normal, player-damage): knives now"
+                        + " go through armour with damage, pen and armor-damage, so it cuts at pen 1 and keeps its old lore"
+                        + " and trade settings. Back up items.yml, replace it with the one in the plugin jar and restart.");
+            }
+            melee = new net.infnetwork.snowball.craftov.weapon.MeleeSpec(me.getDouble("damage", me.getDouble("player-damage", 34)),
+                    Math.max(0, me.getInt("pen", 1)), Math.max(0, me.getDouble("armor-damage", 1.0)), me.getDouble("head", 1.0),
+                    Math.max(1, me.getInt("cooldown", 12)), me.getDouble("reach", 3.0));
         }
         net.infnetwork.snowball.craftov.weapon.AttachSpec attach = null;
         ConfigurationSection at = s.getConfigurationSection("attach");

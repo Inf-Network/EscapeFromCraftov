@@ -16,6 +16,7 @@ import org.bukkit.WorldBorder;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -37,6 +38,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,12 +73,19 @@ public final class HealthService implements Listener {
 
     private final CraftovPlugin plugin;
     private final Map<UUID, EnumMap<BodyPart, EnumSet<Injury>>> wounds = new HashMap<>();
+    /**
+     * Who made the bleeding wound on each part (absent: nobody, or unknown). Only that attacker's
+     * kill credit is kept going while it bleeds.
+     */
+    private final Map<UUID, EnumMap<BodyPart, UUID>> bleedSources = new HashMap<>();
     private final Map<UUID, Long> painkillerUntil = new HashMap<>();
     private final Map<UUID, Long> adrenalineUntil = new HashMap<>();
     private final Map<UUID, Double> lastSpeed = new HashMap<>();
     private final Map<UUID, Double> lastJump = new HashMap<>();
     private final Map<UUID, MedUse> medUse = new HashMap<>();
     private final Map<UUID, WorldBorder> vignettes = new HashMap<>();
+    /** True while a wound's bleeding is being dealt, so listeners can tell it from a hit. */
+    private boolean bleeding;
 
     public HealthService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -108,6 +117,7 @@ public final class HealthService implements Listener {
     public void clear(Player player) {
         UUID id = player.getUniqueId();
         wounds.remove(id);
+        bleedSources.remove(id);
         painkillerUntil.remove(id);
         adrenalineUntil.remove(id);
         medUse.remove(id);
@@ -152,7 +162,16 @@ public final class HealthService implements Listener {
     }
 
     public void addInjury(Player player, BodyPart part, Injury injury) {
-        if (addWound(player.getUniqueId(), part, injury)) {
+        addInjury(player, part, injury, null);
+    }
+
+    /**
+     * Adds an injury made by {@code source} (null: nobody, or unknown). A new or worsened bleed on
+     * the part becomes the source's wound, whose bleeding keeps their kill credit going; one already
+     * there as bad stays with whoever made it.
+     */
+    public void addInjury(Player player, BodyPart part, Injury injury, @Nullable UUID source) {
+        if (addWound(player.getUniqueId(), part, injury, source)) {
             player.sendActionBar(Text.mm("<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName()));
             player.playSound(player.getLocation(), "craftov:status.injury", SoundCategory.PLAYERS, 0.8f, 1f);
             updateFood(player);
@@ -160,8 +179,8 @@ public final class HealthService implements Listener {
         }
     }
 
-    /** Adds an injury to {@code uuid}'s wounds, online or not. True if it is new. */
-    private boolean addWound(UUID uuid, BodyPart part, Injury injury) {
+    /** Adds an injury made by {@code source} to {@code uuid}'s wounds, online or not. True if it is new. */
+    private boolean addWound(UUID uuid, BodyPart part, Injury injury, @Nullable UUID source) {
         if (injury == Injury.FRACTURE && !part.canFracture()) {
             return false;
         }
@@ -173,7 +192,18 @@ public final class HealthService implements Listener {
         if (injury == Injury.HEAVY_BLEED) {
             set.remove(Injury.LIGHT_BLEED);
         }
-        return set.add(injury);
+        if (!set.add(injury)) {
+            return false;
+        }
+        if (injury != Injury.FRACTURE) {
+            EnumMap<BodyPart, UUID> sources = bleedSources.computeIfAbsent(uuid, k -> new EnumMap<>(BodyPart.class));
+            if (source == null) {
+                sources.remove(part);
+            } else {
+                sources.put(part, source);
+            }
+        }
+        return true;
     }
 
     /** Adds an injury to a sensible part (used by tests and environmental damage). */
@@ -194,34 +224,85 @@ public final class HealthService implements Listener {
         forceSpeedUpdate(player);
     }
 
+    /** One treated wound: e.g. "左腿骨折", and how much of the item's healing pool it used. */
+    public record Treated(String label, double cost) {
+    }
+
     /**
-     * Treats up to {@code count} wounds the item can handle, most dangerous first. Returns a short
-     * description of each treated wound, e.g. "左腿骨折".
+     * Healing pool a medkit or surgery kit uses up to treat one wound of this kind
+     * (medical.wound-cost). Treating used to be free, so a surgery kit at full health cleared every
+     * fracture and bleed on the body and stayed in the pocket.
      */
-    public List<String> treat(Player player, Set<Injury> cures, int count) {
-        List<String> done = new ArrayList<>();
+    public double woundCost(Injury injury) {
+        double fallback = switch (injury) {
+            case LIGHT_BLEED -> 15;
+            case HEAVY_BLEED, FRACTURE -> 40;
+        };
+        return Math.max(0, plugin.getConfig().getDouble("medical.wound-cost." + injury.name(), fallback));
+    }
+
+    private static boolean treatable(Set<Injury> cures, Injury injury) {
+        return cures.contains(injury) || (injury == Injury.LIGHT_BLEED && cures.contains(Injury.HEAVY_BLEED));
+    }
+
+    /**
+     * Treats up to {@code med.cureCount()} wounds the item can handle, most dangerous first, and
+     * only on the worst body part for a one-part item. An item with a healing pool pays for each
+     * wound out of {@code pool} (what is left in it) and stops once that is spent; the last wound
+     * may take the rest. Returns each treated wound with what it cost.
+     */
+    public List<Treated> treat(Player player, MedSpec med, double pool) {
+        List<Treated> done = new ArrayList<>();
         EnumMap<BodyPart, EnumSet<Injury>> map = wounds.get(player.getUniqueId());
         if (map == null) {
             return done;
         }
+        BodyPart only = med.onePart() ? worstPart(map, med.cures()) : null;
+        double left = pool;
         for (Injury injury : List.of(Injury.HEAVY_BLEED, Injury.LIGHT_BLEED, Injury.FRACTURE)) {
-            boolean treatable = cures.contains(injury) || (injury == Injury.LIGHT_BLEED && cures.contains(Injury.HEAVY_BLEED));
-            if (!treatable) {
+            if (!treatable(med.cures(), injury)) {
                 continue;
             }
             for (BodyPart part : injury == Injury.FRACTURE ? FRACTURE_ORDER : BLEED_ORDER) {
-                if (done.size() >= count) {
+                if (done.size() >= med.cureCount() || (med.pool() > 0 && left <= 0.5)) {
                     break;
+                }
+                if (only != null && part != only) {
+                    continue;
                 }
                 EnumSet<Injury> set = map.get(part);
                 if (set != null && set.remove(injury)) {
-                    done.add(part.displayName() + injury.displayName());
+                    double cost = med.pool() > 0 ? Math.min(left, woundCost(injury)) : 0;
+                    left -= cost;
+                    done.add(new Treated(part.displayName() + injury.displayName(), cost));
                 }
             }
         }
         updateFood(player);
         forceSpeedUpdate(player);
         return done;
+    }
+
+    /** The body part whose wounds {@code cures} can treat cost the most to treat (most urgent first on a tie). */
+    private @Nullable BodyPart worstPart(EnumMap<BodyPart, EnumSet<Injury>> map, Set<Injury> cures) {
+        BodyPart worst = null;
+        double most = 0;
+        for (BodyPart part : BLEED_ORDER) {
+            EnumSet<Injury> set = map.get(part);
+            double total = 0;
+            if (set != null) {
+                for (Injury injury : set) {
+                    if (treatable(cures, injury)) {
+                        total += woundCost(injury) + 1; // +1: a wound counts even when it costs nothing
+                    }
+                }
+            }
+            if (total > most) {
+                most = total;
+                worst = part;
+            }
+        }
+        return worst;
     }
 
     /** HUD colour state: 0 ok, 1 light bleed, 2 heavy bleed, 3 fracture, 4 fracture and bleeding. */
@@ -254,23 +335,26 @@ public final class HealthService implements Listener {
         return count;
     }
 
-    public void rollInjuries(Player player, BodyPart part, double damage) {
+    /** The wounds a hit of {@code damage} on {@code part} may cause, made by {@code source}. */
+    public void rollInjuries(Player player, BodyPart part, double damage, @Nullable LivingEntity source) {
+        UUID from = source == null ? null : source.getUniqueId();
         for (Injury injury : roll(part, damage)) {
-            addInjury(player, part, injury);
+            addInjury(player, part, injury, from);
         }
     }
 
     /**
-     * The same for a disconnected player, from a bullet their stand-in took: the wounds wait for
-     * them, and a bleed bleeds the stand-in on (tickWounds), as it would the player.
+     * The same for a disconnected player, from a hit their stand-in took: the wounds wait for them,
+     * and a bleed bleeds the stand-in on (tickWounds), as it would the player.
      */
-    public void rollInjuries(UUID offline, BodyPart part, double damage) {
+    public void rollInjuries(UUID offline, BodyPart part, double damage, @Nullable LivingEntity source) {
+        UUID from = source == null ? null : source.getUniqueId();
         for (Injury injury : roll(part, damage)) {
-            addWound(offline, part, injury);
+            addWound(offline, part, injury, from);
         }
     }
 
-    /** What a penetrating bullet of {@code damage} does to {@code part}: bleeding, a fracture, both or neither. */
+    /** What a penetrating hit of {@code damage} does to {@code part}: bleeding, a fracture, both or neither. */
     private static List<Injury> roll(BodyPart part, double damage) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         double scale = Math.min(2.0, damage / 30.0);
@@ -310,10 +394,13 @@ public final class HealthService implements Listener {
         player.setHealth(Math.min(MAX_HP, player.getHealth() + amount));
     }
 
-    /** Sprinting is impossible with an untreated broken leg or no stamina (food at 6 disables it). */
+    /**
+     * Sprinting is impossible with an untreated broken leg, no stamina or an overloaded pack (food
+     * at 6 disables it: the vanilla client has no other switch for it).
+     */
     public void updateFood(Player player) {
         boolean noSprint = plugin.raids().isInRaid(player)
-                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player));
+                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player));
         int food = noSprint ? 6 : 20;
         if (player.getFoodLevel() != food) {
             player.setFoodLevel(food);
@@ -325,16 +412,17 @@ public final class HealthService implements Listener {
 
     // ------------------------------------------------------------------ ticking
 
-    /** Health lost to bleeding every 1.5 s, and the part bleeding worst. */
-    private record Bleed(double amount, BodyPart worst) {
+    /** Health lost to bleeding every 1.5 s, the part bleeding worst, and who made the bleeding wounds. */
+    private record Bleed(double amount, BodyPart worst, Set<UUID> sources) {
     }
 
-    private static @Nullable Bleed bleed(@Nullable EnumMap<BodyPart, EnumSet<Injury>> map) {
+    private static @Nullable Bleed bleed(@Nullable EnumMap<BodyPart, EnumSet<Injury>> map, @Nullable EnumMap<BodyPart, UUID> by) {
         if (map == null) {
             return null;
         }
         double bleed = 0;
         BodyPart worst = null;
+        Set<UUID> sources = new HashSet<>();
         for (Map.Entry<BodyPart, EnumSet<Injury>> e : map.entrySet()) {
             if (e.getValue().contains(Injury.HEAVY_BLEED)) {
                 bleed += 2.6;
@@ -344,9 +432,15 @@ public final class HealthService implements Listener {
                 if (worst == null) {
                     worst = e.getKey();
                 }
+            } else {
+                continue;
+            }
+            UUID source = by == null ? null : by.get(e.getKey());
+            if (source != null) {
+                sources.add(source);
             }
         }
-        return bleed > 0 && worst != null ? new Bleed(bleed, worst) : null;
+        return bleed > 0 && worst != null ? new Bleed(bleed, worst, sources) : null;
     }
 
     private void tickWounds() {
@@ -355,10 +449,15 @@ public final class HealthService implements Listener {
             if (map == null || !plugin.raids().isInRaid(player) || plugin.downed().isDowned(player)) {
                 continue;
             }
-            Bleed bleed = bleed(map);
+            Bleed bleed = bleed(map, bleedSources.get(player.getUniqueId()));
             if (bleed != null) {
-                plugin.damage().recordHit(player, null, "失血", bleed.worst());
-                plugin.damage().deal(player, null, bleed.amount());
+                plugin.damage().recordBleed(player, "失血", bleed.worst(), bleed.sources());
+                bleeding = true;
+                try {
+                    plugin.damage().deal(player, null, bleed.amount());
+                } finally {
+                    bleeding = false;
+                }
                 player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                         org.bukkit.Material.REDSTONE_BLOCK.createBlockData());
             }
@@ -371,12 +470,18 @@ public final class HealthService implements Listener {
                 continue;
             }
             for (RaidPlayer rp : new ArrayList<>(raid.players.values())) {
-                Bleed bleed = rp.state == RaidPlayer.State.DISCONNECTED && !rp.inFlight ? bleed(wounds.get(rp.uuid)) : null;
+                Bleed bleed = rp.state == RaidPlayer.State.DISCONNECTED && !rp.inFlight
+                        ? bleed(wounds.get(rp.uuid), bleedSources.get(rp.uuid)) : null;
                 if (bleed != null) {
-                    plugin.raids().bleedOffline(raid, rp, bleed.amount(), bleed.worst());
+                    plugin.raids().bleedOffline(raid, rp, bleed.amount(), bleed.worst(), bleed.sources());
                 }
             }
         }
+    }
+
+    /** True during the damage event of a wound bleeding, not a hit. */
+    public boolean isBleeding() {
+        return bleeding;
     }
 
     private void tickSpeed() {
@@ -500,6 +605,11 @@ public final class HealthService implements Listener {
             Text.send(player, "<#9AA0A6>医疗物品只能在行动中使用。");
             return;
         }
+        if (plugin.downed().isReviving(player)) {
+            event.setCancelled(true);
+            player.sendActionBar(Text.mm("<#9AA0A6>救援时不能使用医疗物品"));
+            return;
+        }
         boolean downed = plugin.downed().isDowned(player);
         if (med.effect() == MedSpec.Effect.SELF_REVIVE ? !downed : downed) {
             event.setCancelled(true);
@@ -571,7 +681,11 @@ public final class HealthService implements Listener {
         medUse.remove(player.getUniqueId());
         MedSpec med = def.med();
         boolean consumed = true;
-        List<String> treated = treat(player, med.cures(), med.cureCount());
+        double remaining = med.pool() > 0 ? ItemFactory.dura(stack, med.pool()) : 0;
+        List<Treated> treated = treat(player, med, remaining);
+        for (Treated t : treated) {
+            remaining -= t.cost();
+        }
         switch (med.effect()) {
             case PAINKILLER -> painkillerUntil.put(player.getUniqueId(), System.currentTimeMillis() + med.effectSeconds() * 1000L);
             case ADRENALINE -> {
@@ -584,12 +698,12 @@ public final class HealthService implements Listener {
         }
         StringBuilder msg = new StringBuilder();
         if (!treated.isEmpty()) {
-            msg.append("<#5BD16B>已处理 ").append(String.join("、", treated));
+            msg.append("<#5BD16B>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
         }
         if (med.pool() > 0) {
-            double remaining = ItemFactory.dura(stack, med.pool());
+            // Whatever the wounds left of the pool heals, up to the item's per-use amount.
             double missing = MAX_HP - player.getHealth();
-            double heal = Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining);
+            double heal = Math.max(0, Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining));
             heal *= plugin.operators().healMultiplier(player);
             heal(player, heal);
             remaining -= heal;
@@ -645,18 +759,44 @@ public final class HealthService implements Listener {
         }
     }
 
+    /**
+     * Falls hurt five times as much in a raid. This runs before RaidManager.onDamage (HIGHEST), which
+     * needs the full damage to tell whether the fall downs or kills; what the fall does to the legs
+     * waits for {@link #onFallen}, once nothing has cancelled it.
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onFall(EntityDamageEvent event) {
         if (event.getCause() == EntityDamageEvent.DamageCause.FALL && event.getEntity() instanceof Player player
                 && plugin.raids().isInRaid(player)) {
             event.setDamage(event.getDamage() * 5.0);
-            plugin.damage().recordHit(player, null, "坠落", BodyPart.LEFT_LEG);
-            if (event.getDamage() >= 25) {
-                BodyPart leg = ThreadLocalRandom.current().nextBoolean() ? BodyPart.LEFT_LEG : BodyPart.RIGHT_LEG;
-                addInjury(player, leg, Injury.FRACTURE);
-                if (event.getDamage() >= 50) {
-                    addInjury(player, leg == BodyPart.LEFT_LEG ? BodyPart.RIGHT_LEG : BodyPart.LEFT_LEG, Injury.FRACTURE);
-                }
+        }
+    }
+
+    /**
+     * A fall that went through. A downed or spawn-protected player takes no fall damage
+     * (RaidManager.onDamage cancels it), so crawling down a ledge neither breaks a leg nor names the
+     * fall as the cause of a later bleed-out. A fall that downs or kills is cancelled there too and
+     * handed to {@link #fallen} directly.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFallen(EntityDamageEvent event) {
+        if (event.getCause() == EntityDamageEvent.DamageCause.FALL && event.getEntity() instanceof Player player
+                && plugin.raids().isInRaid(player)) {
+            fallen(player, event.getDamage());
+        }
+    }
+
+    /**
+     * Records a fall of {@code damage} (already multiplied) as the cause, keeping the credit with
+     * whoever hurt the player last, and breaks a leg from 25 damage (8 blocks) and both from 50.
+     */
+    public void fallen(Player player, double damage) {
+        plugin.damage().recordHit(player, null, "坠落", BodyPart.LEFT_LEG);
+        if (damage >= 25) {
+            BodyPart leg = ThreadLocalRandom.current().nextBoolean() ? BodyPart.LEFT_LEG : BodyPart.RIGHT_LEG;
+            addInjury(player, leg, Injury.FRACTURE);
+            if (damage >= 50) {
+                addInjury(player, leg == BodyPart.LEFT_LEG ? BodyPart.RIGHT_LEG : BodyPart.LEFT_LEG, Injury.FRACTURE);
             }
         }
     }

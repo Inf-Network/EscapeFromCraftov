@@ -75,7 +75,7 @@ public final class Ballistics {
             // A fellow soldier in the line of fire: the round ends there and does nothing.
             if (!friendly && result.getHitEntity() instanceof LivingEntity living) {
                 hitEntity = living;
-                BodyPart part = BodyPart.of(living, result.getHitPosition());
+                BodyPart part = BodyPart.of(living, result.getHitPosition(), dir);
                 double distance = eye.toVector().distance(result.getHitPosition());
                 plugin.damage().bullet(shooter, living, part, gun, ammo, distance, weaponName);
                 if (plugin.drones().isDrone(living)) {

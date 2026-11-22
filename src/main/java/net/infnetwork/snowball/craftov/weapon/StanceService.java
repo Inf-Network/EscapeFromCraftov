@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * gun is sent to everyone else as a charged crossbow that keeps the gun's item model (the model
  * switches to a variant posed for that stance on {@code charge_type}); the holder's own client keeps
  * the real item, so first person, ADS and reload frames are untouched. Sprinting, reloading, being
- * downed or swimming lowers the gun back to the normal one-handed carry.
+ * downed, reviving or swimming lowers the gun back to the normal one-handed carry.
  */
 public final class StanceService implements Listener, Nms.ViewRewriter {
 
@@ -73,7 +73,8 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
 
     private boolean wantsRaised(Player player) {
         if (player.getGameMode() == GameMode.SPECTATOR || player.isSprinting() || player.isSwimming() || player.isGliding()
-                || player.isInsideVehicle() || plugin.downed().isDowned(player) || !isGun(player.getInventory().getItemInMainHand())) {
+                || player.isInsideVehicle() || plugin.downed().isDowned(player) || plugin.downed().isReviving(player)
+                || !isGun(player.getInventory().getItemInMainHand())) {
             return false;
         }
         WeaponService.GunState state = plugin.weapons().state(player);

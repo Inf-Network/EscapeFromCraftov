@@ -345,6 +345,15 @@ public final class RaidManager implements Listener {
             raid.switchBlocks.put(Raid.blockKey(sw.pos().at(world)), sw);
         }
         plugin.ai().populate(raid);
+        if (raid.tier.boss()) {
+            for (MapDef.BossDef boss : map.bosses()) {
+                if (rng.nextDouble() < boss.chance()) {
+                    // In place from the start, asleep until its time: it used to appear out of thin air
+                    // with its guards in a room someone might be looting.
+                    plugin.ai().spawnBoss(raid, boss, true);
+                }
+            }
+        }
         // Assign spawn groups.
         List<Integer> groups = new ArrayList<>();
         for (MapDef.SpawnDef spawn : map.spawns()) {
@@ -634,13 +643,14 @@ public final class RaidManager implements Listener {
             }
             int remaining = raid.remainingSeconds();
             int elapsed = raid.elapsedSeconds();
-            if (!raid.bossSpawned && raid.tier.boss()) {
+            if (!raid.bossWoken && raid.tier.boss()) {
                 for (MapDef.BossDef boss : raid.map.bosses()) {
                     if (elapsed >= boss.delaySeconds()) {
-                        raid.bossSpawned = true;
-                        if (ThreadLocalRandom.current().nextDouble() < boss.chance()) {
-                            plugin.ai().spawnBoss(raid, boss);
-                            announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(boss.name()) + "</white> 出现在地图中，携带高价值物资。");
+                        raid.bossWoken = true;
+                        // Asleep at its post since the raid began (deploy); now it is up and about.
+                        String name = plugin.ai().wakeBoss(raid, boss.id());
+                        if (name != null) {
+                            announce(raid, "<#FF4D4D>⚠ 情报：<white>" + Text.escape(name) + "</white> 出现在地图中，携带高价值物资。");
                         }
                     }
                 }

@@ -117,6 +117,9 @@ public final class AiService implements Listener {
         @Nullable Location coverPos;
         long coverUntil;
         long nextCoverSearch;
+        /** A boss or boss guard asleep at its post until its time (see spawnBoss), and the boss it belongs to. */
+        boolean dormant;
+        @Nullable String group;
 
         Bot(Zombie mob, Raid raid, Location home, double leash, String kind, ItemDef gun, @Nullable ItemDef ammo,
             String name, boolean boss, double accuracy) {
@@ -149,7 +152,7 @@ public final class AiService implements Listener {
     public @Nullable String relocateBoss(Raid raid, Location to) {
         Bot boss = null;
         for (Bot bot : bots.values()) {
-            if (bot.raid == raid && bot.boss && bot.mob.isValid()) {
+            if (bot.raid == raid && bot.boss && bot.mob.isValid() && !bot.dormant) {
                 boss = bot;
             }
         }
@@ -277,6 +280,9 @@ public final class AiService implements Listener {
 
     /** What a soldier is busy with, as /cv ai shows it. */
     private static String state(Bot bot, long now) {
+        if (bot.dormant) {
+            return "休眠";
+        }
         if (bot.target != null && now - bot.lastSeenTick < 40) {
             return "交战";
         }
@@ -460,18 +466,55 @@ public final class AiService implements Listener {
         }
     }
 
-    public void spawnBoss(Raid raid, MapDef.BossDef def) {
+    /**
+     * A boss and its guards at the boss's post. {@code asleep}: they hold their posts without wandering
+     * or answering gunfire elsewhere until {@link #wakeBoss} (its time has come), though they still see
+     * whoever walks in on them and wake (all of them) when they spot someone or are shot.
+     */
+    public void spawnBoss(Raid raid, MapDef.BossDef def, boolean asleep) {
         Location at = def.pos().at(raid.world);
         Bot boss = spawn(raid, at, 10, "guard", 3, true, def.name());
         if (boss == null) {
             return;
         }
+        boss.dormant = asleep;
+        boss.group = def.id();
         for (int i = 0; i < def.guards(); i++) {
             Location g = at.clone().add(ThreadLocalRandom.current().nextDouble(-2, 2), 0, ThreadLocalRandom.current().nextDouble(-2, 2));
             if (!g.getBlock().isPassable()) {
                 g = at.clone();
             }
-            spawn(raid, g, 10, "guard", Math.min(3, raid.tier.aiGear() + 1), false, "指挥官护卫");
+            Bot guard = spawn(raid, g, 10, "guard", Math.min(3, raid.tier.aiGear() + 1), false, "指挥官护卫");
+            if (guard != null) {
+                guard.dormant = asleep;
+                guard.group = def.id();
+            }
+        }
+    }
+
+    /** Wakes the boss {@code id} of a raid and its guards; returns the boss's name if it is still alive, else null. */
+    public @Nullable String wakeBoss(Raid raid, String id) {
+        String name = null;
+        for (Bot bot : bots.values()) {
+            if (bot.raid == raid && id.equals(bot.group) && bot.mob.isValid()) {
+                bot.dormant = false;
+                if (bot.boss) {
+                    name = bot.name;
+                }
+            }
+        }
+        return name;
+    }
+
+    /** A sleeping boss or guard saw someone or was shot: it and the rest of its group wake up. */
+    private void wake(Bot bot) {
+        if (!bot.dormant || bot.group == null) {
+            return;
+        }
+        for (Bot other : bots.values()) {
+            if (other.raid == bot.raid && bot.group.equals(other.group)) {
+                other.dormant = false;
+            }
         }
     }
 
@@ -613,7 +656,7 @@ public final class AiService implements Listener {
         }
         long now = Bukkit.getCurrentTick();
         for (Bot bot : bots.values()) {
-            if (bot.mob.getWorld() != at.getWorld() || bot.target != null) {
+            if (bot.mob.getWorld() != at.getWorld() || bot.target != null || bot.dormant) {
                 continue;
             }
             if (bot.mob.getLocation().distanceSquared(at) <= radius * radius) {
@@ -652,6 +695,12 @@ public final class AiService implements Listener {
             bot.holdUntil = now + HOLD_TICKS;
         }
         Player target = acquire(bot, now);
+        if (bot.dormant) {
+            if (target == null) {
+                return; // asleep at its post: no wandering, no answering gunfire elsewhere
+            }
+            wake(bot);
+        }
         Location eye = mob.getEyeLocation();
         if (target != null) {
             double distance = eye.distance(target.getEyeLocation());
@@ -969,7 +1018,7 @@ public final class AiService implements Listener {
 
     private void alertSquadmates(Bot bot, Player target) {
         for (Bot other : bots.values()) {
-            if (other != bot && other.raid == bot.raid && other.target == null
+            if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant
                     && other.mob.getLocation().distanceSquared(bot.mob.getLocation()) < 24 * 24) {
                 other.alertPos = target.getLocation();
                 other.alertUntil = Bukkit.getCurrentTick() + 20L * 10;
@@ -1258,6 +1307,7 @@ public final class AiService implements Listener {
         }
         long now = Bukkit.getCurrentTick();
         UUID id = player.getUniqueId();
+        wake(bot);
         if (id.equals(bot.target) && now - bot.lastSeenTick < 40) {
             return;
         }
@@ -1285,7 +1335,7 @@ public final class AiService implements Listener {
             }
         }
         for (Bot other : bots.values()) {
-            if (other != bot && other.raid == bot.raid && other.target == null && other.mob.getWorld() == victim.getWorld()
+            if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant && other.mob.getWorld() == victim.getWorld()
                     && other.mob.getLocation().distanceSquared(victim.getLocation()) < 24 * 24) {
                 other.alertPos = guess.clone();
                 other.alertUntil = Math.max(other.alertUntil, now + 20L * 10);

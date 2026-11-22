@@ -32,6 +32,11 @@ public final class Profile {
     public List<ItemRecord> secure = new ArrayList<>();
     /** Items returned by expired market listings or escort refunds, claimed from the stash menu. */
     public List<ItemRecord> mailbox = new ArrayList<>();
+    /**
+     * System mail (MailService): letters that say why they came, with money or items attached,
+     * read and claimed in the stash mailbox. Oldest first.
+     */
+    public List<Mail> mail = new ArrayList<>();
 
     public Set<String> collected = new LinkedHashSet<>();
     public Set<Integer> collectionRewards = new LinkedHashSet<>();
@@ -111,6 +116,25 @@ public final class Profile {
 
         public Preset(String name) {
             this.name = name;
+        }
+    }
+
+    /** One system letter (MailService). */
+    public static final class Mail {
+        /** Short random id, unique among the player's letters. */
+        public String id = "";
+        /** When it was sent (epoch millis). */
+        public long time;
+        public String title = "";
+        /** Plain text, not MiniMessage: shown escaped, one line per paragraph. */
+        public String body = "";
+        public long money;
+        public List<ItemRecord> items = new ArrayList<>();
+        /** Opened and, if anything was attached, paid out. */
+        public boolean claimed;
+
+        public boolean hasAttachments() {
+            return money > 0 || items != null && !items.isEmpty();
         }
     }
 

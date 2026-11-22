@@ -610,6 +610,14 @@ public final class ProfileService implements Listener {
         if (p.loadout == null) p.loadout = new HashMap<>();
         if (p.secure == null) p.secure = new ArrayList<>();
         if (p.mailbox == null) p.mailbox = new ArrayList<>();
+        if (p.mail == null) p.mail = new ArrayList<>();
+        p.mail.removeIf(java.util.Objects::isNull);
+        for (Profile.Mail m : p.mail) {
+            if (m.id == null) m.id = "";
+            if (m.title == null) m.title = "";
+            if (m.body == null) m.body = "";
+            if (m.items == null) m.items = new ArrayList<>();
+        }
         if (p.collected == null) p.collected = new java.util.LinkedHashSet<>();
         if (p.collectionRewards == null) p.collectionRewards = new java.util.LinkedHashSet<>();
         if (p.stats == null) p.stats = new HashMap<>();

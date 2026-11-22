@@ -493,6 +493,12 @@ public final class LobbyService implements Listener {
         plugin.health().setupPlayer(player, false);
         stripRangeItems(player);
         upgradeItems(player);
+        // A moment later, so it is not lost among the join messages.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                plugin.mail().remind(player);
+            }
+        }, 60L);
         if (plugin.raids().tryRejoin(player)) {
             return;
         }

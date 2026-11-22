@@ -8,6 +8,7 @@ import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.profile.MailService;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.text.Component;
@@ -106,11 +107,14 @@ final class StashMenu extends Menu {
         });
         set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
-        button(50, UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + p.mailbox.size(),
-                List.of("<#9AA0A6>交易行退回、保险理赔、藏身处产物", "<#9AA0A6>以及大厅里身上放不下的物品", "<#9AA0A6>点击领取到仓库")), e -> {
-            claimMailbox(p);
-            redraw();
-        });
+        int letters = MailService.unclaimed(p);
+        ItemStack mailbox = UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + (letters + p.mailbox.size()),
+                List.of("<#9AA0A6>系统邮件 <white>" + letters + "</white> 封未读", "<#9AA0A6>物品邮箱 <white>" + p.mailbox.size() + "</white> 件",
+                        "<#9AA0A6>点击打开"));
+        if (letters > 0) {
+            mailbox.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
+        button(50, mailbox, e -> new MailMenu(plugin, viewer).open());
         button(51, UiItems.button("craftov:ui/icon_secure", "<#B66BFF>安全箱", List.of("<#9AA0A6>打开安全箱")), e -> plugin.menus().openSecure(viewer));
         button(52, UiItems.button("craftov:ui/icon_upgrade", "<white>仓库扩容 +30", List.of("<#8A8F98>价格 ◈" + Text.money(plugin.traders().stashUpgradePrice(p)))),
                 e -> {
@@ -223,7 +227,7 @@ final class StashMenu extends Menu {
                 viewer.sendActionBar(Text.mm("<#FF8A80>仓库已满，可在仓库中扩容"));
                 break;
             }
-            deposit(p, record);
+            deposit(plugin, p, record);
             event.getClickedInventory().setItem(slot, null);
         }
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.5f, 0.8f);
@@ -232,7 +236,8 @@ final class StashMenu extends Menu {
         redraw();
     }
 
-    private void deposit(Profile p, ItemRecord record) {
+    /** Puts a record into the stash, topping up stacks it can join first. */
+    static void deposit(CraftovPlugin plugin, Profile p, ItemRecord record) {
         ItemDef def = plugin.registry().get(record.id);
         if (def == null) {
             p.stash.add(record); // an id items.yml does not have: kept whole, its stack size is unknown
@@ -266,7 +271,7 @@ final class StashMenu extends Menu {
         for (ItemRecord record : p.stash) {
             Profile tmp = new Profile();
             tmp.stash = merged;
-            deposit(tmp, record.copy());
+            deposit(plugin, tmp, record.copy());
         }
         merged.sort(Comparator.<ItemRecord>comparingInt(r -> {
             ItemDef d = plugin.registry().get(r.id);
@@ -276,24 +281,6 @@ final class StashMenu extends Menu {
             return d == null ? 0 : -d.rarity().ordinal();
         }).thenComparingLong(r -> -plugin.items().value(r)));
         p.stash = merged;
-        plugin.profiles().markDirty(viewer.getUniqueId());
-    }
-
-    private void claimMailbox(Profile p) {
-        int claimed = 0;
-        while (!p.mailbox.isEmpty()) {
-            ItemRecord record = p.mailbox.get(0);
-            if (p.stashUsed() + record.footprint() > p.stashCapacity) {
-                viewer.sendActionBar(Text.mm("<#FF8A80>仓库空间不足"));
-                break;
-            }
-            p.mailbox.remove(0);
-            deposit(p, record);
-            claimed++;
-        }
-        if (claimed > 0) {
-            viewer.sendActionBar(Text.mm("<#5BD16B>已领取 " + claimed + " 件物品"));
-        }
         plugin.profiles().markDirty(viewer.getUniqueId());
     }
 

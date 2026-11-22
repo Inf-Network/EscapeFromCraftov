@@ -190,9 +190,15 @@ public final class EditorService implements Listener {
             if (world != null) {
                 world.save();
             }
-            plugin.maps().save(d.build());
+            net.infnetwork.snowball.craftov.map.MapDef def = d.build();
+            plugin.maps().save(def);
             Text.send(player, "<#5BD16B>地图已保存：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 "
                     + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
+            for (var close : net.infnetwork.snowball.craftov.map.MapRegistry.closeSpawns(def)) {
+                problems.add(String.format(java.util.Locale.ROOT, "%s点 (%.0f, %.0f, %.0f) 离第 %d 组出生点只有 %.0f 格（建议 %d 格以上）",
+                        "boss".equals(close.kind()) ? "首领" : "敌兵", close.post().x(), close.post().y(), close.post().z(),
+                        close.group(), close.distance(), (int) net.infnetwork.snowball.craftov.map.MapRegistry.SPAWN_CLEARANCE));
+            }
             if (!problems.isEmpty()) {
                 Text.send(player, "<#FFC23D>提示：" + String.join("、", problems) + "（地图仍可保存，但不建议开放）");
             }

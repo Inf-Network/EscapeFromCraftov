@@ -363,6 +363,7 @@ public final class CraftovCommand implements TabExecutor {
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
+                plugin.maps().warnCloseSpawns();
                 plugin.loadTiers();
                 if (itemError == null) {
                     Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");

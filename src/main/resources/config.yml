@@ -76,10 +76,12 @@ tiers:
     xp: 2.2
 
 match:
-  # Wait at most this long (s) for more players before launching with whoever is queued.
-  wait-seconds: 15
+  # One pool per map and difficulty (ranked or not). A raid launches as soon as it has max-squads squads,
+  # or once the longest-waiting player has waited wait-seconds, with everyone queued by then. Extra squads
+  # launch the next raid. Nobody joins a raid after it starts.
+  wait-seconds: 30
+  # Squads per raid; never more than the map has spawn groups (试验场 4, 锈港 6).
   max-squads: 4
-  max-solo-players: 8
 
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.

@@ -19,9 +19,11 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Parties, matchmaking queues and per-raid squad teams. */
@@ -114,6 +116,8 @@ public final class MatchService {
             return;
         }
         leave(player, false);
+        // A solo player has no Party, so leave() does not reach their own queue entry.
+        cancelQueue(player.getUniqueId(), "加入了小队");
         cancelQueue(party.leader, "有新队员加入");
         party.members.add(player.getUniqueId());
         parties.put(player.getUniqueId(), party);
@@ -121,20 +125,28 @@ public final class MatchService {
     }
 
     public void leave(Player player, boolean announce) {
-        Party party = parties.remove(player.getUniqueId());
+        leave(player.getUniqueId(), announce);
+    }
+
+    /** Removes a member, online or not (a teammate who dropped out of a raid stays a member until removed). */
+    private void leave(UUID uuid, boolean announce) {
+        Party party = parties.remove(uuid);
         if (party == null) {
             return;
         }
         cancelQueue(party.leader, "队员离队");
-        party.members.remove(player.getUniqueId());
+        party.members.remove(uuid);
         if (announce) {
-            Text.send(player, "<#9AA0A6>你已离开小队。");
-            broadcast(party, "<white>" + Text.escape(player.getName()) + "</white> <#9AA0A6>离开了小队");
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null) {
+                Text.send(player, "<#9AA0A6>你已离开小队。");
+            }
+            broadcast(party, "<white>" + Text.escape(nameOf(uuid)) + "</white> <#9AA0A6>离开了小队");
         }
         if (party.members.isEmpty()) {
             return;
         }
-        if (party.leader.equals(player.getUniqueId())) {
+        if (party.leader.equals(uuid)) {
             party.leader = party.members.get(0);
             broadcast(party, "<#9AA0A6>新的队长：<white>" + nameOf(party.leader));
         }
@@ -153,8 +165,9 @@ public final class MatchService {
             Text.send(leader, "<#FF8A80>你不是队长。");
             return;
         }
-        Player target = Bukkit.getPlayerExact(name);
-        if (target == null || !party.members.contains(target.getUniqueId())) {
+        // By name among the members, so an offline teammate can be kicked too.
+        UUID target = party.members.stream().filter(uuid -> nameOf(uuid).equalsIgnoreCase(name)).findFirst().orElse(null);
+        if (target == null) {
             Text.send(leader, "<#FF8A80>小队中没有这名玩家。");
             return;
         }
@@ -172,7 +185,11 @@ public final class MatchService {
 
     private static String nameOf(UUID uuid) {
         Player p = Bukkit.getPlayer(uuid);
-        return p == null ? "?" : p.getName();
+        if (p != null) {
+            return p.getName();
+        }
+        String name = Bukkit.getOfflinePlayer(uuid).getName();
+        return name == null ? "?" : name;
     }
 
     // ------------------------------------------------------------------ queue
@@ -186,14 +203,22 @@ public final class MatchService {
         return null;
     }
 
-    public int queuedCount(String key) {
+    /** Players waiting in the pool of this map and difficulty. */
+    public int queuedCount(String mapId, String tierId) {
         int count = 0;
         for (QueueEntry entry : queue) {
-            if (entry.key().equals(key)) {
+            if (entry.map().equals(mapId) && entry.tier().equals(tierId)) {
                 count += entry.members().size();
             }
         }
         return count;
+    }
+
+    /** Squads one raid of this map takes: match.max-squads, but never more squads than spawn groups. */
+    public int capacity(MapDef map) {
+        long groups = map.spawns().stream().map(MapDef.SpawnDef::group).distinct().count();
+        int cap = Math.max(1, plugin.getConfig().getInt("match.max-squads", 4));
+        return (int) Math.max(1, Math.min(cap, groups));
     }
 
     /** Validates and enqueues the player's party. */
@@ -214,11 +239,15 @@ public final class MatchService {
             Text.send(player, "<#FF8A80>地图或难度不存在。");
             return false;
         }
-        int rating = 0;
         for (UUID uuid : members) {
             Player member = Bukkit.getPlayer(uuid);
-            if (member == null || !plugin.lobby().isLobby(member.getWorld()) || plugin.raids().raidOf(member) != null) {
-                Text.send(player, "<#FF8A80>小队成员 " + (member == null ? "" : Text.escape(member.getName())) + " 不在大厅。");
+            if (member == null) {
+                Text.send(player, "<#FF8A80>小队成员 " + Text.escape(nameOf(uuid)) + " 不在线，可以用 /cv party kick "
+                        + Text.escape(nameOf(uuid)) + " 移出小队。");
+                return false;
+            }
+            if (!plugin.lobby().isLobby(member.getWorld()) || plugin.raids().raidOf(member) != null) {
+                Text.send(player, "<#FF8A80>小队成员 " + Text.escape(member.getName()) + " 不在大厅。");
                 return false;
             }
             plugin.lobby().captureLoadout(member);
@@ -237,7 +266,6 @@ public final class MatchService {
                 Text.send(player, "<#FF8A80>排位赛需要账号等级 " + plugin.getConfig().getInt("rank.min-level", 3) + "。");
                 return false;
             }
-            rating += profile.rankPoints;
         }
         for (UUID uuid : members) {
             QueueEntry old = queued(uuid);
@@ -245,13 +273,13 @@ public final class MatchService {
                 queue.remove(old);
             }
         }
-        QueueEntry entry = new QueueEntry(members, mapId, tierId, mode, ranked, fill, System.currentTimeMillis(), rating / members.size());
-        queue.add(entry);
+        queue.add(new QueueEntry(members, mapId, tierId, mode, ranked, fill, System.currentTimeMillis()));
+        int waiting = queuedCount(mapId, tierId);
         for (UUID uuid : members) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
                 Text.send(p, "<#F2C94C>开始匹配：<white>" + Text.escape(map.name()) + " " + tier.tag() + " <#9AA0A6>· " + mode.displayName()
-                        + (ranked ? " · <#FFC23D>排位" : ""));
+                        + (ranked ? " · <#FFC23D>排位" : "") + " <#8A8F98>· 本场匹配中 " + waiting + " 人");
                 p.playSound(p.getLocation(), "craftov:ui.queue", 1f, 1f);
             }
         }
@@ -280,56 +308,52 @@ public final class MatchService {
         }
     }
 
+    /**
+     * Matchmaking, once a second for each pool (map + difficulty). Everyone in a pool when it launches
+     * plays the same raid: parties stay together, entries that allow it are filled into squads of up to
+     * three, and the raid takes squads in queue order up to {@link #capacity}. A pool launches as soon as
+     * it is full, or once its longest-waiting entry has waited match.wait-seconds. Squads that did not fit
+     * keep their place and, having already waited, launch the next raid straight away. A raid's roster is
+     * final: nobody joins it after it starts.
+     */
     private void tick() {
         long now = System.currentTimeMillis();
-        int wait = plugin.getConfig().getInt("match.wait-seconds", 15);
-        Map<String, List<QueueEntry>> byKey = new LinkedHashMap<>();
+        int wait = Math.max(0, plugin.getConfig().getInt("match.wait-seconds", 30));
+        Map<String, List<QueueEntry>> pools = new LinkedHashMap<>();
         for (QueueEntry entry : queue) {
-            byKey.computeIfAbsent(entry.key(), k -> new ArrayList<>()).add(entry);
+            pools.computeIfAbsent(entry.key(), k -> new ArrayList<>()).add(entry);
         }
-        int maxPlayers = plugin.getConfig().getInt("match.max-players", 12);
-        for (List<QueueEntry> entries : byKey.values()) {
-            QueueEntry first = entries.get(0);
-            entries.sort(Comparator.comparingInt(QueueEntry::rating));
-            List<List<UUID>> squads = formSquads(entries);
-            // Backfill: squads join a raid of this pool that started moments ago and still has room.
-            for (List<UUID> squad : new ArrayList<>(squads)) {
-                Raid running = plugin.raids().joinable(first.map(), first.tier(), first.ranked(), squad.size());
-                if (running != null) {
-                    List<Player> online = onlineIdle(squad);
-                    queue.removeIf(entry -> entry.members().stream().anyMatch(squad::contains));
-                    squads.remove(squad);
-                    if (!online.isEmpty()) {
-                        plugin.raids().joinRunning(running, online);
-                    }
+        for (List<QueueEntry> pool : pools.values()) {
+            pool.sort(Comparator.comparingLong(QueueEntry::since));
+            QueueEntry first = pool.get(0);
+            MapDef map = plugin.maps().get(first.map());
+            Tier tier = plugin.tier(first.tier());
+            if (map == null || tier == null) {
+                for (QueueEntry entry : pool) {
+                    cancelQueue(entry.members().get(0), "地图或难度已不存在");
                 }
-            }
-            if (squads.isEmpty()) {
                 continue;
             }
-            List<QueueEntry> waiting = entries.stream().filter(queue::contains).toList();
-            long oldest = waiting.stream().mapToLong(QueueEntry::since).min().orElse(now);
-            int waited = (int) ((now - oldest) / 1000);
-            int players = squads.stream().mapToInt(List::size).sum();
-            for (QueueEntry entry : waiting) {
-                for (UUID uuid : entry.members()) {
-                    Player p = Bukkit.getPlayer(uuid);
-                    if (p != null) {
-                        p.sendActionBar(Text.mm("<#F2C94C>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
-                                + " <#8A8F98>· 已就绪 " + players + "/" + maxPlayers + " 人 · " + Math.max(0, wait - waited) + "s 后出发"));
-                    }
-                }
+            int capacity = capacity(map);
+            List<Squad> squads = formSquads(pool);
+            int waited = (int) ((now - first.since()) / 1000);
+            if (squads.size() >= capacity || waited >= wait) {
+                launch(map, tier, squads.subList(0, Math.min(capacity, squads.size())));
+            } else {
+                showProgress(pool, squads.size(), capacity, wait - waited, now);
             }
-            if (players >= maxPlayers || waited >= wait) {
-                List<List<UUID>> chosen = new ArrayList<>();
-                int total = 0;
-                for (List<UUID> squad : squads) {
-                    if (total + squad.size() <= maxPlayers) {
-                        chosen.add(squad);
-                        total += squad.size();
-                    }
+        }
+    }
+
+    private void showProgress(List<QueueEntry> pool, int squads, int capacity, int left, long now) {
+        int players = pool.stream().mapToInt(entry -> entry.members().size()).sum();
+        for (QueueEntry entry : pool) {
+            for (UUID uuid : entry.members()) {
+                Player p = Bukkit.getPlayer(uuid);
+                if (p != null) {
+                    p.sendActionBar(Text.mm("<#F2C94C>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
+                            + " <#8A8F98>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发"));
                 }
-                launch(first, chosen);
             }
         }
     }
@@ -345,53 +369,109 @@ public final class MatchService {
         return online;
     }
 
-    private List<List<UUID>> formSquads(List<QueueEntry> entries) {
-        List<List<UUID>> squads = new ArrayList<>();
-        List<QueueEntry> fillable = new ArrayList<>();
-        for (QueueEntry entry : entries) {
+    /** A squad being put together: the queue entries it came from and their players. */
+    private record Squad(List<QueueEntry> entries, List<UUID> members) {
+        Squad(QueueEntry first) {
+            this(new ArrayList<>(), new ArrayList<>());
+            add(first);
+        }
+
+        void add(QueueEntry entry) {
+            entries.add(entry);
+            members.addAll(entry.members());
+        }
+
+        long since() {
+            return entries.stream().mapToLong(QueueEntry::since).min().orElse(Long.MAX_VALUE);
+        }
+    }
+
+    /**
+     * Squads, longest-waiting first. Parties that keep to themselves stay as they are. Entries that allow
+     * filling are packed largest first, so as few squads as possible are short: each duo takes the
+     * earliest solo, and the remaining solos go in threes. Fewer squads means more players fit in one raid.
+     */
+    private static List<Squad> formSquads(List<QueueEntry> pool) {
+        List<Squad> squads = new ArrayList<>();
+        List<QueueEntry> solos = new ArrayList<>();
+        List<QueueEntry> duos = new ArrayList<>();
+        for (QueueEntry entry : pool) {
             if (!entry.fillable()) {
-                squads.add(new ArrayList<>(entry.members()));
+                squads.add(new Squad(entry));
+            } else if (entry.members().size() == 2) {
+                duos.add(entry);
             } else {
-                fillable.add(entry);
+                solos.add(entry);
             }
         }
-        fillable.sort((a, b) -> Integer.compare(b.members().size(), a.members().size()));
-        List<List<UUID>> open = new ArrayList<>();
-        for (QueueEntry entry : fillable) {
-            List<UUID> target = null;
-            for (List<UUID> squad : open) {
-                if (squad.size() + entry.members().size() <= 3) {
-                    target = squad;
-                    break;
-                }
+        for (QueueEntry duo : duos) {
+            Squad squad = new Squad(duo);
+            if (!solos.isEmpty()) {
+                squad.add(solos.remove(0));
             }
-            if (target == null) {
-                target = new ArrayList<>();
-                open.add(target);
-            }
-            target.addAll(entry.members());
+            squads.add(squad);
         }
-        squads.addAll(open);
+        for (int i = 0; i < solos.size(); i += 3) {
+            Squad squad = new Squad(solos.get(i));
+            for (int j = i + 1; j < Math.min(i + 3, solos.size()); j++) {
+                squad.add(solos.get(j));
+            }
+            squads.add(squad);
+        }
+        squads.sort(Comparator.comparingLong(Squad::since));
         return squads;
     }
 
-    private void launch(QueueEntry template, List<List<UUID>> squads) {
-        MapDef map = plugin.maps().get(template.map());
-        Tier tier = plugin.tier(template.tier());
-        List<List<Player>> players = new ArrayList<>();
-        java.util.Set<UUID> launched = new java.util.HashSet<>();
-        for (List<UUID> squad : squads) {
-            List<Player> online = onlineIdle(squad);
-            online.forEach(p -> launched.add(p.getUniqueId()));
-            if (!online.isEmpty()) {
-                players.add(online);
+    private void launch(MapDef map, Tier tier, List<Squad> squads) {
+        List<List<Player>> teams = new ArrayList<>();
+        Set<UUID> ranked = new HashSet<>();
+        for (Squad squad : squads) {
+            List<Player> team = new ArrayList<>();
+            for (QueueEntry entry : squad.entries()) {
+                queue.remove(entry);
+                List<Player> online = onlineIdle(entry.members());
+                // The queue-time checks again: gear can be stashed and money spent while waiting.
+                String problem = null;
+                for (Player p : online) {
+                    String why = unfit(p, tier);
+                    if (why != null) {
+                        problem = Text.escape(p.getName()) + " " + why;
+                        break;
+                    }
+                }
+                if (problem != null) {
+                    for (Player p : online) {
+                        Text.send(p, "<#FF8A80>未能出发：" + problem + "，已取消匹配。");
+                    }
+                    continue;
+                }
+                team.addAll(online);
+                if (entry.ranked()) {
+                    ranked.addAll(entry.members());
+                }
+            }
+            if (!team.isEmpty()) {
+                teams.add(team);
             }
         }
-        queue.removeIf(entry -> entry.members().stream().anyMatch(launched::contains));
-        if (map == null || tier == null || players.isEmpty()) {
-            return;
+        if (!teams.isEmpty()) {
+            plugin.raids().start(map, tier, teams, ranked);
         }
-        plugin.raids().start(map, tier, RaidMode.TRIO, template.ranked(), players);
+    }
+
+    /** Why this player may not deploy now, or null. */
+    private @Nullable String unfit(Player player, Tier tier) {
+        if (!plugin.lobby().isLobby(player.getWorld())) {
+            return "不在大厅";
+        }
+        long value = plugin.carry().carriedValue(player);
+        if (value < tier.minValue()) {
+            return "的战备值 ◈" + Text.money(value) + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue());
+        }
+        if (plugin.profiles().get(player).money < tier.entryFee()) {
+            return "的块币不足以支付入场费";
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ squad teams

@@ -84,7 +84,9 @@ public final class CraftovCommand implements TabExecutor {
             case "queue" -> {
                 if (player != null && args.length >= 3) {
                     RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
-                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]), true);
+                    // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]
+                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
+                            args.length < 6 || Boolean.parseBoolean(args[5]));
                 }
             }
             default -> {
@@ -238,6 +240,11 @@ public final class CraftovCommand implements TabExecutor {
             case "end" -> {
                 for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
                     if (args.length < 2 || raid.id.equalsIgnoreCase(args[1])) {
+                        if (raid.state != Raid.State.RUNNING) {
+                            // Deploying sets startTick, which would undo this.
+                            Text.send(sender, "<#FF8A80>" + raid.id + " 还在加载，稍后再试。");
+                            continue;
+                        }
                         raid.startTick = Bukkit.getCurrentTick() - raid.map.raidSeconds() * 20L;
                         Text.send(sender, "<#FFC23D>已结束 " + raid.id);
                     }

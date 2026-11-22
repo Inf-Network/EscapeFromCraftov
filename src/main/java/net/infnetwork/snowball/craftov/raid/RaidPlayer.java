@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.luck.LuckSession;
 import org.bukkit.Location;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
@@ -65,6 +66,8 @@ public final class RaidPlayer {
     public @Nullable Map<Integer, ItemStack> disconnectedInventory;
     public @Nullable String escortContract;
     public int containersSearched;
+    /** Personal luck in this raid: containers searched, hand-outs (LuckService). */
+    public final LuckSession luck = new LuckSession();
 
     public RaidPlayer(UUID uuid, String name, int squad, boolean ranked) {
         this.uuid = uuid;

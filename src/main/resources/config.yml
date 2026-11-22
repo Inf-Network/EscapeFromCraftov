@@ -464,6 +464,34 @@ search:
     GOLD: 2.6
     RED: 3.6
 
+# Personal loot luck (#80), on top of the containers of loot.yml, which roll alike for everyone. A
+# hand-out is one item more put hidden into the container the player is searching, at most one per
+# container; every hand-out is logged. Test maps (the proving ground) and the range count for nothing.
+luck:
+  enabled: true
+  # A raid counts for the jackpot raid count only when the player was in it this long (seconds from
+  # deploy) and searched this many containers themselves: going in and out at once counts for nothing.
+  qualify:
+    min-seconds: 240
+    min-searches: 3
+  # Pity per rarity, counted in the containers a player searches themselves (still something hidden
+  # when they open it, each once) that can hold a single item of it (no rounds, no jackpots). Past
+  # soft each such search may hand one out, more likely the closer to hard; at hard the next one
+  # does. Finding one in any way (revealed, picked up, handed out), carried out or not, starts the
+  # count again; one already in the container is left to be found instead. In 常规 a red turns up
+  # about once in 54 such containers (gold once in 5), so few ever reach soft.
+  pity:
+    GOLD: { soft: 15, hard: 30 }
+    RED: { soft: 120, hard: 240 }
+  # Pity per jackpot item (loot.yml jackpots), counted in qualifying raids without it. From
+  # soft-raids on each container that can hold a red item may hand it out, up to soft-chance just
+  # before hard-raids; after hard-raids raids without it the first such container of the next raid
+  # does.
+  jackpot:
+    soft-raids: 700
+    hard-raids: 1000
+    soft-chance: 0.02
+
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item
   # for free, top up money and reset health, and can see and queue for test maps (the proving ground).

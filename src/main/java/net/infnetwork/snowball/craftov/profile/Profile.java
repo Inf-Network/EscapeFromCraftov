@@ -75,6 +75,8 @@ public final class Profile {
     /** Last few login addresses, newest last (MarketService: same-address trades). */
     public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
+    /** Personal loot luck (LuckService, #80). */
+    public Luck luck = new Luck();
 
     /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */
     public @Nullable String activeRaid;
@@ -128,6 +130,17 @@ public final class Profile {
             this.item = item;
             this.readyAt = readyAt;
         }
+    }
+
+    /** Personal loot luck (LuckService): what the player is owed for going without. */
+    public static final class Luck {
+        /**
+         * Rarity (GOLD, RED) -> containers searched that could hold a single item of it since the
+         * player last found one.
+         */
+        public Map<String, Integer> pity = new HashMap<>();
+        /** Jackpot item id -> qualifying raids since the player last found it. */
+        public Map<String, Integer> jackpots = new HashMap<>();
     }
 
     /** A hideout production: recipe id and when it is done (epoch millis). */

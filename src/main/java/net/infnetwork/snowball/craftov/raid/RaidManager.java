@@ -714,6 +714,7 @@ public final class RaidManager implements Listener {
         long xp = Math.round((extractXp(rp) + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
         plugin.tasks().onExtract(player, raid, profit);
+        plugin.luck().settle(raid, rp, profile);
         Profile.RaidReport report = report(raid, rp, "撤离成功 · " + point.def.name(), Math.max(0, profit), 0, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -820,6 +821,7 @@ public final class RaidManager implements Listener {
         int rankDelta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lost, raid) : 0;
         long xp = Math.round((40 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
+        plugin.luck().settle(raid, rp, profile);
         Profile.RaidReport report = report(raid, rp, reason, 0, lost, rankDelta, xp);
         profile.reports.add(0, report);
         trimReports(profile);
@@ -999,6 +1001,7 @@ public final class RaidManager implements Listener {
             int delta = rp.ranked ? plugin.ranks().onDeath(profile, rp, lostValue, raid) : 0;
             profile.reports.add(0, report(raid, rp, "失踪（" + reason + "）", 0, lostValue, delta, 0));
             trimReports(profile);
+            plugin.luck().settle(raid, rp, profile);
         });
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
@@ -1621,11 +1624,13 @@ public final class RaidManager implements Listener {
             return;
         }
         plugin.weapons().flush(player);
-        if (!container.generated()) {
+        boolean fresh = !container.generated();
+        if (fresh) {
             container.generate(plugin.loot().roll(container.type, container.shift));
             rp.containersSearched++;
             plugin.tasks().onSearch(player);
         }
+        plugin.luck().onSearch(player, raid, rp, container, fresh);
         player.playSound(player.getLocation(), "craftov:loot.open", SoundCategory.PLAYERS, 0.8f, 1f);
         new LootMenu(plugin, player, container).open();
     }
@@ -1867,6 +1872,7 @@ public final class RaidManager implements Listener {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
+        plugin.luck().onFound(player, def);
         // Gold and red finds are worth telling the squad about; ammo is not, even gold rounds, which
         // come in several stacks and would send a line for each one taken.
         if (def != null && def.rarity().tier() >= 5 && def.category() != Category.AMMO) {

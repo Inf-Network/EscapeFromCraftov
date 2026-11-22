@@ -89,6 +89,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.rank.SeasonService season;
     private net.infnetwork.snowball.craftov.lobby.TutorialService tutorial;
     private net.infnetwork.snowball.craftov.task.TaskService tasks;
+    private net.infnetwork.snowball.craftov.luck.LuckService luck;
     private DownedService downed;
     private WeaponService weapons;
     private RaidManager raids;
@@ -177,6 +178,7 @@ public final class CraftovPlugin extends JavaPlugin {
         collection = new CollectionService(this);
         escorts = new EscortService(this);
         tasks = new net.infnetwork.snowball.craftov.task.TaskService(this);
+        luck = new net.infnetwork.snowball.craftov.luck.LuckService(this);
         hud = new HudService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
@@ -408,6 +410,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public CollectionService collection() { return collection; }
     public EscortService escorts() { return escorts; }
     public net.infnetwork.snowball.craftov.task.TaskService tasks() { return tasks; }
+    public net.infnetwork.snowball.craftov.luck.LuckService luck() { return luck; }
     public HudService hud() { return hud; }
     public MenuService menus() { return menus; }
     public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }

@@ -1,7 +1,8 @@
 // Trigger capture, burst and full-auto rhythm (issue #33), on the private range.
 //
 // The bot plays a vanilla client holding left mouse: each tick it picks what the crosshair lands on
-// first, cobweb the server sent or an entity, as vanilla's GameRenderer.pick does, and then digs
+// first, a capture block the server sent (a sculk vein on all six faces, whose outline is a shell of
+// six 1/16-block plates) or an entity, as vanilla's GameRenderer.pick does, and then digs
 // (start, a swing per tick, abort when it moves to another cell or lets go) or attacks once and goes
 // quiet, as Minecraft.continueAttack does.
 //
@@ -12,20 +13,21 @@
 //            abort (a lag spike), swings again and the abort: one shot each time. A click after the
 //            abort fires again.
 //   burst    M4C on burst: start, one swing and the abort in the same tick: three shots per click.
-//   close    K47 facing a range target 1.3 to 2.7 blocks away, the target moved through five places
-//            in its block (where block edges fall between the two decides how close a cell fits): from
-//            1.9 blocks out the crosshair must land on cobweb before the target wherever they stand.
-//            Then, the target back in place, the trigger held at 1.5, 2 and 2.5 blocks with the recoil
-//            pulled back down every tick: the magazine must run dry, the target never picked first.
+//   close    K47 facing a range target 0.8 to 2.7 blocks away (centre to centre), the target moved
+//            through five places in its block: from 1.3 blocks out the crosshair must land on a capture
+//            block before the target wherever they stand (closer, only when the target's face is past
+//            the cell the eye is in), and none is ever by the feet (the client would take its silenced
+//            step sound instead of the floor's). Then, the target back in place, the trigger held at 1,
+//            1.5, 2 and 2.5 blocks with the recoil pulled back down every tick: the magazine must run
+//            dry, the target never picked first.
 //   rhythm   M4C, SV9 and K47 held on full auto: the reports heard hold as many rounds as were fired,
 //            M4C and SV9 one report every 150 and 200 ms, K47 one every 100 ms; a quick click on full
 //            auto fires exactly the rounds of one report.
 //   open     with a gun out, right-clicking the range's weapon rack 2.5 blocks away opens it although
-//            the crosshair lands on cobweb, and does not aim the gun as well. With a range target moved
+//            the crosshair lands on a capture block, and does not aim the gun as well. With a range target moved
 //            in front of the rack, the same right-click aims at the target and leaves the rack shut.
-//   fall     a 12-block fall looking straight down with a gun out: the cobweb the bot is sent never
-//            overlaps its body (with the old 0.6-block clearance it did), and the fall is a free fall
-//            (18 ticks; cobweb holds it up).
+//   fall     a 12-block fall looking straight down with a gun out is a free fall (18 ticks; the cobweb
+//            used before held it up), and no capture block is by the feet where it lands.
 //   stray    looking at the floor with a K47 on full auto, Q on a full magazine followed by the arm
 //            swing a vanilla client sends after it, and then a swing alone (as after opening a door or
 //            pulling a lever): neither fires, although in adventure mode the server turns each swing
@@ -194,8 +196,30 @@ function look () {
   const pitch = conv.toNotchianPitch(bot.entity.pitch) * Math.PI / 180
   return new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
 }
-const cobweb = () => bot.registry.blocksByName.cobweb.id
-const cobwebs = () => bot.findBlocks({ matching: cobweb(), maxDistance: 6, count: 64 })
+const captureId = () => bot.registry.blocksByName.sculk_vein.id
+const captures = () => bot.findBlocks({ matching: captureId(), maxDistance: 6, count: 64 })
+/**
+ * Where the ray meets a capture block's outline in cell c: where it enters the cell, or, starting
+ * inside, the 1/16-block plate on the face it leaves by. Null if it misses the cell.
+ */
+function shell (o, d, c) {
+  const inside = ['x', 'y', 'z'].every(a => o[a] >= c[a] && o[a] < c[a] + 1)
+  if (!inside) return rayBox(o, d, c, c.offset(1, 1, 1))
+  let out = Infinity
+  let across = 1
+  for (const a of ['x', 'y', 'z']) {
+    if (Math.abs(d[a]) < 1e-9) continue
+    const t = Math.max((c[a] - o[a]) / d[a], (c[a] + 1 - o[a]) / d[a])
+    if (t < out) { out = t; across = Math.abs(d[a]) }
+  }
+  return Math.max(0, out - 1 / 16 / across)
+}
+/** Capture blocks by the bot's feet, where TriggerService.feet keeps them out. */
+function byFeet () {
+  const p = bot.entity.position
+  return captures().filter(c => c.x < p.x + 0.6 && c.x + 1 > p.x - 0.6 && c.y < p.y + 1.0 && c.y + 1 > p.y - 0.2 &&
+    c.z < p.z + 0.6 && c.z + 1 > p.z - 0.6).length
+}
 /** Hitbox of an entity as the client has it. */
 function box (e) {
   const w = (e.width || 0.6) / 2
@@ -207,8 +231,8 @@ function pick (entities = []) {
   const d = look()
   let cell = null
   let tCell = Infinity
-  for (const c of cobwebs()) {
-    const t = rayBox(o, d, c, c.offset(1, 1, 1))
+  for (const c of captures()) {
+    const t = shell(o, d, c)
     if (t !== null && t < tCell) { tCell = t; cell = c }
   }
   let entity = null
@@ -373,26 +397,29 @@ async function close (spot) {
     log(`target moved to z ${z.toFixed(2)}: server ${there && there.z.toFixed(2)}, bot sees ${target.position.z.toFixed(2)}`)
   }
   const sweep = {}
+  let feet = 0
   try {
     for (const shift of [0, 0.2, 0.4, 0.6, 0.8]) {
       const tz = tp0.z - shift
       await moveTarget(tp0.x, tp0.y, tz)
-      for (let d = 1.3; d <= 2.71; d += 0.1) {
+      for (let d = 0.8; d <= 2.71; d += 0.1) {
         const key = d.toFixed(1)
         sweep[key] = sweep[key] || { cell: 0, of: 0 }
         await tp(tp0.x, tp0.y, tz + d, 180, 0)
         const p = pick([target])
         sweep[key].of++
         if (p.kind === 'cell') sweep[key].cell++
+        feet += byFeet()
       }
     }
   } finally {
     await moveTarget(tp0.x, tp0.y, tp0.z)
   }
-  log('cobweb before the target (target places out of 5):', Object.entries(sweep).map(([d, s]) => `${d}:${s.cell}`).join(' '))
-  check('close: from 1.9 blocks out the crosshair always lands on cobweb first',
-    Object.entries(sweep).filter(([d]) => Number(d) >= 1.9).every(([, s]) => s.cell === s.of))
-  for (const d of [1.5, 2.0, 2.5]) {
+  log('capture block before the target (target places out of 5):', Object.entries(sweep).map(([d, s]) => `${d}:${s.cell}`).join(' '))
+  check('close: from 1.3 blocks out the crosshair always lands on a capture block first',
+    Object.entries(sweep).filter(([d]) => Number(d) >= 1.3).every(([, s]) => s.cell === s.of))
+  check('close: no capture block by the feet', feet === 0, `${feet} cells by the feet over the sweep`)
+  for (const d of [1.0, 1.5, 2.0, 2.5]) {
     await reload()
     await tp(tp0.x, tp0.y, tp0.z + d, 180, 0)
     const first = pick([target])
@@ -401,7 +428,7 @@ async function close (spot) {
     await sleep(300)
     const shots = shotsSince(from).length
     check(`close: K47 held ${d} blocks from the target empties the magazine`, shots === 30,
-      `${shots} shots; first pick ${first.kind} (cobweb at ${first.tCell.toFixed(2)}, target at ${first.tEntity.toFixed(2)}); target picked first on ${entityTicks} ticks`)
+      `${shots} shots; first pick ${first.kind} (capture block at ${first.tCell.toFixed(2)}, target at ${first.tEntity.toFixed(2)}); target picked first on ${entityTicks} ticks`)
   }
 }
 
@@ -462,8 +489,8 @@ async function open () {
   }
   await tp(r.x, r.y, r.z - 2.5, 0, 10)
   const box = await click([rack])
-  log('rack pick', box.p.kind, 'cobweb at', box.p.tCell.toFixed(2), 'rack at', box.p.tEntity.toFixed(2))
-  check('open: the crosshair lands on cobweb in front of the rack', box.p.kind === 'cell')
+  log('rack pick', box.p.kind, 'capture block at', box.p.tCell.toFixed(2), 'rack at', box.p.tEntity.toFixed(2))
+  check('open: the crosshair lands on a capture block in front of the rack', box.p.kind === 'cell')
   check('open: right-clicking the rack with a gun out opens it', box.opened !== null, box.opened ? JSON.stringify(box.opened.title).slice(0, 80) : 'no window')
   check('open: opening the rack does not aim the gun as well', box.ads === 0, `${box.ads} gun.ads sounds`)
 
@@ -476,7 +503,7 @@ async function open () {
     await rcon(`execute as ${name} at @s positioned ${home.x} ${home.y} ${home.z} run tp ${nearest} ${r.x.toFixed(3)} ${r.y.toFixed(3)} ${(r.z - 0.6).toFixed(3)}`)
     await sleep(500)
     const aim = await click([rack, target])
-    log('target pick', aim.p.kind, 'cobweb at', aim.p.tCell.toFixed(2), 'target at', aim.p.tEntity.toFixed(2))
+    log('target pick', aim.p.kind, 'capture block at', aim.p.tCell.toFixed(2), 'target at', aim.p.tEntity.toFixed(2))
     check('open: a target in front of the rack gets aimed at, the rack stays shut', aim.opened === null && aim.ads > 0,
       `${aim.opened ? 'opened ' + JSON.stringify(aim.opened.title).slice(0, 60) : 'nothing opened'}, ${aim.ads} gun.ads sounds`)
   } finally {
@@ -530,24 +557,18 @@ async function fall (spot) {
   await rcon(`execute as ${name} at @s run tp @s ${spot.x.toFixed(3)} ${spot.y + height} ${spot.z.toFixed(3)} 180 90`)
   const asked = Date.now()
   while (bot.entity.position.y < spot.y + height - 0.5 && Date.now() - asked < 2000) await new Promise(resolve => bot.once('physicsTick', resolve))
-  let overlaps = 0
   let cellsSeen = 0
   const began = Date.now()
   let landed = null
   while (Date.now() - began < 4000) {
     await new Promise(resolve => bot.once('physicsTick', resolve))
-    const p = bot.entity.position
-    const min = new Vec3(p.x - 0.3, p.y, p.z - 0.3)
-    const max = new Vec3(p.x + 0.3, p.y + 1.8, p.z + 0.3)
-    for (const c of cobwebs()) {
-      cellsSeen++
-      if (c.x < max.x && c.x + 1 > min.x && c.y < max.y && c.y + 1 > min.y && c.z < max.z && c.z + 1 > min.z) overlaps++
-    }
-    if (bot.entity.onGround && p.y < spot.y + 0.5) { landed = Date.now() - began; break }
+    cellsSeen += captures().length
+    if (bot.entity.onGround && bot.entity.position.y < spot.y + 0.5) { landed = Date.now() - began; break }
   }
-  // A free fall of 12 blocks takes 18 ticks (900 ms); one tick in cobweb stops it dead (seen 1.3 s).
-  check('fall: no cobweb overlaps the falling body', overlaps === 0, `${overlaps} overlapping cell-ticks, ${cellsSeen} cell-ticks seen`)
-  check('fall: the fall takes no longer than a free fall', landed !== null && landed < 1150, `${landed} ms`)
+  await sleep(300)
+  // A free fall of 12 blocks takes 18 ticks (900 ms); one tick in cobweb stopped it dead (seen 1.3 s).
+  check('fall: the fall takes no longer than a free fall', landed !== null && landed < 1150, `${landed} ms, ${cellsSeen} cell-ticks seen`)
+  check('fall: no capture block by the feet where it lands', byFeet() === 0, `${byFeet()} cells`)
 }
 
 ;(async () => {

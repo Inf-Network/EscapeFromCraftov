@@ -739,17 +739,18 @@ void main() {
 
 
 def build_trigger_capture():
-    """Assets for left-click firing: the capture block (cobweb) is invisible and silent when "mined".
+    """Assets for left-click firing: the capture block (a sculk vein on all six faces, see Nms.CAPTURE_BLOCK)
+    is invisible and silent when "mined", stood in (its step sound replaces the floor's) or landed on.
 
     Also the vanilla sound overrides: the AI are zombies (patrols) and husks (elite) re-skinned as
     soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
     """
-    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'cobweb.png'))
+    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
     hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
     death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
     step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
-    overrides = {'block.cobweb.hit': silence}
+    overrides = {'block.sculk_vein.%s' % event: silence for event in ('hit', 'step', 'fall')}
     for mob in ('zombie', 'husk', 'drowned'):
         overrides['entity.%s.ambient' % mob] = silence
         overrides['entity.%s.hurt' % mob] = hurt

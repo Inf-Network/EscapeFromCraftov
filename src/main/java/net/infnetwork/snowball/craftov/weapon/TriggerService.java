@@ -8,7 +8,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
@@ -36,8 +35,6 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.RayTraceResult;
@@ -54,10 +51,15 @@ import java.util.UUID;
 
 /**
  * Left-mouse trigger for guns. The vanilla client sends nothing while the attack button is held,
- * unless it is "mining" a block. So while a gun is out, a 3x3 patch of client-only cobweb (invisible
- * via the resource pack, no collision, never breaks because guns zero the break speed) is kept in
- * the air cells about three blocks in front of the crosshair. Holding left-click then produces an
- * arm swing every tick and an abort packet on release, which is exactly a trigger.
+ * unless it is "mining" a block. So while a gun is out, a 3x3 patch of client-only capture blocks is
+ * kept in the air cells about three blocks in front of the crosshair. Holding left-click then
+ * produces an arm swing every tick and an abort packet on release, which is exactly a trigger.
+ *
+ * <p>The capture block is a sculk vein on all six faces ({@link Nms#CAPTURE_BLOCK}), made invisible
+ * and silent by the resource pack, and guns zero the break speed, so it never breaks. It has no
+ * collision and, unlike the cobweb used before, does nothing to a body inside it: no slowing, no
+ * stopping a fall. Its outline is a shell of six thin plates, so a crosshair that enters the cell,
+ * or starts inside it, always meets one.
  *
  * <p>The abort is what says the button went up. Swings only show the client is still there: a lag
  * spike stops them for a moment and then delivers them all at once, so a hold only times out after
@@ -71,17 +73,16 @@ import java.util.UUID;
  * {@link Nms.DigInputs}), so each left-click on a block is matched to the packet that caused it.
  *
  * <p>The client only digs while its crosshair lands on a block before anything else. An entity in
- * front of the cobweb wins that pick: the client sends one attack (a short tap, see {@link #tap})
- * and then nothing until the button is let go, so a spray at a target two blocks away used to stop
- * after two or three rounds. Each tick the server traces the crosshair for the nearest entity the
- * client could pick, and when one is that close, the cells go half a block in front of it instead.
- * Only when no cell fits between the body and the entity does the click still reach the entity:
- * from about 1.9 blocks out one always does, closer it depends on where block edges fall.
+ * front of the capture blocks wins that pick: the client sends one attack (a short tap, see
+ * {@link #tap}) and then nothing until the button is let go, so a spray at a target two blocks away
+ * used to stop after two or three rounds. Each tick the server traces the crosshair for the nearest
+ * entity the client could pick, and when one is that close, the cells go half a block in front of
+ * it instead, or as far in front as there is room, down to the cell the eye is in. So the click only
+ * reaches an entity the eye is practically touching, or with no air in between.
  *
- * <p>The cobweb is real on the client, and a body inside one is slowed to a crawl and stops
- * falling. The server only takes a cell away a round trip after the client walked or fell into
- * it, so cells keep clear of the body by how far it may get in that time: its recent movement per
- * tick times the ping in ticks plus two, and while falling none goes below the feet.
+ * <p>Cells may overlap the body. Only those at the feet are left out: the client plays the step
+ * sound of a sculk vein it stands in instead of the floor's (the pack silences it), and lands with
+ * its fall sound.
  */
 public final class TriggerService implements Listener {
 
@@ -92,8 +93,8 @@ public final class TriggerService implements Listener {
     private static final double LEAST_LEAD = 0.15;
     /** Entities this close along the crosshair get the cells in front of them; farther ones are behind the usual cells. */
     private static final double REACH = DISTANCE + LEAD;
-    /** Nearest to the eye a cell in front of an entity is looked for (nearer ones are inside the body). */
-    private static final double NEAREST = 0.3;
+    /** Thickness of each face plate of the capture block's outline. */
+    private static final double PLATE = 1.0 / 16;
     /** No cell: the {@link #key} of a cell beyond the world border. */
     private static final long NONE = Long.MIN_VALUE;
     /**
@@ -103,14 +104,6 @@ public final class TriggerService implements Listener {
     private static final int SWING_TIMEOUT = 20;
     /** A single click on air (no capture block in reach) fires this long. */
     private static final int TAP_TICKS = 2;
-    /** Blocks of clearance kept around a body standing still. */
-    private static final double BODY_MARGIN = 0.25;
-    /** Ticks of movement the clearance looks back over (movement packets arrive unevenly). */
-    private static final int MOTION_WINDOW = 3;
-    /** Longest step per tick believed: about the terminal speed of a fall. Anything longer is a teleport. */
-    private static final double MAX_STEP = 4.0;
-    /** Most ticks of ping the clearance allows for, so a bad connection does not push every cell away. */
-    private static final double MAX_LEAD = 12;
     /** An arm swing in {@link Capture#inputs} (no block key is this: it is beyond the world border). */
     private static final long SWING = Long.MIN_VALUE + 1;
     /**
@@ -156,11 +149,6 @@ public final class TriggerService implements Listener {
         boolean stale;
         /** The server resent real blocks (it does after every right-click on a block): resend all cells. */
         boolean dirty;
-        /** Where the player was last tick, for {@link #steps}; null when there is nothing to measure from. */
-        @Nullable Location lastAt;
-        /** Movement (x, y, z) in each of the last {@link #MOTION_WINDOW} ticks. */
-        final double[][] steps = new double[MOTION_WINDOW][3];
-        int nextStep;
 
         @Override
         public void started(long pos) {
@@ -176,7 +164,7 @@ public final class TriggerService implements Listener {
     }
 
     private final CraftovPlugin plugin;
-    private final BlockData cobweb = Material.COBWEB.createBlockData();
+    private final BlockData captureBlock = Bukkit.createBlockData(Nms.CAPTURE_BLOCK);
     private final Map<UUID, Capture> captures = new HashMap<>();
 
     public TriggerService(CraftovPlugin plugin) {
@@ -217,7 +205,6 @@ public final class TriggerService implements Listener {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
             Capture c = capture(player);
-            track(player, c);
             settleInputs(c);
             boolean active = canCapture(player);
             if (active) {
@@ -281,50 +268,14 @@ public final class TriggerService implements Listener {
         return null;
     }
 
-    /** Records how far the player moved since last tick (see {@link #clearance}). */
-    private static void track(Player player, Capture c) {
-        Location at = player.getLocation();
-        double[] step = c.steps[c.nextStep];
-        c.nextStep = (c.nextStep + 1) % MOTION_WINDOW;
-        if (c.lastAt != null && c.lastAt.getWorld() == at.getWorld()) {
-            step[0] = Math.clamp(at.getX() - c.lastAt.getX(), -MAX_STEP, MAX_STEP);
-            step[1] = Math.clamp(at.getY() - c.lastAt.getY(), -MAX_STEP, MAX_STEP);
-            step[2] = Math.clamp(at.getZ() - c.lastAt.getZ(), -MAX_STEP, MAX_STEP);
-        } else {
-            for (double[] old : c.steps) {
-                java.util.Arrays.fill(old, 0);
-            }
-        }
-        c.lastAt = at;
-    }
-
     /**
-     * The space the player's body may reach before the client hears about a new cell: the hitbox plus
-     * a margin, stretched in each direction it moved lately by that step times the ping in ticks plus
-     * two, and further down while airborne for gravity over that time.
+     * Where no cell may go: by the feet, where the client takes the step sound from a block it stands
+     * in (the one above the block it stands on) and the fall sound from the block just below its feet.
      */
-    private static BoundingBox clearance(Player player, Capture c) {
-        double lead = Math.min(MAX_LEAD, player.getPing() / 50.0 + 2);
-        double[] low = new double[3];
-        double[] high = new double[3];
-        for (double[] step : c.steps) {
-            for (int i = 0; i < 3; i++) {
-                low[i] = Math.min(low[i], step[i]);
-                high[i] = Math.max(high[i], step[i]);
-            }
-        }
-        double fall = player.isOnGround() ? 0 : Math.min(MAX_STEP, 0.04 * lead * lead);
-        return player.getBoundingBox().expand(BODY_MARGIN)
-                .expand(-low[0] * lead, -low[1] * lead + fall, -low[2] * lead, high[0] * lead, high[1] * lead, high[2] * lead);
-    }
-
-    /** Airborne and on the way down: the next ticks take the body below where its feet are now. */
-    private static boolean falling(Player player, Capture c) {
-        if (player.isOnGround()) {
-            return false;
-        }
-        double[] last = c.steps[Math.floorMod(c.nextStep - 1, MOTION_WINDOW)];
-        return last[1] < 0;
+    private static BoundingBox feet(Player player) {
+        BoundingBox body = player.getBoundingBox();
+        return new BoundingBox(body.getMinX() - 0.3, body.getMinY() - 0.2, body.getMinZ() - 0.3,
+                body.getMaxX() + 0.3, body.getMinY() + 1.0, body.getMaxZ() + 0.3);
     }
 
     /** Mirrors the server's reach check on dig packets: block interaction range plus one, eye to block. */
@@ -360,9 +311,7 @@ public final class TriggerService implements Listener {
         Location eye = player.getEyeLocation();
         Vector from = eye.toVector();
         Vector dir = eye.getDirection();
-        BoundingBox body = clearance(player, c);
-        double feet = player.getLocation().getY();
-        boolean falling = falling(player, c);
+        BoundingBox feet = feet(player);
         Vector centre = from.clone().add(dir.clone().multiply(DISTANCE));
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
@@ -370,7 +319,7 @@ public final class TriggerService implements Listener {
         RayTraceResult target = world.rayTrace(eye, dir, REACH, FluidCollisionMode.NEVER, false, 0.0,
                 e -> pickable(player, e) && !downedMate(player, e));
         if (target != null && target.getHitEntity() != null) {
-            long cell = inFront(world, from, dir, target.getHitPosition().distance(from), body, falling, feet);
+            long cell = inFront(world, from, dir, target.getHitPosition().distance(from), feet);
             if (cell != NONE) {
                 cx = kx(cell);
                 cy = ky(cell);
@@ -396,7 +345,7 @@ public final class TriggerService implements Listener {
                     x += a;
                     y += b;
                 }
-                if (fits(world, x, y, z, from, body, falling, feet)) {
+                if (fits(world, x, y, z, from, feet)) {
                     wanted.add(key(x, y, z));
                 }
             }
@@ -411,7 +360,7 @@ public final class TriggerService implements Listener {
             }
             for (long cell : wanted) {
                 BlockState state = world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState();
-                state.setBlockData(cobweb);
+                state.setBlockData(captureBlock);
                 changes.add(state);
             }
             c.cells.clear();
@@ -433,7 +382,7 @@ public final class TriggerService implements Listener {
         for (long cell : wanted) {
             if (!c.cells.contains(cell)) {
                 BlockState state = world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState();
-                state.setBlockData(cobweb);
+                state.setBlockData(captureBlock);
                 changes.add(state);
             }
         }
@@ -445,16 +394,17 @@ public final class TriggerService implements Listener {
     }
 
     /**
-     * The cell to centre the patch on so that the crosshair enters cobweb before an entity {@code hit}
-     * blocks away: of the cells the crosshair passes through that fit, the farthest it enters at least
-     * {@link #LEAD} short of the entity, else the nearest it enters at least {@link #LEAST_LEAD} short.
-     * {@link #NONE} if there is no room: the usual cells stay, and the client attacks the entity (a tap).
+     * The cell to centre the patch on so that the crosshair meets a capture block before an entity
+     * {@code hit} blocks away: of the cells the crosshair passes through from the eye on that fit, the
+     * farthest it meets at least {@link #LEAD} short of the entity, else the nearest it meets at least
+     * {@link #LEAST_LEAD} short. {@link #NONE} if there is no room: the usual cells stay, and the client
+     * attacks the entity (a tap).
      */
-    private static long inFront(World world, Vector from, Vector dir, double hit, BoundingBox body, boolean falling, double feet) {
+    private static long inFront(World world, Vector from, Vector dir, double hit, BoundingBox feet) {
         long lead = NONE;
         long close = NONE;
         long last = NONE;
-        for (double t = NEAREST; t < hit; t += 0.05) {
+        for (double t = 0; t < hit; t += 0.05) {
             int x = (int) Math.floor(from.getX() + dir.getX() * t);
             int y = (int) Math.floor(from.getY() + dir.getY() * t);
             int z = (int) Math.floor(from.getZ() + dir.getZ() * t);
@@ -463,14 +413,14 @@ public final class TriggerService implements Listener {
                 continue;
             }
             last = cell;
-            double in = Math.max(entry(from.getX(), dir.getX(), x), Math.max(entry(from.getY(), dir.getY(), y), entry(from.getZ(), dir.getZ(), z)));
-            if (in > hit - LEAST_LEAD) {
+            double at = meets(from, dir, x, y, z);
+            if (at > hit - LEAST_LEAD) {
                 break;
             }
-            if (!fits(world, x, y, z, from, body, falling, feet)) {
+            if (!fits(world, x, y, z, from, feet)) {
                 continue;
             }
-            if (in <= hit - LEAD) {
+            if (at <= hit - LEAD) {
                 lead = cell;
             } else if (close == NONE) {
                 close = cell;
@@ -479,20 +429,38 @@ public final class TriggerService implements Listener {
         return lead != NONE ? lead : close;
     }
 
-    /** Where a ray from {@code from} going {@code dir} along one axis enters the cell starting at {@code low}. */
-    private static double entry(double from, double dir, int low) {
-        if (Math.abs(dir) < 1e-9) {
-            return Double.NEGATIVE_INFINITY;
+    /**
+     * How far along a ray from {@code from} going {@code dir} it meets the capture block's outline in
+     * this cell: where it enters the cell, or, starting inside, the plate on the face it leaves by.
+     */
+    private static double meets(Vector from, Vector dir, int x, int y, int z) {
+        double[] f = {from.getX(), from.getY(), from.getZ()};
+        double[] d = {dir.getX(), dir.getY(), dir.getZ()};
+        int[] low = {x, y, z};
+        double in = Double.NEGATIVE_INFINITY;
+        double out = Double.POSITIVE_INFINITY;
+        double across = 1;
+        for (int i = 0; i < 3; i++) {
+            if (Math.abs(d[i]) < 1e-9) {
+                continue;
+            }
+            double a = (low[i] - f[i]) / d[i];
+            double b = (low[i] + 1 - f[i]) / d[i];
+            in = Math.max(in, Math.min(a, b));
+            if (Math.max(a, b) < out) {
+                out = Math.max(a, b);
+                across = Math.abs(d[i]);
+            }
         }
-        return Math.min((low - from) / dir, (low + 1 - from) / dir);
+        return in > 0 ? in : Math.max(0, out - PLATE / across);
     }
 
-    /** A cell the capture block may go in: air, clear of the body (see {@link #clearance}) and within reach. */
-    private static boolean fits(World world, int x, int y, int z, Vector eye, BoundingBox body, boolean falling, double feet) {
-        if (y < world.getMinHeight() || y >= world.getMaxHeight() || falling && y < feet) {
+    /** A cell the capture block may go in: air, not by the feet (see {@link #feet}) and within reach. */
+    private static boolean fits(World world, int x, int y, int z, Vector eye, BoundingBox feet) {
+        if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
             return false;
         }
-        if (!world.getBlockAt(x, y, z).getType().isAir() || body.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))) {
+        if (!world.getBlockAt(x, y, z).getType().isAir() || feet.overlaps(new BoundingBox(x, y, z, x + 1, y + 1, z + 1))) {
             return false;
         }
         return eye.distanceSquared(new Vector(x + 0.5, y + 0.5, z + 0.5)) <= 4.3 * 4.3;
@@ -707,23 +675,6 @@ public final class TriggerService implements Listener {
         long now = Bukkit.getCurrentTick();
         c.lastInput = now;
         c.tapUntil = Math.max(c.tapUntil, now + TAP_TICKS);
-    }
-
-    /** A teleport is not movement: measure from where the player lands. */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        Capture c = captures.get(event.getPlayer().getUniqueId());
-        if (c != null) {
-            c.lastAt = null;
-        }
-    }
-
-    @EventHandler
-    public void onRespawn(PlayerRespawnEvent event) {
-        Capture c = captures.get(event.getPlayer().getUniqueId());
-        if (c != null) {
-            c.lastAt = null;
-        }
     }
 
     @EventHandler

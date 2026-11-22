@@ -6,7 +6,6 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +35,13 @@ import java.util.logging.Logger;
 public final class Nms {
 
     private static final String HANDLER = "craftov_capture";
+    /**
+     * The client-only block the trigger keeps in front of a gun (see {@code TriggerService}): a sculk
+     * vein on all six faces, which has no collision, does nothing to a body inside it and has an
+     * outline shell a crosshair always meets. The resource pack makes it invisible and silent.
+     */
+    public static final String CAPTURE_BLOCK =
+            "minecraft:sculk_vein[down=true,east=true,north=true,south=true,up=true,west=true,waterlogged=false]";
     private static final String VIEW_HANDLER = "craftov_view";
 
     private static boolean ready;
@@ -48,7 +54,7 @@ public final class Nms {
     private static @Nullable Method blockUpdatePos;
     private static @Nullable Constructor<?> blockUpdateCtor;
     private static @Nullable Method asLong;
-    private static @Nullable Object cobwebState;
+    private static @Nullable Object captureState;
     private static @Nullable Class<?> actionPacketClass;
     private static @Nullable Method actionPacketAction;
     private static @Nullable Method actionPacketPos;
@@ -137,8 +143,8 @@ public final class Nms {
             Class<?> blockState = Class.forName("net.minecraft.world.level.block.state.BlockState");
             blockUpdateCtor = blockUpdateClass.getConstructor(blockPos, blockState);
             asLong = blockPos.getMethod("asLong");
-            Object craftData = Material.COBWEB.createBlockData();
-            cobwebState = craftData.getClass().getMethod("getState").invoke(craftData);
+            Object craftData = org.bukkit.Bukkit.createBlockData(CAPTURE_BLOCK);
+            captureState = craftData.getClass().getMethod("getState").invoke(craftData);
             Class<?> playerClass = Class.forName("net.minecraft.world.entity.player.Player");
             getAbilities = playerClass.getMethod("getAbilities");
             abilitiesClass = Class.forName("net.minecraft.world.entity.player.Abilities");
@@ -311,7 +317,7 @@ public final class Nms {
             if (!cells.isEmpty() && blockUpdateClass.isInstance(msg)) {
                 Object pos = blockUpdatePos.invoke(msg);
                 if (cells.contains((Long) asLong.invoke(pos))) {
-                    msg = blockUpdateCtor.newInstance(pos, cobwebState);
+                    msg = blockUpdateCtor.newInstance(pos, captureState);
                 }
             }
             super.write(ctx, msg, promise);

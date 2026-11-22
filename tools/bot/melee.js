@@ -14,18 +14,24 @@
 //      off the soldier's whole health pool matches it (the boss at least 10); the soldier's health
 //      pool is raised meanwhile so it is not killed and can be cut by the next knife;
 //   5. a shield soldier facing the attacker: a cut to the chest does nothing (health and vest
-//      unchanged), a cut to the leg gets under the shield (0.7 of the damage);
-//   6. the other bot in a fresh armor_4: one chest cut from each knife does damage x the armour
+//      unchanged), a cut to the leg gets under the shield (the knife's leg multiplier, 0.6);
+//   6. a patrol with its vest on and its helmet off, machete swung level (pitch 0): every cut lands
+//      on the head (52 x the machete's head multiplier 0.75 = 39) and leaves the vest alone, it goes
+//      down in 3, and the kill message on the action bar does not say 爆头 (headshot);
+//   7. the other bot in a fresh armor_4: one chest cut from each knife does damage x the armour
 //      multiplier for its pen (5.1, 9, 13, 14.4);
-//   7. the other bot in armor_6 and helmet_6, karambit: chest cuts wear the vest 8.64 a hit and do
-//      5.4, a head cut wears the helmet and not the vest, a leg cut does 25.2 and wears neither;
-//   8. it is then cut down (chest and legs) and its death report lists more than the chest.
+//   8. the other bot in armor_6 and helmet_6, karambit: chest cuts wear the vest 8.64 a hit and do
+//      5.4, a head cut wears the helmet and not the vest, a leg cut does 21.6 (0.6) and wears
+//      neither; a level machete swing lands on the head (wears the helmet 15.6, not the vest);
+//   9. it is then cut down (chest and legs) and its death report lists more than the chest.
 //
 // Soldiers are frozen (NoAI) and teleported in front of the attacker; both bots have resistance
 // while soldiers are around (their rounds would otherwise kill them), the soldiers are killed before
 // the bots cut each other. The knife values come from the server's plugins/Craftov/items.yml
 // (SERVER_DIR, default the repository's server/run), or the source one when it has none; a server
-// items.yml from before knives went through armour is reported as a setup failure.
+// items.yml from before knives went through armour is reported as a setup failure. The knife arm
+// and leg multipliers come from the server's config.yml (combat.melee.zone-multipliers), 0.6 when
+// it has none.
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node melee.js
 //
@@ -54,7 +60,8 @@ const bots = []
 
 const DAMAGE_TAKEN = [0.85, 0.6, 0.4, 0.25, 0.15]
 const WEAR = 0.3
-const ZONE = { chest: 1.0, stomach: 0.95, leg: 0.7, head: 1.0 }
+// Chest and stomach as for a bullet; the leg is replaced by combat.melee.zone-multipliers.leg.
+const ZONE = { chest: 1.0, stomach: 0.95, leg: 0.6, head: 1.0 }
 const KNIVES = ['knife_starter', 'knife_tactical', 'knife_machete', 'knife_karambit']
 
 function loadItems () {
@@ -72,6 +79,10 @@ function loadItems () {
   }
   const armour = {}
   for (const m of text.matchAll(/\n  ((?:armor|helmet)_\d): \{[^}]*class: (\d+), durability: (\d+)/g)) armour[m[1]] = { cls: Number(m[2]), max: Number(m[3]) }
+  const config = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
+  const limbs = fs.existsSync(config) && fs.readFileSync(config, 'utf8')
+    .match(/\n  melee:\n(?:    #.*\n)*    zone-multipliers:\n(?:      #.*\n)*      arm: ([\d.]+)\n      leg: ([\d.]+)/)
+  if (limbs) ZONE.leg = Number(limbs[2])
   return { file, knives, armour }
 }
 
@@ -116,6 +127,10 @@ function make (name) {
   bot.on('messagestr', m => bot.chatLines.push(m))
   bot.sounds = []
   bot.on('soundEffectHeard', s => bot.sounds.push(String(s)))
+  // Paper sends action bars as their own packet, which mineflayer does not turn into an event; the
+  // raw NBT text keeps every string as "value":"...".
+  bot.actionBars = []
+  bot._client.on('action_bar', p => bot.actionBars.push(JSON.stringify(p.text)))
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -242,15 +257,35 @@ function frontEntity (attacker, filter = () => true) {
 }
 
 /**
- * One cut at `part` of the entity in front: looks at the part (a share of `height`), waits for the
- * look to reach the server, attacks, and returns health and armour durability before and after.
+ * One cut at `part` of the entity in front: looks at the part (a share of `height`), or straight
+ * ahead at it for 'level' (pitch 0, how a player usually swings), waits for the look to reach the
+ * server, attacks, and returns health and armour durability before and after.
  */
 async function cut (attacker, sel, part, height, filter) {
   const entity = frontEntity(attacker, filter)
   if (!entity) return null
-  const share = { head: 0.92, chest: 0.64, leg: 0.2 }[part]
-  await attacker.lookAt(entity.position.offset(0, height * share, 0), true)
+  if (part === 'level') {
+    const dx = entity.position.x - attacker.entity.position.x
+    const dz = entity.position.z - attacker.entity.position.z
+    await attacker.look(Math.atan2(-dx, -dz), 0, true)
+  } else {
+    const share = { head: 0.92, chest: 0.64, leg: 0.2 }[part]
+    await attacker.lookAt(entity.position.offset(0, height * share, 0), true)
+  }
   await sleep(250)
+  // The cut lands where the server thinks the attacker looks. placeAttacker's tp turns it level
+  // (pitch 0), and a look sent too soon after can be lost, which turns a chest cut into a head cut:
+  // wait until the server has the pitch (Minecraft's pitch is down-positive, mineflayer's up-positive).
+  const pitch = -attacker.entity.pitch * 180 / Math.PI
+  let seen = null
+  for (let n = 0; n < 8; n++) {
+    seen = await dataNumber(attacker.username, 'Rotation[1]')
+    if (seen !== null && Math.abs(seen - pitch) < 1.5) break
+    log(`  the server has pitch ${rd(seen)}, the look is ${rd(pitch)}: sending it again`)
+    await attacker.look(attacker.entity.yaw, attacker.entity.pitch, true)
+    attacker.entity.pitch += 1e-4 // a changed angle makes mineflayer send the look again
+    await sleep(150)
+  }
   const before = await health(sel)
   const chestBefore = await duraOf(sel, 'chest')
   const headBefore = await duraOf(sel, 'head')
@@ -466,11 +501,38 @@ async function armourAttr (sel) {
       !!front && clang && front.damage === 0 && front.chest[0] === front.chest[1], front && { ...front, clang })
     const leg = await cut(attacker, sel, 'leg', ZOMBIE_H, isMob)
     await sleep(kk.cd * 50 + 150)
-    check(`shield soldier facing the attacker: a leg cut gets under the shield (${rd(kk.damage * 0.7)})`,
-      !!leg && close(leg.damage, kk.damage * 0.7), leg && rd(leg.damage))
+    check(`shield soldier facing the attacker: a leg cut gets under the shield (${rd(kk.damage * ZONE.leg)})`,
+      !!leg && close(leg.damage, kk.damage * ZONE.leg), leg && rd(leg.damage))
   }
 
-  // 6-8. The other bot.
+  // 6. Level swings land on a patrol's head: the vest is untouched and the kill is no headshot.
+  {
+    const sel = one('m_pat3')
+    const km = items.knives.knife_machete
+    await rcon(`item replace entity ${sel} armor.head with minecraft:air`)
+    await rcon(`data merge entity ${sel} {Health:100f}`)
+    await placeTarget(attacker, sel, FACING_ATTACKER)
+    await holdKnife(attacker, 'knife_machete')
+    const want = Math.ceil(100 / (km.damage * km.head) - 1e-9)
+    const cuts = []
+    let dead = false
+    attacker.actionBars.length = 0
+    for (let tries = 0; tries < want + 4 && !dead; tries++) {
+      const c = await cut(attacker, sel, 'level', ZOMBIE_H, isMob)
+      await sleep(km.cd * 50 + 120)
+      dead = !(await rcon(`execute if entity ${sel}`)).includes('passed')
+      if (c && (c.damage > 0 || dead)) cuts.push({ damage: dead ? 'dead' : rd(c.damage), vest: c.chest.map(rd) })
+    }
+    const alive = cuts.filter(c => c.damage !== 'dead')
+    check(`patrol, machete swung level: every cut lands on the head (${rd(km.damage * km.head)}), the vest is untouched, down in ${want}`,
+      dead && cuts.length === want && alive.every(c => close(c.damage, km.damage * km.head) && c.vest[0] === c.vest[1]), cuts)
+    await sleep(300)
+    const kill = attacker.actionBars.filter(m => m.includes('击败'))
+    check('the knife kill to the head is not called a headshot (no 爆头 on the action bar)',
+      kill.length > 0 && kill.every(m => !m.includes('爆头')), kill)
+  }
+
+  // 7-9. The other bot.
   await killSoldiers(attacker, '')
   await rcon(`effect clear ${target.username} minecraft:resistance`)
   const tsel = target.username
@@ -524,9 +586,23 @@ async function armourAttr (sel) {
     head && { damage: rd(head.damage), helmet: head.head, vest: head.chest })
   const leg = await cut(attacker, tsel, 'leg', PLAYER_H, isTarget)
   await sleep(kk.cd * 50 + 150)
-  check(`karambit: a leg cut does ${rd(kk.damage * 0.7)} and wears neither helmet nor vest`,
-    !!leg && close(leg.damage, kk.damage * 0.7) && leg.chest[0] === leg.chest[1] && leg.head[0] === leg.head[1],
+  check(`karambit: a leg cut does ${rd(kk.damage * ZONE.leg)} and wears neither helmet nor vest`,
+    !!leg && close(leg.damage, kk.damage * ZONE.leg) && leg.chest[0] === leg.chest[1] && leg.head[0] === leg.head[1],
     leg && { damage: rd(leg.damage), helmet: leg.head, vest: leg.chest })
+  {
+    const km = items.knives.knife_machete
+    await holdKnife(attacker, 'knife_machete')
+    await sleep(km.cd * 50)
+    const helmetNow = await duraOf(tsel, 'head')
+    const want = knifeHit(km, 'head', h6, helmetNow ?? h6.max)
+    const level = await cut(attacker, tsel, 'level', PLAYER_H, isTarget)
+    await sleep(km.cd * 50 + 150)
+    check(`machete swung level at a standing player: lands on the head (${rd(want.damage)}), wears helmet_6 ${rd(km.damage * km.ad * WEAR)}, not the vest`,
+      !!level && close(level.damage, want.damage) && close((level.head[0] ?? h6.max) - level.head[1], km.damage * km.ad * WEAR, 0.02)
+        && level.chest[0] === level.chest[1],
+      level && { damage: rd(level.damage), helmet: level.head, vest: level.chest })
+    await holdKnife(attacker, 'knife_karambit')
+  }
 
   // Cut it down, chest and legs, and read its death report.
   target.chatLines.length = 0

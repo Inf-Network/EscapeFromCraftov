@@ -45,10 +45,11 @@ public final class ProfileService {
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
     /**
-     * Offline profiles changed through {@link #edit}, kept until every write queued for them has
-     * reached the disk. Without this, back-to-back edits (several market listings of one offline
-     * seller returned or sold in the same tick) each re-read a file the previous write had not
-     * replaced yet, and all but one of the changes were lost. Main thread only.
+     * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, kept until
+     * every write queued for them has reached the disk. Without this, back-to-back edits (several
+     * market listings of one offline seller returned or sold in the same tick, or a sale right as
+     * the seller logs off) each re-read a file the previous write had not replaced yet, and all but
+     * one of the changes were lost. Main thread only.
      */
     private final Map<UUID, Pending> offline = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
@@ -168,7 +169,11 @@ public final class ProfileService {
         Profile profile = cache.remove(uuid);
         dirty.remove(uuid);
         if (profile != null) {
-            writeAsync(profile);
+            // Kept like an offline edit until the write lands: a payout or a returned listing in
+            // the same moment must build on this copy, not on the older file still on disk.
+            Pending pending = new Pending(profile, new AtomicInteger());
+            offline.put(uuid, pending);
+            writeAsync(profile, pending.writes());
         }
     }
 

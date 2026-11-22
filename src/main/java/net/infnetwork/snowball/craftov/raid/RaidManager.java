@@ -479,8 +479,10 @@ public final class RaidManager implements Listener {
         List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
         takenIn.addAll(rp.secure);
         rp.broughtIn = stackCounts(takenIn);
-        rp.gearValue = plugin.carry().carriedValue(player);
-        rp.startValue = rp.gearValue + recordsValue(rp.secure);
+        rp.gearValue = plugin.carry().gearValue(player);
+        // Profit is measured on everything, the knife included, as extraction counts it: a knife
+        // brought in cancels out and one found in the raid is profit.
+        rp.startValue = plugin.carry().carriedValue(player) + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
@@ -881,8 +883,9 @@ public final class RaidManager implements Listener {
 
     /**
      * The flat experience for getting out: in full for players who brought in gear worth at least
-     * rank.extract-xp-min-gear, in proportion below that. Walking out naked earned 150 a run with
-     * nothing at stake; profit and kills still earn their own experience.
+     * rank.extract-xp-min-gear (gear value, so a knife alone earns none of it), in proportion below
+     * that. Walking out naked earned 150 a run with nothing at stake; profit and kills still earn
+     * their own experience.
      */
     private double extractXp(RaidPlayer rp) {
         double base = plugin.getConfig().getDouble("rank.extract-xp", 150);
@@ -924,8 +927,7 @@ public final class RaidManager implements Listener {
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
         Location at = player.getLocation();
-        long lost = plugin.carry().carriedValue(player);
-        // Body with everything the player carried.
+        // Body with everything the player carried but the melee weapon, which is kept.
         List<ItemStack> drop = new ArrayList<>();
         ItemStack melee = player.getInventory().getItem(CarryService.MELEE_SLOT);
         for (int slot = 0; slot <= CarryService.HEAD; slot++) {
@@ -935,10 +937,19 @@ public final class RaidManager implements Listener {
             }
         }
         // Whatever was held on the cursor (a picked-up backpack with everything in it, say) is carried too.
+        // A knife too: only the one in the melee slot is kept, so one on the cursor is a second knife and
+        // goes into the body like a second knife in a pocket. It used to be left out and then deleted by
+        // setItemOnCursor(null), while extracting or leaving mails it home. Nothing in normal play puts
+        // a knife there (the melee slot cannot be picked up and loot screens never use the cursor).
         ItemStack cursor = player.getItemOnCursor();
-        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor) && !plugin.carry().isMelee(cursor)) {
+        if (!cursor.isEmpty() && !ItemFactory.isUi(cursor)) {
             drop.add(cursor.clone());
-            lost += plugin.items().value(cursor);
+        }
+        // What was lost is what the body holds, as in missing(). The kept knife used to count too,
+        // so a karambit made every death cost more rank points and showed in the report's loss.
+        long lost = 0;
+        for (ItemStack stack : drop) {
+            lost += plugin.items().value(stack);
         }
         spawnCorpse(raid, at, drop, player);
         player.getInventory().clear();

@@ -570,7 +570,7 @@ public final class ItemFactory {
     }
 
     public long value(ItemRecord record) {
-        return value(record, false);
+        return value(record, false, false);
     }
 
     /**
@@ -579,12 +579,21 @@ public final class ItemFactory {
      * since they need not have come from the kit.
      */
     public long tradeValue(ItemRecord record) {
-        return value(record, true);
+        return value(record, true, false);
     }
 
-    private long value(ItemRecord record, boolean trade) {
+    /**
+     * What an item adds to gear value (战备值, see CarryService#gearValue): {@link #value(ItemRecord)},
+     * except that melee weapons count nothing, packed ones included. A knife is never lost, so it
+     * puts nothing at stake, and a ◈95,000 karambit alone must not open the higher tiers.
+     */
+    public long gearValue(ItemRecord record) {
+        return value(record, false, true);
+    }
+
+    private long value(ItemRecord record, boolean trade, boolean gear) {
         ItemDef def = registry.get(record.id);
-        if (def == null || record.isTest()) {
+        if (def == null || record.isTest() || gear && (def.isMelee() || def.category() == Category.MELEE)) {
             return 0;
         }
         double unit = trade && record.isKit() ? 0 : def.value();
@@ -602,7 +611,7 @@ public final class ItemFactory {
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                total += value(child, trade);
+                total += value(child, trade, gear);
             }
         }
         ItemDef optic = registry.get(record.optic);

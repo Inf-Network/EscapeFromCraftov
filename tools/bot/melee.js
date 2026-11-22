@@ -35,8 +35,9 @@
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node melee.js
 //
-// The bots are made op (test maps, /cv items) and get a karambit and money in the lobby to meet the
-// 机密 gear requirement; they are deopped when done. A match launches after match.wait-seconds
+// The bots are made op (test maps, /cv items) and get a karambit, a gold bar and money in the lobby:
+// the gold bar meets the 机密 gear requirement, which a knife does not count towards (issue #81);
+// they are deopped when done. A match launches after match.wait-seconds
 // (30 by default) and the boss appears 60 s into the raid. Exit code 0 when every check passes,
 // 1 when one fails, 2 when the scenario could not be set up.
 const fs = require('fs')
@@ -131,6 +132,21 @@ function make (name) {
   // raw NBT text keeps every string as "value":"...".
   bot.actionBars = []
   bot._client.on('action_bar', p => bot.actionBars.push(JSON.stringify(p.text)))
+  // A bullet snapping past jolts the view by a fraction of a degree, sent as a relative rotation.
+  // mineflayer applies that packet as absolute, so the bot's own look dropped to level and it sent
+  // that back on its next move: a chest cut became a head cut whenever a soldier's round flew by.
+  // mineflayer adds its own listener a tick after createBot, so this one goes on at login, after it.
+  bot.viewKicks = 0
+  bot.once('login', () => {
+    let before = null
+    bot._client.prependListener('player_rotation', () => { before = bot.entity && [bot.entity.yaw, bot.entity.pitch] })
+    bot._client.on('player_rotation', p => {
+      if (!before || !(p.relativeYaw || p.relativePitch)) return
+      bot.viewKicks++
+      if (p.relativeYaw) bot.entity.yaw = before[0] - p.yaw * Math.PI / 180
+      if (p.relativePitch) bot.entity.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, before[1] - p.pitch * Math.PI / 180))
+    })
+  })
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -407,7 +423,8 @@ async function armourAttr (sel) {
   check('trader weapons page: the tactical dagger is sold, the machete and the karambit are not',
     sold.includes('knife_tactical') && !sold.includes('knife_machete') && !sold.includes('knife_karambit'), sold.filter(id => id.startsWith('knife')))
   for (const bot of bots) {
-    await rcon(`cv give ${bot.username} knife_karambit`) // also meets the 机密 gear requirement
+    await rcon(`cv give ${bot.username} knife_karambit`)
+    await rcon(`cv give ${bot.username} gold_bar`) // the 机密 gear requirement: the knife counts nothing
   }
   await waitFor(() => bots.every(b => pdc(b.inventory.slots[38], 'id') === 'knife_karambit'), 5000)
   const karambitLore = lore(attacker.inventory.slots[38])
@@ -628,6 +645,7 @@ async function armourAttr (sel) {
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 
 async function finish (code) {
+  log('view kicks (relative rotations) received:', bots.map(b => `${b.username} ${b.viewKicks}`).join(', '))
   for (const bot of bots) {
     try { await rcon(`effect clear ${bot.username}`) } catch (e) { }
     try { await rcon(`deop ${bot.username}`) } catch (e) { }

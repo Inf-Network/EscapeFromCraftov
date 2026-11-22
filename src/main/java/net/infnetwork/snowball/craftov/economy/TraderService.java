@@ -135,7 +135,8 @@ public final class TraderService {
     /**
      * Everything the player owns, at item value: money, stash, mailbox, insurance claims on their
      * way, what they carry, the secure container, their market listings and an escrowed escort
-     * reward. The escrow is read from the
+     * reward. A carried knife counts here, unlike in gear value: one in the stash counts too, and
+     * moving it between the two must not change the answer. The escrow is read from the
      * profile, where EscortService records it with the deduction: that also covers a contract lost
      * in a crash whose reward has not been handed back yet.
      */
@@ -163,7 +164,8 @@ public final class TraderService {
      */
     public void claimFreeKit(Player player) {
         Profile profile = plugin.profiles().get(player);
-        long value = plugin.carry().carriedValue(player);
+        // The carry limit is the gear value the player sees (no knife); assets() counts the knife.
+        long value = plugin.carry().gearValue(player);
         long max = plugin.getConfig().getLong("free-kit.max-value", 15000);
         if (value > max) {
             Text.send(player, "<#FF8A80>你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");

@@ -32,7 +32,10 @@ public final class RaidPlayer {
     public int downs;
     /** Value carried in and in the secure container at deploy (raid profit is measured against it). */
     public long startValue;
-    /** Value of the gear carried in at deploy, secure container excluded (the deploy screen's 战备值). */
+    /**
+     * Gear value carried in at deploy (the deploy screen's 战备值): secure container and melee weapon
+     * excluded. Extraction experience and the house bounty go by it.
+     */
     public long gearValue;
     /** Instance ids of everything brought in at deploy, so other players' profit can leave it out. */
     public Set<String> gearUids = new HashSet<>();

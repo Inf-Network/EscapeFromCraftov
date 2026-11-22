@@ -335,7 +335,7 @@ public final class WeaponService implements Listener {
         long now = Bukkit.getCurrentTick();
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);
-            if (player.isSprinting()) {
+            if (sprinting(player)) {
                 lastSprint.put(player.getUniqueId(), now);
             }
             GunState state = bind(player);
@@ -1071,21 +1071,29 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Sprinting carries the gun lowered: no shot while sprinting, nor for a few ticks after the sprint
-     * ends (weapons.sprint-recovery-ticks) while it comes back up. The vanilla client keeps sprinting
-     * with the attack button held, and the server cannot stop a client that holds the sprint key, so
-     * the trigger is what gives.
+     * Sprinting carries the gun lowered: no shot while sprinting (see {@link #sprinting}), nor for a few
+     * ticks after the sprint ends (weapons.sprint-recovery-ticks) while it comes back up. The vanilla
+     * client keeps sprinting with the attack button held, and the server cannot stop a client that
+     * holds the sprint key, so the trigger is what gives.
      */
     private boolean sprintLocked(Player player) {
-        if (player.isSprinting()) {
+        if (sprinting(player)) {
             return true;
         }
         Long last = lastSprint.get(player.getUniqueId());
         return last != null && Bukkit.getCurrentTick() - last <= plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
     }
 
+    /**
+     * Sprinting by the client's word, or running at a sprint by the server's measure: a modified client
+     * can move at sprint speed without ever saying it started sprinting.
+     */
+    private boolean sprinting(Player player) {
+        return player.isSprinting() || motion.running(player);
+    }
+
     private void sprintHint(Player player) {
-        if (player.isSprinting()) {
+        if (sprinting(player)) {
             hint(player, "<#9AA0A6>冲刺时不能开火");
         }
     }

@@ -28,6 +28,18 @@ final class MotionTracker {
      * reset the track through their event instead.
      */
     private static final double MAX_STEP = 1.0;
+    /**
+     * Moving this much faster than the player's own walking pace is running, whatever the client says
+     * about sprinting: vanilla sprinting is 1.3 times walking pace.
+     */
+    private static final double RUN_RATIO = 1.2;
+    /** Ticks it has to last, on the ground, before it counts: a shove from a blast does not. */
+    private static final int RUN_TICKS = 3;
+    /**
+     * Ticks of walking pace remembered. Slowing down takes a few ticks (when the player starts aiming,
+     * stops sprinting or a speed boost wears off), so the pace to beat is the highest one lately.
+     */
+    private static final int PACE_WINDOW = 10;
 
     private static final class Track {
         UUID world;
@@ -38,6 +50,12 @@ final class MotionTracker {
         int next;
         /** No position to measure from yet (just joined, teleported, respawned or changed world). */
         boolean fresh = true;
+        /** The walking pace the movement-speed attribute allowed in each of the last ticks. */
+        final double[] paces = new double[PACE_WINDOW];
+        int nextPace;
+        boolean pacesSet;
+        /** Consecutive ticks spent on the ground well over that pace. */
+        int fastTicks;
     }
 
     private final Map<UUID, Track> tracks = new HashMap<>();
@@ -61,19 +79,60 @@ final class MotionTracker {
         track.z = at.getZ();
         track.steps[track.next] = step;
         track.next = (track.next + 1) % WINDOW;
+        double walk = walkPace(player);
+        if (!track.pacesSet) {
+            java.util.Arrays.fill(track.paces, walk);
+            track.pacesSet = true;
+        }
+        track.paces[track.nextPace] = walk;
+        track.nextPace = (track.nextPace + 1) % PACE_WINDOW;
+        double pace = 0;
+        for (double p : track.paces) {
+            pace = Math.max(pace, p);
+        }
+        boolean fast = groundRun(player) && average(track) > RUN_RATIO * pace;
+        track.fastTicks = fast ? track.fastTicks + 1 : 0;
     }
 
-    /** Horizontal speed in blocks per tick, averaged over the last few ticks. */
-    double speed(Player player) {
-        Track track = tracks.get(player.getUniqueId());
-        if (track == null) {
-            return 0;
+    /**
+     * Moving on foot over ground that gives normal grip: what can be compared with walking pace.
+     * Ice and riding carry a player faster than their legs, and the air has its own pace.
+     */
+    @SuppressWarnings("deprecation")
+    private static boolean groundRun(Player player) {
+        if (!player.isOnGround() || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
+            return false;
         }
+        return !player.getLocation().subtract(0, 0.2, 0).getBlock().getType().name().contains("ICE");
+    }
+
+    /**
+     * True while the player has been running on the ground well over their walking pace for a few
+     * ticks: sprinting, even if the client never said it started.
+     */
+    boolean running(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        return track != null && track.fastTicks >= RUN_TICKS;
+    }
+
+    private static double average(Track track) {
         double sum = 0;
         for (double step : track.steps) {
             sum += step;
         }
         return sum / WINDOW;
+    }
+
+    /** Blocks per tick the player's movement-speed attribute walks right now. */
+    private static double walkPace(Player player) {
+        AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        return (attribute == null ? 0.1 : attribute.getValue()) * BLOCKS_PER_SPEED;
+    }
+
+    /** Horizontal speed in blocks per tick, averaged over the last few ticks. */
+    double speed(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        return track == null ? 0 : average(track);
     }
 
     /**
@@ -82,9 +141,7 @@ final class MotionTracker {
      * walks as fast as they can counts as fully moving.
      */
     double moveFactor(Player player) {
-        AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
-        double walk = (attribute == null ? 0.1 : attribute.getValue()) * BLOCKS_PER_SPEED;
-        return Math.min(1.0, speed(player) / Math.max(0.06, walk));
+        return Math.min(1.0, speed(player) / Math.max(0.06, walkPace(player)));
     }
 
     /** Forgets the last position: the next tick measures from wherever the player lands. */

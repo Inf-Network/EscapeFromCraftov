@@ -5,7 +5,8 @@
 //            walking hip fire at least 1.4x standing hip fire, walking ADS at least 1.8x standing ADS.
 //   sprint   (P18) pulling the trigger while sprinting fires nothing (no shot sound, no debug shot line)
 //            and says why; right after the sprint ends still nothing, a moment later the gun fires;
-//            a trigger held through the end of the sprint fires once the gun is back up.
+//            a trigger held through the end of the sprint fires once the gun is back up; running at
+//            sprint pace without ever sending the sprint command fires nothing either.
 //   recoil   M4C on full auto, 30 rounds without touching the mouse: a second after letting go the
 //            camera must have come back down at least half of the climb, and not past where it
 //            started; pulling all or half of the climb down while firing is not pulled further. A
@@ -231,6 +232,21 @@ async function sprint (spot) {
   bot.swingArm()
   await sleep(400)
   check('sprint: a click a moment after the sprint fires', shots === 1, `${shots} shot sounds`)
+
+  // A client that runs at sprint pace but never says it started sprinting: mineflayer's own sprint
+  // command is the broken one, so leaving out the right one plays it. The server goes by the speed.
+  await home(spot)
+  bot.setControlState('forward', true)
+  bot.setControlState('sprint', true)
+  await sleep(500)
+  from = logSize()
+  shots = 0
+  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(150) }
+  bot.setControlState('sprint', false)
+  bot.setControlState('forward', false)
+  await sleep(300)
+  check('sprint: running at sprint pace without the sprint command fires nothing', shots === 0 && shotLines(from).length === 0,
+    `${shots} shot sounds, ${shotLines(from).length} logged`)
 
   // Trigger held through the end of the sprint: one shot, once the gun is back up.
   await home(spot)

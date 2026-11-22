@@ -44,9 +44,14 @@ public final class CollectionService {
         return owned * 100 / total;
     }
 
-    /** Returns the names of newly registered collectibles. */
-    public List<String> registerExtraction(Player player, Profile profile, Raid raid) {
+    /**
+     * Registers the collectibles carried out of a raid: what the player carries, their secure
+     * container and {@code mailed}, what was held on the cursor and went to the mailbox on the way
+     * out. Returns the names of newly registered collectibles.
+     */
+    public List<String> registerExtraction(Player player, Profile profile, Raid raid, List<ItemRecord> mailed) {
         List<ItemRecord> carried = new ArrayList<>(plugin.carry().allRecords(player));
+        carried.addAll(mailed);
         RaidPlayer rp = raid.player(player.getUniqueId());
         if (rp != null) {
             carried.addAll(rp.secure);

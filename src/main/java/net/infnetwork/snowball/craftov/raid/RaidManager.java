@@ -351,7 +351,7 @@ public final class RaidManager implements Listener {
         takenIn.addAll(rp.secure);
         rp.broughtIn = stackCounts(takenIn);
         rp.gearValue = plugin.carry().carriedValue(player);
-        rp.startValue = rp.gearValue + secureValue(rp.secure);
+        rp.startValue = rp.gearValue + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
         rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
@@ -645,18 +645,19 @@ public final class RaidManager implements Listener {
         }
         point.used++;
         plugin.weapons().reset(player);
-        // Something held on the cursor is carried out too: back into the inventory (or the mailbox)
-        // before the value is counted.
-        plugin.carry().reclaimCursorHome(player);
+        // Something held on the cursor is carried out too: back into the inventory before the value
+        // is counted, and what does not fit goes to the mailbox but is counted with the rest.
+        List<ItemRecord> mailed = plugin.carry().reclaimCursorHome(player);
         plugin.insurance().strip(player);
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.EXTRACT);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.EXTRACTED;
         rp.extracting = null;
-        long carried = plugin.carry().carriedValue(player);
-        long secure = secureValue(rp.secure);
+        long carried = plugin.carry().carriedValue(player) + recordsValue(mailed);
+        long secure = recordsValue(rp.secure);
         long total = carried + secure;
         List<ItemRecord> out = new ArrayList<>(plugin.carry().snapshot(player).values());
+        out.addAll(mailed);
         out.addAll(rp.secure);
         long handed = othersGear(raid, rp, out);
         rp.carriedOut = stackCounts(out);
@@ -667,7 +668,7 @@ public final class RaidManager implements Listener {
         profile.addStat("kills", rp.kills);
         profile.addStat("ai_kills", rp.aiKills);
         profile.activeRaid = null;
-        List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid);
+        List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid, mailed);
         int rankDelta = rp.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
         long xp = Math.round((extractXp(rp) + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
         plugin.ranks().addXp(player, profile, xp);
@@ -1097,7 +1098,8 @@ public final class RaidManager implements Listener {
         });
     }
 
-    public long secureValue(List<ItemRecord> records) {
+    /** What the records are worth together (the secure container, items mailed on the way out). */
+    public long recordsValue(List<ItemRecord> records) {
         long total = 0;
         for (ItemRecord record : records) {
             total += plugin.items().value(record);
@@ -1317,8 +1319,10 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.LEFT;
-        // Gone home with everything, like an extraction, as far as other players' profit goes.
-        List<ItemRecord> out = new ArrayList<>(plugin.carry().snapshot(player).values());
+        // Gone home with everything, like an extraction, as far as other players' profit goes: the
+        // cursor item too, whether it goes back into the inventory or to the mailbox.
+        List<ItemRecord> out = new ArrayList<>(plugin.carry().reclaimCursorHome(player));
+        out.addAll(plugin.carry().snapshot(player).values());
         out.addAll(rp.secure);
         rp.carriedOut = stackCounts(out);
         Profile profile = plugin.profiles().get(player);

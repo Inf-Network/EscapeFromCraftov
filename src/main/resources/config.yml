@@ -70,7 +70,7 @@ tiers:
     name: "机密"
     color: "#4FA3FF"
     min-value: 60000
-    entry-fee: 8000
+    entry-fee: 32000
     loot-shift: 1
     ai-count: 1.0
     ai-accuracy: 0.75
@@ -81,7 +81,7 @@ tiers:
     name: "绝密"
     color: "#FF4D4D"
     min-value: 250000
-    entry-fee: 20000
+    entry-fee: 43000
     loot-shift: 2
     ai-count: 1.25
     ai-accuracy: 0.95

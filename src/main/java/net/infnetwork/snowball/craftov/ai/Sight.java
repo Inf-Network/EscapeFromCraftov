@@ -15,6 +15,9 @@ import org.bukkit.util.Vector;
  * do not count. A round fired along the same line is another matter: everything with collision
  * stops it, and of the see-through blocks only glass gives way (the round that hits it breaks it,
  * see Ballistics), so a soldier can see you through a fence, bars or a hedge but not shoot you.
+ * Both are block ray traces, which meet a block only inside its own cell: a fence or a wall counts
+ * one block high (as it looks), not the 1.5 it is to walk into, so a head showing over a one-high
+ * fence can be seen and shot.
  */
 final class Sight {
 

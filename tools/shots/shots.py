@@ -19,7 +19,9 @@ ImageMagick `import` for the picture. Screenshots land in tools/shots/out/<shot>
 
 Common options (before or after the subcommand): --port (env SHOTS_PORT, default 25565),
 --rcon-port (SHOTS_RCON_PORT, default port + 10), --server-dir (default server/run), --name (the
-client's offline user name, default ShotCam). A server already on the ports is only used when it
+client's offline user name, default ShotCam), --size (window, default 1600x900) and --gui-scale
+(default 0, auto: 3 at 1600x900; `--size 2560x1440 --gui-scale 3` is a 1440p screen with the GUI
+at 3). A server already on the ports is only used when it
 runs from --server-dir, so a second checkout needs a --port of its own. `run --build` rebuilds the
 plugin and restarts the server first (only one shots started), `run --fresh` resets the player to
 a new profile with the starter kit, and `run --send` sends every shot of the run to the Mac. A
@@ -412,10 +414,11 @@ def write_servers_dat(address):
     (GAME_DIR / 'servers.dat').write_bytes(b'\x0a\x00\x00' + servers + b'\x00')
 
 
-def write_options(lang):
+def write_options(lang, gui_scale=0):
     path = GAME_DIR / 'options.txt'
     lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
-    forced = dict(OPTIONS, lang=lang)
+    # guiScale 0 is the client's "auto": the largest scale that still fits the window.
+    forced = dict(OPTIONS, lang=lang, guiScale=str(gui_scale))
     kept = [line for line in lines if line.split(':', 1)[0] not in forced]
     path.write_text('\n'.join(kept + [f'{k}:{v}' for k, v in forced.items()]) + '\n', encoding='utf-8')
 
@@ -461,7 +464,7 @@ def start_client(cfg, display):
     GAME_DIR.mkdir(parents=True, exist_ok=True)
     address = f'127.0.0.1:{cfg.port}'
     write_servers_dat(address)
-    write_options(cfg.lang)
+    write_options(cfg.lang, cfg.gui_scale)
     width, height = cfg.size.split('x')
     command = mll.command.get_minecraft_command(VERSION, str(MC_DIR), {
         'username': cfg.name, 'uuid': offline_uuid(cfg.name), 'token': '0',
@@ -1003,7 +1006,9 @@ def up(cfg, state, started=None):
     else:
         wait_rcon(cfg, pid)
     client_up = pid_alive(state.get('client_pid'), 'net.minecraft.client') and pid_alive(state.get('xvfb_pid'), 'Xvfb')
-    if client_up and state.get('port') == cfg.port and not fresh_server and not cfg.fresh and player_online(cfg):
+    # The client reads the window size and GUI scale only when it starts.
+    same_view = state.get('size', cfg.size) == cfg.size and state.get('gui_scale', 0) == cfg.gui_scale
+    if client_up and state.get('port') == cfg.port and same_view and not fresh_server and not cfg.fresh and player_online(cfg):
         log('reusing the client on', state['display'])
     else:
         down(cfg, state, ('client', 'display'))
@@ -1020,7 +1025,8 @@ def up(cfg, state, started=None):
         state['client_pid'] = start_client(cfg, state['display'])
         if not client_up:
             started.append('client')
-        state.update(port=cfg.port, rcon_port=cfg.rcon_port, server_dir=str(cfg.server_dir))
+        state.update(port=cfg.port, rcon_port=cfg.rcon_port, server_dir=str(cfg.server_dir), size=cfg.size,
+                     gui_scale=cfg.gui_scale)
         save_state(state)
         wait_joined(cfg, state['client_pid'], log_offset)
         # Terrain, the HUD, and the "chat messages can't be verified" toast an offline server
@@ -1120,6 +1126,8 @@ def common_options(suppress):
                         default=default(Path(os.environ.get('SHOTS_SERVER_DIR', ROOT / 'server' / 'run'))))
     common.add_argument('--name', default=default(os.environ.get('SHOTS_NAME', 'ShotCam')), help='offline user name of the client')
     common.add_argument('--size', default=default('1600x900'), help='screen and window size')
+    common.add_argument('--gui-scale', type=int, default=default(0),
+                        help='client GUI scale (0 = auto, the largest that fits; 1600x900 gives 3)')
     common.add_argument('--lang', default=default('zh_cn'), help='client language')
     common.add_argument('--java', default=default(shutil.which('java') or '/usr/bin/java'))
     return common

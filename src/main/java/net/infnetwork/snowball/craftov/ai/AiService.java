@@ -695,6 +695,10 @@ public final class AiService implements Listener {
 
     // ------------------------------------------------------------------ brain
 
+    /**
+     * Every soldier thinks every 2 ticks, from whatever tick the plugin started on, so a check that
+     * should come round every N ticks tests {@code now % N < 2}: {@code == 0} may never be true.
+     */
     private void tick() {
         long now = Bukkit.getCurrentTick();
         List<UUID> dead = new ArrayList<>();
@@ -743,7 +747,7 @@ public final class AiService implements Listener {
             }
             double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
-                if (!mob.getPathfinder().hasPath() || now % 10 == 0) {
+                if (!mob.getPathfinder().hasPath() || now % 10 < 2) {
                     go(bot, target.getLocation(), 1.0, now);
                 }
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
@@ -751,7 +755,7 @@ public final class AiService implements Listener {
                 if (away.lengthSquared() > 0.01) {
                     mob.getPathfinder().moveTo(mob.getLocation().add(away.normalize().multiply(4)), 1.0);
                 }
-            } else if (now % 40 == 0 && !"sniper".equals(bot.kind) && ThreadLocalRandom.current().nextBoolean()) {
+            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && ThreadLocalRandom.current().nextBoolean()) {
                 Vector dir = target.getLocation().toVector().subtract(mob.getLocation().toVector()).setY(0);
                 if (dir.lengthSquared() > 0.01) {
                     Vector side = new Vector(-dir.getZ(), 0, dir.getX()).normalize().multiply(ThreadLocalRandom.current().nextBoolean() ? 3 : -3);
@@ -775,7 +779,7 @@ public final class AiService implements Listener {
             return;
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
-            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 == 0 && !heading(mob, bot.lastSeen))) {
+            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 < 2 && !heading(mob, bot.lastSeen))) {
                 go(bot, bot.lastSeen, 0.9, now);
             }
             return;

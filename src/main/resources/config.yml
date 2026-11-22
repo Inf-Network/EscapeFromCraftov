@@ -50,10 +50,10 @@ free-kit:
 # min-value is the gear value (战备值) every squad member needs to queue: what they carry, without
 # the melee slot or any melee weapon, which is never lost and so puts nothing at stake.
 # loot-shift is where every loot roll of the raid starts; a container's tier on the map (and the
-# boss, supply drops) add to it, never above max-shift (loot.yml shift-bonus says what a shift does).
-# entry-fee is charged on deploy (checked when queueing). A server config.yml without max-shift or
-# entry-fee takes them from the plugin's own config.yml for the same tier (one shift above
-# loot-shift, at most 2, and no fee for a tier the plugin does not ship).
+# boss, supply drops) add to it (loot.yml says what a shift does).
+# entry-fee is charged on deploy (checked when queueing). A server config.yml without entry-fee
+# takes it from the plugin's own config.yml for the same tier (no fee for a tier the plugin does
+# not ship).
 tiers:
   NORMAL:
     name: "常规"
@@ -61,7 +61,6 @@ tiers:
     min-value: 0
     entry-fee: 0
     loot-shift: 0
-    max-shift: 1
     ai-count: 0.8
     ai-accuracy: 0.55
     ai-gear: 0
@@ -73,7 +72,6 @@ tiers:
     min-value: 60000
     entry-fee: 8000
     loot-shift: 1
-    max-shift: 2
     ai-count: 1.0
     ai-accuracy: 0.75
     ai-gear: 1
@@ -85,7 +83,6 @@ tiers:
     min-value: 250000
     entry-fee: 20000
     loot-shift: 2
-    max-shift: 2
     ai-count: 1.25
     ai-accuracy: 0.95
     ai-gear: 2

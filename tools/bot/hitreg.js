@@ -175,7 +175,10 @@ async function equip () {
 /** Has `bot` hold the gun and fill its magazine. */
 async function arm (id, bot = shooter) {
   const slot = hotbar(bot, id)
-  if (slot < 0) throw new Error(id + ' did not reach the hotbar')
+  if (slot < 0) {
+    const held = bot.inventory.slots.map((s, i) => s ? `${i}:${itemId(s) || s.name}x${s.count}` : null).filter(Boolean)
+    throw new Error(`${id} is not in the hotbar: ${held.join(' ')}`)
+  }
   bot.setQuickBarSlot(slot - 36)
   await sleep(1200)
   reloadKey(bot)

@@ -1,7 +1,7 @@
 // Spectator-mode escapes during the entry camera and after death, with headless bots.
 //
 //   node spectate.js                       every scenario
-//   node spectate.js menu tp end death     only these (menu tp end death replay mate)
+//   node spectate.js menu tp end death     only these (menu tp end enddc death click replay mate)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
@@ -17,10 +17,16 @@
 //           back, both squadmates land, and the log has no "Cannot measure distance"
 //   end     `/cv end` during the entry camera closes the raid within 10 s; the player is in
 //           the lobby with the same gear and the entry fee back
+//   enddc   `/cv end` during the entry camera after a squadmate dropped out of it: when that
+//           player comes back they are in the lobby with the same gear and the entry fee back
 //   death   the camera locks onto a fixed point within 2 ticks of dying, and neither the
 //           spectator menu nor Shift moves the dead player off it
+//   click   dead in a squad with the squadmate right in front: left-clicking the body or the
+//           squadmate from the death view does nothing, so the Shift after it frees nothing,
+//           and the camera still goes to the squadmate five seconds after death
 //   replay  killed by another player: the death camera holds until the kill replay takes
-//           over, the menu does nothing during the replay, and Shift still skips it
+//           over, neither the menu nor a click on another mannequin moves the camera during
+//           the replay, and Shift still skips it
 //   mate    dead in a squad: on the squadmate's camera the menu does nothing, and Shift
 //           still leaves for the lobby
 //
@@ -52,9 +58,9 @@ function offlineUuid (name) {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`
 }
 
-/** A fresh player with a random name (a reused one would rejoin an old raid). */
-function make () {
-  const name = `s${run}${(serial++).toString().padStart(2, '0')}`
+/** A fresh player with a random name (a reused one would rejoin an old raid), or one coming back. */
+function make (again) {
+  const name = again || `s${run}${(serial++).toString().padStart(2, '0')}`
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.worldName = ''
@@ -267,6 +273,50 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'home with the same gear and money'} | lobby after ${homeIn.toFixed(1)}s, ${raidId} closed after ${closedIn.toFixed(1)}s | ${gear.length} items, ◈${money} | ${told || ''}`]
   },
 
+  async enddc () {
+    const log = logFrom()
+    const A = await make()
+    const C = await make()
+    await sleep(2500)
+    const gear = inventory(C)
+    const money = await balance(C.username)
+    const older = await raidIds()
+    A.chat(`/cv party invite ${C.username}`); await sleep(600)
+    C.chat('/cv party accept'); await sleep(600)
+    queue(A, 'TRIO')
+    if (!await waitFor(() => onCamera(A) && onCamera(C), 40000)) return ['FAIL', 'no entry camera']
+    await sleep(500)
+    // C drops out of the camera, and the raid is ended before it lands.
+    const name = C.username
+    live.splice(live.indexOf(C), 1)
+    C.end('disconnect.quitting')
+    await sleep(700)
+    const raidId = (await raidIds()).find(id => !older.includes(id))
+    if (!raidId) return ['FAIL', `no new raid in ${await rcon('cv raids')}`]
+    const endAt = Date.now()
+    await rcon(`cv end ${raidId}`)
+    let closed = false
+    while (Date.now() - endAt < 12000) {
+      if (!(await raidIds()).includes(raidId)) { closed = true; break }
+      await sleep(250)
+    }
+    const problems = []
+    if (!closed) problems.push(`${raidId} still open after 12 s`)
+    if (!inLobby(A)) problems.push(`A not in the lobby (${A.worldName} ${A.game.gameMode})`)
+    // C comes back after the raid is gone.
+    const back = await make(name)
+    if (!await waitFor(() => inLobby(back) && back.game.gameMode === 'adventure', 10000)) problems.push(`C not in the lobby (${back.worldName} ${back.game.gameMode})`)
+    await sleep(1500)
+    const now = inventory(back)
+    if (!same(gear, now)) problems.push(`gear ${gear.join(',')} -> ${now.join(',')}`)
+    const after = await balance(name)
+    if (after !== money) problems.push(`money ${money} -> ${after}`)
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    await quitAll()
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'C came back to the same gear and money'} | ${raidId} closed after ${((Date.now() - endAt) / 1000).toFixed(1)}s | ${gear.length} items, ◈${money} -> ◈${after}`]
+  },
+
   async death () {
     const log = logFrom()
     const B = await make()
@@ -311,6 +361,53 @@ const scenarios = {
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'camera locked at once and held, menu did nothing'} | camera ${cam ? cam.at - died.at : '-'} ms after death on ${cam ? cam.type : '-'}`]
   },
 
+  async click () {
+    const log = logFrom()
+    const A = await make()
+    const C = await make()
+    await sleep(2500)
+    A.chat(`/cv party invite ${C.username}`); await sleep(600)
+    C.chat('/cv party accept'); await sleep(600)
+    queue(A, 'TRIO')
+    if (!await waitFor(() => landed(A) && landed(C), 40000)) return ['FAIL', 'never landed']
+    await sleep(3500)
+    // C stands right in front of A, where a squadmate reviving A would be.
+    await rcon(`execute as ${C.username} at ${A.username} run tp @s ^ ^ ^1.5 facing entity ${A.username}`)
+    await sleep(800)
+    const killedAt = Date.now()
+    await kill(A)
+    if (!await waitFor(() => A.game.gameMode === 'spectator', 3000)) return ['FAIL', 'did not die']
+    await sleep(400)
+    const { died, cam } = deathCamera(A, killedAt)
+    const problems = []
+    if (!cam || cam.type !== 'item_display') problems.push(`death camera on ${cam ? cam.type : '-'}`)
+    // A left click on an entity in reach sends this attack: first the body at A's feet, then C.
+    const feet = A.entity.position
+    const body = Object.values(A.entities).find(e => e.name === 'mannequin' && e.position.distanceTo(feet) < 3)
+    const mate = A.players[C.username] && A.players[C.username].entity
+    const clicked = []
+    if (body) { A.attack(body); clicked.push(`body ${body.position.distanceTo(feet).toFixed(1)}m`); await sleep(400) }
+    if (mate) { A.attack(mate); clicked.push(`squadmate ${mate.position.distanceTo(feet).toFixed(1)}m`); await sleep(400) } else problems.push('A cannot see C')
+    // Shift after the clicks: on the death camera it does nothing.
+    A.physicsEnabled = true
+    A.setControlState('sneak', true)
+    await sleep(600)
+    A.setControlState('sneak', false)
+    A.physicsEnabled = false
+    await sleep(300)
+    const moved = A.cameras.filter(c => cam && c.at > cam.at)
+    if (moved.length) problems.push(`camera went to ${moved.map(c => c.type).join(',')} while dead (${((moved[0].at - died.at) / 1000).toFixed(1)}s after death)`)
+    // The squadmate camera still comes, five seconds after death.
+    const mateId = () => mate && mate.id
+    if (!await waitFor(() => A.cameras.some(c => c.at > killedAt && c.id === mateId()), 6000)) {
+      problems.push(`never watched the squadmate (cameras: ${A.cameras.filter(c => c.at > killedAt).map(c => c.type).join(',')})`)
+    }
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    await quitAll()
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'clicks did nothing, Shift did nothing, then the squadmate camera'} | clicked ${clicked.join(', ') || 'nothing'}`]
+  },
+
   async replay () {
     const log = logFrom()
     const B = await make()
@@ -323,8 +420,10 @@ const scenarios = {
     if (A.worldName !== K.worldName) return ['FAIL', `different raids: ${A.worldName} / ${K.worldName}`]
     await sleep(3500)
     // K steps up to A and stabs once with the starter knife (hotbar 3): A's last hit is then K's.
+    // K waits there longer than the 6 s the replay shows, so its stand-in is next to A's from the
+    // start (and a click on A's, below, is within reach).
     await rcon(`execute as ${K.username} at ${A.username} run tp @s ~1 ~ ~ facing entity ${A.username}`)
-    await sleep(800)
+    await sleep(7000)
     K.setQuickBarSlot(2)
     await sleep(400)
     const target = K.players[A.username] && K.players[A.username].entity
@@ -355,6 +454,18 @@ const scenarios = {
     if (A.worldName !== raidWorld) problems.push(`sent to ${A.worldName} during the replay`)
     const lost = A.cameras.filter(c => c.at > pickedAt && c.type !== 'mannequin')
     if (lost.length) problems.push(`camera went to ${lost.map(c => c.type).join(',')} during the replay`)
+    // A left click on any other mannequin by the killer's stand-in (A's own stand-in, A's body)
+    // does not take the camera off it either.
+    const onStandIn = [...A.cameras].reverse().find(c => c.type === 'mannequin')
+    const standIn = onStandIn && A.entities[onStandIn.id]
+    const other = standIn && Object.values(A.entities).find(e => e.name === 'mannequin' && e.id !== standIn.id && e.position.distanceTo(standIn.position) < 3)
+    const clickedAt = Date.now()
+    if (other) {
+      A.attack(other)
+      await sleep(400)
+      const moved = A.cameras.filter(c => c.at > clickedAt)
+      if (moved.length) problems.push(`clicking another mannequin moved the camera to ${moved.map(c => c.id === other.id ? 'it' : c.type).join(',')}`)
+    } else problems.push('no other mannequin by the killer\'s stand-in to click')
     // Shift skips the replay; with no squadmate left, the lobby is next.
     const skipAt = Date.now()
     A.physicsEnabled = true // mineflayer sends the Shift key with its physics tick
@@ -365,7 +476,7 @@ const scenarios = {
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
     await quitAll()
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'death camera, then the replay; menu did nothing; Shift skipped'} | camera ${cam ? cam.at - died.at : '-'} ms after death, lobby ${((Date.now() - skipAt) / 1000).toFixed(1)}s after Shift`]
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'death camera, then the replay; menu and click did nothing; Shift skipped'} | camera ${cam ? cam.at - died.at : '-'} ms after death, clicked a mannequin ${other ? other.position.distanceTo(standIn.position).toFixed(1) + 'm' : '-'} from the camera, lobby ${((Date.now() - skipAt) / 1000).toFixed(1)}s after Shift`]
   },
 
   async mate () {

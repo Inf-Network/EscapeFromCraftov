@@ -121,7 +121,11 @@ public final class AdminGuardService implements Listener {
         return trusted().stream().anyMatch(block -> block.contains(address));
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    /**
+     * HIGHEST, so the refusal is the last word: a whitelist or queue plugin that calls allow() for
+     * names it lets in would otherwise undo it. A login something else already refused is left alone.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED || !operators.contains(event.getUniqueId()) || !active()) {
             return;

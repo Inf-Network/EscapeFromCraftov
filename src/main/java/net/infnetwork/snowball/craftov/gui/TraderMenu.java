@@ -141,6 +141,9 @@ final class TraderMenu extends Menu {
                 continue;
             }
             ItemRecord record = plugin.items().toRecord(stack);
+            if (record == null) {
+                continue; // range loaners and test items are not for sale
+            }
             total += plugin.traders().sell(viewer, record);
             count += stack.getAmount();
             viewer.getInventory().setItem(slot, null);
@@ -160,8 +163,16 @@ final class TraderMenu extends Menu {
             viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能出售"));
             return;
         }
+        if (ItemFactory.isTest(event.getClickedInventory().getItem(event.getSlot()))) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能出售"));
+            return;
+        }
         ItemRecord record = plugin.items().toRecord(event.getClickedInventory().getItem(event.getSlot()));
         if (record == null) {
+            return;
+        }
+        if (plugin.registry().get(record.id) == null) {
+            viewer.sendActionBar(Text.mm("<#FF8A80>物品表里暂时没有这件物品，不能出售"));
             return;
         }
         long price = plugin.traders().sellPrice(record);

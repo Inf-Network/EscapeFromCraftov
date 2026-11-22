@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.item;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Consumable;
@@ -88,7 +89,21 @@ public final class ItemFactory {
         return build(gun, record);
     }
 
-    // ------------------------------------------------------------------ optics and range loaners
+    // ------------------------------------------------------------------ optics, range loaners, test items
+
+    public static boolean isTest(@Nullable ItemStack stack) {
+        return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.TEST);
+    }
+
+    /**
+     * Marks a stack as a proving-ground armory item: it works like any other in its raid, but has no
+     * value and is never stored, sold, collected or carried back to the lobby.
+     */
+    public ItemStack markTest(ItemStack stack) {
+        stack.editPersistentDataContainer(pdc -> pdc.set(Keys.TEST, PersistentDataType.BYTE, (byte) 1));
+        refreshLore(stack, defOf(stack));
+        return stack;
+    }
 
     public static boolean isRange(@Nullable ItemStack stack) {
         return stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.RANGE);
@@ -131,7 +146,7 @@ public final class ItemFactory {
         return out;
     }
 
-    /** The gun with an attachment fitted in a slot (null empties it); magazine, mode and loaner flag are kept. */
+    /** The gun with an attachment fitted in a slot (null empties it); magazine, mode, loaner and test flags are kept. */
     public ItemStack withAttachment(ItemStack gun, String slot, @Nullable String id) {
         ItemRecord record = recordOf(gun);
         if (record == null) {
@@ -154,7 +169,7 @@ public final class ItemFactory {
         return range ? markRange(rebuilt) : rebuilt;
     }
 
-    /** The gun with a different optic mounted (null removes it); magazine, mode and loaner flag are kept. */
+    /** The gun with a different optic mounted (null removes it); magazine, mode, loaner and test flags are kept. */
     public ItemStack withOptic(ItemStack gun, @Nullable String opticId) {
         ItemRecord record = recordOf(gun);
         if (record == null) {
@@ -181,7 +196,7 @@ public final class ItemFactory {
             return null;
         }
         int mode = mode(stack);
-        ItemStack rebuilt = fromRecord(toRecord(stack));
+        ItemStack rebuilt = fromRecord(packRecord(stack));
         if (rebuilt != null) {
             setMode(rebuilt, mode);
         }
@@ -295,6 +310,15 @@ public final class ItemFactory {
             if (record.isKit()) {
                 pdc.set(Keys.KIT, PersistentDataType.BYTE, (byte) 1);
             }
+            if (record.insured != null) {
+                pdc.set(Keys.INSURED, PersistentDataType.STRING, record.insured);
+            }
+            if (record.insuredAs != null) {
+                pdc.set(Keys.INSURED_AS, PersistentDataType.STRING, GSON.toJson(record.insuredAs));
+            }
+            if (record.isTest()) {
+                pdc.set(Keys.TEST, PersistentDataType.BYTE, (byte) 1);
+            }
         });
         if (def.isGun()) {
             applyModelData(stack);
@@ -339,18 +363,50 @@ public final class ItemFactory {
         return stack.getPersistentDataContainer().get(Keys.UI, PersistentDataType.STRING);
     }
 
-    /** Storable form of a stack, or null for non-Craftov stacks and shooting-range loaners (never persisted). */
+    /**
+     * Storable form of a stack, or null for non-Craftov stacks, shooting-range loaners and proving-ground
+     * armory items (never persisted). Armory items packed inside a rig or backpack are left out of it.
+     * Stash, traders, the market, the secure container, collection, raid value and the lobby loadout all
+     * read items through this, so test items count for nothing anywhere.
+     */
     public @Nullable ItemRecord toRecord(@Nullable ItemStack stack) {
+        return isRange(stack) ? null : persistent(recordOf(stack));
+    }
+
+    /**
+     * In-raid form of a stack: like {@link #toRecord} but keeps proving-ground armory items, flagged, so
+     * they survive being packed into a rig or backpack (or a disconnect) and come back as test items.
+     * Never store it; {@link #persistent} turns it into something that may be stored.
+     */
+    public @Nullable ItemRecord packRecord(@Nullable ItemStack stack) {
         return isRange(stack) ? null : recordOf(stack);
     }
 
-    private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
-        ItemDef def = defOf(stack);
-        if (def == null) {
+    /** The record without proving-ground armory items: null if it is one, otherwise minus any packed inside. */
+    public static @Nullable ItemRecord persistent(@Nullable ItemRecord record) {
+        if (record == null || record.isTest()) {
             return null;
         }
+        if (record.contents == null || record.contents.stream().noneMatch(ItemRecord::isTest)) {
+            return record;
+        }
+        ItemRecord copy = record.copy();
+        copy.contents.removeIf(ItemRecord::isTest);
+        if (copy.contents.isEmpty()) {
+            copy.contents = null;
+        }
+        return copy;
+    }
+
+    private @Nullable ItemRecord recordOf(@Nullable ItemStack stack) {
+        String id = idOf(stack);
+        if (id == null) {
+            return null;
+        }
+        // An id that items.yml no longer has (removed, renamed, a broken file) still gets its record:
+        // the stack stays in the loadout and comes back once the definition does.
         PersistentDataContainerView pdc = stack.getPersistentDataContainer();
-        ItemRecord record = new ItemRecord(def.id(), stack.getAmount());
+        ItemRecord record = new ItemRecord(id, stack.getAmount());
         record.uid = pdc.get(Keys.UID, PersistentDataType.STRING);
         record.ammo = pdc.get(Keys.AMMO, PersistentDataType.INTEGER);
         record.ammoType = pdc.get(Keys.AMMO_TYPE, PersistentDataType.STRING);
@@ -363,7 +419,22 @@ public final class ItemFactory {
         Map<String, String> attach = attachments(stack);
         record.attach = attach.isEmpty() ? null : attach;
         record.kit = pdc.has(Keys.KIT) ? Boolean.TRUE : null;
+        record.insured = pdc.get(Keys.INSURED, PersistentDataType.STRING);
+        record.insuredAs = insuredAs(pdc.get(Keys.INSURED_AS, PersistentDataType.STRING));
+        record.test = isTest(stack) ? Boolean.TRUE : null;
         return record;
+    }
+
+    /** The deploy snapshot InsuranceService stored on an insured item, or null (none, or unreadable). */
+    private static @Nullable ItemRecord insuredAs(@Nullable String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return GSON.fromJson(json, ItemRecord.class);
+        } catch (JsonParseException ex) {
+            return null;
+        }
     }
 
     public static @Nullable String uid(@Nullable ItemStack stack) {
@@ -482,7 +553,7 @@ public final class ItemFactory {
 
     private long value(ItemRecord record, boolean trade) {
         ItemDef def = registry.get(record.id);
-        if (def == null) {
+        if (def == null || record.isTest()) {
             return 0;
         }
         double unit = trade && record.isKit() ? 0 : def.value();
@@ -624,6 +695,8 @@ public final class ItemFactory {
         }
         if (isRange(stack)) {
             lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
+        } else if (isTest(stack)) {
+            lore.add(Text.mm("<#FFB74D>试验场物资 · 没有价值，不能带出对局，撤离时收回"));
         } else {
             long value = value(stack);
             lore.add(Text.mm("<#8A8F98>价值 <#F2C94C>◈ " + Text.money(value)));

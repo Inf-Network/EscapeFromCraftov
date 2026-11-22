@@ -1,12 +1,13 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.raid.LootContainer;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -61,28 +62,30 @@ public final class InsuranceService {
         return Math.round(value * rate());
     }
 
-    /** Called when a player deploys: insures their gear if they have it switched on and can pay. */
-    public void onDeploy(Player player, Raid raid) {
+    /**
+     * Called when a player deploys: insures their gear if they have it switched on and can pay.
+     * Returns the premium charged (0 when nothing was insured).
+     */
+    public long onDeploy(Player player, Raid raid) {
         Profile profile = plugin.profiles().get(player);
         if (!profile.autoInsure) {
-            return;
+            return 0;
         }
         long fee = quote(player);
         if (fee <= 0) {
-            return;
+            return 0;
         }
         if (profile.money < fee) {
             Text.send(player, "<#FF8A80>块币不足，本局装备未投保（需要 ◈" + Text.money(fee) + "）");
-            return;
+            return 0;
         }
         profile.money -= fee;
-        String mark = player.getUniqueId() + ":" + raid.id;
+        String mark = player.getUniqueId() + ":" + raid.key;
         int count = 0;
         for (ItemStack stack : player.getInventory().getContents()) {
             ItemDef def = plugin.items().defOf(stack);
             if (insurable(def)) {
-                ItemRecord as = plugin.items().toRecord(stack);
-                String json = as == null ? null : GSON.toJson(as);
+                String json = snapshot(stack);
                 stack.editPersistentDataContainer(pdc -> {
                     pdc.set(Keys.INSURED, PersistentDataType.STRING, mark);
                     if (json != null) {
@@ -94,39 +97,82 @@ public final class InsuranceService {
             }
         }
         Text.send(player, "<#5BD16B>已为 " + count + " 件装备投保 <#9AA0A6>(◈" + Text.money(fee) + ")。阵亡后若没被别人带出，对局结束时退回邮箱。");
+        return fee;
     }
 
-    /** Extracting ends insurance on everything carried out, whoever it belonged to. */
+    /**
+     * The insured item as it is at deploy, which a claim cuts it back to (see {@link #limitTo}).
+     * A worn rig or backpack has its cells laid out in the inventory, so nothing is packed in it.
+     */
+    private @Nullable String snapshot(ItemStack stack) {
+        ItemRecord as = plugin.items().toRecord(stack);
+        if (as == null) {
+            return null;
+        }
+        as.contents = null;
+        as.uninsure();
+        return GSON.toJson(as);
+    }
+
+    /** Extracting ends insurance on everything carried out, whoever it belonged to, packed contents included. */
     public void strip(Player player) {
         for (ItemStack stack : player.getInventory().getContents()) {
-            if (stack != null && !stack.isEmpty() && stack.getPersistentDataContainer().has(Keys.INSURED)) {
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            boolean changed = false;
+            if (stack.getPersistentDataContainer().has(Keys.INSURED) || stack.getPersistentDataContainer().has(Keys.INSURED_AS)) {
                 stack.editPersistentDataContainer(pdc -> {
                     pdc.remove(Keys.INSURED);
                     pdc.remove(Keys.INSURED_AS);
                 });
+                changed = true;
+            }
+            if (ItemFactory.hasContents(stack)) {
+                List<ItemRecord> contents = plugin.items().contents(stack);
+                boolean inner = false;
+                for (ItemRecord child : contents) {
+                    inner |= child.uninsure();
+                }
+                if (inner) {
+                    plugin.items().setContents(stack, contents);
+                    changed = true;
+                }
+            }
+            if (changed) {
                 plugin.items().refreshLore(stack, plugin.items().defOf(stack));
             }
         }
     }
 
-    /** Raid closing: insured items left behind go home. */
+    /**
+     * Raid closing (or the server stopping): insured items left behind go home, also when they are
+     * packed inside a rig or backpack lying around.
+     */
     public void settle(Raid raid) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
-                if (claim(raid, stack, returns)) {
-                    container.set(slot, null);
+                ItemStack left = claim(raid, stack, returns);
+                if (left != stack) {
+                    container.set(slot, left);
                 }
             }
         }
         for (Item item : raid.world.getEntitiesByClass(Item.class)) {
-            if (claim(raid, item.getItemStack(), returns)) {
+            ItemStack stack = item.getItemStack();
+            ItemStack left = claim(raid, stack, returns);
+            if (left == null) {
                 item.remove();
+            } else if (left != stack) {
+                item.setItemStack(left);
             }
         }
         returns.forEach((owner, records) -> {
-            plugin.profiles().edit(owner, p -> p.mailbox.addAll(records));
+            plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
+                    + ProfileService.json(records), p -> p.mailbox.addAll(records));
+            plugin.profiles().saveNow(owner); // a payout is written at once, like a death report
             Player player = Bukkit.getPlayer(owner);
             if (player != null) {
                 Text.send(player, "<#5BD16B>保险理赔：<white>" + records.size() + " 件装备 <#9AA0A6>已退回仓库邮箱"
@@ -135,43 +181,67 @@ public final class InsuranceService {
         });
     }
 
-    private boolean claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
+    /**
+     * Sends home everything in the stack that is insured for this raid. Returns what stays behind:
+     * the stack itself when nothing was, a rebuilt one when only something packed inside it was, and
+     * null when all of it went.
+     */
+    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
         if (stack == null || stack.isEmpty()) {
-            return false;
+            return stack;
         }
-        String mark = stack.getPersistentDataContainer().get(Keys.INSURED, PersistentDataType.STRING);
-        if (mark == null || !mark.endsWith(":" + raid.id)) {
-            return false;
+        ItemRecord record = plugin.items().toRecord(stack);
+        if (record == null || !insuredIn(raid, record)) {
+            return stack;
         }
-        UUID owner;
-        try {
-            owner = UUID.fromString(mark.substring(0, mark.indexOf(':')));
-        } catch (IllegalArgumentException ex) {
-            return false;
+        ItemRecord left = claim(raid, record, returns);
+        if (left == null) {
+            return null;
         }
-        ItemRecord insured = insuredAs(stack);
-        ItemStack clean = stack.clone();
-        clean.editPersistentDataContainer(pdc -> {
-            pdc.remove(Keys.INSURED);
-            pdc.remove(Keys.INSURED_AS);
-        });
-        ItemRecord record = plugin.items().toRecord(clean);
-        if (record == null) {
-            return false;
-        }
-        limitTo(record, insured);
-        returns.computeIfAbsent(owner, k -> new ArrayList<>()).add(record);
-        return true;
+        ItemStack rebuilt = plugin.items().fromRecord(left);
+        return rebuilt == null ? stack : rebuilt;
     }
 
-    private static @Nullable ItemRecord insuredAs(ItemStack stack) {
-        String json = stack.getPersistentDataContainer().get(Keys.INSURED_AS, PersistentDataType.STRING);
-        if (json == null) {
+    /**
+     * Record form of {@link #claim(Raid, ItemStack, Map)}: packed contents first (each insured item
+     * in there goes to its own owner), then the record itself, cut back to what was insured.
+     */
+    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns) {
+        if (record.contents != null) {
+            record.contents.removeIf(child -> claim(raid, child, returns) == null);
+        }
+        UUID owner = owner(raid, record.insured);
+        if (owner == null) {
+            return record;
+        }
+        limitTo(record, record.insuredAs);
+        record.uninsure(); // no mark goes to the mailbox
+        returns.computeIfAbsent(owner, k -> new ArrayList<>()).add(record);
+        return null;
+    }
+
+    private static boolean insuredIn(Raid raid, ItemRecord record) {
+        if (owner(raid, record.insured) != null) {
+            return true;
+        }
+        if (record.contents != null) {
+            for (ItemRecord child : record.contents) {
+                if (insuredIn(raid, child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** The owner an insurance mark names for this raid, or null (no mark, another raid, garbage). */
+    private static @Nullable UUID owner(Raid raid, @Nullable String mark) {
+        if (mark == null || !mark.endsWith(":" + raid.key) || mark.indexOf(':') <= 0) {
             return null;
         }
         try {
-            return GSON.fromJson(json, ItemRecord.class);
-        } catch (JsonParseException ex) {
+            return UUID.fromString(mark.substring(0, mark.indexOf(':')));
+        } catch (IllegalArgumentException ex) {
             return null;
         }
     }

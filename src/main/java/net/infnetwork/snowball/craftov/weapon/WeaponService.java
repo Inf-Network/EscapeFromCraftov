@@ -71,6 +71,8 @@ public final class WeaponService implements Listener {
         final @Nullable OpticSpec optic;
         final @Nullable String opticName;
         final boolean range;
+        /** A proving-ground armory gun: loads armory rounds only, and unloads them as armory rounds. */
+        final boolean test;
 
         GunState(String uid, int slot, ItemDef def, ItemStack stack, net.infnetwork.snowball.craftov.item.ItemRegistry registry) {
             this.uid = uid;
@@ -86,6 +88,7 @@ public final class WeaponService implements Listener {
             this.optic = mounted == null ? null : mounted.optic();
             this.opticName = mounted == null ? null : mounted.name();
             this.range = ItemFactory.isRange(stack);
+            this.test = ItemFactory.isTest(stack);
             var parts = Attachments.resolve(def.gun(), ItemFactory.attachments(stack), registry);
             this.gun = Attachments.effective(def.gun(), parts);
             this.suppressed = Attachments.suppressed(parts);
@@ -380,7 +383,7 @@ public final class WeaponService implements Listener {
             audio.foley(player, gun, "dry", 0.7f);
             state.triggerHeld = false;
             state.needsRelease = true;
-            if (reserve(player, gun, null) > 0) {
+            if (reserve(player, state) > 0) {
                 startReload(player, state, false);
             } else {
                 hint(player, "<#FF8A80>没有 " + gun.caliber() + " 弹药 <#9AA0A6>· 去商人买或在物资箱里找");
@@ -460,15 +463,24 @@ public final class WeaponService implements Listener {
 
     // ------------------------------------------------------------------ reload
 
-    /** Reserve ammo of the gun's caliber in the player's carry cells. */
+    /** Reserve ammo this gun can load: its caliber, and armory rounds for an armory gun, the player's own otherwise. */
+    public int reserve(Player player, GunState state) {
+        return reserve(player, state.gun, null, state.test);
+    }
+
+    /** The player's own reserve ammo (never armory rounds) of the gun's caliber in their carry cells. */
     public int reserve(Player player, GunSpec gun, @Nullable String preferType) {
+        return reserve(player, gun, preferType, false);
+    }
+
+    private int reserve(Player player, GunSpec gun, @Nullable String preferType, boolean test) {
         if (plugin.lobby().inRange(player)) {
             return RANGE_RESERVE;
         }
         int total = 0;
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
-            if (def != null && def.ammo() != null && def.ammo().caliber().equals(gun.caliber())
+            if (def != null && def.ammo() != null && def.ammo().caliber().equals(gun.caliber()) && ItemFactory.isTest(stack) == test
                     && (preferType == null || preferType.equals(def.id()))) {
                 total += stack.getAmount();
             }
@@ -476,11 +488,17 @@ public final class WeaponService implements Listener {
         return total;
     }
 
-    private List<String> ammoTypesCarried(Player player, GunSpec gun) {
+    /**
+     * Ammo types of the gun's caliber the player carries, armory rounds for an armory gun and the player's
+     * own otherwise: armory rounds in an own gun would be carried home in its magazine, and own rounds in
+     * an armory gun would be lost with it.
+     */
+    private List<String> ammoTypesCarried(Player player, GunSpec gun, boolean test) {
         List<String> out = new ArrayList<>();
         for (ItemStack stack : player.getInventory().getStorageContents()) {
             ItemDef def = plugin.items().defOf(stack);
-            if (def != null && def.ammo() != null && def.ammo().caliber().equals(gun.caliber()) && !out.contains(def.id())) {
+            if (def != null && def.ammo() != null && def.ammo().caliber().equals(gun.caliber()) && ItemFactory.isTest(stack) == test
+                    && !out.contains(def.id())) {
                 out.add(def.id());
             }
         }
@@ -495,7 +513,7 @@ public final class WeaponService implements Listener {
             return;
         }
         GunSpec gun = state.gun;
-        List<String> types = ammoTypesCarried(player, gun);
+        List<String> types = ammoTypesCarried(player, gun, state.test);
         if (plugin.lobby().inRange(player)) {
             types = new ArrayList<>(types);
             for (ItemDef ammo : plugin.registry().ammoFor(gun.caliber())) {
@@ -505,7 +523,9 @@ public final class WeaponService implements Listener {
             }
         }
         if (types.isEmpty()) {
-            player.sendActionBar(Text.mm("<#FF8A80>没有 " + gun.caliber() + " 口径的弹药"));
+            boolean otherKind = !ammoTypesCarried(player, gun, !state.test).isEmpty();
+            player.sendActionBar(Text.mm("<#FF8A80>没有 " + gun.caliber() + " 口径的弹药" + (!otherKind ? ""
+                    : state.test ? " <#9AA0A6>· 试验场武器只能用试验场弹药" : " <#9AA0A6>· 试验场弹药只能装进试验场武器")));
             return;
         }
         String type;
@@ -614,12 +634,12 @@ public final class WeaponService implements Listener {
         if (!type.equals(state.ammoType) && state.ammo > 0 && state.ammoType != null) {
             ItemStack back = plugin.items().create(state.ammoType, state.ammo);
             if (back != null) {
-                carry.give(player, back, true);
+                carry.give(player, state.test ? plugin.items().markTest(back) : back, true);
             }
             state.ammo = 0;
         }
         int need = gun.magazine() - state.ammo;
-        int taken = carry.takeItem(player, type, need);
+        int taken = carry.takeItem(player, type, need, state.test);
         if (taken <= 0) {
             return;
         }

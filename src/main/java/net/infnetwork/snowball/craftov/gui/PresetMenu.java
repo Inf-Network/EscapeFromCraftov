@@ -8,6 +8,7 @@ import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,9 +40,14 @@ final class PresetMenu extends Menu {
                 long cost = 0;
                 for (Map.Entry<Integer, String> e : preset.slots.entrySet()) {
                     ItemDef def = plugin.registry().get(e.getValue());
-                    if (def != null) {
-                        int amount = preset.amounts.getOrDefault(e.getKey(), 1);
-                        lore.add("<#8A8F98>· " + def.coloredName() + (amount > 1 ? " <#8A8F98>×" + amount : ""));
+                    int amount = preset.amounts.getOrDefault(e.getKey(), 1);
+                    String count = amount > 1 ? " <#8A8F98>×" + amount : "";
+                    if (def == null) {
+                        lore.add("<#8A8F98>· <#9AA0A6>未知物品 " + Text.escape(e.getValue()) + count);
+                        continue;
+                    }
+                    lore.add("<#8A8F98>· " + def.coloredName() + count);
+                    if (sold(def)) {
                         cost += plugin.traders().buyPrice(def) * amount;
                     }
                 }
@@ -50,7 +56,7 @@ final class PresetMenu extends Menu {
                     lore.add("<#8A8F98>……");
                 }
                 lore.add("");
-                lore.add("<#8A8F98>全部购买约 ◈" + Text.money(cost) + "（优先使用仓库中的物品）");
+                lore.add("<#8A8F98>商人有售的部分全部购买约 ◈" + Text.money(cost) + "（优先使用仓库中的物品）");
                 lore.add("<#5BD16B>左键 一键配装  <#FF8A80>潜行右键 删除  <#FFC23D>右键 覆盖保存");
                 button(slot, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8><b>" + Text.escape(preset.name), lore), e -> {
                     if (e.isShiftClick() && e.isRightClick()) {
@@ -116,43 +122,77 @@ final class PresetMenu extends Menu {
             int want = preset.amounts.getOrDefault(slot, 1);
             ItemDef def = plugin.registry().get(e.getValue());
             if (def == null) {
+                missing.add(e.getValue()); // an id items.yml no longer has: nothing to take or buy
+                continue;
+            }
+            if (!exists(slot, def)) {
+                // A rig or backpack cell whose container could not be put on: nothing is taken or bought for it.
+                missing.add(def.name());
                 continue;
             }
             ItemStack stack = takeFromStash(p, def, want);
             if (stack == null) {
-                long price = plugin.traders().buyPrice(def) * want;
-                boolean sold = def.rarity().ordinal() <= net.infnetwork.snowball.craftov.item.Rarity.valueOf(
-                        plugin.getConfig().getString("trader.max-rarity", "PURPLE")).ordinal() && def.tradeable();
-                if (!sold || p.money < price) {
+                int amount = def.isGun() ? 1 : Math.min(want, def.maxStack());
+                long price = plugin.traders().buyPrice(def) * amount;
+                if (!sold(def) || p.money < price) {
                     missing.add(def.name());
                     continue;
                 }
                 p.money -= price;
                 spent += price;
-                stack = def.isGun() ? plugin.items().create(def, 1) : plugin.items().create(def, Math.min(want, def.maxStack()));
+                stack = plugin.items().create(def, amount);
             }
-            place(slot, stack, def);
+            ItemStack left = place(slot, stack, def);
+            if (left != null) {
+                ItemRecord back = plugin.items().toRecord(left);
+                if (back != null) {
+                    p.stash.add(back);
+                }
+                missing.add(def.name());
+            }
         }
         plugin.carry().refreshLocks(viewer);
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
         Text.send(viewer, "<#5BD16B>已按方案 " + Text.escape(preset.name) + " 完成配装" + (spent > 0 ? "，购买花费 ◈" + Text.money(spent) : "") + "。");
         if (!missing.isEmpty()) {
-            Text.send(viewer, "<#FFC23D>缺少：" + Text.escape(String.join("、", missing)));
+            Map<String, Integer> counted = new java.util.LinkedHashMap<>();
+            missing.forEach(item -> counted.merge(item, 1, Integer::sum));
+            List<String> lines = new ArrayList<>();
+            counted.forEach((item, n) -> lines.add(n > 1 ? item + " ×" + n : item));
+            Text.send(viewer, "<#FFC23D>没有放上（仓库没有、商人不卖、块币不足、缺少胸挂/背包或物品表里没有）：" + Text.escape(String.join("、", lines)));
         }
     }
 
-    private void place(int slot, ItemStack stack, ItemDef def) {
+    /** Whether the trader sells this item, i.e. a missing one can be bought. */
+    private boolean sold(ItemDef def) {
+        return def.tradeable() && def.rarity().ordinal() <= net.infnetwork.snowball.craftov.item.Rarity.valueOf(
+                plugin.getConfig().getString("trader.max-rarity", "PURPLE")).ordinal();
+    }
+
+    /** Whether the preset's slot is there to fill: equipment always, carry cells only while usable. */
+    private boolean exists(int slot, ItemDef def) {
+        if (slot >= CarryService.FEET) {
+            return slot <= CarryService.HEAD;
+        }
+        if (slot == CarryService.MELEE_SLOT) {
+            return def.isMelee();
+        }
+        return plugin.carry().usableSlots(viewer).contains(slot);
+    }
+
+    /** Puts a stack into its preset slot (or anywhere free); returns what could not be placed. */
+    private @Nullable ItemStack place(int slot, ItemStack stack, ItemDef def) {
         if (def.isContainer() && (slot == CarryService.LEGS || slot == CarryService.FEET)) {
             plugin.carry().equip(viewer, stack);
-            return;
+            return null;
         }
         ItemStack current = viewer.getInventory().getItem(slot);
         if (slot <= CarryService.HEAD && slot != CarryService.TERMINAL_SLOT && (current == null || current.isEmpty())) {
             viewer.getInventory().setItem(slot, stack);
-        } else {
-            plugin.carry().give(viewer, stack, false);
+            return null;
         }
+        return plugin.carry().give(viewer, stack, false);
     }
 
     private ItemStack takeFromStash(Profile p, ItemDef def, int want) {
@@ -161,13 +201,15 @@ final class PresetMenu extends Menu {
             if (!record.id.equals(def.id()) || record.hasContents()) {
                 continue;
             }
-            if (record.amount <= want) {
+            // Never more than one stack: the rest of a record above the stack size stays in the stash.
+            int take = Math.min(Math.min(want, def.maxStack()), record.amount);
+            if (take >= record.amount) {
                 p.stash.remove(i);
                 return plugin.items().fromRecord(record);
             }
             ItemRecord part = record.copy();
-            part.amount = want;
-            record.amount -= want;
+            part.amount = take;
+            record.amount -= take;
             return plugin.items().fromRecord(part);
         }
         return null;

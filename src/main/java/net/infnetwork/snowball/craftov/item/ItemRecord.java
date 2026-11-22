@@ -29,6 +29,22 @@ public final class ItemRecord {
     public java.util.@Nullable Map<String, String> attach;
     /** True for free-kit items, which sell for nothing (null otherwise, so it is left out of saved JSON). */
     public @Nullable Boolean kit;
+    /**
+     * Insurance mark "owner uuid:raid key" (InsuranceService). It travels with the record so a gun
+     * that is rebuilt mid-raid (gunsmith, reconnect, packed into a dropped backpack) stays insured.
+     */
+    public @Nullable String insured;
+    /**
+     * The insured item as it was at deploy, which a claim cuts it back to (no sights, attachments,
+     * rounds or durability it did not have then). Travels and goes away with {@link #insured}.
+     */
+    public @Nullable ItemRecord insuredAs;
+    /**
+     * Proving-ground armory item (true, else null so Gson leaves it out). Only exists inside a raid:
+     * packed in a rig or backpack, or kept while its owner is disconnected. Never persisted, see
+     * {@link ItemFactory#toRecord}.
+     */
+    public @Nullable Boolean test;
 
     public ItemRecord() {
     }
@@ -47,6 +63,9 @@ public final class ItemRecord {
         copy.optic = optic;
         copy.attach = attach == null ? null : new java.util.LinkedHashMap<>(attach);
         copy.kit = kit;
+        copy.insured = insured;
+        copy.insuredAs = insuredAs == null ? null : insuredAs.copy();
+        copy.test = test;
         if (contents != null) {
             copy.contents = new ArrayList<>(contents.size());
             for (ItemRecord child : contents) {
@@ -54,6 +73,10 @@ public final class ItemRecord {
             }
         }
         return copy;
+    }
+
+    public boolean isTest() {
+        return Boolean.TRUE.equals(test);
     }
 
     public boolean hasContents() {
@@ -72,7 +95,23 @@ public final class ItemRecord {
                 && Objects.equals(ammoType, other.ammoType)
                 && Objects.equals(dura, other.dura)
                 && isKit() == other.isKit()
+                && Objects.equals(insured, other.insured)
+                && insuredAs == null && other.insuredAs == null
+                && Objects.equals(test, other.test)
                 && !hasContents() && !other.hasContents();
+    }
+
+    /** Removes the insurance mark from this record and everything inside it; true if there was one. */
+    public boolean uninsure() {
+        boolean had = insured != null || insuredAs != null;
+        insured = null;
+        insuredAs = null;
+        if (contents != null) {
+            for (ItemRecord child : contents) {
+                had |= child.uninsure();
+            }
+        }
+        return had;
     }
 
     /** Number of storage cells this record occupies, counting nested contents. */

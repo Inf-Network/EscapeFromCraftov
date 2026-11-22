@@ -20,10 +20,13 @@ public final class Raid {
     public enum State { LOADING, RUNNING, ENDING, CLOSED }
 
     public final String id;
+    /**
+     * Unique across restarts, unlike {@link #id} (R1, R2, ... again after every start). Insurance
+     * marks name this, so a mark left on an item from an earlier run can never match a later raid.
+     */
+    public final String key;
     public final MapDef map;
     public final Tier tier;
-    public final RaidMode mode;
-    public final boolean ranked;
     public final World world;
     public State state = State.LOADING;
     public long startTick;
@@ -48,17 +51,18 @@ public final class Raid {
     /** Until this tick the power is out and lever extracts cannot be pulled (RaidEvents). */
     public long blackoutUntil;
 
-    public Raid(String id, MapDef map, Tier tier, RaidMode mode, boolean ranked, World world) {
+    public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;
+        this.key = id + "-" + Long.toString(System.currentTimeMillis(), 36);
         this.map = map;
         this.tier = tier;
-        this.mode = mode;
-        this.ranked = ranked;
         this.world = world;
     }
 
     public int elapsedSeconds() {
-        if (startTick <= 0) {
+        // Not startTick <= 0: `/cv end` moves startTick back a whole raid length, which goes
+        // negative on a server that has been up for less than that, and the raid then never ended.
+        if (state == State.LOADING) {
             return 0;
         }
         return (int) ((Bukkit.getCurrentTick() - startTick) / 20);

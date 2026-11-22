@@ -87,7 +87,8 @@ public final class LootService {
     }
 
     /**
-     * Rolls items for a container.
+     * Rolls items for a container. An all-of container (the proving-ground armory) holds one of every item
+     * in its categories, each marked as a test item: usable in the raid, worth nothing outside it.
      *
      * @param shift quality shift: map difficulty plus container hotness (0 = baseline)
      */
@@ -98,7 +99,7 @@ public final class LootService {
                 List<ItemDef> defs = new ArrayList<>(registry.byCategory(category));
                 defs.sort(Comparator.comparing(ItemDef::rarity).thenComparingLong(ItemDef::value));
                 for (ItemDef def : defs) {
-                    out.add(items.sample(def));
+                    out.add(items.markTest(items.sample(def)));
                 }
             }
             return out;

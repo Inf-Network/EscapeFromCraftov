@@ -27,6 +27,8 @@ public final class Keys {
     public static final NamespacedKey RANGE = key("range");
     /** Handed out by the free kit: the trader pays nothing for it and it cannot be listed on the market. */
     public static final NamespacedKey KIT = key("kit");
+    /** Proving-ground armory item: usable in its raid, never stored, sold or carried home. */
+    public static final NamespacedKey TEST = key("test");
     /** Marks UI-only stacks (locked slots, menu buttons) that must never leave their slot. */
     public static final NamespacedKey UI = key("ui");
     /** Marks Craftov-managed entities (containers, corpses, AI) with their role. */

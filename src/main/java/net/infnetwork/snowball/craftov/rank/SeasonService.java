@@ -102,7 +102,13 @@ public final class SeasonService {
             if (def == null) {
                 return "奖励物品不存在";
             }
-            profile.mailbox.add(new ItemRecord(def.id(), reward.amount()));
+            // One record per stack: two of a stack-1 item are two records, or only one would come out.
+            for (int left = reward.amount(); left > 0; left -= def.maxStack()) {
+                ItemRecord record = plugin.items().toRecord(plugin.items().create(def, Math.min(left, def.maxStack())));
+                if (record != null) {
+                    profile.mailbox.add(record);
+                }
+            }
         } else {
             profile.money += reward.money();
         }

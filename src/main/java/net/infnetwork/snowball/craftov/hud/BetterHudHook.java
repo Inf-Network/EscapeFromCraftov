@@ -14,4 +14,8 @@ public interface BetterHudHook {
 
     default void popup(Player player, String popup) {
     }
+
+    /** Plugin shutdown: stop feeding BetterHud anything that would outlive this load of the plugin. */
+    default void shutdown() {
+    }
 }

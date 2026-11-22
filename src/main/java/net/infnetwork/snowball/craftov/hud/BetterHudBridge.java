@@ -84,9 +84,27 @@ public final class BetterHudBridge implements BetterHudHook {
     }
 
     private final java.util.Map<java.util.UUID, List<PointedLocation>> pointers = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Set on shutdown: BetterHud cannot unregister a location provider, so ours goes quiet instead. */
+    private volatile boolean closed;
+
+    /**
+     * BetterHud has no call to remove a compass marker provider, and placeholders are only
+     * replaced when registered again. After a /reload the old provider would keep showing the
+     * markers it had last (the task refreshing them is gone with the old plugin), next to the new
+     * plugin's, so it stops returning any. The new load registers its own placeholders under the
+     * same names, which replaces the old ones.
+     */
+    @Override
+    public void shutdown() {
+        closed = true;
+        pointers.clear();
+    }
 
     /** Main thread: refresh compass markers for every player. */
     public void refreshPointers() {
+        if (closed) {
+            return;
+        }
         java.util.Set<java.util.UUID> online = new java.util.HashSet<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
             online.add(player.getUniqueId());
@@ -96,7 +114,7 @@ public final class BetterHudBridge implements BetterHudHook {
     }
 
     private List<PointedLocation> extracts(HudPlayer hudPlayer) {
-        return pointers.getOrDefault(hudPlayer.uuid(), List.of());
+        return closed ? List.of() : pointers.getOrDefault(hudPlayer.uuid(), List.of());
     }
 
     private List<PointedLocation> buildExtracts(Player player) {

@@ -7,29 +7,51 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.profile.ProfileService;
+import net.infnetwork.snowball.craftov.util.AtomicFiles;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Player auction house with virtual listings: items leave the stash while listed, sell to other
- * players or to simulated buyers when priced near the reference price, and return on expiry.
+ * players or to simulated buyers when priced near the anchor price, and return on expiry.
+ *
+ * <p>The anchor is the item's own value (durability, attachments, loaded ammo and stack size
+ * included) times {@code market.reference-multiplier}. It comes from items.yml, so no sale can
+ * move it: system buyers pay at most 1.25 × 0.85 of value before fee and tax, below the trader's
+ * 1.15 × buy price, and buying from the trader to resell never pays.
+ *
+ * <p>Every trade writes the market and the profiles it touched straight away, in order, so a crash
+ * cannot leave a sold listing on the market after its seller was paid (or the other way round).
  */
-public final class MarketService {
+public final class MarketService implements Listener {
 
     public static final class Listing {
         public String id;
@@ -42,19 +64,47 @@ public final class MarketService {
     }
 
     public static final class Data {
+        /** Format version; 0 in files written before it existed (Gson keeps the default for a missing field). */
+        public int version;
         public List<Listing> listings = new ArrayList<>();
+        /** Trade price of one plain unit per item id, moved by player-to-player sales only. */
         public Map<String, Double> reference = new HashMap<>();
+        /** Recent sale prices per plain unit, any buyer, newest last. */
         public Map<String, List<Long>> history = new HashMap<>();
     }
 
-    public record Offer(String itemId, long lowest, int count, double reference) {
+    /**
+     * One item in the market browser.
+     *
+     * @param anchor    reference price of one plain unit (fixed by items.yml)
+     * @param reference trade price of one plain unit from player-to-player sales
+     * @param traded    whether players have traded this item at all, i.e. whether reference means anything
+     */
+    public record Offer(String itemId, long lowest, int count, double anchor, double reference, boolean traded) {
     }
 
+    /** 1: trade prices became player-only and bounded; anything older may hold ratcheted-up prices. */
+    private static final int DATA_VERSION = 1;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final CraftovPlugin plugin;
     private final Path file;
     private Data data = new Data();
     private boolean dirty;
+    private boolean closed;
+    /** One writer, so saves land in the order they were taken. */
+    private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Craftov-MarketIO");
+        t.setDaemon(true);
+        return t;
+    });
+    /**
+     * When system buyers took each seller's listings of each item in the last hour, oldest first
+     * (market.virtual-hourly-cap). Per seller, so nobody can use up the quota for everyone else.
+     */
+    private final Map<SaleKey, ArrayDeque<Long>> virtualSales = new HashMap<>();
+
+    private record SaleKey(UUID seller, String itemId) {
+    }
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -62,53 +112,154 @@ public final class MarketService {
     }
 
     public void start() {
-        try {
-            if (Files.exists(file)) {
+        AtomicFiles.cleanTemp(file.getParent());
+        if (Files.exists(file)) {
+            try {
                 Data loaded = GSON.fromJson(Files.readString(file, StandardCharsets.UTF_8), Data.class);
-                if (loaded != null) {
-                    data = loaded;
+                if (loaded == null) {
+                    throw new IllegalStateException("the file is empty");
                 }
+                data = loaded;
+            } catch (IOException | RuntimeException ex) {
+                // Starting over with empty data would hand nobody their listed items back and
+                // write the empty data over the file on shutdown: keep the market shut instead.
+                closed = true;
+                plugin.getLogger().severe("==== Market data " + file.getFileName() + " could not be read (" + ex.getMessage()
+                        + "). The market is closed and the file will not be written; repair it and restart the server. ====");
+                return;
             }
-        } catch (IOException | RuntimeException ex) {
-            plugin.getLogger().severe("Could not read market data: " + ex.getMessage());
         }
         if (data.listings == null) data.listings = new ArrayList<>();
         if (data.reference == null) data.reference = new HashMap<>();
         if (data.history == null) data.history = new HashMap<>();
+        if (data.version < DATA_VERSION) {
+            migrate();
+        }
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L * 10, 20L * 10);
     }
 
+    /**
+     * Upgrades market data from before the price fix: trade prices and history may have been
+     * ratcheted up by the old feedback loop, so they start over at the reference price, and
+     * listings above the new price cap expire now and go back to their sellers' mailboxes on the
+     * first tick (the listing fee is not refunded).
+     */
+    private void migrate() {
+        int prices = data.reference.size();
+        data.reference.clear();
+        data.history.clear();
+        int returned = 0;
+        long now = System.currentTimeMillis();
+        for (Listing listing : data.listings) {
+            if (listing.price > maxPrice(listing.item)) {
+                listing.expires = now;
+                returned++;
+            }
+        }
+        data.version = DATA_VERSION;
+        dirty = true;
+        if (prices > 0 || returned > 0) {
+            plugin.getLogger().warning("Market data from an older version: reset " + prices + " trade prices and returned "
+                    + returned + " listings priced above the cap. Accounts that farmed the old prices show up in /cv marketaudit.");
+        }
+        save();
+    }
+
+    /** True when market.json could not be read on start: no trading, and the file is left alone. */
+    public boolean closed() {
+        return closed;
+    }
+
+    /** Tells the player the market is shut and returns true, or returns false when it is open. */
+    public boolean refuseIfClosed(Player player) {
+        if (closed) {
+            Text.send(player, "<#FF8A80>交易行数据读取失败，暂停开放，请联系管理员。");
+        }
+        return closed;
+    }
+
     public void save() {
-        if (!dirty) {
+        if (!dirty || closed) {
             return;
         }
         dirty = false;
         String json = GSON.toJson(data);
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> write(json));
+        io.execute(() -> write(json));
     }
 
+    /** Shutdown: lets queued saves finish, then writes the current state last. */
     public void saveSync() {
-        write(GSON.toJson(data));
+        io.shutdown();
+        try {
+            io.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+        if (!closed) {
+            write(GSON.toJson(data));
+        }
+    }
+
+    /** Writes the market and the given player's profile now, after a trade changed both. */
+    private void commit(UUID player) {
+        plugin.profiles().saveNow(player);
+        save();
     }
 
     private void write(String json) {
         try {
-            Files.createDirectories(file.getParent());
-            Path tmp = file.resolveSibling("market.json.tmp");
-            Files.writeString(tmp, json, StandardCharsets.UTF_8);
-            Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            AtomicFiles.write(file, json);
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save market data: " + ex.getMessage());
         }
     }
 
-    public double reference(String itemId) {
-        Double ref = data.reference.get(itemId);
-        if (ref != null) {
-            return ref;
-        }
+    private double multiplier() {
+        return plugin.getConfig().getDouble("market.reference-multiplier", 0.85);
+    }
+
+    /** The price system buyers and the pricing screen measure a listing of {@code record} against. */
+    public long anchorFor(ItemRecord record) {
+        return Math.max(1, Math.round(plugin.items().value(record) * multiplier()));
+    }
+
+    public double maxPriceMultiplier() {
+        return plugin.getConfig().getDouble("market.max-price-multiplier", 3.0);
+    }
+
+    /**
+     * Highest price a listing of {@code record} may ask. Without it one colluding sale at any
+     * price moved money between accounts (1 round of 9mm for ◈140,000).
+     */
+    public long maxPrice(ItemRecord record) {
+        return Math.max(anchorFor(record), Math.round(plugin.items().value(record) * multiplier() * maxPriceMultiplier()));
+    }
+
+    /** Reference price of one plain, full-durability unit of {@code itemId}. */
+    public double anchorUnit(String itemId) {
         ItemDef def = plugin.registry().get(itemId);
-        return def == null ? 0 : def.value() * plugin.getConfig().getDouble("market.reference-multiplier", 0.85);
+        return def == null ? 0 : def.value() * multiplier();
+    }
+
+    /**
+     * Trade price of one plain unit: a moving average of player-to-player sales, shown for
+     * information only. Nothing pays out against it, and it stays within a band around the
+     * reference price so that even a stored value from an older build cannot run away.
+     */
+    public double reference(String itemId) {
+        double base = anchorUnit(itemId);
+        Double ref = data.reference.get(itemId);
+        if (ref == null) {
+            return base;
+        }
+        double min = plugin.getConfig().getDouble("market.trade-price-min", 0.6);
+        double max = plugin.getConfig().getDouble("market.trade-price-max", 1.5);
+        return Math.max(base * min, Math.min(base * max, ref));
+    }
+
+    /** Whether players have traded {@code itemId} with each other, so its trade price is more than the default. */
+    public boolean traded(String itemId) {
+        return data.reference.containsKey(itemId);
     }
 
     public long referenceFor(ItemRecord record) {
@@ -118,6 +269,30 @@ public final class MarketService {
         }
         double ratio = def.value() <= 0 ? 1 : plugin.items().value(record) / (double) (def.value() * Math.max(1, record.amount));
         return Math.max(1, Math.round(reference(record.id) * ratio * Math.max(1, record.amount)));
+    }
+
+    private int virtualCap() {
+        return plugin.getConfig().getInt("market.virtual-hourly-cap", 40);
+    }
+
+    /** True when system buyers have taken their hourly quota of {@code seller}'s {@code itemId} and will wait. */
+    public boolean virtualCapped(UUID seller, String itemId) {
+        int cap = virtualCap();
+        if (cap <= 0) {
+            return false;
+        }
+        ArrayDeque<Long> times = virtualSales.get(new SaleKey(seller, itemId));
+        return times != null && times.size() >= cap;
+    }
+
+    /** Forgets system-buyer sales older than an hour, and sellers' items with none left. */
+    private void pruneVirtualSales(long now) {
+        virtualSales.values().removeIf(times -> {
+            while (!times.isEmpty() && now - times.peekFirst() >= 3_600_000L) {
+                times.pollFirst();
+            }
+            return times.isEmpty();
+        });
     }
 
     public List<Long> history(String itemId) {
@@ -134,9 +309,10 @@ public final class MarketService {
             long unit = listing.price / Math.max(1, listing.item.amount);
             Offer old = out.get(def.id());
             if (old == null) {
-                out.put(def.id(), new Offer(def.id(), unit, 1, reference(def.id())));
+                out.put(def.id(), new Offer(def.id(), unit, 1, anchorUnit(def.id()), reference(def.id()), traded(def.id())));
             } else {
-                out.put(def.id(), new Offer(def.id(), Math.min(old.lowest(), unit), old.count() + 1, old.reference()));
+                out.put(def.id(), new Offer(def.id(), Math.min(old.lowest(), unit), old.count() + 1, old.anchor(), old.reference(),
+                        old.traded()));
             }
         }
         List<Offer> list = new ArrayList<>(out.values());
@@ -168,7 +344,7 @@ public final class MarketService {
     /** Moves a stash record onto the market. */
     public boolean list(Player player, int stashIndex, long price) {
         Profile profile = plugin.profiles().get(player);
-        if (stashIndex < 0 || stashIndex >= profile.stash.size()) {
+        if (refuseIfClosed(player) || stashIndex < 0 || stashIndex >= profile.stash.size()) {
             return false;
         }
         int max = plugin.getConfig().getInt("market.max-listings", 12);
@@ -190,6 +366,11 @@ public final class MarketService {
             Text.send(player, "<#FF8A80>请先清空胸挂/背包再上架。");
             return false;
         }
+        long cap = maxPrice(record);
+        if (price > cap) {
+            Text.send(player, "<#FF8A80>售价不能超过参考价的 " + Text.decimal(maxPriceMultiplier()) + " 倍（最高 ◈" + Text.money(cap) + "）。");
+            return false;
+        }
         long deposit = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));
         if (profile.money < deposit) {
             Text.send(player, "<#FF8A80>上架手续费不足（◈" + Text.money(deposit) + "）");
@@ -207,13 +388,19 @@ public final class MarketService {
         listing.expires = listing.created + plugin.getConfig().getLong("market.listing-hours", 48) * 3600_000L;
         data.listings.add(listing);
         dirty = true;
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
+        if (profile.level < minBuyLevel()) {
+            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购。");
+        }
         return true;
     }
 
     public boolean buy(Player player, String listingId) {
+        if (refuseIfClosed(player)) {
+            return false;
+        }
         Listing listing = find(listingId);
         if (listing == null) {
             Text.send(player, "<#FF8A80>该商品已售出或下架。");
@@ -224,6 +411,11 @@ public final class MarketService {
             return false;
         }
         Profile buyer = plugin.profiles().get(player);
+        String blocked = tradeBlock(player, buyer, listing);
+        if (blocked != null) {
+            Text.send(player, "<#FF8A80>" + blocked);
+            return false;
+        }
         if (buyer.money < listing.price) {
             Text.send(player, "<#FF8A80>块币不足。");
             return false;
@@ -232,10 +424,15 @@ public final class MarketService {
             Text.send(player, "<#FF8A80>仓库空间不足。");
             return false;
         }
+        if (!plugin.profiles().canEdit(listing.seller)) {
+            Text.send(player, "<#FF8A80>卖家的档案暂时无法读取，这件商品暂停出售。");
+            return false;
+        }
+        addTradeGain(buyer, bargain(listing));
         buyer.money -= listing.price;
         buyer.stash.add(listing.item.copy());
-        plugin.profiles().markDirty(player.getUniqueId());
-        complete(listing, player.getName());
+        complete(listing, player.getName(), true);
+        commit(player.getUniqueId());
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
         ItemDef def = plugin.registry().get(listing.item.id);
         Text.send(player, "<#5BD16B>购入 " + (def == null ? listing.item.id : def.coloredName()) + " ×" + listing.item.amount
@@ -243,7 +440,121 @@ public final class MarketService {
         return true;
     }
 
+    public int minBuyLevel() {
+        return plugin.getConfig().getInt("market.min-buy-level", 3);
+    }
+
+    /** Whether players may buy {@code seller}'s listings (system buyers always may). */
+    public boolean sellerCanTrade(UUID seller) {
+        return plugin.profiles().level(seller) >= minBuyLevel();
+    }
+
+    /**
+     * Why {@code buyer} may not buy another player's {@code listing}, or null when they may. These
+     * rules only cover sales between players: the plugin cannot tell a second account from a
+     * friend in offline mode, so they make funnelling a fresh account's starting money costly.
+     * The level applies to both sides: a fresh account could otherwise hand its money over the
+     * other way, by listing trader goods at ◈1 for the other account to buy and resell.
+     */
+    private @Nullable String tradeBlock(Player player, Profile buyer, Listing listing) {
+        int level = minBuyLevel();
+        if (buyer.level < level) {
+            return "购买其他玩家的商品需要账号等级 " + level + "（当前 Lv." + buyer.level + "），商人处的商品不受限制。";
+        }
+        if (!sellerCanTrade(listing.seller)) {
+            return "卖家账号等级不足 " + level + "，这件商品只卖给系统买家。";
+        }
+        boolean sameIp = plugin.getConfig().getBoolean("market.block-same-ip", false);
+        long incomeCap = plugin.getConfig().getLong("market.daily-player-income-cap", 0);
+        long bargain = bargain(listing);
+        if (incomeCap > 0 && bargain > 0 && incomeToday(buyer) + bargain > incomeCap) {
+            return "这件商品比参考价低 ◈" + Text.money(bargain) + "，你今天从其他玩家处的交易行收益已达上限（◈"
+                    + Text.money(incomeCap) + "），明天再来吧。";
+        }
+        if (!sameIp && incomeCap <= 0) {
+            return null;
+        }
+        Profile seller = plugin.profiles().peek(listing.seller);
+        if (seller == null) {
+            return null;
+        }
+        if (sameIp && sharesAddress(player, buyer, seller)) {
+            return "你和卖家从同一网络地址登录过，不能购买对方的商品。";
+        }
+        if (incomeCap > 0 && incomeToday(seller) + payout(listing) > incomeCap) {
+            return "卖家今天从其他玩家处的交易行收入已达上限（◈" + Text.money(incomeCap) + "），明天再来吧。";
+        }
+        return null;
+    }
+
+    /** How far below the reference price a player buying {@code listing} pays: value handed to the buyer. */
+    private long bargain(Listing listing) {
+        return Math.max(0, anchorFor(listing.item) - listing.price);
+    }
+
+    /** Counts {@code amount} towards the player's market gains from other players today (daily cap). */
+    private static void addTradeGain(Profile profile, long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        long day = today();
+        if (profile.marketDay != day) {
+            profile.marketDay = day;
+            profile.marketIncome = 0;
+        }
+        profile.marketIncome += amount;
+    }
+
+    /** Market day: rolls over at 04:00 like the daily contracts. */
+    private static long today() {
+        return LocalDateTime.now().minusHours(4).toLocalDate().toEpochDay();
+    }
+
+    private static long incomeToday(Profile profile) {
+        return profile.marketDay == today() ? profile.marketIncome : 0;
+    }
+
+    private long payout(Listing listing) {
+        return listing.price - Math.round(listing.price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
+    }
+
+    private static boolean sharesAddress(Player player, Profile buyer, Profile seller) {
+        Set<String> mine = new HashSet<>(buyer.ips);
+        String now = address(player);
+        if (now != null) {
+            mine.add(now);
+        }
+        Player online = Bukkit.getPlayer(seller.uuid);
+        String theirs = online == null ? null : address(online);
+        return (theirs != null && mine.contains(theirs)) || seller.ips.stream().anyMatch(mine::contains);
+    }
+
+    private static @Nullable String address(Player player) {
+        InetSocketAddress socket = player.getAddress();
+        return socket == null || socket.getAddress() == null ? null : socket.getAddress().getHostAddress();
+    }
+
+    /** Remembers the last few login addresses for the same-address check (market.block-same-ip). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        String ip = address(player);
+        if (ip == null) {
+            return;
+        }
+        Profile profile = plugin.profiles().get(player);
+        profile.ips.remove(ip);
+        profile.ips.add(ip);
+        while (profile.ips.size() > 4) {
+            profile.ips.remove(0);
+        }
+        plugin.profiles().markDirty(player.getUniqueId());
+    }
+
     public boolean cancel(Player player, String listingId) {
+        if (refuseIfClosed(player)) {
+            return false;
+        }
         Listing listing = find(listingId);
         if (listing == null || !listing.seller.equals(player.getUniqueId())) {
             return false;
@@ -252,7 +563,7 @@ public final class MarketService {
         dirty = true;
         Profile profile = plugin.profiles().get(player);
         profile.mailbox.add(listing.item);
-        plugin.profiles().markDirty(player.getUniqueId());
+        commit(player.getUniqueId());
         Text.send(player, "<#9AA0A6>已下架，物品已退回仓库邮箱。");
         return true;
     }
@@ -266,22 +577,23 @@ public final class MarketService {
         return null;
     }
 
-    private void complete(Listing listing, String buyerName) {
+    private void complete(Listing listing, String buyerName, boolean playerSale) {
         data.listings.remove(listing);
-        long tax = Math.round(listing.price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
-        long payout = listing.price - tax;
-        plugin.profiles().edit(listing.seller, seller -> {
+        long payout = payout(listing);
+        long tax = listing.price - payout;
+        // Both callers have checked canEdit, so the seller can be paid now and nothing is journaled.
+        plugin.profiles().edit(listing.seller, () -> "market sale of listing " + listing.id + " (" + listing.item.id + " x"
+                + listing.item.amount + "): money +" + payout + ", stats.market_sales +1, stats.market_income +" + payout
+                + (playerSale && payout > 0 ? ", marketIncome +" + payout + " (only if marketDay is " + today() + ")" : ""), seller -> {
             seller.money += payout;
             seller.addStat("market_sales", 1);
+            seller.addStat("market_income", payout);
+            if (playerSale) {
+                addTradeGain(seller, payout);
+            }
         });
-        double unit = listing.price / (double) Math.max(1, listing.item.amount);
-        double ref = reference(listing.item.id);
-        data.reference.put(listing.item.id, ref * 0.85 + unit * 0.15);
-        List<Long> history = data.history.computeIfAbsent(listing.item.id, k -> new ArrayList<>());
-        history.add(Math.round(unit));
-        while (history.size() > 20) {
-            history.remove(0);
-        }
+        plugin.profiles().saveNow(listing.seller);
+        recordSale(listing, playerSale);
         dirty = true;
         Player seller = Bukkit.getPlayer(listing.seller);
         if (seller != null) {
@@ -292,26 +604,66 @@ public final class MarketService {
         }
     }
 
-    /** Expiry and simulated buyers. */
+    /**
+     * Logs a sale in the price history and, for a sale between players, moves the trade price.
+     * The price is first brought down to one plain unit by dividing by the record's value, so
+     * attachments, loaded ammo, wear and stack size do not leak into the bare item's price. Sales
+     * to system buyers, and sales far from the reference price (collusion, dumping), never move it.
+     */
+    private void recordSale(Listing listing, boolean playerSale) {
+        String id = listing.item.id;
+        double base = anchorUnit(id);
+        double anchor = plugin.items().value(listing.item) * multiplier();
+        if (base <= 0 || anchor <= 0) {
+            return;
+        }
+        double ratio = listing.price / anchor;
+        double unit = ratio * base;
+        List<Long> history = data.history.computeIfAbsent(id, k -> new ArrayList<>());
+        history.add(Math.round(unit));
+        while (history.size() > 20) {
+            history.remove(0);
+        }
+        if (!playerSale || ratio < plugin.getConfig().getDouble("market.trade-outlier-min", 0.5)
+                || ratio > plugin.getConfig().getDouble("market.trade-outlier-max", 2.0)) {
+            return;
+        }
+        data.reference.put(id, reference(id) * 0.85 + unit * 0.15);
+    }
+
+    /**
+     * Expiry and simulated buyers. A listing whose seller's profile cannot be used right now (an
+     * unreadable file waiting for an admin) is left alone, neither returned nor sold, so the item
+     * and its price stay in the market until the profile can take them.
+     */
     private void tick() {
         long now = System.currentTimeMillis();
         boolean npc = plugin.getConfig().getBoolean("market.virtual-buyers", true);
         long minAge = plugin.getConfig().getLong("market.virtual-min-age-seconds", 45) * 1000L;
+        boolean counting = virtualCap() > 0;
+        pruneVirtualSales(now);
         for (Listing listing : new ArrayList<>(data.listings)) {
             if (now >= listing.expires) {
-                data.listings.remove(listing);
-                plugin.profiles().edit(listing.seller, p -> p.mailbox.add(listing.item));
-                dirty = true;
+                if (plugin.profiles().tryEdit(listing.seller, () -> "market listing " + listing.id + " expired: add to mailbox "
+                        + ProfileService.json(listing.item), p -> p.mailbox.add(listing.item))) {
+                    plugin.profiles().saveNow(listing.seller);
+                    data.listings.remove(listing);
+                    dirty = true;
+                }
                 continue;
             }
-            if (!npc || now - listing.created < minAge) {
+            if (!npc || now - listing.created < minAge || virtualCapped(listing.seller, listing.item.id)) {
                 continue;
             }
-            double ref = referenceFor(listing.item);
-            double ratio = ref <= 0 ? 9 : listing.price / ref;
+            // Measured against the fixed anchor, never the trade-driven reference: otherwise each
+            // overpriced sale would raise the bar for the next one.
+            double ratio = listing.price / (double) anchorFor(listing.item);
             double chance = ratio <= 0.9 ? 0.45 : ratio <= 1.0 ? 0.22 : ratio <= 1.1 ? 0.09 : ratio <= 1.25 ? 0.025 : 0;
-            if (ThreadLocalRandom.current().nextDouble() < chance) {
-                complete(listing, "系统买家");
+            if (ThreadLocalRandom.current().nextDouble() < chance && plugin.profiles().canEdit(listing.seller)) {
+                if (counting) {
+                    virtualSales.computeIfAbsent(new SaleKey(listing.seller, listing.item.id), k -> new ArrayDeque<>()).addLast(now);
+                }
+                complete(listing, "系统买家", false);
             }
         }
         save();

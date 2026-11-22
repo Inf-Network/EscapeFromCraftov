@@ -160,7 +160,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - BetterHud 布局：`src/main/resources/betterhud/`（安装到 `plugins/BetterHud/`，并与 CraftEngine 资源包自动合并）
 - 无头测试客户端：`tools/bot/`（mineflayer，`npm install` 后 `node test.js`）。靶场回归：`PORT=25565 RCON_PORT=25575 node range.js [--no-raid]`，检查靶场里仓库 / 商人 / 安全箱打不开、离开后装备逐格还原、行动中安全箱和撤离照常，全部通过时退出码为 0。护甲回归：`PORT=25565 RCON_PORT=25575 node armor.js`，两个 bot 进试验场，一个用 K47 + PS 单发打另一个的胸口，用 RCON 读每枪前后的血量和背心耐久：新的 2 级、3 级背心一枪约 30.6 / 21.6，4 级背心前 4 枪各 14.4，之后随耐久下降逐枪变大（15.6 / 21.3 / 27.0 / 34.1），碎了以后每枪 36，全部通过时退出码为 0。关服回归：`PORT=25565 RCON_PORT=25575 node shutdown.js [--crash]`（服务器目录默认是仓库的 `server/run`，可用 `SERVER_DIR` 指定），七个 bot 分别在局内、局内阵亡（投保）、局内扔下投保枪后断线、入场运镜中、入场运镜中断线、靶场、发布护航委托时 RCON `stop`，检查日志没有 `Error occurred while disabling Craftov`、生成了 `-shutdown.zip`、各自存档（携带物资、安全箱、保险理赔、退费、护航赏金、关服前刚加的余额）正确，再用 `start.sh` 重新开服确认没有残留的对局世界（`NO_START=1` 则等别人重启）；`--crash` 另外两次直接杀掉服务器进程：一次在护航委托未结算时，检查赏金在老板重新上线时退回；一次在护航者阵亡下线、老板随后阵亡的一秒后，检查护航者拿到分成、老板不会再被退一次全款。
 - 真客户端截图：`tools/shots/shots.py run`（Linux 上用 Xvfb + Mesa 软件渲染跑原版 1.21.11 客户端，自动进本地测试服、加载资源包，按 `tools/shots/scenes/` 里的场景截图到 `tools/shots/out/`；需要 Xvfb、xdotool、ImageMagick）
-- 护甲数值表：`python3 tools/combat/armor.py`（按 `items.yml` 和 `config.yml` 的 `combat.armor` 算每把枪每种子弹打倒穿各级护甲的玩家要几枪，并检查新手枪打 2 / 3 级甲、穿甲弹打 4 级甲的枪数下限，不满足时退出码为 1）
+- 护甲数值表：`python3 tools/combat/armor.py`（按 `items.yml` 和 `config.yml` 的 `combat.armor` 算每把枪每种子弹打倒穿各级护甲的玩家要几枪（霰弹枪一枪按所有弹丸都打中胸口算，每颗弹丸都磨损背心），并检查新手枪打 2 / 3 级甲、穿甲弹打 4 级甲的枪数下限，不满足时退出码为 1）
 - 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）
 
 ### 左键开火的实现

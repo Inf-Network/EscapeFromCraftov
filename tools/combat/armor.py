@@ -11,7 +11,8 @@ and is down when it reaches 0. Range falloff, bleeding and operator passives are
   python3 tools/combat/armor.py [items.yml] [config.yml]
 
 Prints
-  1. chest shots to down each gun with each of its rounds against no vest and a fresh armor_1..6;
+  1. chest shots to down each gun with each of its rounds against no vest and a fresh armor_1..6
+     (a shotgun shot is all of its pellets, each a hit that wears the vest, as if every one lands);
   2. the damage of every K47 PS shot into a fresh armor_4's chest (what tools/bot/armor.js measures);
   3. average hits to down when the part hit is random (shares of the standing front hitbox) against
      a matching fresh helmet and vest.
@@ -83,9 +84,11 @@ class Model:
         return base * zone * mult
 
     def chest_shots(self, gun, ammo, vest):
+        """Trigger pulls to down; each fires the gun's pellets, all into the chest."""
         hp, shots = MAX_HP, 0
         while hp > 0:
-            hp -= self.hit(gun, ammo, "chest", vest)
+            for _ in range(gun.get("pellets", 1)):
+                hp -= self.hit(gun, ammo, "chest", vest)
             shots += 1
         return shots
 
@@ -122,14 +125,16 @@ def main():
     vests.sort(key=lambda k: items[k]["class"])
     helmets.sort(key=lambda k: items[k]["class"])
 
-    print("Chest shots to down (fresh vest)")
+    print("Chest shots to down (fresh vest; a shot of a pellet gun lands all its pellets)")
     print(f"{'gun':6} {'round':16} {'pen':>3} {'none':>5}" + "".join(f"{v:>9}" for v in vests))
     for gid, gun in guns.items():
         for rid, ammo in rounds.items():
             if ammo["caliber"] != gun["caliber"]:
                 continue
             row = [model.chest_shots(gun, ammo, None)] + [model.chest_shots(gun, ammo, Armour(items[v])) for v in vests]
-            print(f"{gid:6} {rid:16} {ammo['pen']:>3} {row[0]:>5}" + "".join(f"{n:>9}" for n in row[1:]))
+            pellets = gun.get("pellets", 1)
+            label = gid if pellets == 1 else f"{gid}x{pellets}"
+            print(f"{label:6} {rid:16} {ammo['pen']:>3} {row[0]:>5}" + "".join(f"{n:>9}" for n in row[1:]))
 
     k47, ps, m4c, m995 = guns["k47"], rounds["ammo_762_ps"], guns["m4c"], rounds["ammo_556_m995"]
     vest = Armour(items["armor_4"])

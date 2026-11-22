@@ -87,6 +87,13 @@ public final class Ballistics {
                 impact(result.getHitBlock(), end, result.getHitBlockFace() == null ? null : result.getHitBlockFace().getDirection(), dir);
             }
         }
+        if (shooter instanceof Player && plugin.getConfig().getBoolean("debug", false)) {
+            // Where each player round landed, for measuring spread and climb against the crosshair.
+            plugin.getLogger().info(result == null
+                    ? String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=none", shooter.getName(), eye.getX(), eye.getY(), eye.getZ())
+                    : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f", shooter.getName(),
+                            eye.getX(), eye.getY(), eye.getZ(), end.getX(), end.getY(), end.getZ()));
+        }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), end);
         }

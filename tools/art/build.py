@@ -170,6 +170,7 @@ def build_items(item_defs):
             # Pose trees, all picked on the client from held keys (no packet, no delay): right mouse aims
             # down sights; left mouse kicks the gun back and flashes the muzzle; sprinting carries it low
             # and canted; strafing leans it. Scoped guns hide the gun while aiming, so they keep plain ADS.
+            # A gun still coming up after a switch ignores right and left mouse.
             def posed_aim(name, hip, ads, hip_display, ads_display):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
@@ -207,7 +208,13 @@ def build_items(item_defs):
                     ads_idle = strafe(model_ref(ads), ap)
                     ads_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
                         ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, ads_idle), ads_idle)
-                return key('key.use', ads_tree, hip_tree)
+                # While the gun comes up after a switch the server marks it with damage 1 (ItemFactory
+                # .setDrawing): it neither aims nor fires yet, so neither key changes the pose. Damage is
+                # the one component the client swaps in without playing the lower-and-raise animation
+                # again; not normalized, so a stack without max_damage reads 0.
+                draw_tree = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
+                        'entries': [{'threshold': 0.5, 'model': draw_tree}], 'fallback': key('key.use', ads_tree, hip_tree)}
             # While the gun's reload cooldown runs, the client steps through the reload frames itself.
             def reloading(normal, optic_frames=None):
                 entries = []
@@ -508,6 +515,8 @@ HUD_IMAGES = {
     'craftov/armor_bar.png': lambda: hudart.bar(52, 3, rgb('#4FA3FF')),
     'craftov/helmet_bar.png': lambda: hudart.bar(52, 3, rgb('#C8CCD2')),
     'craftov/reload_bar.png': lambda: hudart.bar(132, 2, rgb('#F2C94C')),
+    # The gun coming up after a switch takes the reload bar's place, in grey.
+    'craftov/draw_bar.png': lambda: hudart.bar(132, 2, rgb('#C8CCD2')),
     'craftov/progress_empty.png': lambda: hudart.bar(120, 5, (0, 0, 0, 0), empty=True),
     'craftov/extract_bar.png': lambda: hudart.bar(120, 5, rgb('#5BD16B')),
     'craftov/downed_bar.png': lambda: hudart.bar(120, 5, rgb('#FF4D4D')),
@@ -591,6 +600,7 @@ def build_betterhud():
     images['craftov_armor_bar'] = listener('craftov/armor_bar.png', 'craftov_armor', '100')
     images['craftov_helmet_bar'] = listener('craftov/helmet_bar.png', 'craftov_helmet', '100')
     images['craftov_reload_bar'] = listener('craftov/reload_bar.png', 'craftov_reload', '100')
+    images['craftov_draw_bar'] = listener('craftov/draw_bar.png', 'craftov_draw', '100')
     images['craftov_extract_bar'] = listener('craftov/extract_bar.png', 'craftov_extract', '100')
     images['craftov_downed_bar'] = listener('craftov/downed_bar.png', 'craftov_downed', '100')
     images['craftov_med_bar'] = listener('craftov/med_bar.png', 'craftov_med_pct', '100')
@@ -625,7 +635,8 @@ def build_betterhud():
         },
         'craftov_weapon': {
             'images': numbered([image('craftov_panel_right', 0, 0),
-                                image('craftov_reload_bar', 9, 44, cond(('craftov_reloading', 'true')))]),
+                                image('craftov_reload_bar', 9, 44, cond(('craftov_reloading', 'true'))),
+                                image('craftov_draw_bar', 9, 44, cond(('craftov_drawing', 'true')))]),
             'texts': numbered([text('<#E8E4D8>[craftov_weapon]', 142, 3, 0.5, 'right'),
                                text('<white>[craftov_ammo]</white> <#8A8F98>/ [craftov_reserve]', 142, 13, 0.75, 'right'),
                                text('<#F2C94C>[craftov_firemode] <#8A8F98>· [craftov_ammo_type]', 142, 27, 0.45, 'right'),
@@ -744,17 +755,18 @@ void main() {
 
 
 def build_trigger_capture():
-    """Assets for left-click firing: the capture block (cobweb) is invisible and silent when "mined".
+    """Assets for left-click firing: the capture block (a sculk vein on all six faces, see Nms.CAPTURE_BLOCK)
+    is invisible and silent when "mined", stood in (its step sound replaces the floor's) or landed on.
 
     Also the vanilla sound overrides: the AI are zombies (patrols) and husks (elite) re-skinned as
     soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
     """
-    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'cobweb.png'))
+    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
     hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
     death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
     step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
-    overrides = {'block.cobweb.hit': silence}
+    overrides = {'block.sculk_vein.%s' % event: silence for event in ('hit', 'step', 'fall')}
     for mob in ('zombie', 'husk', 'drowned'):
         overrides['entity.%s.ambient' % mob] = silence
         overrides['entity.%s.hurt' % mob] = hurt

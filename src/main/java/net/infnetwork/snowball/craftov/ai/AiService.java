@@ -1125,11 +1125,24 @@ public final class AiService implements Listener {
             reposition(bot, target, now);
             return;
         }
-        // Rounds are hitscan, so there is nothing to lead. Bukkit's velocity of a walking player reads
-        // zero (and about -0.08 straight down when it stands), so what it is doing comes from its keys.
-        double moving = moving(target) ? 1.4 : 1.0;
-        double settle = 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
-        fireRound(bot, eye, point, aimError(bot) * moving * settle, now);
+        // Rounds are hitscan, so there is nothing to lead: a moving target is just harder to hold on.
+        fireRound(bot, eye, point, aimError(bot) * movingFactor(target) * settle(bot, now), now, target);
+    }
+
+    /**
+     * How much wider a soldier's rounds land around a moving target: x1.4 at a walk, up to x1.52 at a
+     * sprint. Bukkit's velocity of a walking player reads zero (and about -0.08 straight down when it
+     * stands), so this uses the speed measured from its position each tick; a player pressing into a
+     * wall is standing still.
+     */
+    private double movingFactor(Player target) {
+        return 1.0 + 0.4 * Math.min(1.3, plugin.weapons().horizontalSpeed(target)
+                / net.infnetwork.snowball.craftov.weapon.WeaponService.WALK_SPEED);
+    }
+
+    /** x2.6 on the first shot of a fight, settling to x1 over 3 s. */
+    private static double settle(Bot bot, long now) {
+        return 1.0 + 1.6 * Math.max(0, 1 - (now - bot.engagedSince) / 60.0);
     }
 
     /**
@@ -1160,9 +1173,10 @@ public final class AiService implements Listener {
     /**
      * One pull of the trigger at {@code point}: the rounds land within {@code error} metres of it
      * (more when dazzled or shooting past smoke), with the muzzle flash, sound and casing, and the next
-     * shot timed by the gun's rate of fire and the burst.
+     * shot timed by the gun's rate of fire and the burst. {@code target} is who it shoots at (null:
+     * a spot), for the debug log of soldier shots.
      */
-    private void fireRound(Bot bot, Location eye, Vector point, double error, long now) {
+    private void fireRound(Bot bot, Location eye, Vector point, double error, long now, @Nullable Player target) {
         GunSpec gun = bot.gun.gun();
         bot.burstLeft--;
         bot.ammoLeft--;
@@ -1182,9 +1196,18 @@ public final class AiService implements Listener {
         // get less: scaledGun halves the head multiplier); nothing scales it again on the way
         // (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
         GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
+        int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
-            plugin.weapons().ballistics().fire(bot.mob, eye, Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)),
-                    scaled, ammo, bot.gun.name(), i == 0);
+            LivingEntity hit = plugin.weapons().ballistics().fire(bot.mob, eye,
+                    Ballistics.spread(aim, spread + (gun.pellets() > 1 ? gun.hipSpread() : 0)), scaled, ammo, bot.gun.name(), i == 0);
+            if (target != null && hit == target) {
+                hits++;
+            }
+        }
+        if (target != null && plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] ai %s shot %s dist=%.1f speed=%.3f moving=%.2f settle=%.2f spread=%.2f pellets=%d hits=%d",
+                    bot.kind, target.getName(), distance, plugin.weapons().horizontalSpeed(target), movingFactor(target), settle(bot, now),
+                    spread, gun.pellets(), hits));
         }
         Ballistics.muzzle(bot.mob, aim);
         Location muzzle = Ballistics.muzzlePoint(bot.mob, aim);
@@ -1264,7 +1287,7 @@ public final class AiService implements Listener {
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
-                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.reloadTicks(), gun.zoom(),
+                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.zoom(),
                 gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
     }
 
@@ -1564,7 +1587,7 @@ public final class AiService implements Listener {
         if (bot.burstLeft <= 0) {
             bot.burstLeft = burst(gun, distance, 2, 5);
         }
-        fireRound(bot, eye, point, aimError(bot) * 2.5, now);
+        fireRound(bot, eye, point, aimError(bot) * 2.5, now, null);
         if (bot.burstLeft <= 0) {
             bot.nextShotTick += ThreadLocalRandom.current().nextInt(20, 40);
         }

@@ -4,9 +4,11 @@
 //   1. M on the far side of a one-block wall, 2 blocks away, crouches and right-clicks P for 8 s
 //      (raw interact packets, as a modified client could send through the wall): P stays down;
 //   2. M on a ledge 1.5 blocks up right next to P right-clicks it for 8 s: P stays down;
-//   3. M next to P with its K47: a trigger pull fires (control), then while M holds right click on
-//      P its trigger pulls fire nothing; RCON `damage M 5` and then moving M 0.7 blocks each drop the
-//      revive bar back to (nearly) empty and say it was cut short; M then finishes and P is up;
+//   3. M next to P with its K47 (P holds a P18): a trigger pull fires (control), then while M holds
+//      right click on P its trigger pulls (left clicks on P) fire nothing; RCON `damage M 5` and
+//      then moving M 0.7 blocks each drop the revive bar back to (nearly) empty and say it was cut
+//      short; M then finishes and P is up, and P's pistol comes up again: one new draw of the
+//      P18's 6 ticks (#34);
 //   4. P gets an injector and is knocked down again; M, carrying an injector too, revives P and is
 //      knocked down mid-revive: seen from P it crawls and never stands up in between (ending the
 //      revive used to clear its crawl), and its title says to use the injector (nobody standing);
@@ -24,17 +26,32 @@
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node revive.js [squad|solo]
 //
+// The draw check in 3 reads the server log (SERVER_LOG, default the repository's
+// server/run/logs/latest.log) and needs `debug: true` in the server's config.yml.
 // Both scenarios run when none is named. The bots are made op (test map) and deopped when done;
 // soldiers are killed now and then so they do not join in. A match launches after
 // match.wait-seconds (30 by default). Exit code 0 when every check passes, 1 when one fails, 2 when
 // the scenario could not be set up.
 const mineflayer = require('mineflayer')
 const nbt = require('prismarine-nbt')
+const fs = require('fs')
+const path = require('path')
 const rconRaw = require('./rcon')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
 const rcon = cmd => rconRaw(cmd, RCON)
+const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const logSize = () => fs.statSync(LOG).size
+/** Server log lines written since byte offset `from`. */
+function logSince (from) {
+  const fd = fs.openSync(LOG, 'r')
+  try {
+    const buf = Buffer.alloc(Math.max(0, fs.fstatSync(fd).size - from))
+    fs.readSync(fd, buf, 0, buf.length, from)
+    return buf.toString('utf8').split('\n')
+  } finally { fs.closeSync(fd) }
+}
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
@@ -203,6 +220,10 @@ async function squad () {
   if (!await enterRaid([P, M])) return 2
   await clearArea(M)
   for (const bot of [P, M]) await rcon(`item replace entity ${bot.username} armor.chest with minecraft:air`)
+  // P holds a P18 through the knock-down, so its draw on getting up can be read from the log.
+  const pistol = await giveToHotbar(P, 'p18', 6)
+  if (pistol >= 0) P.setQuickBarSlot(pistol)
+  await sleep(1000)
 
   // P goes down in the middle of the area, facing north.
   await tp(P, 45.5, 65, 94.5, 180, 0)
@@ -256,9 +277,11 @@ async function squad () {
   await clearSoldiers()
   since = Date.now()
   shots = M.shots
-  // Hold on for 1.5 s, then keep holding on while pulling the trigger for 1.5 s.
+  // Hold on for 1.5 s, then keep holding on while pulling the trigger for 1.5 s. With the crosshair
+  // on P a vanilla client's left click is an attack on P (and a swing): a bare swing right after the
+  // right click is the one vanilla sends after any use, which the trigger ignores (TriggerService.mute).
   await holdOn(M, pEntity(), 1500)
-  await holdOn(M, pEntity(), 1500, () => M.swingArm())
+  await holdOn(M, pEntity(), 1500, () => M.attack(pEntity()))
   check('while M holds right click on P its trigger pulls fire nothing', M.shots === shots, M.shots - shots)
   check('the trigger pulls mid-revive are refused because M is reviving', barsSince(M, since).some(b => b.includes('救援时不能开火')),
     barsSince(M, since).filter(b => !b.includes('正在救援')).slice(-2))
@@ -282,8 +305,17 @@ async function squad () {
   next = barsSince(M, after).map(reviveFill).filter(f => f !== null)
   check(`M moved 0.7 blocks mid-revive: the bar drops from ${before} cells back to at most 2`, before >= 6 && next.slice(0, 2).some(f => f <= 2), { before, next })
   // Finish it.
+  const beforeRevive = logSize()
   await waitFor(async () => { await holdOn(M, pEntity(), 300); return titled(P, '已被救起') }, 9000)
   check('M holding on next to P revives it', titled(P, '已被救起') && inRaid(P), P.titles.slice(-2))
+  // Revived, the pistol comes up again: one new draw of 6 ticks, and it is up on its ready tick.
+  await sleep(800)
+  const lines = logSince(beforeRevive)
+  const draws = lines.map(l => l.match(new RegExp(`\\[debug\\] ${P.username} draws p18 tick=(\\d+) ready=(\\d+)`))).filter(Boolean)
+  const ups = lines.map(l => l.match(new RegExp(`\\[debug\\] ${P.username} up p18 tick=(\\d+)`))).filter(Boolean)
+  check('revived, P draws its pistol again (one draw of 6 ticks, up on its ready tick)', pistol >= 0 && draws.length === 1 &&
+    Number(draws[0][2]) - Number(draws[0][1]) === 6 && ups.length === 1 && ups[0][1] === draws[0][2],
+    pistol < 0 ? 'no P18 on the hotbar' : `${draws.length} draws (${draws.map(m => m[1] + '->' + m[2]).join(', ')}), up at ${ups.map(m => m[1]).join(',')}`)
   await sleep(1500)
   shots = M.shots
   await tp(M, 45.5, 65, 92.8, 0, -80)

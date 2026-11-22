@@ -42,6 +42,7 @@ public final class BetterHudBridge implements BetterHudHook {
         number(pm, "craftov_mag", HudSnapshot::magazine);
         number(pm, "craftov_reserve", HudSnapshot::reserve);
         number(pm, "craftov_reload", HudSnapshot::reload);
+        number(pm, "craftov_draw", HudSnapshot::draw);
         number(pm, "craftov_remaining", HudSnapshot::remaining);
         number(pm, "craftov_extract", HudSnapshot::extract);
         number(pm, "craftov_helmet", HudSnapshot::helmet);
@@ -69,6 +70,7 @@ public final class BetterHudBridge implements BetterHudHook {
         bool(pm, "craftov_has_gun", HudSnapshot::hasGun);
         bool(pm, "craftov_is_downed", HudSnapshot::downed);
         bool(pm, "craftov_reloading", HudSnapshot::reloading);
+        bool(pm, "craftov_drawing", HudSnapshot::drawing);
         bool(pm, "craftov_extracting", HudSnapshot::extracting);
         bool(pm, "craftov_has_status", s -> !s.status().isEmpty());
         for (net.infnetwork.snowball.craftov.combat.BodyPart part : net.infnetwork.snowball.craftov.combat.BodyPart.values()) {

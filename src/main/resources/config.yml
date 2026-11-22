@@ -110,6 +110,11 @@ downed:
   # Allow knock-downs in solo raids (no teammate can revive, only the self-revive injector).
   solo: false
 
+medical:
+  # Healing pool a medkit or surgery kit (items.yml med.pool) uses up per wound it treats; what is
+  # left heals, up to the item's per-use amount. Bandages, hemostats and splints are used up whole.
+  wound-cost: { LIGHT_BLEED: 15, HEAVY_BLEED: 40, FRACTURE: 40 }
+
 combat:
   friendly-fire: false
   damage-numbers: true

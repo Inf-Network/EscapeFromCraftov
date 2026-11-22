@@ -163,7 +163,7 @@ public final class ItemRegistry {
                 cures.add(Injury.valueOf(c.toUpperCase(Locale.ROOT)));
             }
             med = new MedSpec(m.getDouble("use", 2.0), m.getDouble("pool", 0), m.getDouble("per-use", 0),
-                    Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)),
+                    Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)), m.getBoolean("one-part", false),
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
                     m.getInt("effect-seconds", 0), m.getString("anim", "brush"), m.getString("sound", "med.bandage"));
         }

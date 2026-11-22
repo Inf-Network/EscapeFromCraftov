@@ -44,7 +44,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -78,14 +77,6 @@ public final class ProfileService implements Listener {
     private final Map<UUID, Profile> cache = new HashMap<>();
     private final Set<UUID> dirty = new HashSet<>();
     private final Map<UUID, Summary> index = new HashMap<>();
-    /**
-     * Profiles that are not cached but still have a write queued (an offline edit, a logout). Loading
-     * one takes this copy rather than the file, which may not hold the latest write yet: two offline
-     * edits in a row (an insurance payout, then a loadout restore) would otherwise both start from the
-     * old file, and the second write would undo the first. Shared with the IO thread.
-     */
-    private final Map<UUID, Queued> queued = new ConcurrentHashMap<>();
-    private final AtomicLong writes = new AtomicLong();
     /**
      * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, used instead
      * of the file while a write queued for them has not reached the disk. Without this, back-to-back
@@ -134,10 +125,6 @@ public final class ProfileService implements Listener {
     /** What leaderboards and start-up checks need of every saved profile, kept without loading it. */
     public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
                           long marketSales, long marketIncome, long escortEscrow) {
-    }
-
-    /** An uncached profile and the number of its last queued write. */
-    private record Queued(Profile profile, long write) {
     }
 
     public ProfileService(Plugin plugin) {
@@ -474,10 +461,6 @@ public final class ProfileService implements Listener {
      * {@link #quarantine}) or changes wait in its journal. Any thread.
      */
     private @Nullable Profile load(UUID uuid) {
-        Queued last = queued.get(uuid);
-        if (last != null) {
-            return last.profile();
-        }
         Path file = file(uuid);
         if (!Files.exists(file)) {
             unreadable.remove(uuid);
@@ -638,10 +621,6 @@ public final class ProfileService implements Listener {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
-        long write = writes.incrementAndGet();
-        if (cache.get(uuid) != profile) {
-            queued.put(uuid, new Queued(profile, write));
-        }
         if (inFlight != null) {
             inFlight.incrementAndGet();
         }
@@ -652,8 +631,6 @@ public final class ProfileService implements Listener {
                 if (inFlight != null) {
                     inFlight.decrementAndGet();
                 }
-                // Once the last queued write is on disk the file is current again.
-                queued.computeIfPresent(uuid, (k, last) -> last.write() == write ? null : last);
             }
         });
     }

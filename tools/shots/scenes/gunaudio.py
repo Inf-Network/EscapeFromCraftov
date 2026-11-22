@@ -6,7 +6,7 @@ Needs `debug: true` in the server's plugins/Craftov/config.yml (shots are counte
 log). A key the pack does not have is played first and must be reported, so the check cannot pass
 on a client that stopped logging. The event names are built the way GunAudio.java builds them: gun.<id>.<band> for fp, fp_s,
 near, near_s, mid, mid_s, far and muff, the same under .x<n> for the multi-round samples, and
-gun.tail.<family>.in / .in2. Logs PASS/FAIL lines; shot: gunaudio-range (the range after the last gun).
+gun.tail.<family>.in / .in2 with their muffled .in_muff / .in_muff2. Logs PASS/FAIL lines; shot: gunaudio-range (the range after the last gun).
 """
 import re
 import time
@@ -46,7 +46,7 @@ def _events(guns):
         if gid in groups:
             keys += [f'craftov:gun.{gid}.x{groups[gid]}.{band}' for band in BANDS]
     for family in ('light', 'rifle', 'heavy', 'sniper'):
-        keys += [f'craftov:gun.tail.{family}.in', f'craftov:gun.tail.{family}.in2']
+        keys += [f'craftov:gun.tail.{family}.{room}' for room in ('in', 'in2', 'in_muff', 'in_muff2')]
     return keys
 
 

@@ -1254,7 +1254,6 @@ public final class WeaponService implements Listener {
             // Free, unlimited ammo on the range; nothing is taken from the inventory.
             state.ammo = gun.magazine();
             state.ammoType = type;
-            flush(player);
             reloadDone(player, state);
             return;
         }
@@ -1272,7 +1271,9 @@ public final class WeaponService implements Listener {
         }
         state.ammo += taken;
         state.ammoType = type;
-        flush(player);
+        // The full magazine stays in memory like every round fired from it: writing it to the stack now
+        // would make the client lower and raise the gun right after the reload frames brought it back
+        // up. It is written whenever the item could move (see flush).
         reloadDone(player, state);
     }
 

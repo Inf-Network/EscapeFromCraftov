@@ -4,10 +4,11 @@
 //   1. M on the far side of a one-block wall, 2 blocks away, crouches and right-clicks P for 8 s
 //      (raw interact packets, as a modified client could send through the wall): P stays down;
 //   2. M on a ledge 1.5 blocks up right next to P right-clicks it for 8 s: P stays down;
-//   3. M next to P with its K47 (P holds a P18): a trigger pull fires (control), then while M holds right click on
-//      P its trigger pulls fire nothing; RCON `damage M 5` and then moving M 0.7 blocks each drop the
-//      revive bar back to (nearly) empty and say it was cut short; M then finishes and P is up,
-//      and P's pistol comes up again: one new draw of the P18's 6 ticks (#34);
+//   3. M next to P with its K47 (P holds a P18): a trigger pull fires (control), then while M holds
+//      right click on P its trigger pulls (left clicks on P) fire nothing; RCON `damage M 5` and
+//      then moving M 0.7 blocks each drop the revive bar back to (nearly) empty and say it was cut
+//      short; M then finishes and P is up, and P's pistol comes up again: one new draw of the
+//      P18's 6 ticks (#34);
 //   4. P gets an injector and is knocked down again; M, carrying an injector too, revives P and is
 //      knocked down mid-revive: seen from P it crawls and never stands up in between (ending the
 //      revive used to clear its crawl), and its title says to use the injector (nobody standing);
@@ -276,9 +277,11 @@ async function squad () {
   await clearSoldiers()
   since = Date.now()
   shots = M.shots
-  // Hold on for 1.5 s, then keep holding on while pulling the trigger for 1.5 s.
+  // Hold on for 1.5 s, then keep holding on while pulling the trigger for 1.5 s. With the crosshair
+  // on P a vanilla client's left click is an attack on P (and a swing): a bare swing right after the
+  // right click is the one vanilla sends after any use, which the trigger ignores (TriggerService.mute).
   await holdOn(M, pEntity(), 1500)
-  await holdOn(M, pEntity(), 1500, () => M.swingArm())
+  await holdOn(M, pEntity(), 1500, () => M.attack(pEntity()))
   check('while M holds right click on P its trigger pulls fire nothing', M.shots === shots, M.shots - shots)
   check('the trigger pulls mid-revive are refused because M is reviving', barsSince(M, since).some(b => b.includes('救援时不能开火')),
     barsSince(M, since).filter(b => !b.includes('正在救援')).slice(-2))

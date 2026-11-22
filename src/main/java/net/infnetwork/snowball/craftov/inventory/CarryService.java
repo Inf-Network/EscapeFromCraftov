@@ -404,7 +404,13 @@ public final class CarryService {
         // later raid and pay out an item nobody insured.
         record.uninsure();
         plugin.profiles().edit(player.getUniqueId(), () -> "no room on the player: add to mailbox " + ProfileService.json(record),
-                p -> p.mailbox.add(record));
+                p -> {
+                    p.mailbox.add(record);
+                    if (p.deployment != null) {
+                        // Sent from a raid: it comes out of the mailbox again should the raid be void.
+                        p.deployment.mailed.add(record.copy());
+                    }
+                });
         ItemDef def = items.registry().get(record.id);
         String amount = record.amount > 1 ? " <#9AA0A6>×" + record.amount : "";
         Text.send(player, def == null

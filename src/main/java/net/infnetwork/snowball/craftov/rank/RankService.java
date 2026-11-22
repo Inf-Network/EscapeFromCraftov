@@ -99,6 +99,7 @@ public final class RankService {
             profile.level++;
             long reward = 5000L * profile.level;
             profile.money += reward;
+            profile.earnedInRaid(reward); // a level reached in a raid (a contract done) goes with a void raid
             if (player != null) {
                 Text.send(player, "<#FFC23D>账号升级至 Lv." + profile.level + "！<#9AA0A6>奖励 ◈" + Text.money(reward));
                 player.playSound(player.getLocation(), "craftov:ui.levelup", 1f, 1f);

@@ -425,18 +425,22 @@ public final class RaidManager implements Listener {
         plugin.lobby().stripRangeItems(player);
         plugin.lobby().captureLoadout(player);
         Profile profile = plugin.profiles().get(player);
-        profile.activeRaid = raid.id;
-        profile.addStat("raids", 1);
         long entryFee = Math.max(0, raid.tier.entryFee());
         profile.money -= entryFee;
-        rp.fees = entryFee + plugin.insurance().onDeploy(player, raid);
+        long premium = plugin.insurance().onDeploy(player, raid);
+        rp.fees = entryFee + premium;
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
-        plugin.profiles().saveNow(player.getUniqueId());
         rp.secure = new ArrayList<>();
         for (ItemRecord record : profile.secure) {
             rp.secure.add(record.copy());
         }
         rp.gearUids = tagGear(player, rp.secure);
+        // Saved together with the fees: whatever happens to the server from here on, the raid can
+        // be undone to exactly this (voidRaid), and nothing is charged that would not come back.
+        profile.deployment = deployment(raid, player, profile, rp, entryFee, premium);
+        profile.activeRaid = raid.id;
+        profile.statInRaid("raids", 1);
+        plugin.profiles().saveNow(player.getUniqueId());
         List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
         takenIn.addAll(rp.secure);
         rp.broughtIn = stackCounts(takenIn);
@@ -448,6 +452,47 @@ public final class RaidManager implements Listener {
         player.closeInventory();
         plugin.health().setupPlayer(player, true);
         plugin.match().teamFor(raid, rp, player);
+    }
+
+    /**
+     * The record of what the player takes into the raid, read after the gear has its instance ids
+     * and insurance marks (the marks are left out: gear that comes home is never insured) and
+     * before anything in the raid has touched it.
+     */
+    private Profile.Deployment deployment(Raid raid, Player player, Profile profile, RaidPlayer rp, long entryFee, long premium) {
+        Profile.Deployment d = new Profile.Deployment();
+        d.raid = raid.key;
+        d.map = raid.map.name();
+        d.tier = raid.tier.name();
+        d.time = System.currentTimeMillis();
+        plugin.carry().snapshot(player).forEach((slot, record) -> {
+            ItemRecord kept = ItemFactory.persistent(record);
+            if (kept != null) {
+                kept = kept.copy();
+                kept.uninsure();
+                d.loadout.put(slot, kept);
+            }
+        });
+        for (ItemRecord record : rp.secure) {
+            ItemRecord kept = record.copy();
+            kept.uninsure();
+            d.secure.add(kept);
+        }
+        d.entryFee = entryFee;
+        d.premium = premium;
+        // Brought up to date first: a contract day or season that turned over before the raid
+        // (and is only noticed by the first progress in it) must not count as the raid's doing.
+        plugin.tasks().of(profile);
+        plugin.season().sync(profile);
+        d.taskDay = profile.taskDay;
+        for (Profile.TaskState task : profile.tasks) {
+            d.tasks.add(task.copy());
+        }
+        d.level = profile.level;
+        d.xp = profile.xp;
+        d.seasonId = profile.seasonId;
+        d.seasonXp = profile.seasonXp;
+        return d;
     }
 
     private void insert(Raid raid, Player player, Location at) {
@@ -812,7 +857,7 @@ public final class RaidManager implements Listener {
         profile.addStat("extracted_value", Math.max(0, profit));
         profile.addStat("kills", rp.kills);
         profile.addStat("ai_kills", rp.aiKills);
-        profile.activeRaid = null;
+        profile.leaveRaid();
         List<String> newCollectibles = plugin.collection().registerExtraction(player, profile, raid, mailed);
         int rankDelta = rp.ranked ? plugin.ranks().onExtract(profile, rp, profit, raid) : 0;
         long xp = Math.round((extractXp(rp) + Math.max(0, profit) / 800.0 + rp.kills * 60 + rp.aiKills * 20) * raid.tier.xpMultiplier());
@@ -908,7 +953,7 @@ public final class RaidManager implements Listener {
         profile.loadout.clear();
         keepMelee(profile, melee);
         profile.secure = new ArrayList<>(rp.secure);
-        profile.activeRaid = null;
+        profile.leaveRaid();
         profile.addStat("deaths", 1);
         profile.addStat("kills", rp.kills);
         profile.addStat("ai_kills", rp.aiKills);
@@ -1208,7 +1253,7 @@ public final class RaidManager implements Listener {
         Supplier<String> change = () -> why + ": loadout = " + ProfileService.json(left)
                 + " (the rest of that gear stayed in the raid),"
                 + (unknown.isEmpty() ? "" : " add to mailbox " + ProfileService.json(unknown) + ",")
-                + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, stats.deaths +1"
+                + " secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, deployment = null, stats.deaths +1"
                 + (died ? ", stats.kills +" + rp.kills + ", stats.ai_kills +" + rp.aiKills + ", xp +" + xp
                 + " and seasonXp +" + xp + " (each level reached pays 5000 x the level)" : "")
                 + (rp.ranked ? ", rankPoints " + plugin.ranks().deathDelta(1100, rp, lostValue) + " ("
@@ -1218,7 +1263,7 @@ public final class RaidManager implements Listener {
             keepMelee(profile, melee);
             profile.mailbox.addAll(unknown);
             profile.secure = new ArrayList<>(rp.secure);
-            profile.activeRaid = null;
+            profile.leaveRaid();
             profile.addStat("deaths", 1);
             if (died) {
                 profile.addStat("kills", rp.kills);
@@ -1784,7 +1829,7 @@ public final class RaidManager implements Listener {
         rp.carriedOut = stackCounts(out);
         Profile profile = plugin.profiles().get(player);
         profile.secure = new ArrayList<>(rp.secure);
-        profile.activeRaid = null;
+        profile.leaveRaid();
         plugin.escorts().voided(rp);
         byPlayer.remove(player.getUniqueId());
         plugin.match().leaveTeam(player);
@@ -1849,7 +1894,7 @@ public final class RaidManager implements Listener {
             plugin.downed().clear(player);
             Profile profile = plugin.profiles().get(player);
             profile.secure = new ArrayList<>(rp.secure);
-            profile.activeRaid = null;
+            profile.leaveRaid();
             if (flyingIn) {
                 profile.money += rp.fees;
             }
@@ -1878,12 +1923,12 @@ public final class RaidManager implements Listener {
                 : plugin.carry().persistent(rp.disconnectedInventory, homeless);
         plugin.profiles().edit(rp.uuid, () -> why + ": loadout = "
                 + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
-                + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null"
+                + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, deployment = null"
                 + (refund > 0 ? ", money +" + refund : ""), profile -> {
             profile.loadout = inv;
             profile.mailbox.addAll(homeless);
             profile.secure = new ArrayList<>(rp.secure);
-            profile.activeRaid = null;
+            profile.leaveRaid();
             profile.money += refund;
         });
         List<ItemRecord> home = new ArrayList<>(inv.values());

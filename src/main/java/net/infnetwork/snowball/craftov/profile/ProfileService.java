@@ -629,6 +629,20 @@ public final class ProfileService implements Listener {
         }
         if (p.name == null) p.name = "";
         if (p.operator == null) p.operator = "vanguard";
+        Profile.Deployment d = p.deployment;
+        if (d != null) {
+            if (d.raid == null) d.raid = "";
+            if (d.map == null) d.map = "";
+            if (d.tier == null) d.tier = "";
+            if (d.seasonId == null) d.seasonId = "";
+            if (d.loadout == null) d.loadout = new HashMap<>();
+            if (d.secure == null) d.secure = new ArrayList<>();
+            if (d.stats == null) d.stats = new HashMap<>();
+            if (d.tasks == null) d.tasks = new ArrayList<>();
+            if (d.bounties == null) d.bounties = new ArrayList<>();
+            if (d.mailed == null) d.mailed = new ArrayList<>();
+            d.bounties.removeIf(claim -> claim == null || claim.victim == null);
+        }
     }
 
     private void writeAsync(Profile profile) {

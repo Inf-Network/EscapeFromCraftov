@@ -79,8 +79,15 @@ public final class Profile {
     public List<String> ips = new ArrayList<>();
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
 
-    /** Raid id while the player is inside a raid; used to resolve crashes as MIA. */
+    /** Raid id while the player is inside a raid; a crash leaves it set (see {@link #deployment}). */
     public @Nullable String activeRaid;
+    /**
+     * What the player took into the raid they are in, saved with the deploy (RaidManager.prepare)
+     * and cleared together with {@link #activeRaid} whenever the raid is settled for them. A raid
+     * that the server stops in, or crashes in, is void, and this is what it is undone to
+     * (RaidManager.voidRaid).
+     */
+    public @Nullable Deployment deployment;
 
     public Profile() {
     }
@@ -96,6 +103,30 @@ public final class Profile {
 
     public void addStat(String key, long delta) {
         stats.merge(key, delta, Long::sum);
+    }
+
+    /** The raid is settled for this player: out of it, with nothing left to undo. */
+    public void leaveRaid() {
+        activeRaid = null;
+        deployment = null;
+    }
+
+    /**
+     * Money the raid in progress has paid this player (a negative amount: taken), recorded so a
+     * void raid can take it back. Nothing is recorded outside a raid.
+     */
+    public void earnedInRaid(long amount) {
+        if (deployment != null) {
+            deployment.earned += amount;
+        }
+    }
+
+    /** A stat the raid in progress has counted, recorded so a void raid can take it back. */
+    public void statInRaid(String key, long delta) {
+        addStat(key, delta);
+        if (deployment != null) {
+            deployment.stats.merge(key, delta, Long::sum);
+        }
     }
 
     public int stashUsed() {
@@ -117,6 +148,54 @@ public final class Profile {
         public Preset(String name) {
             this.name = name;
         }
+    }
+
+    /**
+     * What a player took into a raid and what the raid has given them since (see
+     * {@link #deployment}). Saved with the profile, so a crash leaves it for the next login.
+     */
+    public static final class Deployment {
+        /** Raid.key: unique across restarts, unlike the raid id. */
+        public String raid = "";
+        /** Map and difficulty names, for the letter that says the raid was void. */
+        public String map = "";
+        public String tier = "";
+        /** When the player deployed (epoch millis). */
+        public long time;
+        /** The loadout and secure container as they went in, without insurance marks. */
+        public Map<Integer, ItemRecord> loadout = new HashMap<>();
+        public List<ItemRecord> secure = new ArrayList<>();
+        public long entryFee;
+        public long premium;
+        /**
+         * Money the raid has paid out so far less what it has cost on the way: daily contract
+         * rewards and swaps, the level rewards they brought, bounties collected.
+         */
+        public long earned;
+        /** Stats the raid has added so far: the raid itself, contracts done. */
+        public Map<String, Long> stats = new HashMap<>();
+        /** Daily contracts, account level and season pass as they stood at deploy. */
+        public long taskDay = -1;
+        public List<TaskState> tasks = new ArrayList<>();
+        public int level = 1;
+        public long xp;
+        public String seasonId = "";
+        public long seasonXp;
+        /** Bounties collected in the raid: they go back on the heads they came off. */
+        public List<BountyClaim> bounties = new ArrayList<>();
+        /** Items the raid put in the item mailbox: they come out of it again. */
+        public List<ItemRecord> mailed = new ArrayList<>();
+    }
+
+    /** A bounty collected in a raid (BountyService.onKill). */
+    public static final class BountyClaim {
+        public UUID victim;
+        /** What other players had put on the victim's head. */
+        public long placed;
+        /** The house bounty was part of it: houseBountyDay went from {@link #dayBefore} to {@link #day}. */
+        public boolean house;
+        public long dayBefore = -1;
+        public long day = -1;
     }
 
     /** One system letter (MailService). */
@@ -154,6 +233,19 @@ public final class Profile {
         public long reward;
         public long xp;
         public boolean done;
+
+        public TaskState copy() {
+            TaskState copy = new TaskState();
+            copy.kind = kind;
+            copy.map = map;
+            copy.mapName = mapName;
+            copy.target = target;
+            copy.progress = progress;
+            copy.reward = reward;
+            copy.xp = xp;
+            copy.done = done;
+            return copy;
+        }
     }
 
     public static final class RaidReport {

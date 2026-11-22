@@ -92,6 +92,12 @@ public final class WeaponService implements Listener {
         long shotBudget;
         long reloadStart = -1;
         long reloadEnd = -1;
+        /**
+         * The gun came into the hand at drawStart and is up at readyAt: until then it neither fires nor
+         * aims (see {@link WeaponService#drawTicks}).
+         */
+        long drawStart;
+        long readyAt;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -213,6 +219,11 @@ public final class WeaponService implements Listener {
             }
             long now = Bukkit.getCurrentTick();
             return Math.min(1.0, (now - reloadStart) / (double) Math.max(1, reloadEnd - reloadStart));
+        }
+
+        /** The gun is still coming up after being switched to. */
+        public boolean drawing() {
+            return Bukkit.getCurrentTick() < readyAt;
         }
     }
 
@@ -336,9 +347,11 @@ public final class WeaponService implements Listener {
             return null;
         }
         GunState state = new GunState(uid, slot, def, held, plugin.registry());
+        long now = Bukkit.getCurrentTick();
+        state.drawStart = now;
+        state.readyAt = now + drawTicks(state.gun);
         Stowed kept = stowed.remove(uid);
         if (kept != null) {
-            long now = Bukkit.getCurrentTick();
             state.nextShotTick = kept.nextShotTick();
             state.bloom = kept.bloomAt(now);
         }
@@ -350,6 +363,23 @@ public final class WeaponService implements Listener {
                     + "<white>潜行+Q<#9AA0A6> 换弹种  <white>F<#9AA0A6> 射击模式"));
         }
         return state;
+    }
+
+    /**
+     * Ticks a gun takes to come up once it is in the hand, by its action (weapons.draw-ticks): quick for
+     * a pistol, slow for a machine gun or a bolt-action rifle. Switching guns used to be free, so going
+     * to the sidearm instead of reloading cost nothing. Not in items.yml, whose copy on the server is
+     * not updated from the jar.
+     */
+    private int drawTicks(GunSpec gun) {
+        int fallback = switch (gun.action()) {
+            case "pistol", "pistol_heavy" -> 6;
+            case "smg", "pdw" -> 10;
+            case "pump" -> 14;
+            case "lmg", "bolt" -> 18;
+            default -> 12; // ak, ar, dmr
+        };
+        return Math.max(0, plugin.getConfig().getInt("weapons.draw-ticks." + gun.action(), fallback));
     }
 
     /** Writes the in-memory magazine back onto the stack (wherever it is now). */
@@ -465,6 +495,9 @@ public final class WeaponService implements Listener {
                 state.sampleLeft = 0;
                 continue;
             }
+            if (state.drawing()) {
+                continue; // a pull while the gun comes up fires once it is up, if still held (see press)
+            }
             if (state.pendingPress) {
                 state.pendingPress = false;
                 firstShot(player, state);
@@ -554,6 +587,12 @@ public final class WeaponService implements Listener {
             // A pull while sprinting does nothing; kept held, it fires once the gun is back up (see tick).
             state.pendingPress = true;
             sprintHint(player);
+            return;
+        }
+        if (state.drawing()) {
+            // Likewise while the gun comes up after a switch: no shot until it is up.
+            state.pendingPress = true;
+            hint(player, "<#9AA0A6>拔枪中…");
             return;
         }
         firstShot(player, state);
@@ -1270,8 +1309,8 @@ public final class WeaponService implements Listener {
         }
         // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
         // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.
-        if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
-            return;
+        if (state.reloading() || state.drawing() || !plugin.raids().canFire(player) || player.isSprinting()) {
+            return; // still held once the gun is up, the next use packet (every 4 ticks) aims
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
         setAds(player, true);

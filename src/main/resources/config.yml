@@ -122,6 +122,20 @@ weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
   # back up). A trigger held through it fires as soon as it is over.
   sprint-recovery-ticks: 5
+  # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
+  # action in items.yml. Until then it neither fires nor aims; a trigger held through it fires as
+  # soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
+  draw-ticks:
+    pistol: 6
+    pistol_heavy: 6
+    smg: 10
+    pdw: 10
+    ak: 12
+    ar: 12
+    dmr: 12
+    pump: 14
+    lmg: 18
+    bolt: 18
   spread:
     # Moving widens the cone (bloom included) by 1 + move × how close the player is to their full
     # walking pace (measured on the server, 0 standing .. 1 walking or faster): hip fire and aiming.

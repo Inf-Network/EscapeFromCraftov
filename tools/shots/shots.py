@@ -1,0 +1,885 @@
+#!/usr/bin/env python3
+"""Screenshots from a real Minecraft client, for what a headless bot cannot see.
+
+Gun models, aiming, animations, menus, the HUD and effects only show up in a rendered client. This
+runs vanilla 1.21.11 on a virtual X display (Xvfb) with Mesa's software renderer (llvmpipe), joins a
+local test server in offline mode, loads the server resource pack without a prompt and drives it
+with the scene scripts in tools/shots/scenes/: RCON to set things up, xdotool for keys and mouse,
+ImageMagick `import` for the picture. Screenshots land in tools/shots/out/<shot>.png.
+
+  tools/shots/shots.py run [scene ...]   start the server and client if they are not running, run
+                                          the scenes (default: lobby gun inventory deploy raid) and
+                                          stop what it started
+  tools/shots/shots.py up                start the server and client and leave them running
+  tools/shots/shots.py down              stop what `up` (or `run --keep`) started
+  tools/shots/shots.py status            what is running
+  tools/shots/shots.py scenes            list the scenes
+  tools/shots/shots.py setup             (re)create the test server in --server-dir
+  tools/shots/shots.py send <shot> ...   copy PNGs to the owner's Mac and open them there
+
+Common options (before or after the subcommand): --port (env SHOTS_PORT, default 25565),
+--rcon-port (SHOTS_RCON_PORT, default port + 10), --server-dir (default server/run), --name (the
+client's offline user name, default ShotCam). `run --build` rebuilds the plugin and restarts the
+server first, `run --fresh` resets the player to a new profile with the starter kit, and
+`run --send` sends every shot of the run to the Mac. A scene can take an argument: `run gun:k47`.
+
+The first run creates a venv with minecraft-launcher-lib (BSD-2-Clause) in tools/shots/.cache/ and
+downloads the client (about 550 MB) there. Needs Xvfb, xdotool, ImageMagick and Mesa.
+"""
+import argparse
+import contextlib
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent
+CACHE = HERE / '.cache'
+OUT = HERE / 'out'
+VENV = CACHE / 'venv'
+MC_DIR = CACHE / 'minecraft'     # versions, libraries, assets
+GAME_DIR = CACHE / 'game'        # options.txt, servers.dat, logs, downloaded server packs
+STATE = CACHE / 'state.json'
+SCENES = HERE / 'scenes'
+VERSION = '1.21.11'
+LAUNCHER_LIB = 'minecraft-launcher-lib==8.0'
+DEFAULT_SCENES = ['lobby', 'gun', 'inventory', 'deploy', 'raid']
+
+# Client options forced on every launch. The first-run screens (accessibility onboarding,
+# multiplayer warning, tutorial toasts) would sit in front of the game, and a client that pauses on
+# lost focus would open the pause menu whenever the X focus wanders.
+OPTIONS = {
+    'onboardAccessibility': 'false',
+    'skipMultiplayerWarning': 'true',
+    'joinedFirstServer': 'true',
+    'tutorialStep': 'none',
+    'pauseOnLostFocus': 'false',
+    'realmsNotifications': 'false',
+    'narrator': '0',
+    'fullscreen': 'false',
+    'enableVsync': 'false',
+    'maxFps': '60',
+    'renderDistance': '8',
+    'simulationDistance': '5',
+    'soundCategory_master': '0.0',
+}
+
+T0 = time.time()
+
+
+def log(*parts):
+    print(f'[{time.time() - T0:6.1f}s]', *parts, flush=True)
+
+
+class Fail(Exception):
+    """A step that did not work; the message says what to look at."""
+
+
+# ---------------------------------------------------------------------------------------- venv
+
+def in_venv():
+    return Path(sys.prefix).resolve() == VENV.resolve()
+
+
+def ensure_venv():
+    """Re-runs this script inside tools/shots/.cache/venv, creating it on first use."""
+    if in_venv():
+        return
+    py = VENV / 'bin' / 'python'
+    marker = VENV / f'.installed-{LAUNCHER_LIB}'
+    if not marker.exists():
+        log('creating venv with', LAUNCHER_LIB)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        subprocess.run([sys.executable, '-m', 'venv', str(VENV)], check=True)
+        subprocess.run([str(py), '-m', 'pip', 'install', '-q', LAUNCHER_LIB], check=True)
+        marker.touch()
+    os.execv(str(py), [str(py), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+# ---------------------------------------------------------------------------------------- rcon
+
+def rcon(cfg, command, timeout=10, port=None):
+    """Runs a console command (on cfg's RCON port unless another is given); returns the reply
+    without colour codes."""
+    def send(sock, rid, kind, body):
+        data = body.encode('utf-8')
+        sock.sendall(struct.pack('<iii', len(data) + 10, rid, kind) + data + b'\0\0')
+
+    def recv(sock):
+        def exact(n):
+            buf = b''
+            while len(buf) < n:
+                chunk = sock.recv(n - len(buf))
+                if not chunk:
+                    raise ConnectionError('rcon closed')
+                buf += chunk
+            return buf
+        length, rid, _ = struct.unpack('<iii', exact(12))
+        return rid, exact(length - 8)[:-2].decode('utf-8', 'replace')
+
+    with socket.create_connection(('127.0.0.1', port or cfg.rcon_port), timeout=timeout) as sock:
+        send(sock, 1, 3, cfg.rcon_password)
+        rid, _ = recv(sock)
+        if rid == -1:
+            raise Fail('rcon password rejected')
+        send(sock, 2, 2, command)
+        # Long replies come in several packets; the server answers the empty type-0 packet sent
+        # after the command only once the command's reply is complete.
+        send(sock, 3, 0, '')
+        out = []
+        while True:
+            rid, body = recv(sock)
+            if rid != 2:
+                break
+            out.append(body)
+    return re.sub(r'§.', '', ''.join(out))
+
+
+def rcon_alive(cfg):
+    try:
+        rcon(cfg, 'list', timeout=3)
+        return True
+    except (OSError, Fail):
+        return False
+
+
+# ---------------------------------------------------------------------------------------- state
+
+def load_state():
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(state):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(state, indent=2))
+
+
+def pid_alive(pid, needle=None):
+    if not pid:
+        return False
+    try:
+        cmdline = Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode('utf-8', 'replace')
+    except OSError:
+        return False
+    return needle is None or needle in cmdline
+
+
+def stop_pid(pid, needle, grace=15):
+    """SIGTERM, then SIGKILL after `grace` seconds; only if the process still is what we started."""
+    if not pid_alive(pid, needle):
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGTERM)
+    end = time.time() + grace
+    while time.time() < end and pid_alive(pid, needle):
+        time.sleep(0.3)
+    if pid_alive(pid, needle):
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pid, signal.SIGKILL)
+
+
+# ---------------------------------------------------------------------------------------- server
+
+def set_properties(path, values):
+    lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
+    seen = set()
+    for i, line in enumerate(lines):
+        key = line.split('=', 1)[0].strip()
+        if key in values:
+            lines[i] = f'{key}={values[key]}'
+            seen.add(key)
+    lines += [f'{k}={v}' for k, v in values.items() if k not in seen]
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def setup_server(cfg):
+    """A local offline-mode test server for screenshots: RCON on, test mode on, short queue."""
+    run_dir = cfg.server_dir
+    log('setting up the test server in', run_dir)
+    env = dict(os.environ, RUN_DIR=str(run_dir))
+    subprocess.run([str(ROOT / 'server' / 'setup.sh'), '--local', '--port', str(cfg.port)], env=env, check=True)
+    set_properties(run_dir / 'server.properties', {
+        'server-port': cfg.port, 'enable-rcon': 'true', 'rcon.port': cfg.rcon_port,
+        'rcon.password': cfg.rcon_password, 'white-list': 'false', 'online-mode': 'false',
+    })
+    # Keys missing from the plugin's config fall back to the defaults in the jar, so a fresh server
+    # only needs the two that differ; an existing config is edited in place.
+    conf = run_dir / 'plugins' / 'Craftov' / 'config.yml'
+    conf.parent.mkdir(parents=True, exist_ok=True)
+    if conf.exists():
+        text = conf.read_text(encoding='utf-8')
+        text = re.sub(r'(?m)^(test:\n(?:[ \t]*#.*\n)*[ \t]+enabled:) *false', r'\1 true', text)
+        text = re.sub(r'(?m)^(match:\n(?:[ \t]*#.*\n|[ \t]+\S.*\n)*?[ \t]+wait-seconds:) *\d+', r'\1 5', text)
+        conf.write_text(text, encoding='utf-8')
+    else:
+        conf.write_text('test:\n  enabled: true\nmatch:\n  wait-seconds: 5\n', encoding='utf-8')
+    log('test server ready: port', cfg.port, 'rcon', cfg.rcon_port)
+
+
+def start_server(cfg):
+    run_dir = cfg.server_dir
+    if not (run_dir / 'start.sh').exists():
+        setup_server(cfg)
+    console = run_dir / 'console.log'
+    offset = console.stat().st_size if console.exists() else 0
+    log('starting the test server in', run_dir)
+    with open(console, 'ab') as out:
+        proc = subprocess.Popen(['./start.sh'], cwd=run_dir, stdout=out, stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL, start_new_session=True)
+    end = time.time() + 240
+    while time.time() < end:
+        if proc.poll() is not None:
+            raise Fail(f'the server exited ({proc.returncode}); see {console}')
+        with open(console, 'rb') as f:
+            f.seek(offset)
+            if b'Done (' in f.read() and rcon_alive(cfg):
+                log('server up')
+                return proc.pid
+        time.sleep(1)
+    raise Fail(f'the server did not finish starting; see {console}')
+
+
+def stop_server(cfg, pid, rcon_port):
+    log('stopping the test server')
+    with contextlib.suppress(OSError, Fail):
+        rcon(cfg, 'stop', port=rcon_port)
+    end = time.time() + 90
+    while time.time() < end and pid_alive(pid, 'paper.jar'):
+        time.sleep(0.5)
+    stop_pid(pid, 'paper.jar', grace=10)
+
+
+def build_plugin(cfg):
+    log('building the plugin')
+    subprocess.run([str(ROOT / 'gradlew'), '-p', str(ROOT), 'jar', '--quiet'], check=True)
+    jar = max((ROOT / 'build' / 'libs').glob('Craftov-*.jar'), key=lambda p: p.stat().st_mtime)
+    dest = cfg.server_dir / 'plugins' / 'Craftov.jar'
+    if dest.parent.exists():
+        # Rename into place, so a running server keeps reading the old file until it restarts.
+        tmp = dest.with_suffix('.jar.new')
+        shutil.copyfile(jar, tmp)
+        tmp.replace(dest)
+
+
+# ---------------------------------------------------------------------------------------- client
+
+def offline_uuid(name):
+    """The UUID an offline-mode server gives this name (Java's UUID.nameUUIDFromBytes)."""
+    digest = bytearray(hashlib.md5(('OfflinePlayer:' + name).encode('utf-8')).digest())
+    digest[6] = digest[6] & 0x0F | 0x30
+    digest[8] = digest[8] & 0x3F | 0x80
+    return str(uuid.UUID(bytes=bytes(digest)))
+
+
+def nbt_string(name, value):
+    raw, val = name.encode('utf-8'), value.encode('utf-8')
+    return b'\x08' + struct.pack('>H', len(raw)) + raw + struct.pack('>H', len(val)) + val
+
+
+def nbt_byte(name, value):
+    raw = name.encode('utf-8')
+    return b'\x01' + struct.pack('>H', len(raw)) + raw + struct.pack('>b', value)
+
+
+def write_servers_dat(address):
+    """One saved server whose resource packs are always accepted. Quick Play looks its address up
+    in this list, so the pack prompt never appears."""
+    entry = nbt_string('name', 'Craftov') + nbt_string('ip', address) + nbt_byte('acceptTextures', 1) \
+        + nbt_byte('hidden', 0) + b'\x00'
+    servers = b'\x09' + struct.pack('>H', 7) + b'servers' + b'\x0a' + struct.pack('>i', 1) + entry
+    (GAME_DIR / 'servers.dat').write_bytes(b'\x0a\x00\x00' + servers + b'\x00')
+
+
+def write_options(lang):
+    path = GAME_DIR / 'options.txt'
+    lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
+    forced = dict(OPTIONS, lang=lang)
+    kept = [line for line in lines if line.split(':', 1)[0] not in forced]
+    path.write_text('\n'.join(kept + [f'{k}:{v}' for k, v in forced.items()]) + '\n', encoding='utf-8')
+
+
+def install_client():
+    import minecraft_launcher_lib as mll
+    import minecraft_launcher_lib.install as mll_install
+    if (MC_DIR / 'versions' / VERSION / f'{VERSION}.jar').exists():
+        return mll
+    log('downloading Minecraft', VERSION, 'into', MC_DIR)
+    # The system JDK runs the client, so skip the Java runtime the library would fetch from Mojang.
+    mll_install.install_jvm_runtime = lambda *args, **kwargs: None
+    mll.install.install_minecraft_version(VERSION, str(MC_DIR), callback={'setStatus': lambda s: None})
+    return mll
+
+
+def start_display(size):
+    """Xvfb on the first free display number, which it reports through -displayfd."""
+    read_fd, write_fd = os.pipe()
+    proc = subprocess.Popen(['Xvfb', '-displayfd', str(write_fd), '-screen', '0', f'{size}x24', '-nolisten', 'tcp'],
+                            pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True)
+    os.close(write_fd)
+    number = b''
+    with os.fdopen(read_fd, 'rb') as pipe:
+        while not number.endswith(b'\n'):
+            chunk = pipe.read(1)
+            if not chunk:
+                raise Fail('Xvfb did not start')
+            number += chunk
+    display = ':' + number.decode().strip()
+    log('virtual display', display, size)
+    return display, proc.pid
+
+
+def client_log():
+    path = GAME_DIR / 'logs' / 'latest.log'
+    return path.read_text(encoding='utf-8', errors='replace') if path.exists() else ''
+
+
+def start_client(cfg, display):
+    mll = install_client()
+    GAME_DIR.mkdir(parents=True, exist_ok=True)
+    address = f'127.0.0.1:{cfg.port}'
+    write_servers_dat(address)
+    write_options(cfg.lang)
+    width, height = cfg.size.split('x')
+    command = mll.command.get_minecraft_command(VERSION, str(MC_DIR), {
+        'username': cfg.name, 'uuid': offline_uuid(cfg.name), 'token': '0',
+        'executablePath': cfg.java, 'jvmArguments': ['-Xms1G', '-Xmx3G'],
+        'gameDirectory': str(GAME_DIR), 'launcherName': 'craftov-shots', 'launcherVersion': '1',
+        'customResolution': True, 'resolutionWidth': width, 'resolutionHeight': height,
+        'quickPlayMultiplayer': address,
+    })
+    env = dict(os.environ, DISPLAY=display, LIBGL_ALWAYS_SOFTWARE='1', GALLIUM_DRIVER='llvmpipe',
+               ALSOFT_DRIVERS='null')  # OpenAL's null backend: no sound card here
+    env.pop('WAYLAND_DISPLAY', None)
+    log('starting the client as', cfg.name, '->', address)
+    with open(GAME_DIR / 'client-console.log', 'wb') as out:
+        proc = subprocess.Popen(command, cwd=GAME_DIR, env=env, stdout=out, stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL, start_new_session=True)
+    return proc.pid
+
+
+def wait_joined(cfg, client_pid):
+    """Waits until the player is online with the server resource pack applied."""
+    end = time.time() + 300
+    joined = False
+    while time.time() < end:
+        if not pid_alive(client_pid):
+            raise Fail(f'the client exited; see {GAME_DIR / "client-console.log"}')
+        if not joined:
+            joined = player_online(cfg)
+            if joined:
+                log('joined the server')
+        text = client_log()
+        if 'Pack application failed' in text or 'Failed to download resource pack' in text:
+            raise Fail(f'the resource pack did not load; see {GAME_DIR / "logs" / "latest.log"}')
+        if joined and pack_applied(text):
+            log('server resource pack applied')
+            return
+        time.sleep(1)
+    raise Fail(f'not in game with the resource pack after 5 minutes; see {GAME_DIR / "logs" / "latest.log"}')
+
+
+def pack_applied(text):
+    """True once the client has reloaded its resources with a server pack in the stack."""
+    return any('server' in line for line in re.findall(r'Reloading ResourceManager: (.*)', text))
+
+
+# ---------------------------------------------------------------------------------------- session
+
+class Session:
+    """What a scene script gets: RCON, keyboard and mouse on the client, and screenshots."""
+
+    def __init__(self, cfg, display):
+        self.cfg = cfg
+        self.name = cfg.name
+        self.display = display
+        self.arg = None
+        self.shots = []
+        self.env = dict(os.environ, DISPLAY=display)
+        self.window = self._window()
+
+    # -- low level
+
+    def _window(self):
+        end = time.time() + 60
+        while time.time() < end:
+            out = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Minecraft'], env=self.env,
+                                 capture_output=True, text=True).stdout.split()
+            if out:
+                wid = out[-1]
+                width, height = self.cfg.size.split('x')
+                self.xdo('windowmove', wid, '0', '0')
+                self.xdo('windowsize', wid, width, height)
+                self.xdo('windowfocus', wid)
+                return wid
+            time.sleep(1)
+        raise Fail('no Minecraft window on the virtual display')
+
+    def xdo(self, *args):
+        subprocess.run(['xdotool', *args], env=self.env, check=True)
+
+    def rcon(self, command):
+        return rcon(self.cfg, command)
+
+    def wait(self, seconds):
+        time.sleep(seconds)
+
+    def wait_until(self, check, timeout, what):
+        end = time.time() + timeout
+        while time.time() < end:
+            if check():
+                return
+            time.sleep(0.5)
+        raise Fail(f'timed out waiting for {what}')
+
+    # -- input
+
+    def focus(self):
+        self.xdo('windowfocus', self.window)
+
+    def key(self, *keys, gap=0.25):
+        """Taps keys in order (xdotool key names: e, Escape, F5, 1, Return, ctrl+a ...)."""
+        self.focus()
+        for k in keys:
+            self.xdo('key', k)
+            time.sleep(gap)
+
+    def down(self, key):
+        self.focus()
+        self.xdo('keydown', key)
+
+    def up(self, key):
+        self.xdo('keyup', key)
+
+    @contextlib.contextmanager
+    def mouse(self, button=3):
+        """Holds a mouse button (1 left, 2 middle, 3 right) for the duration of the block."""
+        self.focus()
+        self.xdo('mousedown', str(button))
+        try:
+            yield
+        finally:
+            self.xdo('mouseup', str(button))
+
+    def mouse_to(self, x, y):
+        """Moves the pointer to a screen pixel. Only while a menu is open: in game the pointer is
+        captured and moving it turns the camera."""
+        self.xdo('mousemove', str(x), str(y))
+
+    def park_mouse(self):
+        """Moves the pointer into the corner so no slot under it shows a tooltip."""
+        self.mouse_to(1, 1)
+        time.sleep(0.3)
+
+    def type(self, text):
+        self.focus()
+        self.xdo('type', '--delay', '30', text)
+
+    def chat(self, text):
+        """Opens chat, types the line and sends it. A leading slash makes it a command."""
+        self.key('t')
+        time.sleep(0.4)
+        self.type(text)
+        time.sleep(0.2)
+        self.key('Return')
+
+    def cmd(self, command):
+        self.chat('/' + command.lstrip('/'))
+
+    def clear_chat(self):
+        """F3+D: empties the chat box so old messages stay out of the picture."""
+        self.focus()
+        self.xdo('keydown', 'F3')
+        self.xdo('key', 'd')
+        self.xdo('keyup', 'F3')
+        time.sleep(0.3)
+
+    def select(self, slot):
+        """Selects hotbar slot 0-8."""
+        self.key(str(slot + 1))
+
+    # -- game state through RCON
+
+    def data(self, path):
+        """`data get entity <player> <path>`, the value only (None if absent)."""
+        out = self.rcon(f'data get entity {self.name} {path}')
+        marker = 'has the following entity data: '
+        return out.split(marker, 1)[1].strip() if marker in out else None
+
+    def dimension(self):
+        return (self.data('Dimension') or '').strip('"')
+
+    def gamemode(self):
+        value = self.data('playerGameType')
+        return int(value) if value is not None and value.isdigit() else -1
+
+    def in_lobby(self):
+        return self.dimension().endswith('craftov_lobby')
+
+    def in_raid(self):
+        return 'craftov_raid' in self.dimension() and self.gamemode() == 2
+
+    def item_in(self, slot):
+        value = self.data(f'Inventory[{{Slot:{slot}b}}].components."minecraft:custom_data".PublicBukkitValues."craftov:id"')
+        return value.strip('"') if value else None
+
+    def slot_of(self, item):
+        """The hotbar slot (0-8) holding this Craftov item, or None."""
+        return next((slot for slot in range(9) if self.item_in(slot) == item), None)
+
+    def count(self, item):
+        """How many of this Craftov item the player carries (inventory and equipment)."""
+        predicate = f'*[minecraft:custom_data~{{PublicBukkitValues:{{"craftov:id":"{item}"}}}}]'
+        out = self.rcon(f'execute if items entity {self.name} container.* {predicate}')
+        match = re.search(r'count: (\d+)', out, re.IGNORECASE)
+        return int(match.group(1)) if match else 0
+
+    def ammo_for(self, gun):
+        """The first ammo id matching the gun's caliber in the server's items.yml (or the repo's)."""
+        for path in (self.cfg.server_dir / 'plugins' / 'Craftov' / 'items.yml', ROOT / 'src' / 'main' / 'resources' / 'items.yml'):
+            try:
+                text = path.read_text(encoding='utf-8')
+            except OSError:
+                continue
+            gun_def = re.search(rf'(?m)^  {re.escape(gun)}:\s*\n((?:    .*\n)+)', text)
+            caliber = gun_def and re.search(r'caliber: "([^"]+)"', gun_def.group(1))
+            if caliber:
+                ammo = re.search(rf'(?m)^  (\w+):\s*{{.*category: AMMO.*caliber: "{re.escape(caliber.group(1))}"', text)
+                return ammo.group(1) if ammo else None
+        return None
+
+    def give(self, item, amount=1):
+        self.rcon(f'cv give {self.name} {item} {amount}')
+
+    def hold(self, item):
+        """Puts the item in the hotbar if it is not there yet and selects it."""
+        slot = self.slot_of(item)
+        if slot is None:
+            self.give(item)
+            time.sleep(0.5)
+            slot = self.slot_of(item)
+        if slot is None:
+            raise Fail(f'{item} did not land in the hotbar')
+        self.select(slot)
+        return slot
+
+    def look(self, yaw, pitch):
+        self.rcon(f'execute as {self.name} at @s run tp @s ~ ~ ~ {yaw} {pitch}')
+
+    def lobby(self):
+        """Back to the lobby spawn (the player is op; this is /cv lobby)."""
+        self.cmd('cv lobby')
+        self.wait_until(self.in_lobby, 30, 'the lobby')
+        time.sleep(1.5)
+
+    def raids(self):
+        return set(re.findall(r'\b(R\d+)\b', self.rcon('cv raids')))
+
+    def always_extract(self, map_id):
+        """(x, y, z) of the map's first always-open extract, read from the server's map file."""
+        path = self.cfg.server_dir / 'plugins' / 'Craftov' / 'maps' / f'{map_id}.yml'
+        try:
+            text = path.read_text(encoding='utf-8')
+        except OSError:
+            return None
+        if '\nextracts:' not in text:
+            return None
+        section = re.split(r'\n(?=[A-Za-z_])', text.split('\nextracts:', 1)[1])[0]
+        for block in section.split('\n- '):
+            if re.search(r'(?m)^\s*type: ALWAYS\s*$', block):
+                coords = [re.search(rf'(?m)^\s*{axis}: (-?[\d.]+)\s*$', block) for axis in 'xyz']
+                if all(coords):
+                    return tuple(float(c.group(1)) for c in coords)
+        return None
+
+    def extract(self, map_id, raids=()):
+        """Leaves the raid through the map's always-open extract, keeping the gear for the next run.
+        If that does not work, ends the given raids instead (the player is then missing in action and
+        loses what it carried)."""
+        spot = self.always_extract(map_id)
+        if spot:
+            self.rcon(f'execute as {self.name} at @s run tp @s {spot[0]} {spot[1]} {spot[2]}')
+            with contextlib.suppress(Fail):
+                self.wait_until(self.in_lobby, 40, 'the extract')
+                time.sleep(1.5)
+                return
+        log('no extract worked; ending the raid')
+        for raid in raids:
+            self.rcon(f'cv end {raid}')
+        self.wait_until(self.in_lobby, 90, 'the way back to the lobby')
+        time.sleep(1.5)
+
+    # -- output
+
+    def shot(self, name):
+        """Saves the whole virtual screen as tools/shots/out/<name>.png."""
+        OUT.mkdir(parents=True, exist_ok=True)
+        path = OUT / f'{name}.png'
+        subprocess.run(['import', '-window', 'root', '-display', self.display, str(path)], check=True)
+        self.shots.append(name)
+        log('shot', path.relative_to(ROOT))
+        return path
+
+
+def load_scene(name):
+    path = SCENES / f'{name}.py'
+    if not path.exists():
+        raise Fail(f'no scene {name} (see `shots.py scenes`)')
+    namespace = {'__file__': str(path), '__name__': f'scene_{name}'}
+    exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), namespace)
+    return namespace
+
+
+def scene_list():
+    out = []
+    for path in sorted(SCENES.glob('*.py')):
+        doc = (load_scene(path.stem).get('__doc__') or '').strip().splitlines()
+        out.append((path.stem, doc[0] if doc else ''))
+    return out
+
+
+# ---------------------------------------------------------------------------------------- commands
+
+def player_online(cfg):
+    return cfg.name in rcon(cfg, 'list').split(':', 1)[-1].replace(',', ' ').split()
+
+
+def port_open(port):
+    with contextlib.suppress(OSError), socket.create_connection(('127.0.0.1', port), timeout=1):
+        return True
+    return False
+
+
+def restart_server(cfg, state):
+    """Restarts a running server so it loads a new plugin jar. One this tool did not start keeps
+    running after the run, as before."""
+    log('restarting the server for the new plugin')
+    ours = state.pop('server_pid', None)
+    state.pop('server_rcon_port', None)
+    if ours:
+        stop_server(cfg, ours, cfg.rcon_port)
+    else:
+        rcon(cfg, 'stop')
+    end = time.time() + 90
+    while time.time() < end and (port_open(cfg.port) or port_open(cfg.rcon_port)):
+        time.sleep(1)
+    pid = start_server(cfg)
+    if ours:
+        state.update(server_pid=pid, server_rcon_port=cfg.rcon_port)
+
+
+def reset_profile(cfg):
+    """Deletes the player's Craftov profile, so it joins as a new player with the starter kit."""
+    path = cfg.server_dir / 'plugins' / 'Craftov' / 'data' / 'players' / f'{offline_uuid(cfg.name)}.json'
+    end = time.time() + 15
+    while time.time() < end and player_online(cfg):
+        time.sleep(0.5)
+    time.sleep(2)  # the profile is saved asynchronously after a quit
+    if path.exists():
+        path.unlink()
+        log('reset the profile of', cfg.name)
+
+
+def up(cfg, state, started=None):
+    """Starts whatever is not running yet. The parts it starts are added to `started` as it goes,
+    so a caller can stop them even when a later step fails."""
+    started = [] if started is None else started
+    # Only a server this tool started (and that still runs) is ever stopped by it, and the state
+    # file tracks one at a time.
+    if not pid_alive(state.get('server_pid'), 'paper.jar'):
+        state.pop('server_pid', None)
+        state.pop('server_rcon_port', None)
+    elif state.get('server_rcon_port') != cfg.rcon_port:
+        raise Fail(f'shots already runs a server with RCON port {state.get("server_rcon_port")}; '
+                   'stop it with `shots.py down` first')
+    fresh_server = False
+    if not rcon_alive(cfg):
+        if cfg.build:
+            build_plugin(cfg)
+        state.update(server_pid=start_server(cfg), server_rcon_port=cfg.rcon_port)
+        save_state(state)
+        started.append('server')
+        fresh_server = True
+    elif cfg.build:
+        build_plugin(cfg)
+        restart_server(cfg, state)
+        fresh_server = True
+    client_up = pid_alive(state.get('client_pid'), 'net.minecraft.client') and pid_alive(state.get('xvfb_pid'), 'Xvfb')
+    if client_up and state.get('port') == cfg.port and not fresh_server and not cfg.fresh and player_online(cfg):
+        log('reusing the client on', state['display'])
+    else:
+        down(cfg, state, ('client', 'display'))
+        if cfg.fresh:
+            reset_profile(cfg)
+        state['display'], state['xvfb_pid'] = start_display(cfg.size)
+        save_state(state)
+        if not client_up:
+            started.append('display')  # a client that was up before stays up afterwards
+        state['client_pid'] = start_client(cfg, state['display'])
+        if not client_up:
+            started.append('client')
+        state.update(port=cfg.port, rcon_port=cfg.rcon_port, server_dir=str(cfg.server_dir))
+        save_state(state)
+        rcon(cfg, f'op {cfg.name}')
+        wait_joined(cfg, state['client_pid'])
+        # Terrain, the HUD, and the "chat messages can't be verified" toast an offline server
+        # shows for ten seconds after joining.
+        time.sleep(12)
+    save_state(state)
+    return started
+
+
+def down(cfg, state, parts=('client', 'display', 'server')):
+    if 'client' in parts and pid_alive(state.get('client_pid'), 'net.minecraft.client'):
+        log('stopping the client')
+        stop_pid(state.pop('client_pid'), 'net.minecraft.client')
+    if 'display' in parts and pid_alive(state.get('xvfb_pid'), 'Xvfb'):
+        stop_pid(state.pop('xvfb_pid'), 'Xvfb')
+        state.pop('display', None)
+    if 'server' in parts:
+        pid = state.pop('server_pid', None)
+        rcon_port = state.pop('server_rcon_port', None)
+        if pid_alive(pid, 'paper.jar'):
+            stop_server(cfg, pid, rcon_port or cfg.rcon_port)
+    save_state(state)
+
+
+def run_scenes(cfg, names):
+    scenes = [(spec, load_scene(spec.partition(':')[0]), spec.partition(':')[2] or None) for spec in names]
+    state = load_state()
+    started = []
+    session = None
+    try:
+        up(cfg, state, started)
+        session = Session(cfg, state['display'])
+        for spec, scene, arg in scenes:
+            session.arg = arg
+            log('scene', spec)
+            scene['run'](session)
+    finally:
+        if cfg.keep:
+            log('left running (stop with `shots.py down`):', ', '.join(started) or 'nothing new')
+        else:
+            down(cfg, state, started)
+    if cfg.send and session and session.shots:
+        send(session.shots)
+    return session.shots if session else []
+
+
+def send(names):
+    """Copies the shots to ~/RemoteShare/shots on the owner's Mac and opens them there."""
+    paths = [OUT / f'{Path(name).stem}.png' for name in names]
+    missing = [str(p) for p in paths if not p.exists()]
+    if missing:
+        raise Fail('no screenshot ' + ', '.join(missing))
+    subprocess.run(['ssh', 'mac', 'mkdir', 'shots'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for path in paths:
+        name = path.stem
+        with open(path, 'rb') as f:
+            subprocess.run(['ssh', 'mac', 'put', f'shots/{name}.png'], stdin=f, check=True)
+        subprocess.run(['ssh', 'mac', 'open', f'shots/{name}.png'], check=True)
+        log('sent', name)
+
+
+def status(cfg, state):
+    ours = pid_alive(state.get('server_pid'), 'paper.jar') and state.get('server_rcon_port') == cfg.rcon_port
+    print('server   ', 'up' if rcon_alive(cfg) else 'down', f'(port {cfg.port}, rcon {cfg.rcon_port}, {cfg.server_dir})',
+          '[started by shots]' if ours else '')
+    alive = pid_alive(state.get('client_pid'), 'net.minecraft.client')
+    print('client   ', f'up on {state.get("display")} as {cfg.name}' if alive else 'down')
+    shots = sorted(OUT.glob('*.png')) if OUT.exists() else []
+    print('shots    ', ', '.join(p.stem for p in shots) or 'none', f'({OUT})' if shots else '')
+
+
+def common_options(suppress):
+    """Options accepted before and after the subcommand. The subcommand's copy has no defaults, so
+    it only overrides what was actually given after it."""
+    def default(value):
+        return argparse.SUPPRESS if suppress else value
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--port', type=int, default=default(int(os.environ.get('SHOTS_PORT', 25565))))
+    common.add_argument('--rcon-port', type=int, default=default(int(os.environ.get('SHOTS_RCON_PORT', 0))),
+                        help='default: --port + 10')
+    common.add_argument('--rcon-password', default=default(os.environ.get('SHOTS_RCON_PASSWORD', 'craftov-local')))
+    common.add_argument('--server-dir', type=Path,
+                        default=default(Path(os.environ.get('SHOTS_SERVER_DIR', ROOT / 'server' / 'run'))))
+    common.add_argument('--name', default=default(os.environ.get('SHOTS_NAME', 'ShotCam')), help='offline user name of the client')
+    common.add_argument('--size', default=default('1600x900'), help='screen and window size')
+    common.add_argument('--lang', default=default('zh_cn'), help='client language')
+    common.add_argument('--java', default=default(shutil.which('java') or '/usr/bin/java'))
+    return common
+
+
+def parse(argv):
+    common = common_options(suppress=True)
+    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0], parents=[common_options(suppress=False)],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split('\n\n', 1)[1])
+    sub = parser.add_subparsers(dest='command', required=True)
+    run = sub.add_parser('run', parents=[common], help='run scenes and take screenshots')
+    run.add_argument('scenes', nargs='*', help=f'scene names, optionally scene:arg (default: {" ".join(DEFAULT_SCENES)})')
+    run.add_argument('--keep', action='store_true', help='leave the server and client running afterwards')
+    run.add_argument('--build', action='store_true', help='rebuild the plugin and (re)start the server first')
+    run.add_argument('--send', action='store_true', help="copy this run's shots to the owner's Mac and open them")
+    run.add_argument('--fresh', action='store_true', help='reset the player to a new profile with the starter kit')
+    upp = sub.add_parser('up', parents=[common], help='start the server and client and leave them running')
+    upp.add_argument('--build', action='store_true', help='rebuild the plugin and (re)start the server first')
+    upp.add_argument('--fresh', action='store_true', help='reset the player to a new profile with the starter kit')
+    sub.add_parser('down', parents=[common], help='stop what up / run --keep started')
+    sub.add_parser('status', parents=[common], help='show what is running')
+    sub.add_parser('scenes', parents=[common], help='list scenes')
+    sub.add_parser('setup', parents=[common], help='(re)create the test server in --server-dir')
+    snd = sub.add_parser('send', parents=[common], help="copy shots to the owner's Mac and open them")
+    snd.add_argument('shots', nargs='+')
+    cfg = parser.parse_args(argv)
+    cfg.server_dir = cfg.server_dir.resolve()
+    cfg.rcon_port = cfg.rcon_port or cfg.port + 10
+    for flag in ('keep', 'build', 'send', 'fresh'):
+        setattr(cfg, flag, getattr(cfg, flag, False))
+    return cfg
+
+
+def main(argv):
+    cfg = parse(argv)
+    try:
+        if cfg.command == 'scenes':
+            for name, doc in scene_list():
+                print(f'{name:12} {doc}')
+        elif cfg.command == 'status':
+            status(cfg, load_state())
+        elif cfg.command == 'send':
+            send(cfg.shots)
+        elif cfg.command == 'setup':
+            setup_server(cfg)
+        elif cfg.command == 'down':
+            down(cfg, load_state())
+        else:
+            for tool in ('Xvfb', 'xdotool', 'import'):
+                if not shutil.which(tool):
+                    raise Fail(f'{tool} is not installed')
+            ensure_venv()
+            if cfg.command == 'up':
+                up(cfg, load_state())
+            else:
+                shots = run_scenes(cfg, cfg.scenes or DEFAULT_SCENES)
+                log('done:', ', '.join(shots) or 'no shots', f'in {OUT}')
+    except (Fail, OSError, subprocess.CalledProcessError) as e:
+        log('FAILED:', e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

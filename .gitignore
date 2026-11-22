@@ -29,3 +29,6 @@ __pycache__/
 .omc/
 .github/modernize/
 tools/bot/node_modules/
+# Screenshot harness: venv, Minecraft client and screenshots
+tools/shots/.cache/
+tools/shots/out/

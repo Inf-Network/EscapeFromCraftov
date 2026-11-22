@@ -1909,7 +1909,8 @@ public final class RaidManager implements Listener {
         for (RaidPlayer mate : raid.players.values()) {
             Player p = mate.squad == rp.squad ? Bukkit.getPlayer(mate.uuid) : null;
             if (p != null) {
-                plugin.hud().feed(p, "<muted>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局");
+                // Before deployment the squad is still in the lobby: a chat line, not the raid feed.
+                Text.send(p, "<muted>队友 <white>" + Text.escape(rp.name) + "</white> " + reason + "，已退出本局。");
             }
         }
         plugin.escorts().onWithdraw(rp.uuid, rp.name, reason);

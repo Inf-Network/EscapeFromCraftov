@@ -146,6 +146,9 @@ public final class DownedService implements Listener {
             rp.state = RaidPlayer.State.ALIVE;
         }
         uncrawl(player, state);
+        // Getting up, the gun has to come up again: without this the state bound while downed had
+        // finished its draw long ago, so a revived player could fire on the tick they stood.
+        plugin.weapons().reset(player);
         player.setHealth(Math.min(HealthService.MAX_HP, state.number == 1 ? 35 : 20));
         plugin.health().forceSpeedUpdate(player);
         player.showTitle(Title.title(Text.mm("<#5BD16B>已被救起"), Text.mm(reviver == null ? "<#9AA0A6>自我救援成功" : "<#9AA0A6>" + Text.escape(reviver.getName()) + " 救起了你"),

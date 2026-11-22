@@ -1,0 +1,31 @@
+name: 玩法 / 策划需求
+description: 新玩法、数值调整、界面或体验上的改进
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: 想要什么
+      description: 描述你想要的效果，写玩家能感受到的部分。
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么
+      description: 现在的问题在哪里，改了之后玩起来会怎样。
+  - type: textarea
+    id: reference
+    attributes:
+      label: 参考
+      description: 其他游戏里类似的做法、截图、视频链接。
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 你觉得有多急
+      options:
+        - 不改没法玩
+        - 明显影响体验
+        - 有了更好
+    validations:
+      required: true

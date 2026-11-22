@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 私下报告漏洞（刷物品、刷钱、越权、崩服）
+    url: https://github.com/Inf-Network/EscapeFromCraftov/security/advisories/new
+    about: 这类问题请私下报告，修好之前不要公开细节。

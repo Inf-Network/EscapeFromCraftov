@@ -292,18 +292,15 @@ public final class LobbyService implements Listener {
             taken += 1 + splitTest(plugin.items().contents(cursor), handBack);
             player.setItemOnCursor(null);
         }
+        // The player is still in the raid world here, where give's own overflow would drop to the
+        // floor, so what does not fit is mailed directly.
         int mailed = 0;
-        if (!handBack.isEmpty()) {
-            Profile profile = plugin.profiles().get(player);
-            for (ItemRecord record : handBack) {
-                ItemStack stack = plugin.items().fromRecord(record);
-                ItemRecord rest = plugin.items().toRecord(stack == null ? null : plugin.carry().give(player, stack, false));
-                if (rest != null) {
-                    profile.mailbox.add(rest);
-                    mailed++;
-                }
+        for (ItemRecord record : handBack) {
+            ItemStack stack = plugin.items().fromRecord(record);
+            ItemStack left = stack == null ? null : plugin.carry().give(player, stack, false);
+            if (left != null && plugin.carry().mail(player, left)) {
+                mailed++;
             }
-            plugin.profiles().markDirty(player.getUniqueId());
         }
         return new int[]{taken, mailed};
     }

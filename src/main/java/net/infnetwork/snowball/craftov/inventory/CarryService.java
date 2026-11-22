@@ -204,20 +204,33 @@ public final class CarryService {
     /**
      * Gets rid of an item that has no room on the player. In a raid it drops at their feet for
      * anyone to loot. Anywhere else (lobby, range, editor) a dropped item can never be picked up
-     * again, so it goes to the stash mailbox instead. Range loaners and non-Craftov stacks have no
-     * stored form and still drop.
+     * again, so it goes to the stash mailbox instead. Range loaners, proving-ground armory items and
+     * non-Craftov stacks have no stored form and still drop.
      */
     private void spill(Player player, ItemStack stack) {
-        ItemRecord record = plugin.raids().isRaidWorld(player.getWorld()) ? null : items.toRecord(stack);
-        if (record == null) {
+        if (plugin.raids().isRaidWorld(player.getWorld()) || !mail(player, stack)) {
             player.getWorld().dropItemNaturally(player.getLocation(), stack);
             return;
         }
-        plugin.profiles().edit(player.getUniqueId(), p -> p.mailbox.add(record));
         ItemDef def = items.defOf(stack);
         String amount = stack.getAmount() > 1 ? " <#9AA0A6>×" + stack.getAmount() : "";
         Text.send(player, "<#9AA0A6>身上放不下，" + (def == null ? "物品" : def.coloredName()) + amount
                 + " <#9AA0A6>已放进<#F2C94C>仓库邮箱<#9AA0A6>。");
+    }
+
+    /**
+     * Stores a stack that has no room on the player in their stash mailbox. This is the one way an
+     * online player's overflow reaches the mailbox. Returns false, storing nothing, for a stack with
+     * no stored form: range loaners, proving-ground armory items (those packed inside are left out)
+     * and non-Craftov stacks, so an armory item can never turn into a real one this way.
+     */
+    public boolean mail(Player player, ItemStack stack) {
+        ItemRecord record = items.toRecord(stack);
+        if (record == null) {
+            return false;
+        }
+        plugin.profiles().edit(player.getUniqueId(), p -> p.mailbox.add(record));
+        return true;
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {

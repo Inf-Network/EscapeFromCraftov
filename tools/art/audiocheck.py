@@ -10,6 +10,8 @@ For every near file (what a player a few blocks from the shooter hears):
   spectrum   the strongest frequency of the first 120 ms above 150 Hz (the synthesis peaked at
              51-97 Hz: a kick drum).
 And for every gun file, decoded as the client decodes it: a peak no higher than -0.5 dBFS.
+Automatic fire's multi-round files (x<n>_near, x<n>_fp) must hold n rounds exactly the gun's interval
+apart (75 ms for the M4C's two, 66.7 ms for the SV9's and V57's three), within 2 ms.
 The envelope is the Hilbert magnitude smoothed over 2 ms, so a low sine is not mistaken for a decay.
 """
 import glob
@@ -79,6 +81,18 @@ def main_peak_hz(x, sr):
     return float(f[keep][np.argmax(smooth[keep])])
 
 
+def round_starts_ms(x, sr):
+    """Where the rounds of a multi-round file start: envelope peaks above a third of the loudest,
+    at least 30 ms apart, each moved back to where it first reached half its height."""
+    e = envelope(x, sr)
+    peaks, _ = signal.find_peaks(e, height=e.max() / 3, distance=int(sr * .03))
+    starts = []
+    for p in peaks:
+        lo = max(0, p - int(sr * .01))
+        starts.append((lo + int(np.nonzero(e[lo:p + 1] >= e[p] / 2)[0][0])) / sr * 1000)
+    return starts
+
+
 def peak_db(x):
     p = np.max(np.abs(x))
     return 20 * np.log10(p) if p > 0 else -120.0
@@ -107,6 +121,19 @@ def check(folder=SOUNDS, verbose=True):
         if verbose:
             print('%-22s decay %5.1f ms  low-mids %3.0f %%  peak %5.0f Hz  %s' % (name, d, share * 100, hz, 'FAIL' if problems else 'ok'))
         failures += ['%s: %s' % (name, p) for p in problems]
+    import gunsamples
+    for gid, (n, ticks) in gunsamples.GROUPS.items():
+        interval = ticks * 50 / n
+        for path in sorted(glob.glob(os.path.join(folder, 'gun', gid, 'x%d_near_[0-9]*.ogg' % n))
+                           + glob.glob(os.path.join(folder, 'gun', gid, 'x%d_fp_[0-9]*.ogg' % n))):
+            x, sr = read(path)
+            starts = round_starts_ms(x.mean(axis=1), sr)[:n]
+            gaps = np.diff(starts)
+            name = os.path.relpath(path, folder)
+            if verbose:
+                print('%-22s rounds at %s ms' % (name, ', '.join('%.1f' % t for t in starts)))
+            if len(starts) < n or np.any(np.abs(gaps - interval) > 2):
+                failures.append('%s: rounds at %s ms, not %d every %.1f ms' % (name, ', '.join('%.1f' % t for t in starts), n, interval))
     for path in sorted(glob.glob(os.path.join(folder, 'gun', '**', '*.ogg'), recursive=True)):
         x, _ = read(path)
         p = peak_db(x)

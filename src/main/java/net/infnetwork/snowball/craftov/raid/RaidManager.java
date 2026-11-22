@@ -15,6 +15,7 @@ import net.infnetwork.snowball.craftov.loot.ContainerType;
 import net.infnetwork.snowball.craftov.map.ExtractType;
 import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.map.WorldService;
+import net.infnetwork.snowball.craftov.profile.MailService;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -438,6 +439,7 @@ public final class RaidManager implements Listener {
         // Saved together with the fees: whatever happens to the server from here on, the raid can
         // be undone to exactly this (voidRaid), and nothing is charged that would not come back.
         profile.deployment = deployment(raid, player, profile, rp, entryFee, premium);
+        rp.deployment = profile.deployment;
         profile.activeRaid = raid.id;
         profile.statInRaid("raids", 1);
         plugin.profiles().saveNow(player.getUniqueId());
@@ -774,10 +776,10 @@ public final class RaidManager implements Listener {
 
     /**
      * The raid ran out before this player landed (in practice an admin's /cv end during the entry
-     * camera): home with everything they brought, and the entry fee and insurance premium back, as
-     * when the server stops during the flight. That goes for whoever dropped out of the camera too
-     * (DISCONNECTED, still inFlight): they never landed either, and find it all back when they
-     * come back.
+     * camera): home with everything they brought, and the entry fee and insurance premium back
+     * (no compensation letter: that is for a raid the server stops in). That goes for whoever
+     * dropped out of the camera too (DISCONNECTED, still inFlight): they never landed either, and
+     * find it all back when they come back.
      */
     private void callOff(Raid raid, RaidPlayer rp) {
         rp.inFlight = false;
@@ -1839,29 +1841,46 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Plugin shutdown: the raid is voided and everybody in it goes home with what they carry (no
-     * losses, no rewards). Whoever was still flying in never set foot in it and also gets the entry
-     * fee and insurance premium back. Each player and each raid is handled on its own, so one
-     * failure cannot leave the others in a raid that no longer exists.
+     * Plugin shutdown. Whoever is still in a raid (alive, downed, flying in, or disconnected inside
+     * the reconnect window) has that raid voided ({@link #voidRaid}): back to the gear and secure
+     * container they went in with, the fees refunded and a letter with the compensation, and an
+     * escort contract they head is called off. Whoever already died or got out is settled as it
+     * was. Each player and each raid is handled on its own, so one failure cannot leave the others
+     * in a raid that no longer exists; a player whose void fails is voided on their next login
+     * instead, the same way (their profile still holds the deployment record).
      */
     public void shutdown() {
         for (Raid raid : new ArrayList<>(raids.values())) {
             // A loading raid has not taken anything from its squads yet: they are still in the lobby.
-            boolean deployed = raid.state != Raid.State.LOADING;
-            for (RaidPlayer rp : raid.players.values()) {
+            List<RaidPlayer> voided = new ArrayList<>();
+            if (raid.state != Raid.State.LOADING) {
+                for (RaidPlayer rp : raid.players.values()) {
+                    if (rp.state == RaidPlayer.State.DEPLOYING || rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
+                        voided.add(rp);
+                    }
+                }
+            }
+            // Decided before anything is undone, so their gear can never also be paid out by the
+            // insurance below, whatever fails in between.
+            Set<UUID> owners = new java.util.HashSet<>();
+            voided.forEach(rp -> owners.add(rp.uuid));
+            List<ItemStack> carried = new ArrayList<>();
+            for (RaidPlayer rp : voided) {
                 try {
-                    sendHome(raid, rp, deployed);
+                    carried.addAll(leftBehind(rp));
+                    voidOnStop(raid, rp);
                 } catch (RuntimeException ex) {
-                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not send " + rp.name + " home from raid " + raid.id, ex);
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not void raid " + raid.id + " for " + rp.name
+                            + "; it is voided when they next log in", ex);
                 }
             }
             raid.state = Raid.State.CLOSED;
             try {
-                // As when a raid closes: insured gear still on bodies, in containers or on the ground
-                // goes back to its owners. The world is deleted below and nothing would be left to
-                // settle after the restart. On its own, so a failing settlement cannot keep the world
-                // and a failing teardown cannot cost the payouts.
-                plugin.insurance().settle(raid);
+                // As when a raid closes: the insured gear of those who died, still on bodies, in
+                // containers or on the ground, goes back to its owners. The world is deleted below
+                // and nothing would be left to settle after the restart. On its own, so a failing
+                // settlement cannot keep the world and a failing teardown cannot cost the payouts.
+                plugin.insurance().settle(raid, owners, carried);
             } catch (RuntimeException ex) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not settle insurance for raid " + raid.id, ex);
             }
@@ -1886,29 +1905,188 @@ public final class RaidManager implements Listener {
         byWorld.clear();
     }
 
-    private void sendHome(Raid raid, RaidPlayer rp, boolean deployed) {
-        Player player = Bukkit.getPlayer(rp.uuid);
-        boolean flyingIn = deployed && rp.state == RaidPlayer.State.DEPLOYING;
-        if ((rp.active() || flyingIn) && player != null) {
-            plugin.weapons().reset(player);
-            plugin.downed().clear(player);
-            Profile profile = plugin.profiles().get(player);
-            profile.secure = new ArrayList<>(rp.secure);
-            profile.leaveRaid();
-            if (flyingIn) {
-                profile.money += rp.fees;
-            }
-            plugin.lobby().enterLobbyKeepInventory(player);
-            plugin.lobby().captureLoadout(player);
-            Text.send(player, flyingIn && rp.fees > 0
-                    ? "<#FFC23D>服务器维护：行动在入场前中止，入场费和保险费 ◈" + Text.money(rp.fees) + " 已退还。"
-                    : "<#FFC23D>服务器维护：本次行动已中止，你携带的物资已保留。");
-        } else if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-            // Dropped out during the entry camera: like those still watching it, they never
-            // landed, so the fees come back too. A stand-in's armour goes home as worn as it is.
+    /**
+     * Copies of what a player whose raid is being voided has on them: it stays in the raid, and
+     * someone else's insured gear among it is paid out to its owner. A stand-in's armour counts
+     * as worn as it is.
+     */
+    private List<ItemStack> leftBehind(RaidPlayer rp) {
+        List<ItemStack> out = new ArrayList<>();
+        if (rp.state == RaidPlayer.State.DISCONNECTED) {
             removeStandIn(rp);
-            homeOffline(raid, rp, rp.inFlight ? rp.fees : 0, "server stopped during raid " + raid.id);
+            if (rp.disconnectedInventory != null) {
+                rp.disconnectedInventory.values().forEach(stack -> out.add(stack.clone()));
+            }
+            return out;
         }
+        Player player = Bukkit.getPlayer(rp.uuid);
+        if (player != null) {
+            for (int slot = 0; slot <= CarryService.HEAD; slot++) {
+                ItemStack stack = player.getInventory().getItem(slot);
+                if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack)) {
+                    out.add(stack.clone());
+                }
+            }
+            if (!player.getItemOnCursor().isEmpty()) {
+                out.add(player.getItemOnCursor().clone());
+            }
+        }
+        return out;
+    }
+
+    /** Shutdown: voids the raid for one player still in it and, if they are online, sends them home. */
+    private void voidOnStop(Raid raid, RaidPlayer rp) {
+        Player player = rp.state == RaidPlayer.State.DISCONNECTED ? null : Bukkit.getPlayer(rp.uuid);
+        removeStandIn(rp);
+        rp.state = RaidPlayer.State.LEFT;
+        rp.inFlight = false;
+        rp.disconnectedInventory = null;
+        byPlayer.remove(rp.uuid, raid);
+        plugin.escorts().callOff(rp);
+        Profile.Mail letter = voidRaid(rp.uuid, rp.name, rp.deployment, false);
+        if (player == null) {
+            return;
+        }
+        plugin.weapons().reset(player);
+        plugin.downed().clear(player);
+        plugin.match().leaveTeam(player);
+        // What they carried stays in the raid: the lobby puts the loadout they went in with on them.
+        plugin.lobby().enterLobby(player);
+        long refund = rp.deployment == null ? 0 : rp.deployment.entryFee + rp.deployment.premium;
+        Text.send(player, "<#FFC23D>服务器维护：本次行动已作废。<#9AA0A6>出发前的装备和安全箱已退回"
+                + (refund > 0 ? "，入场费和保险费 ◈" + Text.money(refund) + " 已退还" : "")
+                + (letter != null ? "，补偿邮件已发到仓库邮箱。" : "。"));
+    }
+
+    /**
+     * Voids a raid for a player who was still in it when the server stopped ({@link #shutdown}):
+     * the one way a raid is voided. The loadout and secure container go back to how they went in;
+     * the entry fee and insurance premium are refunded; what the raid paid out or counted is taken
+     * back (contract rewards and progress, the experience and level rewards they brought, the raid
+     * in the stats, items it mailed) and bounties collected go back on the heads they came off; and
+     * a letter says so, with raid.void-compensation.money attached. Kills in it never reach the
+     * stats, since only a settled raid adds them. The profile's own record is what is undone, in
+     * one change that also clears it, so a raid is voided once only ({@code known}, the copy kept
+     * with the raid, only describes the change should the profile be unreadable). A profile that
+     * still names a raid but has no record (left by an older build) gets the letter and keeps its
+     * loadout, which a raid never changes. Returns the letter, or null when there was nothing to
+     * void (or it went to the journal of an unreadable profile).
+     */
+    private Profile.@Nullable Mail voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
+        long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
+        Profile.Mail[] sent = new Profile.Mail[1];
+        List<Profile.BountyClaim> claims = new ArrayList<>();
+        String cause = (crash ? "raid lost when the server went down" : "server stopped during the raid") + ", voided for " + name;
+        plugin.profiles().edit(uuid, () -> describeVoid(cause, known, voidLetter(known, compensation, crash)), p -> {
+            Profile.Deployment d = p.deployment;
+            if (p.activeRaid == null && d == null || known != null && d != null && !d.raid.equals(known.raid)) {
+                return; // settled already (or, never expected, another raid's record)
+            }
+            // Everything is worked out before the profile is touched, so it changes all at once.
+            Profile.Mail letter = voidLetter(d, compensation, crash);
+            Map<Integer, ItemRecord> loadout = d == null ? p.loadout : copies(d.loadout);
+            List<ItemRecord> secure = d == null ? p.secure : copies(d.secure);
+            List<Profile.TaskState> tasks = new ArrayList<>();
+            if (d != null) {
+                d.tasks.forEach(task -> tasks.add(task.copy()));
+            }
+            p.loadout = loadout;
+            p.secure = secure;
+            if (d != null) {
+                p.money += d.entryFee + d.premium - d.earned;
+                d.stats.forEach((key, delta) -> {
+                    long now = p.stat(key) - delta;
+                    if (now == 0) {
+                        p.stats.remove(key); // as if the raid had never been counted
+                    } else {
+                        p.stats.put(key, now);
+                    }
+                });
+                p.taskDay = d.taskDay;
+                p.tasks = tasks;
+                p.level = d.level;
+                p.xp = d.xp;
+                if (java.util.Objects.equals(p.seasonId, d.seasonId)) {
+                    p.seasonXp = d.seasonXp;
+                }
+                for (ItemRecord mailed : d.mailed) {
+                    String json = ProfileService.json(mailed);
+                    for (int i = 0; i < p.mailbox.size(); i++) {
+                        if (ProfileService.json(p.mailbox.get(i)).equals(json)) {
+                            p.mailbox.remove(i);
+                            break;
+                        }
+                    }
+                }
+                claims.addAll(d.bounties);
+            }
+            p.leaveRaid();
+            MailService.deliver(p, letter);
+            sent[0] = letter;
+        });
+        if (sent[0] == null) {
+            return null;
+        }
+        plugin.profiles().saveNow(uuid);
+        for (Profile.BountyClaim claim : claims) {
+            // The kill does not count: what it collected goes back on the victim's head.
+            plugin.profiles().edit(claim.victim, () -> "bounty collected by " + name + " in a raid that was voided goes back: bounty +"
+                    + claim.placed + (claim.house ? ", houseBountyDay = " + claim.dayBefore + " if it is " + claim.day : ""), p -> {
+                p.bounty += claim.placed;
+                if (claim.house && p.houseBountyDay == claim.day) {
+                    p.houseBountyDay = claim.dayBefore;
+                }
+            });
+        }
+        return sent[0];
+    }
+
+    /** The voided raid's change to the profile in the journal's terms, for a profile that cannot be read. */
+    private static String describeVoid(String cause, Profile.@Nullable Deployment d, Profile.Mail letter) {
+        StringBuilder sb = new StringBuilder(cause).append(": ");
+        if (d != null) {
+            long money = d.entryFee + d.premium - d.earned;
+            sb.append("loadout = ").append(ProfileService.json(d.loadout))
+                    .append(", secure = ").append(ProfileService.json(d.secure))
+                    .append(", money ").append(money >= 0 ? "+" : "").append(money);
+            d.stats.forEach((key, delta) -> sb.append(", stats.").append(key).append(' ').append(-delta >= 0 ? "+" : "").append(-delta));
+            sb.append(", taskDay = ").append(d.taskDay).append(", tasks = ").append(ProfileService.json(d.tasks))
+                    .append(", level = ").append(d.level).append(", xp = ").append(d.xp)
+                    .append(", seasonXp = ").append(d.seasonXp).append(" (if seasonId is still \"").append(d.seasonId).append("\")");
+            if (!d.mailed.isEmpty()) {
+                sb.append(", remove from mailbox ").append(ProfileService.json(d.mailed));
+            }
+            sb.append(", ");
+        }
+        return sb.append("activeRaid = null, deployment = null, add to mail ").append(ProfileService.json(letter)).toString();
+    }
+
+    /** The letter that tells a player their raid was voided, with the compensation attached. */
+    private static Profile.Mail voidLetter(Profile.@Nullable Deployment d, long compensation, boolean crash) {
+        StringBuilder body = new StringBuilder(crash ? "服务器意外中断时" : "服务器维护时");
+        body.append(d == null ? "你还在行动中" : "你还在「" + d.map + "」（" + d.tier + "）的行动中").append("，这局行动已作废。\n")
+                .append("出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
+        if (d != null && d.entryFee + d.premium > 0) {
+            body.append("\n已退还").append(d.entryFee > 0 ? "入场费 ◈" + Text.money(d.entryFee) : "")
+                    .append(d.entryFee > 0 && d.premium > 0 ? "、" : "").append(d.premium > 0 ? "保险费 ◈" + Text.money(d.premium) : "")
+                    .append("，已直接到账。");
+        }
+        if (compensation > 0) {
+            body.append("\n附件是 ◈").append(Text.money(compensation)).append(" 补偿，领取后到账。");
+        }
+        return MailService.letter("服务器维护补偿", body.toString(), compensation, List.of());
+    }
+
+    private static Map<Integer, ItemRecord> copies(Map<Integer, ItemRecord> records) {
+        Map<Integer, ItemRecord> out = new HashMap<>();
+        records.forEach((slot, record) -> out.put(slot, record.copy()));
+        return out;
+    }
+
+    private static List<ItemRecord> copies(List<ItemRecord> records) {
+        List<ItemRecord> out = new ArrayList<>();
+        records.forEach(record -> out.add(record.copy()));
+        return out;
     }
 
     /**

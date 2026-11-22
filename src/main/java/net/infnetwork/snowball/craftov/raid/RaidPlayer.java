@@ -46,6 +46,12 @@ public final class RaidPlayer {
     public @Nullable Map<String, Long> carriedOut;
     /** Entry fee and insurance premium paid on deploy, handed back if the raid is called off before landing. */
     public long fees;
+    /**
+     * The record saved with the deploy (Profile.deployment; the same object while the player is
+     * online). A server stop voids the raid with it, and describes the change from it should the
+     * profile not be readable then.
+     */
+    public net.infnetwork.snowball.craftov.profile.Profile.@Nullable Deployment deployment;
     public long startTick;
     public List<ItemRecord> secure = new ArrayList<>();
     public @Nullable String extracting;

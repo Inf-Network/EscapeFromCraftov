@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,8 @@ import java.util.UUID;
  * in bodies, containers or on the ground when the raid closes go back to their owner's mailbox,
  * as they were insured: rigs and backpacks come back empty, and guns with only the sight,
  * attachments and rounds they had at deploy. What was fitted or packed in the raid stays there.
+ * A player whose raid the server stop voided gets their gear back as it went in, and nothing of
+ * theirs is paid out on top.
  */
 public final class InsuranceService {
 
@@ -146,15 +149,25 @@ public final class InsuranceService {
     }
 
     /**
-     * Raid closing (or the server stopping): insured items left behind go home, also when they are
-     * packed inside a rig or backpack lying around.
+     * Raid closing: insured items left behind go home, also when they are packed inside a rig or
+     * backpack lying around.
      */
     public void settle(Raid raid) {
+        settle(raid, Set.of(), List.of());
+    }
+
+    /**
+     * Raid closing, or the server stopping with players still in it. Those players' raid is void
+     * ({@code voided}): their gear goes home as it went in, so nothing of theirs is paid out here
+     * as well, wherever it lies. What they had on them ({@code carried}, copies) stays in the raid
+     * like anything lying around, and someone else's insured gear among it goes home to its owner.
+     */
+    public void settle(Raid raid, Set<UUID> voided, List<ItemStack> carried) {
         Map<UUID, List<ItemRecord>> returns = new HashMap<>();
         for (LootContainer container : raid.containers.values()) {
             for (int slot = 0; slot < container.size(); slot++) {
                 ItemStack stack = container.get(slot);
-                ItemStack left = claim(raid, stack, returns);
+                ItemStack left = claim(raid, stack, returns, voided);
                 if (left != stack) {
                     container.set(slot, left);
                 }
@@ -162,12 +175,15 @@ public final class InsuranceService {
         }
         for (Item item : raid.world.getEntitiesByClass(Item.class)) {
             ItemStack stack = item.getItemStack();
-            ItemStack left = claim(raid, stack, returns);
+            ItemStack left = claim(raid, stack, returns, voided);
             if (left == null) {
                 item.remove();
             } else if (left != stack) {
                 item.setItemStack(left);
             }
+        }
+        for (ItemStack stack : carried) {
+            claim(raid, stack, returns, voided);
         }
         returns.forEach((owner, records) -> {
             plugin.profiles().edit(owner, () -> "insurance claim from raid " + raid.id + ": add to mailbox "
@@ -188,15 +204,15 @@ public final class InsuranceService {
      * rig or backpack (which has no stored form) is searched too, and what stays behind keeps its
      * armory items and marks.
      */
-    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns) {
+    private @Nullable ItemStack claim(Raid raid, @Nullable ItemStack stack, Map<UUID, List<ItemRecord>> returns, Set<UUID> voided) {
         if (stack == null || stack.isEmpty()) {
             return stack;
         }
         ItemRecord record = plugin.items().packRecord(stack);
-        if (record == null || !insuredIn(raid, record)) {
+        if (record == null || !insuredIn(raid, record, voided)) {
             return stack;
         }
-        ItemRecord left = claim(raid, record, returns);
+        ItemRecord left = claim(raid, record, returns, voided);
         if (left == null) {
             return null;
         }
@@ -205,14 +221,14 @@ public final class InsuranceService {
     }
 
     /**
-     * Record form of {@link #claim(Raid, ItemStack, Map)}: packed contents first (each insured item
-     * in there goes to its own owner), then the record itself, cut back to what was insured.
+     * Record form of {@link #claim(Raid, ItemStack, Map, Set)}: packed contents first (each insured
+     * item in there goes to its own owner), then the record itself, cut back to what was insured.
      */
-    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns) {
+    private @Nullable ItemRecord claim(Raid raid, ItemRecord record, Map<UUID, List<ItemRecord>> returns, Set<UUID> voided) {
         if (record.contents != null) {
-            record.contents.removeIf(child -> claim(raid, child, returns) == null);
+            record.contents.removeIf(child -> claim(raid, child, returns, voided) == null);
         }
-        UUID owner = owner(raid, record.insured);
+        UUID owner = owner(raid, record.insured, voided);
         if (owner == null || record.isTest()) {
             return record; // not insured here; an armory item never leaves its raid, mark or not
         }
@@ -222,13 +238,13 @@ public final class InsuranceService {
         return null;
     }
 
-    private static boolean insuredIn(Raid raid, ItemRecord record) {
-        if (owner(raid, record.insured) != null) {
+    private static boolean insuredIn(Raid raid, ItemRecord record, Set<UUID> voided) {
+        if (owner(raid, record.insured, voided) != null) {
             return true;
         }
         if (record.contents != null) {
             for (ItemRecord child : record.contents) {
-                if (insuredIn(raid, child)) {
+                if (insuredIn(raid, child, voided)) {
                     return true;
                 }
             }
@@ -236,13 +252,17 @@ public final class InsuranceService {
         return false;
     }
 
-    /** The owner an insurance mark names for this raid, or null (no mark, another raid, garbage). */
-    private static @Nullable UUID owner(Raid raid, @Nullable String mark) {
+    /**
+     * The owner an insurance mark names for this raid, or null (no mark, another raid, garbage, or
+     * an owner whose raid was void).
+     */
+    private static @Nullable UUID owner(Raid raid, @Nullable String mark, Set<UUID> voided) {
         if (mark == null || !mark.endsWith(":" + raid.key) || mark.indexOf(':') <= 0) {
             return null;
         }
         try {
-            return UUID.fromString(mark.substring(0, mark.indexOf(':')));
+            UUID owner = UUID.fromString(mark.substring(0, mark.indexOf(':')));
+            return voided.contains(owner) ? null : owner;
         } catch (IllegalArgumentException ex) {
             return null;
         }

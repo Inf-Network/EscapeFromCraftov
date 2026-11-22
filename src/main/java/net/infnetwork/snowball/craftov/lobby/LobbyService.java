@@ -238,14 +238,14 @@ public final class LobbyService implements Listener {
 
     // ------------------------------------------------------------------ player flow
 
-    /** Returns to the lobby with the items the player currently carries (extraction, voided raid). */
+    /** Returns to the lobby with the items the player currently carries (extraction, called off, out of the raid world). */
     public void enterLobbyKeepInventory(Player player) {
         plugin.weapons().flush(player);
         // The cursor item comes home too: back into the inventory, or the mailbox. An armory item on
         // it is left there, emptied of the player's own items, for stripTestItems to take.
         plugin.carry().reclaimCursorHome(player);
         int[] stripped = stripTestItems(player);
-        // Whatever comes home from a raid (extracted, voided, server stop) is no longer insured.
+        // Whatever comes home from a raid (extracted, called off, out of the raid world) is no longer insured.
         plugin.insurance().strip(player);
         Profile profile = plugin.profiles().get(player);
         profile.loadout = plugin.carry().snapshot(player);

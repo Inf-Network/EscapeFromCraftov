@@ -279,7 +279,7 @@ public final class CarryService {
     }
 
     /**
-     * Settles the cursor on the way home from a raid (extraction, voided raid, server stop): back
+     * Settles the cursor on the way home from a raid (extraction, leaving the raid world): back
      * into the carry cells, or straight to the stash mailbox when it does not fit, since give's own
      * overflow would drop it in the raid world being left. A proving-ground armory item stays on
      * the cursor for {@link net.infnetwork.snowball.craftov.lobby.LobbyService#stripTestItems} to

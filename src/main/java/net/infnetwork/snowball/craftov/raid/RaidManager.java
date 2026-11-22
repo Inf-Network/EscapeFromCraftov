@@ -197,16 +197,18 @@ public final class RaidManager implements Listener {
     /**
      * {@code attacker} hit {@code victim} (or had the shot blocked: {@code hit} is null then). A
      * raid player on either side is in combat from now on; the victim also remembers the hit, so
-     * leaving the game right after credits whoever made it. Hits between squadmates that do no
-     * damage (a grenade near a squadmate without friendly fire) count for nothing.
+     * leaving the game right after credits whoever made it. A hit on a stand-in counts for its
+     * player, so coming back into the fight and leaving again at once is death like any other
+     * leaving mid-fight. Hits between squadmates that do no damage (a grenade near a squadmate
+     * without friendly fire) count for nothing.
      */
     public void onHostileHit(LivingEntity victim, LivingEntity attacker, DamageService.@Nullable LastHit hit) {
         if (!canDamage(attacker, victim)) {
             return;
         }
         long now = Bukkit.getCurrentTick();
-        RaidPlayer rv = victim instanceof Player v ? session(v) : null;
-        if (rv != null && rv.active()) {
+        RaidPlayer rv = victim instanceof Player v ? session(v) : standInOwner(victim);
+        if (rv != null && (rv.active() || rv.state == RaidPlayer.State.DISCONNECTED)) {
             rv.lastCombatTick = now;
             if (hit != null) {
                 rv.lastHostile = hit;

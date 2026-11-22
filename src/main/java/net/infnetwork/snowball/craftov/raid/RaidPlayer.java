@@ -58,13 +58,15 @@ public final class RaidPlayer {
      */
     public long aiGraceUntil;
     /**
-     * Tick of the last hit this player took from, or dealt to, another player or a soldier (-1:
-     * none yet). Leaving the game within raid.combat-logout-seconds of it counts as death.
+     * Tick of the last hit this player (or their stand-in) took from, or dealt to, another player
+     * or a soldier (-1: none yet). Leaving the game within raid.combat-logout-seconds of it counts
+     * as death.
      */
     public long lastCombatTick = -1;
     /**
-     * The last hit another player or a soldier dealt this player. Kept apart from DamageService's
-     * last hit, which bleeding overwrites every 1.5 s, so leaving mid-fight credits the attacker.
+     * The last hit another player or a soldier dealt this player or their stand-in. Kept apart
+     * from DamageService's last hit, which bleeding overwrites every 1.5 s, so leaving mid-fight
+     * credits the attacker.
      */
     public DamageService.@Nullable LastHit lastHostile;
     public @Nullable Location lastLocation;

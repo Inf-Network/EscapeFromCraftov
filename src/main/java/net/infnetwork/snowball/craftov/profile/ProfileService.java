@@ -28,11 +28,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
  * JSON-file profile storage. Profiles of online players stay cached; offline profiles are loaded
- * on demand (market payouts, escort settlements) and written straight back.
+ * on demand (market payouts, escort settlements) and written straight back, and stay in memory
+ * until that write has landed so the next change builds on this one.
  *
  * <p>Writes run on one IO thread, so a profile loaded again before its last write has reached
  * disk is taken from that write's copy, not from the older file (see {@link #queued}).
@@ -54,13 +56,27 @@ public final class ProfileService {
      * write of that stale copy would land last and undo the first change.
      */
     private final Map<UUID, Queued> queued = new ConcurrentHashMap<>();
+    /**
+     * Offline profiles changed through {@link #edit} or just {@link #unload unloaded}, used instead
+     * of the file while a write queued for them has not reached the disk. Without this, back-to-back
+     * edits (several market listings of one offline seller returned or sold in the same tick, or a
+     * sale right as the seller logs off) each re-read a file the previous write had not replaced
+     * yet, and all but one of the changes were lost. Once the writes have landed the file is read
+     * again, so a file edited by hand while its owner is offline still counts. Main thread only.
+     */
+    private final Map<UUID, Pending> offline = new HashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
         return t;
     });
 
-    public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills) {
+    /** An offline profile and the number of its writes still queued on the io thread. */
+    private record Pending(Profile profile, AtomicInteger writes) {
+    }
+
+    public record Summary(UUID uuid, String name, int rankPoints, int level, long extracted, long kills, long money,
+                          long marketSales, long marketIncome) {
     }
 
     /** One write handed to the IO thread. Compared by identity, so a later write replaces it. */
@@ -98,7 +114,10 @@ public final class ProfileService {
     public Profile get(UUID uuid, String name) {
         Profile profile = cache.get(uuid);
         if (profile == null) {
-            profile = load(uuid);
+            // A profile edited while offline may still be on its way to the disk: take that copy.
+            Pending pending = inFlight(uuid);
+            offline.remove(uuid);
+            profile = pending != null ? pending.profile() : load(uuid);
             if (profile == null) {
                 profile = new Profile(uuid, name);
             }
@@ -114,6 +133,36 @@ public final class ProfileService {
         return cache.get(uuid);
     }
 
+    /**
+     * Reads a profile without caching it: the live one when its owner is online, otherwise a copy
+     * from disk that must not be changed (use {@link #edit} for that).
+     */
+    public @Nullable Profile peek(UUID uuid) {
+        Profile profile = cache.get(uuid);
+        if (profile != null) {
+            return profile;
+        }
+        Pending pending = inFlight(uuid);
+        return pending != null ? pending.profile() : load(uuid);
+    }
+
+    /**
+     * Account level without reading the disk: the live profile when its owner is online or was
+     * just edited, otherwise the last saved summary; 0 for an unknown account.
+     */
+    public int level(UUID uuid) {
+        Profile profile = cache.get(uuid);
+        if (profile != null) {
+            return profile.level;
+        }
+        Pending pending = inFlight(uuid);
+        if (pending != null) {
+            return pending.profile().level;
+        }
+        Summary summary = index.get(uuid);
+        return summary == null ? 0 : summary.level();
+    }
+
     /** Applies a mutation to a profile whether or not its owner is online. */
     public void edit(UUID uuid, Consumer<Profile> mutation) {
         Profile profile = cache.get(uuid);
@@ -122,12 +171,30 @@ public final class ProfileService {
             markDirty(uuid);
             return;
         }
-        Profile offline = load(uuid);
-        if (offline == null) {
-            return;
+        Pending pending = inFlight(uuid);
+        if (pending == null) {
+            Profile loaded = load(uuid);
+            if (loaded == null) {
+                return;
+            }
+            pending = new Pending(loaded, new AtomicInteger());
+            offline.put(uuid, pending);
         }
-        mutation.accept(offline);
-        writeAsync(offline);
+        mutation.accept(pending.profile());
+        writeAsync(pending.profile(), pending.writes());
+    }
+
+    /**
+     * The in-memory copy of an offline profile while a write of it is still queued, else null.
+     * Only this thread queues writes, so a count of 0 means the file holds that copy.
+     */
+    private @Nullable Pending inFlight(UUID uuid) {
+        Pending pending = offline.get(uuid);
+        if (pending == null || pending.writes().get() > 0) {
+            return pending;
+        }
+        offline.remove(uuid);
+        return null;
     }
 
     public void markDirty(UUID uuid) {
@@ -138,7 +205,11 @@ public final class ProfileService {
         Profile profile = cache.remove(uuid);
         dirty.remove(uuid);
         if (profile != null) {
-            writeAsync(profile);
+            // Kept like an offline edit until the write lands: a payout or a returned listing in
+            // the same moment must build on this copy, not on the older file still on disk.
+            Pending pending = new Pending(profile, new AtomicInteger());
+            offline.put(uuid, pending);
+            writeAsync(profile, pending.writes());
         }
     }
 
@@ -158,24 +229,40 @@ public final class ProfileService {
             }
         }
         dirty.clear();
+        // Only this thread queues writes, so a count of 0 means the file holds the latest copy.
+        offline.values().removeIf(pending -> pending.writes().get() == 0);
     }
 
-    public void shutdown() {
-        // Let the writes already queued finish first: one of them still running after the final
-        // save below would put an older copy of the profile back on disk (or race it for the
-        // same temp file).
+    /**
+     * Stops taking writes and waits up to 10 s for the queued ones to land. Runs before the final
+     * save: an older copy still in the queue would otherwise land on top of it.
+     */
+    public void awaitWrites() {
         io.shutdown();
         try {
             if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
-                plugin.getLogger().warning("Profile writes still pending at shutdown; saving the current copies over them");
+                plugin.getLogger().warning("Queued profile writes did not finish in time.");
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Final save of every cached profile, after {@link #awaitWrites}. */
+    public void shutdown() {
+        if (!io.isShutdown()) {
+            awaitWrites();
+        }
         for (Profile profile : cache.values()) {
-            writeSync(GSON.toJson(profile), profile.uuid);
+            // One profile that cannot be written must not cost the others theirs.
+            try {
+                writeSync(GSON.toJson(profile), profile.uuid);
+            } catch (RuntimeException ex) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not save profile " + profile.uuid, ex);
+            }
         }
         dirty.clear();
+        offline.clear();
     }
 
     public List<Summary> leaderboard(Comparator<Summary> order, int limit) {
@@ -242,6 +329,7 @@ public final class ProfileService {
         if (p.stats == null) p.stats = new HashMap<>();
         if (p.presets == null) p.presets = new ArrayList<>();
         if (p.reports == null) p.reports = new ArrayList<>();
+        if (p.ips == null) p.ips = new ArrayList<>();
         if (p.unlockedOperators == null || p.unlockedOperators.isEmpty()) {
             p.unlockedOperators = new java.util.LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
         }
@@ -250,15 +338,29 @@ public final class ProfileService {
     }
 
     private void writeAsync(Profile profile) {
+        writeAsync(profile, null);
+    }
+
+    /** Queues a snapshot of {@code profile}; {@code inFlight} counts it until it is on disk. */
+    private void writeAsync(Profile profile, @Nullable AtomicInteger inFlight) {
         String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
         index.put(uuid, summarize(profile));
         Queued entry = new Queued(profile);
         queued.put(uuid, entry);
+        if (inFlight != null) {
+            inFlight.incrementAndGet();
+        }
         io.execute(() -> {
-            writeSync(json, uuid);
-            // Only if no newer write of the same profile was queued meanwhile.
-            queued.remove(uuid, entry);
+            try {
+                writeSync(json, uuid);
+            } finally {
+                if (inFlight != null) {
+                    inFlight.decrementAndGet();
+                }
+                // Only if no newer write of the same profile was queued meanwhile.
+                queued.remove(uuid, entry);
+            }
         });
     }
 
@@ -278,6 +380,7 @@ public final class ProfileService {
     }
 
     private static Summary summarize(Profile p) {
-        return new Summary(p.uuid, p.name, p.rankPoints, p.level, p.stat("extracted_value"), p.stat("kills"));
+        return new Summary(p.uuid, p.name, p.rankPoints, p.level, p.stat("extracted_value"), p.stat("kills"), p.money,
+                p.stat("market_sales"), p.stat("market_income"));
     }
 }

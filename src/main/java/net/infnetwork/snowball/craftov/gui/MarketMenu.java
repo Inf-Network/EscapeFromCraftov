@@ -72,7 +72,10 @@ final class MarketMenu extends Menu {
             List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
             lore.add(Text.mm("<#8A8F98>最低单价 <#F2C94C>◈" + Text.money(offer.lowest()) + " <#8A8F98>· 在售 " + offer.count() + " 件"));
-            lore.add(Text.mm("<#8A8F98>参考价 ◈" + Text.money(Math.round(offer.reference()))));
+            lore.add(Text.mm("<#8A8F98>参考价 ◈" + Text.money(Math.round(offer.anchor()))));
+            if (offer.traded()) {
+                lore.add(Text.mm("<#8A8F98>玩家成交均价 ◈" + Text.money(Math.round(offer.reference()))));
+            }
             lore.add(Text.mm("<#5BD16B>点击查看在售列表"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot++, display, e -> {
@@ -100,7 +103,10 @@ final class MarketMenu extends Menu {
             lore.add(Component.empty());
             lore.add(Text.mm("<#8A8F98>卖家 <white>" + Text.escape(listing.sellerName)));
             lore.add(Text.mm("<#8A8F98>价格 <#F2C94C>◈" + Text.money(listing.price)));
-            lore.add(Text.mm("<#5BD16B>点击购买（存入仓库）"));
+            int level = plugin.market().minBuyLevel();
+            lore.add(Text.mm(plugin.profiles().get(viewer).level < level ? "<#FF8A80>需要账号等级 " + level + " 才能购买其他玩家的商品"
+                    : !plugin.market().sellerCanTrade(listing.seller) ? "<#FF8A80>卖家账号等级不足 " + level + "，只卖给系统买家"
+                    : "<#5BD16B>点击购买（存入仓库）"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             String id = listing.id;
             button(slot++, display, e -> {

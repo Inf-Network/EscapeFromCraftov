@@ -152,6 +152,44 @@ public final class EscortService {
         Text.send(client, "<#9AA0A6>委托已取消，赏金已退回。");
     }
 
+    /**
+     * A player dropped out of a raid before it deployed (they disconnected while the map loaded).
+     * Without their client the escorts' run does not count: an accepted contract is cancelled and
+     * the reward refunded, otherwise the escorts' deployment would lock it as IN_RAID with no client
+     * left to settle it (an open one has no escorts and simply stays open). A withdrawn escort
+     * leaves the contract and is not paid.
+     */
+    public void onWithdraw(UUID uuid, String name) {
+        Contract c = involving(uuid);
+        if (c == null || c.state == State.IN_RAID) {
+            return;
+        }
+        if (c.client.equals(uuid)) {
+            if (c.state != State.ACCEPTED) {
+                return;
+            }
+            contracts.remove(c.id);
+            // Through the escrow, like a cancel: a plain refund would leave the reward recorded as
+            // held, and reclaim() would hand it back a second time on the client's next join.
+            refund(c);
+            for (UUID escort : c.escorts) {
+                Player p = Bukkit.getPlayer(escort);
+                if (p != null) {
+                    Text.send(p, "<#FFC23D>老板 " + Text.escape(name) + " 在部署前断开连接，护航委托已取消，本局不计护航报酬。");
+                }
+            }
+            return;
+        }
+        c.escorts.remove(uuid);
+        if (c.escorts.isEmpty()) {
+            c.state = State.OPEN;
+        }
+        Player client = Bukkit.getPlayer(c.client);
+        if (client != null) {
+            Text.send(client, "<#FFC23D>护航 " + Text.escape(name) + " 在部署前断开连接，已退出你的护航委托。");
+        }
+    }
+
     /** Called when any raid participant finishes. Only the client's outcome settles a contract. */
     public void settle(Raid raid, RaidPlayer rp, boolean extracted) {
         if (rp.escortContract == null) {

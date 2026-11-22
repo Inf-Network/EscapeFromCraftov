@@ -118,7 +118,7 @@ public final class CraftovPlugin extends JavaPlugin {
         } catch (IOException ex) {
             getLogger().severe("Could not prepare profile storage: " + ex.getMessage());
         }
-        carry = new CarryService(items);
+        carry = new CarryService(this);
         maps = new MapRegistry(new File(getDataFolder(), "maps"), getLogger());
         maps.load();
         worlds = new WorldService(this, maps);
@@ -158,7 +158,7 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this));
+                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this), market);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -225,6 +225,8 @@ public final class CraftovPlugin extends JavaPlugin {
             shutdownStep("market", market::saveSync);
         }
         if (profiles != null) {
+            // Offline edits made while sending everyone home finish landing before the final save.
+            shutdownStep("queued profile writes", profiles::awaitWrites);
             shutdownStep("profiles", profiles::shutdown);
         }
         if (backups != null) {
@@ -326,6 +328,14 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Whether the given player may use the free item catalog (test mode or admin). */
     public boolean canUseCatalog(Player player) {
         return getConfig().getBoolean("test.enabled", false) || player.hasPermission("craftov.admin");
+    }
+
+    /**
+     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
+     * hands out one of everything) need the same access as the catalog.
+     */
+    public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
+        return !map.test() || canUseCatalog(player);
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }

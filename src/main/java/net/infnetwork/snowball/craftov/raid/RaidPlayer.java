@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import org.bukkit.Location;
+import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -17,6 +18,8 @@ public final class RaidPlayer {
     public final UUID uuid;
     public final String name;
     public final int squad;
+    /** Queued for ranked: this player wins or loses rank points. Ranked and casual players share raids. */
+    public final boolean ranked;
     public State state = State.DEPLOYING;
     public int kills;
     public int aiKills;
@@ -31,14 +34,21 @@ public final class RaidPlayer {
     public long protectedUntil;
     public @Nullable Location lastLocation;
     public long disconnectedAt;
-    public @Nullable Map<Integer, ItemRecord> disconnectedInventory;
+    /**
+     * From deployment until the squad's entry camera ends. A player who drops out and comes back
+     * in this window goes back on the camera and lands with the squad.
+     */
+    public boolean inFlight;
+    /** What a disconnected player carried, by slot. Stacks rather than records: they keep insurance marks. */
+    public @Nullable Map<Integer, ItemStack> disconnectedInventory;
     public @Nullable String escortContract;
     public int containersSearched;
 
-    public RaidPlayer(UUID uuid, String name, int squad) {
+    public RaidPlayer(UUID uuid, String name, int squad, boolean ranked) {
         this.uuid = uuid;
         this.name = name;
         this.squad = squad;
+        this.ranked = ranked;
     }
 
     public boolean active() {

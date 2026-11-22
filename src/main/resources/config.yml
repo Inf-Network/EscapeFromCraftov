@@ -54,7 +54,7 @@ free-kit:
 tiers:
   NORMAL:
     name: "常规"
-    color: "#5BD16B"
+    color: "#7FD1AE"
     min-value: 0
     entry-fee: 0
     loot-shift: 0
@@ -66,7 +66,7 @@ tiers:
     xp: 1.0
   CONFIDENTIAL:
     name: "机密"
-    color: "#4FA3FF"
+    color: "#8AB4F8"
     min-value: 60000
     entry-fee: 8000
     loot-shift: 1
@@ -78,7 +78,7 @@ tiers:
     xp: 1.5
   SECRET:
     name: "绝密"
-    color: "#FF4D4D"
+    color: "#E5484D"
     min-value: 250000
     entry-fee: 20000
     loot-shift: 2

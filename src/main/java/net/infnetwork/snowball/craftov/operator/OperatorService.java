@@ -42,11 +42,11 @@ public final class OperatorService implements Listener {
     static {
         OPERATORS.put("vanguard", new OperatorDef("vanguard", "疾风", "突击", "#FF9F43", "战术冲刺", 40,
                 List.of("技能：8 秒内移动速度 +35%，换弹速度 +30%。", "被动：冲刺时更难被敌兵发现。"), "craftov:ui/op_vanguard"));
-        OPERATORS.put("medic", new OperatorDef("medic", "白鸮", "支援", "#5BD16B", "急救脉冲", 60,
+        OPERATORS.put("medic", new OperatorDef("medic", "白鸮", "支援", "#7FD1AE", "急救脉冲", 60,
                 List.of("技能：为自己与 8 格内队友回复 30 生命并止血。", "被动：救援速度 +50%，医疗品效果 +20%。"), "craftov:ui/op_medic"));
-        OPERATORS.put("recon", new OperatorDef("recon", "回声", "侦察", "#4FA3FF", "声呐脉冲", 50,
+        OPERATORS.put("recon", new OperatorDef("recon", "回声", "侦察", "#8AB4F8", "声呐脉冲", 50,
                 List.of("技能：标记 45 格内所有敌人 6 秒（仅小队可见）。", "被动：搜索速度 +20%。"), "craftov:ui/op_recon"));
-        OPERATORS.put("engineer", new OperatorDef("engineer", "铁砧", "工程", "#C8CCD2", "部署掩体", 55,
+        OPERATORS.put("engineer", new OperatorDef("engineer", "铁砧", "工程", "#A4AAB3", "部署掩体", 55,
                 List.of("技能：在面前展开一面持续 15 秒的防弹掩体。", "被动：护甲耐久损耗 -25%。"), "craftov:ui/op_engineer"));
     }
 

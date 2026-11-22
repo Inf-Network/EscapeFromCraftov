@@ -4,6 +4,7 @@ import io.papermc.paper.raytracing.BlockCollisionMode;
 import io.papermc.paper.raytracing.RayTraceTarget;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.BodyPart;
+import net.infnetwork.snowball.craftov.combat.HitboxHistory;
 import net.infnetwork.snowball.craftov.item.Keys;
 import org.bukkit.Color;
 import org.bukkit.FluidCollisionMode;
@@ -76,6 +77,8 @@ public final class Ballistics {
                 && !entity.getPersistentDataContainer().has(Keys.ENTITY_ROLE)
                 && !(entity instanceof Player p && (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || !plugin.raids().canBeShot(p)))
                 && plugin.raids().canDamage(shooter, living);
+        // A player's round meets everyone where that player's screen showed them (HitboxHistory).
+        int rewind = plugin.hitboxes().rewindMillis(shooter);
         Vector from = eye.toVector();
         double travelled = 0;
         double keep = 1.0;
@@ -83,6 +86,8 @@ public final class Ballistics {
         int pen = ammo == null ? 1 : ammo.penetration();
         List<Block> passed = new ArrayList<>(MAX_SEGMENTS - 1);
         Vector end = null;
+        // Where the round stops in the kill replay, which shows everyone where the server had them.
+        Vector replayEnd = null;
         boolean hitAnything = false;
         LivingEntity hitEntity = null;
         for (int segment = 1; end == null; segment++) {
@@ -94,21 +99,21 @@ public final class Ballistics {
             // player walks through (grass, flowers, signs) is ignored, and so are the blocks already passed.
             RayTraceResult result = left <= 0.01 ? null : world.rayTrace(b -> b.start(start).direction(dir).maxDistance(left)
                     .fluidCollisionMode(FluidCollisionMode.NEVER).blockCollisionMode(BlockCollisionMode.OUTLINE)
-                    .blockFilter(block -> !block.isPassable() && !passed.contains(block)).entityFilter(filter)
-                    .targets(RayTraceTarget.ENTITY, RayTraceTarget.BLOCK));
-            if (result == null) {
-                end = from.clone().add(dir.clone().multiply(Math.max(0, Math.min(left, 60 - travelled))));
-                break;
-            }
-            hitAnything = true;
-            Vector at = result.getHitPosition();
-            double distance = travelled + from.distance(at);
-            if (result.getHitEntity() instanceof LivingEntity living) {
+                    .blockFilter(block -> !block.isPassable() && !passed.contains(block))
+                    .targets(RayTraceTarget.BLOCK));
+            double reach = result == null ? left : from.distance(result.getHitPosition());
+            HitboxHistory.Hit hit = plugin.hitboxes().trace(world, from, dir, reach, filter, rewind);
+            if (hit != null) {
+                hitAnything = true;
+                LivingEntity living = hit.entity();
                 hitEntity = living;
-                end = at;
-                Location point = at.toLocation(world);
-                BodyPart part = BodyPart.of(living, at);
-                plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo, distance, weaponName);
+                end = hit.point();
+                replayEnd = hit.body();
+                // The wound, the blood and the hit zone go on the body where it stands now.
+                Location point = hit.body().toLocation(world);
+                BodyPart part = BodyPart.of(living, hit.body());
+                plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
+                        travelled + hit.distance(), weaponName);
                 if (plugin.drones().isDrone(living)) {
                     world.spawnParticle(Particle.ELECTRIC_SPARK, point, 8, 0.1, 0.1, 0.1, 0.3);
                 } else {
@@ -116,6 +121,13 @@ public final class Ballistics {
                 }
                 break;
             }
+            if (result == null) {
+                end = from.clone().add(dir.clone().multiply(Math.max(0, Math.min(left, 60 - travelled))));
+                break;
+            }
+            hitAnything = true;
+            Vector at = result.getHitPosition();
+            double distance = travelled + reach;
             Block block = result.getHitBlock();
             if (block == null) {
                 end = at;
@@ -147,20 +159,21 @@ public final class Ballistics {
             travelled = distance;
             from = at;
         }
+        // The tracer and the fly-by crack end where the shooter saw the round land.
         Location stop = end.toLocation(world);
         if (shooter instanceof Player && plugin.getConfig().getBoolean("debug", false)) {
             // Where each player round landed, for measuring spread and climb against the crosshair.
             plugin.getLogger().info(!hitAnything
-                    ? String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=none through=%d", shooter.getName(),
-                            eye.getX(), eye.getY(), eye.getZ(), passed.size())
-                    : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s",
+                    ? String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=none through=%d rewind=%dms", shooter.getName(),
+                            eye.getX(), eye.getY(), eye.getZ(), passed.size(), rewind)
+                    : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s rewind=%dms",
                             shooter.getName(), eye.getX(), eye.getY(), eye.getZ(), end.getX(), end.getY(), end.getZ(),
-                            passed.size(), keep, hitEntity == null ? "-" : hitEntity.getName()));
+                            passed.size(), keep, hitEntity == null ? "-" : hitEntity.getName(), rewind));
         }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), stop);
         }
-        plugin.replays().shot(shooter, muzzlePoint(shooter, dir), stop, gun);
+        plugin.replays().shot(shooter, muzzlePoint(shooter, dir), replayEnd == null ? stop : replayEnd.toLocation(world), gun);
         plugin.weapons().audio().flyby(shooter, eye, stop, hitEntity, gun);
         return hitEntity;
     }

@@ -148,6 +148,14 @@ ai:
   # (settling over 3 s). Past the gun's effective range it fires one or two rounds at a time.
   aim-error: [0.6, 0.25]
   sniper-aim-error: [0.2, 0.1]
+  # A hit from someone a soldier has not spotted tells it roughly where the shot came from (within
+  # error-meters; 1 + a tenth of the distance close up) but not who. Its awareness of the shooter
+  # jumps by 0.5 (to at most 0.9) and it looks 1.5 times as far for them; for seconds it fires
+  # bursts at that spot, works its way there from cover to cover and calls soldiers within 24
+  # blocks over, then goes to look.
+  threat:
+    seconds: 8
+    error-meters: 5
   # Soldiers notice players gradually. Every look (10 a second) adds rate/10 times how close you are
   # ((1 - distance/sight)^1.5, x3 within 6 blocks straight ahead; sight is 48 blocks, a sniper's 90,
   # x0.55 at night), crouching (x0.5), standing still (x0.7) or sprinting (x1.5), light on you

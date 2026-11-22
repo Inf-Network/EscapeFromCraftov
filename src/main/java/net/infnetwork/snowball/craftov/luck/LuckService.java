@@ -271,7 +271,8 @@ public final class LuckService {
      * 1 or more sets it off.
      */
     public double lossScore(Profile.Luck luck, long now) {
-        long since = Math.max(luck.lossSince, now - Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000));
+        long window = Math.round(cfg().getDouble("luck.compensation.window-hours", 24) * 60 * 60 * 1000);
+        long since = Math.max(luck.lossSince, now - window);
         double score = 0;
         for (Profile.LuckRaid raid : luck.raids) {
             if (raid.time > since) {
@@ -518,8 +519,9 @@ public final class LuckService {
     /**
      * The player's raid is over for them (extracted, dead or missing). It joins their history, uses
      * up a compensated raid or sets off the compensation; a qualifying one pays into the quota and
-     * adds one to the raid count of every jackpot they did not find in it. Hand-outs they did not carry out wait for the raid to close ({@link #closeRaid}).
-     * {@code profile} may be an offline one being edited (missing).
+     * adds one to the raid count of every jackpot they did not find in it. Hand-outs they did not
+     * carry out wait for the raid to close ({@link #closeRaid}). {@code profile} may be an offline
+     * one being edited (missing).
      */
     public void settle(Raid raid, RaidPlayer rp, Profile profile, Outcome outcome) {
         if (!counts(raid)) {

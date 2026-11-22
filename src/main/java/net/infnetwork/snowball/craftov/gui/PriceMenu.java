@@ -22,6 +22,8 @@ final class PriceMenu extends Menu {
     private final long cap;
     /** Most a system buyer pays for this record, 0 when they never buy it (MarketService.virtualPrice). */
     private final long virtual;
+    /** Below market.min-buy-level: only system buyers may take this seller's listings for now. */
+    private final boolean systemOnly;
     private long price;
 
     PriceMenu(CraftovPlugin plugin, Player viewer, int stashIndex, ItemRecord record, StashMenu back) {
@@ -33,7 +35,10 @@ final class PriceMenu extends Menu {
         this.reference = plugin.market().anchorFor(record);
         this.cap = plugin.market().maxPrice(record);
         this.virtual = plugin.market().virtualPrice(record);
-        this.price = reference;
+        this.systemOnly = plugin.profiles().get(viewer).level < plugin.market().minBuyLevel();
+        // A seller only system buyers may buy from starts at a price they pay: the reference is
+        // above it, and confirming the default would list something nobody can buy yet.
+        this.price = systemOnly && virtual > 0 ? Math.min(reference, virtual) : reference;
     }
 
     @Override
@@ -46,6 +51,8 @@ final class PriceMenu extends Menu {
         double chance = plugin.market().virtualChance(record, price);
         String hint = virtual <= 0 ? "<#FF4D4D>系统买家不会收购<#8A8F98>（" + plugin.market().virtualRarityNote() + "<#8A8F98>）"
                 : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>今天系统买家已收满你的这种物品，明天再来"
+                : chance <= 0 && systemOnly ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购；账号等级 "
+                        + plugin.market().minBuyLevel() + " 前其他玩家也不能买，升级前卖不出去"
                 : chance <= 0 ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
                 : chance >= 0.3 ? "<#5BD16B>系统买家很快收购" : chance >= 0.12 ? "<#5BD16B>系统买家较快收购"
                 : "<#FFC23D>系统买家可能要等几分钟";
@@ -55,9 +62,8 @@ final class PriceMenu extends Menu {
         adjust(11, -0.01, "-1%");
         List<String> info = new ArrayList<>(List.of("<#8A8F98>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)",
                 "<#8A8F98>预计 " + hint, "<#8A8F98>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax)));
-        int level = plugin.market().minBuyLevel();
-        if (plugin.profiles().get(viewer).level < level) {
-            info.add("<#FFC23D>账号等级 " + level + " 前只有系统买家会收购");
+        if (systemOnly) {
+            info.add("<#FFC23D>账号等级 " + plugin.market().minBuyLevel() + " 前只有系统买家会收购");
         }
         if (plugin.market().traded(record.id)) {
             info.add("<#8A8F98>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));

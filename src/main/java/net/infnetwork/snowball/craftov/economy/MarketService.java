@@ -458,7 +458,11 @@ public final class MarketService implements Listener {
         Text.send(player, "<#5BD16B>已上架 " + def.coloredName() + " ×" + record.amount + " <#8A8F98>售价 ◈" + Text.money(listing.price)
                 + " · 手续费 ◈" + Text.money(deposit));
         if (profile.level < minBuyLevel()) {
-            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购。");
+            long virtual = virtualPrice(record);
+            // Allowed (the seller may reach the level while it is listed), but said plainly.
+            Text.send(player, "<#FFC23D>账号等级 " + minBuyLevel() + " 前，其他玩家不能购买你的商品，只有系统买家会收购"
+                    + (listing.price > virtual ? "，而这个售价高于系统收购价 ◈" + Text.money(virtual) + "：升到 " + minBuyLevel()
+                    + " 级前不会卖出，可以下架后重新定价。" : "。"));
         }
         return true;
     }

@@ -302,7 +302,13 @@ public final class LobbyService implements Listener {
         int mailed = 0;
         for (ItemRecord record : handBack) {
             ItemStack stack = plugin.items().fromRecord(record);
-            ItemStack left = stack == null ? null : plugin.carry().give(player, stack, false);
+            if (stack == null) {
+                // An id items.yml no longer has cannot be handed back, but its record is kept.
+                plugin.carry().mail(player, record);
+                mailed++;
+                continue;
+            }
+            ItemStack left = plugin.carry().give(player, stack, false);
             if (left != null && plugin.carry().mail(player, left)) {
                 mailed++;
             }

@@ -22,6 +22,8 @@ public enum BodyPart {
     private static final double PRONE_HEAD = 0.25;
     /** Share of a prone body's length that is legs, from the back end. */
     private static final double PRONE_LEGS = 0.35;
+    /** Share of the height of a prone body's head end, from the ground up, that is chest: under the chin. */
+    private static final double PRONE_CHIN = 0.25;
 
     private final String displayName;
     private final String key;
@@ -87,7 +89,7 @@ public enum BodyPart {
      */
     public static BodyPart of(LivingEntity target, Vector point, Vector shot) {
         if (prone(target)) {
-            return ofProne(target, point);
+            return ofProne(target, point, shot);
         }
         HitZone zone = HitZone.of(target, point);
         if (zone == HitZone.HEAD) {
@@ -137,16 +139,25 @@ public enum BodyPart {
 
     /**
      * Classifies a hit on a prone body by where it lands along the body: the front quarter (the
-     * way the body faces) is the head, the back 35% the legs, and the middle the chest (front half)
-     * or stomach, with the outer edges of the top of the body as the arms. The client draws the
-     * crawl along the body yaw, which only turns as far as it must to stay within reach of the head,
-     * so the body yaw is used here, not the view.
+     * way the body faces) is the head end, the back 35% the legs, and the middle the chest (front
+     * half) or stomach, with the outer edges of the top of the body as the arms. The client draws
+     * the crawl along the body yaw, which only turns as far as it must to stay within reach of the
+     * head, so the body yaw is used here, not the view.
      *
-     * <p>Arms are only on the top (or underside) of the box: a round that meets one of its sides
-     * lands right on the edge across the body, so judging arms by width there would make every hit
-     * on a flank an arm; a flank hit is the chest or stomach, and a front or back hit the head or legs.
+     * <p>The head end is not all head: the arms reach forward either side of it and the chest shows
+     * under the chin. Seen from the front, the side of the box the body points at is the whole
+     * silhouette, so while it all counted as head, a downed player who watched the shooter (the body
+     * keeps within 50 degrees of the view) took nearly every hit in the head. Its outer edges across
+     * the line of fire are the arms, as on an upright torso seen from the front ({@link #armEdge}),
+     * and its lowest quarter is the chest; on top, its outer edges are the arms. That leaves about
+     * 40% of the hits on a player facing the shooter square-on in the head, and fewer from an angle.
+     *
+     * <p>On the middle of the body, arms are only on the top (or underside) of the box: a round that
+     * meets one of its sides lands right on the edge across the body, so judging arms by width there
+     * would make every hit on a flank an arm; a flank hit is the chest or stomach, and a back hit the
+     * legs.
      */
-    private static BodyPart ofProne(LivingEntity target, Vector point) {
+    private static BodyPart ofProne(LivingEntity target, Vector point, Vector shot) {
         BoundingBox box = target.getBoundingBox();
         double dx = point.getX() - box.getCenterX();
         double dz = point.getZ() - box.getCenterZ();
@@ -161,16 +172,43 @@ public enum BodyPart {
         // 0 at the feet end, 1 at the head end.
         double along = Math.max(0, Math.min(1, ((dx * faceX + dz * faceZ) / Math.max(1e-6, halfLength) + 1) / 2));
         double side = dx * rightX + dz * rightZ;
+        boolean onTop = point.getY() >= box.getMaxY() - 0.01 || point.getY() <= box.getMinY() + 0.01;
+        boolean topArm = onTop && Math.abs(side) > halfWidth * (1.0 - ARM_BAND);
         if (along >= 1.0 - PRONE_HEAD) {
-            return HEAD;
+            if (topArm || (!onTop && armEdge(box, dx, dz, faceX, faceZ, shot))) {
+                return side >= 0 ? RIGHT_ARM : LEFT_ARM;
+            }
+            double rel = (point.getY() - box.getMinY()) / Math.max(0.1, box.getHeight());
+            return !onTop && rel < PRONE_CHIN ? CHEST : HEAD;
         }
         if (along < PRONE_LEGS) {
             return side >= 0 ? RIGHT_LEG : LEFT_LEG;
         }
-        boolean onTop = point.getY() >= box.getMaxY() - 0.01 || point.getY() <= box.getMinY() + 0.01;
-        if (onTop && Math.abs(side) > halfWidth * (1.0 - ARM_BAND)) {
+        if (topArm) {
             return side >= 0 ? RIGHT_ARM : LEFT_ARM;
         }
         return along >= (PRONE_LEGS + 1.0 - PRONE_HEAD) / 2.0 ? CHEST : STOMACH;
+    }
+
+    /**
+     * True if a hit on a side of a prone body's box lies in the arm band at the outer edges of the
+     * silhouette across the line of fire. The band is as wide as on an upright torso when the round
+     * comes straight at the head end and narrows to nothing as it comes from the side; from the side
+     * or behind there is none, which also keeps a hit on a flank, right on the edge of the
+     * silhouette, from counting as an arm.
+     */
+    private static boolean armEdge(BoundingBox box, double dx, double dz, double faceX, double faceZ, Vector shot) {
+        double length = Math.hypot(shot.getX(), shot.getZ());
+        if (length <= 1e-6) {
+            return false;
+        }
+        double sx = shot.getX() / length;
+        double sz = shot.getZ() / length;
+        // 1 when the round flies straight at the head end, 0 side-on or from behind.
+        double front = Math.max(0, -(sx * faceX + sz * faceZ));
+        // Offset across the line of fire, and half the width of the box as seen along it.
+        double across = dx * -sz + dz * sx;
+        double halfSeen = box.getWidthX() / 2.0 * Math.abs(sz) + box.getWidthZ() / 2.0 * Math.abs(sx);
+        return front > 0 && Math.abs(across) > halfSeen * (1.0 - ARM_BAND * front);
     }
 }

@@ -12,8 +12,9 @@
 //      stands up with it.
 // solo: two solo bots (different squads), S shoots T with single K47 PS rounds:
 //   5. T in a one-block gap (crawling, server pose SWIMMING), no armour, healed before each shot:
-//      side-on to S most hits are chest, stomach or arm (not head), feet towards S most are legs,
-//      head towards S most are head;
+//      side-on to S most hits are chest, stomach or arm (not head), feet towards S most are legs;
+//      head towards S, 15 shots aimed over a 5 x 3 grid on the side of the box facing S: the outer
+//      columns are arms, the bottom row chest and the rest head, well under all of them head;
 //   6. T gets an injector and takes a lethal hit: it is downed although solo, a body shot takes about
 //      21.6 s off its bleed-out (36 x 0.6; a headshot took 43), and it stands up with the injector;
 //   7. T, without an injector now, is shot dead: it dies at once (no knock-down), and its damage log
@@ -349,18 +350,18 @@ async function semi (bot) {
 }
 
 /**
- * One aimed shot at the middle of the target's crawling box. Returns the health the target lost, or
- * null when it could not be read or no round left the gun twice (an empty magazine reloads on the
- * first pull).
+ * One aimed shot at the target, by default at the middle of its crawling box (`aimAt` maps its feet
+ * position to the point aimed at). Returns the health the target lost, or null when it could not be
+ * read or no round left the gun twice (an empty magazine reloads on the first pull).
  */
-async function shot (S, T, heal = true) {
+async function shot (S, T, heal = true, aimAt = pos => pos.offset(0, 0.3, 0)) {
   for (let attempt = 0; attempt < 2; attempt++) {
     await clearSoldiers()
     if (heal) await restore(T)
     await sleep(200)
     const entity = S.players[T.username] && S.players[T.username].entity
     if (!entity) return null
-    const aim = entity.position.offset(0, 0.3, 0)
+    const aim = aimAt(entity.position)
     for (let i = 0; i < 8; i++) {
       await S.lookAt(aim, true)
       S.activateItem()
@@ -403,7 +404,14 @@ async function solo () {
   T.physicsEnabled = false
   await tp(S, 45.5, 65, 88.5, 0, 0)
 
-  // 5. Prone hit zones, by which way the crawling target faces.
+  // 5. Prone hit zones, by which way the crawling target faces. Side-on and feet first, S aims at the
+  // middle of the box; head first, over a grid on the side of the box facing S (z - 0.3): columns
+  // across it, rows up from the ground. The arm band is the outer 19% each side (|x| > 0.19 of 0.3),
+  // the chest the lowest quarter (y < 0.15 of 0.6).
+  const GRID = []
+  for (const y of [0.07, 0.3, 0.5]) {
+    for (const x of [-0.24, -0.12, 0, 0.12, 0.24]) GRID.push({ x, y, want: Math.abs(x) > 0.2 ? 'arm' : y < 0.15 ? 'chest' : 'head' })
+  }
   const runs = {}
   for (const [label, yaw] of [['side-on', 90], ['feet towards the shooter', 0], ['head towards the shooter', 180]]) {
     await rcon(`execute at ${S.username} run fill 43 66 92 48 66 95 minecraft:air`)
@@ -413,10 +421,18 @@ async function solo () {
     await rcon(`execute at ${S.username} run fill 43 66 92 48 66 95 minecraft:stone`)
     await sleep(600)
     const zones = []
-    for (let tries = 0; zones.length < 10 && tries < 20; tries++) {
-      const d = await shot(S, T)
-      if (d === null) break
-      if (d > 0) zones.push(zoneOf(d))
+    if (yaw === 180) {
+      for (const cell of GRID) {
+        let d = null
+        for (let tries = 0; tries < 2 && !(d > 0); tries++) d = await shot(S, T, true, pos => pos.offset(cell.x, cell.y, -0.3))
+        zones.push({ ...cell, got: d === null ? 'none' : zoneOf(d) })
+      }
+    } else {
+      for (let tries = 0; zones.length < 10 && tries < 20; tries++) {
+        const d = await shot(S, T)
+        if (d === null) break
+        if (d > 0) zones.push(zoneOf(d))
+      }
     }
     runs[label] = zones
     log(label, zones)
@@ -428,7 +444,13 @@ async function solo () {
   const back = runs['feet towards the shooter']
   check('crawling feet towards the shooter: most hits are legs, none head', back.length >= 8 && count(back, 'leg') > back.length / 2 && count(back, 'head') === 0, back)
   const front = runs['head towards the shooter']
-  check('crawling head towards the shooter: most hits are head', front.length >= 8 && count(front, 'head') > front.length / 2, front)
+  const frontGot = front.map(c => c.got)
+  const matched = front.filter(c => c.got === c.want).length
+  check('crawling head towards the shooter: the outer columns are arms, the bottom row chest, the upper middle head (13+ of 15 as expected)',
+    matched >= GRID.length - 2, front.map(c => `${c.x},${c.y}:${c.got}${c.got === c.want ? '' : '!=' + c.want}`))
+  check('crawling head towards the shooter: well under all hits are head (under 60%)',
+    frontGot.length === GRID.length && count(frontGot, 'head') < GRID.length * 0.6 && count(frontGot, 'arm') >= 4 && count(frontGot, 'chest') >= 2,
+    { head: count(frontGot, 'head'), arm: count(frontGot, 'arm'), chest: count(frontGot, 'chest'), of: frontGot.length })
 
   // 6. Solo with an injector: downed, a body shot takes ~21.6 s, the injector stands it up.
   await rcon(`execute at ${S.username} run fill 43 66 92 48 66 95 minecraft:air`)

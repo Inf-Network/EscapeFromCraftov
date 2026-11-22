@@ -216,10 +216,13 @@ weapons:
     lmg: 18
     bolt: 18
   spread:
-    # Moving widens the cone (bloom included) by 1 + move × how close the player is to their full
-    # walking pace (measured on the server, 0 standing .. 1 walking or faster): hip fire and aiming.
-    move-hip: 0.5
-    move-ads: 1.0
+    # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
+    # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.
+    # How much counts goes from 0 at move-deadzone of the player's walking pace (measured on the
+    # server, against what their movement speed allows right now) to 1 at full pace, so sneaking and
+    # the last ticks of stopping cost nothing: stopping before the shot is what makes it accurate.
+    move-ads-share: 0.5
+    move-deadzone: 0.25
     # Multipliers of the gun's base spread while sneaking and while off the ground.
     sneak: 0.7
     airborne: 2.5

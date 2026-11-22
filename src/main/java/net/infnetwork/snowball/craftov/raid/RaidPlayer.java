@@ -27,6 +27,9 @@ public final class RaidPlayer {
     public int kills;
     public int aiKills;
     public int downs;
+    /** Rounds fired, and of those the ones fired standing still or stopped in time (moving cost no accuracy). */
+    public int shots;
+    public int stillShots;
     /** Value carried in and in the secure container at deploy (raid profit is measured against it). */
     public long startValue;
     /** Value of the gear carried in at deploy, secure container excluded (the deploy screen's 战备值). */

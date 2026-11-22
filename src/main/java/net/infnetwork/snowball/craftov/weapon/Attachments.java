@@ -67,7 +67,7 @@ public final class Attachments {
             mag *= part.magazine();
         }
         return new GunSpec(gun.caliber(), gun.slot(), (int) Math.ceil(gun.magazine() * mag), gun.rpm(), gun.modes(), gun.damage(),
-                gun.range(), gun.maxRange(), gun.hipSpread() * hip, gun.adsSpread() * ads, gun.recoil() * recoil,
+                gun.range(), gun.maxRange(), gun.hipSpread() * hip, gun.adsSpread() * ads, gun.moveSpread(), gun.recoil() * recoil,
                 gun.recoilH() * recoilH, gun.recoilReturn(), (int) Math.round(gun.reloadTicks() * reload), gun.zoom(), gun.pellets(), gun.headMultiplier(),
                 gun.sound(), gun.soundVolume(), gun.moveSpeed() * move, gun.mount(), gun.scope(), gun.audio(), gun.action());
     }

@@ -1083,6 +1083,8 @@ public final class RaidManager implements Listener {
         report.lostValue = lost;
         report.kills = rp.kills;
         report.aiKills = rp.aiKills;
+        report.shots = rp.shots;
+        report.stillShots = rp.stillShots;
         report.seconds = (int) ((Bukkit.getCurrentTick() - rp.startTick) / 20);
         report.rankDelta = rankDelta;
         report.xp = xp;
@@ -1108,6 +1110,10 @@ public final class RaidManager implements Listener {
         }
         player.sendMessage(Text.mm("<#8A8F98>击败干员 <white>" + r.kills + " <#8A8F98>· 击败敌兵 <white>" + r.aiKills
                 + " <#8A8F98>· 经验 <white>+" + r.xp + (r.rankDelta != 0 ? " <#8A8F98>· 排位分 " + (r.rankDelta > 0 ? "<#5BD16B>+" : "<#FF8A80>") + r.rankDelta : "")));
+        if (r.shots > 0) {
+            player.sendMessage(Text.mm("<#8A8F98>开火 <white>" + r.shots + " <#8A8F98>发 · 急停射击 <white>" + r.stillShots
+                    + " <#8A8F98>发（" + Math.round(100.0 * r.stillShots / r.shots) + "%，停稳再开枪不受移动影响）"));
+        }
         for (String c : collectibles) {
             player.sendMessage(Text.mm("<#FF4D4D>★ 新收藏品入册：<white>" + Text.escape(c)));
         }

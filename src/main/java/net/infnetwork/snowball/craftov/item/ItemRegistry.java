@@ -134,6 +134,8 @@ public final class ItemRegistry {
                     g.getDouble("max-range", 160),
                     g.getDouble("hip-spread", 3.0),
                     g.getDouble("ads-spread", 0.5),
+                    Math.max(0, g.getDouble("move", defaultMove(g.getString("action", ""), modes,
+                            "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY"))))),
                     g.getDouble("recoil", 1.0),
                     g.getDouble("recoil-h", 0.5),
                     Math.max(0, Math.min(1, g.getDouble("recoil-return", 0.7))),
@@ -248,6 +250,25 @@ public final class ItemRegistry {
                 optic,
                 melee,
                 attach);
+    }
+
+    /**
+     * How far a gun's cone widens at full walking pace when items.yml does not say (`move`), by its
+     * action: a server keeps the items.yml it was first given, so guns listed before `move` existed
+     * still get one. Handguns and the pump gun least, rifles more, the machine gun and the long guns most.
+     */
+    static double defaultMove(String action, List<FireMode> modes, boolean secondary) {
+        String kind = !action.isEmpty() ? action : modes.contains(FireMode.PUMP) ? "pump" : modes.contains(FireMode.BOLT) ? "bolt"
+                : secondary ? "pistol" : "ar";
+        return switch (kind) {
+            case "pistol", "pump" -> 1.5;
+            case "pistol_heavy", "smg", "pdw" -> 2.0;
+            case "ak" -> 3.5;
+            case "lmg" -> 5.0;
+            case "dmr" -> 4.5;
+            case "bolt" -> 6.0;
+            default -> 3.0;
+        };
     }
 
     public @Nullable ItemDef get(@Nullable String id) {

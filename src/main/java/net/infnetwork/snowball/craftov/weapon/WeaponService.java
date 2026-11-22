@@ -723,10 +723,18 @@ public final class WeaponService implements Listener {
         Vector dir = eye.getDirection();
         Vector bore = bore(eye, state);
         double spread = currentSpread(player, state);
+        net.infnetwork.snowball.craftov.raid.RaidPlayer session = plugin.raids().session(player);
+        if (session != null && session.active()) {
+            // The raid report counts the shots fired with movement costing no accuracy: stopped first.
+            session.shots++;
+            if (moveLevel(player) <= 0) {
+                session.stillShots++;
+            }
+        }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
-                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick()));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -787,9 +795,10 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Cone half-angle of the next shot. Moving widens it in proportion to how close the player is to
-     * their full walking pace, the gun's bloom included: walking hip fire is half as wide again, aiming
-     * while walking twice as wide (weapons.spread).
+     * Cone half-angle of the next shot. Moving widens it by the gun's own amount (items.yml `move`, in
+     * degrees, half of it while aiming) in proportion to how close the player is to their full walking
+     * pace past a small dead zone (see {@link #moveLevel}): a pistol barely minds, a sniper rifle
+     * cannot hit a thing on the move, and stopping before the shot puts it back.
      */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
@@ -805,13 +814,31 @@ public final class WeaponService implements Listener {
         if (state.fireMode() != FireMode.BOLT) {
             spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
-        double moving = config.getDouble(aiming ? "weapons.spread.move-ads" : "weapons.spread.move-hip", aiming ? 1.0 : 0.5);
-        spread *= 1.0 + moving * motion.moveFactor(player);
+        spread += gun.moveSpread() * moveLevel(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
             spread *= 1.0 + 0.35 * arms;
         }
         return spread;
+    }
+
+    /**
+     * How much moving counts against accuracy, 0 to 1: how close the player is to their full walking
+     * pace (measured on the server, against what their movement-speed attribute allows right now, so a
+     * player slowed by aiming or armour who walks as fast as they can counts as fully moving), less a
+     * dead zone (weapons.spread.move-deadzone of that pace) so the last ticks of stopping, sneaking and
+     * a nudge do not count. Vanilla movement stops in about two ticks when the opposite key is pressed:
+     * stopping before the shot is the skill.
+     */
+    private double moveLevel(Player player) {
+        double dead = Math.max(0, Math.min(0.9, plugin.getConfig().getDouble("weapons.spread.move-deadzone", 0.25)));
+        return Math.max(0, Math.min(1, (motion.moveFactor(player) - dead) / (1 - dead)));
+    }
+
+    /** Cone half-angle (degrees) the player's held gun would fire with right now, or -1 without one. */
+    public double spreadNow(Player player) {
+        GunState state = states.get(player.getUniqueId());
+        return state == null ? -1 : currentSpread(player, state);
     }
 
     /** Where the bullets go: the crosshair, raised by the climb only the bullets get. */

@@ -13,6 +13,10 @@
 //           (at least two turns per shot fired), never turns more than 1.5 degrees in one tick, kick
 //           or recovery, and once let go comes back down: some of the way 0.6 s later, and by 1.5 s
 //           to the gun's recoil-return share (0.65 for the K47, so 25-50% of the climb is left).
+//   move    K47, 10 single shots each standing and strafing, from the hip and aimed: the speed the
+//           server measured for most strafing shots is within 10% of what the bot really walked, strafing
+//           hip fire is at least 1.8x as wide as standing and strafing aimed fire at least 2.5x;
+//           standing shots count no movement at all.
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node gunfeel.js [scenario ...]
 //
@@ -31,7 +35,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['lobby', 'kick', 'ads', 'recoil']
+const scenarios = wanted.length ? wanted : ['lobby', 'kick', 'ads', 'recoil', 'move']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -99,7 +103,8 @@ const shotsSince = from => logSince(from).filter(l => l.includes(`[debug] ${name
   aim: / aim=true/.test(l),
   spread: Number((l.match(/ spread=([0-9.]+)/) || [])[1]),
   speed: Number((l.match(/ speed=([0-9.]+)/) || [])[1]),
-  move: Number((l.match(/ move=([0-9.]+)/) || [])[1])
+  move: Number((l.match(/ move=([0-9.]+)/) || [])[1]),
+  level: Number((l.match(/ level=([0-9.]+)/) || [])[1])
 }))
 
 // ---------------------------------------------------------------- the trigger
@@ -300,6 +305,67 @@ async function recoil (spot) {
 /** Waits until `ms` after `from` (a Date.now()). */
 const until = (from, ms) => sleep(Math.max(0, from + ms - Date.now()))
 
+// ---------------------------------------------------------------- move
+/** Single shots: dig start, a swing and the abort in one go. */
+function click () {
+  const at = cell()
+  dig(START, at)
+  swing()
+  dig(ABORT, at)
+}
+
+async function move (spot) {
+  await arm('k47')
+  const series = {}
+  const walked = []
+  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads']) {
+    await aim(spot)
+    dig(4) // a full magazine for each series
+    await sleep(3200)
+    let stopAim = null
+    if (mode.endsWith('ads')) { useItem(); const t = setInterval(useItem, 200); stopAim = () => clearInterval(t) }
+    await sleep(600)
+    const from = logSize()
+    for (let leg = 0; leg < 5; leg++) {
+      const dir = leg % 2 ? 'right' : 'left'
+      if (mode.startsWith('walk')) bot.setControlState(dir, true)
+      await sleep(450)
+      for (let shot = 0; shot < 2; shot++) {
+        // What the bot really walks over the 200 ms before the shot, in blocks per tick.
+        const a = bot.entity.position.clone()
+        await sleep(200)
+        const b = bot.entity.position
+        if (mode === 'walk') walked.push(Math.hypot(b.x - a.x, b.z - a.z) / 4)
+        // A strafing bot can dig a capture cell the server has just moved on: click again until it fires.
+        const before = shotsSince(from).length
+        for (let tries = 0; tries < 3 && shotsSince(from).length === before; tries++) { click(); await sleep(120) }
+        await sleep(130)
+      }
+      if (mode.startsWith('walk')) bot.setControlState(dir, false)
+      await sleep(300)
+    }
+    if (stopAim) stopAim()
+    await sleep(400)
+    series[mode] = shotsSince(from)
+    const s = series[mode]
+    log(mode, 'shots', s.length, 'spread avg', avg(s.map(x => x.spread)).toFixed(3), 'speed avg', avg(s.map(x => x.speed)).toFixed(3),
+      'level avg', avg(s.map(x => x.level)).toFixed(2), 'aimed', s.filter(x => x.aim).length)
+  }
+  const sp = m => avg(series[m].map(x => x.spread))
+  const real = avg(walked)
+  // The bot's movement packets bunch up now and then (its physics loop catches up on a busy machine),
+  // and a shot taken right then reads slow: most must read within 10%.
+  const close = series.walk.filter(x => Math.abs(x.speed - real) / real < 0.1).length
+  check('move: 10+ shots in each series', Object.values(series).every(s => s.length >= 10), Object.entries(series).map(([k, v]) => k + '=' + v.length).join(' '))
+  check('move: the server measures the strafing pace within 10% (7 of 10 shots)', real > 0.1 && close >= 0.7 * series.walk.length,
+    `walked ${real.toFixed(3)} blocks/tick, server read ${series.walk.map(x => x.speed.toFixed(3)).join(' ')}`)
+  check('move: standing shots count no movement', series.stand.concat(series['stand-ads']).every(x => x.level === 0))
+  check('move: strafing hip fire >= 1.8x standing', sp('walk') >= 1.8 * sp('stand'), `${sp('walk').toFixed(2)} vs ${sp('stand').toFixed(2)} = ${(sp('walk') / sp('stand')).toFixed(2)}x`)
+  check('move: strafing aimed fire >= 2.5x standing aimed', sp('walk-ads') >= 2.5 * sp('stand-ads'),
+    `${sp('walk-ads').toFixed(2)} vs ${sp('stand-ads').toFixed(2)} = ${(sp('walk-ads') / sp('stand-ads')).toFixed(2)}x`)
+}
+const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
+
 // ---------------------------------------------------------------- ads
 async function ads (spot) {
   await arm('k47')
@@ -331,6 +397,7 @@ async function ads (spot) {
     if (scenario === 'kick') await kick(spot)
     else if (scenario === 'ads') await ads(spot)
     else if (scenario === 'recoil') await recoil(spot)
+    else if (scenario === 'move') await move(spot)
     else log('unknown scenario', scenario)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

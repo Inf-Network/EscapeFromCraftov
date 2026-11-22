@@ -10,6 +10,7 @@ import java.util.List;
  * @param maxRange    hitscan distance
  * @param hipSpread   cone half-angle in degrees when hip firing
  * @param adsSpread   cone half-angle in degrees when aiming
+ * @param moveSpread  degrees the cone widens by at full walking pace (half that while aiming)
  * @param recoil      vertical camera kick per shot in degrees
  * @param recoilH     max horizontal kick per shot in degrees
  * @param recoilReturn share (0..1) of a spray's camera kick that drifts back once the gun stops firing
@@ -30,6 +31,7 @@ public record GunSpec(
         double maxRange,
         double hipSpread,
         double adsSpread,
+        double moveSpread,
         double recoil,
         double recoilH,
         double recoilReturn,

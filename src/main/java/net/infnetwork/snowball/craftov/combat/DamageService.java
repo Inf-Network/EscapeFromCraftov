@@ -137,13 +137,7 @@ public final class DamageService implements Listener {
             falloff = Math.max(0.5, 1.0 - over * 0.5);
         }
         double base = gun.damage() * (ammo == null ? 1.0 : ammo.damageMult()) * falloff;
-        double zoneMult = switch (part) {
-            case HEAD -> gun.headMultiplier();
-            case CHEST -> 1.0;
-            case STOMACH -> 0.95;
-            case LEFT_ARM, RIGHT_ARM -> 0.65;
-            case LEFT_LEG, RIGHT_LEG -> 0.7;
-        };
+        double zoneMult = zoneMultiplier(part, gun);
         ArmorHit armorHit = armor(victim, part, base, ammo);
         double armorMult = armorHit == null ? 1.0 : armorHit.damageMult();
         boolean penetrated = armorHit == null || armorHit.penetrated();
@@ -226,6 +220,21 @@ public final class DamageService implements Listener {
         double condition = fullAbove <= 0 ? 1.0 : Math.min(1.0, dura / maxDura / fullAbove);
         double absorbed = wear <= 0 ? 1.0 : Math.min(1.0, dura / wear);
         return condition * absorbed;
+    }
+
+    /**
+     * Damage multiplier for where a round lands: the gun's own head multiplier, otherwise
+     * combat.zone-multipliers. Limbs take little because they share the one health pool with the
+     * torso and are a big, unarmoured share of the hitbox (legs alone are 40% of it).
+     */
+    private double zoneMultiplier(BodyPart part, GunSpec gun) {
+        return switch (part) {
+            case HEAD -> gun.headMultiplier();
+            case CHEST -> plugin.getConfig().getDouble("combat.zone-multipliers.chest", 1.0);
+            case STOMACH -> plugin.getConfig().getDouble("combat.zone-multipliers.stomach", 0.95);
+            case LEFT_ARM, RIGHT_ARM -> plugin.getConfig().getDouble("combat.zone-multipliers.arm", 0.5);
+            case LEFT_LEG, RIGHT_LEG -> plugin.getConfig().getDouble("combat.zone-multipliers.leg", 0.5);
+        };
     }
 
     /** Damage multiplier of full-strength armour for this penetration minus class (combat.armor.damage-taken). */

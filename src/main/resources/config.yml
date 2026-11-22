@@ -117,6 +117,14 @@ combat:
     # a second). In first person the opaque white hides the fog, and the effect is lifted before the
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
+  # Bullet damage multiplier by where it lands (head shots use each gun's own head multiplier, 2.0
+  # unless items.yml says otherwise). Arms and legs share the one 100-point health pool with the
+  # torso and are about half the hitbox (legs alone 40%), and no armour covers them.
+  zone-multipliers:
+    chest: 1.0
+    stomach: 0.95
+    arm: 0.5
+    leg: 0.5
   # Helmets cover the head, vests the chest and stomach.
   armor:
     # Share of a hit's damage that gets through armour at full strength, by the round's penetration

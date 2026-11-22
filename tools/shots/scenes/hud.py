@@ -10,6 +10,9 @@ def run(s):
     gun = s.arg or 'm4c'
     s.lobby()
     s.hold(gun)
+    ammo = s.ammo_for(gun)
+    if ammo and s.count(ammo) < 60:
+        s.give(ammo, 60)  # a reserve to show next to the magazine
     s.clear_chat()
     s.wait(2.5)
     s.shot('hud-lobby' + suffix)

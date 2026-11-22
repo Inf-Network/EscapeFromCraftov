@@ -516,7 +516,7 @@ craftov_weapon:
     '2':
       name: craftov_font
       pattern: <white>[craftov_ammo]
-      x: 60
+      x: 40
       y: 12
       scale: 1.0
       align: right
@@ -529,7 +529,7 @@ craftov_weapon:
     '3':
       name: craftov_font
       pattern: <#E5484D>[craftov_ammo]
-      x: 60
+      x: 40
       y: 12
       scale: 1.0
       align: right
@@ -542,14 +542,22 @@ craftov_weapon:
     '4':
       name: craftov_pixel
       pattern: <#A4AAB3>／[craftov_reserve]
-      x: 62
+      x: 42
       y: 24
       scale: 1.0
       align: left
       outline: true
     '5':
       name: craftov_pixel
-      pattern: <#F2B544>[craftov_firemode] <#A4AAB3>· [craftov_ammo_type]
+      pattern: <#F2B544>[craftov_firemode]
+      x: 114
+      y: 22
+      scale: 1.0
+      align: right
+      outline: true
+    '6':
+      name: craftov_pixel
+      pattern: <#A4AAB3>[craftov_ammo_type]
       x: 114
       y: 34
       scale: 1.0
@@ -560,7 +568,7 @@ craftov_weapon:
           first: craftov_has_hint
           second: 'false'
           operation: ==
-    '6':
+    '7':
       name: craftov_pixel
       pattern: '[craftov_weapon_hint]'
       x: 114

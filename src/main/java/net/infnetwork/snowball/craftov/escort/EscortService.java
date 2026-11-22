@@ -24,8 +24,8 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>Contracts live in memory, but the escrowed reward is recorded on the client's profile
  * ({@link Profile#escortEscrow}) together with the deduction. Stopping the server refunds every
- * open contract; a reward whose contract was lost in a crash goes back to the client after the
- * restart.
+ * open contract; a reward whose contract was lost in a crash goes back to the client when they
+ * next join ({@link #reclaim}).
  */
 public final class EscortService {
 
@@ -221,7 +221,7 @@ public final class EscortService {
             p.money += refund;
         });
         // Saved now, not with the next flush up to ten seconds later: a crash before the escrow
-        // reaches the disk returns all of it on the next start, on top of any pay already out.
+        // reaches the disk returns all of it on the client's next join, on top of any pay already out.
         plugin.profiles().saveNow(c.client);
     }
 
@@ -256,41 +256,42 @@ public final class EscortService {
     }
 
     /**
-     * Start-up: contracts live in memory only, so any reward still held in escrow belongs to a
-     * contract lost when the server went down without a clean shutdown (crash, kill, power cut).
+     * Start-up report for the admin: contracts live in memory only, so a reward still held in
+     * escrow belongs to a contract lost when the server went down without a clean shutdown (crash,
+     * kill, power cut). Nothing is paid here; {@link #reclaim} hands it back on the client's next
+     * join, which is also the only way it is ever returned.
      */
     public void start() {
         long total = 0;
         int count = 0;
         for (var summary : plugin.profiles().summaries(s -> s.escortEscrow() > 0)) {
             if (!plugin.profiles().canEdit(summary.uuid())) {
-                // Changes wait in its journal, and they may close this very contract (the client
-                // went missing while the file was broken): returning the escrow as well would pay
-                // it out twice.
+                // Its owner cannot log in, and changes waiting in its journal may close this very
+                // contract (the client went missing while the file was broken).
                 plugin.getLogger().severe("Escort escrow of " + summary.escortEscrow() + " held for " + summary.name() + " ("
-                        + summary.uuid() + ") was NOT returned: that profile has changes waiting in " + summary.uuid()
-                        + ".json.unsaved. Apply them and delete that file; the next start returns whatever escrow is left.");
+                        + summary.uuid() + ") is NOT returned while that profile is locked (unreadable, or changes waiting in "
+                        + summary.uuid() + ".json.unsaved). Repair it, apply and delete the journal; whatever escrow is left"
+                        + " then goes back when they next log in.");
                 continue;
             }
             total += summary.escortEscrow();
             count++;
-            plugin.profiles().edit(summary.uuid(), () -> "escort escrow returned after a crash: money +" + summary.escortEscrow()
-                    + ", escortEscrow -" + summary.escortEscrow(), p -> {
-                p.money += p.escortEscrow;
-                p.escortEscrow = 0;
-            });
         }
         if (count > 0) {
-            plugin.getLogger().warning("Returned " + total + " money held for " + count + " escort contracts lost when the server stopped.");
+            plugin.getLogger().warning(count + " escort contracts lost when the server stopped hold " + total
+                    + " money in escrow; each client gets theirs back on their next login.");
         }
     }
 
     /**
      * Join: a reward still held in escrow without a live contract belongs to a contract the server
-     * lost when it went down without shutting down cleanly. It goes back to the client.
+     * lost when it went down without shutting down cleanly. It goes back to the client. A locked
+     * account never gets here (its login is refused), and the stand-in of one that broke after
+     * the login check is left alone: it is never saved, and its owner is sent away at once.
      */
     public void reclaim(Player player, Profile profile) {
-        if (profile.escortEscrow <= 0 || byClient(player.getUniqueId()) != null) {
+        if (profile.escortEscrow <= 0 || byClient(player.getUniqueId()) != null
+                || !plugin.profiles().canEdit(player.getUniqueId())) {
             return;
         }
         long held = profile.escortEscrow;

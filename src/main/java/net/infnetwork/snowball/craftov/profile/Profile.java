@@ -58,7 +58,7 @@ public final class Profile {
     /**
      * Reward taken from this player for their escort contract and not yet paid out or returned
      * (EscortService). Saved with the deduction itself; contracts live in memory only, so whatever
-     * is still held after a crash goes back to the player.
+     * is still held when the player joins a freshly started server (after a crash) goes back to them.
      */
     public long escortEscrow;
     /**

@@ -25,7 +25,8 @@
 //  market-corrupt a garbled market.json survives a start and a stop byte for byte
 //  map            rustport.yml with "type: SWTICH" survives a restart unchanged, a .broken copy
 //                 exists, the log reports it and the map is not regenerated
-//  escort-crash   a posted escort contract followed by kill -9: the reward is back after the restart
+//  escort-crash   a posted escort contract followed by kill -9: the start log reports it, and the
+//                 reward is back (with a chat notice) when the client logs in again
 //  backup         RESTARTS restarts with backup.first-delay-minutes 0 keep the first daily copy, and
 //                 a shutdown backup that cannot read a file leaves no zip (or temp file) behind
 //  backup-keep    a config with only the old "keep: 30" keeps ten older shutdown copies over a
@@ -372,7 +373,7 @@ async function lostEdit () {
     guard.quit()
     await stop()
     const started = await start()
-    check('lost-edit: the escrow is not returned on start', started.split('\n').some(l => l.includes('was NOT returned') && l.includes(offlineUuid(bossName))))
+    check('lost-edit: the locked escrow is reported on start', started.split('\n').some(l => l.includes('is NOT returned') && l.includes(offlineUuid(bossName))))
     check('lost-edit: the repaired file is untouched', Buffer.compare(fs.readFileSync(file), good) === 0)
     // Apply the journal by hand, as the README says, then delete it.
     const p = JSON.parse(good)
@@ -500,10 +501,12 @@ async function escortCrash () {
   await kill9()
   bot.end()
   const text = await start()
-  check('escort-crash: refund logged', text.includes('escort contracts lost when the server stopped'))
+  check('escort-crash: lost contract reported on start', text.includes('escort contracts lost when the server stopped'))
   const back = await online(name)
+  await sleep(1500)
   const after = await balance(name)
-  check('escort-crash: reward back after kill -9', after === before, { before, after })
+  check('escort-crash: reward back on login after kill -9', after === before, { before, after })
+  check('escort-crash: told on login', back.chatLog.some(m => m.includes('护航委托因服务器中断已撤销')))
   await leave(back)
 }
 

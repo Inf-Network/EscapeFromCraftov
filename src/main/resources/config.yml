@@ -118,10 +118,11 @@ combat:
     # white starts to fade. Blindness also stops sprinting meanwhile.
     blind-while-white: true
   # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
-  # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise). Arms and legs share the one 100-point health pool with the
-  # torso and are about half the hitbox (legs alone 40%), and no armour covers them: lowering arm
-  # and leg (0.5 each makes a K47 with PS need six leg hits instead of four) is the short-term way
-  # to keep limb shots from downing a player in any armour.
+  # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take
+  # combat.melee.zone-multipliers on the arms and legs). Arms and legs share the one 100-point health
+  # pool with the torso and are about half the hitbox (legs alone 40%), and no armour covers them:
+  # lowering arm and leg (0.5 each makes a K47 with PS need six leg hits instead of four) is the
+  # short-term way to keep limb shots from downing a player in any armour.
   zone-multipliers:
     chest: 1.0
     stomach: 0.95
@@ -144,6 +145,14 @@ combat:
     # not. The engineer's passive takes a quarter off.
     wear-blocked: 0.3
     wear-penetrated: 0.3
+  melee:
+    # Knife damage multiplier on the arms and legs, in place of zone-multipliers (the chest and
+    # stomach are the same as for a bullet). No armour covers the limbs: at a bullet's 0.65 / 0.7 the
+    # machete (52) downed a player in any armour with three limb cuts; at 0.6 it takes four, as many
+    # as a K47 with PS takes in the legs. tools/combat/melee.py prints and checks the hits.
+    zone-multipliers:
+      arm: 0.6
+      leg: 0.6
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

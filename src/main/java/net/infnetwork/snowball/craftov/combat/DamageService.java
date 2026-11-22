@@ -255,6 +255,20 @@ public final class DamageService implements Listener {
         };
     }
 
+    /**
+     * {@link #zoneMultiplier} for a knife: the arms and legs take combat.melee.zone-multipliers, less
+     * than a bullet does. No armour covers them, so at a bullet's 0.65 / 0.7 the machete downed a
+     * player in any armour with three limb cuts; at 0.6 it takes four, as many leg shots as a K47 with
+     * PS. The head and torso are the same as for a bullet.
+     */
+    private double meleeZoneMultiplier(BodyPart part, double head) {
+        return switch (part) {
+            case LEFT_ARM, RIGHT_ARM -> plugin.getConfig().getDouble("combat.melee.zone-multipliers.arm", 0.6);
+            case LEFT_LEG, RIGHT_LEG -> plugin.getConfig().getDouble("combat.melee.zone-multipliers.leg", 0.6);
+            default -> zoneMultiplier(part, head);
+        };
+    }
+
     /** Damage multiplier of full-strength armour for this penetration minus class (combat.armor.damage-taken). */
     private double damageTaken(int diff) {
         int index = Math.max(0, 1 - diff);
@@ -332,6 +346,10 @@ public final class DamageService implements Listener {
      * A knife hit. It lands on the body part where the blade meets the victim's box, a shield in
      * front stops it, and otherwise it goes through the helmet or vest on that part like a round
      * with the knife's damage and penetration: armour takes off what its class stops and wears.
+     *
+     * <p>The blade follows the attacker's view, so a level swing at a standing target lands on its
+     * head: knives get no head bonus (the machete less than its full damage, items.yml {@code head})
+     * and a helmet takes the cut, and a bare head goes down in as many cuts as a bare chest.
      */
     private void melee(Player player, LivingEntity victim, ItemDef def) {
         net.infnetwork.snowball.craftov.weapon.MeleeSpec spec = def.melee();
@@ -357,7 +375,7 @@ public final class DamageService implements Listener {
         }
         double base = spec.damage();
         ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
-        double damage = base * zoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
+        double damage = base * meleeZoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
         if (victim instanceof Player target && armorHit.penetrated() && part != BodyPart.HEAD) {
             plugin.health().rollInjuries(target, part, damage);
         }

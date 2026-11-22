@@ -240,7 +240,8 @@ items:
   # ------------------------------------------------------------------ melee (always kept, hotbar key 3)
   # A knife hit goes through armour like a round: damage per hit, pen against the armour's class,
   # armor-damage scales the durability it wears off, head is the head-hit multiplier (1.0 unless
-  # set). cooldown is in ticks, reach in blocks. tools/combat/melee.py prints the hits to down.
+  # set; a level swing at a standing target lands on the head, so it is no headshot bonus).
+  # cooldown is in ticks, reach in blocks. tools/combat/melee.py prints the hits to down.
   knife_starter:
     name: "新手战术刀"
     category: MELEE
@@ -263,8 +264,8 @@ items:
     rarity: BLUE
     value: 42000
     tradeable: false
-    lore: "又长又沉，砍在没有护甲的地方伤害很高，挥得慢一些，砍不透 3 级及以上的护甲。死亡不会丢失。"
-    melee: { damage: 52, pen: 2, armor-damage: 1.0, cooldown: 16, reach: 3.4 }
+    lore: "又长又沉，砍在没穿护甲的胸腹上伤害很高，砍头反而不顺手；挥得慢一些，砍不透 3 级及以上的护甲。死亡不会丢失。"
+    melee: { damage: 52, pen: 2, armor-damage: 1.0, head: 0.75, cooldown: 16, reach: 3.4 }
   knife_karambit:
     name: "爪刀"
     category: MELEE

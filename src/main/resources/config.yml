@@ -135,6 +135,8 @@ ai:
   # after a disconnect gives none of it: 2 s of protection (no damage, no attacks) and that is all;
   # soldiers who see the player aim through it and open fire the moment it ends.
   insertion-grace-ticks: 240
+  # A soldier's bullet does this share of what a player's would with the same gun and ammo, before
+  # armour (a boss: x1.15 on top). World difficulty never changes it: 0.65 is what players feel.
   damage-multiplier: 0.65
   reaction-ticks: 14
   # A strobe light in the face (and flashbangs) dazzle soldiers instead of freezing them: they keep

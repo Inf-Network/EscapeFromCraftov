@@ -101,6 +101,18 @@ function serverPids () {
   return out
 }
 
+// Results of a click or a command now come on the action bar (util/Notify), not in chat: both are
+// "what the player was told", so the bots log them together.
+function flatText (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (Array.isArray(n)) return n.map(flatText).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flatText(n.value && n.value.value)
+  if (n.type === 'compound') return flatText(n.value)
+  return flatText(n.text) + flatText(n.extra)
+}
+
 const bots = {}
 function make (role) {
   const name = NAMES[role] || EXTRA[role]
@@ -108,6 +120,7 @@ function make (role) {
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.chatLog = []
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) { bot.chatLog.push(m); log(role, 'CHAT', m) } })
+  bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { bot.chatLog.push(s); log(role, 'BAR', s) } })
   bot.on('kicked', r => log(role, 'KICKED', JSON.stringify(r).slice(0, 200)))
   bot.on('error', e => log(role, 'ERROR', e.message))
   bots[role] = bot
@@ -211,7 +224,8 @@ async function setup () {
 
   // Dead: killed with the insured gear on, while the raid keeps running for the raider.
   await rcon(`kill ${NAMES.dead}`)
-  const died = await waitFor(() => bots.raider.chatLog.some(m => m.includes('☠') && m.includes(NAMES.dead)), 4000)
+  // The kill feed is on the HUD, for the dead player's own squad: `cv hud` prints it.
+  const died = await waitFor(async () => /feedlog=[^|]*☠/.test(await rcon(`cv hud ${NAMES.dead}`)), 4000)
   check('dead is killed in the raid (kill feed, spectating)', died && await inMode(NAMES.dead, 'spectator'))
 
   // Ranger: kit captured in the lobby, then onto the private range.
@@ -420,7 +434,8 @@ async function crashEscort () {
   // player (and a squadmate's does not count), so a stand-in lands the last hit. It is summoned and
   // hits in one command: stray entities do not last until the next one.
   await rcon(`kill ${EXTRA.guard}`)
-  if (await waitFor(() => c.chatLog.some(m => m.includes(EXTRA.guard) && m.includes('倒地')), 2000)) {
+  // A squadmate going down is an alert on the boss's HUD banner.
+  if (await waitFor(async () => { const h = await rcon(`cv hud ${c.username}`); return h.includes(EXTRA.guard) && h.includes('倒地') }, 2000)) {
     await sleep(500)
     log('finish', await rcon(`execute at ${EXTRA.guard} summon armor_stand run damage ${EXTRA.guard} 1000 minecraft:mob_attack by @s`))
   }
@@ -428,7 +443,7 @@ async function crashEscort () {
   // secure container and the lobby menus must stay shut until they are back in the lobby.
   // The death report comes first; a dead player still in the raid world in spectator mode after it
   // is watching a squadmate (otherwise they would be back in the lobby).
-  const reported = await waitFor(() => e.chatLog.some(m => m.trim().startsWith('结果')), 15000)
+  const reported = await waitFor(() => e.chatLog.some(m => m.trim().startsWith('行动失败')), 15000)
   await sleep(1000)
   const watching = reported && await inRaidWorld(EXTRA.guard) && await inMode(EXTRA.guard, 'spectator')
   check('escort crash: dead guard spectates the boss', watching, await dimension(EXTRA.guard))

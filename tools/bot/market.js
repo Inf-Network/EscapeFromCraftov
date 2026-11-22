@@ -22,6 +22,15 @@ const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+function flatText (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (Array.isArray(n)) return n.map(flatText).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flatText(n.value && n.value.value)
+  if (n.type === 'compound') return flatText(n.value)
+  return flatText(n.text) + flatText(n.extra)
+}
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
@@ -84,6 +93,8 @@ function spawnBot (prefix, name = prefix + (Date.now() % 100000)) {
   bot.chatLog = []
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLog.push(m); log(name, 'CHAT', m) } })
+  // Results of a click come on the action bar (util/Notify): logged with the chat.
+  bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { bot.chatLog.push(s); log(name, 'BAR', s) } })
   bot.on('actionBar', m => { const s = m.toString(); if (s.trim()) log(name, 'BAR', s) })
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))

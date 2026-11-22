@@ -22,9 +22,13 @@ import java.util.UUID;
  * <p>
  * While a menu is open the action bar is hidden behind the window, so results also go into the
  * menu: the clicked button's tooltip gets a red (or green) line for two seconds, or the title does
- * when the click was in the player's own inventory ({@link Menu#flash}). Errors always play the
- * interface error sound. Nothing here writes to chat: chat is for things that happen to a player
- * without their doing (a sale, an insurance payout, a contract taken) and for the raid record.
+ * when the click was in the player's own inventory ({@link Menu#flash}). Only the answer to the
+ * click being handled goes there: a line that comes on its own while a menu happens to be open (an
+ * injury, a reminder) stays on the action bar instead of sticking to a button it has nothing to do
+ * with, and a result whose button is gone after the redraw (an item sold) moves to the title.
+ * Errors always play the interface error sound. Nothing here writes to chat: chat is for things
+ * that happen to a player without their doing (a sale, an insurance payout, a contract taken) and
+ * for the raid record.
  */
 public final class Notify {
 

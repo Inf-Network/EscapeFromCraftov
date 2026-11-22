@@ -38,7 +38,13 @@ public abstract class Menu implements InventoryHolder {
     /** A result line shown on {@link #flashSlot}'s tooltip (or after the title) until {@link #flashUntil}. */
     private @Nullable Component flashLine;
     private int flashSlot = -1;
+    /** What {@link #flashSlot} showed when the result came: a redraw that puts something else there drops it. */
+    private @Nullable ItemStack flashFor;
     private long flashUntil;
+    /** True while a click in this menu is being handled: only what that click caused shows in the menu. */
+    private boolean clicking;
+    /** A redraw moved the result from a button that is gone to the title. */
+    private boolean flashMoved;
     private boolean quietOpen;
 
     protected Menu(Player viewer, int rows, Component title) {
@@ -94,7 +100,12 @@ public abstract class Menu implements InventoryHolder {
         handlers.clear();
         sounds.clear();
         inventory.clear();
+        flashMoved = false;
         draw();
+        if (flashMoved) {
+            flashMoved = false;
+            pushTitle();
+        }
     }
 
     /**
@@ -132,17 +143,20 @@ public abstract class Menu implements InventoryHolder {
     }
 
     /**
-     * Shows the result of the last click inside the menu for two seconds: as an extra tooltip line
-     * on the button that was clicked, or after the title when the click was in the player's own
-     * inventory. Returns false when the menu is not open (the caller uses the action bar instead).
+     * Shows the result of the click being handled inside the menu for two seconds: as an extra
+     * tooltip line on the button that was clicked, or after the title when the click was in the
+     * player's own inventory. Returns false when the menu is not open, or when no click of the
+     * viewer's is being handled (an injury, a drone sighting, a tutorial reminder): those are not
+     * an answer to any button and stay on the action bar.
      */
     public boolean flash(String miniMessage, @Nullable Boolean good) {
-        if (inventory == null || viewer.getOpenInventory().getTopInventory() != inventory) {
+        if (!clicking || inventory == null || viewer.getOpenInventory().getTopInventory() != inventory) {
             return false;
         }
         Component line = net.infnetwork.snowball.craftov.util.Text.mm((good == null ? "" : good ? Style.MARK_OK : Style.MARK_FAIL) + miniMessage);
         flashLine = line;
         flashSlot = lastSlot >= 0 && inventory.getItem(lastSlot) != null ? lastSlot : -1;
+        flashFor = flashSlot >= 0 ? inventory.getItem(flashSlot) : null;
         flashUntil = Bukkit.getCurrentTick() + 40;
         if (flashSlot >= 0) {
             ItemStack shown = inventory.getItem(flashSlot);
@@ -159,6 +173,7 @@ public abstract class Menu implements InventoryHolder {
             int slot = flashSlot;
             flashLine = null;
             flashSlot = -1;
+            flashFor = null;
             if (inventory != null && viewer.getOpenInventory().getTopInventory() == inventory) {
                 if (slot >= 0) {
                     redraw();
@@ -184,10 +199,38 @@ public abstract class Menu implements InventoryHolder {
 
     protected void set(int slot, ItemStack stack) {
         if (inventory != null && slot >= 0 && slot < inventory.getSize()) {
-            // A redraw right after a failed click keeps the result on the button.
+            // A redraw right after a failed click keeps the result on the button. If the slot now
+            // holds something else (the item just sold, the letter just deleted), the result goes to
+            // the title instead of the next item's tooltip.
             boolean flashing = slot == flashSlot && flashLine != null && Bukkit.getCurrentTick() < flashUntil;
+            if (flashing && !sameThing(flashFor, stack)) {
+                flashSlot = -1;
+                flashFor = null;
+                flashMoved = true;
+                flashing = false;
+            }
             inventory.setItem(slot, flashing ? withFlash(stack) : stack);
         }
+    }
+
+    /**
+     * The same button or item, whatever its lore and count now say: same kind, model and name, the
+     * figures in the name aside ("邮箱 3" is still the mailbox once it reads "邮箱 0").
+     */
+    private static boolean sameThing(@Nullable ItemStack a, ItemStack b) {
+        if (a == null || a.getType() != b.getType()) {
+            return false;
+        }
+        var model = io.papermc.paper.datacomponent.DataComponentTypes.ITEM_MODEL;
+        return java.util.Objects.equals(a.getData(model), b.getData(model)) && label(a).equals(label(b));
+    }
+
+    private static String label(ItemStack stack) {
+        Component name = stack.getData(io.papermc.paper.datacomponent.DataComponentTypes.CUSTOM_NAME);
+        if (name == null) {
+            name = stack.getData(io.papermc.paper.datacomponent.DataComponentTypes.ITEM_NAME);
+        }
+        return name == null ? "" : net.infnetwork.snowball.craftov.util.Text.plain(name).replaceAll("[0-9,.◈+×/ -]", "");
     }
 
     protected void button(int slot, ItemStack stack, Consumer<InventoryClickEvent> handler) {
@@ -232,6 +275,15 @@ public abstract class Menu implements InventoryHolder {
     }
 
     public void handleClick(InventoryClickEvent event) {
+        clicking = true;
+        try {
+            dispatch(event);
+        } finally {
+            clicking = false;
+        }
+    }
+
+    private void dispatch(InventoryClickEvent event) {
         if (event.getClickedInventory() == inventory) {
             lastSlot = event.getSlot();
             Consumer<InventoryClickEvent> handler = handlers.get(event.getSlot());

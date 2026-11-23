@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.gui;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import io.papermc.paper.datacomponent.item.TooltipDisplay;
+import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.key.Key;
@@ -97,6 +98,15 @@ public final class UiItems {
             stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay().hideTooltip(true).build());
         }
         return stack;
+    }
+
+    /**
+     * The other cells of a secure-container item that takes several: who holds them, and a click
+     * takes the item out (SecureMenu, the search screen).
+     */
+    public static ItemStack secureOccupied(@org.jspecify.annotations.Nullable ItemDef def, int cells) {
+        return button("craftov:ui/secure_used", "<dim>占用 · " + (def == null ? "<muted>未知物品" : def.coloredName()),
+                List.of("<muted>这件物品占 " + cells + " 格", "<muted>点击取出"));
     }
 
     public static ItemStack lobbyMenu() {

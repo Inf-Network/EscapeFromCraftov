@@ -253,10 +253,10 @@ public final class CarryInfo implements Listener {
     /** The secure container: what is in it, and a click opens it. */
     public ItemStack secure(Player player) {
         Profile profile = plugin.profiles().get(player);
-        int used = secureContents(player).size();
+        int used = plugin.carry().secureUsed(secureContents(player));
         int cap = plugin.traders().secureSlots(profile);
-        return UiItems.button("craftov:ui/icon_secure", "<info>安全箱 <white>" + used + "/" + cap,
-                List.of("<muted>阵亡不掉落", "<ok>点击打开"), "info");
+        return UiItems.button("craftov:ui/icon_secure", (used > cap ? "<danger>" : "<info>") + "安全箱 <white>" + used + "/" + cap + " 格",
+                List.of("<muted>阵亡不掉落", "<muted>物品按大小占格", "<ok>点击打开"), "info");
     }
 
     /** Tidy: one click merges stacks and sorts the rig and backpack. */

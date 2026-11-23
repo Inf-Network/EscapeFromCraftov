@@ -198,23 +198,41 @@ public final class LootMenu extends Menu {
         }
     }
 
+    /** The secure cells, laid out as in SecureMenu: an item that takes several cells holds the next ones. */
     private void drawSecure() {
-        List<ItemRecord> records = plugin.carry().secureContents(viewer);
-        int cap = plugin.carry().secureCapacity(viewer);
+        CarryService carry = plugin.carry();
+        List<ItemRecord> records = carry.secureContents(viewer);
+        int cap = carry.secureCapacity(viewer);
+        int used = carry.secureUsed(records);
+        int[] layout = carry.secureLayout(records);
+        boolean firstLocked = true;
         for (int i = 0; i < SECURE.length; i++) {
-            if (i >= cap) {
-                set(SECURE[i], UiItems.lockedCell(UiItems.Zone.SECURE, i == cap, "安全箱", cap, SECURE.length));
-            } else if (i < records.size()) {
-                ItemStack stack = plugin.items().fromRecord(records.get(i));
-                if (stack == null) {
-                    stack = UiItems.button("craftov:ui/collection_unknown", "<muted>未知物品 <white>" + Text.escape(records.get(i).id),
-                            List.of("<muted>物品表里暂时没有这件物品"), "search");
+            int index = layout[i];
+            if (index < 0) {
+                if (i >= cap) {
+                    set(SECURE[i], UiItems.lockedCell(UiItems.Zone.SECURE, firstLocked, "安全箱", cap, SECURE.length));
+                    firstLocked = false;
                 }
-                set(SECURE[i], stack);
+                continue;
             }
+            ItemRecord record = records.get(index);
+            if (i > 0 && layout[i - 1] == index) {
+                set(SECURE[i], UiItems.secureOccupied(plugin.items().registry().get(record.id), carry.secureCells(record)));
+                continue;
+            }
+            ItemStack stack = plugin.items().fromRecord(record);
+            if (stack == null) {
+                stack = UiItems.button("craftov:ui/collection_unknown", "<muted>未知物品 <white>" + Text.escape(record.id),
+                        List.of("<muted>物品表里暂时没有这件物品"), "search");
+            }
+            set(SECURE[i], stack);
         }
-        set(SECURE_INFO, UiItems.button("craftov:ui/icon_secure", "<info>安全箱 <white>" + records.size() + "/" + cap,
-                List.of("<muted>阵亡不掉落", "<muted>箱子里的物品 Shift+左键 直接放进来", "<dim>枪械、护甲、胸挂与背包放不进")));
+        List<String> lore = new ArrayList<>(List.of("<muted>阵亡不掉落", "<muted>箱子里的物品 Shift+左键 直接放进来",
+                "<muted>物品按大小占格，弹药每格 30 发", "<dim>枪械、护甲、胸挂与背包放不进"));
+        if (used > cap) {
+            lore.add("<danger>已超出容量：取出物品降到 " + cap + " 格以内才能再放入");
+        }
+        set(SECURE_INFO, UiItems.button("craftov:ui/icon_secure", (used > cap ? "<danger>" : "<info>") + "安全箱 <white>" + used + "/" + cap + " 格", lore));
     }
 
     private ItemStack searching() {
@@ -384,29 +402,54 @@ public final class LootMenu extends Menu {
         redraw();
     }
 
-    /** Shift-left: straight into the secure container. */
+    /** Shift-left: straight into the secure container, as much as its cells hold; the rest stays in the box. */
     private void intoSecure(int slot, ItemStack stack) {
-        String why = secureRoom(stack);
-        if (why != null) {
-            refuse(why);
+        int moved = storeSecure(stack);
+        if (moved <= 0) {
             return;
         }
-        ItemRecord record = plugin.items().toRecord(stack);
-        if (record == null) {
-            return;
-        }
-        plugin.carry().secureContents(viewer).add(record);
-        plugin.carry().secureChanged(viewer);
-        container.set(slot, null);
+        container.set(slot, rest(stack, moved));
         looted(stack, 0.6f, 1.1f);
     }
 
-    private @Nullable String secureRoom(ItemStack stack) {
-        String why = plugin.carry().secureRefusal(stack);
-        if (why != null) {
-            return why;
+    /**
+     * Puts as much of {@code stack} into the secure container as its cells hold (CarryService#secureStore,
+     * the same rules as the secure menu) and saves it. Returns how many went in; none, with the reason
+     * said, for an item it does not take, a container too full for it, or a downed player.
+     */
+    private int storeSecure(ItemStack stack) {
+        CarryService carry = plugin.carry();
+        if (plugin.downed().isDowned(viewer)) {
+            refuse("倒地时无法使用安全箱");
+            return 0;
         }
-        return plugin.carry().secureContents(viewer).size() >= plugin.carry().secureCapacity(viewer) ? "安全箱已满" : null;
+        String why = carry.secureRefusal(stack);
+        ItemDef def = plugin.items().defOf(stack);
+        ItemRecord record = why == null ? plugin.items().toRecord(stack) : null;
+        if (why != null || def == null || record == null) {
+            refuse(why == null ? "该物品无法放入安全箱" : why);
+            return 0;
+        }
+        int moved = carry.secureStore(viewer, def, record);
+        if (moved <= 0) {
+            refuse(carry.secureFullReason(viewer, def));
+            return 0;
+        }
+        carry.secureChanged(viewer);
+        if (moved < stack.getAmount()) {
+            Notify.info(viewer, "<accent>放入 " + moved + (def.category() == Category.AMMO ? " 发" : " 个") + "，安全箱已满");
+        }
+        return moved;
+    }
+
+    /** What is left of {@code stack} once {@code moved} of it went elsewhere, or null. */
+    private static @Nullable ItemStack rest(ItemStack stack, int moved) {
+        if (moved >= stack.getAmount()) {
+            return null;
+        }
+        ItemStack rest = stack.clone();
+        rest.setAmount(stack.getAmount() - moved);
+        return rest;
     }
 
     /** A number key: onto that hotbar key if it takes the item, swapping with what is there. */
@@ -539,29 +582,33 @@ public final class LootMenu extends Menu {
         redraw();
     }
 
-    /** Secure cells: a click with something on the cursor puts it in; left takes an item out, shift puts it into the container. */
-    private void secureClick(int index, ClickType click) {
+    /**
+     * Secure cells: a click with something on the cursor puts it in (as much as the cells hold); left
+     * on an item, or any cell it takes, takes it out, shift puts it into the container.
+     */
+    private void secureClick(int cell, ClickType click) {
         CarryService carry = plugin.carry();
         List<ItemRecord> records = carry.secureContents(viewer);
-        if (index >= carry.secureCapacity(viewer)) {
-            return;
+        int index = carry.secureLayout(records)[cell];
+        if (index < 0 && cell >= carry.secureCapacity(viewer)) {
+            return; // a locked cell
         }
         ItemStack cursor = viewer.getItemOnCursor();
         if (!cursor.isEmpty()) {
-            String why = secureRoom(cursor);
-            ItemRecord record = why == null ? plugin.items().toRecord(cursor) : null;
-            if (why != null || record == null) {
-                refuse(why == null ? "该物品无法放入安全箱" : why);
+            int moved = storeSecure(cursor);
+            if (moved <= 0) {
                 return;
             }
-            records.add(record);
-            viewer.setItemOnCursor(null);
-            carry.secureChanged(viewer);
+            viewer.setItemOnCursor(rest(cursor, moved));
             viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.6f, 1.1f);
             redraw();
             return;
         }
-        if (index >= records.size() || click == ClickType.DOUBLE_CLICK) {
+        if (index < 0 || click == ClickType.DOUBLE_CLICK) {
+            return;
+        }
+        if (plugin.downed().isDowned(viewer)) {
+            refuse("倒地时无法使用安全箱");
             return;
         }
         ItemStack stack = plugin.items().fromRecord(records.get(index));

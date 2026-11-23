@@ -55,6 +55,8 @@ public final class CarryService {
     public static final int CHEST = 38;
     public static final int HEAD = 39;
     public static final int OFFHAND = 40;
+    /** Cells of a fully upgraded secure container: the most any menu shows. */
+    public static final int SECURE_CELLS = 9;
 
     private final CraftovPlugin plugin;
     private final ItemFactory items;
@@ -811,6 +813,7 @@ public final class CarryService {
         return plugin.profiles().get(player).secure;
     }
 
+    /** Cells the secure container has (3 at first, 9 fully upgraded, see TraderService). */
     public int secureCapacity(Player player) {
         return plugin.traders().secureSlots(plugin.profiles().get(player));
     }
@@ -828,6 +831,113 @@ public final class CarryService {
             return "该物品无法放入安全箱";
         }
         return null;
+    }
+
+    /** Secure-container cells a stored record takes (its size per stack begun); one for an id items.yml no longer has. */
+    public int secureCells(ItemRecord record) {
+        ItemDef def = items.registry().get(record.id);
+        return def == null ? 1 : def.secureCells(record.amount);
+    }
+
+    /** Cells the records take together. */
+    public int secureUsed(List<ItemRecord> records) {
+        int used = 0;
+        for (ItemRecord record : records) {
+            used += secureCells(record);
+        }
+        return used;
+    }
+
+    /**
+     * Which record each of the nine secure cells shows (SecureMenu, LootMenu): its index, or -1 for
+     * a free cell. A record shows in its first cell and holds the next ones it takes, since a chest
+     * window cannot draw one icon across several slots. A container whose records take more than
+     * nine cells (filled before items had sizes, at most nine records then) shows each in one cell.
+     */
+    public int[] secureLayout(List<ItemRecord> records) {
+        int[] layout = new int[SECURE_CELLS];
+        java.util.Arrays.fill(layout, -1);
+        boolean compact = secureUsed(records) > SECURE_CELLS;
+        int cell = 0;
+        for (int i = 0; i < records.size() && cell < SECURE_CELLS; i++) {
+            int cells = compact ? 1 : secureCells(records.get(i));
+            for (int k = 0; k < cells && cell + k < SECURE_CELLS; k++) {
+                layout[cell + k] = i;
+            }
+            cell += cells;
+        }
+        return layout;
+    }
+
+    /**
+     * Puts as much of {@code record} (an item of {@code def}) into the player's secure container as
+     * its cells hold, and returns how many went in; the caller takes them off where they came from
+     * and saves ({@link #secureChanged}). Rounds first top up the room left in a begun cell of the
+     * same kind (20 rounds and 10 more share a cell), then go into free cells, one record per
+     * {@link ItemDef#secureStack} so every cell shows what it holds. A container over its cells
+     * takes nothing, not even into a begun cell. The one way anything goes into it, from the secure
+     * menu and from the search screen alike, so the cell count cannot be walked around.
+     */
+    public int secureStore(Player player, ItemDef def, ItemRecord record) {
+        List<ItemRecord> records = secureContents(player);
+        int cap = secureCapacity(player);
+        int used = secureUsed(records);
+        if (used > cap) {
+            return 0;
+        }
+        int free = cap - used;
+        int left = record.amount;
+        if (def.maxStack() > 1 && record.uid == null) {
+            for (ItemRecord held : records) {
+                if (left <= 0) {
+                    break;
+                }
+                if (!sameKind(held, record)) {
+                    continue;
+                }
+                int begun = Math.max(1, (held.amount + def.secureStack() - 1) / def.secureStack()) * def.secureStack();
+                int room = Math.min(begun, def.maxStack()) - held.amount;
+                if (room > 0) {
+                    int n = Math.min(room, left);
+                    held.amount += n;
+                    left -= n;
+                }
+            }
+        }
+        while (left > 0 && free >= def.size()) {
+            ItemRecord part = record.copy();
+            part.amount = Math.min(left, def.secureStack());
+            records.add(part);
+            left -= part.amount;
+            free -= def.size();
+        }
+        return record.amount - left;
+    }
+
+    /** True when two stored stacks are the same item (a free-kit stack is not the same as a bought one). */
+    private boolean sameKind(ItemRecord a, ItemRecord b) {
+        if (!a.id.equals(b.id) || a.uid != null || b.uid != null) {
+            return false;
+        }
+        ItemRecord x = a.copy();
+        x.amount = 1;
+        ItemRecord y = b.copy();
+        y.amount = 1;
+        ItemStack built = items.fromRecord(x);
+        return built != null && built.isSimilar(items.fromRecord(y));
+    }
+
+    /** Why nothing of {@code def} goes into the player's secure container: too big for it, over its cells, or full. */
+    public String secureFullReason(Player player, ItemDef def) {
+        int cap = secureCapacity(player);
+        int used = secureUsed(secureContents(player));
+        if (def.size() > cap) {
+            return "这件物品占 " + def.size() + " 格，安全箱只有 " + cap + " 格";
+        }
+        if (used > cap) {
+            return "安全箱超出容量（" + used + "/" + cap + " 格），先取出物品";
+        }
+        return "安全箱空间不足：需要 " + def.size() + " 格，剩余 " + (cap - used) + " 格";
     }
 
     /** Saves a change to the secure container: in the lobby it is part of the loadout. */

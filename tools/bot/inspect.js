@@ -21,8 +21,9 @@
 //      the gun's fire mode alone (it switched the fire mode), also with the next client tick 250 ms
 //      late (a client at a few frames a second, or jitter: it was read after 150 ms, before the slot
 //      change);
-//   5. F 50 ms after a swing inspects once the swing is over (at least 200 ms after the swing, not
-//      over it);
+//   5. F 50 ms after a swing inspects once the swing is over: at least 200 ms after a karambit's (a
+//      6-tick stab), at least 350 ms after the starter knife's (an 8-tick stab, where vanilla's
+//      6-tick swing let the inspect start over the end of it);
 //   6. F while sprinting inspects, nothing clears it before it has run out, the action bar gives no
 //      reason, and the player sprints all through it and after (#116: it was refused with
 //      冲刺中无法检视); none with sneak+F (the operator skill); with a gun in hand F switches the fire
@@ -357,6 +358,20 @@ async function killSoldiers (bot) {
     check('F 50 ms after a swing inspects once the swing is over (>= 200 ms after the swing)', after !== null && after >= 200, { got, after })
     await sleep(ticks * 50)
   }
+  if (!await holdKnife(a, 'knife_starter')) return finish(2)
+  await sleep(500)
+  {
+    const swungAt = Date.now()
+    a.swingArm('right')
+    await sleep(50)
+    const got = await inspectsDuring(a, () => pressF(a), 800)
+    const start = a.inspects.find(p => p.at >= swungAt && p.ticks > 0)
+    const after = start ? start.at - swungAt : null
+    check('F 50 ms after a starter knife stab inspects once its 8-tick stab is over (>= 350 ms after it)', after !== null && after >= 350, { got, after })
+    await sleep(ticks * 50)
+  }
+  if (!await holdKnife(a, 'knife_karambit')) return finish(2)
+  await sleep(500)
 
   // 6. F while sprinting inspects (#116), and the sprint goes on; no inspect with sneak+F, or with a
   // gun in hand.
@@ -470,7 +485,7 @@ async function killSoldiers (bot) {
     await sleep(100)
     const from = Date.now()
     pressF(a)
-    // The inspect waits for the cut's swing (6 ticks) and then starts, before the next cut is due.
+    // The inspect waits for the cut's stab (6 ticks for the karambit) and then starts, before the next cut is due.
     await sleep(Math.max(0, hitAt + k.cd * 50 + 150 - Date.now()))
     const start = a.inspects.filter(p => p.at >= from).map(p => ({ after: p.at - from, ticks: p.ticks }))
     const second = await cut()

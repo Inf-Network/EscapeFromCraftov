@@ -284,7 +284,8 @@ combat:
     # different length plays the same motion faster or slower.
     inspect-ticks: 50
     # F during a cut waits for the swing to end and inspects then. A player who keeps cutting gets
-    # 出刀中无法检视 on the action bar once a press has waited this many ticks (6 at least, one swing).
+    # 出刀中无法检视 on the action bar once a press has waited this many ticks (one stab at least: 8
+    # ticks for most knives, 6 for the karambit).
     inspect-swing-wait-ticks: 12
 
 weapons:

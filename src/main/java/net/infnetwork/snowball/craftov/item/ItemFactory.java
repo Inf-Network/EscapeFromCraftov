@@ -104,6 +104,8 @@ public final class ItemFactory {
     private static final NamespacedKey KNIFE_ATTACK = new NamespacedKey("craftov", "knife_attack");
     /** The attack speed a player has with nothing in hand (vanilla's base): a knife's modifier is measured from it. */
     private static final double BASE_ATTACK_SPEED = 4.0;
+    /** Ticks an arm swing plays on the client for an item without a swing_animation of its own (vanilla, no haste). */
+    public static final int VANILLA_SWING_TICKS = 6;
 
     private final ItemRegistry registry;
 
@@ -588,6 +590,16 @@ public final class ItemFactory {
             applyModelData(stack);
         }
         refreshLore(stack, def);
+    }
+
+    /**
+     * Ticks the client plays an arm swing (a cut, Q, a click on a block) with {@code stack} in hand:
+     * its swing_animation's duration, so a knife's stab (up to 8 ticks, see {@link #knife}), or
+     * vanilla's 6.
+     */
+    public static int swingTicks(@Nullable ItemStack stack) {
+        SwingAnimation swing = stack == null || stack.isEmpty() ? null : stack.getData(DataComponentTypes.SWING_ANIMATION);
+        return swing == null ? VANILLA_SWING_TICKS : Math.max(1, swing.duration());
     }
 
     /**

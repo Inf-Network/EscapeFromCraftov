@@ -376,9 +376,14 @@ async function cutsToDown (attacker, items, tag, label, hp, height, knife, yaw) 
   return { hits, want, allMatch, got, vest: vest && vest.id }
 }
 
-/** Tags one AI soldier of `kind` (craftov:ai) and entity `type` with `tag`; true when one was found. */
-async function tagSoldier (type, kind, tag, extra = '') {
-  await rcon(`tag @e[type=minecraft:${type},tag=!m_keep,limit=1,nbt={BukkitValues:{"craftov:ai":"${kind}"}${extra}}] add ${tag}`)
+/**
+ * Tags one AI soldier of `kind` (craftov:ai) and entity `type` in the attacker's raid world with
+ * `tag`; true when one was found. A selector with no position would take one from any world: from a
+ * raid another script left running on the same server, whose world (and the soldier with it) goes
+ * away when that raid ends, half way through this run.
+ */
+async function tagSoldier (attacker, type, kind, tag, extra = '') {
+  await rcon(`execute at ${attacker.username} run tag @e[type=minecraft:${type},tag=!m_keep,distance=..512,limit=1,nbt={BukkitValues:{"craftov:ai":"${kind}"}${extra}}] add ${tag}`)
   const found = (await rcon(`execute if entity ${one(tag)}`)).includes('passed')
   if (found) {
     await rcon(`tag ${one(tag)} add m_keep`)
@@ -453,18 +458,18 @@ async function armourAttr (sel) {
   await rcon(`execute as ${target.username} at @s run tp @s 40.5 65 95.5`)
   log('in the raid; waiting for the boss (60 s in)')
   const bossNbt = ',attributes:[{id:"minecraft:max_health",base:380.0d}]'
-  if (!await waitFor(async () => (await rcon(`execute if entity @e[type=minecraft:husk,nbt={BukkitValues:{"craftov:ai":"guard"}${bossNbt}}]`)).includes('passed'), 120000)) {
+  if (!await waitFor(async () => (await rcon(`execute at ${attacker.username} if entity @e[type=minecraft:husk,distance=..512,nbt={BukkitValues:{"craftov:ai":"guard"}${bossNbt}}]`)).includes('passed'), 120000)) {
     log('SETUP: no boss appeared')
     return finish(2)
   }
   await rcon('cv event shields')
   await sleep(1500)
   const tagged = [
-    await tagSoldier('husk', 'guard', 'm_boss', bossNbt),
-    await tagSoldier('husk', 'shield', 'm_shield'),
-    await tagSoldier('zombie', 'patrol', 'm_pat1'),
-    await tagSoldier('zombie', 'patrol', 'm_pat2'),
-    await tagSoldier('zombie', 'patrol', 'm_pat3')
+    await tagSoldier(attacker, 'husk', 'guard', 'm_boss', bossNbt),
+    await tagSoldier(attacker, 'husk', 'shield', 'm_shield'),
+    await tagSoldier(attacker, 'zombie', 'patrol', 'm_pat1'),
+    await tagSoldier(attacker, 'zombie', 'patrol', 'm_pat2'),
+    await tagSoldier(attacker, 'zombie', 'patrol', 'm_pat3')
   ]
   if (!tagged.every(Boolean)) {
     log('SETUP: missing soldiers (boss, shield, patrol x3)', tagged)

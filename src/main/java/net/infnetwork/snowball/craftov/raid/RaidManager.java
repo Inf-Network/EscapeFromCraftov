@@ -1644,7 +1644,7 @@ public final class RaidManager implements Listener {
         rp.offlineHealth -= amount;
         if (rp.offlineHealth <= 0) {
             long now = Bukkit.getCurrentTick();
-            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, now, false, now));
+            diedOffline(raid, rp, new DamageService.LastHit(null, "未知", "失血", worst.zone(), worst, now, false, now, false));
         }
     }
 

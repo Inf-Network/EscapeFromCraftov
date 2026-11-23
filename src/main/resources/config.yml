@@ -328,6 +328,18 @@ weapons:
     # Each shot's level varies at random by up to this many dB either way.
     level-jitter-db: 1.0
 
+throwables:
+  frag:
+    # Shrapnel flies at the head, the torso and the legs, each line a third of the grenade's damage
+    # (items.yml), falling off with distance and stopped by any block. Where it lands it goes through
+    # the helmet (head) or vest (chest, stomach) like a round of this penetration (the ammo's `pen`
+    # in items.yml; combat.armor.damage-taken), and wears it by its damage x armor-damage x
+    # combat.armor.wear-*. The legs and a bare head or torso take it in full (the torso and legs at
+    # combat.zone-multipliers, the head without a head bonus). At 2 penetration a class 6 helmet or
+    # vest at full strength lets 15% of it through, class 3 40% and class 2 60%.
+    penetration: 2
+    armor-damage: 1.5
+
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.
   operator-chance: [0.15, 0.35, 0.5]

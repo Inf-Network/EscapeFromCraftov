@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.combat.HitZone;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -23,6 +24,9 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /** Grenades: thrown as bouncing item entities, then detonate after their fuse. */
 public final class ThrowableService implements Listener {
@@ -91,12 +95,16 @@ public final class ThrowableService implements Listener {
      * corners reach 1.7 times as far) along three lines, to the eyes, the middle of the body and the
      * legs. Each line no block cuts carries a third of the damage, less the farther that point is
      * from the blast, so a head showing over a crate still gets hurt, less than in the open, and only
-     * someone wholly behind cover is spared.
+     * someone wholly behind cover is spared. Each line lands on its part through the armour there
+     * ({@link net.infnetwork.snowball.craftov.combat.DamageService#explosion}): shrapnel has little
+     * penetration (throwables.frag.penetration) but wears armour hard (throwables.frag.armor-damage).
      */
     private void frag(Player thrower, Location at, ThrowableSpec spec, String name) {
         at.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, at, 1);
         at.getWorld().spawnParticle(Particle.LARGE_SMOKE, at, 30, 1.2, 0.6, 1.2, 0.05);
         at.getWorld().playSound(at, "craftov:throw.explode", SoundCategory.PLAYERS, 6f, 1f);
+        int pen = plugin.getConfig().getInt("throwables.frag.penetration", 2);
+        double armorDamage = plugin.getConfig().getDouble("throwables.frag.armor-damage", 1.5);
         for (LivingEntity entity : at.getWorld().getNearbyLivingEntities(at, spec.radius())) {
             if (entity.getPersistentDataContainer().has(Keys.ENTITY_ROLE)) {
                 continue;
@@ -111,18 +119,17 @@ public final class ThrowableService implements Listener {
             if (!self && !plugin.raids().canDamage(thrower, entity)) {
                 continue;
             }
-            double damage = 0;
-            for (Location point : shrapnelTargets(entity)) {
-                damage += shrapnel(at, point, spec);
+            List<DamageService.Blast> hits = new ArrayList<>(3);
+            for (HitZone zone : HitZone.values()) {
+                double damage = shrapnel(at, shrapnelTarget(entity, zone), spec);
+                if (damage > 0) {
+                    hits.add(new DamageService.Blast(zone, damage));
+                }
             }
-            if (damage <= 0) {
+            if (hits.isEmpty()) {
                 continue;
             }
-            plugin.damage().recordHit(entity, self ? null : thrower, name, HitZone.TORSO);
-            plugin.damage().deal(entity, self ? null : thrower, damage);
-            // A soldier caught in the blast knows roughly where it came from, and a sleeping boss
-            // group wakes, as it would to a bullet.
-            plugin.ai().onBotHurt(entity, thrower);
+            plugin.damage().explosion(thrower, entity, at, hits, name, pen, armorDamage);
             Vector push = entity.getLocation().add(0, entity.getHeight() / 2, 0).toVector().subtract(at.toVector());
             if (push.lengthSquared() > 1e-4) {
                 entity.setVelocity(entity.getVelocity().add(push.normalize().multiply(0.4)));
@@ -130,11 +137,13 @@ public final class ThrowableService implements Listener {
         }
     }
 
-    /** The three points of a body shrapnel flies at: the eyes, the middle and the legs. */
-    private static Location[] shrapnelTargets(LivingEntity entity) {
-        Location feet = entity.getLocation();
-        return new Location[] {entity.getEyeLocation(), feet.clone().add(0, entity.getHeight() / 2, 0),
-                feet.clone().add(0, Math.min(0.4, entity.getHeight() / 4), 0)};
+    /** The point of a body shrapnel flies at for each zone: the eyes, the middle and the legs. */
+    private static Location shrapnelTarget(LivingEntity entity, HitZone zone) {
+        return switch (zone) {
+            case HEAD -> entity.getEyeLocation();
+            case TORSO -> entity.getLocation().add(0, entity.getHeight() / 2, 0);
+            case LEGS -> entity.getLocation().add(0, Math.min(0.4, entity.getHeight() / 4), 0);
+        };
     }
 
     /**

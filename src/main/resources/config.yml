@@ -480,8 +480,8 @@ escort:
   failure-share: 0.3
 
 tutorial:
-  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward,
-  # paid on the first extraction whatever steps were skipped.
+  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract), done in any
+  # order, and its reward, paid once all five are done.
   enabled: true
   reward: 20000
   # The three-page briefing (goal, rules, controls) that opens for a new player after joining.

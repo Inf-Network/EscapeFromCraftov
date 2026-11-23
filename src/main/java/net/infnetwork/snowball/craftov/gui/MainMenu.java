@@ -158,8 +158,7 @@ final class MainMenu extends Menu {
             lore.add(TutorialService.isDone(p, step) ? "<ok>✔ <muted>" + step.title
                     : step == current ? "<accent>▶ <text>" + step.title : "<dim>○ " + step.title);
         }
-        lore.add("<muted>步骤顺序随意，第一次撤离成功即完成");
-        lore.add("<muted>奖励 <accent>◈" + Text.money(plugin.getConfig().getLong("tutorial.reward", 20_000)));
+        lore.add("<muted>步骤顺序随意，五步做完奖励 <accent>◈" + Text.money(plugin.getConfig().getLong("tutorial.reward", 20_000)));
         if (p.guideMuted) {
             lore.add("<dim>目标栏和指引箭头已关闭，在简报里可以重新开启");
         } else if (next != null) {

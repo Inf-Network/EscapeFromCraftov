@@ -95,7 +95,7 @@ public final class CraftovCommand implements TabExecutor {
                 String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
                 if (action.equals("start") || action.equals("skip")) {
                     plugin.tutorial().mute(player, action.equals("skip"));
-                    Text.send(player, action.equals("skip") ? "<muted>已关闭新手指引的目标栏、箭头和提醒（第一次撤离照样发奖励）。"
+                    Text.send(player, action.equals("skip") ? "<muted>已关闭新手指引的目标栏、箭头和提醒（步骤照样记录，五步做完照样发奖励）。"
                             : "<ok>已开启新手指引。");
                     if (action.equals("start")) {
                         plugin.tutorial().show(player, plugin.profiles().get(player));

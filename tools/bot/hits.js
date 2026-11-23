@@ -150,7 +150,14 @@ async function cut (bot, tag, done) {
   await rcon(`effect give ${name} minecraft:resistance 180 4 true`)
   bot.setQuickBarSlot(2)
   await sleep(500)
-  const start = await tracked()
+  // A record from before the fight (an earlier raid on this server, or a stray hit on landing) is
+  // pruned once its 30 s of credit are over, maybe half way through the fight, which would hide one
+  // of the fight's victims from "at least N more than before": give such records up to 40 s to go.
+  let start = await tracked()
+  for (let i = 0; i < 40 && start && start.hits > 0; i++) {
+    await sleep(1000)
+    start = await tracked()
+  }
   let killed = 0
   for (let i = 0; i < KILLS; i++) {
     const tag = await soldier(`h_kill${i}`, 1)

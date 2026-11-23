@@ -3268,6 +3268,14 @@ public final class RaidManager implements Listener {
             return;
         }
         RaidPlayer rp = raid.player(player.getUniqueId());
+        if (rp != null && rp.state == RaidPlayer.State.DOWNED) {
+            // Lying down, the floor in front of the face is in reach, so a right click lands on it
+            // more often than not. Nothing there is theirs to work, but the item in hand still goes:
+            // cancelling the whole click kept the self-revive injector (the only item DownedService
+            // lets a downed player use) from ever starting unless they looked up.
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            return;
+        }
         if (rp == null || rp.state != RaidPlayer.State.ALIVE) {
             event.setCancelled(true);
             return;

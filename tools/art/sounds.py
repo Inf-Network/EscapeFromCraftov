@@ -224,6 +224,33 @@ for _n in range(1, 7):
     SOUNDS['kill/%d' % _n] = (lambda n=_n: kill_chime(n))
 
 
+def slide_scrape():
+    """A slide (SlideService): a body and its gear dropping onto the ground and dragged along it for
+    about 0.8 s, loudest as it lands and dying away as the slide slows, with grit crackling under it.
+    Its own noise generator, so adding it leaves every other sound's samples as they were."""
+    r = np.random.default_rng(909)
+    sec = 0.85
+    n = int(SR * sec)
+    tt = np.arange(n) / SR
+    # The drag: cloth and gear over stone, a band of noise whose loudness wobbles with the steps of
+    # the surface going by, fading as the speed does.
+    drag = bp(r.uniform(-1, 1, n), 220, 2400) * (0.78 + 0.22 * np.sin(2 * np.pi * 11 * tt + 1.3))
+    drag *= np.clip(tt / 0.03, 0, 1) * np.exp(-tt / 0.38)
+    # Grit: sparse clicks of gravel and dust, thinning out with the drag.
+    grit = (r.random(n) < 0.006) * r.uniform(-1, 1, n) * np.exp(-tt / 0.5)
+    grit = hp(grit, 1800) * 2.5
+    # The drop onto the ground: a dull thud and a short swish of the clothes.
+    thud = env(lp(r.uniform(-1, 1, int(SR * 0.12)), 170), 0.002, 0.035) * 1.1
+    cloth = env(bp(r.uniform(-1, 1, int(SR * 0.2)), 900, 5200), 0.01, 0.05) * 0.45
+    x = mixdown((drag, 0), (grit, 0.01), (thud, 0), (cloth, 0), length=n)
+    # Squeezed, so the drag carries as far as a footstep rather than only the thud.
+    return norm(np.tanh(2.5 * norm(x, 1.0)), 0.85)
+
+
+# Added last, for the same reason.
+SOUNDS['move/slide'] = slide_scrape
+
+
 def write_ogg(data, path):
     import oggenc
     oggenc.write(path, data, SR)

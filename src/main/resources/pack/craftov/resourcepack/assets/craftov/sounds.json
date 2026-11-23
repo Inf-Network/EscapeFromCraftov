@@ -483,6 +483,13 @@
    }
   ]
  },
+ "move.slide": {
+  "sounds": [
+   {
+    "name": "craftov:move/slide"
+   }
+  ]
+ },
  "step.stone.walk": {
   "sounds": [
    {

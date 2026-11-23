@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod", "guide", "training");
+            "leave", "help", "mod", "guide", "training", "fov");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "feed", "marketaudit", "ai", "lagcomp", "luck");
 
@@ -95,7 +95,7 @@ public final class CraftovCommand implements TabExecutor {
                 String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
                 if (action.equals("start") || action.equals("skip")) {
                     plugin.tutorial().mute(player, action.equals("skip"));
-                    Text.send(player, action.equals("skip") ? "<muted>已关闭新手指引的目标栏、箭头和提醒（步骤照样记录，五步做完照样发奖励）。"
+                    Text.send(player, action.equals("skip") ? "<muted>已关闭新手指引的目标栏、箭头和提醒（步骤照样记录，六步做完照样发奖励）。"
                             : "<ok>已开启新手指引。");
                     if (action.equals("start")) {
                         plugin.tutorial().show(player, plugin.profiles().get(player));
@@ -115,6 +115,7 @@ public final class CraftovCommand implements TabExecutor {
                     }
                 }
             }
+            case "fov" -> fov(player, args);
             case "queue" -> {
                 // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
                 if (player == null) {
@@ -180,6 +181,51 @@ public final class CraftovCommand implements TabExecutor {
         }
     }
 
+    /**
+     * /cv fov [视野 [FOV特效%]] | ok: what the player's client plays at, which the server cannot read
+     * (FovService). "ok" confirms FOV Effects is at its default 100% (the tip's button).
+     */
+    private void fov(Player player, String[] args) {
+        if (player == null) {
+            return;
+        }
+        Profile profile = plugin.profiles().get(player);
+        if (args.length >= 2 && args[1].equalsIgnoreCase("ok")) {
+            String why = plugin.fov().declare(player, profile.fov, 100);
+            Text.send(player, why == null ? "<ok>已记录：FOV 特效 100%，视野 " + profile.fov + "。<muted>瞄准镜按真实倍率放大。" : "<danger>" + why);
+            plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.FOV);
+            return;
+        }
+        if (args.length < 2) {
+            Text.send(player, "<muted>服务器记录的设置：视野 <white>" + profile.fov + "</white>，FOV 特效 <white>"
+                    + Math.round(profile.fovEffects * 100) + "%</white>。");
+            Text.send(player, plugin.fov().tip());
+            return;
+        }
+        int fov;
+        int effects;
+        try {
+            fov = Integer.parseInt(args[1]);
+            effects = args.length >= 3 ? Integer.parseInt(args[2].replace("%", "")) : (int) Math.round(profile.fovEffects * 100);
+        } catch (NumberFormatException ex) {
+            Text.send(player, "<muted>用法：/cv fov <视野 30-110> [FOV特效 0-100]，例如 <white>/cv fov 70 100</white>");
+            return;
+        }
+        String why = plugin.fov().declare(player, fov, effects);
+        if (why != null) {
+            Text.send(player, "<danger>" + why);
+            return;
+        }
+        String warning = plugin.fov().effectsWarning(effects / 100.0);
+        Text.send(player, "<ok>已记录：视野 " + fov + "，FOV 特效 " + effects + "%。"
+                + (warning != null ? " " + warning + "请调回 100%。"
+                : "<muted> 瞄准镜按真实倍率放大" + (effects < 100 ? "（已按 FOV 特效补偿）" : "")
+                + (fov < net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV
+                ? "，视野低于 " + net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV + " 时按 "
+                + net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV + " 换算（倍率略低）。" : "。")));
+        plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.FOV);
+    }
+
     private void help(CommandSender sender) {
         Text.send(sender, "<text>Craftov 指令");
         sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
@@ -187,11 +233,12 @@ public final class CraftovCommand implements TabExecutor {
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配  <muted>/cv guide <muted>新手简报（start | skip 开启或关闭指引）"));
         sender.sendMessage(Text.mm("<muted>/cv training <muted>训练行动（单人，不计战绩，装备原样归还）"));
+        sender.sendMessage(Text.mm("<muted>/cv fov <视野> [FOV特效%] <muted>告诉服务器你的视野设置（瞄准镜倍率按它换算）"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
             sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
+            sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] [瞄准镜] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
                     + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"));
         }
     }
@@ -199,7 +246,7 @@ public final class CraftovCommand implements TabExecutor {
     private void admin(CommandSender sender, String sub, String[] args) {
         switch (sub) {
             case "give" -> {
-                String usage = "<muted>用法：/cv give <玩家> <物品ID> [数量]";
+                String usage = "<muted>用法：/cv give <玩家> <物品ID> [数量] [瞄准镜]";
                 int amount = args.length > 3 ? positiveInt(args[3]) : 1;
                 if (args.length < 3 || amount <= 0) {
                     Text.send(sender, usage);
@@ -212,6 +259,10 @@ public final class CraftovCommand implements TabExecutor {
                     return;
                 }
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
+                ItemDef optic = args.length > 4 && def.isGun() ? plugin.registry().get(args[4]) : null;
+                if (optic != null && optic.optic() != null && def.gun().accepts(optic.optic())) {
+                    stack = plugin.items().withOptic(stack, optic.id()); // /cv give <玩家> <枪> 1 <瞄准镜>
+                }
                 plugin.carry().give(target, stack, true);
                 // The stack is capped at the item's stack size: say what was handed out.
                 Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + stack.getAmount());
@@ -604,6 +655,10 @@ public final class CraftovCommand implements TabExecutor {
             if (sender.hasPermission("craftov.admin")) {
                 out.addAll(ADMIN_SUBS);
             }
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("fov")) {
+            out.addAll(List.of("ok", "70", "90"));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("fov")) {
+            out.addAll(List.of("100", "50"));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("party")) {
             out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {

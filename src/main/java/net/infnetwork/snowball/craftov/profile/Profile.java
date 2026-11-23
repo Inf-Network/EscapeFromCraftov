@@ -68,6 +68,15 @@ public final class Profile {
     public boolean briefed;
     /** The player chose to skip the guide: no objective line, waypoints or reminders. */
     public boolean guideMuted;
+    /**
+     * The client's field of view (30..110) and FOV Effects slider (0..1) as the player declared them
+     * with /cv fov (FovService): the server cannot read either, and the zoom of every sight depends on
+     * both. Vanilla's defaults until told otherwise.
+     */
+    public int fov = 70;
+    public double fovEffects = 1.0;
+    /** The one-time tip about keeping FOV Effects at 100% has been shown (on the first aim). */
+    public boolean fovTip;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     /**

@@ -391,13 +391,26 @@ public final class HudService {
     }
 
     /**
-     * Puts a camera overlay on the player's own client through the head slot. The client-only item
-     * is a copy of the real helmet with the overlay added, so the helmet slot (the blood edge stays up
-     * for as long as health is low, inventory open or not) and the third-person view still show the
-     * helmet; with no helmet it is an invisible item without a tooltip.
+     * Puts a camera overlay on the player's own client through the head slot. The network handler of
+     * their own view (Nms.SelfView) then dresses every later update of their head slot the same way
+     * until it is taken off, so a headshot that damages the helmet, a helmet swap or an inventory
+     * resync shows the new helmet with the picture still up instead of clearing it for a moment.
      */
-    private static void cameraOverlay(Player player, String texture) {
-        ItemStack real = player.getInventory().getHelmet();
+    private void cameraOverlay(Player player, String texture) {
+        net.infnetwork.snowball.craftov.util.Nms.SelfView view = plugin.fov().selfView(player);
+        if (view != null) {
+            net.infnetwork.snowball.craftov.util.Nms.selfHelmet(view, real -> withOverlay(real, texture));
+        }
+        player.sendEquipmentChange(player, EquipmentSlot.HEAD, withOverlay(player.getInventory().getHelmet(), texture));
+    }
+
+    /**
+     * The client-only head item that carries a camera overlay: a copy of the real helmet with the
+     * overlay added, so the helmet slot (the blood edge stays up for as long as health is low,
+     * inventory open or not) and the third-person view still show the helmet; with no helmet it is an
+     * invisible item without a tooltip. Also called on the network thread, on a copy.
+     */
+    private static ItemStack withOverlay(@org.jspecify.annotations.Nullable ItemStack real, String texture) {
         ItemStack overlay;
         Equippable.Builder equippable;
         if (real != null && !real.isEmpty()) {
@@ -412,10 +425,14 @@ public final class HudService {
             equippable = Equippable.equippable(EquipmentSlot.HEAD);
         }
         overlay.setData(DataComponentTypes.EQUIPPABLE, equippable.cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
-        player.sendEquipmentChange(player, EquipmentSlot.HEAD, overlay);
+        return overlay;
     }
 
-    private static void restoreHelmet(Player player) {
+    private void restoreHelmet(Player player) {
+        net.infnetwork.snowball.craftov.util.Nms.SelfView view = plugin.fov().selfView(player);
+        if (view != null) {
+            net.infnetwork.snowball.craftov.util.Nms.selfHelmet(view, null);
+        }
         ItemStack real = player.getInventory().getHelmet();
         player.sendEquipmentChange(player, EquipmentSlot.HEAD, real == null ? ItemStack.empty() : real);
     }
@@ -496,13 +513,16 @@ public final class HudService {
     }
 
     /**
-     * How often an overlay that is up gets sent again. The client-side helmet only lasts until the
+     * How often an overlay that is up gets sent again when the server's internals cannot be reached
+     * (see {@link #cameraOverlay}; otherwise every update of the head slot already carries it, and it
+     * is resent only once a second as a precaution). The client-side helmet only lasts until the
      * server next syncs the real head slot: a helmet losing durability to a headshot, a helmet swap or
      * an inventory refresh puts the real helmet back on the client (a Bukkit setHelmet even sends it
      * twice, once at once and once from the next container sync), so resending only on a change of
      * overlay would leave the screen clear until the next fade step.
      */
     private static final int OVERLAY_RESEND_TICKS = 2;
+    private static final int OVERLAY_RESEND_TICKS_HOOKED = 20;
 
     private void tickOverlays() {
         long now = Bukkit.getCurrentTick();
@@ -526,7 +546,7 @@ public final class HudService {
         suppressedUntil.values().removeIf(until -> until <= now);
         dazzledUntil.values().removeIf(until -> until <= now);
         flashed.values().removeIf(flash -> flash.until() <= now);
-        boolean resend = now % OVERLAY_RESEND_TICKS == 0;
+        boolean resend = now % (net.infnetwork.snowball.craftov.util.Nms.selfReady() ? OVERLAY_RESEND_TICKS_HOOKED : OVERLAY_RESEND_TICKS) == 0;
         for (UUID id : touched) {
             Player player = Bukkit.getPlayer(id);
             if (player == null) {

@@ -25,15 +25,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * First steps for a new player: open the terminal, try a gun on the range, fit an attachment at the
- * gunsmith, deploy, and extract. Steps count in any order (one bit each in
- * {@link Profile#tutorialMask}): the guide always points at the first one not done yet, and
- * finishing all five pays the starter bonus. Hints say what to do where the player is: on the range
- * the gunsmith is behind the weapon rack, and in a raid only the extraction can be done, so that is
- * all a raid ever reminds of. Players who extracted before the guide existed are veterans and never
- * see it. A new player is first shown the briefing ({@link Briefing}), which starts the guide or
- * skips it; whoever skips still has the steps counted and the bonus paid, but gets no objective
- * line, waypoints or reminders, until the terminal's guide button turns them back on.
+ * First steps for a new player: open the terminal, try a gun on the range, check the client's FOV
+ * Effects slider (every scope zooms through it), fit an attachment at the gunsmith, deploy, and
+ * extract. Steps count in any order (one bit each in {@link Profile#tutorialMask}): the guide always
+ * points at the first one not done yet, and finishing all six pays the starter bonus. Hints say what
+ * to do where the player is: on the range the gunsmith is behind the weapon rack, and in a raid only
+ * the extraction can be done, so that is all a raid ever reminds of. Players who extracted before
+ * the guide existed are veterans and never see it. A new player is first shown the briefing
+ * ({@link Briefing}), which starts the guide or skips it; whoever skips still has the steps counted
+ * and the bonus paid, but gets no objective line, waypoints or reminders, until the terminal's guide
+ * button turns them back on.
  * <p>
  * The goal is always in view: a line under the HUD's top-left panel says what to do next and how
  * far it is, the compass points at the lobby station it is done at (in a raid it already points at
@@ -42,18 +43,26 @@ import java.util.UUID;
  */
 public final class TutorialService {
 
+    /**
+     * The steps in the order they are pointed out. Each keeps its own bit in {@link Profile#tutorialMask}:
+     * the first five bits are the old guide's steps in its order (which {@link #migrate} relies on), and
+     * the FOV Effects step, added later, takes the next one, so saved masks keep their meaning.
+     */
     public enum Step {
-        TERMINAL("打开战术终端", "右键第 9 格的战术终端",
+        TERMINAL(0, "打开战术终端", "右键第 9 格的战术终端",
                 "选中快捷栏第 9 格的<white>战术终端</white>（按 <white><key:key.hotbar.9></white>），右键打开大厅菜单"),
-        RANGE("进入靶场", "去靶场武器架试枪",
+        RANGE(1, "进入靶场", "去靶场武器架试枪",
                 "到大厅东侧的<white>靶场武器架</white>，右键进入个人靶场试枪（罗盘和悬浮箭头指向它）"),
-        GUNSMITH("装一个配件", "靶场武器架领瞄准镜试装",
+        FOV(5, "检查 FOV 特效", "FOV 特效调到 100%",
+                "按 <white>Esc → 选项 → 辅助功能</white>，确认 <white>FOV 特效</white> 是 100%（瞄准镜靠它放大），再输入 <white>/cv fov ok</white>"),
+        GUNSMITH(2, "装一个配件", "靶场武器架领瞄准镜试装",
                 "进入靶场，在武器架领一把枪和一个瞄准镜，再点武器架里的<white>改枪台</white>装上"),
-        DEPLOY("出发", "去「开始行动」选图出发",
+        DEPLOY(3, "出发", "去「开始行动」选图出发",
                 "右键大厅的<white>开始行动</white>（或终端里的大按钮），选一张地图出发"),
-        EXTRACT("活着撤离", "开始行动，活着撤离",
+        EXTRACT(4, "活着撤离", "开始行动，活着撤离",
                 "开始行动，搜刮物资后找到<white>撤离点</white>，活着撤离");
 
+        private final int bit;
         /** Short name: the menu checklist and "next step" lines. */
         public final String title;
         /** The HUD objective line in the lobby: plain text, at most about 11 Chinese characters. */
@@ -61,18 +70,29 @@ public final class TutorialService {
         /** The full hint in chat and on the action bar (MiniMessage). */
         public final String hint;
 
-        Step(String title, String objective, String hint) {
+        Step(int bit, String title, String objective, String hint) {
+            this.bit = 1 << bit;
             this.title = title;
             this.objective = objective;
             this.hint = hint;
         }
 
         int bit() {
-            return 1 << ordinal();
+            return bit;
         }
     }
 
-    private static final int ALL = (1 << Step.values().length) - 1;
+    private static final int ALL = allSteps();
+    /** How many steps the old guide's counter ({@link Profile#tutorialStep}) counted in. */
+    private static final int OLD_STEPS = 5;
+
+    private static int allSteps() {
+        int all = 0;
+        for (Step step : Step.values()) {
+            all |= step.bit();
+        }
+        return all;
+    }
 
     /** What the HUD shows as the current goal: a line of plain text and where it is, if anywhere. */
     public record Objective(String text, @Nullable Location target) {
@@ -126,10 +146,10 @@ public final class TutorialService {
      * Called on load. A reopened guide has steps on record, so it never matches twice.
      */
     public static void migrate(Profile profile) {
-        int steps = Math.clamp(profile.tutorialStep, 0, Step.values().length);
+        int steps = Math.clamp(profile.tutorialStep, 0, OLD_STEPS);
         profile.tutorialMask |= (1 << steps) - 1;
         profile.tutorialStep = 0;
-        if (steps < Step.values().length && profile.stat("extracts") > 0
+        if (steps < OLD_STEPS && profile.stat("extracts") > 0
                 && (steps > 0 || profile.tutorialMask == 0 && beganWithGuide(profile))) {
             profile.tutorialDone = false;
             profile.tutorialMask |= Step.DEPLOY.bit() | Step.EXTRACT.bit();
@@ -277,9 +297,14 @@ public final class TutorialService {
         return step.hint;
     }
 
-    /** A hint line, numbered by the step it is about (2/5 is always the range), as since #43. */
-    private static String line(Step step, String hint) {
-        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + hint;
+    /**
+     * A hint line, numbered by the step it is about (2/6 is always the range), as since #43; in chat
+     * the FOV Effects step carries a button that confirms it.
+     */
+    private static String line(Step step, String hint, boolean chat) {
+        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + hint
+                + (chat && step == Step.FOV
+                        ? " <click:run_command:'/cv fov ok'><hover:show_text:'<muted>确认 FOV 特效是 100%'><ok>[已是 100%]</hover></click>" : "");
     }
 
     /**
@@ -288,7 +313,7 @@ public final class TutorialService {
      */
     public @Nullable String landingLine(Player player) {
         Profile profile = plugin.profiles().get(player);
-        return !guided(profile) || isDone(profile, Step.EXTRACT) ? null : line(Step.EXTRACT, hint(player, Step.EXTRACT));
+        return !guided(profile) || isDone(profile, Step.EXTRACT) ? null : line(Step.EXTRACT, hint(player, Step.EXTRACT), true);
     }
 
     /** Back in the lobby: the step to do next, in chat. Players who extracted before are let go here. */
@@ -302,7 +327,7 @@ public final class TutorialService {
         if (!guided(profile) || step == null) {
             return;
         }
-        Text.send(player, line(step, hint(player, step)));
+        Text.send(player, line(step, hint(player, step), true));
     }
 
     /**
@@ -321,7 +346,7 @@ public final class TutorialService {
             }
             Step step = current(profile);
             if (step != null) {
-                Notify.hint(player, line(step, hint(player, step)));
+                Notify.hint(player, line(step, hint(player, step), false));
             }
         }
     }

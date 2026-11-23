@@ -5,17 +5,17 @@
 //              `/cv queue training` are refused (the server runs without test mode).
 //   objective  the HUD objective (`cv hud`) says to open the terminal; once the terminal is open it
 //              points at the range rack with a distance and the compass; the terminal's guide
-//              button (slot 46) reads 1/5 and the range button shines as the next step.
+//              button (slot 46) reads 1/6 and the range button shines as the next step.
 //   dialog     a new name gets the briefing (show_dialog) a few seconds after joining; the bot clicks
 //              its "跳过指引" button (custom_click_action with the button's own id and payload), is
 //              told so in chat, has no objective line, and gets no briefing when it joins again.
 //              `/cv guide start` turns the objective back on.
 //   skip       the bot opens the terminal, skips the range and the gunsmith, and deploys straight to
-//              锈港: the landing briefing points out the extract (5/5), in the raid the objective is
+//              锈港: the landing briefing points out the extract (6/6), in the raid the objective is
 //              the extraction, no action bar names a lobby step during a minute in the raid, and
 //              after it extracts the profile counts the terminal, the deploy and the extract but the
-//              guide stays open without the reward (#43: it is paid for all five), and the lobby
-//              points out the range (2/5).
+//              guide stays open without the reward (#43: it is paid for all six), and the lobby
+//              points out the range (2/6).
 //
 //   PORT=25565 RCON_PORT=25575 node onboarding.js [deploy objective dialog skip]
 //
@@ -161,7 +161,7 @@ async function objective () {
   check('then the range rack, with a distance and the compass', o.includes('靶场武器架') && /\d+m/.test(o) && o.includes('(compass)'), o)
   if (w) {
     const guide = json(w.slots[46])
-    check('the guide button reads 1/5', guide.includes('新手指引 1/5'), guide.slice(0, 200))
+    check('the guide button reads 1/6', guide.includes('新手指引 1/6'), guide.slice(0, 200))
     const range = json(w.slots[37])
     check('the range button shines as the next step', range.includes('enchantment_glint_override') && range.includes('新手指引的下一步'),
       range.slice(0, 200))
@@ -254,7 +254,7 @@ async function skip () {
   if (!landed) { bot.quit(); return }
   await sleep(3000)
   const briefing = bot.chatLines.slice(chatFrom).find(l => l.includes('行动简报'))
-  check('one landing briefing, which points out the extract (5/5)', !!briefing && briefing.includes('新手指引 5/5'), briefing)
+  check('one landing briefing, which points out the extract (6/6)', !!briefing && briefing.includes('新手指引 6/6'), briefing)
   const o = await objectiveOf(name)
   check('in the raid the objective is the extraction, with a distance', o.includes('撤离点') && /\d+m/.test(o), o)
   // A minute in the raid: reminders come every 45 s, and none may name a lobby step.
@@ -270,11 +270,11 @@ async function skip () {
   const home = await waitFor(() => bot.worldChanges > world, 30000)
   check('the bot extracts', home)
   const lobbyFrom = bot.chatLines.length
-  const range = await waitFor(() => bot.chatLines.slice(lobbyFrom).some(l => l.includes('新手指引 2/5')), 8000)
-  check('back in the lobby the guide points out the range (2/5)', range, bot.chatLines.slice(lobbyFrom))
+  const range = await waitFor(() => bot.chatLines.slice(lobbyFrom).some(l => l.includes('新手指引 2/6')), 8000)
+  check('back in the lobby the guide points out the range (2/6)', range, bot.chatLines.slice(lobbyFrom))
   const after = await money(name)
   // A daily contract may pay for the extraction; the guide's ◈20,000 must not come with it.
-  check('no bonus yet: it is paid for all five steps', after - before !== 20000, `${before} -> ${after}`)
+  check('no bonus yet: it is paid for all six steps', after - before !== 20000, `${before} -> ${after}`)
   check('chat does not say the guide is done', !bot.chatLines.some(l => l.includes('新手指引完成')))
   const left = Date.now()
   bot.quit()

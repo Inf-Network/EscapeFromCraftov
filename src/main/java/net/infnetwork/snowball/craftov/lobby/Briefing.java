@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  * the controls, which name the keys the player has bound (keybind components) instead of the
  * defaults. Every page can start the guide (also what Esc does, so a reflexive Esc never turns the
  * guide off) or skip it; skipping only turns off the guide's pointers, the steps still count and
- * the bonus for all five is still paid. Either answer means the briefing no longer opens by itself; the terminal's
+ * the bonus for all six is still paid. Either answer means the briefing no longer opens by itself; the terminal's
  * guide button opens it again.
  */
 final class Briefing {
@@ -51,7 +51,7 @@ final class Briefing {
         if (page < TITLES.length - 1) {
             buttons.add(button("<accent>下一页：" + TITLES[page + 1] + " ›", "下一页", 130, p -> open(plugin, p, page + 1)));
         }
-        buttons.add(button("<muted>跳过指引", "不显示目标栏、指引箭头和提醒。步骤照样记录，五步做完照样发新手奖励；"
+        buttons.add(button("<muted>跳过指引", "不显示目标栏、指引箭头和提醒。步骤照样记录，六步做完照样发新手奖励；"
                 + "之后可以在战术终端的「新手指引」里重新开启。", 90, p -> answer(plugin, p, true)));
         ActionButton start = button("<ok><b>开始指引", "左上角显示当前目标，罗盘和琥珀色箭头指路。", 150,
                 p -> answer(plugin, p, false));
@@ -74,7 +74,7 @@ final class Briefing {
                     "<text>这是一款<accent>搜打撤</accent>射击：带着装备进入地图，搜刮物资，\n对抗敌兵和其他小队，然后<accent>活着撤离</accent>。",
                     "<text>只有撤离成功，带出来的东西才真正归你：\n存进仓库、卖给商人、挂上交易行都行。",
                     "<muted>每局都有时间限制。撤离点在罗盘上显示为绿色菱形，\n有的要等开放、付费、拉闸，或者不许带背包。",
-                    "<muted>新手指引共五步，顺序随意，最后一步是活着撤离；\n五步做完奖励 <accent>◈"
+                    "<muted>新手指引共六步，顺序随意，最后一步是活着撤离；\n六步做完奖励 <accent>◈"
                             + Text.money(plugin.getConfig().getLong("tutorial.reward", 20_000)) + "<muted>。");
             case 1 -> List.of(
                     "<text>大厅里身上穿戴的就是下一局的<accent>出发装备</accent>，\n先在仓库和商人那里配好再出发。",
@@ -113,7 +113,7 @@ final class Briefing {
         }
         plugin.tutorial().mute(player, skip);
         if (skip) {
-            Text.send(player, "<muted>已跳过新手指引。步骤照样记录，五步做完照样发奖励；想重新开启，打开战术终端点「新手指引」。");
+            Text.send(player, "<muted>已跳过新手指引。步骤照样记录，六步做完照样发奖励；想重新开启，打开战术终端点「新手指引」。");
         } else {
             plugin.tutorial().show(player, plugin.profiles().get(player));
         }

@@ -1,19 +1,21 @@
 // New-player guide (issue #43): steps count in any order, the reward is paid however they came,
 // and the action-bar reminder stays out of raids. Headless bots with fresh random names:
 //
-//   order   (Gd#####) a new player is pointed to the terminal (1/5); opening it ticks it off on
-//           the action bar and names the range; the bot skips the range and deploys straight away:
-//           the landing briefing points out the extract (5/5) in chat; 60 s in the raid bring no
-//           action-bar reminder (the lobby before brought one); after extracting the lobby still
-//           points out the range (2/5) and opening the terminal again does not close the guide;
-//           entering the range ticks it off on the action bar (no second chat line under the
-//           range's own) and an attachment fitted at the gunsmith finishes it: "新手指引完成" and
-//           ◈20,000 more.
+//   order   (Gd#####) a new player is pointed to the terminal (1/6); opening it ticks it off on
+//           the action bar and names the range (#7: a chat line would sit behind the terminal);
+//           the bot skips the range and deploys straight away: the landing briefing points out the
+//           extract (6/6) in chat; 60 s in the raid bring no action-bar reminder (the lobby before
+//           brought one); after extracting the lobby still points out the range (2/6) and opening
+//           the terminal again does not close the guide; entering the range ticks it off on the
+//           action bar (no second chat line under the range's own) and names the FOV Effects
+//           check, which the lobby then points out in chat with its button (3/6); /cv fov ok ticks
+//           that off and names the gunsmith, and an attachment fitted at the gunsmith finishes it:
+//           "新手指引完成" and ◈20,000 more.
 //   legacy  profiles written before the bot joins, in the old format. The old build lost the guide
 //           of a new player who extracted early; it is open again with the deploy and the extract
-//           counted: closed at counter 1 (points out the range, 2/5), left open and silent at
-//           counter 2 (the gunsmith, 3/5), and closed at counter 0 with every raid report after the
-//           guide's release (deployed without the terminal: 1/5). Veterans never see it and their
+//           counted: closed at counter 1 (points out the range, 2/6), left open and silent at
+//           counter 2 (the FOV Effects check that came after the range, 3/6), and closed at counter 0
+//           with every raid report after the guide's release (deployed without the terminal: 1/6). Veterans never see it and their
 //           profile is closed without the reward: counter 0 with a report from before the release
 //           among later ones, and counter 0 with the full 20 reports, all recent.
 //
@@ -140,8 +142,8 @@ async function order () {
   const name = bot.username
   try {
     await rcon('op ' + name)
-    const first = await waitChat(bot, /新手指引 1\/5/, 10000)
-    check('order: a new player is pointed to the terminal (1/5)', !!first, first)
+    const first = await waitChat(bot, /新手指引 1\/6/, 10000)
+    check('order: a new player is pointed to the terminal (1/6)', !!first, first)
 
     // The lobby reminder runs every 45 s: it must show here, so its absence in the raid means something.
     const lobbyBar = await waitFor(() => bot.bars.some(b => b.text.includes('新手指引') && b.world === 'craftov_lobby'), 50000)
@@ -158,10 +160,10 @@ async function order () {
     from = bot.chatLog.length
     bot.chat('/cv queue proving NORMAL SOLO')
     if (!await waitFor(() => inRaid(bot), 150000)) throw new Error('the bot never reached the raid')
-    const extractHint = await waitChat(bot, /新手指引 5\/5/, 8000, from)
-    check('order: deploying with the range skipped counts and points out the extract (5/5)', !!extractHint,
+    const extractHint = await waitChat(bot, /新手指引 6\/6/, 8000, from)
+    check('order: deploying with the range skipped counts and points out the extract (6/6)', !!extractHint,
       guideLines(bot, from))
-    const rangeInRaid = guideLines(bot, from).find(m => m.includes('2/5'))
+    const rangeInRaid = guideLines(bot, from).find(m => m.includes('2/6'))
     check('order: and the raid does not point out the range', !rangeInRaid, rangeInRaid)
     const raidFrom = Date.now()
     log(`staying ${RAID_SECONDS} s in the raid`)
@@ -173,10 +175,10 @@ async function order () {
     from = bot.chatLog.length
     await rcon(`execute as ${name} at @s run tp @s ${EXTRACT}`)
     if (!await waitFor(() => inLobby(bot), 30000)) throw new Error('the bot did not extract')
-    const back = await waitChat(bot, /新手指引 2\/5/, 8000, from)
-    check('order: back in the lobby the guide still points out the range (2/5)', !!back, guideLines(bot, from))
+    const back = await waitChat(bot, /新手指引 2\/6/, 8000, from)
+    check('order: back in the lobby the guide still points out the range (2/6)', !!back, guideLines(bot, from))
     await sleep(1500)
-    check('order: and says it once (not once more on the extract itself)', guideLines(bot, from).filter(m => m.includes('2/5')).length === 1,
+    check('order: and says it once (not once more on the extract itself)', guideLines(bot, from).filter(m => m.includes('2/6')).length === 1,
       guideLines(bot, from))
 
     // The old build closed the guide here: the next step taken took the player for a veteran.
@@ -192,13 +194,22 @@ async function order () {
     const rack = bot.nearestEntity(e => e.name === 'interaction')
     if (rack) bot.activateEntity(rack)
     barsFrom = bot.bars.length
-    const third = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 进入靶场.*下一步：装一个配件/.test(b.text)), 8000)
-    check('order: entering the range ticks it off and names the gunsmith next', third, bot.bars.slice(barsFrom).map(b => b.text))
+    const third = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 进入靶场.*下一步：检查 FOV 特效/.test(b.text)), 8000)
+    check('order: entering the range ticks it off and names the FOV Effects check next', third, bot.bars.slice(barsFrom).map(b => b.text))
     // The range has its own line in chat; the guide's goes on the action bar (#7: two lines at once before).
     check('order: and adds no guide line to the range\'s own in chat', guideLines(bot, from).length === 0, guideLines(bot, from))
+    from = bot.chatLog.length
     bot.chat('/cv lobby')
     await waitFor(() => inLobby(bot), 10000)
-    await sleep(3000)
+    const fovLine = await waitChat(bot, /新手指引 3\/6/, 6000, from)
+    check('order: back in the lobby it points out the FOV Effects check (3/6)', !!fovLine, guideLines(bot, from))
+    check('order: with a button that confirms it', !!fovLine && fovLine.includes('[已是 100%]'), fovLine)
+
+    // The FOV Effects check: confirmed with /cv fov ok (what the chat button runs).
+    barsFrom = bot.bars.length
+    bot.chat('/cv fov ok')
+    const fourth = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 检查 FOV 特效.*下一步：装一个配件/.test(b.text)), 5000)
+    check('order: confirming FOV Effects ticks it off and names the gunsmith next', fourth, bot.bars.slice(barsFrom).map(b => b.text))
 
     // The gunsmith: a red dot on an M4C.
     await rcon(`clear ${name}`)
@@ -271,13 +282,13 @@ async function legacy () {
   // The deploy (8) and the extract (16) are counted for every guide brought back.
   const reopened = [
     // Closed by the old build: counter at 1 (terminal), one extract behind it.
-    { who: 'GdE', label: 'closed early at 1/5', hint: '2/5', mask: 1 | 8 | 16,
+    { who: 'GdE', label: 'closed early at 1/5', hint: '2/6', mask: 1 | 8 | 16,
       fields: { tutorialStep: 1, tutorialDone: true, stats: { extracts: 1, raids: 1 } } },
     // Never closed, but silent since the extract: counter at 2 (terminal, range).
-    { who: 'GdS', label: 'left open and silent at 2/5', hint: '3/5', mask: 1 | 2 | 8 | 16,
+    { who: 'GdS', label: 'left open and silent at 2/5', hint: '3/6', mask: 1 | 2 | 8 | 16,
       fields: { tutorialStep: 2, tutorialDone: false, stats: { extracts: 1, raids: 1 }, reports: reports(Date.now() - DAY) } },
     // Deployed from the lobby station without the terminal, extracted, then closed by the terminal.
-    { who: 'GdD', label: 'closed with no counter, every raid after the release', hint: '1/5', mask: 8 | 16,
+    { who: 'GdD', label: 'closed with no counter, every raid after the release', hint: '1/6', mask: 8 | 16,
       fields: { tutorialStep: 0, tutorialDone: true, stats: { extracts: 1, raids: 2 }, reports: reports(Date.now() - DAY, RELEASED + 60000) } }
   ]
   for (const c of reopened) {

@@ -166,13 +166,18 @@ TP_INJECT = [
     (0.78, 0, -90, 0, 45, -0.5, 1.0, 1.0),
     (1.00,) + REST + ('hold',),
 ]
+# The self-revive injector is only ever used lying down, face to the floor, where vanilla's crawling
+# pose lays the arm along the body, the hand by the hip: posed as for the shot standing, the
+# injector stayed under the body. So it goes the other way from the hand (dy -6: off the back,
+# towards the sky) and is rolled a quarter turn about the arm, its face to the side, where it is
+# seen driven down along the thigh.
 TP_REVIVE = [
     (0.00,) + REST + ('hold',),
-    (0.10, 0, -90, 0, 45, -0.5, 1.0, 1.5),
-    (0.14, 0, -90, 0, 45, -0.5, 1.0, 2.0, 'hold'),
-    (0.19, 0, -90, 0, 45, -1.0, 1.0, -2.5, 'hold'),
-    (0.55, 0, -90, 0, 45, -1.0, 1.0, -2.9, 'hold'),
-    (0.72, 0, -90, 0, 45, -0.5, 1.0, 1.0),
+    (0.10, 0, -90, 90, 45, -0.5, -6.0, 1.5),
+    (0.14, 0, -90, 90, 45, -0.5, -6.0, 2.0, 'hold'),
+    (0.19, 0, -90, 90, 45, -1.0, -6.0, -2.5, 'hold'),
+    (0.55, 0, -90, 90, 45, -1.0, -6.0, -2.9, 'hold'),
+    (0.72, 0, -90, 90, 45, -0.5, -6.0, 1.0),
     (1.00,) + REST + ('hold',),
 ]
 # A roll of gauze going round the thigh: circles out to the side and up and down.
@@ -199,14 +204,18 @@ TP_SPLINT = [
 
 
 def _tp_kit(open_at, close_at, shakes):
-    """A kit held up in front of the belly, tipped open towards the body and worked through."""
-    held = (0, -60, 0, 180, 0, 2.5, 1.5)
-    return ([(0.00,) + REST + ('hold',), (open_at, 0, -90, 0, 180, 0, 2.0, 1.5), (open_at + 0.06,) + held + ('hold',)]
-            + _shake(open_at + 0.08, close_at - 0.04, shakes, held, (5, 4, 4, 0, 0.3, 0, 0.3))[1:-1]
-            + [(close_at,) + held + ('hold',), (close_at + 0.06, 0, -90, 0, 180, 0, 2.0, 1.5), (1.00,) + REST + ('hold',)])
+    """A kit brought up off the hand to the front of the chest, upright to the people in front,
+    tipped open towards the body and worked through with a shake big enough to see from across a
+    room. The arm stays down (vanilla has no pose for it), so the kit leaves the hand."""
+    lifted = (0, -90, 0, 180, -3.0, 4.0, 4.0)
+    held = (0, -65, 0, 180, -3.5, 4.0, 5.0)
+    return ([(0.00,) + REST + ('hold',), (open_at,) + lifted, (open_at + 0.06,) + held + ('hold',)]
+            + _shake(open_at + 0.08, close_at - 0.04, shakes, held, (10, 10, 12, 0, 0.6, 0.4, 0.9))[1:-1]
+            + [(close_at,) + held + ('hold',), (close_at + 0.06,) + lifted, (1.00,) + REST + ('hold',)])
 
 
-# The bottle upright, rattled; vanilla's eating pose takes the arm to the mouth.
+# The bottle upright, rattled at the hand. Vanilla's eating has no third-person pose: the arm stays
+# down, and the bottle only goes to the mouth in the first person.
 TP_PAINKILLER = ([(0.00,) + REST + ('hold',), (0.08,) + UP + (0, 0.5, 1.0)]
                  + _shake(0.08, 0.4, 4, UP + (0, 0.5, 1.0), (0, 0, 0, 14, 0.3, 0, 0.6))[1:]
                  + [(0.5,) + UP + (0, 0.5, 1.0), (1.00,) + REST + ('hold',)])

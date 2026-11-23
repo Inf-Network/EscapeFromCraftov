@@ -180,283 +180,416 @@
       }
      },
      {
-      "threshold": 0.17222,
+      "threshold": 0.16111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/14"
       }
      },
      {
-      "threshold": 0.19444,
+      "threshold": 0.17222,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/15"
       }
      },
      {
-      "threshold": 0.23889,
+      "threshold": 0.18333,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/16"
       }
      },
      {
-      "threshold": 0.25,
+      "threshold": 0.19444,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/17"
       }
      },
      {
-      "threshold": 0.26111,
+      "threshold": 0.23889,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/18"
       }
      },
      {
-      "threshold": 0.29444,
+      "threshold": 0.25,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/19"
       }
      },
      {
-      "threshold": 0.30556,
+      "threshold": 0.26111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/20"
       }
      },
      {
-      "threshold": 0.31667,
+      "threshold": 0.28333,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/21"
       }
      },
      {
-      "threshold": 0.35,
+      "threshold": 0.29444,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/22"
       }
      },
      {
-      "threshold": 0.36111,
+      "threshold": 0.30556,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/23"
       }
      },
      {
-      "threshold": 0.40556,
+      "threshold": 0.31667,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/24"
       }
      },
      {
-      "threshold": 0.41667,
+      "threshold": 0.33889,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/25"
       }
      },
      {
-      "threshold": 0.46111,
+      "threshold": 0.35,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/26"
       }
      },
      {
-      "threshold": 0.47222,
+      "threshold": 0.36111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/27"
       }
      },
      {
-      "threshold": 0.50556,
+      "threshold": 0.37222,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/28"
       }
      },
      {
-      "threshold": 0.51667,
+      "threshold": 0.39444,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/29"
       }
      },
      {
-      "threshold": 0.52778,
+      "threshold": 0.40556,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/30"
       }
      },
      {
-      "threshold": 0.56111,
+      "threshold": 0.41667,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/31"
       }
      },
      {
-      "threshold": 0.57222,
+      "threshold": 0.42778,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/32"
       }
      },
      {
-      "threshold": 0.58333,
+      "threshold": 0.45,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/33"
       }
      },
      {
-      "threshold": 0.61667,
+      "threshold": 0.46111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/34"
       }
      },
      {
-      "threshold": 0.62778,
+      "threshold": 0.47222,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/35"
       }
      },
      {
-      "threshold": 0.67222,
+      "threshold": 0.48333,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/36"
       }
      },
      {
-      "threshold": 0.68333,
+      "threshold": 0.49444,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/37"
       }
      },
      {
-      "threshold": 0.72778,
+      "threshold": 0.50556,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/38"
       }
      },
      {
-      "threshold": 0.73889,
+      "threshold": 0.51667,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/39"
       }
      },
      {
-      "threshold": 0.81667,
+      "threshold": 0.52778,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/40"
       }
      },
      {
-      "threshold": 0.85,
+      "threshold": 0.56111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/41"
       }
      },
      {
-      "threshold": 0.86111,
+      "threshold": 0.57222,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/42"
       }
      },
      {
-      "threshold": 0.87222,
+      "threshold": 0.58333,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/43"
       }
      },
      {
-      "threshold": 0.88333,
+      "threshold": 0.60556,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/44"
       }
      },
      {
-      "threshold": 0.89444,
+      "threshold": 0.61667,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/45"
       }
      },
      {
-      "threshold": 0.90556,
+      "threshold": 0.62778,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/46"
       }
      },
      {
-      "threshold": 0.91667,
+      "threshold": 0.63889,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/47"
       }
      },
      {
-      "threshold": 0.92778,
+      "threshold": 0.66111,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/48"
       }
      },
      {
-      "threshold": 0.93889,
+      "threshold": 0.67222,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/49"
       }
      },
      {
-      "threshold": 0.95,
+      "threshold": 0.68333,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/50"
       }
      },
      {
-      "threshold": 0.96111,
+      "threshold": 0.69444,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/51"
       }
      },
      {
-      "threshold": 0.97222,
+      "threshold": 0.71667,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/52"
       }
      },
      {
-      "threshold": 0.98333,
+      "threshold": 0.72778,
       "model": {
        "type": "minecraft:model",
        "model": "craftov:item/med_use/medkit_l/53"
+      }
+     },
+     {
+      "threshold": 0.73889,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/54"
+      }
+     },
+     {
+      "threshold": 0.75,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/55"
+      }
+     },
+     {
+      "threshold": 0.78333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/56"
+      }
+     },
+     {
+      "threshold": 0.79444,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/57"
+      }
+     },
+     {
+      "threshold": 0.80556,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/58"
+      }
+     },
+     {
+      "threshold": 0.81667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/59"
+      }
+     },
+     {
+      "threshold": 0.83889,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/60"
+      }
+     },
+     {
+      "threshold": 0.86111,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/61"
+      }
+     },
+     {
+      "threshold": 0.87222,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/62"
+      }
+     },
+     {
+      "threshold": 0.88333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/63"
+      }
+     },
+     {
+      "threshold": 0.89444,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/64"
+      }
+     },
+     {
+      "threshold": 0.90556,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/65"
+      }
+     },
+     {
+      "threshold": 0.91667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/66"
+      }
+     },
+     {
+      "threshold": 0.92778,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/67"
+      }
+     },
+     {
+      "threshold": 0.93889,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/68"
+      }
+     },
+     {
+      "threshold": 0.95,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/69"
+      }
+     },
+     {
+      "threshold": 0.96111,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/70"
+      }
+     },
+     {
+      "threshold": 0.97222,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/71"
+      }
+     },
+     {
+      "threshold": 0.98333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/medkit_l/72"
       }
      }
     ],

@@ -1001,9 +1001,9 @@ public final class RaidManager implements Listener {
 
     /**
      * Every extract's marker on the ground, on a timer of its own: the colour of the ring says
-     * whether it can be used now, and one that is open this raid has a beam over it. The markers
-     * used to be drawn from {@link #tickFast} when the server tick was a multiple of 10, but that
-     * timer only ever runs on ticks ending in 4 and 9 (the scheduler counts from -1 while the
+     * whether it can be used now, and one that can still be used this raid has a beam over it. The
+     * markers used to be drawn from {@link #tickFast} when the server tick was a multiple of 10, but
+     * that timer only ever runs on ticks ending in 4 and 9 (the scheduler counts from -1 while the
      * plugin enables), so not one was ever drawn.
      */
     private void tickExtractMarkers() {
@@ -1035,8 +1035,11 @@ public final class RaidManager implements Listener {
      */
     private void drawExtract(Raid raid, ExtractPoint point, long now, List<Player> near) {
         Location c = point.center;
-        boolean open = point.available && extractOpenByTime(raid, point);
-        Color color = !point.available ? Color.fromRGB(90, 90, 90) : open ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);
+        // Grey once it is shut for the rest of the raid (closed, or every place taken, not only one
+        // that never opened): orange would say "not yet" and send players to one that never opens.
+        boolean shut = extractShut(raid, point);
+        Color color = shut ? Color.fromRGB(90, 90, 90)
+                : extractOpenByTime(raid, point) ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);
         if (!near.isEmpty()) {
             Particle.DustOptions dust = new Particle.DustOptions(color, 1.3f);
             double r = point.def.radius();
@@ -1049,12 +1052,24 @@ public final class RaidManager implements Listener {
                 }
             }
         }
-        if (point.available) {
+        if (!shut) {
             for (int y = 0; y < 8; y++) {
                 raid.world.spawnParticle(Particle.DUST, c.getX(), c.getY() + y * 1.5, c.getZ(), 1, 0.05, 0.2, 0.05, 0,
                         new Particle.DustOptions(color, 2.0f), true);
             }
         }
+    }
+
+    /**
+     * Whether {@code point} cannot be used again this raid: it is not open this raid, its closing time
+     * has passed, or all of its places have been taken (what {@link #extractBlocker} refuses as
+     * "已关闭" and "名额已满").
+     */
+    public boolean extractShut(Raid raid, ExtractPoint point) {
+        MapDef.ExtractDef def = point.def;
+        return !point.available
+                || def.closesAt() > 0 && raid.elapsedSeconds() >= def.closesAt()
+                || def.capacity() > 0 && point.used >= def.capacity();
     }
 
     public boolean extractOpenByTime(Raid raid, ExtractPoint point) {

@@ -58,12 +58,16 @@ public final class AiService implements Listener {
     private static final long HOLD_TICKS = 20L * 4;
     /** Blocks of smoke along a sight line that hide what is behind it. */
     private static final double SMOKE_OPAQUE = 1.5;
+    /** Ticks between two thoughts of every soldier ({@link #tick}). */
+    private static final long THINK_TICKS = 2;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
     private final AiDoors doors;
     /** Smoke clouds soldiers cannot see through, in every raid world. */
     private final List<Smoke> smokes = new ArrayList<>();
+    /** Runs of {@link #tick} so far, for what a soldier only does every so often ({@link #every}). */
+    private long thinks;
 
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
@@ -153,7 +157,7 @@ public final class AiService implements Listener {
     public AiService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.doors = new AiDoors(plugin);
-        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, 2L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, THINK_TICKS);
     }
 
     public @Nullable String nameOf(Entity entity) {
@@ -715,12 +719,10 @@ public final class AiService implements Listener {
 
     // ------------------------------------------------------------------ brain
 
-    /**
-     * Every soldier thinks every 2 ticks, from whatever tick the plugin started on, so a check that
-     * should come round every N ticks tests {@code now % N < 2}: {@code == 0} may never be true.
-     */
+    /** Every soldier thinks every {@link #THINK_TICKS} ticks. */
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        thinks++;
         List<UUID> dead = new ArrayList<>();
         for (Bot bot : bots.values()) {
             Zombie mob = bot.mob;
@@ -736,6 +738,15 @@ public final class AiService implements Listener {
         dead.forEach(bots::remove);
         doors.tick(now);
         smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
+    }
+
+    /**
+     * Whether this round of thoughts is one of those every {@code ticks} ticks. Counted in runs of
+     * {@link #tick}: the server tick's phase against this timer depends on when the plugin was
+     * enabled, so a test of {@code now % ticks == 0} may never come true.
+     */
+    private boolean every(long ticks) {
+        return thinks % (ticks / THINK_TICKS) == 0;
     }
 
     private void think(Bot bot, long now) {
@@ -767,7 +778,7 @@ public final class AiService implements Listener {
             }
             double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
-                if (!mob.getPathfinder().hasPath() || now % 10 < 2) {
+                if (!mob.getPathfinder().hasPath() || every(10)) {
                     go(bot, target.getLocation(), 1.0, now);
                 }
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
@@ -783,7 +794,7 @@ public final class AiService implements Listener {
                         mob.getPathfinder().moveTo(back, 1.0);
                     }
                 }
-            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
+            } else if (every(40) && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
                 sidestep(bot, target, now);
             } else if (distance <= preferred && now >= bot.nextMoveTick) {
                 // It holds its ground to shoot, but lets a sidestep under way finish: stopping here
@@ -805,7 +816,7 @@ public final class AiService implements Listener {
             return;
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
-            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 < 2 && !heading(mob, bot.lastSeen))) {
+            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || every(20) && !heading(mob, bot.lastSeen))) {
                 go(bot, bot.lastSeen, 0.9, now);
             }
             return;

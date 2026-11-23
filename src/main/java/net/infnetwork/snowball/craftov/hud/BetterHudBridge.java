@@ -186,7 +186,8 @@ public final class BetterHudBridge implements BetterHudHook {
             }
         }
         for (ExtractPoint point : raid.extracts) {
-            if (!point.available) {
+            // One shut for the rest of the raid (closed, full) is left out like one not open this raid.
+            if (plugin.raids().extractShut(raid, point)) {
                 continue;
             }
             boolean open = plugin.raids().extractOpenByTime(raid, point);

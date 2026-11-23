@@ -5,9 +5,15 @@
 //               a villager trading for paper, an item frame and an armour stand moved in from the
 //               overworld. No window opens, the shelf, frame and stand take nothing from the hand,
 //               and in the raid a hit leaves the frame its item and the stand standing (the lobby
-//               cancels every hit anyway). In creative mode (the map editor's) all of them work and
-//               a hit knocks the frame's item out, which shows the checks can see a change. The
-//               terminal still opens in both places. Before #46 every adventure check failed.
+//               cancels every hit anyway). Twenty quick hits leave a chest minecart (with a stone
+//               in it) and a boat standing, in the lobby and the raid. In the raid, with a fixed,
+//               invisible frame under the crosshair (a map's poster), the right click the vanilla
+//               client sends (the clicks on the frame, then the item use) still pulls a frag's pin
+//               (put back by changing slot: nothing goes off) and raises a K47's sights. In
+//               creative mode (the map editor's) all of them work, a hit knocks the frame's item
+//               out and one breaks a vehicle, which shows the checks can see a change. The terminal
+//               still opens in both places. Before #46 every adventure check but the poster's
+//               failed; the poster's and the vehicles' failed before the review fixes.
 //   swap        in a proving-ground raid with a broken left leg: a painkiller is started and a
 //               container-0 hotbar-swap click (what a modified client sends with no screen open)
 //               puts a surgery kit into the hand. 1.5 s later the leg is still broken, no painkiller
@@ -133,6 +139,10 @@ function spawnBot (prefix, name = prefix + tag) {
   bot._client.on('respawn', track)
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) { bot.chatLog.push(m); log(name, 'CHAT', m) } })
+  bot.sounds = []
+  const heard = s => { s = String(s); if (/craftov:throw\./.test(s)) bot.sounds.push({ name: s, at: Date.now() }) }
+  bot.on('soundEffectHeard', heard)
+  bot._client.on('entity_sound_effect', p => { const m = JSON.stringify(p).match(/craftov:[a-z0-9_.\/]+/); if (m) heard(m[0]) })
   bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) { bot.bars.push(s); log(name, 'BAR', s) } })
   bot.on('kicked', r => log(name, 'KICKED', JSON.stringify(r)))
   bot.on('error', e => log(name, 'ERROR', e.message))
@@ -158,6 +168,19 @@ function opens (bot, fn, ms = 1500) {
     Promise.resolve(fn()).catch(e => log('click failed', e.message))
   })
 }
+/**
+ * One right click as the vanilla client sends it with `entity` under the crosshair when it does not
+ * act on the entity itself (a fixed frame): the click at a point on it, the click on it, then the use
+ * of the item in hand, all at once.
+ */
+function vanillaClick (bot, entity) {
+  const hit = new Vec3(0, 0.03, 0)
+  bot._client.write('use_entity', { target: entity.id, mouse: 2, sneaking: false, hand: 0, x: hit.x, y: hit.y, z: hit.z, location: hit })
+  bot._client.write('use_entity', { target: entity.id, mouse: 0, sneaking: false, hand: 0, location: new Vec3(0, 0, 0) })
+  bot.activateItem()
+}
+/** The gun's hand mark on a stack (the damage component): 3 aiming, 4 aimed. */
+const handMark = item => { const d = comp(item, 'damage'); return typeof d === 'number' ? d : 0 }
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 const inLobby = bot => bot.worldName === 'craftov_lobby'
 async function quit (bot) {
@@ -198,10 +221,12 @@ async function openNearestInteraction (bot) {
 
 /**
  * Places each vanilla thing two blocks east of the bot and tries it in each game mode: in `modes`
- * other than creative nothing may happen, in creative it must work. Hits are tried only where
- * `hits` is set: the lobby cancels every hit on anything already.
+ * other than creative nothing may happen, in creative it must work. Hits on frames and stands are
+ * tried only where `hits` is set: the lobby cancels every hit on anything already, though not on a
+ * vehicle, so those are tried everywhere. The poster (a fixed frame) is tried where `poster` is set,
+ * in a raid: grenades and sights work only there.
  */
-async function vanillaChecks (bot, where, modes, hits) {
+async function vanillaChecks (bot, where, modes, hits, poster) {
   const name = bot.username
   const at = bot.entity.position.floored()
   const spot = at.offset(2, 0, 0)
@@ -316,6 +341,67 @@ async function vanillaChecks (bot, where, modes, hits) {
         } else check(`${label}: armour stand summoned`, false)
       }
     }
+
+    // Vehicles: hit quickly enough to add up, a minecart or boat breaks into its item (a chest one
+    // spills its stone too). Creative breaks one with a single hit.
+    for (const [type, nbt] of [['chest_minecart', 'Items:[{Slot:0b,id:"minecraft:stone",count:1}]'], ['oak_boat', '']]) {
+      e = await summon(type, nbt)
+      if (!e) {
+        check(`${label}: ${type} summoned`, false)
+        continue
+      }
+      for (let i = 0; i < (guarded ? 20 : 1); i++) {
+        bot.attack(e)
+        await sleep(250)
+      }
+      await sleep(400)
+      const standing = await alive()
+      const inside = type === 'chest_minecart' && standing ? await data('Items') : ''
+      check(`${label}: hitting a ${type}, ${guarded ? 'leaves it standing' + (inside ? ' and full' : '') : 'breaks it (control)'}`,
+        guarded ? standing && (type !== 'chest_minecart' || /stone/.test(inside)) : !standing, `${standing ? 'standing' : 'gone'} ${inside}`)
+    }
+
+    if (poster && guarded) {
+      // A fixed, invisible frame lying in front of the bot, as a map hangs a poster. The vanilla
+      // client does nothing with a fixed frame, so a right click sends the clicks on it and then
+      // the use of the item in hand: the guard refuses the clicks, the use must still go ahead.
+      e = await summon('item_frame', 'Facing:1b,Fixed:1b,Invisible:1b,Item:{id:"minecraft:filled_map",count:1}')
+      if (e) {
+        await hold(bot, 'frag')
+        await sleep(1200) // the item use of any earlier throw is over
+        const frags = count(bot, 'frag')
+        await bot.lookAt(e.position, true)
+        const mark = Date.now()
+        vanillaClick(bot, e)
+        const pin = await waitFor(() => bot.sounds.some(x => x.name === 'craftov:throw.pin' && x.at > mark), 1500)
+        bot.setQuickBarSlot((bot.quickBarSlot + 1) % 9) // the pin goes back in
+        await sleep(400)
+        bot.deactivateItem()
+        await sleep(4000) // past the frag's 3.5 s fuse
+        const blast = bot.sounds.some(x => x.name === 'craftov:throw.explode' && x.at > mark)
+        check(`${label}: a right click on a poster (fixed frame) with a frag pulls the pin`, pin, bot.sounds.filter(x => x.at > mark))
+        check(`${label}: and the pin goes back in with the slot changed: nothing went off`, !blast && count(bot, 'frag') === frags,
+          `blast ${blast}, frags ${frags} -> ${count(bot, 'frag')}`)
+
+        // Right mouse held on the poster with a gun: the client repeats the whole click every 4 ticks.
+        const hand = await hold(bot, 'k47')
+        await sleep(1500) // drawn
+        await bot.lookAt(e.position, true)
+        const marks = []
+        const onSlot = (slot, before, after) => { if (slot === 36 + hand && handMark(before) !== handMark(after)) marks.push(handMark(after)) }
+        bot.inventory.on('updateSlot', onSlot)
+        for (let t = 0; t < 8; t++) {
+          vanillaClick(bot, e)
+          await sleep(200)
+        }
+        const up = handMark(bot.heldItem)
+        bot.deactivateItem()
+        await sleep(800)
+        bot.inventory.removeListener('updateSlot', onSlot)
+        check(`${label}: right mouse held on a poster with a K47 raises its sights`, marks.includes(3) && up === 4,
+          `marks ${marks.join(',') || 'none'}, ${up} while held`)
+      } else check(`${label}: poster summoned`, false)
+    }
     await clear()
     if (held() !== ITEM) await hold(bot, ITEM)
   }
@@ -330,7 +416,7 @@ async function containers () {
   const name = bot.username
   await rcon('op ' + name)
   await waitFor(() => inLobby(bot), 10000)
-  await vanillaChecks(bot, 'lobby', ['adventure', 'survival', 'creative'], false)
+  await vanillaChecks(bot, 'lobby', ['adventure', 'survival', 'creative'], false, false)
   let w = await opens(bot, () => bot.chat('/cv'), 4000)
   check('lobby: the terminal (a menu of ours) still opens', !!w, w ? flat(w.title) : 'no window')
   w = await openNearestInteraction(bot)
@@ -338,7 +424,7 @@ async function containers () {
 
   check('containers: deployed', await deploy(bot))
   await sleep(2000)
-  await vanillaChecks(bot, 'raid', ['adventure', 'creative'], true)
+  await vanillaChecks(bot, 'raid', ['adventure', 'creative'], true, true)
   w = await opens(bot, () => bot.chat('/cv'), 4000)
   check('raid: the terminal still opens', !!w, w ? flat(w.title) : 'no window')
   await leaveRaid(bot)

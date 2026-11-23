@@ -1,7 +1,7 @@
 """Handling (issue #117): 操控速度 on the tooltips and in the gunsmith. No arg.
 
 In the lobby, with an SV9, an M4C and an AWR on the hotbar and an 8x scope, a red dot, a vertical grip
-and a suppressor in the inventory: handling-tooltip-sv9 / -m4c / -awr, each gun's tooltip (the 操控
+and a suppressor in a backpack (parts only go in a rig or a backpack): handling-tooltip-sv9 / -m4c / -awr, each gun's tooltip (the 操控
 bar among the stat bars, and the 操控速度 line under them: its number and what it comes to, the ads,
 draw and sprint-out times); handling-tooltip-8x, the scope's tooltip (操控速度 -24). Then the gunsmith
 with the M4C: handling-gunsmith-a..d, the pointer on each part in the bottom row, whose preview shows
@@ -41,6 +41,8 @@ def chest_slot(k):
 def run(s):
     s.lobby()
     s.rcon(f'clear {s.name}')
+    s.wait(0.5)
+    s.give('pack_2')  # worn at once: the parts go in it
     s.wait(0.5)
     for item in GUNS + PARTS:
         s.give(item)

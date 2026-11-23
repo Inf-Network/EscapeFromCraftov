@@ -57,7 +57,7 @@ public final class ProvingGroundGenerator implements MapGenerator {
         return new MapDef(ID, "试验场", "功能测试地图：军械库、全部物资箱、门禁、玻璃、坠落台、六种撤离点和敌兵区都在一张图里。",
                 "craftov_tpl_" + ID, 30 * 60, new Pos(60, 112, 70, 0),
                 List.copyOf(bp.spawns), List.copyOf(bp.extracts), List.copyOf(bp.containers), List.copyOf(bp.ai),
-                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, W - 1, D - 1, "day", true);
+                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, W - 1, D - 1, "day", true, true);
     }
 
     @Override

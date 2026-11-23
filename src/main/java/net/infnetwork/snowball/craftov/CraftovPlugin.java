@@ -214,6 +214,7 @@ public final class CraftovPlugin extends JavaPlugin {
         worlds.ensureBuiltins();
         maps.load();
         maps.warnCloseSpawns();
+        maps.warnLiveProblems(Math.max(1, getConfig().getInt("match.max-squads", 4)));
         lobby.start();
         range.start();
         stance.start();
@@ -404,11 +405,12 @@ public final class CraftovPlugin extends JavaPlugin {
     }
 
     /**
-     * Whether the player may see and queue for this map. Test maps (the proving ground, whose armory
-     * hands out one of everything) need the same access as the catalog.
+     * Whether the player may see and queue for this map. Only published maps (not an editor draft)
+     * are open, and test maps (the proving ground, whose armory hands out one of everything) need
+     * the same access as the catalog.
      */
     public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
-        return !map.test() || canUseCatalog(player);
+        return map.enabled() && (!map.test() || canUseCatalog(player));
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }

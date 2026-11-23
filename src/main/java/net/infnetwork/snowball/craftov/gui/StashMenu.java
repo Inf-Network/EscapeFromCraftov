@@ -391,6 +391,7 @@ final class StashMenu extends Menu {
                 p.stash.remove(index);
             }
         }
+        sellArmedUntil = -1; // a picked record may have shrunk: the sale is confirmed again
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.6f, 1f);
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
@@ -441,6 +442,9 @@ final class StashMenu extends Menu {
             return;
         }
         plugin.weapons().flush(viewer);
+        // A deposit tops up stacks already in the stash, picked ones too: an armed sale would then sell
+        // more than the player confirmed, so it has to be armed again with the new price showing.
+        sellArmedUntil = -1;
         Profile p = profile();
         String id = ItemFactory.idOf(stack);
         List<Integer> slots = new ArrayList<>();

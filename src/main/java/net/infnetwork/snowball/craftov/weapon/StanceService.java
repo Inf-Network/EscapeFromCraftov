@@ -44,8 +44,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   animation and are told the player is using it, which is the crossbow-charge pose; that pose
  *   slowly lifts the support arm the longer the use runs, so the use is restarted every other tick
  *   and the arms stay where it starts.</li>
- *   <li>{@link Stance#SHOULDER}: aiming, or a shot fired in the last moment: the gun as a charged
- *   crossbow, which is the two-handed aim along the look (crossbow hold).</li>
+ *   <li>{@link Stance#SHOULDER}: aiming, a shot fired in the last moment, or sliding (sat on the
+ *   slide's seat, SlideService): the gun as a charged crossbow, which is the two-handed aim along the
+ *   look (crossbow hold).</li>
  *   <li>{@link Stance#RELOAD}: low, but the use runs on, so the support arm comes up to the
  *   magazine; it is restarted as the new magazine goes in and comes up again.</li>
  *   <li>{@link Stance#THROW}: a grenade being cooked is held overhead (the trident throw).</li>
@@ -254,7 +255,10 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
         if (player.hasActiveItem() && isThrowable(player.getActiveItem())) {
             return Stance.THROW;
         }
-        if (player.isSwimming() || player.isGliding() || player.isInsideVehicle() || !isGun(player.getInventory().getItemInMainHand())) {
+        // A slide's seat is not a vehicle: the player sits on it gun up (see below).
+        boolean sliding = plugin.slides().isSliding(player);
+        if (player.isSwimming() || player.isGliding() || player.isInsideVehicle() && !sliding
+                || !isGun(player.getInventory().getItemInMainHand())) {
             return Stance.NONE;
         }
         WeaponService.GunState state = plugin.weapons().state(player);
@@ -268,6 +272,10 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
             return Stance.LOW;
         }
         if (plugin.weapons().isAiming(player)) {
+            return Stance.SHOULDER;
+        }
+        if (sliding) {
+            // Sliding in, gun up: seated with the gun along the look, ready to fire.
             return Stance.SHOULDER;
         }
         long since = Bukkit.getCurrentTick() - state.lastShotTick;

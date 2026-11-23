@@ -4024,5 +4024,12 @@
     "name": "craftov:med/gasp"
    }
   ]
+ },
+ "move.slide": {
+  "sounds": [
+   {
+    "name": "craftov:move/slide"
+   }
+  ]
  }
 }

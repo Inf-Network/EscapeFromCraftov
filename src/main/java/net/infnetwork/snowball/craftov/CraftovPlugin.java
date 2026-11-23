@@ -5,6 +5,7 @@ import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.combat.DownedService;
 import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.HitboxHistory;
+import net.infnetwork.snowball.craftov.combat.SlideService;
 import net.infnetwork.snowball.craftov.combat.StaminaService;
 import net.infnetwork.snowball.craftov.command.CraftovCommand;
 import net.infnetwork.snowball.craftov.economy.MarketService;
@@ -80,6 +81,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private HitboxHistory hitboxes;
     private HealthService health;
     private StaminaService stamina;
+    private SlideService slides;
     private TriggerService triggers;
     private net.infnetwork.snowball.craftov.weapon.StanceService stance;
     private net.infnetwork.snowball.craftov.combat.FootstepService footsteps;
@@ -175,6 +177,8 @@ public final class CraftovPlugin extends JavaPlugin {
         hitboxes = new HitboxHistory(this);
         health = new HealthService(this);
         stamina = new StaminaService(this);
+        // Its tick must run before the world's (riders move then), as every scheduler task does.
+        slides = new SlideService(this);
         footsteps = new net.infnetwork.snowball.craftov.combat.FootstepService(this);
         downed = new DownedService(this);
         weapons = new WeaponService(this);
@@ -215,7 +219,7 @@ public final class CraftovPlugin extends JavaPlugin {
         adminGuard.start();
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(adminGuard, new net.infnetwork.snowball.craftov.security.VanillaGuardService(), editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
+        register(adminGuard, new net.infnetwork.snowball.craftov.security.VanillaGuardService(), editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, slides, downed,
                 raids, ai, lobby, range, stance, footsteps, lights, replays, drones, new ThrowableService(this),
                 inspect, new SwapKeyService(this), market, profiles, killFeed, fov, skins, carryInfo);
 
@@ -271,6 +275,8 @@ public final class CraftovPlugin extends JavaPlugin {
                 }
             });
         }
+        // Riders off their seats first: everything after saves where the players are.
+        step("slides", slides, () -> slides.shutdown());
         step("betterhud", betterHud, () -> betterHud.shutdown());
         step("editor", editor, () -> editor.shutdown());
         step("replays", replays, () -> replays.shutdown());
@@ -421,6 +427,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public HitboxHistory hitboxes() { return hitboxes; }
     public HealthService health() { return health; }
     public StaminaService stamina() { return stamina; }
+    public SlideService slides() { return slides; }
     public TriggerService triggers() { return triggers; }
     public net.infnetwork.snowball.craftov.weapon.StanceService stance() { return stance; }
     public net.infnetwork.snowball.craftov.combat.FootstepService footsteps() { return footsteps; }

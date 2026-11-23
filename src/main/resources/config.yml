@@ -156,13 +156,16 @@ medical:
 
 stamina:
   # Stamina runs from 0 to 100. Sprinting drains sprint-drain a tick and a jump costs jump-cost,
-  # both times the load factor below; after 0.75 s without either it comes back at regen a tick
-  # (regen-sneaking while sneaking). At 0 sprinting stops until it is back at 30. With these
-  # numbers a full bar lasts about 17 s of sprinting and takes about 13 s to refill.
+  # both times the load factor below (a slide drains its own, see slide.stamina-multiplier); after
+  # regen-delay-ticks (0.75 s) without either it comes back at regen a tick (regen-sneaking while
+  # sneaking). At 0 sprinting stops until it is back at recover-at. With these numbers a full bar
+  # lasts about 17 s of sprinting and takes about 13 s to refill.
   sprint-drain: 0.3
   jump-cost: 5
   regen: 0.4
   regen-sneaking: 0.5
+  regen-delay-ticks: 15
+  recover-at: 30
   # Load (kg, items.yml weight). Above comfort-kg every kilogram slows by penalty-per-kg and drains
   # stamina 1/30 faster. Above overload-kg sprinting is impossible and every further kilogram slows
   # by overload-penalty-per-kg. The slowdown never goes past max-penalty.
@@ -172,19 +175,65 @@ stamina:
   overload-penalty-per-kg: 0.025
   max-penalty: 0.5
 
+slide:
+  # Sprinting forward, tap sneak twice: the second press within double-tap-ms of the first, the
+  # first let go within first-hold-ms, and sprinting at the first press or within sprint-grace-ms
+  # before it (the client may end the sprint as sneak goes down). The player sits on an invisible
+  # seat the server moves: eyes 1.02 above the ground, 1.2 m of hitbox showing, legs stretched out
+  # ahead (leg-hitbox: rounds that hit them count as a leg). Holding sneak, sneaking along or a
+  # double tap while walking never slides. Only in a raid and on the private range. Times are when
+  # the packets reach the server, so a jittery connection moves them by a few tens of ms.
+  enabled: true
+  double-tap-ms: 300
+  first-hold-ms: 200
+  sprint-grace-ms: 150
+  # Blocks a tick the player must have been moving at lately (walking is 0.216, sprinting 0.28).
+  min-speed: 0.2
+  # Stamina needed to start, and spent on starting; while sliding it drains stamina-multiplier
+  # times stamina.sprint-drain a tick (times the load factor), about 10 for a slide under 25 kg.
+  min-stamina: 15
+  start-cost: 0
+  stamina-multiplier: 2.0
+  # Ticks after a slide before the next one, which also needs sprint-ticks of sprinting since:
+  # sliding is never faster than running.
+  cooldown-ticks: 30
+  sprint-ticks: 10
+  # Speed (blocks a tick): the pace the player's movement speed sprints at (0.28, more with a speed
+  # boost), at least min-start-speed, times boost, at most max-speed (0.40 from a plain sprint);
+  # then times friction every tick on the flat (friction-downhill going down a step,
+  # friction-uphill going up one) until it is under stop-speed or max-ticks have passed: about 4
+  # blocks in 17 ticks on the flat. steer-degrees a tick while A or D is held.
+  boost: 1.4
+  min-start-speed: 0.286
+  max-speed: 0.45
+  friction: 0.93
+  friction-downhill: 0.965
+  friction-uphill: 0.85
+  stop-speed: 0.12
+  max-ticks: 20
+  steer-degrees: 1.5
+  # Steps up to step-up blocks are slid up and drops up to max-drop followed down; a deeper drop
+  # ends the slide and the player falls on with its speed. A wall, a closed door or a ceiling too
+  # low to crouch under (under 1.5 over the ground) stops it at once.
+  step-up: 0.5
+  max-drop: 1.0
+  leg-hitbox: true
+
 footsteps:
   # Other players' vanilla steps (quiet, a few blocks) are replaced by the server's own, by the ground
   # underfoot: one every stride blocks covered (a jump's too, the step landing with the feet), heard
   # out to walk-range blocks walking and sprint-range sprinting (louder the nearer), and a landing
   # from land-min-fall blocks or more out to land-range. A wall in between cuts the range to
   # wall-share of it. Sneaking makes none (sneak-range), and in a raid the sneaking speed is
-  # sneak-speed of the walk (vanilla 0.3). The soldiers hear by the same ranges and walls. enabled:
-  # false gives players vanilla's steps back; the soldiers still hear by these ranges.
+  # sneak-speed of the walk (vanilla 0.3). A slide is heard out to slide-range, sneak key or not.
+  # The soldiers hear by the same ranges and walls. enabled: false gives players vanilla's steps
+  # back; the soldiers still hear by these ranges.
   enabled: true
   stride: 1.6
   walk-range: 16
   sprint-range: 32
   sneak-range: 0
+  slide-range: 24
   land-range: 24
   land-min-fall: 1.5
   wall-share: 0.5
@@ -245,6 +294,10 @@ combat:
     # shots are never rewound.
     enabled: true
     extra-ms: 200
+    # A sliding player is rewound by ping + slide-extra-ms instead: others' clients are sent only the
+    # seat the slider sits on, every tick (a player every 2), and ease into it over 2 ticks, so they
+    # draw a slider about 50 ms closer behind the server than anyone running.
+    slide-extra-ms: 150
     max-ms: 300
   # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
   # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take
@@ -393,9 +446,12 @@ weapons:
     # and the walking pace the player may go at now), the walking part counts this much: the measured
     # speed takes a tick or two to catch up with a stop. 1.0 counts it in full.
     stop: 0.5
-    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
+    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping), and
+    # while sliding (from the hip, and aimed: slide-ads; sneaking does not count while sliding).
     sneak: 0.7
     airborne: 2.5
+    slide: 1.6
+    slide-ads: 1.3
     # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
     # gun's action in items.yml. Sprinting is the client's sprint, or running at more than 1.2x walking
     # pace on the ground, as the server measures it. Once the sprint ends it fades back to 1 over the

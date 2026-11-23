@@ -150,15 +150,17 @@ public final class ReplayService implements Listener {
                     continue;
                 }
                 boolean downed = plugin.downed().isDowned(player);
-                Pose pose = downed || player.isSwimming() ? Pose.SWIMMING : player.isSneaking() ? Pose.SNEAKING : Pose.STANDING;
+                // A slide plays back crouched on the ground it slid over (the body itself sat 0.6 into it).
+                boolean sliding = plugin.slides().isSliding(player);
+                Pose pose = downed || player.isSwimming() ? Pose.SWIMMING : sliding || player.isSneaking() ? Pose.SNEAKING : Pose.STANDING;
                 ItemStack hand = hand(track, player.getUniqueId(), player.getInventory().getItemInMainHand());
-                samples.put(player.getUniqueId(), sample(player, pose, plugin.stance().recorded(player), hand));
+                samples.put(player.getUniqueId(), sample(player, plugin.slides().feet(player), pose, plugin.stance().recorded(player), hand));
                 look(track, player, now, () -> new Look(player.getName(), ResolvableProfile.resolvableProfile(player.getPlayerProfile()),
                         false, copy(player.getInventory().getHelmet()), copy(player.getInventory().getChestplate())));
             }
             for (Zombie mob : plugin.ai().mobsIn(raid)) {
                 ItemStack hand = hand(track, mob.getUniqueId(), mob.getEquipment().getItemInMainHand());
-                samples.put(mob.getUniqueId(), sample(mob, Pose.STANDING, plugin.stance().recorded(mob), hand));
+                samples.put(mob.getUniqueId(), sample(mob, mob.getLocation(), Pose.STANDING, plugin.stance().recorded(mob), hand));
                 EntityEquipment eq = mob.getEquipment();
                 look(track, mob, now, () -> new Look(DamageService.displayName(mob), null, mob instanceof Husk,
                         copy(eq.getHelmet()), copy(eq.getChestplate())));
@@ -174,8 +176,7 @@ public final class ReplayService implements Listener {
         tracks.keySet().retainAll(live);
     }
 
-    private static Sample sample(LivingEntity entity, Pose pose, StanceService.Stance stance, @Nullable ItemStack hand) {
-        Location at = entity.getLocation();
+    private static Sample sample(LivingEntity entity, Location at, Pose pose, StanceService.Stance stance, @Nullable ItemStack hand) {
         return new Sample(entity.getUniqueId(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch(), pose, stance, hand);
     }
 

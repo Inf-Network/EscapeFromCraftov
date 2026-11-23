@@ -87,7 +87,7 @@ public final class SwapKeyService implements Listener {
         }
         for (Press press : presses) {
             if (++press.tickEnds == 1) {
-                press.sneaking = player.isSneaking();
+                press.sneaking = sneaking(player);
             }
         }
         // Presses came in order, so the ones whose second tick end this was are at the front.
@@ -113,7 +113,7 @@ public final class SwapKeyService implements Listener {
                     && now - presses.peekFirst().arrived >= (presses.peekFirst().tickEnds == 0 ? FALLBACK_TICKS : LATE_TICKS)) {
                 Press press = presses.pollFirst();
                 if (press.tickEnds == 0) {
-                    press.sneaking = player.isSneaking();
+                    press.sneaking = sneaking(player);
                 }
                 read(player, press);
             }
@@ -121,6 +121,11 @@ public final class SwapKeyService implements Listener {
                 pending.remove(id);
             }
         }
+    }
+
+    /** Sneak held for the skill: not mid-slide, where the slide's second tap is usually still down. */
+    private boolean sneaking(Player player) {
+        return player.isSneaking() && !plugin.slides().isSliding(player);
     }
 
     private void read(Player player, Press press) {

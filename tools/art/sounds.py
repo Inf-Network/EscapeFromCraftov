@@ -446,6 +446,33 @@ add('med/swallow', lambda: norm(mixdown(
 add('med/gasp', lambda: norm(mixdown((inhale(0.38, 'a'), 0), (breath_out(0.35, 'uh') * 0.5, 0.45), length=int(SR * 0.85))) * 0.8)
 
 
+
+# ---------------------------------------------------------------- moving (#9)
+
+def slide_scrape():
+    """A slide (SlideService): a body and its gear dropping onto the ground and dragged along it for
+    about 0.8 s, loudest as it lands and dying away as the slide slows, with grit crackling under it."""
+    sec = 0.85
+    n = int(SR * sec)
+    tt = t(sec)
+    # The drag: cloth and gear over stone, a band of noise whose loudness wobbles with the steps of
+    # the surface going by, fading as the speed does.
+    drag = bp(noise(sec), 220, 2400) * (0.78 + 0.22 * np.sin(2 * np.pi * 11 * tt + 1.3))
+    drag *= np.clip(tt / 0.03, 0, 1) * np.exp(-tt / 0.38)
+    # Grit: sparse clicks of gravel and dust, thinning out with the drag.
+    grit = (rng.uniform(0, 1, n) < 0.006) * rng.uniform(-1, 1, n) * np.exp(-tt / 0.5)
+    grit = hp(grit, 1800) * 2.5
+    # The drop onto the ground: a dull thud and a short swish of the clothes.
+    thud = env(lp(noise(0.12), 170), 0.002, 0.035) * 1.1
+    cloth = env(bp(noise(0.2), 900, 5200), 0.01, 0.05) * 0.45
+    x = mixdown((drag, 0), (grit, 0.01), (thud, 0), (cloth, 0), length=n)
+    # Squeezed, so the drag carries as far as a footstep rather than only the thud.
+    return norm(np.tanh(2.5 * norm(x, 1.0)), 0.85)
+
+
+add('move/slide', slide_scrape)
+
+
 def write_ogg(data, path):
     import oggenc
     oggenc.write(path, data, SR)

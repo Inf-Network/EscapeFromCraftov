@@ -103,7 +103,9 @@ public final class Ballistics {
                 && !(entity instanceof Player p && (p.getGameMode() == org.bukkit.GameMode.SPECTATOR || !plugin.raids().canBeShot(p)))
                 && (plugin.raids().canDamage(shooter, living) || soldier && plugin.ai().isAi(living));
         // A player's round meets everyone where that player's screen showed them (HitboxHistory).
-        int rewind = plugin.hitboxes().rewindMillis(shooter);
+        HitboxHistory.Rewind rewind = plugin.hitboxes().rewind(shooter);
+        // How far back the entity hit was looked for (a sliding one less far), for the debug line.
+        int rewound = rewind.millis();
         Vector from = eye.toVector();
         double travelled = 0;
         double keep = 1.0;
@@ -140,6 +142,7 @@ public final class Ballistics {
             if (hit != null) {
                 hitAnything = true;
                 LivingEntity living = hit.entity();
+                rewound = hit.rewind();
                 end = hit.point();
                 replayEnd = hit.body();
                 if (!plugin.raids().canDamage(shooter, living)) {
@@ -150,7 +153,7 @@ public final class Ballistics {
                 // The hit zone is read on the body the shooter saw (crouched or standing then); the wound
                 // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
-                BodyPart part = BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point(), dir);
+                BodyPart part = hit.part() != null ? hit.part() : BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point(), dir);
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);
@@ -225,10 +228,10 @@ public final class Ballistics {
             // Where each player round landed, for measuring spread and climb against the crosshair.
             plugin.getLogger().info(!hitAnything
                     ? String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=none through=%d rewind=%dms", shooter.getName(),
-                            eye.getX(), eye.getY(), eye.getZ(), layers, rewind)
+                            eye.getX(), eye.getY(), eye.getZ(), layers, rewound)
                     : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s part=%s damage=%.1f rewind=%dms",
                             shooter.getName(), eye.getX(), eye.getY(), eye.getZ(), end.getX(), end.getY(), end.getZ(),
-                            layers, keep, hitEntity == null ? "-" : hitEntity.getName(), partHit, dealt, rewind));
+                            layers, keep, hitEntity == null ? "-" : hitEntity.getName(), partHit, dealt, rewound));
         }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), stop);

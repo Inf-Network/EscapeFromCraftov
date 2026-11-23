@@ -55,7 +55,7 @@ craftov_hud:
         y: 0
       pixel:
         x: -6
-        y: 52
+        y: 40
     '8':
       name: craftov_feed_2
       gui:
@@ -63,7 +63,7 @@ craftov_hud:
         y: 0
       pixel:
         x: -6
-        y: 64
+        y: 52
     '9':
       name: craftov_feed_3
       gui:
@@ -71,7 +71,7 @@ craftov_hud:
         y: 0
       pixel:
         x: -6
-        y: 76
+        y: 64
     '10':
       name: craftov_feed_4
       gui:
@@ -79,7 +79,7 @@ craftov_hud:
         y: 0
       pixel:
         x: -6
-        y: 88
+        y: 76
     '11':
       name: craftov_feed_5
       gui:
@@ -87,7 +87,7 @@ craftov_hud:
         y: 0
       pixel:
         x: -6
-        y: 100
+        y: 88
     '12':
       name: craftov_alert
       gui:

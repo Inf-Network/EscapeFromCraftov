@@ -22,12 +22,13 @@ SCREENS = [(1280, 720), (1366, 768), (1600, 900), (1920, 1080), (2560, 1440), (2
 SCALES = (2, 3, 4)
 # Text-only layouts have no image to measure: the widest text each is allowed (x0, y0, x1, y1).
 TEXT_BOXES = {
-    **{'craftov_feed_%d' % i: (-170, 0, 0, 12) for i in (1, 2, 3, 4)},
+    **{'craftov_feed_%d' % i: (-170, 0, 0, 12) for i in (1, 2, 3, 4, 5)},
     'craftov_prompt': (0, 0, 200, 12),
 }
 # Shown in raids all the time (the centre ones come and go with an action and may cover the world).
 ALWAYS = ['craftov_vitals', 'craftov_weapon', 'craftov_skill', 'craftov_info', 'craftov_mate_1',
-          'craftov_mate_2', 'craftov_feed_1', 'craftov_feed_2', 'craftov_feed_3', 'craftov_feed_4', 'craftov_alert']
+          'craftov_mate_2', 'craftov_feed_1', 'craftov_feed_2', 'craftov_feed_3', 'craftov_feed_4', 'craftov_feed_5',
+          'craftov_alert']
 
 
 def load(name):

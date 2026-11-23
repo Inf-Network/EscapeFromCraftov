@@ -201,8 +201,11 @@ def change(a, b):
             return 180.0, 99.0
         if ra is HIDDEN:
             continue
-        for x, y in zip(ra['rotation'], rb['rotation']):
-            turn = max(turn, abs((x - y + 180) % 360 - 180))
+        # The angle between the two orientations, not between Euler angles (which can jump between two
+        # spellings of one orientation).
+        ma, mb = euler_matrix(ra['rotation']), euler_matrix(rb['rotation'])
+        trace = sum(ma[k][i] * mb[k][i] for i in range(3) for k in range(3))
+        turn = max(turn, math.degrees(math.acos(max(-1.0, min(1.0, (trace - 1) / 2)))))
         for x, y in zip(ra['translation'], rb['translation']):
             move = max(move, abs(x - y))
     return turn, move

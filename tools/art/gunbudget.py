@@ -114,6 +114,34 @@ def _coplanar(elements):
     return out
 
 
+def _timed_frames(gid):
+    """[(kind, range dispatch entries, ticks)] of the gun's reload and draw frames, from its item
+    definition (the first-person tree's damage 2 and 1 branches) and items.yml."""
+    import yaml
+    import models
+    with open(os.path.join(ROOT, 'items', gid + '.json'), encoding='utf-8') as f:
+        definition = json.load(f)
+    items = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'main', 'resources', 'items.yml')
+    with open(items, encoding='utf-8') as f:
+        gun = yaml.safe_load(f)['items'][gid]['gun']
+    out = []
+
+    def find(node):
+        if isinstance(node, dict):
+            if node.get('property') == 'minecraft:damage':
+                yield node
+            for v in node.values():
+                yield from find(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from find(v)
+    for marks in find(definition):
+        by = {round(e['threshold'] + 0.5): e['model'] for e in marks['entries']}
+        out.append(('reload', by[2]['entries'], gun['reload']))
+        out.append(('draw', by[1]['entries'], models.draw_ticks(gun.get('action'))))
+    return out
+
+
 def lint(gid):
     """Problems with one gun's models: references that do not resolve, coordinates outside -16..32, and
     for a fitted gun (meshprim.py) each level of detail over its budget, the outline off the mesh (IoU
@@ -132,6 +160,14 @@ def lint(gid):
             if min(e['from'] + e['to']) < -16 or max(e['from'] + e['to']) > 32:
                 problems.append('%s: %s has an element outside -16..32' % (gid, ref))
                 break
+    # The reload and draw frames: at most one a tick (the client reads the cooldown once a tick), their
+    # cooldown thresholds falling, as the range dispatch needs.
+    for kind, entries, ticks in _timed_frames(gid):
+        thresholds = [e['threshold'] for e in entries]
+        if len(entries) > ticks:
+            problems.append('%s: %d %s frames for %d ticks' % (gid, len(entries), kind, ticks))
+        if any(a <= b for a, b in zip(thresholds, thresholds[1:])):
+            problems.append('%s: %s frame thresholds do not fall' % (gid, kind))
     if not meshprim.has_spec(gid):
         return problems
     for level in ('fine', 'mid', 'low'):

@@ -41,6 +41,9 @@
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node slide.js [scenario ...]
 //
+// Before each slide B shoots at (zones) and before body, A is put back to full health with no wounds
+// (/cv injure A clear): a round in the legs can break one, and then A cannot sprint or slide.
+//
 // Needs `debug: true` (impacts and slides are read from the log), test mode (`test.enabled: true`, so
 // the bots may queue for the proving ground) and `match.wait-seconds` short (3) in the server's
 // plugins/Craftov/config.yml. Exit code: number of failed checks (2+ also when the setup failed).
@@ -603,7 +606,11 @@ async function semi (bot) {
   throw new Error('the gun did not switch to single shots')
 }
 
-/** Turns `bot`'s view to `p` and tells the server at once (before the trigger that follows). */
+/**
+ * Turns `bot`'s view to `p` and tells the server at once (before the trigger that follows). Also as
+ * mineflayer's own last look sent: its physics turns what it sends towards a new view at most 8.6
+ * degrees a tick, and would otherwise send the server a half-turned view after this one.
+ */
 function lookAt (bot, p) {
   const eye = bot.entity.position.offset(0, 1.62, 0)
   const dx = p.x - eye.x
@@ -611,6 +618,7 @@ function lookAt (bot, p) {
   const dz = p.z - eye.z
   const yaw = -Math.atan2(dx, dz) * 180 / Math.PI
   const pitch = -Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI
+  bot.look(conv.fromNotchianYaw(yaw), conv.fromNotchianPitch(pitch), true)
   bot.entity.yaw = conv.fromNotchianYaw(yaw)
   bot.entity.pitch = conv.fromNotchianPitch(pitch)
   bot._client.write('look', { yaw, pitch, flags: { onGround: true, hasHorizontalCollision: false } })
@@ -630,6 +638,12 @@ function impacts (who, from) {
     .map(m => ({ hit: m[1], target: m[4] || '-', part: m[5] || '-', damage: m[6] ? Number(m[6]) : 0 }))
 }
 
+/**
+ * A back to full health with no wounds: B's rounds wear it down (Resistance does not stop them), and a
+ * round in the legs can break one, after which A cannot sprint, so not slide either.
+ */
+const healA = () => rcon(`cv injure ${A_NAME} clear`)
+
 async function zones () {
   await arm(B, 'm4c', 'ammo_556_m855')
   await semi(B)
@@ -648,6 +662,7 @@ async function zones () {
     for (const height of [1.0, 0.4, 0.15, 1.0, 0.4, 0.15, 1.0, 0.4, 0.15]) {
       await sleep(1800)
       await rcon(`cv slide ${A_NAME} stamina 100`)
+      await healA()
       await toStart()
       const { ride } = await sprintAndSlide({ ms: 700 })
       if (!ride) { results[height].push(null); continue }
@@ -868,6 +883,7 @@ async function body () {
   await sleep(2000)
   await tp(B_NAME, RX + 20.5, GROUND, RZ + 4.5, -90, 0)
   await rcon(`cv slide ${A_NAME} stamina 100`)
+  await healA()
   await rcon(`effect clear ${A_NAME}`)
   await toStart()
   const { ride } = await sprintAndSlide()

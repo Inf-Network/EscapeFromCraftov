@@ -6,9 +6,10 @@ then the tooltips of an occupied cell (secure-occupied), of the statue (secure-t
 line ends with its cells) and of the info button (secure-info). Everything is taken back out.
 
 Then a solo proving-ground raid with a self-revive injector: knocked down, /cv secure is refused on
-the bleed-out bar (downed-bar), and the terminal shows the secure container, gunsmith and skill
-locked (downed-terminal, downed-terminal-secure with the locked button's tooltip). The injector
-stands the player up and the raid is left through the always-open extract.
+the bleed-out bar (downed-bar), and the terminal shows the secure container, gunsmith, skill and
+test armory (ShotCam is an op while it is online) locked, each under its own greyed-out picture
+(downed-terminal; downed-terminal-secure and downed-terminal-armory with the locked buttons'
+tooltips). The injector stands the player up and the raid is left through the always-open extract.
 
 `secure:lobby` and `secure:raid` run one half each. The upgrade spends 2.63 million of money it
 hands out first, so run it with `--fresh` or on a throwaway profile.
@@ -116,6 +117,9 @@ def raid_part(s):
         s.mouse_to(*s.slot_center(10, 3))
         s.wait(0.7)
         s.shot('downed-terminal-secure')
+        s.mouse_to(*s.slot_center(26, 3))
+        s.wait(0.7)
+        s.shot('downed-terminal-armory')
         s.park_mouse()
         s.key('Escape')
         s.wait(0.8)

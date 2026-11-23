@@ -1192,14 +1192,22 @@ def build_trigger_capture():
     is invisible and silent when "mined", stood in (its step sound replaces the floor's) or landed on.
 
     Also the vanilla sound overrides: the AI are zombies (patrols) and husks (elite) re-skinned as
-    soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
+    soldiers (soldiers.py), so their groans are muted and they walk like people. Everyone who can be
+    shot (players, soldiers, and the mannequins that stand in for players who left) cries out with
+    the voices of sounds.py when hurt or killed, instead of vanilla's "oof" (#41).
     """
     save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
-    hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
-    death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
+    hurt = {'replace': True, 'sounds': [{'name': 'craftov:voice/hurt%d' % i, 'volume': 0.9} for i in range(1, 5)]}
+    death = {'replace': True, 'sounds': [{'name': 'craftov:voice/death%d' % i} for i in range(1, 4)]}
     step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
     overrides = {'block.sculk_vein.%s' % event: silence for event in ('hit', 'step', 'fall')}
+    # A player's hurt sound depends on what hurt them; a mannequin (a stand-in) has the generic ones.
+    for event in ('hurt', 'hurt_on_fire', 'hurt_drown', 'hurt_freeze', 'hurt_sweet_berry_bush'):
+        overrides['entity.player.' + event] = hurt
+    overrides['entity.player.death'] = death
+    overrides['entity.generic.hurt'] = hurt
+    overrides['entity.generic.death'] = death
     for mob in ('zombie', 'husk', 'drowned'):
         overrides['entity.%s.ambient' % mob] = silence
         overrides['entity.%s.hurt' % mob] = hurt

@@ -504,6 +504,55 @@
    }
   ]
  },
+ "voice.hurt1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1"
+   }
+  ]
+ },
+ "voice.hurt2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt2"
+   }
+  ]
+ },
+ "voice.hurt3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt3"
+   }
+  ]
+ },
+ "voice.hurt4": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt4"
+   }
+  ]
+ },
+ "voice.death1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death1"
+   }
+  ]
+ },
+ "voice.death2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death2"
+   }
+  ]
+ },
+ "voice.death3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death3"
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {

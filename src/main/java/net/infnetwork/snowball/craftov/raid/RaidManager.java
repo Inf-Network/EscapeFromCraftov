@@ -1395,12 +1395,19 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ death
 
-    /** Lethal damage to a raid player: downed if possible, otherwise death. */
+    /**
+     * Lethal damage to a raid player: downed if possible, otherwise death. The hit itself was
+     * cancelled, so it made no hurt sound: the player cries out here, with vanilla's player death
+     * event (the resource pack's voices), for everyone around.
+     */
     public void lethal(Player player, DamageService.@Nullable LastHit hit) {
         Raid raid = raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
         if (raid == null || rp == null || !rp.active()) {
             return;
+        }
+        if (rp.state == RaidPlayer.State.ALIVE) {
+            player.getWorld().playSound(player.getLocation(), "minecraft:entity.player.death", SoundCategory.PLAYERS, 1f, 1f);
         }
         if (rp.state == RaidPlayer.State.ALIVE && plugin.downed().canBeDowned(raid, rp)) {
             plugin.downed().down(raid, rp, player, hit);

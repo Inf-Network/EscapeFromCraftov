@@ -277,6 +277,131 @@ add('status/bleed', lambda: norm(mixdown(
     (env(sine(52, 0.25), 0.01, 0.07) * 0.8, 0.02), length=int(SR * 0.35))) * 0.5)
 
 
+# ---------------------------------------------------------------- voices (#41)
+# Players, soldiers and stand-ins hurt and die with these (the vanilla player, generic and zombie
+# hurt / death events point at them, build.py). A source-filter voice: glottal pulses at a pitch
+# that jumps up with the pain and falls away, with a little jitter, shimmer and breath, through a
+# cascade of five formant resonators that glide between vowels; a strained, pressed voice (short
+# open phase) and creak as it dies down.
+
+def curve(points, sec):
+    """A per-sample curve through (time, value) points, straight between them."""
+    xs, ys = zip(*points)
+    return np.interp(t(sec), xs, ys)
+
+
+def drift(sec, rate, depth):
+    """1 +- depth, wandering at about `rate` Hz (jitter, shimmer)."""
+    n = lp(rng.standard_normal(int(SR * sec) + 2000), rate)[2000:]
+    return 1 + depth * n / (np.max(np.abs(n)) or 1)
+
+
+def glottis(f0, sec, open_q=0.5, jitter=0.02):
+    """Glottal flow derivative (Rosenberg pulses) along the pitch curve f0, and the flow itself."""
+    f = f0 * drift(sec, 25, jitter)
+    phase = np.cumsum(f / SR) % 1.0
+    tp, tn = open_q * 0.7, open_q * 0.3
+    flow = np.where(phase < tp, 0.5 * (1 - np.cos(np.pi * phase / tp)),
+                    np.where(phase < tp + tn, np.cos(0.5 * np.pi * (phase - tp) / tn), 0.0))
+    return np.diff(flow, prepend=0.0) * SR / 400.0, flow
+
+
+def resonate(x, freq, bw):
+    """Klatt's digital resonator, its frequency and bandwidth per sample (unity gain at 0 Hz)."""
+    c = -np.exp(-2 * np.pi * bw / SR)
+    b = 2 * np.exp(-np.pi * bw / SR) * np.cos(2 * np.pi * freq / SR)
+    a = 1 - b - c
+    y = np.zeros(len(x))
+    y1 = y2 = 0.0
+    for i in range(len(x)):
+        y0 = a[i] * x[i] + b[i] * y1 + c[i] * y2
+        y[i] = y0
+        y2, y1 = y1, y0
+    return y
+
+
+# Formants (Hz) of the vowels the voices move through, an adult man's.
+VOWELS = {'a': (730, 1090, 2440), 'uh': (640, 1190, 2390), 'eh': (530, 1840, 2480), 'er': (490, 1350, 1690),
+          'o': (570, 840, 2410), 'u': (330, 900, 2240), 'm': (280, 1000, 2200)}
+
+
+def voice(sec, pitch, vowels, loud, breath=0.12, open_q=0.45, jitter=0.03, shimmer=0.12, creak=None):
+    """One utterance: `pitch`, `loud` (0..1) and `vowels` are (time, value) points; `creak` (start,
+    depth) lets the pitch break into irregular low pulses (vocal fry) from that time on."""
+    f0 = curve(pitch, sec)
+    if creak:
+        start, depth = creak
+        fry = np.clip((t(sec) - start) / 0.08, 0, 1) * depth
+        f0 = f0 * (1 - 0.45 * fry) * drift(sec, 60, 0.25 * depth)
+    src, flow = glottis(f0, sec, open_q, jitter)
+    src = src * drift(sec, 35, shimmer)
+    # A strained voice is brighter than the smooth pulse alone: lift the highs (+6 dB an octave
+    # from about 1 kHz), which puts the third formant some 25 dB under the first, as in speech.
+    src = src - 0.85 * np.concatenate(([0.0], src[:-1]))
+    # Breath: turbulence at the glottis, stronger while it is open, shaped by the same tract.
+    asp = hp(noise(sec), 700) * (0.35 + 0.65 * flow) * breath
+    x = src + asp
+    bands = [[], [], []]
+    for when, name in vowels:
+        for k in range(3):
+            bands[k].append((when, VOWELS[name][k]))
+    widths = (90, 110, 130)
+    for k in range(3):
+        x = resonate(x, curve(bands[k], sec), np.full(len(x), widths[k]))
+    x = resonate(x, np.full(len(x), 3300.0), np.full(len(x), 220.0))
+    x = resonate(x, np.full(len(x), 3750.0), np.full(len(x), 280.0))
+    return x * curve(loud, sec)
+
+
+def breath_out(sec, vowel='uh', gain=0.4):
+    """A short breath through the open mouth, with no voice."""
+    x = hp(noise(sec), 400)
+    for k, w in zip(range(3), (200, 250, 300)):
+        f = VOWELS[vowel][k]
+        x = resonate(x, np.full(len(x), float(f)), np.full(len(x), float(w)))
+    return env(x, 0.03, sec / 2.5) * gain
+
+
+def cry(*parts, length):
+    """Parts placed in time, a touch of room, peak at 0.9."""
+    x = mixdown(*parts, length=int(SR * length))
+    return norm(lp(x + reverb(x, 0.12) * 0.15, 7000))
+
+
+# Hurt: four short cries a hit draws out, each a different vowel and pitch, so a burst of hits does
+# not repeat one sample.
+add('voice/hurt1', lambda: cry((voice(0.26, [(0, 175), (0.04, 215), (0.26, 140)], [(0, 'uh'), (0.26, 'uh')],
+                                      [(0, 0), (0.015, 1), (0.12, 0.7), (0.26, 0)], creak=(0.17, 0.6)), 0.01),
+                               (breath_out(0.12) * 0.5, 0), length=0.32))
+add('voice/hurt2', lambda: cry((voice(0.3, [(0, 190), (0.05, 235), (0.3, 150)], [(0, 'a'), (0.18, 'a'), (0.3, 'uh')],
+                                      [(0, 0), (0.02, 1), (0.16, 0.75), (0.3, 0)], breath=0.2, jitter=0.05,
+                                      creak=(0.2, 0.7)), 0.0), length=0.36))
+add('voice/hurt3', lambda: cry((voice(0.24, [(0, 160), (0.04, 190), (0.24, 125)], [(0, 'uh'), (0.12, 'er'), (0.24, 'm')],
+                                      [(0, 0), (0.012, 1), (0.1, 0.8), (0.24, 0)], open_q=0.4), 0.02),
+                               (breath_out(0.1, 'uh') * 0.6, 0), length=0.3))
+add('voice/hurt4', lambda: cry((breath_out(0.08, 'a') * 0.7, 0),
+                               (voice(0.22, [(0, 205), (0.03, 245), (0.22, 165)], [(0, 'eh'), (0.1, 'uh'), (0.22, 'uh')],
+                                      [(0, 0), (0.01, 1), (0.1, 0.6), (0.22, 0)], breath=0.18, creak=(0.15, 0.5)), 0.05),
+                               length=0.3))
+# Death: a long cry that falls and breaks, then the last breath going out.
+add('voice/death1', lambda: cry((voice(0.75, [(0, 200), (0.08, 240), (0.4, 170), (0.75, 95)],
+                                       [(0, 'a'), (0.35, 'a'), (0.75, 'uh')],
+                                       [(0, 0), (0.03, 1), (0.3, 0.85), (0.6, 0.4), (0.75, 0)], breath=0.16,
+                                       jitter=0.04, creak=(0.45, 0.9)), 0.0),
+                                (breath_out(0.5, 'uh') * 0.5, 0.72), length=1.3))
+add('voice/death2', lambda: cry((voice(0.9, [(0, 150), (0.1, 175), (0.5, 120), (0.9, 80)],
+                                       [(0, 'uh'), (0.4, 'o'), (0.9, 'u')],
+                                       [(0, 0), (0.06, 0.9), (0.4, 0.8), (0.75, 0.3), (0.9, 0)], breath=0.2,
+                                       open_q=0.55, creak=(0.35, 1.0)), 0.0),
+                                (breath_out(0.6, 'o') * 0.4, 0.85), length=1.5))
+add('voice/death3', lambda: cry((voice(0.3, [(0, 210), (0.04, 250), (0.3, 170)], [(0, 'a'), (0.3, 'uh')],
+                                       [(0, 0), (0.015, 1), (0.2, 0.7), (0.3, 0)], breath=0.2, creak=(0.2, 0.6)), 0.0),
+                                (voice(0.45, [(0, 130), (0.45, 85)], [(0, 'uh'), (0.45, 'm')],
+                                       [(0, 0), (0.05, 0.45), (0.3, 0.25), (0.45, 0)], breath=0.3, open_q=0.6,
+                                       creak=(0.05, 1.0)), 0.36),
+                                (breath_out(0.45, 'uh') * 0.35, 0.8), length=1.3))
+
+
 def write_ogg(data, path):
     import oggenc
     oggenc.write(path, data, SR)

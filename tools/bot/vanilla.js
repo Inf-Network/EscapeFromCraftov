@@ -241,7 +241,9 @@ async function vanillaChecks (bot, where, modes, hits, poster) {
   log(name, where, 'at', at.toString(), 'world', bot.worldName)
   // Something of ours in the hand: the shelf, frame and stand would take it, the villager buys paper.
   // Not a med: outside a raid those refuse every right-click themselves, which would hide the guard.
-  const ITEM = 'gold_bar'
+  // A key: the quick keys 4-8 take ammo, meds, grenades and keys only (#10), so a gold bar cannot be
+  // held there any more.
+  const ITEM = 'key_dorm'
   await hold(bot, ITEM)
   const held = () => cid(bot.heldItem)
   await run(`fill ${spot.x} ${spot.y} ${spot.z} ${spot.x} ${spot.y + 2} ${spot.z} minecraft:air`)

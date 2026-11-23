@@ -78,8 +78,12 @@ public final class ItemFactory {
      * 21: knives stab (#3, which also used 20): a STAB swing_animation, an attack_range out to the
      * knife's reach and an attack-speed modifier so the attack indicator fills over the knife's
      * cooldown. It goes one past both 20s, or stacks rebuilt at either would miss the other's changes.
+     * 23: medical items and gear (#41, which used 20-22): helmets, vests, rigs and backpacks are put on
+     * with craftov:gear.equip, not leather; medical items use silently (craftov:misc.silence), their
+     * cues coming from HealthService, with no vanilla pose (eat for the painkillers) while their
+     * models move. It goes one past both 21 and #41's 22, so stacks rebuilt at either get the other's.
      */
-    public static final int VERSION = 21;
+    public static final int VERSION = 23;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -350,16 +354,21 @@ public final class ItemFactory {
                     .interactVibrations(false)
                     .build());
         } else if (med != null) {
+            // Mostly none: the item model moves the item through its use by itself (tools/art/med_use.py,
+            // using_item and use_duration). Vanilla's poses made a bandage brush sand and an injector a
+            // raised trident; the painkillers keep eat, which brings the bottle to the mouth.
             ItemUseAnimation animation;
             try {
                 animation = ItemUseAnimation.valueOf(med.animation().toUpperCase(java.util.Locale.ROOT));
             } catch (IllegalArgumentException ex) {
-                animation = ItemUseAnimation.BRUSH;
+                animation = ItemUseAnimation.NONE;
             }
+            // Silent: vanilla plays a consumable's sound every 4 ticks from a fifth of the use on, the
+            // same sample all through. HealthService plays the item's own cues instead.
             stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
                     .consumeSeconds((float) med.useSeconds())
                     .animation(animation)
-                    .sound(Key.key("craftov", "med.loop"))
+                    .sound(Key.key("craftov", "misc.silence"))
                     .hasConsumeParticles(false)
                     .build());
             stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()
@@ -431,7 +440,7 @@ public final class ItemFactory {
                 .swappable(swappable)
                 .damageOnHurt(false)
                 .dispensable(false)
-                .equipSound(Key.key("minecraft", "item.armor.equip_leather"));
+                .equipSound(Key.key("craftov", "gear.equip"));
         if (def.equipmentAsset() != null) {
             builder.assetId(Key.key(def.equipmentAsset()));
         }

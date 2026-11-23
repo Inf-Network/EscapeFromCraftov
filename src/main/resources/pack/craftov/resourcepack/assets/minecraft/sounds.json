@@ -26,6 +26,160 @@
    }
   ]
  },
+ "entity.player.hurt": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.player.hurt_on_fire": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.player.hurt_drown": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.player.hurt_freeze": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.player.hurt_sweet_berry_bush": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.player.death": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/death1"
+   },
+   {
+    "name": "craftov:voice/death2"
+   },
+   {
+    "name": "craftov:voice/death3"
+   }
+  ]
+ },
+ "entity.generic.hurt": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
+   }
+  ]
+ },
+ "entity.generic.death": {
+  "replace": true,
+  "sounds": [
+   {
+    "name": "craftov:voice/death1"
+   },
+   {
+    "name": "craftov:voice/death2"
+   },
+   {
+    "name": "craftov:voice/death3"
+   }
+  ]
+ },
  "entity.zombie.ambient": {
   "replace": true,
   "sounds": [
@@ -39,16 +193,20 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
    }
   ]
  },
@@ -56,16 +214,13 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.75
+    "name": "craftov:voice/death1"
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.75
+    "name": "craftov:voice/death2"
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.75
+    "name": "craftov:voice/death3"
    }
   ]
  },
@@ -111,16 +266,20 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
    }
   ]
  },
@@ -128,16 +287,13 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.75
+    "name": "craftov:voice/death1"
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.75
+    "name": "craftov:voice/death2"
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.75
+    "name": "craftov:voice/death3"
    }
   ]
  },
@@ -183,16 +339,20 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
    }
   ]
  },
@@ -200,16 +360,13 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.75
+    "name": "craftov:voice/death1"
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.75
+    "name": "craftov:voice/death2"
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.75
+    "name": "craftov:voice/death3"
    }
   ]
  },
@@ -273,16 +430,20 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt1",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt2",
+    "volume": 0.9
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.9
+    "name": "craftov:voice/hurt3",
+    "volume": 0.9
+   },
+   {
+    "name": "craftov:voice/hurt4",
+    "volume": 0.9
    }
   ]
  },
@@ -290,16 +451,13 @@
   "replace": true,
   "sounds": [
    {
-    "name": "minecraft:damage/hit1",
-    "pitch": 0.75
+    "name": "craftov:voice/death1"
    },
    {
-    "name": "minecraft:damage/hit2",
-    "pitch": 0.75
+    "name": "craftov:voice/death2"
    },
    {
-    "name": "minecraft:damage/hit3",
-    "pitch": 0.75
+    "name": "craftov:voice/death3"
    }
   ]
  }

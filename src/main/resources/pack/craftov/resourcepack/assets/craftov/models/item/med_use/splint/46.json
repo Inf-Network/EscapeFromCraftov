@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/splint",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -50.903,
+    -75.189,
+    -26.847
+   ],
+   "translation": [
+    0.086,
+    2.968,
+    0.782
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    129.097,
+    75.189,
+    -153.153
+   ],
+   "translation": [
+    0.086,
+    2.968,
+    0.782
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -20.874,
+    0.0,
+    52.185
+   ],
+   "translation": [
+    -0.116,
+    3.232,
+    0.652
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    159.126,
+    -0.0,
+    127.815
+   ],
+   "translation": [
+    -0.116,
+    3.232,
+    0.652
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

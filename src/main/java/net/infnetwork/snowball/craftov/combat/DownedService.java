@@ -414,11 +414,12 @@ public final class DownedService implements Listener {
 
     /**
      * A reviver who takes damage loses the progress they made. Their own wounds bleeding does not
-     * count: a medic who is bleeding could never finish otherwise.
+     * count (a medic who is bleeding could never finish otherwise): bleeding is no damage event, it
+     * comes straight off their health (RaidManager.loseHealth).
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onReviverHurt(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0 || plugin.health().isBleeding()) {
+        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0) {
             return;
         }
         UUID id = hurt.getUniqueId();
@@ -477,7 +478,7 @@ public final class DownedService implements Listener {
         }
         if (Bukkit.getCurrentTick() % 20 < 5) {
             Location at = patient.getLocation().add(0, 0.4, 0);
-            patient.getWorld().playSound(at, "craftov:med.bandage", SoundCategory.PLAYERS, 0.7f,
+            patient.getWorld().playSound(at, "craftov:med.wrap", SoundCategory.PLAYERS, 0.7f,
                     0.95f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.1f);
         }
     }

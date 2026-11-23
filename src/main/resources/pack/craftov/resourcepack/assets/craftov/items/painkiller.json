@@ -74,8 +74,219 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:model",
-   "model": "craftov:item/painkiller"
+   "type": "minecraft:condition",
+   "property": "minecraft:using_item",
+   "on_true": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:use_duration",
+    "scale": 0.033333,
+    "entries": [
+     {
+      "threshold": 0.0,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/0"
+      }
+     },
+     {
+      "threshold": 0.01667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/1"
+      }
+     },
+     {
+      "threshold": 0.05,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/2"
+      }
+     },
+     {
+      "threshold": 0.08333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/3"
+      }
+     },
+     {
+      "threshold": 0.11667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/4"
+      }
+     },
+     {
+      "threshold": 0.15,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/5"
+      }
+     },
+     {
+      "threshold": 0.18333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/6"
+      }
+     },
+     {
+      "threshold": 0.21667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/7"
+      }
+     },
+     {
+      "threshold": 0.25,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/8"
+      }
+     },
+     {
+      "threshold": 0.28333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/9"
+      }
+     },
+     {
+      "threshold": 0.31667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/10"
+      }
+     },
+     {
+      "threshold": 0.35,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/11"
+      }
+     },
+     {
+      "threshold": 0.41667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/12"
+      }
+     },
+     {
+      "threshold": 0.45,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/13"
+      }
+     },
+     {
+      "threshold": 0.48333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/14"
+      }
+     },
+     {
+      "threshold": 0.51667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/15"
+      }
+     },
+     {
+      "threshold": 0.55,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/16"
+      }
+     },
+     {
+      "threshold": 0.58333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/17"
+      }
+     },
+     {
+      "threshold": 0.61667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/18"
+      }
+     },
+     {
+      "threshold": 0.65,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/19"
+      }
+     },
+     {
+      "threshold": 0.68333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/20"
+      }
+     },
+     {
+      "threshold": 0.71667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/21"
+      }
+     },
+     {
+      "threshold": 0.75,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/22"
+      }
+     },
+     {
+      "threshold": 0.78333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/23"
+      }
+     },
+     {
+      "threshold": 0.81667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/24"
+      }
+     },
+     {
+      "threshold": 0.85,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/25"
+      }
+     },
+     {
+      "threshold": 0.88333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/26"
+      }
+     },
+     {
+      "threshold": 0.91667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/painkiller/27"
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:model",
+     "model": "craftov:item/painkiller"
+    }
+   },
+   "on_false": {
+    "type": "minecraft:model",
+    "model": "craftov:item/painkiller"
+   }
   }
  },
  "oversized_in_gui": true

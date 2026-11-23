@@ -3905,5 +3905,124 @@
     "preload": true
    }
   ]
+ },
+ "gear.equip": {
+  "sounds": [
+   {
+    "name": "craftov:gear/equip"
+   }
+  ]
+ },
+ "med.wrap": {
+  "sounds": [
+   {
+    "name": "craftov:med/wrap"
+   }
+  ]
+ },
+ "status.bleed": {
+  "sounds": [
+   {
+    "name": "craftov:status/bleed"
+   }
+  ]
+ },
+ "voice.hurt1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1"
+   }
+  ]
+ },
+ "voice.hurt2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt2"
+   }
+  ]
+ },
+ "voice.hurt3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt3"
+   }
+  ]
+ },
+ "voice.hurt4": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt4"
+   }
+  ]
+ },
+ "voice.death1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death1"
+   }
+  ]
+ },
+ "voice.death2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death2"
+   }
+  ]
+ },
+ "voice.death3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death3"
+   }
+  ]
+ },
+ "med.tear": {
+  "sounds": [
+   {
+    "name": "craftov:med/tear"
+   }
+  ]
+ },
+ "med.strap": {
+  "sounds": [
+   {
+    "name": "craftov:med/strap"
+   }
+  ]
+ },
+ "med.cap": {
+  "sounds": [
+   {
+    "name": "craftov:med/cap"
+   }
+  ]
+ },
+ "med.rummage": {
+  "sounds": [
+   {
+    "name": "craftov:med/rummage"
+   }
+  ]
+ },
+ "med.snip": {
+  "sounds": [
+   {
+    "name": "craftov:med/snip"
+   }
+  ]
+ },
+ "med.swallow": {
+  "sounds": [
+   {
+    "name": "craftov:med/swallow"
+   }
+  ]
+ },
+ "med.gasp": {
+  "sounds": [
+   {
+    "name": "craftov:med/gasp"
+   }
+  ]
  }
 }

@@ -388,7 +388,7 @@ public final class LootMenu extends Menu {
         if (def.isContainer()) {
             old = carry.unequip(viewer, CarryService.containerSlot(def.category()));
             carry.equip(viewer, stack);
-            viewer.playSound(viewer.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
+            viewer.playSound(viewer.getLocation(), "craftov:gear.equip", 1f, 1f);
         } else {
             int armorSlot = def.category() == Category.HELMET ? CarryService.HEAD : CarryService.CHEST;
             ItemStack worn = viewer.getInventory().getItem(armorSlot);
@@ -550,7 +550,7 @@ public final class LootMenu extends Menu {
             if (left != null) {
                 viewer.setItemOnCursor(left); // packed, or no room: in hand, to put into the container or back on
             }
-            viewer.playSound(viewer.getLocation(), "minecraft:item.armor.equip_leather", 0.8f, 1.2f);
+            viewer.playSound(viewer.getLocation(), "craftov:gear.equip", 0.8f, 1.2f);
         } else {
             return;
         }
@@ -577,7 +577,7 @@ public final class LootMenu extends Menu {
             viewer.setItemOnCursor(worn == null || worn.isEmpty() ? null : worn.clone());
             viewer.getInventory().setItem(armorSlot, moving);
         }
-        viewer.playSound(viewer.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
+        viewer.playSound(viewer.getLocation(), "craftov:gear.equip", 1f, 1f);
         viewer.updateInventory();
         redraw();
     }

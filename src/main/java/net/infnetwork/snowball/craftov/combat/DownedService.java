@@ -80,6 +80,11 @@ public final class DownedService implements Listener {
     /** reviver -> (downed player, tick of last right-click). */
     private final Map<UUID, Map.Entry<UUID, Long>> clicks = new HashMap<>();
     /**
+     * reviver -> tick of their last trigger pull, refused because their hands are busy. The revive
+     * bar holds the action bar while it runs, so the reason is said there rather than queued behind it.
+     */
+    private final Map<UUID, Long> refusedFire = new HashMap<>();
+    /**
      * Ticks a right click on a downed mate counts as still held: a held button repeats every 4
      * ticks, and the revive check runs every 5.
      */
@@ -104,6 +109,11 @@ public final class DownedService implements Listener {
      * The click counts at once, before the revive check, so the use-item packet the same click
      * sends right after cannot throw the grenade or start the bandage in their hand.
      */
+    /** The player pulled the trigger while reviving: their revive bar says why nothing fired for a second. */
+    public void refusedFire(Player reviver) {
+        refusedFire.put(reviver.getUniqueId(), (long) Bukkit.getCurrentTick());
+    }
+
     public boolean isReviving(Player player) {
         UUID id = player.getUniqueId();
         for (Downed state : downed.values()) {
@@ -299,8 +309,14 @@ public final class DownedService implements Listener {
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
                 reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
-                String note = Bukkit.getCurrentTick() - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
-                Notify.critical(reviver, "revive", note + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim"));
+                long now = Bukkit.getCurrentTick();
+                String note = now - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
+                Long refused = refusedFire.get(reviver.getUniqueId());
+                if (refused != null && now - refused >= 20) {
+                    refusedFire.remove(reviver.getUniqueId());
+                }
+                String own = note.isEmpty() && refused != null && now - refused < 20 ? "<muted>救援时不能开火  " : note;
+                Notify.critical(reviver, "revive", own + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim"));
                 Notify.critical(player, "revive", note + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim"));
                 if (state.reviveTicks >= state.reviveNeeded) {
                     stopReviving(reviver);
@@ -433,6 +449,7 @@ public final class DownedService implements Listener {
      * player seen standing) until their own crawl came round again in the next pass.
      */
     private void stopReviving(Player reviver) {
+        refusedFire.remove(reviver.getUniqueId());
         if (reviver.hasFixedPose() && reviver.getPose() == Pose.SNEAKING && !isDowned(reviver)) {
             reviver.setPose(Pose.STANDING, false);
         }

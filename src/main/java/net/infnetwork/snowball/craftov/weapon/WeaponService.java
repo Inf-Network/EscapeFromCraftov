@@ -640,6 +640,9 @@ public final class WeaponService implements Listener {
         }
         String blocker = fireBlocker(player);
         if (blocker != null) {
+            if (plugin.downed().isReviving(player)) {
+                plugin.downed().refusedFire(player);
+            }
             hint(player, blocker);
             return;
         }

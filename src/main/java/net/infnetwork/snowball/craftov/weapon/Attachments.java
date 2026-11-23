@@ -56,8 +56,9 @@ public final class Attachments {
         if (parts.isEmpty()) {
             return gun;
         }
-        double recoil = 1, recoilH = 1, hip = 1, ads = 1, reload = 1, move = 1, mag = 1;
+        double recoil = 1, recoilH = 1, hip = 1, ads = 1, reload = 1, move = 1, mag = 1, handling = 0;
         for (AttachSpec part : parts.values()) {
+            handling += part.handling();
             recoil *= part.recoil();
             recoilH *= part.recoilH();
             hip *= part.hipSpread();
@@ -69,7 +70,16 @@ public final class Attachments {
         return new GunSpec(gun.caliber(), gun.slot(), (int) Math.ceil(gun.magazine() * mag), gun.rpm(), gun.modes(), gun.damage(),
                 gun.range(), gun.maxRange(), gun.hipSpread() * hip, gun.adsSpread() * ads, gun.moveSpread(), gun.recoil() * recoil,
                 gun.recoilH() * recoilH, gun.recoilReturn(), (int) Math.round(gun.reloadTicks() * reload), gun.adsClass(), gun.pellets(), gun.headMultiplier(),
-                gun.soundVolume(), gun.moveSpeed() * move, gun.mount(), gun.scope(), gun.audio(), gun.action());
+                gun.soundVolume(), gun.moveSpeed() * move, gun.mount(), gun.scope(), gun.audio(), gun.action(),
+                gun.handling() + handling);
+    }
+
+    /**
+     * The gun with a sight fitted to its rail: the sight's handling on top (a built-in scope is already
+     * in the gun's own, so pass none for it).
+     */
+    public static GunSpec withOptic(GunSpec gun, @Nullable OpticSpec optic) {
+        return optic == null || optic.handling() == 0 ? gun : gun.withHandling(gun.handling() + optic.handling());
     }
 
     public static boolean suppressed(Map<String, AttachSpec> parts) {

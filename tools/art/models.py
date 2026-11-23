@@ -506,7 +506,7 @@ def iron_eye(gid):
 
 # The sights coming up (WeaponService.startAds): the server runs the gun's cooldown for its ads time with
 # the aiming mark on, and the item model steps through these frames while the client counts it down,
-# eased in and out like the zoom the server sends alongside.
+# eased in and out (the zoom the server sends alongside eases out a little, and lands with them).
 ADS_RISE_FRAMES = 6
 
 
@@ -639,9 +639,11 @@ def part_ref(gid, part):
 # ---------------------------------------------------------------- drawing the gun
 # The gun coming up after a switch (WeaponService.bind): the server marks it drawing and runs its
 # cooldown for the draw time, and the item model steps through these frames as the client counts it
-# down, one a tick. A gun out of the hand carries the holster mark, which shows the first frame, so
-# a switch shows the gun low at once, before the server has answered. The draw times are
-# weapons.draw-ticks' defaults; a server that changes them plays the same motion faster or slower.
+# down (one a tick at the times below). A gun out of the hand carries the holster mark, which shows the first frame, so
+# a switch shows the gun low at once, before the server has answered. The frames are baked for these
+# draw times, by action (the draw times before each gun had a handling, issue #117); the server's
+# draw time comes from the gun's handling now (weapons.handling.draw), and the client steps through
+# the same frames over it, a little faster: the cooldown property is a share of the whole.
 DRAW_TICKS = {'pistol': 6, 'pistol_heavy': 6, 'smg': 10, 'pdw': 10, 'pump': 14, 'lmg': 18, 'bolt': 18}
 # Where the draw starts: muzzle down and canted, swung in from the right, below the hip pose.
 HOLSTER = dict(pitch=-32.0, roll=35.0, yaw=-12.0, drop=2.5, back=1.0)

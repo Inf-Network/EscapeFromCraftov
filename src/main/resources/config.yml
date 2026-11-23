@@ -268,28 +268,42 @@ combat:
     inspect-swing-wait-ticks: 12
 
 weapons:
-  # Guns fire from the hip on a sprint (run-and-gun, with the wider cone of spread.sprint), but the
-  # sights only come up this many ticks after a sprint ends (the gun coming up from the sprint
-  # carry). Right mouse ends a sprint, and no sprint starts while it is held; held through these
-  # ticks, it aims as soon as they are over. The sprint key pressed while aiming wins back: the
-  # sights drop and the sprint starts, and right mouse held on aims again once that sprint is over.
-  sprint-recovery-ticks: 5
-  # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
-  # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
-  # held fires as soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
-  # The draw animation is baked into the resource pack at these defaults, one frame a tick; another
-  # value plays the same motion faster or slower.
-  draw-ticks:
-    pistol: 6
-    pistol_heavy: 6
-    smg: 10
-    pdw: 10
-    ak: 12
-    ar: 12
-    dmr: 12
-    pump: 14
-    lmg: 18
-    bolt: 18
+  # 操控速度: every gun has a handling (items.yml `handling`, 0-100; a fitted sight takes some off, a
+  # grip adds a little, see the parts in items.yml), and these times run in a straight line from
+  # `slow` at handling 0 to `quick` at 100, in seconds, rounded to whole ticks (0.05 s):
+  #   ads         the sights coming up once the server takes the aim (SV9 0.15 s, M4C 0.2, K47 0.25,
+  #               SCR 0.3, KL7 0.35, AWR 0.45); the view, the spread and the recoil follow that progress,
+  #               and the shots are aimed only once the sights are up.
+  #   draw        the gun coming up once it is in the hand (switched to, or after a revive). Until then
+  #               it neither fires nor aims; a trigger pulled meanwhile and still held fires as soon as
+  #               it is up. Switching away and back never skips the bolt or pump cycle. The draw
+  #               animation is baked into the resource pack once per action; any time plays the same
+  #               motion faster or slower.
+  #   sprint-out  after a sprint ends, before the sights can come up (the gun coming up from the sprint
+  #               carry). Guns fire from the hip on a sprint (run-and-gun, with the wider cone of
+  #               spread.sprint), but right mouse ends a sprint, no sprint starts while it is held, and
+  #               held through these ticks it aims as soon as they are over. The sprint key pressed
+  #               while aiming wins back: the sights drop and the sprint starts, and right mouse held on
+  #               aims again once that sprint is over.
+  #   sway        degrees aimed shots go off the crosshair the moment the sights are up, in a slow figure
+  #               of eight (period-ticks around), shrinking to `rest` of that as the sights are held up
+  #               (about two thirds of the way in settle-ticks). Only the bullets sway, never the view.
+  handling:
+    ads:
+      slow: 0.5
+      quick: 0.1
+    draw:
+      slow: 0.85
+      quick: 0.25
+    sprint-out:
+      slow: 0.4
+      quick: 0.1
+    sway:
+      slow: 0.1
+      quick: 0.0
+      rest: 0.3
+      settle-ticks: 12
+      period-ticks: 50
   ads:
     # True power of iron sights while aiming, by the gun's ads-class in items.yml (pistol, smg, rifle,
     # shotgun, dmr, lmg, bolt; optics carry their own magnification in items.yml).
@@ -297,24 +311,10 @@ weapons:
       pistol: 1.1
       shotgun: 1.1
       default: 1.25
-    # Ticks the sights take to come up once the server takes the aim, by ads-class, plus optic-ticks
-    # for the optic's strength (reflex = red dot and holo, low = 3-4x, high = 6x and up). The view,
-    # the spread and the recoil follow that progress: the shots are aimed only once the sights are up.
-    ticks:
-      pistol: 4
-      smg: 5
-      rifle: 6
-      shotgun: 6
-      dmr: 8
-      lmg: 8
-      bolt: 9
-    optic-ticks:
-      iron: 0
-      reflex: 1
-      low: 2
-      high: 3
+    # How long the sights take to come up is the gun's handling (weapons.handling.ads above).
     # Aiming slows the player to this share of their speed, by ads-class, times optic-speed for the
-    # optic (on the range too). The aimed cone is the gun's ads-spread times optic-spread.
+    # optic (on the range too; reflex = red dot and holo, low = 3-4x, high = 6x and up). The aimed
+    # cone is the gun's ads-spread times optic-spread.
     speed:
       pistol: 0.85
       smg: 0.8
@@ -372,7 +372,7 @@ weapons:
     sneak: 0.7
     airborne: 2.5
     # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
-    # gun's action in items.yml (as draw-ticks). Sprinting is the client's sprint, or running at more
+    # gun's action in items.yml. Sprinting is the client's sprint, or running at more
     # than 1.2x walking pace on the ground, as the server measures it. Aiming ends a sprint, so this
     # never applies to aimed shots.
     sprint:

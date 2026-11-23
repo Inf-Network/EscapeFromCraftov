@@ -134,6 +134,10 @@ public final class WeaponService implements Listener {
         boolean adsFrames;
         /** The sights are all the way up: the gun carries the aimed mark, a scope shows its picture. */
         boolean adsUp;
+        /** Tick the sights last came all the way up, -1 while they rise from the hip: the gun settles from there (see sway). */
+        long upAt = -1;
+        /** Where in its figure of eight this gun's sway starts, in ticks: aims do not all sway alike. */
+        final int swayPhase = ThreadLocalRandom.current().nextInt(1000);
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -202,16 +206,15 @@ public final class WeaponService implements Listener {
             this.ammo = ItemFactory.ammo(stack);
             this.ammoType = ItemFactory.ammoType(stack);
             this.mode = Math.floorMod(ItemFactory.mode(stack), def.gun().modes().size());
-            ItemDef mounted = registry.get(ItemFactory.opticId(stack));
-            if (mounted == null) {
-                mounted = registry.get(def.gun().scope());
-            }
+            ItemDef fitted = registry.get(ItemFactory.opticId(stack));
+            ItemDef mounted = fitted != null ? fitted : registry.get(def.gun().scope());
             this.optic = mounted == null ? null : mounted.optic();
             this.opticName = mounted == null ? null : mounted.name();
             this.range = ItemFactory.isRange(stack);
             this.test = ItemFactory.isTest(stack);
             var parts = Attachments.resolve(def.gun(), ItemFactory.attachments(stack), registry);
-            this.gun = Attachments.effective(def.gun(), parts);
+            // A built-in scope is part of the gun's own handling; a fitted sight changes it.
+            this.gun = Attachments.withOptic(Attachments.effective(def.gun(), parts), fitted == null ? null : fitted.optic());
             this.suppressed = Attachments.suppressed(parts);
             this.light = Attachments.light(parts);
         }
@@ -355,7 +358,16 @@ public final class WeaponService implements Listener {
         this.audio = new GunAudio(plugin);
         this.fx = new ImpactFx(plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
+        List<String> old = OBSOLETE.stream().filter(path -> plugin.getConfig().contains(path, true)).toList();
+        if (!old.isEmpty()) {
+            plugin.getLogger().warning("config.yml: " + String.join(", ", old) + " no longer do anything: each gun's handling"
+                    + " (items.yml) sets how fast it aims, draws and comes out of a sprint, by weapons.handling. Delete them.");
+        }
     }
+
+    /** Keys that set aim, draw and sprint times before each gun had a handling (issue #117). */
+    private static final List<String> OBSOLETE = List.of("weapons.sprint-recovery-ticks", "weapons.draw-ticks", "weapons.ads.ticks",
+            "weapons.ads.optic-ticks");
 
     public GunAudio audio() {
         return audio;
@@ -387,28 +399,11 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Ticks the sights take to come up (weapons.ads.ticks by ads-class: a pistol is quickest, a bolt
-     * rifle slowest), plus a little for an optic, more the stronger it is (weapons.ads.optic-ticks).
+     * Ticks the sights take to come up: by the gun's handling with its sight and parts (see
+     * {@link Handling}), a submachine gun's 3 to a bare bolt-action rifle's 9.
      */
     int adsTicks(GunState state) {
-        var config = plugin.getConfig();
-        String kind = state.gun.adsClass();
-        int fallback = switch (kind) {
-            case "pistol" -> 4;
-            case "smg" -> 5;
-            case "dmr", "lmg" -> 8;
-            case "bolt" -> 9;
-            default -> 6; // rifle, shotgun
-        };
-        int ticks = config.getInt("weapons.ads.ticks." + kind, fallback);
-        OpticSpec.Tier tier = state.optic == null ? OpticSpec.Tier.IRON : state.optic.tier();
-        int extra = switch (tier) {
-            case IRON -> 0;
-            case REFLEX -> 1;
-            case LOW -> 2;
-            case HIGH -> 3;
-        };
-        return Math.max(1, ticks + config.getInt("weapons.ads.optic-ticks." + tier.key(), extra));
+        return Handling.adsTicks(plugin.getConfig(), state.gun.handling());
     }
 
     /** Vanilla walking pace in blocks per tick, the unit of {@link #horizontalSpeed}. */
@@ -534,20 +529,12 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Ticks a gun takes to come up once it is in the hand, by its action (weapons.draw-ticks): quick for
-     * a pistol, slow for a machine gun or a bolt-action rifle. Switching guns used to be free, so going
-     * to the sidearm instead of reloading cost nothing. Not in items.yml, whose copy on the server is
-     * not updated from the jar.
+     * Ticks a gun takes to come up once it is in the hand, by its handling with its sight and parts
+     * (see {@link Handling}): quick for a pistol, slow for a machine gun or a bolt-action rifle.
+     * Switching guns used to be free, so going to the sidearm instead of reloading cost nothing.
      */
     private int drawTicks(GunSpec gun) {
-        int fallback = switch (gun.action()) {
-            case "pistol", "pistol_heavy" -> 6;
-            case "smg", "pdw" -> 10;
-            case "pump" -> 14;
-            case "lmg", "bolt" -> 18;
-            default -> 12; // ak, ar, dmr
-        };
-        return Math.max(0, plugin.getConfig().getInt("weapons.draw-ticks." + gun.action(), fallback));
+        return Handling.drawTicks(plugin.getConfig(), gun.handling());
     }
 
     /** Writes the in-memory magazine back onto the stack (wherever it is now). */
@@ -790,7 +777,7 @@ public final class WeaponService implements Listener {
             if (player.isSprinting()) {
                 // The client's sprint, not the measured run, which reads on for a few ticks of slowing down.
                 lastSprint.put(player.getUniqueId(), now);
-            } else if (motion.running(player) && now - lastSprint.getOrDefault(player.getUniqueId(), -100L) > sprintRecovery()) {
+            } else if (motion.running(player) && now - lastSprint.getOrDefault(player.getUniqueId(), -100L) > RUN_AFTER_SPRINT) {
                 // A run the client never called a sprint. The measure dips under the line now and then on
                 // a steady run, and without this the sights came up for those ticks, mid-run.
                 lastRun.put(player.getUniqueId(), now);
@@ -1169,15 +1156,47 @@ public final class WeaponService implements Listener {
         return state == null ? -1 : currentSpread(player, state);
     }
 
-    /** Where the bullets go: the crosshair, raised by the climb only the bullets get. */
-    private static Vector bore(Location eye, GunState state) {
-        if (state.climbUp == 0 && state.climbRight == 0) {
+    /** Where the bullets go: the crosshair, raised by the climb only the bullets get, and off by the sway. */
+    private Vector bore(Location eye, GunState state) {
+        double[] sway = sway(state, Bukkit.getCurrentTick());
+        double up = state.climbUp + sway[0];
+        double right = state.climbRight + sway[1];
+        if (up == 0 && right == 0) {
             return eye.getDirection();
         }
         Location raised = eye.clone();
-        raised.setPitch((float) Math.max(-90, eye.getPitch() - state.climbUp));
-        raised.setYaw((float) (eye.getYaw() + state.climbRight));
+        raised.setPitch((float) Math.max(-90, Math.min(90, eye.getPitch() - up)));
+        raised.setYaw((float) (eye.getYaw() + right));
         return raised.getDirection();
+    }
+
+    private static final double[] NO_SWAY = {0, 0};
+
+    /**
+     * How far aimed shots go off the crosshair while the gun settles, in degrees up and right: a slow
+     * figure of eight (weapons.handling.sway.period-ticks around), as wide as the gun's sway the moment
+     * the sights are up (the less handling, the wider: see {@link Handling#sway}) and shrinking to
+     * weapons.handling.sway.rest of that as they are held up (about two thirds of the way in settle-ticks).
+     * Only the bullets sway, never the camera: a scope that drifted on its own would shake on screen
+     * the way issue #118 found unusable. Nothing from the hip or while the sights come up, whose cone
+     * is wider anyway.
+     */
+    private double[] sway(GunState state, long now) {
+        if (!state.adsUp || state.upAt < 0) {
+            return NO_SWAY;
+        }
+        var config = plugin.getConfig();
+        double size = Handling.sway(config, state.gun.handling());
+        if (size <= 0) {
+            return NO_SWAY;
+        }
+        double rest = Math.max(0, Math.min(1, config.getDouble("weapons.handling.sway.rest", 0.3)));
+        double settle = Math.max(1, config.getDouble("weapons.handling.sway.settle-ticks", 12));
+        double period = Math.max(4, config.getDouble("weapons.handling.sway.period-ticks", 50));
+        size *= rest + (1 - rest) * Math.exp(-(now - state.upAt) / settle);
+        double phase = 2 * Math.PI * (now + state.swayPhase) / period;
+        // Side to side once a period, up and down twice, half as far: a figure of eight.
+        return new double[]{size * 0.5 * Math.sin(2 * phase), size * Math.sin(phase)};
     }
 
     /**
@@ -1712,6 +1731,9 @@ public final class WeaponService implements Listener {
         state.adsMarkAt = now;
         state.adsUp = false;
         state.adsFrames = false;
+        if (kept < state.adsTicks) {
+            state.upAt = -1; // a new rise: the gun has to settle again (see sway); sights picked up as they were go on settling
+        }
         plugin.health().forceSpeedUpdate(player);
         if (kept < state.adsTicks) {
             if (scopeShown) {
@@ -1739,11 +1761,6 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * One tick of aiming: the view narrows with the sights' progress (eased in and out), and once
-     * they are up the gun takes the aimed mark (its cooldown is a shot's kick again) and a scope
-     * shows its picture.
-     */
-    /**
      * Ticks between the aiming mark and the cooldown that runs the frames of the sights coming up. The
      * client swaps a changed stack in on its next tick but reads a cooldown at once, and the two
      * packets may reach it in the same tick: two ticks apart, the stack is always in first.
@@ -1752,6 +1769,11 @@ public final class WeaponService implements Listener {
     /** Share of that cooldown, at its end, that holds the last frame (tools/art/models.py ADS_RISE_TAIL). */
     private static final double ADS_FRAMES_TAIL = 0.25;
 
+    /**
+     * One tick of aiming: the view narrows with the sights' progress (eased in and out), and once
+     * they are up the gun takes the aimed mark (its cooldown is a shot's kick again) and a scope
+     * shows its picture.
+     */
     private void raise(Player player, GunState state, long now) {
         if (state.adsStart < 0) {
             return;
@@ -1774,6 +1796,9 @@ public final class WeaponService implements Listener {
             return;
         }
         state.adsUp = true;
+        if (state.upAt < 0) {
+            state.upAt = now;
+        }
         plugin.fov().show(player, target);
         setMark(player, state, ItemFactory.MARK_AIMED);
         if (state.optic != null && state.optic.magnified()) {
@@ -1867,24 +1892,29 @@ public final class WeaponService implements Listener {
 
     /**
      * The sights can come up: not sprinting (see {@link #sprinting}), nor in the few ticks after the
-     * client's sprint ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry,
-     * or after a run at a sprint that the client never said was one (see {@link #lastRun}).
-     * Hip fire is never held back by a sprint: the gun fires on the run, with a wider cone (see
-     * {@link #currentSpread}). Right mouse ends the sprint (see {@link #stopsSprint}) and aims once
-     * this allows (see {@link #aimIfAsked}), but not during a sprint the sprint key won over the sights
-     * (see {@link #onInput}), nor while that sprint is still to start.
+     * client's sprint ends while the gun comes up from the sprint carry (the held gun's sprint-out
+     * time, by its handling: see {@link Handling}), or after a run at a sprint that the client never
+     * said was one (see {@link #lastRun}). Hip fire is never held back by a sprint: the gun fires on
+     * the run, with a wider cone (see {@link #currentSpread}). Right mouse ends the sprint (see
+     * {@link #stopsSprint}) and aims once this allows (see {@link #aimIfAsked}), but not during a
+     * sprint the sprint key won over the sights (see {@link #onInput}), nor while that sprint is still
+     * to start.
      */
     private boolean sightsUp(Player player) {
         if (sprinting(player) || sprintWon.containsKey(player.getUniqueId())) {
             return false;
         }
         long last = Math.max(lastSprint.getOrDefault(player.getUniqueId(), -100L), lastRun.getOrDefault(player.getUniqueId(), -100L));
-        return Bukkit.getCurrentTick() - last > sprintRecovery();
+        GunState state = states.get(player.getUniqueId());
+        int out = state == null ? 0 : Handling.sprintOutTicks(plugin.getConfig(), state.gun.handling());
+        return Bukkit.getCurrentTick() - last >= Math.max(1, out);
     }
 
-    private int sprintRecovery() {
-        return plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
-    }
+    /**
+     * Ticks the server's measure of a run reads on after the client's sprint has ended, while the
+     * player slows down: a run measured in them is that sprint, not a sprint the client never told.
+     */
+    private static final int RUN_AFTER_SPRINT = 5;
 
     /**
      * Sprinting by the client's word, or running at a sprint by the server's measure: a modified client

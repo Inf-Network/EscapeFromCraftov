@@ -231,8 +231,13 @@ public final class ThrowableService implements Listener {
             boolean able = plugin.raids().canFire(player);
             if (!holding || !able || menu) {
                 cooks.remove(id);
-                if (holding) {
-                    player.clearActiveItem(); // letting go later throws nothing
+                // Letting go later throws nothing. Taking out another item ends the use on its own
+                // (vanilla stops it on a hotbar or hand swap), but should the grenade's use have
+                // carried over to whatever took its place in the hand (vanilla keeps a use going
+                // across items of one kind, and every Craftov item is paper), it ends here too:
+                // the client cannot fire or aim while it thinks it is still using something.
+                if (player.hasActiveItem()) {
+                    player.clearActiveItem();
                 }
                 if (able) {
                     Notify.critical(player, COOK_LINE, "<muted>保险销已插回");

@@ -1205,7 +1205,7 @@ public final class RaidManager implements Listener {
                 spectators.put(player.getUniqueId(), Map.entry(raid, rp));
                 player.setGameMode(GameMode.SPECTATOR);
                 player.setSpectatorTarget(target);
-                Notify.hint(player, "正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white>Shift</white> 返回大厅");
+                Notify.hint(player, "正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white><key:key.sneak></white> 返回大厅");
                 return true;
             }
         }

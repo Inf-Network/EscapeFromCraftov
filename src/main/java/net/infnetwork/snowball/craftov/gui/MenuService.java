@@ -22,7 +22,7 @@ public final class MenuService {
             return false;
         }
         if (plugin.raids().isSpectating(player)) {
-            Notify.error(player, "观战中无法使用该功能，按 Shift 返回大厅。");
+            Notify.error(player, "观战中无法使用该功能，按 <key:key.sneak> 返回大厅。");
             return false;
         }
         return notInRange(player);

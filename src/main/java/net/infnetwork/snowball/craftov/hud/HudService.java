@@ -328,8 +328,17 @@ public final class HudService {
         refreshOverlay(player);
     }
 
-    /** The red flash of being hit (a shot or a cut): the screen rim goes red for a few ticks. */
+    /**
+     * The red flash of being hit (a shot, a blast or a cut): the screen rim goes red for a few ticks.
+     * Only for a player still fighting in a raid: DamageService reports the hit after dealing it, so
+     * on a lethal one die() (or, in training, the trip home) has already cleared the camera, and the
+     * rim used to come back over the death camera, the kill replay or the lobby. Nobody is hurt in
+     * the lobby, which cancels all damage.
+     */
     public void hurt(Player player) {
+        if (!data.inRaid(player)) {
+            return;
+        }
         hitUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + HIT_TICKS);
         refreshOverlay(player);
     }

@@ -1025,7 +1025,8 @@ public final class WeaponService implements Listener {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
             ballistics.fire(player, eye, pellet, gun, ammo, state.def.name(), i == 0 || gun.pellets() <= 3);
         }
-        Ballistics.muzzle(player, dir, !sprinting(player));
+        // The shooter's own smoke is left out on a sprint and aimed: it would cover the sight (see Ballistics.muzzle).
+        Ballistics.muzzle(player, dir, !sprinting(player) && !isAiming(player));
         // The first-person kick and muzzle flash: the item model plays them while this cooldown counts
         // down on the client, so they follow the shots the server fires, not the trigger finger. While
         // the sights come up the same cooldown runs their frames instead, so a shot then kicks the

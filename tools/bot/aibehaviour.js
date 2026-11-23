@@ -126,6 +126,8 @@ async function land (tier = 'NORMAL') {
 }
 
 const inWorld = (bot, cmd) => rcon(`execute in minecraft:${bot.worldName} run ${cmd}`)
+/** Whether the bot was told `text`: in chat, or on the HUD's alert banner (raid news), which `cv hud` prints. */
+const told = async (bot, text) => bot.chatLog.some(l => l.includes(text)) || (await rcon(`cv hud ${bot.username}`)).includes(text)
 
 /** Removes the map's own soldiers so only the ones a scenario posts are about. */
 async function clearSoldiers (bot) {
@@ -277,6 +279,8 @@ const scenarios = {
     for (const [x1, x2, z] of [[57, 59, 32], [62, 64, 36], [56, 58, 40], [61, 63, 45], [59, 61, 83]]) {
       await inWorld(A, `fill ${x1} ${top} ${z} ${x2} ${top + 1} ${z} minecraft:stone_bricks`)
     }
+    // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
+    await rcon(`item replace entity ${A.username} hotbar.0 with minecraft:air`)
     await rcon(`cv give ${A.username} dm14`) // loaded: ten rounds
     await inWorld(A, `tp ${A.username} 62.5 ${top} 84.5 180 0`)
     await sleep(800)
@@ -383,12 +387,16 @@ const scenarios = {
     const problems = []
     if (sleeping.length !== 3) problems.push(`expected the boss and two guards asleep at the start, saw ${sleeping.length} (${(await soldiers()).map(s => s.state).join(',')})`)
     else if (sleeping.some(s => Math.hypot(s.x - 47.5, s.z - 16.5) > 3)) problems.push(`a sleeper is away from the boss post (${sleeping.map(s => `${s.x},${s.z}`).join(' ')})`)
-    const early = A.chatLog.some(l => l.includes('出现在地图中'))
+    const early = await told(A, '出现在地图中')
     await sleep(Math.max(0, 50000 - (Date.now() - t0)))
     const still = (await soldiers()).filter(s => s.state === '休眠').length
     if (early) problems.push('the boss was announced at the start')
     if (still !== sleeping.length) problems.push(`only ${still} of ${sleeping.length} still asleep 50 s in`)
-    const woke = await waitFor(async () => (await soldiers()).every(s => s.state !== '休眠') && A.chatLog.some(l => l.includes('出现在地图中')), 20000, 500)
+    let announced = false
+    const woke = await waitFor(async () => {
+      announced = announced || await told(A, '出现在地图中') // the banner shows for 6 s
+      return announced && (await soldiers()).every(s => s.state !== '休眠')
+    }, 20000, 500)
     if (!woke) problems.push(`not woken and announced by 70 s (${(await soldiers()).filter(s => s.state === '休眠').length} asleep)`)
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'the boss and its guards were in place and asleep from the start, woke and were announced at 60 s'} | asleep at start ${sleeping.length}, at 50 s ${still}`]
   },

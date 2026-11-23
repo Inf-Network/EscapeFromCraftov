@@ -67,12 +67,21 @@ const id = (item) => { const m = JSON.stringify(item && item.components || '').m
 const isUi = (s) => s.startsWith('ui/')
 const title = (w) => JSON.stringify(w.title)
 // Armour 5-8, cells 9-35, hotbar 36-44, offhand 45.
+/**
+ * A gun's damage component is its hand mark (#34: holstered while another key is held, none in the
+ * hand), which follows what the player holds, not what the stack is: left out of the comparison.
+ * Guns are the stacks with max_damage 5; any other damage still counts.
+ */
+const handMarkless = comps => {
+  const gun = (comps || []).some(c => c.type === 'max_damage' && c.data === 5)
+  return gun ? comps.filter(c => c.type !== 'damage') : comps
+}
 function layout ({ items = true, components = false } = {}) {
   const out = {}
   for (let i = 5; i <= 45; i++) {
     const it = bot.inventory.slots[i]
     if (!it || (items && isUi(id(it)))) continue
-    out[i] = components ? JSON.stringify(it.components) : id(it) + 'x' + it.count
+    out[i] = components ? JSON.stringify(handMarkless(it.components)) : id(it) + 'x' + it.count
   }
   return out
 }
@@ -170,7 +179,7 @@ async function rangePhase () {
   const d = diff(before, after)
   check('every slot is back as it was before the range', d.length === 0, d.join(', '))
   const dFull = diff(beforeFull, layout({ items: false, components: true }))
-  check('every stack is identical, components included', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).join(' | '))
+  check('every stack is identical, components included (a gun\'s hand mark aside)', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).join(' | '))
   check('no range loaner came back', !bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))
 
   // Being teleported off the range by other means ends the session the same way, and at once: the

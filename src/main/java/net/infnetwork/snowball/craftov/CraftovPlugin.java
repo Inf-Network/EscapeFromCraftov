@@ -65,10 +65,6 @@ public final class CraftovPlugin extends JavaPlugin {
     /** Data files copied from the jar only when missing, and so never updated by a new jar. */
     private static final List<String> DATA_FILES = List.of("items.yml", "loot.yml");
     private static final Pattern REVISION = Pattern.compile("(?m)^revision:\\s*(\\d+)");
-    /** Entry fees the plugin shipped before #80, when raids paid out a fraction of what they do now. */
-    private static final Map<String, Long> OLD_ENTRY_FEES = Map.of("CONFIDENTIAL", 8000L, "SECRET", 20000L);
-    private static final Pattern TIER_LINE = Pattern.compile("^ {2}([A-Za-z0-9_-]+):\\s*(#.*)?$");
-    private static final Pattern FEE_LINE = Pattern.compile("^( {4}entry-fee:\\s*)(\\d+)(\\s*(#.*)?)$");
 
     private ItemRegistry registry;
     private ItemFactory items;
@@ -127,7 +123,9 @@ public final class CraftovPlugin extends JavaPlugin {
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
         net.infnetwork.snowball.craftov.util.Notify.start(this);
         saveDefaultConfig();
-        migrateEntryFees();
+        if (ConfigMigration.migrate(getDataFolder(), getResource("config.yml"), getLogger())) {
+            reloadConfig();
+        }
         saveResourceIfMissing("items.yml");
         saveResourceIfMissing("loot.yml");
         for (OutdatedData old : outdatedData()) {
@@ -301,68 +299,6 @@ public final class CraftovPlugin extends JavaPlugin {
         for (Listener listener : listeners) {
             Bukkit.getPluginManager().registerEvents(listener, this);
         }
-    }
-
-    /**
-     * A config.yml written before #80 still charges that build's entry fees (机密 ◈8,000, 绝密
-     * ◈20,000), and since every tier has the key, the jar's new fees never reach it. Such a file is
-     * told by its tiers' max-shift lines, which only that build wrote and nothing reads any more:
-     * a fee still at the old default moves to the jar's, the max-shift lines go, and every other
-     * line stays as written. A fee an admin changed is left alone; the old file is kept as
-     * config.yml.pre-80.
-     */
-    private void migrateEntryFees() {
-        File file = new File(getDataFolder(), "config.yml");
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return;
-        }
-        org.bukkit.configuration.Configuration jar = getConfig().getDefaults();
-        List<String> out = new ArrayList<>();
-        List<String> changes = new ArrayList<>();
-        boolean inTiers = false;
-        String tier = null;
-        for (String line : lines) {
-            if (!line.isEmpty() && !line.startsWith(" ") && !line.startsWith("#")) {
-                inTiers = line.startsWith("tiers:");
-                tier = null;
-            } else if (inTiers) {
-                Matcher name = TIER_LINE.matcher(line);
-                Matcher fee = FEE_LINE.matcher(line);
-                if (name.matches()) {
-                    tier = name.group(1);
-                } else if (tier != null && line.startsWith("    max-shift:")) {
-                    changes.add(tier + " max-shift dropped");
-                    continue;
-                } else if (tier != null && fee.matches() && jar != null && OLD_ENTRY_FEES.containsKey(tier)
-                        && Long.parseLong(fee.group(2)) == OLD_ENTRY_FEES.get(tier) && jar.contains("tiers." + tier + ".entry-fee")) {
-                    long now = jar.getLong("tiers." + tier + ".entry-fee");
-                    if (now != OLD_ENTRY_FEES.get(tier)) {
-                        line = fee.group(1) + now + fee.group(3);
-                        changes.add(tier + " entry-fee " + OLD_ENTRY_FEES.get(tier) + " -> " + now);
-                    }
-                }
-            }
-            out.add(line);
-        }
-        if (changes.stream().noneMatch(c -> c.contains("max-shift"))) {
-            return; // not a file from before #80: its fees are the admin's
-        }
-        try {
-            File backup = new File(getDataFolder(), "config.yml.pre-80");
-            if (!backup.exists()) {
-                Files.copy(file.toPath(), backup.toPath());
-            }
-            Files.write(file.toPath(), out, StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            getLogger().log(Level.WARNING, "Could not update the entry fees in config.yml (" + String.join(", ", changes) + ")", ex);
-            return;
-        }
-        reloadConfig();
-        getLogger().warning("config.yml was written before the loot luck update (#80): " + String.join(", ", changes)
-                + ". The old file is config.yml.pre-80.");
     }
 
     private void saveResourceIfMissing(String name) {

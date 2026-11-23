@@ -216,7 +216,11 @@ def face_polys(model, display, textures):
                  (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
                  (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
             centre = tuple(sum(p[i] for p in view) / 4 for i in range(3))
-            if n[0] * centre[0] + n[1] * centre[1] + n[2] * centre[2] >= 0:
+            # faces_of winds the corners so that n points into the box: a face is towards the camera (at
+            # the origin) when n and the face's position agree. The test was the other way round, so
+            # only the far side of every box was drawn, and a small part in front of a face (a sight's
+            # dot) was lost behind it.
+            if n[0] * centre[0] + n[1] * centre[1] + n[2] * centre[2] <= 0:
                 continue
             key = face.get('texture', '#p').lstrip('#')
             ref = model.get('textures', {}).get(key, 'craftov:item/gun_palette')

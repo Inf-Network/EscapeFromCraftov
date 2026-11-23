@@ -33,8 +33,8 @@ public final class Handling {
     public static double opticFallback(OpticSpec.Tier tier) {
         return switch (tier) {
             case IRON, REFLEX -> 0;
-            case LOW -> -7;
-            case HIGH -> -18;
+            case LOW -> -11;
+            case HIGH -> -24;
         };
     }
 

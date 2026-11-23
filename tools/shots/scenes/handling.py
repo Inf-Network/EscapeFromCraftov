@@ -3,7 +3,7 @@
 In the lobby, with an SV9, an M4C and an AWR on the hotbar and an 8x scope, a red dot, a vertical grip
 and a suppressor in the inventory: handling-tooltip-sv9 / -m4c / -awr, each gun's tooltip (the 操控
 bar among the stat bars, and the 操控速度 line under them: its number and what it comes to, the ads,
-draw and sprint-out times); handling-tooltip-8x, the scope's tooltip (操控速度 -18). Then the gunsmith
+draw and sprint-out times); handling-tooltip-8x, the scope's tooltip (操控速度 -24). Then the gunsmith
 with the M4C: handling-gunsmith-a..d, the pointer on each part in the bottom row, whose preview shows
 the bars it would move (the 8x the 操控 bar in red, the grip in green).
 

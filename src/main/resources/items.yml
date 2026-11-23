@@ -70,7 +70,7 @@ items:
     value: 34000
     lore: "操控性出色的 5.56mm 卡宾枪，支持三连发。"
     gun: { caliber: "5.56x45", slot: PRIMARY, mag: 30, rpm: 800, modes: [AUTO, BURST, SEMI], damage: 30, range: 50, max-range: 150,
-           hip-spread: 2.6, ads-spread: 0.35, move: 3.0, recoil: 0.8, recoil-h: 0.5, recoil-return: 0.75, reload: 48, ads-class: rifle, volume: 5.0, move-speed: 0.92, action: ar, handling: 72}
+           hip-spread: 2.6, ads-spread: 0.35, move: 3.0, recoil: 0.8, recoil-h: 0.5, recoil-return: 0.75, reload: 48, ads-class: rifle, volume: 5.0, move-speed: 0.92, action: ar, handling: 66}
   scr:
     weight: 3.6
     name: "SCR 战斗步枪"
@@ -189,9 +189,9 @@ items:
   # fitted (the stronger the sight, the slower it comes up).
   optic_reddot: { name: "红点瞄准镜", category: ATTACHMENT, rarity: GREEN, value: 6000, weight: 0.3, lore: "1.5 倍。开镜时红点正对准星，步枪、冲锋枪、霰弹枪和手枪都能装。", optic: { magnification: 1.5, mount: [rifle, pistol], handling: 0 } }
   optic_holo:   { name: "全息瞄准镜", category: ATTACHMENT, rarity: BLUE, value: 11000, weight: 0.4, lore: "1.5 倍圆环分划，近中距离快速瞄准。", optic: { magnification: 1.5, mount: [rifle], handling: -2 } }
-  optic_3x:     { name: "3倍棱镜瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 18000, weight: 0.5, lore: "3 倍照明箭头分划，中距离。", optic: { magnification: 3, overlay: scope_3x, mount: [rifle], handling: -6 } }
-  optic_4x:     { name: "4倍瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 26000, weight: 0.6, lore: "4 倍粗细十字分划。", optic: { magnification: 4, overlay: scope_4x, mount: [rifle], handling: -8 } }
-  optic_8x:     { name: "8倍狙击镜", category: ATTACHMENT, rarity: GOLD, value: 42000, weight: 0.8, lore: "8 倍密位点分划，远距离狙击。", optic: { magnification: 8, overlay: scope_8x, mount: [rifle], handling: -18 } }
+  optic_3x:     { name: "3倍棱镜瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 18000, weight: 0.5, lore: "3 倍照明箭头分划，中距离。", optic: { magnification: 3, overlay: scope_3x, mount: [rifle], handling: -10 } }
+  optic_4x:     { name: "4倍瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 26000, weight: 0.6, lore: "4 倍粗细十字分划。", optic: { magnification: 4, overlay: scope_4x, mount: [rifle], handling: -12 } }
+  optic_8x:     { name: "8倍狙击镜", category: ATTACHMENT, rarity: GOLD, value: 42000, weight: 0.8, lore: "8 倍密位点分划，远距离狙击。", optic: { magnification: 8, overlay: scope_8x, mount: [rifle], handling: -24 } }
 
   # ------------------------------------------------------------------ attachments: muzzle, grip, tactical, magazine
   # Fitted at the gunsmith bench. Multipliers apply to the gun's own values (1 = unchanged); handling is

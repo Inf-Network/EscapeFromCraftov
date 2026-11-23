@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.profile;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.infnetwork.snowball.craftov.util.AtomicFiles;
+import net.infnetwork.snowball.craftov.util.OrderedFile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -100,6 +101,11 @@ public final class ProfileService implements Listener {
      * time. Any thread.
      */
     private final Map<UUID, Stamp> unreadable = new ConcurrentHashMap<>();
+    /**
+     * Every profile file written this session, numbering its copies: one that was still queued
+     * when the shutdown gave up waiting is dropped instead of landing on the final save. Any thread.
+     */
+    private final Map<UUID, OrderedFile> files = new ConcurrentHashMap<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Craftov-ProfileIO");
         t.setDaemon(true);
@@ -415,25 +421,35 @@ public final class ProfileService implements Listener {
         io.shutdown();
         try {
             if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
-                plugin.getLogger().warning("Queued profile writes did not finish in time.");
+                plugin.getLogger().warning("Queued profile and market writes did not finish in 10 seconds; the final saves go"
+                        + " ahead, and older copies still queued are dropped instead of landing on top of them.");
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
     }
 
-    /** Final save of every cached profile (stand-ins excepted), after {@link #awaitWrites}. */
+    /**
+     * Final save, after {@link #awaitWrites}: every cached profile (stand-ins excepted), and every
+     * offline one whose queued write has not landed (only when that wait timed out).
+     */
     public void shutdown() {
         if (!io.isShutdown()) {
             awaitWrites();
         }
-        for (Profile profile : cache.values()) {
+        List<Profile> last = new ArrayList<>(cache.values());
+        for (Pending pending : offline.values()) {
+            if (pending.writes().get() > 0 && !cache.containsKey(pending.profile().uuid)) {
+                last.add(pending.profile());
+            }
+        }
+        for (Profile profile : last) {
             if (placeholders.contains(profile)) {
                 continue;
             }
             // One profile that cannot be written must not cost the others theirs.
             try {
-                writeSync(GSON.toJson(profile), profile.uuid);
+                writeSync(disk(profile.uuid).take(), GSON.toJson(profile), profile.uuid);
             } catch (RuntimeException ex) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not save profile " + profile.uuid, ex);
             }
@@ -668,15 +684,16 @@ public final class ProfileService implements Listener {
         if (placeholders.contains(profile)) {
             return;
         }
-        String json = GSON.toJson(profile);
         UUID uuid = profile.uuid;
+        long copy = disk(uuid).take();
+        String json = GSON.toJson(profile);
         index.put(uuid, summarize(profile));
         if (inFlight != null) {
             inFlight.incrementAndGet();
         }
         io.execute(() -> {
             try {
-                writeSync(json, uuid);
+                writeSync(copy, json, uuid);
             } finally {
                 if (inFlight != null) {
                     inFlight.decrementAndGet();
@@ -685,9 +702,14 @@ public final class ProfileService implements Listener {
         });
     }
 
-    private void writeSync(String json, UUID uuid) {
+    private OrderedFile disk(UUID uuid) {
+        return files.computeIfAbsent(uuid, u -> new OrderedFile(file(u)));
+    }
+
+    /** Writes copy {@code copy} of {@code uuid}'s profile, unless a newer copy has been written. */
+    private void writeSync(long copy, String json, UUID uuid) {
         try {
-            AtomicFiles.write(file(uuid), json);
+            disk(uuid).write(copy, json);
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save profile " + uuid + ": " + ex.getMessage());
         }

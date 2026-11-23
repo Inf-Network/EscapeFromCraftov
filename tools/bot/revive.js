@@ -23,17 +23,34 @@
 //      21.6 s off its bleed-out (36 x 0.6; a headshot took 43), and it stands up with the injector;
 //   7. T, without an injector now, is shot dead: it dies at once (no knock-down), and its damage log
 //      does not list mostly head hits.
+// secure: two fresh bots in a party (TRIO), B with the starting 3-cell secure container (#37):
+//   8. standing, B opens /cv secure: a lion statue (6 cells) does not go in and B is told why, a
+//      master chip (2 cells) goes in with an "occupied" marker in its second cell, and a box of 60
+//      rounds puts 30 in the last cell and leaves 30 in the inventory;
+//   9. B is knocked down with the container open: the server closes the window;
+//  10. downed, /cv secure opens nothing and the bleed-out bar says why; /cv opens the terminal, whose
+//      secure container, gunsmith, skill and test armory buttons each show their own locked picture
+//      (<icon>_locked) and the container and armory open nothing (B is an op, so it has the armory);
+//      /cv items opens no armory either; the terminal in hotbar slot 9 opens the terminal as well,
+//      never the container;
+//  11. B dies of a second hit: its saved profile holds the same secure container as before the
+//      knock-down, and the gold bar it tried to put in while downed is not in it;
+//  12. (run first, in the lobby) a third bot whose saved container holds three lion statues from
+//      when every item took one slot sees each in one slot and 18/3 格, cannot put a master chip
+//      in, and takes a statue out.
 //
-//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node revive.js [squad|solo]
+//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node revive.js [squad|solo|secure]
 //
 // The draw check in 3 reads the server log (SERVER_LOG, default the repository's
-// server/run/logs/latest.log) and needs `debug: true` in the server's config.yml.
-// Both scenarios run when none is named. The bots are made op (test map) and deopped when done;
+// server/run/logs/latest.log) and needs `debug: true` in the server's config.yml. The profile
+// check in 11 reads CRAFTOV_DATA/data/players (default the repository's server/run/plugins/Craftov).
+// All three scenarios run when none is named. The bots are made op (test map) and deopped when done;
 // soldiers are killed now and then so they do not join in. A match launches after
 // match.wait-seconds (30 by default). Exit code 0 when every check passes, 1 when one fails, 2 when
 // the scenario could not be set up.
 const mineflayer = require('mineflayer')
 const nbt = require('prismarine-nbt')
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
@@ -42,6 +59,7 @@ const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
 const rcon = cmd => rconRaw(cmd, RCON)
 const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
 const logSize = () => fs.statSync(LOG).size
 /** Server log lines written since byte offset `from`. */
 function logSince (from) {
@@ -575,6 +593,224 @@ async function solo () {
   return 0
 }
 
+// ------------------------------------------------------------------ secure
+
+function offlineUuid (name) {
+  const h = crypto.createHash('md5').update('OfflinePlayer:' + name).digest()
+  h[6] = (h[6] & 0x0f) | 0x30
+  h[8] = (h[8] & 0x3f) | 0x80
+  const x = h.toString('hex')
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`
+}
+const savedProfile = name => {
+  try { return JSON.parse(fs.readFileSync(path.join(DATA, 'data/players', offlineUuid(name) + '.json'), 'utf8')) } catch (e) { return null }
+}
+
+/** Runs `action` and resolves the window it opens, or null when none opens within `ms`. */
+function opened (bot, action, ms = 3000) {
+  return new Promise(resolve => {
+    const on = w => { clearTimeout(timer); resolve(w) }
+    const timer = setTimeout(() => { bot.removeListener('windowOpen', on); resolve(null) }, ms)
+    bot.once('windowOpen', on)
+    action()
+  })
+}
+const titleOf = w => w ? JSON.stringify(w.title || '') : ''
+const uiModel = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:ui\/[a-z_]+/); return m ? m[0] : null }
+/** Plain text of an NBT text component as item components carry it (a string, a compound or a list). */
+function txt (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (n.type === 'string') return n.value
+  if (n.type === 'compound') return (n.value.text ? txt(n.value.text) : '') + (n.value.extra ? txt(n.value.extra) : '')
+  if (n.type === 'list') return (n.value.value || []).map(v => typeof v === 'string' ? v : txt({ type: 'compound', value: v })).join('')
+  return ''
+}
+const nameOf = item => {
+  const c = item && item.components && item.components.find(x => x.type === 'custom_name' || x.type === 'item_name')
+  return c ? txt(c.data) : ''
+}
+/** The secure container's nine cells as `id:count` (`=` for an occupied marker, `#` locked, `-` empty). */
+const cellsOf = w => w.slots.slice(0, 9).map(s => !s ? '-' : pdc(s, 'id') ? `${pdc(s, 'id')}:${s.count}`
+  : uiModel(s) === 'craftov:ui/secure_used' ? '=' : uiModel(s) === 'craftov:ui/locked' ? '#' : '?')
+/** The window slot (below the menu's `top` slots) holding item `id`, or -1. */
+const bottomSlot = (w, id, top) => w.slots.findIndex((s, i) => i >= top && s && pdc(s, 'id') === id)
+const countIn = (w, id, top) => w.slots.reduce((n, s, i) => n + (i >= top && s && pdc(s, 'id') === id ? s.count : 0), 0)
+
+async function secure () {
+  // 12 (first, in the lobby). A container filled when every item took one slot, three lion statues
+  // in the 3 starting slots: it keeps them, one slot each, and takes nothing more until back within
+  // its 3 cells.
+  const old = `rv${run}c`
+  fs.mkdirSync(path.join(DATA, 'data/players'), { recursive: true })
+  fs.writeFileSync(path.join(DATA, 'data/players', offlineUuid(old) + '.json'), JSON.stringify({
+    uuid: offlineUuid(old), name: old, secureTier: 1, secure: [1, 2, 3].map(() => ({ id: 'lion_statue', amount: 1 }))
+  }))
+  const C = await make(old)
+  await rcon(`cv give ${old} master_chip`)
+  await sleep(1000)
+  const live = () => C.currentWindow || { slots: [], title: '' }
+  if (!await opened(C, () => C.chat('/cv secure'))) {
+    log('SETUP: /cv secure opened nothing in the lobby')
+    return 2
+  }
+  check('an old container over its cells shows each statue in one slot', cellsOf(live()).join(' ') ===
+    'lion_statue:1 lion_statue:1 lion_statue:1 # # # # # #', cellsOf(live()))
+  check('and its info button reads 18/3 格', nameOf(live().slots[13]).includes('18/3 格'), nameOf(live().slots[13]))
+  let since = Date.now()
+  const chip = bottomSlot(live(), 'master_chip', 18)
+  if (chip >= 0) await C.clickWindow(chip, 0, 0)
+  await sleep(800)
+  check('it takes no master chip while over its cells, and says so', chip >= 0 && !cellsOf(live()).some(c => c.startsWith('master_chip')) &&
+    barsSince(C, since).some(b => b.includes('超出容量')), { chip, cells: cellsOf(live()), bars: barsSince(C, since).slice(-1) })
+  await C.clickWindow(0, 0, 0)
+  await sleep(800)
+  check('a statue taken out comes back to the inventory', bottomSlot(live(), 'lion_statue', 18) >= 0 &&
+    nameOf(live().slots[13]).includes('12/3 格'), { cells: cellsOf(live()), info: nameOf(live().slots[13]) })
+  C.quit()
+  bots.splice(bots.indexOf(C), 1)
+
+  const A = await make(`rv${run}a`)
+  const B = await make(`rv${run}b`)
+  for (const bot of [A, B]) await rcon(`op ${bot.username}`)
+  A.chat(`/cv party invite ${B.username}`)
+  await sleep(800)
+  B.chat('/cv party accept')
+  await sleep(800)
+  A.chat('/cv queue proving NORMAL TRIO')
+  log('secure: squad queued; waiting for the raid')
+  if (!await enterRaid([A, B])) return 2
+  await clearArea(A)
+  await tp(B, 45.5, 65, 94.5, 180, 0)
+  await tp(A, 45.5, 65, 91.5, 0, 0)
+  for (const [id, n] of [['lion_statue', 1], ['master_chip', 1], ['ammo_556_m855', 60], ['gold_bar', 1]]) await rcon(`cv give ${B.username} ${id} ${n}`)
+  await sleep(1500)
+
+  // 8. Standing: cells by size. A menu that retitles itself (a refusal shown after the title) opens
+  // its screen again, so the window is always read from B.currentWindow, never kept.
+  const cur = () => B.currentWindow || { slots: [], title: '' }
+  let w = await opened(B, () => B.chat('/cv secure'))
+  if (!w || !titleOf(w).includes('安全箱')) {
+    log('SETUP: /cv secure opened no secure container while standing', titleOf(w))
+    return 2
+  }
+  const TOP = 18
+  const missing = ['lion_statue', 'master_chip', 'ammo_556_m855', 'gold_bar'].filter(id => bottomSlot(cur(), id, TOP) < 0)
+  if (missing.length) {
+    log('SETUP: B does not carry', missing)
+    return 2
+  }
+  check('a fresh container shows 3 open cells and 6 locked ones', cellsOf(cur()).join(' ') === '- - - # # # # # #', cellsOf(cur()))
+  const put = async id => { await B.clickWindow(bottomSlot(cur(), id, TOP), 0, 0); await sleep(800) }
+  since = Date.now()
+  await put('lion_statue')
+  check('the lion statue (6 cells) does not go into a 3-cell container', !cellsOf(cur()).some(c => c.startsWith('lion_statue')) &&
+    bottomSlot(cur(), 'lion_statue', TOP) >= 0, cellsOf(cur()))
+  check('B is told the statue takes 6 cells of 3', barsSince(B, since).some(b => b.includes('占 6 格') && b.includes('只有 3 格')), barsSince(B, since).slice(-2))
+  await put('master_chip')
+  check('the master chip goes in and takes 2 cells (the second an occupied marker)', cellsOf(cur()).slice(0, 2).join(' ') === 'master_chip:1 =' &&
+    bottomSlot(cur(), 'master_chip', TOP) < 0, cellsOf(cur()))
+  check('the occupied marker names the chip', nameOf(cur().slots[1]).includes('机密主控芯片'), nameOf(cur().slots[1]))
+  since = Date.now()
+  await put('ammo_556_m855')
+  check('60 rounds into the one cell left: 30 go in, 30 stay with B', cellsOf(cur())[2] === 'ammo_556_m855:30' && countIn(cur(), 'ammo_556_m855', TOP) === 30,
+    { cells: cellsOf(cur()), left: countIn(cur(), 'ammo_556_m855', TOP) })
+  check('B is told only 30 rounds went in', barsSince(B, since).some(b => b.includes('放入 30 发')), barsSince(B, since).slice(-1))
+  check('the info button reads 3/3 格', nameOf(cur().slots[13]).includes('3/3 格'), nameOf(cur().slots[13]))
+  since = Date.now()
+  await put('gold_bar')
+  check('a full container takes no gold bar and says so', !cellsOf(cur()).some(c => c.startsWith('gold_bar')) &&
+    barsSince(B, since).some(b => b.includes('空间不足')), { cells: cellsOf(cur()), bars: barsSince(B, since).slice(-1) })
+  // The rounds come back out, so the downed B has a free cell for the gold bar it may not put in.
+  await B.clickWindow(2, 0, 0)
+  await sleep(800)
+  const before = cellsOf(cur()).filter(c => c.includes(':')).sort()
+  check('taking the rounds back out frees their cell', before.join(' ') === 'master_chip:1' && cellsOf(cur())[2] === '-' &&
+    countIn(cur(), 'ammo_556_m855', TOP) === 60, { cells: cellsOf(cur()), rounds: countIn(cur(), 'ammo_556_m855', TOP) })
+
+  // 9. Knocked down with the container open: the server closes it.
+  let closedAt = 0
+  B._client.on('close_window', () => { closedAt = Date.now() })
+  const downAt = Date.now()
+  await rcon(`damage ${B.username} 500 minecraft:generic`)
+  if (!await waitFor(() => titled(B, '第一次倒地'), 3000)) {
+    log('SETUP: B was not knocked down', B.titles)
+    return 2
+  }
+  await sleep(500)
+  check('knocked down with the secure container open, B gets its window closed', closedAt >= downAt && !B.currentWindow,
+    closedAt ? closedAt - downAt : 'never')
+  // Whenever a secure container is open to the downed B anyway, it tries to save the gold bar in it
+  // (the profile check in 11 catches it).
+  const tryGold = async () => {
+    if (titleOf(B.currentWindow).includes('安全箱') && bottomSlot(cur(), 'gold_bar', TOP) >= 0) {
+      await B.clickWindow(bottomSlot(cur(), 'gold_bar', TOP), 0, 0).catch(() => {})
+      await sleep(800)
+    }
+  }
+  await tryGold()
+
+  // 10. Downed: /cv secure, /cv and the terminal item.
+  since = Date.now()
+  w = await opened(B, () => B.chat('/cv secure'))
+  await sleep(800)
+  check('downed, /cv secure opens no secure container', !w || !titleOf(w).includes('安全箱'), titleOf(w).slice(0, 80))
+  const said = () => barsSince(B, since).find(b => b.includes('倒地时无法使用安全箱')) || barsSince(B, since).slice(-1)
+  check('downed, the bleed-out bar says the secure container cannot be used', barsSince(B, since).some(b => b.includes('倒地时无法使用安全箱')), said())
+  await tryGold()
+  if (B.currentWindow) B.closeWindow(B.currentWindow)
+  w = await opened(B, () => B.chat('/cv'))
+  check('downed, /cv opens the tactical terminal, not the container', !!w && titleOf(w).includes('战术终端') && !titleOf(w).includes('安全箱'), titleOf(w).slice(0, 80))
+  if (w) {
+    check('the terminal\'s secure container button shows its own locked picture', uiModel(w.slots[10]) === 'craftov:ui/icon_secure_locked', uiModel(w.slots[10]))
+    check('the gunsmith, the skill (vanguard) and the test armory are locked too, each with its own picture',
+      uiModel(w.slots[20]) === 'craftov:ui/icon_gunsmith_locked' && uiModel(w.slots[16]) === 'craftov:ui/op_vanguard_locked' &&
+      uiModel(w.slots[26]) === 'craftov:ui/icon_catalog_locked', [uiModel(w.slots[20]), uiModel(w.slots[16]), uiModel(w.slots[26])])
+    since = Date.now()
+    const inner = await opened(B, () => B.clickWindow(10, 0, 0))
+    check('clicking the locked button opens no secure container', !inner || !titleOf(inner).includes('安全箱'), titleOf(inner).slice(0, 80))
+    check('and says why', barsSince(B, since).some(b => b.includes('倒地时无法使用安全箱')), said())
+    await tryGold()
+    if (B.currentWindow) B.closeWindow(B.currentWindow)
+    await sleep(500)
+    w = await opened(B, () => B.chat('/cv'))
+    since = Date.now()
+    const armory = w ? await opened(B, () => B.clickWindow(26, 0, 0)) : null
+    await sleep(500)
+    check('clicking the locked test armory opens no armory (it hands out injectors)', !!w && !titleOf(B.currentWindow).includes('测试军械库'),
+      titleOf(armory).slice(0, 80))
+    check('and the bleed-out bar says why', barsSince(B, since).some(b => b.includes('倒地时无法使用测试军械库')), barsSince(B, since).slice(-1))
+    if (B.currentWindow) B.closeWindow(B.currentWindow)
+    await sleep(500)
+  }
+  w = await opened(B, () => B.chat('/cv items'))
+  check('downed, /cv items opens no test armory', !w || !titleOf(w).includes('测试军械库'), titleOf(w).slice(0, 80))
+  if (B.currentWindow) B.closeWindow(B.currentWindow)
+  await sleep(500)
+  B.setQuickBarSlot(8)
+  await sleep(400)
+  w = await opened(B, () => B.activateItem())
+  check('downed, the terminal item (hotbar slot 9) opens the terminal, not the container', !!w && titleOf(w).includes('战术终端') && !titleOf(w).includes('安全箱'),
+    titleOf(w).slice(0, 80))
+  if (w) B.closeWindow(w)
+  await sleep(500)
+
+  // 11. Dead: the saved secure container is the one from before the knock-down. Only hostile damage
+  // finishes a downed player (RaidManager.onDamage): an explosion counts, a generic hit does not.
+  await rcon(`damage ${B.username} 500 minecraft:explosion`)
+  await waitFor(() => B.game.gameMode === 'spectator', 5000)
+  check('a second hit kills the downed B', B.game.gameMode === 'spectator', B.game.gameMode)
+  let saved = null
+  await waitFor(() => {
+    const p = savedProfile(B.username)
+    saved = p && (p.secure || []).map(r => `${r.id}:${r.amount}`).sort()
+    return p && !p.activeRaid && saved.join(' ') === before.join(' ')
+  }, 20000)
+  check('B\'s saved secure container is what it held before the knock-down (no gold bar)', before.length > 0 && !!saved &&
+    saved.join(' ') === before.join(' '), { saved, before })
+  return 0
+}
+
 ;(async () => {
   let code = 0
   if (WHICH === 'all' || WHICH === 'squad') code = Math.max(code, await squad())
@@ -583,6 +819,11 @@ async function solo () {
     try { bot.quit() } catch (e) { }
   }
   if (code < 2 && (WHICH === 'all' || WHICH === 'solo')) code = Math.max(code, await solo())
+  for (const bot of bots.splice(0)) {
+    try { await rcon(`deop ${bot.username}`) } catch (e) { }
+    try { bot.quit() } catch (e) { }
+  }
+  if (code < 2 && (WHICH === 'all' || WHICH === 'secure')) code = Math.max(code, await secure())
   finish(code === 2 ? 2 : checks.every(c => c.ok) ? 0 : 1)
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 

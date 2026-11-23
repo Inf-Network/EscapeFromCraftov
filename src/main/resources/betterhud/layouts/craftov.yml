@@ -814,6 +814,130 @@ craftov_feed_5:
       second: 'true'
       operation: ==
   offset: left
+craftov_objective:
+  images:
+    '1':
+      name: craftov_panel_objective
+      x: 0
+      y: 0
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_objective]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_objective_raid_0:
+  images:
+    '1':
+      name: craftov_panel_skill
+      x: 0
+      y: 0
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_objective]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_mate_1
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_objective_raid_1:
+  images:
+    '1':
+      name: craftov_panel_skill
+      x: 0
+      y: 0
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_objective]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_objective_raid_2:
+  images:
+    '1':
+      name: craftov_panel_skill
+      x: 0
+      y: 0
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_objective]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_2
+      second: 'true'
+      operation: ==
+  offset: left
 craftov_alert:
   images:
     '1':

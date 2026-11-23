@@ -151,7 +151,7 @@ public final class ReplayService implements Listener {
                 boolean downed = plugin.downed().isDowned(player);
                 Pose pose = downed || player.isSwimming() ? Pose.SWIMMING : player.isSneaking() ? Pose.SNEAKING : Pose.STANDING;
                 ItemStack hand = hand(track, player.getUniqueId(), player.getInventory().getItemInMainHand());
-                boolean raised = hand != null && plugin.stance().takesPick(player.getEntityId()) && !player.isSprinting() && !downed;
+                boolean raised = hand != null && plugin.stance().takesPick(player.getEntityId()) && !plugin.stance().sprintCarry(player) && !downed;
                 samples.put(player.getUniqueId(), sample(player, pose, raised, hand));
                 look(track, player, now, () -> new Look(player.getName(), ResolvableProfile.resolvableProfile(player.getPlayerProfile()),
                         false, copy(player.getInventory().getHelmet()), copy(player.getInventory().getChestplate())));
@@ -493,7 +493,7 @@ public final class ReplayService implements Listener {
         }
         playback.lastShotTick = Math.max(playback.lastShotTick, now);
         if ((long) playback.recorded % 20 == 0) {
-            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white>Shift</white> 跳过");
+            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white><key:key.sneak></white> 跳过");
         }
     }
 

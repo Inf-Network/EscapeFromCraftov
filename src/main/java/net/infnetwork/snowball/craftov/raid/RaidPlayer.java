@@ -117,6 +117,12 @@ public final class RaidPlayer {
      */
     public double armorWear = 1.0;
     public @Nullable String escortContract;
+    /**
+     * Lines for the landing briefing, collected while the player deploys (insurance, a compensation
+     * raid): sent with it in one message once they are on the ground, instead of one by one during
+     * the entry camera, where nobody reads chat (RaidManager#brief).
+     */
+    public final List<String> briefing = new ArrayList<>();
     public int containersSearched;
     /** Personal luck in this raid: containers searched, hand-outs (LuckService). */
     public final LuckSession luck = new LuckSession();

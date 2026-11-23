@@ -112,10 +112,11 @@ public final class InsuranceService {
             return 0;
         }
         if (profile.money < fee) {
-            // Not the answer to a click, and easy to miss during the fly-in: it stays in chat, where
-            // the player can still read it when they wonder why their gear did not come back.
+            // Not the answer to a click, and easy to miss during the fly-in: it goes with the landing
+            // briefing in chat, where the player can still read it when they wonder why their gear
+            // did not come back.
             net.infnetwork.snowball.craftov.gui.UiSound.ERROR.play(player);
-            Text.send(player, "<danger>块币不足，本局装备未投保 <muted>（自动投保需要 ◈" + Text.money(fee) + "，余额 ◈"
+            plugin.raids().brief(player, "<danger>块币不足，本局装备未投保 <muted>（自动投保需要 ◈" + Text.money(fee) + "，余额 ◈"
                     + Text.money(profile.money) + "）");
             return 0;
         }
@@ -136,7 +137,7 @@ public final class InsuranceService {
                 count++;
             }
         }
-        Text.send(player, "<ok>已为 " + count + " 件装备投保 <muted>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
+        plugin.raids().brief(player, "<ok>已为 " + count + " 件装备投保 <muted>(◈" + Text.money(fee) + ")。阵亡后没被别人带出的，对局结束时每件有 "
                 + Math.round((1 - lossChance()) * 100) + "% 的机会找回" + (returnMinutes() > 0 ? "，" + returnMinutes() + " 分钟后退回邮箱。" : "，退回邮箱。"));
         return fee;
     }

@@ -556,7 +556,8 @@ const scenarios = {
     const earlyAt = (Date.now() - back) / 1000
     A2.activateItem()
     await sleep(400)
-    A2.deactivateItem()
+    A2.deactivateItem() // a grenade leaves the hand when the button comes up
+    await sleep(300)
     if (count(A2, 'smoke') < smoke0) problems.push(`threw a grenade ${earlyAt.toFixed(1)} s after rejoining`)
     // The same right-click after the protection does throw it (so the check above means something).
     let lateAt = null
@@ -570,6 +571,7 @@ const scenarios = {
         A2.activateItem()
         await sleep(400)
         A2.deactivateItem()
+        await sleep(300)
         thrownLate = count(A2, 'smoke') < before
       }
       const hp = await health(A2.username)

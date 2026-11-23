@@ -580,7 +580,9 @@ async function selfkill () {
   await s.look(0, -Math.PI / 2, true)
   const mark = s.msgs.length
   const dead = s.worldChanges
-  for (let n = 0; n < 2 && !s.msgs.slice(mark).some(m => /行动失败|结果/.test(m)); n++) {
+  // The first right click may still fall in the landing protection, and one frag at your feet
+  // through the starter helmet and vest takes about 65: it takes both to die.
+  for (let n = 0; n < 3 && !s.msgs.slice(mark).some(m => /行动失败|结果/.test(m)); n++) {
     s.activateItem()
     await sleep(250)
     s.deactivateItem()

@@ -6,10 +6,12 @@ import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.Nullable;
 
 /** Entry points for every menu. */
 public final class MenuService {
 
+    private static final String IN_RANGE = "靶场内无法使用，请先离开靶场。";
     private final CraftovPlugin plugin;
 
     public MenuService(CraftovPlugin plugin) {
@@ -35,7 +37,7 @@ public final class MenuService {
      */
     private boolean notInRange(Player player) {
         if (plugin.range().isIn(player)) {
-            Notify.error(player, "靶场内无法使用，请先离开靶场。");
+            Notify.error(player, IN_RANGE);
             return false;
         }
         return true;
@@ -129,9 +131,22 @@ public final class MenuService {
     }
 
     public void openSecure(Player player) {
-        // Not lobbyOnly: the raid terminal opens the secure container mid-raid.
-        if (!notInRange(player)) {
+        String refused = secureRefusal(player);
+        if (refused != null) {
+            refuse(player, refused);
             return;
+        }
+        new SecureMenu(plugin, player).open();
+    }
+
+    /**
+     * Why the player cannot use the secure container now, or null if they can. Asked when it opens
+     * and again for every item moved in or out, since the menu can be open when this changes. Not
+     * lobbyOnly: the raid terminal opens the secure container mid-raid.
+     */
+    @Nullable String secureRefusal(Player player) {
+        if (plugin.range().isIn(player)) {
+            return IN_RANGE;
         }
         Raid raid = plugin.raids().raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
@@ -140,9 +155,24 @@ public final class MenuService {
         // settled it and the loadout, and outside the raid the menu would save the spectator's
         // empty inventory as the loadout.
         if (plugin.raids().isSpectating(player) || rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
-            Notify.error(player, "入场途中或观战时无法打开安全箱。");
-            return;
+            return "入场途中或观战时无法打开安全箱。";
         }
-        new SecureMenu(plugin, player).open();
+        // Downed still counts as active, but a crawling player who could reach the container would
+        // put the loot their killer is about to take out of reach (or pull an injector out of it).
+        if (rp != null && rp.state == RaidPlayer.State.DOWNED || plugin.downed().isDowned(player)) {
+            return "倒地时无法使用安全箱";
+        }
+        return null;
+    }
+
+    /**
+     * Says why something did not open. A downed player's action bar is held by the bleed-out bar,
+     * which would swallow the reason, so the reason goes on that bar as well.
+     */
+    void refuse(Player player, String reason) {
+        Notify.error(player, reason);
+        if (plugin.downed().isDowned(player)) {
+            plugin.downed().refused(player, reason);
+        }
     }
 }

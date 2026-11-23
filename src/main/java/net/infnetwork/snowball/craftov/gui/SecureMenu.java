@@ -62,9 +62,22 @@ final class SecureMenu extends Menu {
                 List.of("<muted>点击下方物品放入，点击上方物品取出", "<muted>武器、护甲、胸挂与背包无法放入")));
     }
 
+    /**
+     * False, with the reason said, when the container may not be used now. The menu can still be
+     * open when that changes: a knock-down closes it, but the check must not rely on that alone.
+     */
+    private boolean usable() {
+        String refused = plugin.menus().secureRefusal(viewer);
+        if (refused == null) {
+            return true;
+        }
+        plugin.menus().refuse(viewer, refused);
+        return false;
+    }
+
     private void take(int index) {
         List<ItemRecord> items = contents();
-        if (index >= items.size()) {
+        if (index >= items.size() || !usable()) {
             return;
         }
         ItemStack stack = plugin.items().fromRecord(items.get(index));
@@ -91,7 +104,7 @@ final class SecureMenu extends Menu {
     @Override
     protected void onBottomClick(InventoryClickEvent event) {
         ItemStack stack = event.getCurrentItem();
-        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack) || event.getClickedInventory() == null) {
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack) || event.getClickedInventory() == null || !usable()) {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);

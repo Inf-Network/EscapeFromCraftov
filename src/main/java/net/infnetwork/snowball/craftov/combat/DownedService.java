@@ -85,10 +85,17 @@ public final class DownedService implements Listener {
      */
     private final Map<UUID, Long> refusedFire = new HashMap<>();
     /**
+     * downed player -> what they just tried and could not do (a menu that stays shut), and the tick.
+     * The bleed-out bar holds the action bar, so the reason is said there for a moment.
+     */
+    private final Map<UUID, Map.Entry<String, Long>> refusals = new HashMap<>();
+    /**
      * Ticks a right click on a downed mate counts as still held: a held button repeats every 4
      * ticks, and the revive check runs every 5.
      */
     private static final int HOLD_TICKS = 8;
+    /** How long a refusal stays on the bleed-out bar. */
+    private static final int REFUSAL_TICKS = 40;
 
     public DownedService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -112,6 +119,11 @@ public final class DownedService implements Listener {
     /** The player pulled the trigger while reviving: their revive bar says why nothing fired for a second. */
     public void refusedFire(Player reviver) {
         refusedFire.put(reviver.getUniqueId(), (long) Bukkit.getCurrentTick());
+    }
+
+    /** The downed player tried something they cannot do while down: their bleed-out bar says why for a moment. */
+    public void refused(Player player, String reason) {
+        refusals.put(player.getUniqueId(), Map.entry(reason, (long) Bukkit.getCurrentTick()));
     }
 
     public boolean isReviving(Player player) {
@@ -155,6 +167,9 @@ public final class DownedService implements Listener {
         Downed state = new Downed(rp.downs, pool, revive);
         state.cause = cause;
         downed.put(player.getUniqueId(), state);
+        // Whatever was open goes shut: a secure container opened before the hit would otherwise
+        // stay usable while the player crawls.
+        player.closeInventory();
         plugin.weapons().reset(player);
         player.setHealth(1.0);
         player.setSprinting(false);
@@ -276,6 +291,7 @@ public final class DownedService implements Listener {
     }
 
     private void tick() {
+        refusals.keySet().retainAll(downed.keySet());
         for (Map.Entry<UUID, Downed> entry : new HashMap<>(downed).entrySet()) {
             Player player = Bukkit.getPlayer(entry.getKey());
             Downed state = entry.getValue();
@@ -338,8 +354,14 @@ public final class DownedService implements Listener {
                         Material.REDSTONE_BLOCK.createBlockData());
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
             }
+            Map.Entry<String, Long> refusal = refusals.get(player.getUniqueId());
+            if (refusal != null && Bukkit.getCurrentTick() - refusal.getValue() >= REFUSAL_TICKS) {
+                refusals.remove(player.getUniqueId());
+                refusal = null;
+            }
             Notify.critical(player, "downed", "<danger>倒地 " + Text.bar(state.fraction(), 24, "danger", "dim")
-                    + " <muted>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <accent>没有队友能救你，使用自救注射器"));
+                    + " <muted>" + (int) Math.ceil(state.pool) + "s"
+                    + (refusal != null ? "  <danger>" + refusal.getKey() : mates ? "" : "  <accent>没有队友能救你，使用自救注射器"));
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
             }

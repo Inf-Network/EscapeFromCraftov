@@ -6,14 +6,23 @@
 //            at least 30 rounds, and while A fires neither A nor C hears a single armour equip sound
 //            (vanilla's leather one, or the new craftov:gear.equip), while B's armour wears down as
 //            before. (Between bursts the harness tops the armour up by RCON, which does make one.)
+//            A player's armour never made the sound when worn down (Paper puts a player's armour on
+//            without onEquipItem); a soldier's and a stand-in's did. So then a patrol posted where B
+//            stood (frozen, its health pool raised, in copies of B's helmet_6 and armor_6) takes at
+//            least 20 rounds the same way, and A and C hear no equip sound from it either while its
+//            armour wears down.
 //   bleed    B healed and given a heavy bleed on the left leg (/cv injure): for 15 seconds its health
-//            falls by 2.6 every 1.5 s (30 ticks), and neither C nor B itself gets a damage event or a
-//            hurt animation of B, or hears a player hurt sound; B alone hears craftov:status.bleed.
-//            Then B, at 8 health, bleeds on to 0: it dies as before (solo, no injector: "行动失败",
-//            spectator), and C hears it cry out (entity.player.death).
+//            on the server (read by RCON) falls by 2.6 every 1.5 s (30 ticks), and neither C nor B
+//            itself gets a damage event or a hurt animation of B, or hears a player hurt sound; B alone
+//            hears craftov:status.bleed. B's own client is never shown its health drop (the vanilla
+//            client tilts the view at any drop, as for a hit): every health update it gets says 100.
+//            Then a hit takes B to 8 (/damage): its client is shown the true health again. B bleeds
+//            on to 0: it dies as before (solo, no injector: "行动失败", spectator), and C hears it
+//            cry out (entity.player.death).
 //   meds     every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
-//            craftov:misc.silence as its consumable sound, not craftov:med.loop. C, given a light
+//            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
+//            pose (animation none; an items.yml from before cues said bundle). C, given a light
 //            bleed, uses a bandage: A hears its cues in order, med.tear at the start and med.wrap at
 //            about 0.75 and 1.55 s (0.3 and 0.62 of 2.5 s), and no med.loop.
 //   scope    C wears helmet_6 and aims an AWR (8x, a use packet every 4 ticks), A shoots its
@@ -27,6 +36,7 @@
 // by disconnecting. Exit code: number of failed checks (2+ also when a scenario could not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
+const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 const fs = require('fs')
 const path = require('path')
@@ -106,6 +116,7 @@ async function dataNumber (target, path) {
   return m ? Number(m[1]) : null
 }
 const health = name => dataNumber(name, 'Health')
+// `name` may be a selector (a soldier) as well.
 const dura = (name, slot) => dataNumber(name, `equipment.${slot}.components."minecraft:custom_data".PublicBukkitValues."craftov:dura"`)
 const setDura = (name, slot, value) => rcon(`item modify entity ${name} armor.${slot} {function:"minecraft:set_custom_data",tag:{PublicBukkitValues:{"craftov:dura":${value.toFixed(2)}d}}}`)
 const commandSlot = i => i >= 36 ? `hotbar.${i - 36}` : `inventory.${i - 9}`
@@ -154,14 +165,14 @@ async function positions (A, B, C) {
   await sleep(1000)
 }
 
-/** Holds left mouse for `ms` (a swing every tick: the trigger held), aiming at `y` above B's feet. */
 /**
  * Aims down the sights (a use packet every 4 ticks, as right mouse held) and holds left mouse for
- * `ms` (a swing every tick: the trigger held), at `y` above B's feet. Aimed, the rounds stay on the
- * armour: from the hip, full auto sprays the arms and legs, which no armour covers.
+ * `ms` (a swing every tick: the trigger held), at `y` above the feet of `target` (a bot, or an entity
+ * as A sees it). Aimed, the rounds stay on the armour: from the hip, full auto sprays the arms and
+ * legs, which no armour covers.
  */
-async function burst (A, B, ms, y) {
-  const entity = A.players[B.username] && A.players[B.username].entity
+async function burst (A, target, ms, y) {
+  const entity = target.username ? A.players[target.username] && A.players[target.username].entity : target
   if (!entity) return
   let seq = 1
   const use = () => A._client.write('use_item', { hand: 0, sequence: seq++, rotation: { x: conv.toNotchianYaw(A.entity.yaw), y: conv.toNotchianPitch(A.entity.pitch) } })
@@ -237,6 +248,83 @@ async function armor (A, B, C) {
   log(`(C heard ${setup} equip sounds from the harness topping the armour up between bursts)`)
   const impacts = C.heard.filter(h => h.at >= since && /impact\.(armor|helmet)/.test(h.name)).length
   check('armor: C heard the impacts on the armour', impacts > 0, impacts)
+  return soldierArmor(A, B, C)
+}
+
+const SOLDIER = '@e[tag=fb_soldier,limit=1]'
+const SPOT = new Vec3(45.5, 65, 93.5)
+/** The posted soldier as A sees it. */
+const soldierFor = A => Object.values(A.entities).find(e => ['zombie', 'husk', 'drowned'].includes(e.name) && e.position.distanceTo(SPOT) < 2.5)
+
+/**
+ * A patrol where B stood, in copies of B's helmet_6 and armor_6. Every hit puts its armour back
+ * worn down with the same write-back as a player's (DamageService), and on a soldier (or a
+ * stand-in) a write-back that is not silent plays the equip sound to everyone around.
+ */
+async function soldierArmor (A, B, C) {
+  await clearSoldiers()
+  await restore(B)
+  await positions(A, B, C)
+  await place(B, 41.5, 91.0, 270) // out of the line of fire
+  // A frozen soldier still fights with what it holds: nobody is to be hurt while it stands there
+  // (resistance stops the damage, not the wounds a hit makes: everyone is healed afterwards).
+  for (const bot of [A, B, C]) await rcon(`effect give ${bot.username} minecraft:resistance 120 4 true`)
+  const reply = await rcon(`cv ai spawn patrol ${SPOT.x} ${SPOT.y} ${SPOT.z} ${A.worldName}`)
+  await sleep(500)
+  await rcon(`tag @e[limit=1,nbt={BukkitValues:{"craftov:ai":"patrol"}}] add fb_soldier`)
+  if (!(await rcon(`execute if entity ${SOLDIER}`)).includes('passed')) {
+    log('SETUP: no patrol posted', reply)
+    return 2
+  }
+  await rcon(`data merge entity ${SOLDIER} {NoAI:1b}`)
+  await rcon(`attribute ${SOLDIER} minecraft:max_health base set 1000`)
+  await rcon(`item replace entity ${SOLDIER} armor.head from entity ${B.username} armor.head`)
+  await rcon(`item replace entity ${SOLDIER} armor.chest from entity ${B.username} armor.chest`)
+  const before = { head: 60, chest: 120 }
+  const worn = { head: 0, chest: 0 }
+  const since = Date.now()
+  const from = firing.length
+  const shots0 = A.shots
+  for (let k = 0; k < 16 && A.shots - shots0 < 20; k++) {
+    await rcon(`data merge entity ${SOLDIER} {Health:1000f}`)
+    await rcon(`execute as ${SOLDIER} at @s run tp @s ${SPOT.x} ${SPOT.y} ${SPOT.z} 180 0`)
+    await setDura(SOLDIER, 'head', before.head)
+    await setDura(SOLDIER, 'chest', before.chest)
+    await place(A, 45.5, 88.5, 0)
+    await sleep(800)
+    const target = soldierFor(A)
+    if (!target) {
+      log('SETUP: A cannot see the soldier')
+      return 2
+    }
+    await burst(A, target, 300, 1.0)
+    await sleep(600)
+    const head = await dura(SOLDIER, 'head')
+    const chest = await dura(SOLDIER, 'chest')
+    if (head !== null) worn.head += before.head - head
+    if (chest !== null) worn.chest += before.chest - chest
+    log(`soldier burst ${k + 1}: ${A.shots - shots0} rounds so far, helmet ${head}, vest ${chest}, health ${await dataNumber(SOLDIER, 'Health')}`)
+    if (A.shots - shots0 < 20 && (A.shots - shots0) % 30 > 22) {
+      A._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+      await sleep(3500)
+    }
+  }
+  const windows = firing.slice(from)
+  const during = h => windows.some(w => h.at >= w.from && h.at <= w.to)
+  const fired = A.shots - shots0
+  const heardA = A.heard.filter(h => during(h) && armourSound(h))
+  const heardC = C.heard.filter(h => during(h) && armourSound(h))
+  check('armor: A fired at least 20 rounds at the soldier', fired >= 20, fired)
+  check('armor: the hits wore the soldier\'s armour', worn.head + worn.chest > 0, worn)
+  check('armor: A heard no armour equip sound from the soldier while it fired', heardA.length === 0, heardA.map(h => h.name))
+  check('armor: C heard no armour equip sound from the soldier while A fired', heardC.length === 0, heardC.map(h => h.name))
+  const setup = C.heard.filter(h => h.at >= since && !during(h) && armourSound(h)).length
+  log(`(C heard ${setup} equip sounds from the harness dressing the soldier and topping its armour up)`)
+  await rcon(`kill ${SOLDIER}`)
+  for (const bot of [A, B, C]) {
+    await rcon(`effect clear ${bot.username} minecraft:resistance`)
+    await restore(bot)
+  }
   return 0
 }
 
@@ -257,15 +345,26 @@ async function bleed (A, B, C) {
   const id = B.entity.id
   const idForC = C.players[B.username] && C.players[B.username].entity ? C.players[B.username].entity.id : -1
   const since = Date.now()
+  const shownBefore = B.healths.length ? +B.healths[B.healths.length - 1].hp.toFixed(2) : null
   await rcon(`cv injure ${B.username} left_leg heavy`)
-  await sleep(15000)
+  // Its health on the server: the client is no longer told.
+  const server = []
+  while (Date.now() < since + 15000) {
+    const hp = await health(B.username)
+    if (hp !== null) server.push({ at: Date.now(), hp })
+    await sleep(150)
+  }
   const drops = []
-  const hp = B.healths.filter(h => h.at >= since)
-  for (let i = 1; i < hp.length; i++) if (hp[i].hp < hp[i - 1].hp - 0.01) drops.push({ at: hp[i].at, by: +(hp[i - 1].hp - hp[i].hp).toFixed(2) })
+  for (let i = 1; i < server.length; i++) {
+    if (server[i].hp < server[i - 1].hp - 0.01) drops.push({ at: server[i].at, by: +(server[i - 1].hp - server[i].hp).toFixed(2) })
+  }
   const gaps = drops.slice(1).map((d, i) => d.at - drops[i].at)
-  check('bleed: over 15 s B loses 2.6 at a time, 9 or 10 times', drops.length >= 9 && drops.length <= 11 && drops.every(d => Math.abs(d.by - 2.6) < 0.05),
+  check('bleed: over 15 s B loses 2.6 at a time on the server, 9 or 10 times', drops.length >= 9 && drops.length <= 11 && drops.every(d => Math.abs(d.by - 2.6) < 0.05),
     drops.map(d => d.by))
   check('bleed: about every 1.5 s', gaps.length > 0 && gaps.every(g => g > 1100 && g < 1900), gaps)
+  const shown = B.healths.filter(h => h.at >= since).map(h => +h.hp.toFixed(2))
+  check('bleed: B\'s own client is never shown a drop of its health (every update still says 100)',
+    shownBefore === 100 && shown.length >= drops.length - 1 && shown.every(hp => hp === 100), { before: shownBefore, shown })
   const cEvents = C.damage.filter(d => d.at >= since && d.entityId === idForC)
   const bEvents = B.damage.filter(d => d.at >= since && d.entityId === id)
   check('bleed: C got no damage event or hurt animation of B', idForC >= 0 && cEvents.length === 0, { idForC, events: cEvents.map(e => e.kind) })
@@ -283,10 +382,16 @@ async function bleed (A, B, C) {
     log('SETUP: B is at', now)
     return 2
   }
+  const hitAt = Date.now()
   await rcon(`damage ${B.username} ${(now - 8).toFixed(2)} minecraft:generic`)
   const end = Date.now()
   B.titles.length = 0
-  const died = await waitFor(() => B.game.gameMode === 'spectator', 12000)
+  // An update of a quiet loss may still be on its way: the hit's own comes within a tick or two.
+  await sleep(1000)
+  const afterHit = B.healths.filter(h => h.at >= hitAt).map(h => +h.hp.toFixed(2))
+  check('bleed: a hit shows B\'s client its true health again (8, or less if it bled meanwhile)',
+    afterHit.some(hp => hp > 0 && hp <= 8.05), afterHit)
+  const died = await waitFor(() => B.game.gameMode === 'spectator', 11000)
   check('bleed: bled to 0, B dies as before (solo, no injector)', died && B.titles.some(t => t.includes('行动失败')), { mode: B.game.gameMode, titles: B.titles })
   const cry = C.heard.filter(h => h.at >= end && /entity\.player\.death/.test(h.name)).length
   check('bleed: C hears B cry out as it dies', cry >= 1, cry)
@@ -307,6 +412,8 @@ async function meds (A, B, C) {
   const json = at >= 0 ? JSON.stringify(C.inventory.slots[at].components || '') : ''
   check('meds: a medkit\'s consumable sound is craftov:misc.silence, not med.loop', at >= 0 && json.includes('misc.silence') && !json.includes('med.loop'),
     (json.match(/"sound[^}]*}/) || [''])[0])
+  const pose = (json.match(/"animation":"?(\w+)/) || [])[1]
+  check('meds: a medkit has no vanilla use pose (animation none)', pose === 'none', pose || json.slice(0, 300))
   // A bandage on a light bleed: the cues, in order, heard by A.
   await clearSoldiers()
   await restore(C)

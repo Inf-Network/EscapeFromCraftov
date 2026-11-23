@@ -12,7 +12,8 @@
 //          being drawn; the pistol waits in the hotbar with the holster mark (damage 5, the draw's
 //          first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
 //          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
-//          the draw (6 ticks; 12 for the M4C); a gun switched away from mid-draw is holstered
+//          the draw (6 ticks; 12 for the M4C), ahead of the draw mark (the holster frame reads no
+//          cooldown, the draw's rest pose would show between the two); a gun switched away from mid-draw is holstered
 //          again (damage 5) and its draw cooldown stops; the trigger held from the moment of the switch fires once, 6 ticks
 //          after the draw began, though the dig starts over (abort and start) each time the mark
 //          goes on or comes off, as the vanilla client does when the held stack changes; right
@@ -20,7 +21,11 @@
 //   bloom  M4C sprayed on full auto for 1.2 s, over to the P18 and back: the first shot after the draw
 //          still has the spray's bloom, less 0.08 for every tick since the spray's last shot.
 //   cut    M4C three rounds down, Q, and over to the P18 0.4 s into the reload: the action bar says
-//          the reload was cut short and the reload animation (the craftov:reload cooldown) stops.
+//          the reload was cut short and the reload animation (the craftov:reload cooldown) stops; the
+//          cooldown that ran it was the 47 ticks the reload frames are baked for (48 less one).
+//   stash  the P18 in hand, a chest next to the bot: shift-clicked from the hand into the chest it is
+//          holstered there (damage 5), and so is a P18 taken from the hand onto the cursor, and a
+//          gun in the chest forced back to damage 0 is holstered again as the broken chest spills it.
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node swap.js [scenario ...]
 //
@@ -40,7 +45,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['bolt', 'pump', 'draw', 'bloom', 'cut']
+const scenarios = wanted.length ? wanted : ['bolt', 'pump', 'draw', 'bloom', 'cut', 'stash']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -73,13 +78,15 @@ bot._client.on('sound_effect', onSound)
 const bars = []
 const cooldowns = []
 bot._client.on('action_bar', p => bars.push({ at: Date.now(), text: JSON.stringify(p) })) // raw: the event misses NBT text
-bot._client.on('set_cooldown', p => { if (JSON.stringify(p).includes('reload')) cooldowns.push({ at: Date.now(), ticks: p.cooldownTicks }) })
+// seq: the order the client took the packets in, across cooldowns and slot updates.
+let packets = 0
+bot._client.on('set_cooldown', p => { if (JSON.stringify(p).includes('reload')) cooldowns.push({ at: Date.now(), ticks: p.cooldownTicks, seq: ++packets }) })
 
 /** The draw mark on a stack (ItemFactory.setDrawing): its damage component. */
 const damageOf = item => item && item.componentMap && item.componentMap.has('damage') ? item.componentMap.get('damage').data : 0
 /** Every slot update the bot was sent: { at, slot, damage }. */
 const slotUpdates = []
-bot.once('spawn', () => bot.inventory.on('updateSlot', (slot, before, after) => slotUpdates.push({ at: Date.now(), slot, damage: damageOf(after) })))
+bot.once('spawn', () => bot.inventory.on('updateSlot', (slot, before, after) => slotUpdates.push({ at: Date.now(), slot, damage: damageOf(after), seq: ++packets })))
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
 const hotbar = id => bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && itemId(s) === id)
 let sequence = 1
@@ -270,6 +277,8 @@ async function draw (spot) {
   const drawCool = drawCools.find(c => c.ticks > 0)
   check('draw: the draw cooldown is sent with the switch, as long as the draw (6 ticks)', !!drawCool && drawCool.ticks === 6 &&
     drawCool.at - swapped < 250, drawCools.map(c => `${c.ticks} ticks at ${c.at - swapped} ms`).join(', ') || 'none')
+  check('draw: the draw cooldown reaches the client before the draw mark', !!drawCool && !!on && drawCool.seq < on.seq,
+    drawCool && on ? `cooldown packet #${drawCool.seq}, draw mark #${on.seq}` : 'missing')
 
   // A gun switched away from before it is up is holstered again, and its draw frames stop.
   const rifleSlot = hotbar('m4c')
@@ -318,6 +327,71 @@ async function draw (spot) {
     up ? `up at tick ${up.tick} (ready ${d && d.ready}), aiming ${up.aim}` : 'no up logged')
 }
 
+// ---------------------------------------------------------------- stash
+/** The P18 in a window's slots: { slot, damage } or null. */
+function findGun (window, id, from = 0, to = window.slots.length) {
+  for (let i = from; i < to; i++) if (window.slots[i] && itemId(window.slots[i]) === id) return { slot: i, damage: damageOf(window.slots[i]) }
+  return null
+}
+async function stash (spot) {
+  await arm('p18')
+  await aim(spot)
+  const p = bot.entity.position.floored()
+  const chestAt = p.offset(0, 0, 2)
+  await rcon(`execute as ${name} at @s run setblock ${chestAt.x} ${chestAt.y} ${chestAt.z} chest`)
+  await sleep(500)
+  const block = bot.blockAt(chestAt)
+  if (!block || block.name !== 'chest') throw new Error('no chest placed: ' + (block && block.name))
+  log('p18 held, mark', damageOf(bot.heldItem))
+  // Vanilla chests open only in creative (RaidManager.onInteractBlock); a loot box is the plugin's own
+  // container, opened the same way as far as the gun is concerned.
+  const mode = (await rcon(`data get entity ${name} playerGameType`)).match(/: (\d+)/)
+  await rcon(`gamemode creative ${name}`)
+  await sleep(300)
+  const chest = await bot.openContainer(block)
+  const size = chest.inventoryStart
+  const hand = size + 27 + bot.quickBarSlot
+  if (!chest.slots[hand] || itemId(chest.slots[hand]) !== 'p18') throw new Error('the P18 is not in the hand slot ' + hand)
+  await bot.clickWindow(hand, 0, 1) // shift-click: hand -> chest
+  await sleep(400)
+  let put = findGun(chest, 'p18', 0, size)
+  check('stash: a held gun shift-clicked into a box is holstered there (damage 5)', !!put && put.damage === 5,
+    put ? `chest slot ${put.slot}, damage ${put.damage}` : 'not in the chest')
+  // Back to the hand, drawn, then taken from the hand onto the cursor.
+  await bot.clickWindow(put.slot, 0, 1)
+  await sleep(300)
+  const back = findGun(chest, 'p18', size)
+  if (!back) throw new Error('the P18 did not come back')
+  if (back.slot >= size + 27) bot.setQuickBarSlot(back.slot - size - 27)
+  await sleep(800) // drawn and up: the mark comes off
+  const held = findGun(chest, 'p18', size)
+  log('p18 back in slot', held.slot, 'held slot', size + 27 + bot.quickBarSlot, 'mark', held.damage)
+  await bot.clickWindow(held.slot, 0, 0) // pick it up onto the cursor
+  await sleep(400)
+  // Mineflayer does not follow the cursor item the server sends (set_cursor_item): the gun is judged
+  // where it is put down, by the server's resync of that slot.
+  const empty = chest.slots.findIndex((s, i) => i < size && !s)
+  await bot.clickWindow(empty, 0, 0)
+  await sleep(400)
+  put = findGun(chest, 'p18', 0, size)
+  check('stash: a held gun taken onto the cursor is holstered (damage 5)', !!put && put.damage === 5,
+    put ? `put down in chest slot ${put.slot}, damage ${put.damage}` : 'not in the chest')
+  bot.closeWindow(chest)
+  await rcon(`gamemode ${['survival', 'creative', 'adventure', 'spectator'][mode ? Number(mode[1]) : 2]} ${name}`)
+  await sleep(300)
+  // A gun that lands on the ground is put away, whatever mark it had: force one back to 0 and spill it.
+  const here = `execute at ${name}` // the bot's world: the console's commands run in the overworld
+  const slotNbt = await rcon(`${here} run data get block ${chestAt.x} ${chestAt.y} ${chestAt.z} Items`)
+  const at = slotNbt.match(/Slot: (\d+)b/)
+  await rcon(`${here} run data modify block ${chestAt.x} ${chestAt.y} ${chestAt.z} Items[{Slot:${at ? at[1] : 0}b}].components."minecraft:damage" set value 0`)
+  const forced = await rcon(`${here} run data get block ${chestAt.x} ${chestAt.y} ${chestAt.z} Items[0].components."minecraft:damage"`)
+  await rcon(`${here} run setblock ${chestAt.x} ${chestAt.y} ${chestAt.z} air destroy`)
+  const spilled = await rcon(`${here} positioned ${chestAt.x + 0.5} ${chestAt.y + 0.5} ${chestAt.z + 0.5} run data get entity @e[type=item,sort=nearest,limit=1,distance=..3,nbt={Item:{id:"minecraft:paper"}}] Item.components."minecraft:damage"`)
+  log('forced:', forced, '| spilled:', spilled)
+  check('stash: a gun spilled on the ground is holstered (damage 5)', /: 0$/.test(forced.trim()) && /: 5$/.test(spilled.trim()), `forced "${forced.trim()}", spilled "${spilled.trim()}"`)
+  await rcon(`${here} positioned ${chestAt.x} ${chestAt.y} ${chestAt.z} run kill @e[type=item,distance=..4]`)
+}
+
 // ---------------------------------------------------------------- bloom
 async function bloom (spot) {
   await arm('p18')
@@ -364,6 +438,9 @@ async function cut (spot) {
   // Shots run the same cooldown for a few ticks (GunSpec.kickTicks, at most 6), and the reload clears
   // any kick still running before it starts: the reload is the long one.
   check('cut: and stops the reload animation', cools.some(t => t > 6) && cools[cools.length - 1] === 0, `reload cooldowns ${cools.join(',')}`)
+  // The reload frames are baked one a tick over the cooldown the client counts (tools/art/models.py
+  // reload_cooldown): the M4C's 48-tick reload less the tick before showReload starts it.
+  check('cut: the reload frames run on a 47-tick cooldown, as baked', cools.includes(47), `reload cooldowns ${cools.join(',')}`)
 }
 
 ;(async () => {
@@ -380,6 +457,7 @@ async function cut (spot) {
     else if (scenario === 'draw') await draw(spot)
     else if (scenario === 'bloom') await bloom(spot)
     else if (scenario === 'cut') await cut(spot)
+    else if (scenario === 'stash') await stash(spot)
     else log('unknown scenario', scenario)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

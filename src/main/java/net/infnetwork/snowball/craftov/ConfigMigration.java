@@ -69,7 +69,9 @@ final class ConfigMigration {
             new Change(1, "combat.zone-multipliers.arm", List.of(0.5), 0.65), // the half-damage limbs, undone
             new Change(1, "combat.zone-multipliers.leg", List.of(0.5), 0.7),
             new Change(1, "weapons.recoil.muzzle-max", List.of(3.0), 6.0),
-            new Change(1, "hud.crosshair.pixels-per-degree", List.of(5.5), 4.0));
+            new Change(1, "hud.crosshair.pixels-per-degree", List.of(5.5), 4.0),
+            // Revision 2 (#118): a smaller aimed kick, which every bundled gun now sets for itself.
+            new Change(2, "weapons.recoil.ads", List.of(0.6), 0.5));
 
     private static final String REVISION_KEY = "config-revision";
     private static final Pattern REVISION = Pattern.compile("(?m)^" + REVISION_KEY + ":[ \\t]*(\\d+)");

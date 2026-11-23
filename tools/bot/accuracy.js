@@ -57,6 +57,12 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name
 bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 bot.on('kicked', r => log('KICKED', r))
 bot.on('error', e => log('ERROR', e.message))
+// mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
+// reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
+// the range too), walks faster than it may, and the server takes the strafe for running.
+bot.on('entityAttributes', e => {
+  if (e === bot.entity && e.attributes['generic.movement_speed']) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
+})
 let worldChanges = 0
 bot.on('respawn', () => worldChanges++)
 const bars = []

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_opt/v57__optic_holo",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.0,
+    90.079,
+    0.059
+   ],
+   "translation": [
+    -8.807,
+    4.691,
+    7.287
+   ],
+   "scale": [
+    0.658,
+    0.658,
+    0.658
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.0,
+    -89.921,
+    -0.059
+   ],
+   "translation": [
+    -8.807,
+    4.691,
+    7.287
+   ],
+   "scale": [
+    0.658,
+    0.658,
+    0.658
+   ]
+  }
+ }
+}

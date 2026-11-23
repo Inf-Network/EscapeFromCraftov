@@ -10,32 +10,51 @@ import org.bukkit.entity.Player;
 import org.jspecify.annotations.Nullable;
 
 /**
- * First steps for a new player: open the terminal, try a gun on the range, fit an attachment at the
- * gunsmith, deploy, and extract. Steps count in any order; the first one still open is pointed out
- * until done, and finishing all five pays a starter bonus. A player who had extracted before the
- * guide existed never sees it.
+ * First steps for a new player: open the terminal, try a gun on the range, check the client's FOV
+ * Effects slider (every scope zooms through it), fit an attachment at the gunsmith, deploy, and
+ * extract. Steps count in any order; the first one still open is pointed out until done, and
+ * finishing all six pays a starter bonus. A player who had extracted before the guide existed never
+ * sees it.
  */
 public final class TutorialService {
 
+    /**
+     * The steps in the order they are pointed out. Each keeps its own bit in {@link Profile#tutorialMask}:
+     * the first five bits are the old guide's steps in its order (which {@link #migrate} relies on), and
+     * the FOV Effects step, added later, takes the next one, so saved masks keep their meaning.
+     */
     public enum Step {
-        TERMINAL("右键快捷栏第 9 格的<white>战术终端</white>，打开大厅菜单"),
-        RANGE("到大厅东侧的<white>靶场入口</white>右键进入个人靶场，试一把枪"),
-        GUNSMITH("打开<white>改枪台</white>（菜单或 /cv mod），给枪装上任意一个配件"),
-        DEPLOY("在菜单里点<white>开始行动</white>，选择地图出发"),
-        EXTRACT("在局内找到<white>撤离点</white>（战术终端可查看），活着撤离");
+        TERMINAL(0, "右键快捷栏第 9 格的<white>战术终端</white>，打开大厅菜单"),
+        RANGE(1, "到大厅东侧的<white>靶场入口</white>右键进入个人靶场，试一把枪"),
+        FOV(5, "按 <white>Esc → 选项 → 辅助功能</white>，确认 <white>FOV 特效</white> 是 100%（瞄准镜靠它放大），再输入 <white>/cv fov ok</white>"),
+        GUNSMITH(2, "打开<white>改枪台</white>（菜单或 /cv mod），给枪装上任意一个配件"),
+        DEPLOY(3, "在菜单里点<white>开始行动</white>，选择地图出发"),
+        EXTRACT(4, "在局内找到<white>撤离点</white>（战术终端可查看），活着撤离");
 
+        private final int bit;
         public final String hint;
 
-        Step(String hint) {
+        Step(int bit, String hint) {
+            this.bit = 1 << bit;
             this.hint = hint;
         }
 
         int bit() {
-            return 1 << ordinal();
+            return bit;
         }
     }
 
-    private static final int ALL = (1 << Step.values().length) - 1;
+    private static final int ALL = allSteps();
+    /** How many steps the old guide's counter ({@link Profile#tutorialStep}) counted in. */
+    private static final int OLD_STEPS = 5;
+
+    private static int allSteps() {
+        int all = 0;
+        for (Step step : Step.values()) {
+            all |= step.bit();
+        }
+        return all;
+    }
 
     private final CraftovPlugin plugin;
 
@@ -67,10 +86,10 @@ public final class TutorialService {
      * Called on load. A reopened guide has steps on record, so it never matches twice.
      */
     public static void migrate(Profile profile) {
-        int steps = Math.clamp(profile.tutorialStep, 0, Step.values().length);
+        int steps = Math.clamp(profile.tutorialStep, 0, OLD_STEPS);
         profile.tutorialMask |= (1 << steps) - 1;
         profile.tutorialStep = 0;
-        if (steps < Step.values().length && profile.stat("extracts") > 0
+        if (steps < OLD_STEPS && profile.stat("extracts") > 0
                 && (steps > 0 || profile.tutorialMask == 0 && beganWithGuide(profile))) {
             profile.tutorialDone = false;
             profile.tutorialMask |= Step.DEPLOY.bit() | Step.EXTRACT.bit();
@@ -129,7 +148,7 @@ public final class TutorialService {
     public void show(Player player, Profile profile) {
         Step step = next(player, profile);
         if (step != null) {
-            Text.send(player, line(step));
+            Text.send(player, line(step, true));
         }
     }
 
@@ -152,8 +171,11 @@ public final class TutorialService {
         return null;
     }
 
-    private static String line(Step step) {
-        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint;
+    /** The hint for a step; in chat the FOV Effects step carries a button that confirms it. */
+    private static String line(Step step, boolean chat) {
+        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint
+                + (chat && step == Step.FOV
+                        ? " <click:run_command:'/cv fov ok'><hover:show_text:'<muted>确认 FOV 特效是 100%'><ok>[已是 100%]</hover></click>" : "");
     }
 
     /**
@@ -170,7 +192,7 @@ public final class TutorialService {
             }
             Step step = next(player, plugin.profiles().get(player));
             if (step != null) {
-                Notify.info(player, line(step));
+                Notify.info(player, line(step, false));
             }
         }
     }

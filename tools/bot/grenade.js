@@ -448,8 +448,10 @@ async function healthAfter (victims, before, since, T) {
       T.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
     })
     // What the vanilla client sends for one right click on an entity that does not take it on its
-    // side: the click on the entity, then the use of the item in hand.
-    T.activateEntity(box)
+    // side: the click on the entity, then the use of the item in hand, in that order. mineflayer's
+    // activateEntity turns to the box before it sends the click, so it is awaited: unawaited, the
+    // use went out first and, when the turn took a physics tick, a server tick before the click.
+    await T.activateEntity(box)
     T.activateItem()
     const window = await opened
     await sleep(800)

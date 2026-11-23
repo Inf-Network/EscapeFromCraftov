@@ -2,7 +2,7 @@
 // headless bots.
 //
 //   node party.js                    every scenario
-//   node party.js dropout evacuate   only these (dropout kick queue evacuate lobby)
+//   node party.js dropout evacuate   only these (dropout kick leader queue evacuate lobby camera)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots can queue for the proving ground. Ports come from PORT
@@ -19,15 +19,22 @@
 //   kick      A leads, B joins; they land and B quits. A is back in the lobby inside B's reconnect
 //             window: /party lists B as offline by name, queueing names B, and /party kick B
 //             removes B.
+//   leader    B leads, A joins; they land and B quits. A is back in the lobby inside B's window and
+//             queues: A takes over as leader ("队长 B 不在线，A 接任队长"; it used to be only "only
+//             the leader can start matchmaking"), is told B is offline, kicks B and queues alone.
 //   queue     C queues solo, then accepts A's invite: "已取消匹配（加入了小队）", and after
 //             match.wait-seconds C is still in the lobby (it used to be sent in alone).
 //   evacuate  E (insured, auto insurance on) lands solo, is given a gold bar, throws its pistol on
 //             the ground and is moved to the lobby world over RCON. Void for E: chat says so, the
 //             loadout is the one it went in with but for the pistol (still in the raid), no gold
-//             bar, and the premium is back. Once the raid ends (/cv end) no insurance claim is paid
-//             for E's pistol.
+//             bar, and the premium is back; the chat line names the pistol as kept back. Once the
+//             raid ends (/cv end) no insurance claim is paid for E's pistol.
 //   lobby     L (insured) lands solo, is given a gold bar and uses /cv lobby (op): the same void,
 //             with every piece it went in with back.
+//   camera    D (insured) queues solo and quits on the entry camera, and the raid ends (/cv end)
+//             before it lands. Void for D as for E, offline: the loadout it went in with, fees
+//             back, the raid taken off stats.raids, and a 行动作废 letter with no compensation (it
+//             used to keep the raid in the stats).
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -79,10 +86,10 @@ function profile (name) {
   try { return JSON.parse(fs.readFileSync(profileFile(name), 'utf8')) } catch (e) { return null }
 }
 
-/** A fresh player with a random name (a reused one would rejoin an old raid). */
-function make (insured) {
-  const name = `p${run}${(serial++).toString().padStart(2, '0')}`
-  if (insured) seed(name)
+/** A fresh player with a random name (a reused one would rejoin an old raid), or {@code again} back. */
+function make (insured, again) {
+  const name = again || `p${run}${(serial++).toString().padStart(2, '0')}`
+  if (insured && !again) seed(name)
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.worldName = ''
@@ -298,6 +305,7 @@ const scenarios = {
     const after = profile(E.username)
     const want = Object.fromEntries(Object.entries((during && during.deployment && during.deployment.loadout) || {}).filter(([, r]) => r.id !== 'p18'))
     checkVoid(E, during, after, want, problems)
+    if (!said(E, /不再退回：P18 手枪 ×1/, mark)) problems.push('chat does not name the pistol as kept back')
     // The pistol is still in the raid; the raid closes with no claim for it.
     const lying = await rcon(`execute in minecraft:${raidWorld} if entity @e[type=minecraft:item]`)
     if (!/count: [1-9]/i.test(lying) && !/Test passed/i.test(lying)) problems.push(`no item on the raid's ground: ${lying}`)
@@ -333,6 +341,83 @@ const scenarios = {
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
     return [problems.length ? 'FAIL' : 'PASS', problems.join('; ') || `/cv lobby voids: loadout as deployed, premium back, no gold bar | ${L.chatLog.slice(mark).find(l => /作废/.test(l))}`]
+  },
+
+  async leader () {
+    const log = logFrom()
+    const A = await make()
+    const B = await make()
+    await sleep(2500)
+    await rcon(`op ${A.username}`)
+    await party(B, A)
+    await land([B, A], 'TRIO')
+    await leave(B)
+    await sleep(1000)
+    A.chat('/cv lobby')
+    const problems = []
+    if (!await waitFor(() => inLobby(A), 10000)) problems.push(`A not in the lobby: ${A.worldName}`)
+    await sleep(800)
+    let from = A.chatLog.length
+    A.chat('/cv queue proving NORMAL TRIO')
+    await heard(A, /小队成员|开始匹配|只有队长/, from, 3000)
+    const took = A.chatLog.slice(from).find(l => /接任队长/.test(l)) || ''
+    const why = A.chatLog.slice(from).find(l => /小队成员|开始匹配|只有队长/.test(l)) || ''
+    if (!took.includes(`队长 ${B.username} 不在线`) || !took.includes(`${A.username} 接任队长`)) problems.push(`takeover: ${A.chatLog.slice(from).join(' / ')}`)
+    if (!why.includes(`小队成员 ${B.username} 不在线`)) problems.push(`queue: ${why}`)
+    const line = await partyLine(A)
+    if (!line.includes(`★${A.username}`) || !line.includes(`${B.username} (离线)`)) problems.push(`/party: ${line}`)
+    from = A.chatLog.length
+    A.chat(`/party kick ${B.username}`)
+    if (!await heard(A, new RegExp(`${B.username} 离开了小队`), from, 3000)) problems.push('kick: ' + A.chatLog.slice(from).join(' / '))
+    from = A.chatLog.length
+    A.chat('/cv queue proving NORMAL SOLO')
+    if (!await heard(A, /开始匹配/, from, 3000)) problems.push('A cannot queue: ' + A.chatLog.slice(from).join(' / '))
+    A.chat('/cv leave')
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    return [problems.length ? 'FAIL' : 'PASS', problems.join('; ') || `${took} | ${line} | kicked B, queues alone`]
+  },
+
+  async camera () {
+    const log = logFrom()
+    const D = await make(true)
+    await sleep(2500)
+    const before = profile(D.username)
+    D.chat('/cv queue proving NORMAL SOLO')
+    const problems = []
+    if (!await waitFor(() => D.worldName.startsWith('craftov_raid_'), 40000)) throw new Error(`D never reached a raid: ${D.worldName}`)
+    await sleep(1200)
+    const during = profile(D.username)
+    if (D.game.gameMode === 'adventure') problems.push('D already landed')
+    await leave(D)
+    await rcon('cv end')
+    await sleep(4000)
+    const after = profile(D.username)
+    const d = during && during.deployment
+    if (!d) problems.push('no deployment record on the camera')
+    else if (!after) problems.push('no profile after')
+    else {
+      if (after.deployment || after.activeRaid) problems.push('still in a raid on record')
+      if (after.money !== during.money + d.premium + d.entryFee) problems.push(`balance ${after.money}, want ${during.money} + ${d.premium} + ${d.entryFee}`)
+      const raids = s => (s && s.stats && s.stats.raids) || 0
+      if (raids(after) !== raids(during) - 1) problems.push(`stats.raids ${raids(after)}, was ${raids(during)} in the raid (${raids(before)} before)`)
+      if (after.luck && after.luck.deployed) problems.push('luck.deployed still set')
+      const got = entries(after.loadout).join(' ')
+      const wanted = entries(d.loadout).join(' ')
+      if (got !== wanted) problems.push(`loadout ${got}, want ${wanted}`)
+      const letter = (after.mail || []).find(m => m.title === '行动作废')
+      if (!letter) problems.push('no 行动作废 letter: ' + (after.mail || []).map(m => m.title).join(', '))
+      else if (letter.money > 0) problems.push(`the letter pays ◈${letter.money}`)
+      if ((after.mail || []).some(m => /补偿/.test(m.title || ''))) problems.push('a compensation letter')
+    }
+    // Back in: the lobby, not the raid that is gone.
+    const back = await make(false, D.username)
+    await sleep(2500)
+    if (!inLobby(back)) problems.push(`D came back to ${back.worldName}`)
+    const errors = logProblems(log())
+    if (errors.length) problems.push(errors.join(' / '))
+    const letter = after && (after.mail || []).find(m => m.title === '行动作废')
+    return [problems.length ? 'FAIL' : 'PASS', problems.join('; ') || `dropped out on the camera, raid ended: loadout as deployed, ◈${d.entryFee + d.premium} back, stats.raids ${(after.stats && after.stats.raids) || 0} | ${letter && letter.body.replace(/\n/g, ' / ')}`]
   }
 }
 

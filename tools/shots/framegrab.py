@@ -11,9 +11,17 @@ that shows it (the client draws far fewer frames than are grabbed). Each frame's
 against the one before the press: the magnification z whose blow-up of that frame (about the screen
 centre) best matches it over a patch just above the centre, which neither the gun model nor a
 scope's mask covers. Progress is ln z / ln z_settled, so 0.5 is half the zoom whatever the sight's
-power. Writes DIR/timing.json (per frame: ms after the press, zoom and progress) with the time of
-the first visible change (2%), of half way and of settling (95% and staying there), and
-DIR/sheet.png, the frames with their times.
+power. Where the gun is held at the hip (low right, left of the weapon panel) each frame is also
+compared with the settled view, zoomed back out to the frame's own zoom about the centre: there it
+shows only the background, so how far the frame is from it, against how far the view before the
+press was, is about 1 with the gun at the hip, 0 once it is up, and more while it sweeps through.
+A frame that is back at 1 or more after the gun had left (under 0.6) is the gun dropping back to
+the hip before the sights come up: the first such frame is reported (iron and 1x sights only: a
+scope's mask is not where the settled view has it at another zoom, and zoomed back out from that
+power the area would not be on the screen). Writes DIR/timing.json (per
+frame: ms after the press, zoom, progress and hip) with the time of the first visible change (2%),
+of half way, of settling (95% and staying there) and of a drop back, and DIR/sheet.png, the frames
+with their times.
 
 Run with the system python3 (needs Pillow built with XCB, and numpy); the shots venv has neither.
 """
@@ -34,16 +42,45 @@ FIRST = 0.02
 # The patch the zoom is measured on, as shares of the screen: above the centre, inside even the 8x
 # scope's round window.
 PATCH = (0.40, 0.18, 0.60, 0.46)
+# Where the gun is held at the hip and the sights up never are: low right, left of and above the
+# weapon panel (whose state text changes as the sights come up), and high enough that the settled
+# view zoomed back out to 1x still covers it.
+HIP = (0.60, 0.60, 0.78, 0.82)
+# The gun is clear of the hip under this, and back at the hip from BACK on (see the docstring).
+CLEAR, BACK = 0.6, 1.0
+# Sights up to this power (iron sights, red dot, holo) are checked for that; HIP zoomed back out from
+# more would not be on the screen.
+HIP_POWER = 1.6
 
 
 def grab(display):
     return ImageGrab.grab(xdisplay=display)
 
 
-def patch(image):
+def patch(image, area=PATCH):
     w, h = image.size
-    box = (int(w * PATCH[0]), int(h * PATCH[1]), int(w * PATCH[2]), int(h * PATCH[3]))
+    box = (int(w * area[0]), int(h * area[1]), int(w * area[2]), int(h * area[3]))
     return np.asarray(image.crop(box).convert('L'), dtype=np.float32)
+
+
+def zoomed_out(settled, k):
+    """The HIP area of the settled view as it looks at k times less zoom (about the screen centre)."""
+    w, h = settled.size
+    cx, cy = w / 2, h / 2
+    x0, y0, x1, y1 = int(w * HIP[0]), int(h * HIP[1]), int(w * HIP[2]), int(h * HIP[3])
+    box = (cx + (x0 - cx) * k, cy + (y0 - cy) * k, cx + (x1 - cx) * k, cy + (y1 - cy) * k)
+    return np.asarray(settled.convert('L').resize((x1 - x0, y1 - y0), Image.BILINEAR, box=box), dtype=np.float32)
+
+
+def drop_back(rows):
+    """The ms of the first frame with the gun back at the hip after it had come up, or None."""
+    clear = False
+    for row in rows:
+        if row['hip'] < CLEAR:
+            clear = True
+        elif clear and row['hip'] >= BACK:
+            return row['ms']
+    return None
 
 
 class Zoom:
@@ -115,16 +152,20 @@ def main():
 
     zoom = Zoom(before)
     final = zoom.of(settled, 12.0)
+    checked = final < HIP_POWER
+    far = max(1e-6, float(np.abs(patch(before, HIP) - zoomed_out(settled, final)).mean())) if checked else 1
     rows = []
     last = None
     for at, image in frames:
-        pixels = patch(image)
+        pixels = np.asarray(image.convert('L').resize((320, 180)), dtype=np.float32)
         if last is not None and float(np.abs(pixels - last).mean()) < 0.05:
             continue  # the same frame as the last grab: the client has not drawn a new one
         last = pixels
         z = zoom.of(image, max(1.02, final * 1.25))
         progress = math.log(z) / math.log(final) if final > 1.001 else 0.0
-        rows.append({'ms': round(at * 1000), 'zoom': round(z, 4), 'progress': round(progress, 3), 'image': image})
+        hip = float(np.abs(patch(image, HIP) - zoomed_out(settled, min(final, final / z))).mean()) / far if checked else 0.0
+        rows.append({'ms': round(at * 1000), 'zoom': round(z, 4), 'progress': round(progress, 3), 'hip': round(hip, 3),
+                     'image': image})
     first = next((r['ms'] for r in rows if r['progress'] > FIRST), None)
     half = next((r['ms'] for r in rows if r['progress'] >= 0.5), None)
     settle = None
@@ -134,8 +175,9 @@ def main():
             break
     gaps = [b['ms'] - a['ms'] for a, b in zip(rows, rows[1:])]
     summary = {'label': args.label, 'zoom': round(final, 3), 'first_change_ms': first, 'half_ms': half, 'settled_ms': settle,
-               'frames': len(rows), 'frame_ms': round(sum(gaps) / len(gaps)) if gaps else None,
-               'timeline': [{'ms': r['ms'], 'zoom': r['zoom'], 'progress': r['progress']} for r in rows]}
+               'frames': len(rows), 'frame_ms': round(sorted(gaps)[len(gaps) // 2]) if gaps else None,
+               'drop_ms': drop_back(rows) if checked else None, 'drop_checked': checked,
+               'timeline': [{'ms': r['ms'], 'zoom': r['zoom'], 'progress': r['progress'], 'hip': r['hip']} for r in rows]}
     (out / 'timing.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
     if args.frames:
         for r in rows:
@@ -145,12 +187,20 @@ def main():
 
 
 def sheet(path, before, rows, settled, summary):
-    """The frames from the press to settled in a grid, each with its time and progress."""
-    end = (summary['settled_ms'] if summary['settled_ms'] is not None else rows[-1]['ms'] if rows else 0) + 60
+    """The frames from the press to settled (the zoom and the gun) in a grid, each with its time, zoom
+    progress; a drop back to the hip is always among them, with the frames either side of it."""
+    up = next((r['ms'] for i, r in enumerate(rows) if all(x['hip'] < CLEAR for x in rows[i:])), rows[-1]['ms'] if rows else 0)
+    end = max(summary['settled_ms'] if summary['settled_ms'] is not None else rows[-1]['ms'] if rows else 0, up) + 60
     picked = [r for r in rows if r['ms'] <= end]
     if len(picked) > 14:
-        picked = [picked[round(i * (len(picked) - 1) / 13)] for i in range(14)]
-    cells = [('按下前', before)] + [(f"{r['ms']} ms  {r['zoom']:.2f}x  {round(r['progress'] * 100)}%", r['image']) for r in picked] \
+        keep = set()
+        if summary.get('drop_ms') is not None:
+            k = next(i for i, r in enumerate(picked) if r['ms'] == summary['drop_ms'])
+            keep = {i for i in (k - 1, k, k + 1) if 0 <= i < len(picked)}
+        spread = [round(i * (len(picked) - 1) / (13 - len(keep))) for i in range(14 - len(keep))]
+        picked = [picked[i] for i in sorted(set(spread) | keep)]
+    cells = [('按下前', before)] + [(f"{r['ms']} ms  {r['zoom']:.2f}x  {round(r['progress'] * 100)}%"
+                                     + ('  枪回到腰间' if r['ms'] == summary.get('drop_ms') else ''), r['image']) for r in picked] \
         + [(f"稳定后 {summary['zoom']:.2f}x", settled)]
     w, h = before.size
     tw, th = 400, round(400 * h / w)
@@ -163,7 +213,8 @@ def sheet(path, before, rows, settled, summary):
     small = ImageFont.truetype(FONT, 20)
     settle = summary['settled_ms']
     draw.text((12, 14), f"{summary['label']}   按右键到放大完成（95%）：{settle if settle is not None else '?'} ms"
-              f"   开始放大 {summary['first_change_ms']} ms   一半 {summary['half_ms']} ms", font=big, fill=(242, 201, 76))
+              f"   开始放大 {summary['first_change_ms']} ms   一半 {summary['half_ms']} ms"
+              + (f"   {summary['drop_ms']} ms 枪回到腰间" if summary.get('drop_ms') is not None else ''), font=big, fill=(242, 201, 76))
     for i, (text, image) in enumerate(cells):
         x, y = (i % cols) * tw, head + (i // cols) * (th + 30)
         canvas.paste(image.convert('RGB').resize((tw - 6, th - 4)), (x + 3, y))
@@ -177,14 +228,14 @@ def chart(results, path, tag='', before=None):
     results = sorted(results, key=lambda r: r['settled_ms'])
     old = {r['key']: r for r in before or []}
     most = max([max(r['settled']) for r in results] + [max(r['settled']) for r in old.values()])
-    width, left, row = 1400, 300, 60 if old else 44
+    width, left, row = 1700, 300, 60 if old else 44
     canvas = Image.new('RGB', (width, 90 + row * len(results) + 40), (18, 20, 24))
     draw = ImageDraw.Draw(canvas)
     big = ImageFont.truetype(FONT, 30)
     small = ImageFont.truetype(FONT, 22)
-    title = '真客户端：按下右键到画面放大完成（逐帧计时，每把 3 次取中间值）'
+    title = f"真客户端：按下右键到画面放大完成（逐帧计时，每把 {len(results[0]['settled'])} 次取中间值）"
     draw.text((16, 16), (tag + '  ' if tag else '') + title + ('  灰 = 改动前' if old else ''), font=big, fill=(242, 201, 76))
-    scale = (width - left - 140) / max(1, most)
+    scale = (width - left - 340) / max(1, most)
     for i, r in enumerate(results):
         y = 80 + i * row
         draw.text((16, y + (14 if old else 6)), r['label'], font=small, fill=(230, 230, 230))
@@ -197,10 +248,11 @@ def chart(results, path, tag='', before=None):
         lo, hi = min(r['settled']), max(r['settled'])
         mid = y + (16 if old else row // 2 - 1)
         draw.line((left + lo * scale, mid, left + hi * scale, mid), fill=(154, 160, 166), width=3)
-        draw.text((left + max(hi, r['settled_ms']) * scale + 12, y + (4 if old else 6)), f"{r['settled_ms']} ms", font=small,
-                  fill=(230, 230, 230))
-    draw.text((16, canvas.height - 34), f"客户端约 {results[0]['frame_ms']} ms 一帧（软件渲染），计时误差约一帧；细线是 3 次的范围",
-              font=small, fill=(154, 160, 166))
+        draw.text((left + max(hi, r['settled_ms']) * scale + 12, y + (4 if old else 6)), f"{r['settled_ms']} ms"
+                  + (f"  （放大过程 {r['rise_ms']} ms）" if r.get('rise_ms') is not None else ''), font=small, fill=(230, 230, 230))
+    runs = len(results[0]['settled'])
+    draw.text((16, canvas.height - 34), f"客户端约 {results[0]['frame_ms']} ms 一帧（软件渲染），计时误差约一帧；细线是 {runs} 次的范围；"
+              "放大过程 = 从画面开始放大到完成，不含按键到服务器的延迟", font=small, fill=(154, 160, 166))
     canvas.save(path)
 
 

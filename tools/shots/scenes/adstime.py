@@ -1,8 +1,11 @@
 """How long right mouse takes to zoom the real client's view, gun by gun (issue #117), on the private
-range facing the 10 m dummy. For each gun, right mouse is pressed three times from the hip and the
+range facing the 10 m dummy. For each gun, right mouse is pressed three times (ADSTIME_RUNS) from the hip and the
 frames are timed from the press (tools/shots/framegrab.py) until the view stops changing.
-adstime-<gun>: the frames of the middle run, each with its time after the press; adstime-summary:
-every gun's time to a settled view, quickest first, with the server's ads time beside it.
+adstime-<gun>: the frames of the middle run, each with its time after the press and zoom;
+adstime-summary: every gun's time to a settled view, quickest first. Each gun's line in the output
+also has the middle time from the first visible change to settled (rise_ms: the press's own lag,
+the same for every gun, left out) and the runs in which the gun dropped back to the hip before the
+sights came up (drops, the ms of each; framegrab.py, iron and 1x sights only).
 
 Arg: guns separated by commas, an optic after a plus (default: every gun, and the M4C with the red
 dot, the 4x and the 8x), e.g. adstime:sv9,m4c+optic_8x,awr. In the environment: ADSTIME_FRAMES=1 also
@@ -26,7 +29,7 @@ DEFAULT = 'p18,d50,sv9,v57,m4c,k47,r12,scr,kl7,dm14,awr,m4c+optic_reddot,m4c+opt
 NAMES = {'p18': 'P18', 'd50': 'D50', 'sv9': 'SV9', 'v57': 'V57', 'm4c': 'M4C', 'k47': 'K47', 'r12': 'R12', 'scr': 'SCR',
          'kl7': 'KL7', 'dm14': 'DM14', 'awr': 'AWR', 'optic_reddot': '红点', 'optic_holo': '全息', 'optic_3x': '3 倍',
          'optic_4x': '4 倍', 'optic_8x': '8 倍'}
-RUNS = 3
+RUNS = int(os.environ.get('ADSTIME_RUNS', 3))
 
 
 def label(gun, optic):
@@ -62,9 +65,12 @@ def run(s):
         name = f'adstime-{key}'
         (OUT / f'{name}.png').write_bytes((where / 'sheet.png').read_bytes())
         s.shots.append(name)
+        rises = sorted(r[0]['settled_ms'] - r[0]['first_change_ms'] for r in timed if r[0]['first_change_ms'] is not None)
         results.append({'key': key, 'label': label(gun, optic), 'settled': [r[0]['settled_ms'] for r in timed],
                         'zoom': middle['zoom'], 'first': middle['first_change_ms'], 'half': middle['half_ms'],
-                        'settled_ms': middle['settled_ms'],
+                        'settled_ms': middle['settled_ms'], 'rise_ms': rises[len(rises) // 2] if rises else None,
+                        'drops': [r[0]['drop_ms'] for r in runs if r[0].get('drop_ms') is not None]
+                        if middle.get('drop_checked') else None,
                         'frame_ms': middle['frame_ms']})
         print('adstime', json.dumps(results[-1], ensure_ascii=False), flush=True)
     (OUT / 'adstime' / 'summary.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')

@@ -32,10 +32,11 @@
 //           starting kit's pockets for eleven guns.
 //   batch   K47 single shots while strafing with the movement packets held back and sent four at a
 //           time every 200 ms (a lagging or cheating client): every shot still reads as moving.
-//   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
-//           弹匣 穿透) and the line under them; a gun with the better number never has the shorter
-//           bar; in the gunsmith the vertical grip's button previews a longer accuracy bar (green), and
-//           fitted to the K47 its own accuracy bar gains segments while its hip spread drops.
+//   lore    In the lobby, every gun's tooltip has the eight ten-segment stat bars (伤害 射速 精准 开镜 后坐
+//           操控 弹匣 穿透), the 操控速度 line and the line under them; a gun with the better number
+//           never has the shorter bar; in the gunsmith the vertical grip's button previews a longer
+//           accuracy bar and a longer handling bar (green), and fitted to the K47 its own accuracy bar
+//           gains segments while its hip spread drops.
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node gunfeel.js [scenario ...]
 //
@@ -509,7 +510,7 @@ async function batch (spot) {
 // ---------------------------------------------------------------- lore
 const nbt = require('prismarine-nbt')
 const GUNS = ['p18', 'd50', 'sv9', 'v57', 'k47', 'm4c', 'scr', 'kl7', 'r12', 'dm14', 'awr']
-const STATS = ['伤害', '射速', '精准', '开镜', '后坐', '弹匣', '穿透']
+const STATS = ['伤害', '射速', '精准', '开镜', '后坐', '操控', '弹匣', '穿透']
 /** Stats where the smaller number is the better one (a longer bar). */
 const SMALLER_BETTER = new Set(['精准', '开镜', '后坐'])
 
@@ -576,10 +577,14 @@ async function lore () {
   log('K47 bars', Object.values(bars.k47).map(b => b.text))
   log('lit segments (' + GUNS.join('/') + ')', STATS.map(s => s + ' ' + GUNS.map(g => bars[g][s] ? bars[g][s].filled : '-').join('/')))
   const complete = GUNS.filter(g => STATS.every(s => bars[g][s] && bars[g][s].total === 10))
-  check('lore: every gun has the seven ten-segment stat bars', complete.length === GUNS.length,
+  check('lore: every gun has the eight ten-segment stat bars', complete.length === GUNS.length,
     GUNS.filter(g => !complete.includes(g)).map(g => g + ': ' + Object.keys(bars[g]).join(',')).join(' | '))
   const hint = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).some(runs => runs.map(r => r.text).join('').includes('条越长越好'))
   check('lore: a line under the bars says how to read them', hint)
+  const handlingLine = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).map(runs => runs.map(r => r.text).join(''))
+    .find(text => text.startsWith('操控速度 '))
+  check('lore: the 操控速度 line gives the K47\'s handling and its ads, draw and sprint-out times',
+    !!handlingLine && /操控速度 62 · 开镜 0\.25s · 拔枪 0\.50s · 冲刺后开镜 \+0\.20s/.test(handlingLine), handlingLine || 'no line')
   // A gun with a better number never has a shorter bar.
   const wrong = []
   for (const stat of STATS) {
@@ -611,6 +616,8 @@ async function lore () {
   const preview = partSlot >= 0 ? barsOf(window.slots[partSlot]) : {}
   check('lore: the grip\'s button in the gunsmith previews a longer accuracy bar', !!preview['精准'] && preview['精准'].gain > 0,
     preview['精准'] ? preview['精准'].text : `no preview (part at ${partSlot})`)
+  check('lore: and a longer handling bar (操控 +5)', !!preview['操控'] && preview['操控'].gain > 0 && preview['操控'].value === 67,
+    preview['操控'] ? preview['操控'].text : 'no handling bar in the preview')
   if (partSlot >= 0) await bot.clickWindow(partSlot, 0, 0)
   await sleep(1200)
   const fitted = barsOf(window.slots[22])

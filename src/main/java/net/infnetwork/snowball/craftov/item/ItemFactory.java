@@ -73,8 +73,10 @@ public final class ItemFactory {
      * 18: the weight line says how many secure-container cells the item takes (#37).
      * 19: gun models (#4, which used 16): guns carry max_damage 5 and, out of the hand, the holster
      * mark (the item model shows the gun low, as the draw starts).
+     * 20: handling (#117): guns show a 操控 bar and a 操控速度 line with what it comes to, sights and
+     * parts what they add to it.
      */
-    public static final int VERSION = 19;
+    public static final int VERSION = 20;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -758,7 +760,9 @@ public final class ItemFactory {
             ItemDef ammoDef = registry.get(ammoType);
             Map<String, net.infnetwork.snowball.craftov.weapon.AttachSpec> parts =
                     net.infnetwork.snowball.craftov.weapon.Attachments.resolve(gun, attachments(stack), registry);
-            GunSpec withParts = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts);
+            ItemDef fittedOptic = registry.get(opticId(stack));
+            GunSpec withParts = net.infnetwork.snowball.craftov.weapon.Attachments.withOptic(
+                    net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts), fittedOptic == null ? null : fittedOptic.optic());
             int capacity = withParts.magazine();
             lore.add(Text.mm("<muted>口径 <white>" + gun.caliber() + "  <muted>弹匣 <white>" + ammo + "/" + capacity
                     + (ammoDef != null ? " <muted>(" + Text.escape(ammoDef.name()) + ")" : "")));
@@ -776,11 +780,11 @@ public final class ItemFactory {
             for (String line : GunStats.bars(registry, gun, withParts, shown)) {
                 lore.add(Text.mm(line));
             }
+            lore.add(Text.mm(GunStats.handlingLine(withParts)));
             lore.add(Text.mm(GunStats.HINT));
-            ItemDef optic = registry.get(opticId(stack));
             ItemDef builtIn = registry.get(gun.scope());
-            if (optic != null) {
-                lore.add(Text.mm("<muted>瞄准镜 " + optic.coloredName() + " <muted>(" + optic.optic().magnificationLabel() + " 倍)"));
+            if (fittedOptic != null) {
+                lore.add(Text.mm("<muted>瞄准镜 " + fittedOptic.coloredName() + " <muted>(" + fittedOptic.optic().magnificationLabel() + " 倍)"));
             } else if (builtIn != null) {
                 lore.add(Text.mm("<muted>瞄准镜 <white>自带 " + builtIn.optic().magnificationLabel() + " 倍"));
             } else if (!"none".equals(gun.mount())) {
@@ -819,6 +823,10 @@ public final class ItemFactory {
         if (def.optic() != null) {
             lore.add(Text.mm("<muted>放大倍率 <white>" + def.optic().magnificationLabel() + " 倍  <muted>适用 <white>"
                     + (def.optic().mounts().contains("pistol") ? "步枪 / 冲锋枪 / 霰弹枪 / 手枪" : "步枪 / 冲锋枪 / 霰弹枪")));
+            StringBuilder handling = new StringBuilder();
+            net.infnetwork.snowball.craftov.weapon.Attachments.points(handling, def.optic().handling());
+            lore.add(Text.mm(handling.isEmpty() ? "<muted>不影响操控速度"
+                    : handling + (def.optic().handling() < 0 ? " <muted>(开镜和拔枪更慢)" : "")));
         }
         if (def.ammo() != null) {
             lore.add(Text.mm("<muted>口径 <white>" + def.ammo().caliber() + "  <muted>穿透等级 <white>" + def.ammo().penetration()));

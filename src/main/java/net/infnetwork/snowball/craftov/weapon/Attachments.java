@@ -101,6 +101,7 @@ public final class Attachments {
         effect(out, "换弹时间", part.reload(), true);
         effect(out, "移动速度", part.moveSpeed(), false);
         effect(out, "弹匣容量", part.magazine(), false);
+        points(out, part.handling());
         if (part.suppressed()) {
             out.append(out.isEmpty() ? "" : " ").append("<ok>消音");
         }
@@ -108,6 +109,15 @@ public final class Attachments {
             out.append(out.isEmpty() ? "" : " ").append("<ok>").append("strobe".equals(part.light()) ? "照明 / 爆闪" : "照明");
         }
         return out.toString();
+    }
+
+    /** "操控速度 +4" (green) or "-6" (red), for a part or a sight that changes the gun's handling. */
+    public static void points(StringBuilder out, double handling) {
+        long points = Math.round(handling);
+        if (points != 0) {
+            out.append(out.isEmpty() ? "" : " ").append(points > 0 ? "<ok>" : "<danger>").append("操控速度 ")
+                    .append(points > 0 ? "+" : "").append(points);
+        }
     }
 
     private static void effect(StringBuilder out, String name, double mult, boolean lowerIsBetter) {

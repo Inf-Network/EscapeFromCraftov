@@ -145,17 +145,24 @@ final class GunsmithMenu extends Menu {
 
     /**
      * The stat bars fitting this part would move on the gun, in place of whatever sits in its slot now
-     * (the same bars as the gun's tooltip, see GunStats). Sights change no bar.
+     * (the same bars as the gun's tooltip, see GunStats). A sight moves only handling (操控).
      */
     private List<String> changes(ItemStack gun, GunSpec spec, ItemDef part) {
-        if (part.attach() == null) {
-            return List.of();
-        }
         Map<String, String> now = ItemFactory.attachments(gun);
         Map<String, String> next = new java.util.HashMap<>(now);
-        next.put(part.attach().slot(), part.id());
-        GunSpec before = Attachments.effective(spec, Attachments.resolve(spec, now, plugin.registry()));
-        GunSpec after = Attachments.effective(spec, Attachments.resolve(spec, next, plugin.registry()));
+        ItemDef sight = plugin.registry().get(ItemFactory.opticId(gun));
+        ItemDef nextSight = sight;
+        if (part.attach() != null) {
+            next.put(part.attach().slot(), part.id());
+        } else if (part.optic() != null) {
+            nextSight = part;
+        } else {
+            return List.of();
+        }
+        GunSpec before = Attachments.withOptic(Attachments.effective(spec, Attachments.resolve(spec, now, plugin.registry())),
+                sight == null ? null : sight.optic());
+        GunSpec after = Attachments.withOptic(Attachments.effective(spec, Attachments.resolve(spec, next, plugin.registry())),
+                nextSight == null ? null : nextSight.optic());
         return net.infnetwork.snowball.craftov.item.GunStats.changes(plugin.registry(), before, after,
                 plugin.registry().get(ItemFactory.ammoType(gun)));
     }

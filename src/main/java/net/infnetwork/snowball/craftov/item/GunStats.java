@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.item;
 
 import net.infnetwork.snowball.craftov.gui.Style;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
+import net.infnetwork.snowball.craftov.weapon.Handling;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -10,8 +11,8 @@ import java.util.Locale;
 
 /**
  * The stat bars on a gun's tooltip and in the gunsmith: damage, rate of fire, hip-fire accuracy,
- * aimed accuracy, recoil, magazine and penetration, each against the whole armory so guns compare
- * at a glance. A longer bar is always better: the spreads and the recoil, where less is better, fill
+ * aimed accuracy, recoil, handling (操控速度, out of 100), magazine and penetration, each against the
+ * whole armory so guns compare at a glance. A longer bar is always better: the spreads and the recoil, where less is better, fill
  * the bar the smaller they are, on a log scale because they run from a few hundredths of a degree
  * to several degrees. Attachments show as the part of the bar they add (green) or take off (red).
  */
@@ -82,6 +83,9 @@ public final class GunStats {
                 down(now.adsSpread(), s.adsLo(), s.adsHi()), deg(now.adsSpread()), true));
         out.add(new Stat("后坐", base.recoil(), now.recoil(), down(base.recoil(), s.recoilLo(), s.recoilHi()),
                 down(now.recoil(), s.recoilLo(), s.recoilHi()), deg(now.recoil()), true));
+        double baseHandling = Handling.clamp(base.handling());
+        double handling = Handling.clamp(now.handling());
+        out.add(new Stat("操控", baseHandling, handling, up(baseHandling, 100), up(handling, 100), Handling.label(handling), false));
         out.add(new Stat("弹匣", base.magazine(), now.magazine(), up(base.magazine(), s.magazine()), up(now.magazine(), s.magazine()),
                 now.magazine() + "", false));
         int pen = ammo == null || ammo.ammo() == null ? 0 : ammo.ammo().penetration();
@@ -90,7 +94,7 @@ public final class GunStats {
     }
 
     /**
-     * The seven bar lines of a gun's tooltip. {@code base} is the gun as it comes, {@code now} with
+     * The eight bar lines of a gun's tooltip. {@code base} is the gun as it comes, {@code now} with
      * its attachments; {@code ammo} is the round its penetration is shown for (the loaded one).
      */
     public static List<String> bars(ItemRegistry registry, GunSpec base, GunSpec now, @Nullable ItemDef ammo) {
@@ -118,6 +122,18 @@ public final class GunStats {
             }
         }
         return out;
+    }
+
+    /**
+     * What the gun's handling (操控速度, with its sight and parts) comes to: how long the sights take to
+     * come up, the gun after a switch, and the sights after a sprint (see {@link Handling}).
+     */
+    public static String handlingLine(GunSpec gun) {
+        var config = net.infnetwork.snowball.craftov.CraftovPlugin.get().getConfig();
+        double handling = gun.handling();
+        return "<muted>操控速度 <white>" + Handling.label(handling) + " <muted>· 开镜 <white>" + Handling.seconds(Handling.adsTicks(config, handling))
+                + " <muted>· 拔枪 <white>" + Handling.seconds(Handling.drawTicks(config, handling))
+                + " <muted>· 冲刺后开镜 <white>+" + Handling.seconds(Handling.sprintOutTicks(config, handling));
     }
 
     private static String line(Stat stat, double baseFill, double nowFill, double base, double now) {

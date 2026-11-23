@@ -90,6 +90,18 @@ public final class VanillaGuardService implements Listener {
         return entity instanceof ItemFrame || entity instanceof ArmorStand || entity instanceof InventoryHolder;
     }
 
+    /**
+     * Whether something took this click on an entity (a box or body opened, a revive begun), so that
+     * the item use the client sends straight after it must not go ahead too. A click this guard
+     * refused on a vanilla entity is not one: the vanilla client sends that use only when it did not
+     * act on the entity itself (a fixed frame, an allay already holding something, a villager clicked
+     * while sneaking), and vanilla would carry it out, so a grenade's pin and a gun's sights still
+     * work with one of those under the crosshair.
+     */
+    public static boolean taken(PlayerInteractEntityEvent event) {
+        return event.isCancelled() && !locked(event.getRightClicked());
+    }
+
     /** Only the plugin's menus open: a vanilla screen (a container, a villager's trades) is refused. */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onOpen(InventoryOpenEvent event) {

@@ -184,8 +184,9 @@ final class SkinMenu extends Menu {
     private void preview(@Nullable SkinDef skin) {
         String shown = knife;
         String error = plugin.skins().preview(viewer, shown, skin, () -> new SkinMenu(plugin, viewer, shown).open());
-        if (error != null) {
-            flash("<danger>" + Text.escape(error), false);
+        if (error != null && !flash("<danger>" + Text.escape(error), false)) {
+            // The menu is closed already when the knife cannot be taken out.
+            net.infnetwork.snowball.craftov.util.Notify.error(viewer, Text.escape(error));
         }
     }
 

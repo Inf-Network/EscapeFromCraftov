@@ -14,6 +14,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -245,12 +246,6 @@ public final class SkinService implements Listener {
         inv.setItem(CarryService.MELEE_SLOT, copy);
     }
 
-    /** True when the stack shows a skin rather than its knife's own look. */
-    public static boolean skinned(@Nullable ItemStack stack) {
-        Key model = stack == null || stack.isEmpty() ? null : stack.getData(DataComponentTypes.ITEM_MODEL);
-        return model != null && model.asString().startsWith(MODEL_PREFIX);
-    }
-
     // ------------------------------------------------------------------ preview
 
     /**
@@ -269,11 +264,19 @@ public final class SkinService implements Listener {
         if (def == null || !def.isMelee() || skin != null && !skin.knife().equals(knife)) {
             return "没有这把刀";
         }
+        player.closeInventory();
+        int from = player.getInventory().getHeldItemSlot();
+        if (from != CarryService.MELEE_SLOT) {
+            // As if the player pressed 3: a gun in hand is put away and its light goes off, a med in
+            // use stops (the listeners of the event), and only then is the knife taken out.
+            if (!new PlayerItemHeldEvent(player, from, CarryService.MELEE_SLOT).callEvent()) {
+                return "现在不能切换到刀";
+            }
+            player.getInventory().setHeldItemSlot(CarryService.MELEE_SLOT);
+        }
         long start = Bukkit.getCurrentTick() + PREVIEW_DELAY;
         Preview preview = new Preview(knife, skin == null ? null : skin.id(), start, back);
         previews.put(player.getUniqueId(), preview);
-        player.closeInventory();
-        player.getInventory().setHeldItemSlot(CarryService.MELEE_SLOT);
         apply(player);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (previews.get(player.getUniqueId()) != preview || !player.isOnline()) {
@@ -285,10 +288,6 @@ public final class SkinService implements Listener {
             }
         }, PREVIEW_DELAY);
         return null;
-    }
-
-    public boolean previewing(Player player) {
-        return previews.containsKey(player.getUniqueId());
     }
 
     /** Ends a preview: the knife takes its own look (or the player's skin) again. */

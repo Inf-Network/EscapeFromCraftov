@@ -32,7 +32,17 @@ command works on one checkout only, ~/Documents/projects/plugins/EscapeFromCraft
   craftov yml diff <file>        compare plugins/Craftov/<file> with the repo copy
   craftov yml copy <file>        replace it with the repo copy (keeps a backup);
                                  <file> is items.yml or loot.yml (diff: config.yml too)
-  craftov packip <IPv4>          the address CraftEngine advertises the pack at
+  craftov packip <IPv4> [--force]
+                                 the address CraftEngine advertises the pack at;
+                                 a public address while online-mode=false (in
+                                 server.properties or in the running server) is
+                                 refused unless --force: anyone could log in
+                                 under any name
+  craftov online-mode true|false [--restart]
+                                 set online-mode in server.properties (true
+                                 changes every player's UUID); while the server
+                                 runs only with --restart, which stops it, writes
+                                 the file and starts it again
 
 sync, jar and build run code from the repository on this Mac: that is the
 point of the extension, and why it touches nothing outside the checkout and
@@ -43,6 +53,7 @@ import datetime
 import difflib
 import hashlib
 import io
+import ipaddress
 import os
 import re
 import secrets
@@ -88,6 +99,53 @@ TCC_HINT = (
 
 class Fail(Exception):
     pass
+
+
+# Why a public pack address (players coming in from the internet) and online-mode=false
+# do not go together.
+OPEN_WARNING = (
+    "online-mode=false: nothing checks who players are. Anyone who reaches the port can type\n"
+    "any whitelisted name (the owner's included) into an offline launcher, log in as that player\n"
+    "and empty their stash. Craftov refuses operators from outside security.admin-addresses\n"
+    "(the LAN), but no other account is protected.\n"
+    "Before opening the port: `craftov online-mode true --restart` (every player's UUID\n"
+    "becomes their premium one: whitelist, ops and Craftov profiles have to be redone, old\n"
+    "profiles are not migrated), or install a login plugin and test it with Craftov.")
+
+
+def is_public(ip):
+    """An address reached from the internet: not loopback, private, link-local or CGNAT."""
+    try:
+        return ipaddress.ip_address(ip).is_global
+    except ValueError:
+        return False
+
+
+def offline_mode(p):
+    """online-mode=false in server.properties: what the next start will use."""
+    return p.get("online-mode", "true").lower() == "false"
+
+
+def live_offline(running=None):
+    """Whether the running server started in offline mode, from its own startup log.
+
+    server.properties is only read at start, so after an edit it says what the
+    next start will do, not what the open port does now. Paper warns in
+    latest.log when it starts in offline mode; a log that reached "Done" without
+    that warning is online. None when no server runs or its log cannot tell (still
+    starting, or rolled over at midnight)."""
+    if running is None:
+        running = server_pids()
+    if not running:
+        return None
+    try:
+        with open(LATEST_LOG, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except FileNotFoundError:
+        return None
+    if "SERVER IS RUNNING IN OFFLINE/INSECURE MODE" in text:
+        return True
+    return False if re.search(r"^.*Done \(", text, re.M) else None
 
 
 # ---------------------------------------------------------------- helpers
@@ -429,7 +487,15 @@ def cmd_status():
         print("plugin     Craftov.jar from %s" % built)
     print("settings   online-mode=%s white-list=%s enable-rcon=%s" % (
         p.get("online-mode"), p.get("white-list"), p.get("enable-rcon")))
-    print("pack ip    %s" % (pack_ip() or "?"))
+    live = live_offline(srv)
+    if live is not None and live != offline_mode(p):
+        print("           but the running server started with online-mode=%s and keeps it until a\n"
+              "           restart" % ("false" if live else "true"))
+    ip = pack_ip()
+    print("pack ip    %s" % (ip or "?"))
+    if ip and is_public(ip) and (offline_mode(p) or live):
+        print("WARNING    the pack ip is public, so the port is meant to be open to the internet, but")
+        print("\n".join("           " + line for line in OPEN_WARNING.splitlines()))
     lan = run(["ipconfig", "getifaddr", "en0"], check=False).stdout.strip() if shutil.which(
         "ipconfig", path=BASE_PATH) else ""
     if lan:
@@ -744,10 +810,26 @@ def pack_ip():
     return m.group(1) if m else None
 
 
-def cmd_packip(ip):
+def cmd_packip(args):
     check_run()
+    force = "--force" in args
+    rest = [a for a in args if a != "--force"]
+    if len(rest) != 1:
+        raise Fail("usage: craftov packip <IPv4> [--force]")
+    ip = rest[0]
     if not re.fullmatch(r"(\d{1,3})(\.\d{1,3}){3}", ip) or any(int(x) > 255 for x in ip.split(".")):
         raise Fail("packip takes an IPv4 address")
+    file_offline, live = offline_mode(props()), live_offline()
+    if is_public(ip) and (file_offline or live):
+        # A public pack address means players are about to come in from the internet.
+        why = OPEN_WARNING
+        if not file_offline:
+            why = ("server.properties says online-mode=true, but the running server started with\n"
+                   "online-mode=false and keeps it until a restart (craftov restart).\n" + OPEN_WARNING)
+        if not force:
+            raise Fail("%s is a public address, but\n%s\nTo set it anyway: craftov packip %s --force"
+                       % (ip, why, ip))
+        print("warning: " + why.replace("\n", "\n         "))
     path = os.path.join(RUN, "plugins", "CraftEngine", "config.yml")
     with open(path, encoding="utf-8") as f:
         text = f.read()
@@ -759,6 +841,49 @@ def cmd_packip(ip):
     print("pack ip set to " + ip)
     if server_pids():
         print(rcon("ce reload all").strip() or "ce reload all sent")
+
+
+def cmd_online_mode(args):
+    """A running server keeps the mode it started with, and writes its own copy of
+    server.properties back whenever /whitelist on|off runs, which would quietly put
+    the old value back before the restart. So the file is only changed while the
+    server is stopped: with --restart this stops it first and starts it again."""
+    check_run()
+    restart = "--restart" in args
+    rest = [a for a in args if a != "--restart"]
+    if len(rest) != 1 or rest[0] not in ("true", "false"):
+        raise Fail("usage: craftov online-mode true|false [--restart]")
+    value = rest[0]
+    before = props().get("online-mode", "true")
+    srv = server_pids()
+    running = bool(srv or loop_pids())
+    if value == before and live_offline(srv) in (None, value == "false"):
+        print("online-mode is already %s" % value)
+        return
+    if running and not restart:
+        raise Fail("the server is running: it keeps the mode it started with, and a /whitelist on|off\n"
+                   "before the restart would write the old value back into server.properties.\n"
+                   "To stop it, change the file and start it again: craftov online-mode %s --restart" % value)
+    if running:
+        cmd_stop()
+    set_props({"online-mode": value})
+    print("online-mode=%s (was %s) in server.properties" % (value, before))
+    if value != before:
+        # Offline UUIDs come from the name, premium ones from Mojang: nothing on disk carries over.
+        print("every player's UUID changes with it: whitelist and op them again under the new mode;\n"
+              "Craftov profiles (plugins/Craftov/data/players/<uuid>.json) are not migrated")
+    if value == "true":
+        print("premium clients can join; offline launchers cannot")
+    if not running:
+        print("the server is stopped: the next start uses it")
+        return
+    cmd_start()
+    now, live = props().get("online-mode"), live_offline()
+    if now != value or live is None or live != (value == "false"):
+        started = {True: "in offline mode", False: "in online mode", None: "in a mode its log does not show"}
+        raise Fail("after the restart server.properties says online-mode=%s and the server started %s"
+                   % (now, started[live]))
+    print("the server is running with online-mode=%s" % value)
 
 
 def cmd_yml(action, name):
@@ -821,8 +946,10 @@ def main():
             cmd_log(rest, os.path.join(RUN, "console.log"))
         elif cmd == "clientlog" and len(rest) <= 1:
             cmd_log(rest, CLIENT_LOG)
-        elif cmd == "packip" and len(rest) == 1:
-            cmd_packip(rest[0])
+        elif cmd == "packip" and len(rest) in (1, 2):
+            cmd_packip(rest)
+        elif cmd == "online-mode" and len(rest) in (1, 2):
+            cmd_online_mode(rest)
         elif cmd == "yml" and len(rest) == 2:
             cmd_yml(rest[0], rest[1])
         else:

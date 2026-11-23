@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -172,7 +173,7 @@ public final class HealthService implements Listener {
      */
     public void addInjury(Player player, BodyPart part, Injury injury, @Nullable UUID source) {
         if (addWound(player.getUniqueId(), part, injury, source)) {
-            player.sendActionBar(Text.mm("<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName()));
+            Notify.info(player, "<" + injury.hex() + ">⚠ " + part.displayName() + injury.displayName());
             player.playSound(player.getLocation(), "craftov:status.injury", SoundCategory.PLAYERS, 0.8f, 1f);
             updateFood(player);
             forceSpeedUpdate(player);
@@ -458,8 +459,7 @@ public final class HealthService implements Listener {
                 } finally {
                     bleeding = false;
                 }
-                player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
-                        org.bukkit.Material.REDSTONE_BLOCK.createBlockData());
+                bleedDrops(player);
             }
             updateFood(player);
         }
@@ -603,23 +603,23 @@ public final class HealthService implements Listener {
         MedSpec med = def.med();
         if (!plugin.raids().isInRaid(player)) {
             event.setCancelled(true);
-            Text.send(player, "<#9AA0A6>医疗物品只能在行动中使用。");
+            Text.send(player, "<muted>医疗物品只能在行动中使用。");
             return;
         }
         if (plugin.downed().isReviving(player)) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm("<#9AA0A6>救援时不能使用医疗物品"));
+            Notify.hint(player, "救援时不能使用医疗物品");
             return;
         }
         boolean downed = plugin.downed().isDowned(player);
         if (med.effect() == MedSpec.Effect.SELF_REVIVE ? !downed : downed) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm(downed ? "<#FF8A80>倒地时只能使用自救注射器" : "<#9AA0A6>只有倒地时才能使用"));
+            Notify.info(player, downed ? "<danger>倒地时只能使用自救注射器" : "<muted>只有倒地时才能使用");
             return;
         }
         if (!useful(player, def)) {
             event.setCancelled(true);
-            player.sendActionBar(Text.mm("<#9AA0A6>当前不需要使用 " + Text.escape(def.name())));
+            Notify.hint(player, "当前不需要使用 " + Text.escape(def.name()));
             return;
         }
         if (event.useItemInHand() == org.bukkit.event.Event.Result.DENY) {
@@ -699,7 +699,7 @@ public final class HealthService implements Listener {
         }
         StringBuilder msg = new StringBuilder();
         if (!treated.isEmpty()) {
-            msg.append("<#5BD16B>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
+            msg.append("<ok>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
         }
         if (med.pool() > 0) {
             // Whatever the wounds left of the pool heals, up to the item's per-use amount.
@@ -715,12 +715,12 @@ public final class HealthService implements Listener {
                 plugin.items().setDura(updated, remaining);
                 replaceOne(player, event.getHand(), stack, updated);
             }
-            msg.append(msg.isEmpty() ? "" : "  ").append("<#5BD16B>+").append(Math.round(heal)).append(" HP  <#8A8F98>剩余治疗量 ")
+            msg.append(msg.isEmpty() ? "" : "  ").append("<ok>+").append(Math.round(heal)).append(" HP  <muted>剩余治疗量 ")
                     .append(Math.round(Math.max(0, remaining)));
         } else if (msg.isEmpty()) {
-            msg.append("<#5BD16B>已使用 ").append(Text.escape(def.name()));
+            msg.append("<ok>已使用 ").append(Text.escape(def.name()));
         }
-        player.sendActionBar(Text.mm(msg.toString()));
+        Notify.info(player, msg.toString());
         if (consumed) {
             replaceOne(player, event.getHand(), stack, null);
             if (!ItemFactory.isTest(stack)) {
@@ -812,5 +812,19 @@ public final class HealthService implements Listener {
         vignettes.remove(id);
         lastSpeed.remove(id);
         lastJump.remove(id);
+    }
+
+    /**
+     * Dark drops round a bleeding player, for everyone else: at the bleeder's own body they filled
+     * the lower half of their screen with big maroon squares (the HUD already shows them bleeding).
+     */
+    private static void bleedDrops(Player player) {
+        org.bukkit.Location at = player.getLocation().add(0, 0.8, 0);
+        Particle.DustOptions dust = new Particle.DustOptions(org.bukkit.Color.fromRGB(88, 8, 10), 0.9f);
+        for (Player other : player.getWorld().getPlayers()) {
+            if (other != player && other.getLocation().distanceSquared(at) < 48 * 48) {
+                other.spawnParticle(Particle.DUST, at, 6, 0.2, 0.3, 0.2, 0, dust);
+            }
+        }
     }
 }

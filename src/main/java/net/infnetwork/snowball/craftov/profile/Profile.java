@@ -59,11 +59,11 @@ public final class Profile {
     public String seasonId = "";
     public long seasonXp;
     public Set<Integer> seasonClaimed = new LinkedHashSet<>();
-    /** New-player guide progress (TutorialService). */
-    public int tutorialStep;
+    /** New-player guide (TutorialService): the steps done, one bit per step in any order, and whether it is over. */
+    public int tutorialMask;
     public boolean tutorialDone;
-    /** Which step list {@link #tutorialStep} counts in (TutorialService.VERSION; 0 = before the FOV Effects step). */
-    public int tutorialVersion;
+    /** The old guide's step counter (the first n steps done), turned into {@link #tutorialMask} on load. */
+    public int tutorialStep;
     /**
      * The client's field of view (30..110) and FOV Effects slider (0..1) as the player declared them
      * with /cv fov (FovService): the server cannot read either, and the zoom of every sight depends on

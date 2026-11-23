@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -79,6 +80,11 @@ public final class DownedService implements Listener {
     /** reviver -> (downed player, tick of last right-click). */
     private final Map<UUID, Map.Entry<UUID, Long>> clicks = new HashMap<>();
     /**
+     * reviver -> tick of their last trigger pull, refused because their hands are busy. The revive
+     * bar holds the action bar while it runs, so the reason is said there rather than queued behind it.
+     */
+    private final Map<UUID, Long> refusedFire = new HashMap<>();
+    /**
      * Ticks a right click on a downed mate counts as still held: a held button repeats every 4
      * ticks, and the revive check runs every 5.
      */
@@ -103,6 +109,11 @@ public final class DownedService implements Listener {
      * The click counts at once, before the revive check, so the use-item packet the same click
      * sends right after cannot throw the grenade or start the bandage in their hand.
      */
+    /** The player pulled the trigger while reviving: their revive bar says why nothing fired for a second. */
+    public void refusedFire(Player reviver) {
+        refusedFire.put(reviver.getUniqueId(), (long) Bukkit.getCurrentTick());
+    }
+
     public boolean isReviving(Player player) {
         UUID id = player.getUniqueId();
         for (Downed state : downed.values()) {
@@ -148,22 +159,22 @@ public final class DownedService implements Listener {
         player.setHealth(1.0);
         player.setSprinting(false);
         plugin.health().forceSpeedUpdate(player);
-        String wait = hasStandingMate(raid, rp) ? "等待队友救援" : "<#FFC23D>使用自救注射器<#9AA0A6>";
-        player.showTitle(Title.title(Text.mm("<#FF4D4D><b>" + (first ? "第一次倒地" : "第二次倒地")),
-                Text.mm("<#9AA0A6>" + wait + " · " + (first ? "再次倒地将更加危险" : "<#FF8A80>下一次将直接阵亡")),
+        String wait = hasStandingMate(raid, rp) ? "等待队友救援" : "<accent>使用自救注射器<muted>";
+        player.showTitle(Title.title(Text.mm("<danger><b>" + (first ? "第一次倒地" : "第二次倒地")),
+                Text.mm("<muted>" + wait + " · " + (first ? "再次倒地将更加危险" : "<danger>下一次将直接阵亡")),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(3), Duration.ofMillis(400))));
         player.playSound(player.getLocation(), "craftov:status.downed", SoundCategory.MASTER, 1f, 1f);
         for (RaidPlayer mate : raid.squadOf(rp)) {
             Player p = Bukkit.getPlayer(mate.uuid);
             if (p != null && p != player) {
-                p.sendMessage(Text.mm(Text.PREFIX + "<#FF8A80>队友 " + Text.escape(player.getName()) + " 倒地了！靠近后对准他按住右键救援。"));
+                plugin.hud().alert(p, "<danger>队友 " + Text.escape(player.getName()) + " 倒地 · <text>靠近后对准他按住右键救援", 100, null);
                 p.playSound(p.getLocation(), "craftov:status.mate_down", SoundCategory.MASTER, 1f, 1f);
             }
         }
         if (cause != null && cause.attacker() != null) {
             Player attacker = Bukkit.getPlayer(cause.attacker());
             if (attacker != null) {
-                attacker.sendActionBar(Text.mm("<#FFC23D>击倒 <white>" + Text.escape(player.getName())));
+                Notify.info(attacker, "<accent>击倒 <white>" + Text.escape(player.getName()));
             }
         }
         crawl(player, state);
@@ -198,11 +209,11 @@ public final class DownedService implements Listener {
         plugin.weapons().reset(player);
         player.setHealth(Math.min(HealthService.MAX_HP, state.number == 1 ? 35 : 20));
         plugin.health().forceSpeedUpdate(player);
-        player.showTitle(Title.title(Text.mm("<#5BD16B>已被救起"), Text.mm(reviver == null ? "<#9AA0A6>自我救援成功" : "<#9AA0A6>" + Text.escape(reviver.getName()) + " 救起了你"),
+        player.showTitle(Title.title(Text.mm("<ok>已被救起"), Text.mm(reviver == null ? "<muted>自我救援成功" : "<muted>" + Text.escape(reviver.getName()) + " 救起了你"),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1500), Duration.ofMillis(300))));
         player.playSound(player.getLocation(), "craftov:status.revived", SoundCategory.MASTER, 1f, 1f);
         if (reviver != null) {
-            reviver.sendActionBar(Text.mm("<#5BD16B>救援成功"));
+            Notify.ok(reviver, "救援成功");
             RaidPlayer medic = plugin.raids().session(reviver);
             if (medic != null) {
                 medic.revives++;
@@ -298,9 +309,15 @@ public final class DownedService implements Listener {
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
                 reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
-                String note = Bukkit.getCurrentTick() - state.interruptedAt < 20 ? "<#FF8A80>救援被打断，重新开始  " : "";
-                reviver.sendActionBar(Text.mm(note + "<#5BD16B>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
-                player.sendActionBar(Text.mm(note + "<#5BD16B>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "#5BD16B", "#3A3F47")));
+                long now = Bukkit.getCurrentTick();
+                String note = now - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
+                Long refused = refusedFire.get(reviver.getUniqueId());
+                if (refused != null && now - refused >= 20) {
+                    refusedFire.remove(reviver.getUniqueId());
+                }
+                String own = note.isEmpty() && refused != null && now - refused < 20 ? "<muted>救援时不能开火  " : note;
+                Notify.critical(reviver, "revive", own + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim"));
+                Notify.critical(player, "revive", note + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim"));
                 if (state.reviveTicks >= state.reviveNeeded) {
                     stopReviving(reviver);
                     revive(player, reviver);
@@ -321,8 +338,8 @@ public final class DownedService implements Listener {
                         Material.REDSTONE_BLOCK.createBlockData());
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
             }
-            player.sendActionBar(Text.mm("<#FF4D4D>倒地 " + Text.bar(state.fraction(), 24, "#FF4D4D", "#3A3F47")
-                    + " <#9AA0A6>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <#FFC23D>没有队友能救你，使用自救注射器")));
+            Notify.critical(player, "downed", "<danger>倒地 " + Text.bar(state.fraction(), 24, "danger", "dim")
+                    + " <muted>" + (int) Math.ceil(state.pool) + "s" + (mates ? "" : "  <accent>没有队友能救你，使用自救注射器"));
             if (state.pool <= 0) {
                 finish(raid, rp, player, state);
             }
@@ -432,6 +449,7 @@ public final class DownedService implements Listener {
      * player seen standing) until their own crawl came round again in the next pass.
      */
     private void stopReviving(Player reviver) {
+        refusedFire.remove(reviver.getUniqueId());
         if (reviver.hasFixedPose() && reviver.getPose() == Pose.SNEAKING && !isDowned(reviver)) {
             reviver.setPose(Pose.STANDING, false);
         }
@@ -453,7 +471,7 @@ public final class DownedService implements Listener {
             }
             String blocked = reviveBlocker(p, downedPlayer);
             if (blocked != null) {
-                p.sendActionBar(Text.mm("<#FF8A80>" + blocked));
+                Notify.critical(p, "revive", "<danger>" + blocked);
                 continue;
             }
             if (p.getUniqueId().equals(state.reviver)) {

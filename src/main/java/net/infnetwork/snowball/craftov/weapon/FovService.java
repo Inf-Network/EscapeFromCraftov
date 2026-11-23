@@ -97,7 +97,7 @@ public final class FovService implements Listener {
     public void aimed(Player player) {
         Profile profile = plugin.profiles().get(player);
         if (profile.fovEffects < MIN_EFFECTS && warned.add(player.getUniqueId())) {
-            Text.send(player, "<#FF4D4D>FOV 特效为 0，瞄准镜无法放大。<#9AA0A6>按 Esc → 选项 → 辅助功能，把 <white>FOV 特效</white> 调回 100%，"
+            Text.send(player, "<danger>FOV 特效为 0，瞄准镜无法放大。<muted>按 Esc → 选项 → 辅助功能，把 <white>FOV 特效</white> 调回 100%，"
                     + "再输入 <white>/cv fov " + profile.fov + " 100</white>。");
         }
         if (!profile.fovTip) {
@@ -109,9 +109,9 @@ public final class FovService implements Listener {
 
     /** What FOV Effects does to the sights and how to tell the server, with a button to confirm 100%. */
     public static String tip() {
-        return "<#F2C94C>开镜提示：<#C8CCD2>瞄准镜放大靠原版的 <white>选项 → 辅助功能 → FOV 特效</white>，请保持 <white>100%</white>（默认值）。"
+        return "<accent>开镜提示：<text>瞄准镜放大靠原版的 <white>选项 → 辅助功能 → FOV 特效</white>，请保持 <white>100%</white>（默认值）。"
                 + "调低了倍率会变小，0% 时完全不放大。改过视野或 FOV 特效的话，用 <white>/cv fov <视野> <FOV特效%></white> 告诉服务器，倍率会自动补回来。 "
-                + "<click:run_command:'/cv fov ok'><hover:show_text:'<#9AA0A6>确认 FOV 特效是 100%'><#5BD16B>[已是 100%]</hover></click>";
+                + "<click:run_command:'/cv fov ok'><hover:show_text:'<muted>确认 FOV 特效是 100%'><ok>[已是 100%]</hover></click>";
     }
 
     /**

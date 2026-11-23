@@ -73,6 +73,8 @@ function spawnBot (name) {
   bot._client.on('respawn', track)
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━━━━━━━━━━━━')) { bot.chatLog.push(m); log(name, 'CHAT', m) } })
+  // A click's result comes on the action bar (util/Notify): logged with the chat, as what the bot was told.
+  bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) { bot.chatLog.push(s); log(name, 'BAR', s) } })
   bot.on('title', (text, type) => {
     const s = typeof text === 'string' ? text : (flat(text) || JSON.stringify(text))
     bot.titles.push({ type, text: s })
@@ -132,23 +134,23 @@ async function deployValue (bot) {
   return { value: money(text), text }
 }
 
-/** 当前战备值 as the main menu's profile button says it. */
+/** 当前战备值 as the main menu's profile button (bottom bar, slot 49) says it. */
 async function menuValue (bot) {
   const w = await openWith(bot, () => bot.chat('/cv menu'))
   if (!w) return { value: NaN, text: '(main menu did not open)' }
-  const line = lore(w.slots[4]).find(l => l.includes('战备值')) || ''
+  const line = lore(w.slots[49]).find(l => l.includes('战备值')) || ''
   bot.closeWindow(w)
   await sleep(300)
   return { value: money(line), text: line }
 }
 
-/** Clicks the main menu's free kit button and returns what the chat says. */
+/** Clicks the main menu's free kit button (slot 30) and returns what the bot is told. */
 async function claimFreeKit (bot) {
   const w = await openWith(bot, () => bot.chat('/cv menu'))
   if (!w) return '(main menu did not open)'
   const from = bot.chatLog.length
-  await bot.clickWindow(25, 0, 0)
-  const said = await waitChat(bot, /免费补给|战备值超过/, 5000, from)
+  await bot.clickWindow(30, 0, 0)
+  const said = await waitChat(bot, /免费补给|战备值超过|总资产/, 5000, from)
   if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
   await sleep(300)
   return said || '(nothing said)'
@@ -178,7 +180,9 @@ async function scenario (bot) {
   const dv = await deployValue(bot)
   check('deploy screen: 战备值 ◈0 with only a karambit', dv.value === 0, dv.text)
   let bar = ''
-  await waitFor(() => (bar = Object.values(bot.bars).find(t => t.includes('战备值')) || ''), 5000)
+  // The vanilla info bar spells it "战备值 ◈…"; BetterHud draws its HUD through boss bars of its own,
+  // full of private-use glyphs (mineflayer turns them into U+FFFD), which may carry the same label.
+  await waitFor(() => (bar = Object.values(bot.bars).find(t => t.includes('战备值 ◈') && !/[\ue000-\uf8ff\ud800-\udfff\ufffd]/.test(t)) || ''), 5000)
   if (bar) check('lobby HUD bar: 战备值 ◈0 with only a karambit', /战备值 ◈0(\s|$)/.test(bar), bar)
   else log('SKIP lobby HUD bar: no boss-bar HUD (BetterHud draws it; hud.vanilla-bars-with-betterhud is off)')
   await rcon(`cv money ${name} 100000`)
@@ -226,12 +230,14 @@ async function scenario (bot) {
   await carryOnly(bot, 'knife_karambit')
   if (!await deploy(bot, 'NORMAL')) throw new Error('the bot never reached the 常规 raid')
   from = bot.chatLog.length
-  const titles = bot.titles.length
   await rcon(`execute as ${name} at @s run tp @s ${EXTRACT}`)
-  const xp = await waitChat(bot, /击败干员 \d+ · 击败敌兵/, 60000, from)
-  const sub = bot.titles.slice(titles).find(t => t.text.includes('净收益'))
-  check('extracting with only the karambit: 净收益 +0', !!sub && /净收益 \+0(\D|$)/.test(sub.text), sub && sub.text)
+  // The raid record is one chat line: "撤离成功 · 试验场 · 常规 · 00:12 · 净收益 +◈0 · 击败干员 0 · 经验 +0".
+  const xp = await waitChat(bot, /撤离成功.*击败干员 \d+/, 60000, from)
+  check('extracting with only the karambit: 净收益 +0', !!xp && /净收益 \+◈?0(\D|$)/.test(xp), xp)
   check('and no flat extraction experience: 经验 +0', !!xp && /经验 \+0(\D|$)/.test(xp), xp)
+  // The settlement screen opens after the curtain; shut it so the next steps start from the lobby.
+  await sleep(2500)
+  if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
   await waitFor(() => inLobby(bot), 30000)
 
   // 5. A second knife held on the cursor at death goes into the body and is lost; only the one in

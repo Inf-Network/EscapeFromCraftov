@@ -114,7 +114,7 @@ public final class TaskService {
         }
         long cost = rerollCost();
         if (profile.money < cost) {
-            Text.send(player, "<#FF8A80>块币不足，更换任务需要 ◈" + Text.money(cost));
+            Text.send(player, "<danger>块币不足，更换任务需要 ◈" + Text.money(cost));
             return false;
         }
         profile.money -= cost;
@@ -235,7 +235,7 @@ public final class TaskService {
             if (task.progress >= task.target) {
                 complete(player, profile, task);
             } else if (kind != Kind.SEARCH || task.progress % 5 == 0) {
-                player.sendMessage(Text.mm("<#8A8F98>[每日任务] " + describe(task) + " <#F2C94C>" + progressText(task)));
+                player.sendMessage(Text.mm("<muted>[每日任务] " + describe(task) + " <accent>" + progressText(task)));
             }
             plugin.profiles().markDirty(player.getUniqueId());
         }
@@ -250,9 +250,9 @@ public final class TaskService {
         profile.statInRaid("tasks_done", 1);
         plugin.ranks().addXp(player, profile, task.xp);
         plugin.profiles().markDirty(player.getUniqueId());
-        player.sendMessage(Text.mm("<#5BD16B><b>[每日任务完成]</b> <white>" + describe(task)
-                + " <#F2C94C>+◈" + Text.money(task.reward) + " <#8A8F98>+" + task.xp + " 经验"));
-        player.playSound(player.getLocation(), "minecraft:entity.player.levelup", SoundCategory.PLAYERS, 0.7f, 1.4f);
+        player.sendMessage(Text.mm("<ok><b>[每日任务完成]</b> <white>" + describe(task)
+                + " <accent>+◈" + Text.money(task.reward) + " <muted>+" + task.xp + " 经验"));
+        net.infnetwork.snowball.craftov.gui.UiSound.REWARD.play(player);
         boolean all = true;
         for (Profile.TaskState t : profile.tasks) {
             all &= t.done;
@@ -261,7 +261,7 @@ public final class TaskService {
             long bonus = plugin.getConfig().getLong("tasks.all-done-bonus", 20000);
             profile.money += bonus;
             profile.earnedInRaid(bonus);
-            player.sendMessage(Text.mm("<#FFC23D><b>今日任务全部完成！</b> <#F2C94C>额外奖励 ◈" + Text.money(bonus)));
+            player.sendMessage(Text.mm("<accent><b>今日任务全部完成！</b> <accent>额外奖励 ◈" + Text.money(bonus)));
         }
     }
 }

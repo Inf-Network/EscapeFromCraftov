@@ -38,16 +38,29 @@ public final class HudService {
     private boolean betterHud;
     /**
      * Camera overlays share one client-side helmet, so the strongest wins: a flashbang white-out, a
-     * strobe flash, then a scope picture, then the suppression vignette, otherwise the real helmet.
+     * strobe flash, a scope picture, the red flash of a hit (6 ticks), the blood edge of low health
+     * (three steps under 35, 24 and 12 HP), then the suppression vignette, otherwise the real helmet.
+     * Camera overlays are drawn at every graphics setting; the world-border tint of HealthService is
+     * only a supplement to the blood edge.
      */
     private final Map<UUID, String> scopes = new HashMap<>();
     private final Map<UUID, Long> suppressedUntil = new HashMap<>();
+    private final Map<UUID, Long> hitUntil = new HashMap<>();
+    private static final int HIT_TICKS = 6;
+    /** Health below which the blood edge shows, one overlay step each (misc/blood_1..3). */
+    private static final double[] BLOOD_STEPS = {35, 24, 12};
     private final Map<UUID, Long> dazzledUntil = new HashMap<>();
     private final Map<UUID, Flash> flashed = new HashMap<>();
     /** Players blinded by {@link #flash} whose blindness has not been lifted yet. */
     private final java.util.Set<UUID> flashBlinded = new java.util.HashSet<>();
     private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
+
+    /** A line shown until a tick: the alert banner (BetterHud only). */
+    private record Timed(String text, long until) {
+    }
+
+    private final Map<UUID, Timed> alerts = new HashMap<>();
 
     public HudService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -65,12 +78,64 @@ public final class HudService {
         for (Player player : Bukkit.getOnlinePlayers()) {
             online.add(player.getUniqueId());
             try {
-                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player)));
+                boolean inLobby = plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player);
+                snapshots.put(player.getUniqueId(), HudSnapshot.of(data, player, inLobby, extra(player, inLobby)));
             } catch (RuntimeException ex) {
                 snapshots.put(player.getUniqueId(), HudSnapshot.EMPTY);
             }
         }
         snapshots.keySet().retainAll(online);
+        alerts.keySet().retainAll(online);
+    }
+
+    private HudExtra extra(Player player, boolean inLobby) {
+        long now = Bukkit.getCurrentTick();
+        Timed alert = alerts.get(player.getUniqueId());
+        if (alert != null && alert.until() <= now) {
+            alerts.remove(player.getUniqueId());
+            alert = null;
+        }
+        String[] feed = data.feed(player);
+        boolean inRaid = data.inRaid(player);
+        var gun = data.gun(player);
+        return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
+                gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
+                alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "");
+    }
+
+    /**
+     * The alert banner under the compass (raid clock warnings, extracts opening, random events,
+     * intel): one line for {@code ticks}, with its sound. Without BetterHud it goes to chat. The text
+     * is MiniMessage with only {@code <#RRGGBB>} and named colours, which BetterHud reads as well.
+     */
+    public void alert(Player player, String text, int ticks, net.infnetwork.snowball.craftov.gui.@org.jspecify.annotations.Nullable UiSound sound) {
+        if (sound != null) {
+            sound.play(player);
+        }
+        if (!betterHud) {
+            player.sendMessage(Text.mm(text));
+            return;
+        }
+        alerts.put(player.getUniqueId(), new Timed(net.infnetwork.snowball.craftov.gui.Style.hex(text), Bukkit.getCurrentTick() + ticks));
+    }
+
+    /** A plain kill-feed line (squad news; KillFeedService#note): top right, chat without BetterHud. */
+    public void feed(Player player, String text) {
+        plugin.killFeed().note(player, text);
+    }
+
+    /** What the HUD shows besides the panels, for `cv hud` and the bots (they cannot see BetterHud). */
+    public String describe(Player player) {
+        HudSnapshot s = snapshotOf(player.getUniqueId());
+        HudExtra e = s.extra();
+        return "alert=" + Text.plain(Text.mm(e.alert())) + " | feed=" + String.join(" / ", java.util.Arrays.stream(e.feed())
+                .filter(line -> !line.isEmpty()).map(line -> Text.plain(Text.mm(line))).toList())
+                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | value=" + s.value() + " | time=" + s.time() + "@" + e.timeState()
+                + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
+                + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
+                .map(m -> Text.plain(Text.mm(m))).toList())
+                + " | feedlog=" + String.join(" / ", plugin.killFeed().allLines(player).stream()
+                .map(line -> Text.plain(Text.mm(line))).toList());
     }
 
     /** Thread-safe: safe to call from BetterHud worker threads. */
@@ -147,56 +212,56 @@ public final class HudService {
             if (data.inRaid(player)) {
                 int extract = data.extractPercent(player);
                 if (extract > 0) {
-                    infoBar.name(Text.mm("<#5BD16B><b>撤离中</b> <white>" + String.format("%.1f", data.extractSecondsLeft(player)) + "s"));
+                    infoBar.name(Text.mm("<ok><b>撤离中</b> <white>" + String.format("%.1f", data.extractSecondsLeft(player)) + "s"));
                     infoBar.progress(extract / 100f);
                     infoBar.color(BossBar.Color.GREEN);
                 } else {
                     int total = Math.max(1, plugin.raids().raidOf(player).map.raidSeconds());
-                    infoBar.name(Text.mm("<#F2E6C8>" + Text.escape(data.mapName(player)) + " <#8A8F98>" + data.tierName(player)
-                            + "  <white>⏱ " + data.time(player) + "  <#F2C94C>◈ " + Text.moneyShort(data.gearValue(player))
-                            + "  <#9AA0A6>撤离 " + Text.escape(data.nearestExtract(player))));
+                    infoBar.name(Text.mm("<text>" + Text.escape(data.mapName(player)) + " <muted>" + data.tierName(player)
+                            + "  <white>⏱ " + data.time(player) + "  <accent>◈ " + Text.moneyShort(data.gearValue(player))
+                            + "  <muted>撤离 " + Text.escape(data.nearestExtract(player))));
                     infoBar.progress(Math.max(0f, Math.min(1f, data.remaining(player) / (float) total)));
                     infoBar.color(data.remaining(player) < 300 ? BossBar.Color.RED : BossBar.Color.YELLOW);
                 }
                 BossBar statusBar = bar(status, player);
                 StringBuilder sb = new StringBuilder();
                 int hp = data.hp(player);
-                String hpColor = hp > 60 ? "#5BD16B" : hp > 30 ? "#FFC23D" : "#FF4D4D";
+                String hpColor = hp > 60 ? "ok" : hp > 30 ? "accent" : "danger";
                 if (data.downed(player)) {
-                    sb.append("<#FF4D4D><b>倒地</b> ").append(data.downedPercent(player)).append('%');
+                    sb.append("<danger><b>倒地</b> ").append(data.downedPercent(player)).append('%');
                 } else {
                     sb.append('<').append(hpColor).append(">❤ ").append(hp);
                 }
                 int helmet = data.armorClass(player, CarryService.HEAD);
                 int armor = data.armorClass(player, CarryService.CHEST);
                 if (helmet > 0) {
-                    sb.append("  <#9AA0A6>⛑").append(roman(helmet)).append(' ').append(data.armorPercent(player, CarryService.HEAD)).append('%');
+                    sb.append("  <muted>⛑").append(roman(helmet)).append(' ').append(data.armorPercent(player, CarryService.HEAD)).append('%');
                 }
                 if (armor > 0) {
-                    sb.append("  <#9AA0A6>🛡").append(roman(armor)).append(' ').append(data.armorPercent(player, CarryService.CHEST)).append('%');
+                    sb.append("  <muted>🛡").append(roman(armor)).append(' ').append(data.armorPercent(player, CarryService.CHEST)).append('%');
                 }
                 String weapon = data.weaponName(player);
                 if (data.gun(player) != null) {
                     int reload = data.reloadPercent(player);
                     sb.append("  <white>").append(Text.escape(weapon)).append(' ')
-                            .append(reload > 0 ? "<#FFC23D>换弹 " + reload + "%"
-                                    : data.drawing(player) ? "<#C8CCD2>拔枪 " + data.drawPercent(player) + "%"
-                                    : (data.ammo(player) == 0 ? "<#FF4D4D>" : "<white>") + data.ammo(player)
-                                    + "<#8A8F98>/" + data.reserve(player) + " " + data.fireMode(player));
+                            .append(reload > 0 ? "<accent>换弹 " + reload + "%"
+                                    : data.drawing(player) ? "<text>拔枪 " + data.drawPercent(player) + "%"
+                                    : (data.ammo(player) == 0 ? "<danger>" : "<white>") + data.ammo(player)
+                                    + "<muted>/" + data.reserve(player) + " " + data.fireMode(player));
                 }
                 String injuries = data.injuries(player);
                 if (!injuries.isEmpty()) {
-                    sb.append("  <#FF8A80>").append(injuries);
+                    sb.append("  <danger>").append(injuries);
                 }
-                sb.append("  <#8A8F98>").append(Text.escape(data.skill(player)));
+                sb.append("  <muted>").append(Text.escape(data.skill(player)));
                 statusBar.name(Text.mm(sb.toString()));
                 statusBar.progress(Math.max(0f, Math.min(1f, (float) (player.getHealth() / 100.0))));
                 statusBar.color(hp > 60 ? BossBar.Color.GREEN : hp > 30 ? BossBar.Color.YELLOW : BossBar.Color.RED);
             } else if (plugin.lobby().isLobby(player.getWorld())) {
                 var profile = plugin.profiles().get(player);
-                infoBar.name(Text.mm("<#F2C94C>◈ " + Text.money(profile.money) + "  <#9AA0A6>Lv." + profile.level + "  "
-                        + plugin.ranks().tierName(profile.rankPoints) + "  <#9AA0A6>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
-                        + "  <#8A8F98>干员 " + plugin.operators().of(player).name()));
+                infoBar.name(Text.mm("<accent>◈ " + Text.money(profile.money) + "  <muted>Lv." + profile.level + "  "
+                        + plugin.ranks().tierName(profile.rankPoints) + "  <muted>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
+                        + "  <muted>干员 " + plugin.operators().of(player).name()));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);
             }
@@ -229,9 +294,9 @@ public final class HudService {
             return;
         }
         String mark = switch (outcome) {
-            case KILLED -> "<#FF4D4D><b>✖</b>";
-            case DOWNED -> "<#FF9A3C><b>⊗</b>";
-            case HIT -> head ? "<#FFC23D>✕" : "<white>✕";
+            case KILLED -> "<danger><b>✖</b>";
+            case DOWNED -> "<accent><b>⊗</b>";
+            case HIT -> head ? "<accent>✕" : "<white>✕";
         };
         shooter.sendTitlePart(TitlePart.TIMES, Title.Times.times(Duration.ZERO, Duration.ofMillis(150), Duration.ofMillis(100)));
         shooter.sendTitlePart(TitlePart.SUBTITLE, Text.mm(mark));
@@ -249,6 +314,27 @@ public final class HudService {
         refreshOverlay(player);
     }
 
+    /** The red flash of being hit (a shot or a cut): the screen rim goes red for a few ticks. */
+    public void hurt(Player player) {
+        hitUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + HIT_TICKS);
+        refreshOverlay(player);
+    }
+
+    /** 0 for none, else the blood edge step for this player's health (raids only). */
+    private int bloodLevel(@org.jspecify.annotations.Nullable Player player) {
+        if (player == null || player.isDead() || !data.inRaid(player)) {
+            return 0;
+        }
+        double hp = player.getHealth();
+        int level = 0;
+        for (double step : BLOOD_STEPS) {
+            if (hp < step) {
+                level++;
+            }
+        }
+        return level;
+    }
+
     private @org.jspecify.annotations.Nullable String wantedOverlay(UUID id, long now) {
         Flash flash = flashed.get(id);
         if (flash != null && flash.until() > now) {
@@ -262,6 +348,14 @@ public final class HudService {
         String scope = scopes.get(id);
         if (scope != null) {
             return scope;
+        }
+        Long hit = hitUntil.get(id);
+        if (hit != null && hit > now) {
+            return "hit";
+        }
+        int blood = bloodLevel(Bukkit.getPlayer(id));
+        if (blood > 0) {
+            return "blood_" + blood;
         }
         Long suppressed = suppressedUntil.get(id);
         return suppressed != null && suppressed > now ? "suppressed" : null;
@@ -283,20 +377,41 @@ public final class HudService {
     }
 
     /**
-     * Puts the overlay's client-only helmet on the player's own head. The network handler of their own
-     * view (Nms.SelfView) then turns every later update of their head slot into it until it is taken
-     * off, so a headshot that wears the real helmet, a helmet swap or an inventory resync cannot clear
-     * the picture for a moment.
+     * Puts a camera overlay on the player's own client through the head slot. The network handler of
+     * their own view (Nms.SelfView) then dresses every later update of their head slot the same way
+     * until it is taken off, so a headshot that damages the helmet, a helmet swap or an inventory
+     * resync shows the new helmet with the picture still up instead of clearing it for a moment.
      */
     private void cameraOverlay(Player player, String texture) {
-        ItemStack overlay = ItemStack.of(Material.PAPER);
-        overlay.setData(DataComponentTypes.EQUIPPABLE, Equippable.equippable(EquipmentSlot.HEAD)
-                .cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
         net.infnetwork.snowball.craftov.util.Nms.SelfView view = plugin.fov().selfView(player);
         if (view != null) {
-            net.infnetwork.snowball.craftov.util.Nms.selfHelmet(view, overlay);
+            net.infnetwork.snowball.craftov.util.Nms.selfHelmet(view, real -> withOverlay(real, texture));
         }
-        player.sendEquipmentChange(player, EquipmentSlot.HEAD, overlay);
+        player.sendEquipmentChange(player, EquipmentSlot.HEAD, withOverlay(player.getInventory().getHelmet(), texture));
+    }
+
+    /**
+     * The client-only head item that carries a camera overlay: a copy of the real helmet with the
+     * overlay added, so the helmet slot (the blood edge stays up for as long as health is low,
+     * inventory open or not) and the third-person view still show the helmet; with no helmet it is an
+     * invisible item without a tooltip. Also called on the network thread, on a copy.
+     */
+    private static ItemStack withOverlay(@org.jspecify.annotations.Nullable ItemStack real, String texture) {
+        ItemStack overlay;
+        Equippable.Builder equippable;
+        if (real != null && !real.isEmpty()) {
+            overlay = real.clone();
+            Equippable worn = real.getData(DataComponentTypes.EQUIPPABLE);
+            equippable = worn != null && worn.slot() == EquipmentSlot.HEAD ? worn.toBuilder() : Equippable.equippable(EquipmentSlot.HEAD);
+        } else {
+            overlay = ItemStack.of(Material.PAPER);
+            overlay.setData(DataComponentTypes.ITEM_MODEL, Key.key("craftov", "ui/blank"));
+            overlay.setData(DataComponentTypes.TOOLTIP_DISPLAY,
+                    io.papermc.paper.datacomponent.item.TooltipDisplay.tooltipDisplay().hideTooltip(true).build());
+            equippable = Equippable.equippable(EquipmentSlot.HEAD);
+        }
+        overlay.setData(DataComponentTypes.EQUIPPABLE, equippable.cameraOverlay(Key.key("craftov", "misc/" + texture)).build());
+        return overlay;
     }
 
     private void restoreHelmet(Player player) {
@@ -396,13 +511,21 @@ public final class HudService {
     private static final int OVERLAY_RESEND_TICKS_HOOKED = 20;
 
     private void tickOverlays() {
-        if (shownOverlay.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()
-                && flashBlinded.isEmpty()) {
-            return;
-        }
         long now = Bukkit.getCurrentTick();
         java.util.Set<UUID> touched = new java.util.HashSet<>(shownOverlay.keySet());
+        // Low health shows the blood edge without any event to start it.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getHealth() < BLOOD_STEPS[0] && bloodLevel(player) > 0) {
+                touched.add(player.getUniqueId());
+            }
+        }
+        if (touched.isEmpty() && suppressedUntil.isEmpty() && dazzledUntil.isEmpty() && flashed.isEmpty()
+                && flashBlinded.isEmpty() && hitUntil.isEmpty()) {
+            return;
+        }
         touched.addAll(suppressedUntil.keySet());
+        touched.addAll(hitUntil.keySet());
+        hitUntil.values().removeIf(until -> until <= now);
         touched.addAll(dazzledUntil.keySet());
         touched.addAll(flashed.keySet());
         touched.addAll(flashBlinded);

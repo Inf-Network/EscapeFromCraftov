@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.item;
 
+import net.infnetwork.snowball.craftov.gui.Style;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
 import org.jspecify.annotations.Nullable;
 
@@ -19,12 +20,12 @@ public final class GunStats {
     /** Segments in a full bar. */
     public static final int SEGMENTS = 10;
     /** The line under the bars: what they mean, in a sentence. */
-    public static final String HINT = "<#6B7079>条越长越好 · 腰射看精准，开镜看开镜 · 度数越小越准，移动、跳跃会变大";
+    public static final String HINT = "<dim>条越长越好 · 腰射看精准，开镜看开镜 · 度数越小越准，移动、跳跃会变大";
 
-    private static final String FILL = "#F2C94C";
-    private static final String GAIN = "#5BD16B";
-    private static final String LOSS = "#FF4D4D";
-    private static final String EMPTY = "#3A3F47";
+    private static final String FILL = Style.ACCENT;
+    private static final String GAIN = Style.OK;
+    private static final String LOSS = Style.DANGER;
+    private static final String EMPTY = Style.LINE;
     private static final String BAR = "▍";
 
     /** The armory's extremes each bar is measured against. */
@@ -135,7 +136,7 @@ public final class GunStats {
         boolean changed = Math.abs(base - now) > 1e-9;
         boolean better = stat.lowerIsBetter() ? now < base : now > base;
         String number = changed ? (better ? "<" + GAIN + ">" : "<" + LOSS + ">") : "<white>";
-        return "<#8A8F98>" + stat.label() + " " + bar + " " + number + stat.text();
+        return "<muted>" + stat.label() + " " + bar + " " + number + stat.text();
     }
 
     private static int segments(double fill) {

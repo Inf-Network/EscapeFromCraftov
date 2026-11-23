@@ -168,6 +168,27 @@ function serverPids () {
   return out
 }
 
+// Results of a click or a command now come on the action bar (util/Notify), not in chat: both are
+// "what the player was told", so the bots log them together.
+function flatText (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (Array.isArray(n)) return n.map(flatText).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flatText(n.value && n.value.value)
+  if (n.type === 'compound') return flatText(n.value)
+  return flatText(n.text) + flatText(n.extra)
+}
+// The kill feed and the alert banner are on the HUD, which bots cannot see: `cv hud` prints what it
+// shows (the kill feed's last lines in feedlog). Without BetterHud the same lines go to chat.
+const hudOf = async name => String(await rcon(`cv hud ${name}`))
+const feedLog = async name => ((await hudOf(name)).match(/feedlog=([^|]*)/) || [, ''])[1]
+async function told (bot, ...parts) {
+  if (bot.chatLog.some(m => parts.every(t => m.includes(t)))) return true
+  const hud = await hudOf(bot.username)
+  return parts.every(t => hud.includes(t))
+}
+
 const bots = {}
 function make (role) {
   const name = NAMES[role] || EXTRA[role]
@@ -175,6 +196,7 @@ function make (role) {
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.chatLog = []
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) { bot.chatLog.push(m); log(role, 'CHAT', m) } })
+  bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { bot.chatLog.push(s); log(role, 'BAR', s) } })
   bot.on('kicked', r => log(role, 'KICKED', JSON.stringify(r).slice(0, 200)))
   bot.on('error', e => log(role, 'ERROR', e.message))
   bots[role] = bot
@@ -336,8 +358,8 @@ async function setup () {
   // raider. The raider collects the bounty on dead's head; voided, it goes back on that head.
   const r = bots.raider
   r.setQuickBarSlot(2) // the melee slot
-  // The kill feed is on the HUD (/cv feed reads it), not in the chat.
-  const killed = async () => (await rcon(`cv feed ${NAMES.raider}`)).split('\n').some(m => m.includes('→') && m.includes(NAMES.dead))
+  // The kill feed goes to the killer's and the victim's squads only.
+  const killed = async () => { const f = await feedLog(NAMES.raider); return f.includes('→') && f.includes(NAMES.dead) }
   for (let i = 0; i < 12 && !await killed(); i++) {
     await rcon(`execute as ${NAMES.raider} at ${NAMES.dead} run tp @s ^ ^ ^-1.2`)
     const seen = () => r.players[NAMES.dead] && r.players[NAMES.dead].entity
@@ -351,7 +373,8 @@ async function setup () {
   }
   const died = await waitFor(killed, 4000, 300)
   check('the raider kills dead in the raid', died)
-  check('the raider collects the bounty on dead', r.chatLog.some(m => m.includes('领取了') && m.includes(NAMES.dead)))
+  const claimed = await feedLog(NAMES.raider)
+  check('the raider collects the bounty on dead', claimed.includes('领取了') && claimed.includes(NAMES.dead), claimed)
 
   if (!await raiderActs(world)) return false
   // Saved with the next profile flush (every 10 s), well before the stop.
@@ -390,7 +413,8 @@ async function setup () {
   if (together) {
     await sleep(3500) // spawn protection
     await rcon(`kill ${NAMES.guard}`)
-    check('guard is downed', await waitFor(() => c.chatLog.some(m => m.includes(NAMES.guard) && m.includes('倒地')), 3000))
+    // A squadmate going down is an alert on the boss's HUD banner.
+    check('guard is downed', await waitFor(() => told(c, NAMES.guard, '倒地'), 3000))
   }
 
   if (!await handoff()) return false
@@ -812,15 +836,16 @@ async function crashEscort () {
   // player (and a squadmate's does not count), so a stand-in lands the last hit. It is summoned and
   // hits in one command: stray entities do not last until the next one.
   await rcon(`kill ${EXTRA.escort}`)
-  if (await waitFor(() => c.chatLog.some(m => m.includes(EXTRA.escort) && m.includes('倒地')), 2000)) {
+  if (await waitFor(() => told(c, EXTRA.escort, '倒地'), 2000)) {
     await sleep(500)
     log('finish', await rcon(`execute at ${EXTRA.escort} summon armor_stand run damage ${EXTRA.escort} 1000 minecraft:mob_attack by @s`))
   }
   // After the death report the escort watches the boss. That is no longer "in the raid", but the
   // secure container and the lobby menus must stay shut until they are back in the lobby.
-  // The death report comes first; a dead player still in the raid world in spectator mode after it
-  // is watching a squadmate (otherwise they would be back in the lobby).
-  const reported = await waitFor(() => e.chatLog.some(m => m.trim().startsWith('结果')), 15000)
+  // The death record (one chat line; the settlement screen waits for the lobby) comes first; a dead
+  // player still in the raid world in spectator mode after it is watching a squadmate (otherwise
+  // they would be back in the lobby).
+  const reported = await waitFor(() => e.chatLog.some(m => m.trim().startsWith('行动失败')), 15000)
   await sleep(1000)
   const watching = reported && await inRaidWorld(EXTRA.escort) && await inMode(EXTRA.escort, 'spectator')
   check('escort crash: dead escort spectates the boss', watching, await dimension(EXTRA.escort))

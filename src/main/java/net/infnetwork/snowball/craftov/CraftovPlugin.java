@@ -125,6 +125,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
+        net.infnetwork.snowball.craftov.util.Notify.start(this);
         saveDefaultConfig();
         migrateEntryFees();
         saveResourceIfMissing("items.yml");
@@ -194,9 +195,11 @@ public final class CraftovPlugin extends JavaPlugin {
         killFeed = new net.infnetwork.snowball.craftov.hud.KillFeedService(this);
         menus = new MenuService(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
+        var adminGuard = new net.infnetwork.snowball.craftov.security.AdminGuardService(this);
+        adminGuard.start();
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
+        register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
                 new InspectService(this), market, profiles, killFeed, fov);
 
@@ -425,7 +428,7 @@ public final class CraftovPlugin extends JavaPlugin {
             }
         }
         if (tiers.isEmpty()) {
-            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
+            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#7FD1AE", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
         }
     }
 

@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  *   so the walking speed in the player's own abilities packets sets the field of view without
  *   touching how fast they move: the movement speed itself at the hip, so nothing that slows them
  *   changes the view, and a (negative) value that zooms while aiming (see {@link SelfView}). The
- *   same handler keeps a scope picture's client-only helmet on their head.</li>
+ *   same handler keeps a screen overlay's client-only helmet on their head.</li>
  *   <li>Held-gun stance: other players' equipment packets carry a gun as a charged crossbow so
  *   their client draws the two-handed aiming pose (see {@code StanceService}).</li>
  * </ul>
@@ -198,6 +198,53 @@ public final class Nms {
 
     public static boolean ready() {
         return ready;
+    }
+
+    private static @Nullable Method asVanilla;
+    private static @Nullable Field containerMenu;
+    private static @Nullable Field containerId;
+    private static @Nullable Method menuType;
+    private static @Nullable Method sendAllData;
+    private static @Nullable Constructor<?> openScreenCtor;
+    private static boolean retitleTried;
+
+    /**
+     * Gives the open container a new title without closing it: the open-screen packet again with the
+     * same container id, then the contents (which a new screen starts without). Bukkit's own
+     * InventoryView#setTitle only takes legacy text, which cannot carry the craftov:ui font that draws
+     * the designed backgrounds. Returns false when the hooks are unavailable (the caller reopens).
+     */
+    public static boolean retitle(Player player, net.kyori.adventure.text.Component title) {
+        if (!ready) {
+            return false;
+        }
+        try {
+            if (!retitleTried) {
+                retitleTried = true;
+                asVanilla = Class.forName("io.papermc.paper.adventure.PaperAdventure")
+                        .getMethod("asVanilla", net.kyori.adventure.text.Component.class);
+                containerMenu = Class.forName("net.minecraft.world.entity.player.Player").getField("containerMenu");
+                Class<?> menu = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu");
+                containerId = menu.getField("containerId");
+                menuType = menu.getMethod("getType");
+                sendAllData = menu.getMethod("sendAllDataToRemote");
+                openScreenCtor = Class.forName("net.minecraft.network.protocol.game.ClientboundOpenScreenPacket").getConstructor(
+                        int.class, Class.forName("net.minecraft.world.inventory.MenuType"),
+                        Class.forName("net.minecraft.network.chat.Component"));
+            }
+            if (openScreenCtor == null) {
+                return false;
+            }
+            Object handle = getHandle.invoke(player);
+            Object menu = containerMenu.get(handle);
+            Object packet = openScreenCtor.newInstance(containerId.getInt(menu), menuType.invoke(menu), asVanilla.invoke(null, title));
+            sendPacket.invoke(playerConnection.get(handle), packet);
+            sendAllData.invoke(menu);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            openScreenCtor = null;
+            return false;
+        }
     }
 
     private static @Nullable Object connection(Player player) throws ReflectiveOperationException {
@@ -435,11 +482,11 @@ public final class Nms {
         return out == null ? packet : equipmentCtor.newInstance(id, out);
     }
 
-    // ------------------------------------------------------------------ own view: field of view and scope helmet
+    // ------------------------------------------------------------------ own view: field of view and overlay helmet
 
     /**
      * What a player's own client is made to show, read on the network thread: the field-of-view
-     * multiplier their walking speed asks for, and the client-only helmet carrying a scope picture.
+     * multiplier their walking speed asks for, and how the head slot carries a screen overlay.
      */
     public static final class SelfView {
         /** Field-of-view multiplier to show (1 = the hip view, below 1 zoomed in), as the client will see it. */
@@ -448,8 +495,12 @@ public final class Nms {
         public volatile double effects = 1.0;
         /** Movement speed without sprinting in the last attribute update this player was sent. */
         volatile double move = 0.1;
-        /** The client-only helmet (an NMS stack) every update of the player's own head slot is turned into, or null. */
-        volatile @Nullable Object helmet;
+        /**
+         * Turns the real head item (empty for none) into the client-only one carrying a screen overlay,
+         * applied to every update of the player's own head slot; null while no overlay is up. Runs on
+         * the network thread, on a copy.
+         */
+        volatile java.util.function.@Nullable UnaryOperator<org.bukkit.inventory.ItemStack> helmet;
 
         /**
          * The walking speed to send: the client's multiplier is lerp(slider, 1, (move / walk + 1) / 2),
@@ -495,6 +546,7 @@ public final class Nms {
     private static @Nullable Method setSlotContainer;
     private static @Nullable Method setSlotState;
     private static @Nullable Method setSlotSlot;
+    private static @Nullable Method setSlotItem;
     private static @Nullable Constructor<?> setSlotCtor;
     private static @Nullable Class<?> setContentClass;
     private static @Nullable Method setContentContainer;
@@ -534,6 +586,7 @@ public final class Nms {
             setSlotContainer = setSlotClass.getMethod("getContainerId");
             setSlotState = setSlotClass.getMethod("getStateId");
             setSlotSlot = setSlotClass.getMethod("getSlot");
+            setSlotItem = setSlotClass.getMethod("getItem");
             setSlotCtor = setSlotClass.getConstructor(int.class, int.class, int.class, stack);
             setContentClass = Class.forName("net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket");
             setContentContainer = setContentClass.getMethod("containerId");
@@ -591,25 +644,21 @@ public final class Nms {
         }
     }
 
-    /** Shows {@code helmet} (a Bukkit stack) in the player's own head slot until cleared with null. */
-    public static void selfHelmet(SelfView view, org.bukkit.inventory.@Nullable ItemStack helmet) {
-        if (!selfReady) {
-            return;
-        }
-        try {
-            view.helmet = helmet == null ? null : asNmsCopy.invoke(null, helmet);
-        } catch (ReflectiveOperationException | RuntimeException ex) {
-            view.helmet = null;
-        }
+    /**
+     * Dresses every update of the player's own head slot with {@code helmet} (the real item in, the
+     * one to show out) until cleared with null.
+     */
+    public static void selfHelmet(SelfView view, java.util.function.@Nullable UnaryOperator<org.bukkit.inventory.ItemStack> helmet) {
+        view.helmet = selfReady ? helmet : null;
     }
 
     /**
      * Rewrites what the player is told about themselves: every abilities packet carries the walking
      * speed {@link SelfView} asks for, every update of their movement speed is followed in the same
      * bundle by such an abilities packet (the server sends one whenever armour, weight or aiming
-     * change the speed, and a gamemode change or respawn resends abilities), and while a scope
-     * picture is up every update of their head slot shows its helmet instead (a headshot that damages
-     * the helmet, or an inventory resync, would otherwise take the picture away until the next aim).
+     * change the speed, and a gamemode change or respawn resends abilities), and while a screen
+     * overlay is up every update of their head slot carries it (a headshot that damages the helmet, a
+     * helmet swap or an inventory resync would otherwise take a scope picture away until the next aim).
      */
     private static final class SelfHandler extends ChannelDuplexHandler {
         private final Player player;
@@ -666,8 +715,11 @@ public final class Nms {
                 } else if (abilitiesPacketClass.isInstance(part)) {
                     replaced = withWalkingSpeed(part);
                     abilitiesSent = true;
-                } else if (view.helmet != null) {
-                    replaced = withHelmet(part, view.helmet);
+                } else {
+                    java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress = view.helmet;
+                    if (dress != null) {
+                        replaced = withHelmet(part, dress);
+                    }
                 }
                 changed |= replaced != part;
                 out.add(replaced);
@@ -690,20 +742,27 @@ public final class Nms {
             return abilitiesPacketCtor.newInstance(abilities);
         }
 
-        private Object withHelmet(Object part, Object helmet) throws ReflectiveOperationException {
+        /** The NMS stack {@code real} as {@code dress} shows it. */
+        private static Object dressed(Object real, java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress)
+                throws ReflectiveOperationException {
+            return asNmsCopy.invoke(null, dress.apply((org.bukkit.inventory.ItemStack) asBukkitCopy.invoke(null, real)));
+        }
+
+        private Object withHelmet(Object part, java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress)
+                throws ReflectiveOperationException {
             if (setSlotClass.isInstance(part)) {
                 if ((int) setSlotContainer.invoke(part) == 0 && (int) setSlotSlot.invoke(part) == HEAD_SLOT) {
-                    return setSlotCtor.newInstance(0, setSlotState.invoke(part), HEAD_SLOT, helmet);
+                    return setSlotCtor.newInstance(0, setSlotState.invoke(part), HEAD_SLOT, dressed(setSlotItem.invoke(part), dress));
                 }
                 return part;
             }
             if (setContentClass.isInstance(part)) {
                 java.util.List<?> items = (java.util.List<?>) setContentItems.invoke(part);
-                if ((int) setContentContainer.invoke(part) != 0 || items.size() <= HEAD_SLOT || items.get(HEAD_SLOT) == helmet) {
+                if ((int) setContentContainer.invoke(part) != 0 || items.size() <= HEAD_SLOT) {
                     return part;
                 }
                 java.util.List<Object> copy = new java.util.ArrayList<>(items);
-                copy.set(HEAD_SLOT, helmet);
+                copy.set(HEAD_SLOT, dressed(items.get(HEAD_SLOT), dress));
                 return setContentCtor.newInstance(0, setContentState.invoke(part), copy, setContentCarried.invoke(part));
             }
             if (equipmentClass.isInstance(part) && (int) equipmentEntity.invoke(part) == self) {
@@ -711,11 +770,11 @@ public final class Nms {
                 java.util.List<Object> copy = null;
                 for (int i = 0; i < slots.size(); i++) {
                     Object pair = slots.get(i);
-                    if ("HEAD".equals(((Enum<?>) pairFirst.invoke(pair)).name()) && pairSecond.invoke(pair) != helmet) {
+                    if ("HEAD".equals(((Enum<?>) pairFirst.invoke(pair)).name())) {
                         if (copy == null) {
                             copy = new java.util.ArrayList<>(slots);
                         }
-                        copy.set(i, pairOf.invoke(null, pairFirst.invoke(pair), helmet));
+                        copy.set(i, pairOf.invoke(null, pairFirst.invoke(pair), dressed(pairSecond.invoke(pair), dress)));
                     }
                 }
                 return copy == null ? part : equipmentCtor.newInstance(self, copy);
@@ -753,7 +812,7 @@ public final class Nms {
         return null;
     }
 
-    private static @Nullable Field containerMenu;
+    // Shares containerMenu with retitle above, which may have looked it up first.
     private static @Nullable Method broadcastChanges;
     private static boolean syncUnavailable;
 
@@ -768,7 +827,7 @@ public final class Nms {
         }
         try {
             Object handle = getHandle.invoke(player);
-            if (containerMenu == null) {
+            if (broadcastChanges == null) {
                 containerMenu = Class.forName("net.minecraft.world.entity.player.Player").getField("containerMenu");
                 broadcastChanges = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu").getMethod("broadcastChanges");
             }

@@ -32,6 +32,8 @@ public final class UiItems {
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(model));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(name));
         stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
+        // Interface buttons get the plain dark tooltip; item tooltips are framed by rarity.
+        stack.setData(DataComponentTypes.TOOLTIP_STYLE, Key.key("craftov", "ui"));
         if (!lore.isEmpty()) {
             stack.setData(DataComponentTypes.LORE, ItemLore.lore(Text.mm(lore)));
         }
@@ -50,18 +52,18 @@ public final class UiItems {
     }
 
     public static ItemStack locked(String reason) {
-        ItemStack stack = button("craftov:ui/locked", "<#6B7079>未解锁格位", List.of("<#8A8F98>" + reason), LOCKED);
+        ItemStack stack = button("craftov:ui/locked", "<dim>未解锁格位", List.of("<muted>" + reason), LOCKED);
         return stack;
     }
 
     public static ItemStack lobbyMenu() {
-        return button("craftov:ui/terminal", "<gradient:#F2C94C:#F2994A>战术终端</gradient> <#8A8F98>(右键)",
-                List.of("<#9AA0A6>开始行动、仓库、商人、交易行、干员……", "<#9AA0A6>也可以输入 <white>/cv</white> 打开"), LOBBY_MENU);
+        return button("craftov:ui/terminal", "<accent>战术终端</accent> <muted>(右键)",
+                List.of("<muted>开始行动、仓库、商人、交易行、干员……", "<muted>也可以输入 <white>/cv</white> 打开"), LOBBY_MENU);
     }
 
     public static ItemStack raidTerminal() {
-        return button("craftov:ui/terminal", "<gradient:#F2C94C:#F2994A>战术终端</gradient> <#8A8F98>(右键)",
-                List.of("<#9AA0A6>安全箱 · 撤离点 · 小队 · 技能",
-                        "<#9AA0A6>潜行+F 释放干员技能"), RAID_TERMINAL);
+        return button("craftov:ui/terminal", "<accent>战术终端</accent> <muted>(右键)",
+                List.of("<muted>安全箱 · 撤离点 · 小队 · 技能",
+                        "<muted>潜行+F 释放干员技能"), RAID_TERMINAL);
     }
 }

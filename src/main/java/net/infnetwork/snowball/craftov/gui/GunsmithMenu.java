@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -29,7 +30,7 @@ final class GunsmithMenu extends Menu {
     private int selected = -1;
 
     GunsmithMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>改枪台"));
+        super(viewer, 6, "gunsmith", Text.mm("改枪台"));
         this.plugin = plugin;
     }
 
@@ -74,7 +75,7 @@ final class GunsmithMenu extends Menu {
         PlayerInventory inv = viewer.getInventory();
         List<Integer> guns = carriedSlots(true);
         if (guns.isEmpty()) {
-            set(22, UiItems.button("craftov:ui/icon_help", "<#9AA0A6>身上没有枪", List.of("<#9AA0A6>把枪放进物品栏再来")));
+            set(22, UiItems.button("craftov:ui/icon_help", "<muted>身上没有枪", List.of("<muted>把枪放进物品栏再来")));
             return;
         }
         if (!guns.contains(selected)) {
@@ -100,13 +101,13 @@ final class GunsmithMenu extends Menu {
             ItemDef fitted = plugin.registry().get(fittedId(gun, slot));
             if (SIGHT.equals(slot) && "none".equals(spec.mount())) {
                 ItemDef builtIn = plugin.registry().get(spec.scope());
-                set(at, UiItems.button("craftov:ui/locked", "<#9AA0A6>瞄准镜（固定）",
-                        List.of("<#9AA0A6>自带 " + (builtIn == null ? "机械瞄具" : builtIn.name()))));
+                set(at, UiItems.button("craftov:ui/locked", "<muted>瞄准镜（固定）",
+                        List.of("<muted>自带 " + (builtIn == null ? "机械瞄具" : builtIn.name()))));
             } else if (fitted != null) {
-                button(at, withNote(plugin.items().create(fitted, 1), List.of("", "<#FF8A80>点击拆下")), e -> remove(slot));
+                button(at, withNote(plugin.items().create(fitted, 1), List.of("", "<danger>点击拆下")), e -> remove(slot));
             } else {
-                set(at, UiItems.button("craftov:ui/blank", "<#9AA0A6>" + slotTitle(slot) + "：空",
-                        List.of(SIGHT.equals(slot) ? "<#9AA0A6>机械瞄具" : "<#9AA0A6>从下方选择配件安装")));
+                set(at, UiItems.button("craftov:ui/blank", "<muted>" + slotTitle(slot) + "：空",
+                        List.of(SIGHT.equals(slot) ? "<muted>机械瞄具" : "<muted>从下方选择配件安装")));
             }
         }
         int col = 0;
@@ -118,18 +119,18 @@ final class GunsmithMenu extends Menu {
             ItemStack icon = stack.clone();
             icon.setAmount(1);
             List<String> note = new ArrayList<>();
-            note.add("<#8A8F98>" + slotTitle(slotOf(def)));
+            note.add("<muted>" + slotTitle(slotOf(def)));
             if (why != null) {
-                note.add("<#FF8A80>" + why);
+                note.add("<danger>" + why);
             } else if (!sameKind) {
-                note.add("<#FF8A80>" + mixNote(gun, stack));
+                note.add("<danger>" + mixNote(gun, stack));
             } else {
                 List<String> changes = changes(gun, spec, def);
                 if (!changes.isEmpty()) {
-                    note.add("<#9AA0A6>装上后：");
+                    note.add("<muted>装上后：");
                     note.addAll(changes);
                 }
-                note.add("<#5BD16B>点击安装");
+                note.add("<ok>点击安装");
             }
             button(45 + col, withNote(icon, note), e -> install(slot));
             if (++col >= 9) {
@@ -137,8 +138,8 @@ final class GunsmithMenu extends Menu {
             }
         }
         if (col == 0) {
-            set(49, UiItems.button("craftov:ui/icon_help", "<#9AA0A6>身上没有配件", List.of(
-                    "<#9AA0A6>瞄准镜和配件可以在商人「配件」页购买，", "<#9AA0A6>也会出现在武器箱和保险箱里")));
+            set(49, UiItems.button("craftov:ui/icon_help", "<muted>身上没有配件", List.of(
+                    "<muted>瞄准镜和配件可以在商人「配件」页购买，", "<muted>也会出现在武器箱和保险箱里")));
         }
     }
 
@@ -182,11 +183,11 @@ final class GunsmithMenu extends Menu {
         }
         String why = misfit(gunDef.gun(), partDef);
         if (why != null) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>" + Text.escape(partDef.name()) + " " + why));
+            Notify.error(viewer, "" + Text.escape(partDef.name()) + " " + why);
             return;
         }
         if (kind(gun) != kind(part)) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>" + mixNote(gun, part)));
+            Notify.error(viewer, "" + mixNote(gun, part));
             return;
         }
         plugin.weapons().reset(viewer);
@@ -197,7 +198,7 @@ final class GunsmithMenu extends Menu {
         inv.setItem(selected, refit(gun, slot, partDef.id()));
         giveBack(old, gun);
         viewer.playSound(viewer.getLocation(), "craftov:gun.reload_done", 0.8f, 1.2f);
-        viewer.sendActionBar(Text.mm("<#5BD16B>已安装 " + partDef.coloredName()));
+        Notify.ok(viewer, "已安装 " + partDef.coloredName());
         plugin.tutorial().done(viewer, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.GUNSMITH);
         redraw();
     }

@@ -2,9 +2,11 @@ package net.infnetwork.snowball.craftov.hud;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
+import net.infnetwork.snowball.craftov.gui.Style;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
@@ -17,17 +19,22 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * The kill feed and kill streaks. Every kill in a raid goes into the feed of everyone in it, and a
- * soldier a player takes down goes into that player's own feed; the HUD shows the last five lines in
- * the top-right corner for a few seconds each (hud.feed.seconds) instead of the chat, where squad and
- * bounty messages stay readable. A player's kills within hud.feed.streak-seconds of each other build
- * a streak: each one plays the next of six rising kill chimes (craftov:kill.1 to kill.6) and shows a
- * badge above the crosshair. Without BetterHud the feed goes to the chat as before.
+ * The kill feed and kill streaks. A player's death goes into the feeds of the killer's squad and the
+ * victim's squad only (dead squadmates watching included): nobody else learns who died where, as in
+ * an extraction shooter (#6; hud.feed.raid-wide puts every death into everyone's feed instead). A
+ * soldier a player takes down goes into that player's own feed, and squad news (a squadmate gone
+ * quiet, a red item found, a bounty taken) comes in as plain lines ({@link #note}). The HUD shows the
+ * last five lines in the top-right corner for a few seconds each (hud.feed.seconds) instead of the
+ * chat. A player's kills within hud.feed.streak-seconds of each other build a streak: each one plays
+ * the next of six rising kill chimes (craftov:kill.1 to kill.6) and shows a badge above the crosshair.
+ * Without BetterHud the feed goes to the chat.
  */
 public final class KillFeedService implements Listener {
 
@@ -38,10 +45,10 @@ public final class KillFeedService implements Listener {
 
     /**
      * One line of a feed. Names and squads are kept rather than the text so each viewer sees their own
-     * name, their squad and enemies in their own colours.
+     * name, their squad and enemies in their own colours; a note is its finished text instead.
      */
     private record Entry(long tick, @Nullable UUID killer, String killerName, int killerSquad, String weapon, boolean headshot,
-                         @Nullable UUID victim, String victimName, int victimSquad, boolean soldier) {
+                         @Nullable UUID victim, String victimName, int victimSquad, boolean soldier, @Nullable String note) {
     }
 
     private record Streak(int count, long tick) {
@@ -64,15 +71,24 @@ public final class KillFeedService implements Listener {
      */
     public void playerDied(Raid raid, DamageService.@Nullable LastHit hit, RaidPlayer victim, @Nullable Player credited) {
         Entry entry;
+        Set<Integer> squads = new HashSet<>();
+        squads.add(victim.squad);
         if (hit == null || hit.attacker() == null) {
-            entry = new Entry(now(), null, "", -1, "", false, victim.uuid, victim.name, victim.squad, false);
+            entry = new Entry(now(), null, "", -1, "", false, victim.uuid, victim.name, victim.squad, false, null);
         } else {
             RaidPlayer by = raid.player(hit.attacker());
+            if (by != null) {
+                squads.add(by.squad);
+            }
             entry = new Entry(now(), hit.attacker(), hit.attackerName(), by == null ? -1 : by.squad, hit.weapon(), hit.headshot(),
-                    victim.uuid, victim.name, victim.squad, false);
+                    victim.uuid, victim.name, victim.squad, false, null);
         }
+        boolean everyone = plugin.getConfig().getBoolean("hud.feed.raid-wide", false);
         for (Player viewer : raid.online()) {
-            add(viewer, entry, raid);
+            RaidPlayer seat = raid.player(viewer.getUniqueId());
+            if (everyone || seat != null && squads.contains(seat.squad)) {
+                add(viewer, entry, raid);
+            }
         }
         if (credited != null) {
             streak(credited);
@@ -83,11 +99,19 @@ public final class KillFeedService implements Listener {
     public void soldierKilled(Raid raid, Player killer, String soldier, String weapon, boolean headshot) {
         RaidPlayer by = raid.player(killer.getUniqueId());
         add(killer, new Entry(now(), killer.getUniqueId(), killer.getName(), by == null ? -1 : by.squad, weapon, headshot,
-                null, soldier, -1, true), raid);
+                null, soldier, -1, true, null), raid);
         streak(killer);
     }
 
-    private void add(Player viewer, Entry entry, Raid raid) {
+    /**
+     * A plain line in one player's feed (MiniMessage, design tokens allowed): squad news such as a
+     * squadmate gone quiet, a red item found or a bounty taken. It counts toward no streak.
+     */
+    public void note(Player viewer, String miniMessage) {
+        add(viewer, new Entry(now(), null, "", -1, "", false, null, "", -1, false, miniMessage), plugin.raids().raidOf(viewer));
+    }
+
+    private void add(Player viewer, Entry entry, @Nullable Raid raid) {
         Deque<Entry> feed = feeds.computeIfAbsent(viewer.getUniqueId(), k -> new ArrayDeque<>());
         feed.addLast(entry);
         while (feed.size() > LINES) {
@@ -118,7 +142,10 @@ public final class KillFeedService implements Listener {
 
     // ------------------------------------------------------------------ reading
 
-    /** The feed lines the player's HUD shows now, oldest first (MiniMessage), up to {@link #LINES}. */
+    /**
+     * The feed lines the player's HUD shows now, oldest first, up to {@link #LINES}: MiniMessage with
+     * plain hex colours, which BetterHud parses itself.
+     */
     public List<String> lines(Player viewer) {
         Deque<Entry> feed = feeds.get(viewer.getUniqueId());
         List<String> out = new ArrayList<>();
@@ -129,13 +156,13 @@ public final class KillFeedService implements Listener {
         Raid raid = plugin.raids().raidOf(viewer);
         for (Entry entry : feed) {
             if (entry.tick() >= since) {
-                out.add(format(entry, viewer, raid));
+                out.add(Style.hex(format(entry, viewer, raid)));
             }
         }
         return out;
     }
 
-    /** Every line the player's feed still holds, however old (for /cv feed). */
+    /** Every line the player's feed still holds, however old (for /cv feed and /cv hud), oldest first. */
     public List<String> allLines(Player viewer) {
         Deque<Entry> feed = feeds.get(viewer.getUniqueId());
         List<String> out = new ArrayList<>();
@@ -154,42 +181,52 @@ public final class KillFeedService implements Listener {
         return last == null || now() - last.tick() > streakTicks() ? 0 : last.count();
     }
 
-    /** The badge above the crosshair for a fresh kill (MiniMessage), or "" once it has faded. */
+    /**
+     * The badge above the crosshair for a fresh kill, or "" once it has faded: MiniMessage with a plain
+     * hex colour (BetterHud parses it), stepping from the accent to the danger colour as the streak grows.
+     */
     public String badge(Player player) {
         Streak last = streaks.get(player.getUniqueId());
         if (last == null || now() - last.tick() > Math.round(plugin.getConfig().getDouble("hud.feed.badge-seconds", 2.5) * 20)) {
             return "";
         }
-        return switch (Math.min(TIERS, last.count())) {
-            case 1 -> "<#F2C94C>击败";
-            case 2 -> "<#F2C94C>双杀";
-            case 3 -> "<#FFB74D>三杀";
-            case 4 -> "<#FF9A3C>四杀";
-            case 5 -> "<#FF6B4D>五杀";
-            default -> "<#FF4D4D>" + last.count() + " 连杀 · 无人能挡";
+        int tier = Math.min(TIERS, last.count());
+        String color = TextColor.lerp(Math.max(0, tier - 2) / (float) (TIERS - 2), Style.color(Style.ACCENT), Style.color(Style.DANGER))
+                .asHexString();
+        return Style.tag(color) + switch (tier) {
+            case 1 -> "击败";
+            case 2 -> "双杀";
+            case 3 -> "三杀";
+            case 4 -> "四杀";
+            case 5 -> "五杀";
+            default -> last.count() + " 连杀 · 无人能挡";
         };
     }
 
+    /** One line in the viewer's colours, MiniMessage with the design tokens. */
     private String format(Entry entry, Player viewer, @Nullable Raid raid) {
+        if (entry.note() != null) {
+            return entry.note();
+        }
         String victim = name(entry.victim(), entry.victimName(), entry.victimSquad(), viewer, raid, entry.soldier());
         if (entry.killer() == null) {
-            return "<#8A8F98>☠ " + victim;
+            return "<muted>☠ " + victim;
         }
         return name(entry.killer(), entry.killerName(), entry.killerSquad(), viewer, raid, false)
-                + " <#8A8F98>[" + Text.escape(entry.weapon()) + "]" + (entry.headshot() ? " <#FF4D4D>◎" : "")
-                + " <#8A8F98>→ " + victim;
+                + " <muted>[" + Text.escape(entry.weapon()) + "]" + (entry.headshot() ? " <danger>◎" : "")
+                + " <muted>→ " + victim;
     }
 
-    /** A name in the viewer's colours: gold for themselves, green for their squad, red for enemies, grey for soldiers. */
+    /** A name in the viewer's colours: amber for themselves, green for their squad, red for enemies, white for soldiers. */
     private static String name(@Nullable UUID id, String name, int squad, Player viewer, @Nullable Raid raid, boolean soldier) {
         String color;
         if (soldier) {
-            color = "#C8CCD2";
+            color = "text";
         } else if (viewer.getUniqueId().equals(id)) {
-            color = "#F2C94C";
+            color = "accent";
         } else {
             RaidPlayer self = raid == null ? null : raid.player(viewer.getUniqueId());
-            color = self != null && squad >= 0 && self.squad == squad ? "#5BD16B" : "#FF8A80";
+            color = self != null && squad >= 0 && self.squad == squad ? "ok" : "danger";
         }
         return "<" + color + ">" + Text.escape(name);
     }

@@ -69,8 +69,8 @@ public final class ProfileService implements Listener {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS");
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String JOURNAL = ".unsaved";
-    private static final String LOCKED = "<#FF4D4D>你的档案读取失败，为免覆盖原有数据已暂停登录。\n\n"
-            + "<#9AA0A6>原文件已原样保留，请联系管理员修复。";
+    private static final String LOCKED = "<danger>你的档案读取失败，为免覆盖原有数据已暂停登录。\n\n"
+            + "<muted>原文件已原样保留，请联系管理员修复。";
 
     private final Plugin plugin;
     private final Path dir;
@@ -656,6 +656,7 @@ public final class ProfileService implements Listener {
             if (d.mailed == null) d.mailed = new ArrayList<>();
             d.bounties.removeIf(claim -> claim == null || claim.victim == null);
         }
+        net.infnetwork.snowball.craftov.lobby.TutorialService.migrate(p);
     }
 
     private void writeAsync(Profile profile) {

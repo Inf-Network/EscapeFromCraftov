@@ -16,10 +16,20 @@
 //   info     the inventory screen's crafting grid shows the five info cells (raw 0..4) after a
 //            full resync and after a click on them; a click on raw 3 opens the secure container;
 //            the player never holds an info cell afterwards (server-side count).
+//   cursor   gear left on the cursor when the inventory screen closes goes back on: the helmet taken
+//            off with the backpack full, and the empty starter backpack taken off (it fits no cell);
+//            nothing reaches the stash mailbox.
 //   stash    three items picked with shift-click and sold with two clicks of the sell button: money
 //            goes up by exactly the three sell prices shown in their lore; a single click on the
 //            sell button, or plain clicks on items, never sell anything; every tab and every sort
-//            shows the same items in total.
+//            shows the same items in total. A deposit that tops up a picked stack while the sale
+//            is armed disarms it: the next click sells nothing, the one after sells the new amount.
+//   trader   an account with no helmet, no backpack and a full stash buys a helmet and a backpack
+//            from the trader: both go on (the room check knows they are worn), none is refused.
+//   preset   a preset saved before the zone rules (a bandage on key 1, a rifle in a rig cell) is
+//            applied: the bandage lands on a quick key and the rifle on a gun key.
+//   secure   a secure record above the stack size (80 rounds, stack 60) shift-clicked into the box
+//            on the search screen: the box gets one stack and the secure container keeps 20.
 //   loot     two bots in one proving-ground raid share the armory weapons box and click at random
 //            500 times between them (every click mode, number keys, double clicks, clicks outside):
 //            the box's own cells only ever sit in its 6x6 block, no interface item reaches a carry
@@ -27,11 +37,17 @@
 //            bots (packed contents counted), in both secure containers and on the ground nearby
 //            add up to what there was before.
 //
-//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info stash loot]
+//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info cursor stash trader preset secure loot]
 //
-// The server needs test.enabled (loot queues for the proving ground). Bots use random names (new
-// accounts with the starter kit). Prints PASS/FAIL lines and exits with the number of failures.
+// The server needs test.enabled (secure and loot queue for the proving ground). Bots use random
+// names (new accounts with the starter kit); trader, preset and secure prepare the profile by
+// editing its JSON while the bot is offline (CRAFTOV_DATA = the server's plugins/Craftov folder,
+// default ../../server/run/plugins/Craftov). Prints PASS/FAIL lines and exits with the number of
+// failures.
 const mineflayer = require('mineflayer')
+const crypto = require('crypto')
+const fs = require('fs')
+const path = require('path')
 const rcon = require('./rcon')
 
 const PORT = Number(process.env.PORT || 25565)
@@ -42,7 +58,8 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const cmd = c => rcon(c, RCON).then(r => r.replace(/§./g, ''))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'stash', 'loot']
+const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'cursor', 'stash', 'trader', 'preset', 'secure', 'loot']
+const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
 const failures = []
 function check (name, ok, detail) {
   if (!ok) failures.push(name)
@@ -313,6 +330,50 @@ async function info () {
   bot.quit()
 }
 
+/** The id of what the server says the bot wears in `part` (head, chest, legs, feet), or null. */
+async function wornId (bot, part) {
+  const out = await dataOf(bot, `equipment.${part}.components."minecraft:custom_data".PublicBukkitValues."craftov:id"`)
+  return out ? out.replace(/"/g, '') : null
+}
+
+async function cursor () {
+  const bot = await make('Cc')
+  await settle(bot)
+  const helmet = await wornId(bot, 'head')
+  // The starter backpack (pack_1) is empty: fill its cells with vests (armour goes only there, the
+  // vest slot is taken), so the helmet has no cell to go to once it is off.
+  const freePack = () => PACK_CELLS.filter(i => !bot.inventory.slots[i])
+  for (let n = freePack().length; n > 0; n--) await cmd(`cv give ${bot.username} armor_1 1`)
+  await settle(bot, 700)
+  check('cursor: the backpack is full of vests', freePack().length === 0 && where(bot, 'armor_1').length > 0, where(bot, 'armor_1'))
+  bot.msgs.length = 0
+  rawClick(bot, 0, 5, 0, 0) // the helmet onto the cursor
+  await settle(bot)
+  const onCursor = idOf(bot.inventory.selectedItem)
+  bot._client.write('close_window', { windowId: 0 })
+  bot.inventory.selectedItem = null
+  await sleep(1000)
+  const back = await wornId(bot, 'head')
+  check('cursor: a helmet left in hand with the backpack full goes back on', !!helmet && onCursor === helmet && back === helmet,
+    { worn: helmet, cursor: onCursor, after: back })
+  // Make room again, then take the (empty) backpack off onto the cursor.
+  await cmd(`clear ${bot.username} *[minecraft:custom_data~{PublicBukkitValues:{"craftov:id":"armor_1"}}]`)
+  await settle(bot, 600)
+  const pack = await wornId(bot, 'feet')
+  rawClick(bot, 0, 8, 0, 0)
+  await settle(bot)
+  const packOnCursor = idOf(bot.inventory.selectedItem)
+  bot._client.write('close_window', { windowId: 0 })
+  bot.inventory.selectedItem = null
+  await sleep(1000)
+  const packBack = await wornId(bot, 'feet')
+  check('cursor: an empty backpack left in hand goes back on', !!pack && packOnCursor === pack && packBack === pack,
+    { worn: pack, cursor: packOnCursor, after: packBack })
+  const mailed = bot.msgs.filter(m => m.includes('仓库邮箱'))
+  check('cursor: nothing went to the stash mailbox', mailed.length === 0, mailed)
+  bot.quit()
+}
+
 async function stash () {
   const bot = await make('Cs')
   await settle(bot)
@@ -359,7 +420,143 @@ async function stash () {
   for (let s = 0; s < 4; s++) { await bot.clickWindow(46, 0, 0); await settle(bot, 250); counts.push(total()) }
   check('stash: the tabs together show every item once', sum === left, `tabs ${sum}, all ${left}`)
   check('stash: every sort shows the same items', counts.every(c => c === left), counts)
+  // An armed sale, then a deposit that tops up the picked stack: the next click only arms it again.
+  const bottomOf = id => { for (let i = win().inventoryStart; i < win().slots.length; i++) if (idOf(win().slots[i]) === id) return i; return -1 }
+  const stashOf = id => items().filter(([, s]) => idOf(s) === id)
+  const priceOf = s => Number((loreOf(s).find(l => l.includes('商人收购价')) || '').replace(/[^\d]/g, '') || 0)
+  await cmd(`cv give ${bot.username} screws 1`); await settle(bot, 600)
+  await bot.clickWindow(bottomOf('screws'), 0, 0); await settle(bot)
+  const [[screwSlot]] = stashOf('screws').length ? stashOf('screws') : [[-1]]
+  if (screwSlot < 0) return check('stash: a screw box is deposited', false)
+  await bot.clickWindow(screwSlot, 0, 1); await settle(bot)
+  const money0 = balance()
+  await bot.clickWindow(48, 0, 0); await settle(bot) // armed: one screw box
+  await cmd(`cv give ${bot.username} screws 2`); await settle(bot, 600)
+  await bot.clickWindow(bottomOf('screws'), 0, 0); await settle(bot) // tops the picked record up to 3
+  const merged = stashOf('screws')
+  check('stash: the deposit tops up the picked stack', merged.length === 1 && merged[0][1].count === 3, merged.map(([i, s]) => `${i}:${s.count}`))
+  await bot.clickWindow(48, 0, 0); await settle(bot)
+  check('stash: a click after the deposit only arms the sale again', balance() === money0 && stashOf('screws').length === 1,
+    `${money0} -> ${balance()}, screws ${stashOf('screws').length}`)
+  const price3 = priceOf(stashOf('screws')[0]?.[1])
+  await bot.clickWindow(48, 0, 0); await settle(bot, 600)
+  check('stash: the next click sells the stack as it now is', balance() - money0 === price3 && price3 > 0 && stashOf('screws').length === 0,
+    `gained ${balance() - money0}, shown ${price3}`)
   bot.closeWindow(win())
+  bot.quit()
+}
+
+// ------------------------------------------------------------------ prepared profiles
+
+function offlineUuid (name) {
+  const h = crypto.createHash('md5').update('OfflinePlayer:' + name).digest()
+  h[6] = (h[6] & 0x0f) | 0x30
+  h[8] = (h[8] & 0x3f) | 0x80
+  const x = h.toString('hex')
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`
+}
+const profileFile = name => path.join(DATA, 'data/players', offlineUuid(name) + '.json')
+const readProfile = name => JSON.parse(fs.readFileSync(profileFile(name), 'utf8'))
+const rec = (id, extra = {}) => Object.assign({ id, amount: 1 }, extra)
+
+/** Logs off and waits until the profile has been written. */
+async function leave (bot) {
+  const file = profileFile(bot.username)
+  const before = fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0
+  bot.quit()
+  await waitFor(() => fs.existsSync(file) && fs.statSync(file).mtimeMs > before, 8000)
+  await sleep(500)
+}
+
+/** A new account that joins once, is edited offline by `mutate` and joins again. */
+async function prepared (prefix, mutate) {
+  const first = await make(prefix)
+  await leave(first)
+  const p = readProfile(first.username)
+  mutate(p)
+  fs.writeFileSync(profileFile(first.username), JSON.stringify(p, null, 2))
+  return make(prefix)
+}
+
+async function trader () {
+  const bot = await prepared('Ct', p => {
+    p.loadout = { 37: rec('rig_1') }
+    p.stash = []
+    p.stashCapacity = 0
+    p.money = 100000
+  })
+  await settle(bot)
+  let w = await openWith(bot, () => bot.chat('/cv trader'))
+  if (!w) return check('trader: opens', false)
+  const buy = async (tab, id) => {
+    await bot.clickWindow(tab, 0, 0); await settle(bot, 400)
+    w = bot.currentWindow || w
+    const slot = w.slots.slice(0, 45).findIndex(s => idOf(s) === id)
+    if (slot >= 0) { await bot.clickWindow(slot, 0, 0); await settle(bot, 500) }
+    return slot
+  }
+  bot.msgs.length = 0
+  const helmetSlot = await buy(48, 'helmet_1')
+  const packSlot = await buy(49, 'pack_1')
+  bot.closeWindow(bot.currentWindow || w)
+  await sleep(600)
+  const head = await wornId(bot, 'head')
+  const feet = await wornId(bot, 'feet')
+  const refused = bot.msgs.filter(m => m.includes('放不下'))
+  check('trader: a helmet bought with a full stash and no backpack goes on', helmetSlot >= 0 && head === 'helmet_1', { helmetSlot, head })
+  check('trader: so does a backpack', packSlot >= 0 && feet === 'pack_1', { packSlot, feet })
+  check('trader: neither purchase is refused', refused.length === 0, refused)
+  bot.quit()
+}
+
+async function preset () {
+  const bot = await prepared('Cp', p => {
+    p.loadout = { 36: rec('pack_1'), 37: rec('rig_1') }
+    p.stash = [rec('bandage'), rec('m4c', { uid: crypto.randomUUID(), ammo: 0 })]
+    p.presets = [{ name: 'old', slots: { 0: 'bandage', 9: 'm4c', 36: 'pack_1', 37: 'rig_1' }, amounts: { 0: 1, 9: 1, 36: 1, 37: 1 } }]
+    p.money = 0 // everything comes from the stash
+  })
+  await settle(bot)
+  const menu = await openWith(bot, () => bot.chat('/cv'))
+  const presets = await openWith(bot, () => bot.clickWindow(21, 0, 0))
+  if (!presets) return check('preset: the preset screen opens', false)
+  await bot.clickWindow(10, 0, 0) // apply it
+  await sleep(800)
+  bot.closeWindow(bot.currentWindow || presets || menu)
+  await sleep(400)
+  // A click outside the inventory with a stale state id: the server sends all of it again (the
+  // menus changed it while open, and mineflayer does not mirror that into bot.inventory).
+  rawClick(bot, 0, -999, 0, 0)
+  await settle(bot, 800)
+  const bandage = where(bot, 'bandage').map(zoneOf)
+  const rifle = where(bot, 'm4c').map(zoneOf)
+  check('preset: the bandage saved on key 1 lands on a quick key', bandage.length === 1 && bandage[0] === 'quick', bandage)
+  check('preset: the rifle saved in the rig lands on a gun key', rifle.length === 1 && rifle[0] === 'gun', rifle)
+  bot.quit()
+}
+
+async function secure () {
+  const bot = await prepared('Cq', p => { p.secure = [rec('ammo_556_m855', { amount: 80 })] })
+  bot.chat('/cv queue proving NORMAL SOLO')
+  const inRaid = () => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
+  if (!await waitFor(inRaid, 150000)) return check('secure: in a raid', false, bot.worldName)
+  await sleep(6000)
+  const w = await openBox(bot)
+  if (!w) return check('secure: the armory box opens', false)
+  await waitFor(() => BOX_CELLS.every(raw => !json(w.slots[raw]).includes('search_')), 90000)
+  await settle(bot)
+  const ammo = cells => cells.reduce((n, raw) => n + (idOf(w.slots[raw]) === 'ammo_556_m855' ? w.slots[raw].count : 0), 0)
+  const before = { box: ammo(BOX_CELLS), secure: ammo(SECURE) }
+  const cell = SECURE.find(raw => idOf(w.slots[raw]) === 'ammo_556_m855')
+  if (cell === undefined) return check('secure: the record shows in a secure cell', false)
+  rawClick(bot, w.id, cell, 0, 1) // shift-click: into the box
+  await settle(bot, 600)
+  const after = { box: ammo(BOX_CELLS), secure: ammo(SECURE) }
+  check('secure: shift-click moves one stack into the box and keeps the rest', after.box - before.box === 60 && after.secure === 20,
+    { before, after })
+  bot.closeWindow(bot.currentWindow || w)
+  await cmd(`execute as ${bot.username} at @s run tp @s 106.5 65 8.5`)
+  await waitFor(() => !inRaid(), 40000)
   bot.quit()
 }
 
@@ -490,7 +687,7 @@ async function loot () {
 }
 
 ;(async () => {
-  const all = { zones, rules, matrix, info, stash, loot }
+  const all = { zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot }
   for (const name of scenarios) {
     try {
       await all[name]()

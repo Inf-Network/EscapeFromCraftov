@@ -24,7 +24,7 @@ public final class MenuService {
             return false;
         }
         if (plugin.raids().isSpectating(player)) {
-            Notify.error(player, "观战中无法使用该功能，按 Shift 返回大厅。");
+            Notify.error(player, "观战中无法使用该功能，按 <key:key.sneak> 返回大厅。");
             return false;
         }
         return notInRange(player);
@@ -50,8 +50,9 @@ public final class MenuService {
             return;
         }
         if (lobbyOnly(player)) {
-            new MainMenu(plugin, player).open();
+            // First, so the menu's guide checklist and the shine on the next step's button count it.
             plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.TERMINAL);
+            new MainMenu(plugin, player).open();
         }
     }
 

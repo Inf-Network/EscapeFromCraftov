@@ -49,6 +49,30 @@ craftov_hud:
         x: 4
         y: 79
     '7':
+      name: craftov_objective_raid_0
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 66
+    '8':
+      name: craftov_objective_raid_1
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 79
+    '9':
+      name: craftov_objective_raid_2
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 92
+    '10':
       name: craftov_feed_1
       gui:
         x: 100
@@ -56,7 +80,7 @@ craftov_hud:
       pixel:
         x: -6
         y: 40
-    '8':
+    '11':
       name: craftov_feed_2
       gui:
         x: 100
@@ -64,7 +88,7 @@ craftov_hud:
       pixel:
         x: -6
         y: 52
-    '9':
+    '12':
       name: craftov_feed_3
       gui:
         x: 100
@@ -72,7 +96,7 @@ craftov_hud:
       pixel:
         x: -6
         y: 64
-    '10':
+    '13':
       name: craftov_feed_4
       gui:
         x: 100
@@ -80,7 +104,7 @@ craftov_hud:
       pixel:
         x: -6
         y: 76
-    '11':
+    '14':
       name: craftov_feed_5
       gui:
         x: 100
@@ -88,7 +112,7 @@ craftov_hud:
       pixel:
         x: -6
         y: 88
-    '12':
+    '15':
       name: craftov_alert
       gui:
         x: 50
@@ -96,7 +120,7 @@ craftov_hud:
       pixel:
         x: -150
         y: 30
-    '13':
+    '16':
       name: craftov_prompt
       gui:
         x: 50
@@ -104,7 +128,7 @@ craftov_hud:
       pixel:
         x: -100
         y: 14
-    '14':
+    '17':
       name: craftov_extract
       gui:
         x: 50
@@ -112,7 +136,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 26
-    '15':
+    '18':
       name: craftov_downed
       gui:
         x: 50
@@ -120,7 +144,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 40
-    '16':
+    '19':
       name: craftov_med
       gui:
         x: 50
@@ -128,7 +152,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 58
-    '17':
+    '20':
       name: craftov_lobby
       gui:
         x: 0
@@ -136,7 +160,15 @@ craftov_hud:
       pixel:
         x: 4
         y: 4
-    '18':
+    '21':
+      name: craftov_objective
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 51
+    '22':
       name: craftov_streak
       gui:
         x: 50

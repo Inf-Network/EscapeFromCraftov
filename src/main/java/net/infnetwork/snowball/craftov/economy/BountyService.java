@@ -112,26 +112,20 @@ public final class BountyService {
         return null;
     }
 
-    /** Raid start: everyone hears who carries a price in this raid. */
-    public void announce(Raid raid) {
+    /**
+     * Who carries a price in this raid, for the landing briefing every player in it gets
+     * (RaidManager#brief), or null when nobody does: "名字 ◈金额" pairs.
+     */
+    public @Nullable String targets(Raid raid) {
         StringBuilder targets = new StringBuilder();
         for (RaidPlayer rp : raid.players.values()) {
             long amount = inRaid(rp);
             if (amount > 0) {
                 targets.append(targets.isEmpty() ? "" : "  ").append("<white>").append(Text.escape(rp.name))
                         .append(" <accent>◈").append(Text.money(amount));
-                Player marked = Bukkit.getPlayer(rp.uuid);
-                if (marked != null) {
-                    Notify.info(marked, "<danger>你身上有 <accent>◈" + Text.money(amount) + " <danger>的悬赏，所有人都知道你在这局。");
-                }
             }
         }
-        if (targets.isEmpty()) {
-            return;
-        }
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<danger>☠ 本局悬赏目标：" + targets));
-        }
+        return targets.isEmpty() ? null : targets.toString();
     }
 
     /**

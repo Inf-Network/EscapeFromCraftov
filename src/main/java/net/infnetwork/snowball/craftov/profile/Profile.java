@@ -64,6 +64,10 @@ public final class Profile {
     public boolean tutorialDone;
     /** The old guide's step counter (the first n steps done), turned into {@link #tutorialMask} on load. */
     public int tutorialStep;
+    /** The first-join briefing was answered (either button): it no longer opens by itself. */
+    public boolean briefed;
+    /** The player chose to skip the guide: no objective line, waypoints or reminders. */
+    public boolean guideMuted;
     /**
      * The client's field of view (30..110) and FOV Effects slider (0..1) as the player declared them
      * with /cv fov (FovService): the server cannot read either, and the zoom of every sight depends on
@@ -172,6 +176,11 @@ public final class Profile {
     public static final class Deployment {
         /** Raid.key: unique across restarts, unlike the raid id. */
         public String raid = "";
+        /**
+         * A training raid (TrainingService): however it ends, it is undone like a void raid, but
+         * without a letter or compensation, since nothing in it was ever at stake.
+         */
+        public boolean training;
         /** Map and difficulty names, for the letter that says the raid was void. */
         public String map = "";
         public String tier = "";

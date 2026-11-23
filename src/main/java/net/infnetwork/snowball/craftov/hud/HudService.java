@@ -98,9 +98,15 @@ public final class HudService {
         String[] feed = data.feed(player);
         boolean inRaid = data.inRaid(player);
         var gun = data.gun(player);
+        var objective = plugin.tutorial().objective(player);
+        // The objective's own marker is on the compass outside raids and on the training course
+        // (BetterHudBridge); a raid's compass shows its extracts instead.
+        var raid = plugin.raids().raidOf(player);
+        boolean marked = objective != null && objective.target() != null && (!inRaid || raid != null && raid.training());
         return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
                 gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
-                alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "");
+                alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "",
+                data.objective(player, objective), marked);
     }
 
     /**
@@ -130,7 +136,8 @@ public final class HudService {
         HudExtra e = s.extra();
         return "alert=" + Text.plain(Text.mm(e.alert())) + " | feed=" + String.join(" / ", java.util.Arrays.stream(e.feed())
                 .filter(line -> !line.isEmpty()).map(line -> Text.plain(Text.mm(line))).toList())
-                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | value=" + s.value() + " | time=" + s.time() + "@" + e.timeState()
+                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | objective=" + Text.plain(Text.mm(e.objective()))
+                + (e.pointer() ? " (compass)" : "") + " | value=" + s.value() + " | time=" + s.time() + "@" + e.timeState()
                 + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
                 + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
                 .map(m -> Text.plain(Text.mm(m))).toList())
@@ -261,11 +268,18 @@ public final class HudService {
                 var profile = plugin.profiles().get(player);
                 infoBar.name(Text.mm("<accent>◈ " + Text.money(profile.money) + "  <muted>Lv." + profile.level + "  "
                         + plugin.ranks().tierName(profile.rankPoints) + "  <muted>战备值 <white>◈" + Text.moneyShort(plugin.carry().gearValue(player))
-                        + "  <muted>干员 " + plugin.operators().of(player).name()));
+                        + "  <muted>干员 " + plugin.operators().of(player).name()
+                        + objectiveLine(player)));
                 infoBar.progress(1f);
                 infoBar.color(BossBar.Color.WHITE);
             }
         }
+    }
+
+    /** The guide's goal after the vanilla lobby bar, for players without BetterHud. */
+    private String objectiveLine(Player player) {
+        String line = data.objective(player, plugin.tutorial().objective(player));
+        return line.isEmpty() ? "" : "  " + line;
     }
 
     private static String roman(int n) {

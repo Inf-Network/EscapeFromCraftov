@@ -66,8 +66,12 @@ public final class LobbyService implements Listener {
             {"operator", "干员", "选择干员与技能", "craftov:ui/icon_operator"},
             {"escort", "护航大厅", "发布或接取护航委托", "craftov:ui/icon_escort"},
             {"collection", "收藏室", "收藏品图鉴", "craftov:ui/icon_collection"},
-            {"rank", "排行榜", "排位赛积分", "craftov:ui/icon_rank"},
+            {"rank", "排位 · 战绩", "排行榜 · 行动报告", "craftov:ui/icon_rank"},
     };
+
+    /** The range weapon rack's spot on the hangar's firing line (and on every range plot, shifted). */
+    static final double RACK_X = 9.5;
+    static final double RACK_Z = -4.4;
 
     private final CraftovPlugin plugin;
     private @Nullable World world;
@@ -174,7 +178,7 @@ public final class LobbyService implements Listener {
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "rank_board");
         });
         // Weapon rack at the back of the firing line: loaner guns and optics for the range.
-        Location rack = new Location(world, 9.5, LobbyBuilder.Y + 1, -4.4);
+        Location rack = new Location(world, RACK_X, LobbyBuilder.Y + 1, RACK_Z);
         world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
             d.setItemStack(UiItems.button("craftov:ui/tab_weapon", "靶场武器架", List.of(), "station"));
             d.setBillboard(Display.Billboard.VERTICAL);
@@ -219,6 +223,25 @@ public final class LobbyService implements Listener {
                     });
         }
         refreshLeaderboard();
+    }
+
+    /**
+     * Where a station stands, at floor level ("range_rack" for the range entrance), or null for one
+     * the hangar does not have. The new-player guide points here.
+     */
+    public @Nullable Location station(String id) {
+        if (world == null) {
+            return null;
+        }
+        if ("range_rack".equals(id)) {
+            return new Location(world, RACK_X, LobbyBuilder.Y + 1, RACK_Z);
+        }
+        for (int i = 0; i < STATIONS.length && i < STATIONS_XZ.length; i++) {
+            if (STATIONS[i][0].equals(id)) {
+                return new Location(world, STATIONS_XZ[i][0] + 0.5, LobbyBuilder.Y + 1, STATIONS_XZ[i][1] + 0.5);
+            }
+        }
+        return null;
     }
 
     private void refreshLeaderboard() {
@@ -462,7 +485,7 @@ public final class LobbyService implements Listener {
                 }
             }
         }
-        Text.send(player, "<accent>欢迎来到锈港行动！<muted>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
+        Text.send(player, "<accent>欢迎来到 Craftov！<muted>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
     }
 
     @EventHandler
@@ -506,6 +529,7 @@ public final class LobbyService implements Listener {
             if (player.isOnline()) {
                 enterLobby(player);
                 plugin.hud().onJoin(player);
+                plugin.tutorial().briefOnJoin(player);
             }
         });
     }
@@ -608,6 +632,18 @@ public final class LobbyService implements Listener {
         }
         event.setCancelled(true);
         plugin.menus().openStation(event.getPlayer(), station);
+    }
+
+    /**
+     * Targets never catch fire. The training ground is open to the sky, and its bare-headed zombie
+     * targets stood in flames in daylight although they are told not to burn (the range's targets
+     * are indoors and wear helmets).
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onTargetCombust(org.bukkit.event.entity.EntityCombustEvent event) {
+        if (isTarget(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

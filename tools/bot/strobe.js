@@ -63,6 +63,8 @@ function soldiers (bot) {
   return Object.values(bot.entities).filter(e => e !== bot.entity && SOLDIERS.includes(e.name))
 }
 
+/** Plain text of an action-bar packet (as JSON) for a log line. */
+const plainBar = s => [...s.matchAll(/"value":"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]).filter(t => !/^#|^craftov:|^white$|^key\./.test(t)).join('')
 const pick = (bot) => bot._client.write('pick_item_from_block', { position: { x: 0, y: 0, z: 0 }, includeData: false })
 
 /**
@@ -216,6 +218,10 @@ function openSpotNear (bot, soldier) {
   const swapAt = Date.now()
   await rcon(`item replace entity ${name} armor.head with minecraft:iron_helmet`)
   const behind = soldiers(bot).filter(e => insideArena(e.position) && e.position.distanceTo(blast) <= 10)
+  if (!behind.length) {
+    log('no soldier in range: nearest soldiers', soldiers(bot).map(e => ({ at: e.position.floored().toString(), d: e.position.distanceTo(blast).toFixed(1), inside: insideArena(e.position) }))
+      .sort((a, b) => a.d - b.d).slice(0, 6))
+  }
   log('flashbang at', blast.toString(), 'soldiers behind the wall in range', behind.map(e => ({ id: e.id, d: e.position.distanceTo(blast).toFixed(1) })))
   // Watch them for the 3.5 s the old stun lasted, counting movement from 0.5 s in (a stunned soldier
   // still slides a little when its path is cut) and any shot fired next to one of them.
@@ -269,13 +275,17 @@ function openSpotNear (bot, soldier) {
   await sleep(1500)
   bot.setQuickBarSlot(heldSlot(bot, 'm4c') - 36)
   await sleep(1200)
+  // Each middle click steps the light off -> always on -> strobe and says so on the action bar, which
+  // shows one result line per 1.5 s (util/Notify): every click waits for its own line before the
+  // next, or two quick ones could be read as one.
   const barsFrom = bars.length
-  pick(bot)
-  await sleep(400)
-  pick(bot)
-  // The action bar shows one result line per 1.5 s (util/Notify): the second mode waits its turn.
-  await waitFor(() => bars.slice(barsFrom).some(b => b.includes('爆闪')), 3500)
+  for (let i = 0; i < 3 && !bars.slice(barsFrom).some(b => b.includes('爆闪')); i++) {
+    const n = bars.length
+    pick(bot)
+    await waitFor(() => bars.slice(n).some(b => b.includes('战术手电')), 3000)
+  }
   checks.strobeOn = bars.slice(barsFrom).some(b => b.includes('爆闪'))
+  if (!checks.strobeOn) log('no strobe: held slot', bot.quickBarSlot, 'm4c at', heldSlot(bot, 'm4c'), 'action bars', bars.slice(barsFrom).map(plainBar))
   // Light the first soldier within strobe range that shoots us: it is engaged and has a clear line.
   let target = null
   const waitFrom = hits.length

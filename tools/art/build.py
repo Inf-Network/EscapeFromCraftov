@@ -432,6 +432,14 @@ def knife_model(texture):
     return model
 
 
+# How far a knife drops in first person after a cut or a miss, and comes up when drawn, as a share of
+# vanilla's (the item definition's swap_animation_scale). The client lowers the item in hand after every
+# attack and raises it again over the attack interval (Player.resetAttackStrengthTicker): a knife,
+# held up enough for the gloved fist to show, dropped out of view at full scale and its 8-tick stab
+# (the STAB swing, which tips it forward at the crosshair) was never seen.
+KNIFE_SWAP_SCALE = 0.25
+
+
 def write_knife_item(name, frames_name, knife, held):
     """The item definition craftov:<name> of a knife, or of a skin of one (#106): its icon in menus
     (craftov:item/gui/<name>), otherwise `held`, held like a sword. F with the knife in hand runs its
@@ -465,7 +473,7 @@ def write_knife_item(name, frames_name, knife, held):
                   {'when': ['firstperson_righthand', 'firstperson_lefthand'],
                    'model': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
                              'entries': entries, 'fallback': gloved(held, 0)}}],
-        'fallback': model_ref(held)}, 'oversized_in_gui': True})
+        'fallback': model_ref(held)}, 'oversized_in_gui': True, 'swap_animation_scale': KNIFE_SWAP_SCALE})
 
 
 def load_knife_skins():

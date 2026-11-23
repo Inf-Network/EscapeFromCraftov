@@ -1107,5 +1107,6 @@
    "model": "craftov:item/knife_skin/machete_canopy"
   }
  },
- "oversized_in_gui": true
+ "oversized_in_gui": true,
+ "swap_animation_scale": 0.25
 }

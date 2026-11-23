@@ -41,6 +41,11 @@
 //            (pose CROUCHING), not standing in the roof. Under the same roof over a snow layer (a
 //            1.375 gap, room to crawl but not to crouch) the slide stops at its edge (reason wall)
 //            and A stands there, not crawling under it
+//   stairs   A slides at stone stairs going down from 1.5 to 2.5 blocks ahead of where it sits (the
+//            runway cut away under them): it follows them down (half a block at a time) and ends at
+//            least a block lower, further than on the flat, standing on a step, not in it; then
+//            at stairs going up: it climbs at least one step, ends shorter than on the flat, and
+//            stands on a step (the speed handed back at the end may carry it on by half a step)
 //   rejoin   A slides and quits mid-slide: its stand-in stands on the runway (not 0.6 into it), and
 //            when A comes back it is on the runway too
 //   body     A slides and is killed mid-slide: the body lies on the runway
@@ -67,7 +72,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 // rejoin before zones and cross (being shot puts A in a fight, and quitting in one is death), body last.
-const ALL = ['detect', 'box', 'boost', 'jump', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'cross', 'body']
+const ALL = ['detect', 'box', 'boost', 'jump', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'stairs', 'rejoin', 'zones', 'cross', 'body']
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ALL
 const tag = String(Math.floor(10000 + Math.random() * 90000))
@@ -988,6 +993,58 @@ async function low () {
   await toStart()
 }
 
+async function stairs () {
+  // Built before A sets off: it sits down about 46 (sprinting 900 ms from 40.5), the stairs start at 48.
+  const from = RX + 8
+  const steps = 5
+  const slide = async () => {
+    await sleep(2000)
+    await rcon(`cv slide ${A_NAME} stamina 100`)
+    await toStart()
+    const { ride } = await sprintAndSlide({ release: 100 })
+    const info = ride ? await slideEnded() : await slideInfo(A_NAME)
+    halt(A)
+    // The speed handed back at the end carries A on a little (down the next steps, going down).
+    await sleep(1200)
+    return { last: ride ? info.last : null, refused: info.refused, after: await slideInfo(A_NAME) }
+  }
+  /** On the top of a step (a whole or a half block up) between `low` and `high`, off the seat. */
+  const onStep = (r, low, high) => r.after.y !== null && Math.abs(r.after.y * 2 - Math.round(r.after.y * 2)) < 0.01 &&
+    r.after.y >= low - 1e-6 && r.after.y <= high + 1e-6 && !r.after.vehicle
+  const endY = r => r.last ? Number(r.last.to.split(',')[1]) : NaN
+  // Down: stairs facing back west, each a block lower than the last, then flat ground at the bottom.
+  await at(`fill ${from} ${RY - steps} ${RZ - 2} ${from + 14} ${RY} ${RZ + 2} minecraft:air`)
+  for (let k = 0; k < steps; k++) {
+    await at(`fill ${from + k} ${RY - k} ${RZ - 2} ${from + k} ${RY - k} ${RZ + 2} minecraft:stone_stairs[facing=west]`)
+  }
+  await at(`fill ${from + steps} ${RY - steps} ${RZ - 2} ${from + 14} ${RY - steps} ${RZ + 2} minecraft:smooth_stone`)
+  const down = await slide()
+  log('stairs down', down.last || `no slide: ${down.refused}`, down.after.text)
+  check('stairs: a slide follows stairs down, ending at least a block lower (not at a ledge)',
+    down.last && down.last.reason !== 'ledge' && down.last.reason !== 'wall' && endY(down) <= GROUND - 1 + 1e-6,
+    down.last && `${down.last.reason}, ${down.last.distance} blocks, from y ${GROUND} to ${endY(down)}`)
+  check('stairs: and further than on the flat (over 4.1 blocks)', down.last && down.last.distance > 4.1, down.last && down.last.distance)
+  check('stairs: and A stands on a step after it (or one further down), not in one', down.last && onStep(down, endY(down) - 1, endY(down)),
+    `y ${down.after.y}, ended at ${endY(down)}`)
+  // A off the stairs before they go, then the runway back and stairs going up: facing east, each a
+  // block higher than the last.
+  await toStart()
+  await at(`fill ${from} ${RY - steps} ${RZ - 2} ${from + 14} ${RY - 1} ${RZ + 2} minecraft:air`)
+  await at(`fill ${from} ${RY} ${RZ - 2} ${from + 14} ${RY} ${RZ + 2} minecraft:smooth_stone`)
+  for (let k = 0; k < steps; k++) {
+    await at(`fill ${from + k} ${GROUND + k} ${RZ - 2} ${from + k} ${GROUND + k} ${RZ + 2} minecraft:stone_stairs[facing=east]`)
+  }
+  const up = await slide()
+  log('stairs up', up.last || `no slide: ${up.refused}`, up.after.text)
+  check('stairs: a slide climbs stairs going up, at least one step',
+    up.last && endY(up) >= GROUND + 1 - 1e-6, up.last && `${up.last.reason}, ${up.last.distance} blocks, from y ${GROUND} to ${endY(up)}`)
+  check('stairs: and stops shorter than on the flat (under 4 blocks)', up.last && up.last.distance < 4, up.last && up.last.distance)
+  check('stairs: and A stands on a step after it (or half a step further up), not in one', up.last && onStep(up, endY(up), endY(up) + 0.5),
+    `y ${up.after.y}, ended at ${endY(up)}`)
+  await at(`fill ${from} ${GROUND} ${RZ - 2} ${from + steps} ${GROUND + steps} ${RZ + 2} minecraft:air`)
+  await toStart()
+}
+
 /** A's stand-in (a mannequin holding A's UUID), or null. */
 async function standIn () {
   const out = await rcon(`execute at ${B_NAME} run data get entity @e[type=minecraft:mannequin,sort=nearest,limit=1,distance=..40] Pos`)
@@ -1056,6 +1113,7 @@ async function body () {
       else if (scenario === 'hear') await hear()
       else if (scenario === 'wall') await wall()
       else if (scenario === 'low') await low()
+      else if (scenario === 'stairs') await stairs()
       else if (scenario === 'rejoin') await rejoin()
       else if (scenario === 'zones') await zones()
       else if (scenario === 'cross') await cross()

@@ -636,16 +636,21 @@ public final class WeaponService implements Listener {
             stowed.values().removeIf(kept -> kept.spent(now));
         }
         if (!scopeOut.isEmpty()) {
-            scopeOut.entrySet().removeIf(e -> {
-                if (now < e.getValue()) {
-                    return false;
+            // Collected first: lowerScope takes the player out of scopeOut itself, which would break an
+            // iteration over it (and with it the rest of this tick for every gun).
+            List<UUID> due = new ArrayList<>();
+            scopeOut.forEach((id, until) -> {
+                if (now >= until) {
+                    due.add(id);
                 }
-                Player out = Bukkit.getPlayer(e.getKey());
+            });
+            for (UUID id : due) {
+                scopeOut.remove(id);
+                Player out = Bukkit.getPlayer(id);
                 if (out != null && !isAiming(out)) {
                     lowerScope(out);
                 }
-                return true;
-            });
+            }
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);

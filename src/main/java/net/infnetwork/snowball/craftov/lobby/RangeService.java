@@ -293,11 +293,14 @@ public final class RangeService implements Listener {
             d.setViewRange(2f);
             d.setPersistent(false);
         }));
-        spawned.add(world.spawn(at.clone().add(0, CALIBRATION_SIZE / 2 + 0.9, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><text>50 m 校准靶</b>\n<muted>4 倍镜的粗线正好碰到外圈 · 刻度每格 5 mil"));
+        // Under the target (a text display grows upwards from where it stands) and a little to the left:
+        // above it, the label hung at the height of the 7 m dummy's name tag, which is wide that close
+        // and covered it, and the top of the window cut its title; centred, the dummy's body hid its end.
+        spawned.add(world.spawn(at.clone().add(-2.0, -CALIBRATION_SIZE / 2 - 1.6, 0), TextDisplay.class, d -> {
+            d.text(Text.mm("<b><text>50 m 校准靶</b>\n<muted>4 倍镜粗线碰到外圈 · 刻度 5 mil"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
-                    new org.joml.Vector3f(4f, 4f, 4f), new org.joml.Quaternionf()));
+                    new org.joml.Vector3f(3f, 3f, 3f), new org.joml.Quaternionf()));
             d.setViewRange(2f);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(150, 10, 12, 16));

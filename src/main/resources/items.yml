@@ -12,7 +12,8 @@
 # recoil (guns): degrees each shot kicks the view up from the hip, recoil-h at most sideways (either
 #   way), recoil-return the share of a spray's kick that drifts back once it stops. ads-recoil and
 #   ads-recoil-h: the share of each a shot kicks with the sights up (sideways least: the jitter is
-#   what cannot be pulled against).
+#   what cannot be pulled against). The same through any sight: a scope only shows each degree
+#   of it larger.
 # Revision of this file. The server copies it from the jar only when it is missing, so raise this
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
@@ -110,7 +111,7 @@ items:
     value: 56000
     lore: "半自动精确射手步枪，自带 4 倍镜。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 10, rpm: 280, modes: [SEMI], damage: 58, range: 90, max-range: 200,
-           hip-spread: 3.6, ads-spread: 0.12, move: 6.0, recoil: 2.6, recoil-h: 0.8, recoil-return: 0.75, ads-recoil: 0.45, ads-recoil-h: 0.3, reload: 58, ads-class: dmr, mount: none, scope: optic_4x, head: 2.2, volume: 6.0, move-speed: 0.88, action: dmr, handling: 42}
+           hip-spread: 3.6, ads-spread: 0.12, move: 6.0, recoil: 2.6, recoil-h: 0.8, recoil-return: 0.85, ads-recoil: 0.45, ads-recoil-h: 0.3, reload: 58, ads-class: dmr, mount: none, scope: optic_4x, head: 2.2, volume: 6.0, move-speed: 0.88, action: dmr, handling: 42}
   awr:
     weight: 6.8
     name: "AWR 栓动狙击步枪"
@@ -119,7 +120,7 @@ items:
     value: 120000
     lore: ".338 栓动狙击步枪，爆头即撤离。"
     gun: { caliber: ".338", slot: PRIMARY, mag: 5, rpm: 42, modes: [BOLT], damage: 115, range: 120, max-range: 240,
-           hip-spread: 5.0, ads-spread: 0.03, move: 6.0, recoil: 5.0, recoil-h: 1.0, recoil-return: 0.7, ads-recoil: 0.4, ads-recoil-h: 0.3, reload: 80, ads-class: bolt, mount: none, scope: optic_8x, head: 2.6, volume: 7.0, move-speed: 0.85, action: bolt, handling: 16}
+           hip-spread: 5.0, ads-spread: 0.03, move: 6.0, recoil: 5.0, recoil-h: 1.0, recoil-return: 0.85, ads-recoil: 0.4, ads-recoil-h: 0.3, reload: 80, ads-class: bolt, mount: none, scope: optic_8x, head: 2.6, volume: 7.0, move-speed: 0.85, action: bolt, handling: 16}
 
   # ------------------------------------------------------------------ ammo (value per round)
   ammo_9_fmj:   { name: "9x19 FMJ", category: AMMO, rarity: WHITE, value: 6, ammo: { caliber: "9x19", pen: 1, damage: 1.0, armor-damage: 0.8 } }

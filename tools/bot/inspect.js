@@ -17,11 +17,13 @@
 //   4. the same client tick: F as W is let go after a sprint inspects (it was refused as sprinting);
 //      F as Shift goes up inspects (it fired the operator skill); Shift going down with F fires the
 //      skill (it inspected); 3 then F from a gun inspects the knife and leaves the gun's fire mode
-//      alone (it switched the fire mode);
+//      alone (it switched the fire mode), also with the next client tick 250 ms late (a client at a
+//      few frames a second, or jitter: it was read after 150 ms, before the slot change);
 //   5. F 50 ms after a swing inspects once the swing is over (at least 200 ms after the swing, not
 //      over it);
 //   6. no inspect while sprinting, and the action bar says 冲刺中无法检视; none with sneak+F (the
-//      operator skill); with a gun in hand F switches the fire mode and does not inspect;
+//      operator skill); with a gun in hand F switches the fire mode and does not inspect, and F in two
+//      adjacent client ticks switches it twice (the second F was dropped);
 //   7. in the proving ground, with the karambit against a second bot: a cut during an inspect lands
 //      and ends the inspect; a cut, F right after it, and a second cut one swing interval after the
 //      first: the inspect starts in between and the second cut lands too (the inspect does not hold
@@ -62,8 +64,16 @@ function make (name) {
   bot._client.on('set_cooldown', p => { if (p.cooldownGroup === GROUP) bot.inspects.push({ at: Date.now(), ticks: p.cooldownTicks }) })
   bot.bars = []
   bot._client.on('action_bar', p => bot.bars.push({ at: Date.now(), text: JSON.stringify(p.text) }))
-  // A client ends every tick with tick_end; the server reads F by them.
-  bot.ticker = setInterval(() => { if (bot._client.state === 'play') tickEnd(bot) }, 50)
+  // The click of each fire mode switch (WeaponService.nextFireMode plays gun.mode): one per step, where
+  // a second action bar line may wait behind the first or give way to another.
+  bot.modeClicks = []
+  const click = p => { if (/gun\.mode\b/.test(JSON.stringify(p))) bot.modeClicks.push(Date.now()) }
+  bot._client.on('sound_effect', click)
+  bot._client.on('entity_sound_effect', click)
+  // A client ends every tick with tick_end; the server reads F by them. A check that writes its own
+  // ticks sets bot.paused.
+  bot.paused = false
+  bot.ticker = setInterval(() => { if (bot._client.state === 'play' && !bot.paused) tickEnd(bot) }, 50)
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -263,6 +273,26 @@ async function killSoldiers (bot) {
       got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
     await sleep(ticks * 50)
   }
+  {
+    a.setQuickBarSlot(gunSlot)
+    await sleep(600)
+    const from = Date.now()
+    a.paused = true
+    const got = await inspectsDuring(a, async () => {
+      pressF(a)
+      tickEnd(a)
+      await sleep(250) // the next client tick comes late
+      a._client.write('held_item_slot', { slotId: 2 })
+      a.quickBarSlot = 2
+      a.updateHeldItem()
+      tickEnd(a)
+    }, 800)
+    a.paused = false
+    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    check('3 then F from the gun, the next client tick 250 ms late: inspects the knife, the fire mode stays',
+      got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
+    await sleep(ticks * 50)
+  }
 
   // 5. F right after a swing.
   {
@@ -306,6 +336,22 @@ async function killSoldiers (bot) {
     const got = await inspectsDuring(a, () => pressF(a), 600)
     const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
     check('F with a gun in hand switches the fire mode and does not inspect', got.length === 0 && mode.length === 1, { got, mode })
+  }
+  {
+    await sleep(300)
+    const from = Date.now()
+    a.paused = true
+    pressF(a)
+    tickEnd(a)
+    await sleep(50)
+    pressF(a)
+    tickEnd(a)
+    await sleep(50)
+    tickEnd(a)
+    a.paused = false
+    await sleep(600)
+    const clicks = a.modeClicks.filter(t => t >= from).length
+    check('F in two adjacent client ticks with a gun steps the fire mode twice (two clicks)', clicks === 2, { clicks, bars: barsSince(a, from) })
   }
 
   if (!RAID) return finish(checks.every(c => c.ok) ? 0 : 1)

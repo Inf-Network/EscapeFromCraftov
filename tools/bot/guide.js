@@ -7,9 +7,13 @@
 //           points out the range (2/5) and opening the terminal again does not close the guide; the
 //           range (then 3/5) and an attachment fitted at the gunsmith finish it: "新手指引完成" and
 //           ◈20,000 more.
-//   legacy  profiles written before the bot joins, in the old format: a guide the old build closed
-//           early (step counter 1, done, one extract) is open again and points out the range (2/5);
-//           a veteran (counter 0, three extracts) never sees it, and their profile is closed.
+//   legacy  profiles written before the bot joins, in the old format. The old build lost the guide
+//           of a new player who extracted early; it is open again with the deploy and the extract
+//           counted: closed at counter 1 (points out the range, 2/5), left open and silent at
+//           counter 2 (the gunsmith, 3/5), and closed at counter 0 with every raid report after the
+//           guide's release (deployed without the terminal: 1/5). Veterans never see it and their
+//           profile is closed without the reward: counter 0 with a report from before the release
+//           among later ones, and counter 0 with the full 20 reports, all recent.
 //
 //   PORT=25565 RCON_PORT=25575 node guide.js [order] [legacy]     env: RCON_PASSWORD, EXTRACT, PLAYERS
 //
@@ -221,41 +225,73 @@ function writeProfile (name, fields) {
   return file
 }
 
-async function legacy () {
-  // A guide the old build closed early: counter at 1 (terminal), closed, one extract behind it.
-  const early = 'GdE' + tag()
-  writeProfile(early, { tutorialStep: 1, tutorialDone: true, stats: { extracts: 1, raids: 1 } })
-  let bot = await spawnBot(early)
-  try {
-    const hint = await waitChat(bot, /新手指引/, 10000)
-    check('legacy: a guide the old build closed early is open again and points out the range (2/5)', !!hint && hint.includes('2/5'), hint)
-  } finally {
-    bot.quit()
-    await sleep(1000)
-  }
+const RELEASED = Date.UTC(2026, 10, 11, 13, 17, 51) // the guide's first build, 75f7382b
+const reports = (...times) => times.map(time => ({ time, map: 'proving', tier: 'NORMAL', outcome: '撤离成功' }))
+const DAY = 86400000
 
-  // A veteran from before the guide: counter 0, never closed, three extracts.
-  const veteran = 'GdV' + tag()
-  const file = writeProfile(veteran, { tutorialStep: 0, tutorialDone: false, stats: { extracts: 3, raids: 4 } })
-  bot = await spawnBot(veteran)
+/** Joins as `name` with an old-format profile, then reads the profile saved after the bot leaves. */
+async function legacyJoin (name, fields, during) {
+  const file = writeProfile(name, fields)
+  const bot = await spawnBot(name)
   try {
-    await rcon('op ' + veteran)
-    await sleep(5000)
+    await rcon('op ' + name)
+    await waitChat(bot, /新手指引/, 6000)
     await openTerminal(bot)
     await sleep(1500)
-    check('legacy: a veteran never sees the guide', guideLines(bot).length === 0 && !bot.bars.some(b => b.text.includes('新手指引')),
-      guideLines(bot))
+    await during(bot)
   } finally {
-    await rcon('deop ' + veteran).catch(() => {})
+    await rcon('deop ' + name).catch(() => {})
     bot.quit()
   }
   let saved = null
   await waitFor(() => {
     try { saved = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (e) { saved = null }
-    return saved && saved.tutorialDone === true
+    return saved && saved.tutorialStep === 0 && saved.tutorialMask !== undefined
   }, 10000)
-  check('legacy: and their saved profile has the guide closed, without the reward', !!saved && saved.tutorialDone === true &&
-    saved.tutorialMask === 0 && saved.money === 10000, saved && { done: saved.tutorialDone, mask: saved.tutorialMask, money: saved.money })
+  await sleep(1000)
+  return saved && { done: saved.tutorialDone, mask: saved.tutorialMask, money: saved.money }
+}
+
+async function legacy () {
+  // The deploy (8) and the extract (16) are counted for every guide brought back.
+  const reopened = [
+    // Closed by the old build: counter at 1 (terminal), one extract behind it.
+    { who: 'GdE', label: 'closed early at 1/5', hint: '2/5', mask: 1 | 8 | 16,
+      fields: { tutorialStep: 1, tutorialDone: true, stats: { extracts: 1, raids: 1 } } },
+    // Never closed, but silent since the extract: counter at 2 (terminal, range).
+    { who: 'GdS', label: 'left open and silent at 2/5', hint: '3/5', mask: 1 | 2 | 8 | 16,
+      fields: { tutorialStep: 2, tutorialDone: false, stats: { extracts: 1, raids: 1 }, reports: reports(Date.now() - DAY) } },
+    // Deployed from the lobby station without the terminal, extracted, then closed by the terminal.
+    { who: 'GdD', label: 'closed with no counter, every raid after the release', hint: '1/5', mask: 8 | 16,
+      fields: { tutorialStep: 0, tutorialDone: true, stats: { extracts: 1, raids: 2 }, reports: reports(Date.now() - DAY, RELEASED + 60000) } }
+  ]
+  for (const c of reopened) {
+    let hint = null
+    const saved = await legacyJoin(c.who + tag(), c.fields, async bot => { hint = guideLines(bot)[0] || null })
+    check(`legacy: a guide ${c.label} is open again and points out ${c.hint}`, !!hint && hint.includes(c.hint), hint)
+    // Opening the terminal on joining counts it (1) when it was not yet.
+    const mask = c.mask | 1
+    check(`legacy: and its saved profile counts the deploy and the extract (mask ${mask}), no reward yet`,
+      !!saved && saved.done === false && saved.mask === mask && saved.money === 10000, saved)
+  }
+
+  const veterans = [
+    { who: 'GdV', label: 'a report from before the release among later ones',
+      fields: { tutorialStep: 0, tutorialDone: false, stats: { extracts: 3, raids: 4 },
+        reports: reports(Date.now() - DAY, Date.now() - 2 * DAY, RELEASED + DAY, RELEASED - DAY) } },
+    { who: 'GdF', label: 'the full 20 reports, all after the release',
+      fields: { tutorialStep: 0, tutorialDone: true, stats: { extracts: 20, raids: 30 },
+        reports: reports(...Array.from({ length: 20 }, (_, i) => Date.now() - (i + 1) * 3600000)) } }
+  ]
+  for (const c of veterans) {
+    let seen = null
+    const saved = await legacyJoin(c.who + tag(), c.fields, async bot => {
+      seen = guideLines(bot).concat(bot.bars.filter(b => b.text.includes('新手指引')).map(b => b.text))
+    })
+    check(`legacy: a veteran (${c.label}) never sees the guide`, seen.length === 0, seen)
+    check('legacy: and their saved profile has the guide closed, without the reward',
+      !!saved && saved.done === true && saved.mask === 0 && saved.money === 10000, saved)
+  }
 }
 
 ;(async () => {

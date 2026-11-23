@@ -44,23 +44,48 @@ public final class TutorialService {
     }
 
     /**
+     * When the guide was released (75f7382b, 2026-11-11T13:17:51Z). A player whose first raid came
+     * later began with the guide.
+     */
+    private static final long GUIDE_RELEASED = 1_794_403_071_000L;
+
+    /**
      * Turns the old step counter of a saved profile into the set of finished steps: a counter at
-     * {@code n} had the first {@code n} steps done. The old guide also closed itself, without the
-     * reward, for a new player who extracted before reaching the extract step (it took anyone with
-     * an extract for a veteran on their next step); such a guide (closed, counter short of the end)
-     * is opened again with the deploy and the extract that closed it counted. Called on load.
+     * {@code n} had the first {@code n} steps done. The old build also lost the guide for a new player
+     * who extracted before reaching the extract step: their next step took them for a veteran and
+     * closed it without the reward, and until then it stayed open but silent. Such a guide is opened
+     * again with the deploy and the extract that broke it counted. Two kinds of profile show it:
+     * <ul>
+     *   <li>a counter at 1 to 4 and an extract: the old counter only moved while the player had no
+     *       extract, so the extract came after the guide had begun;</li>
+     *   <li>no counter, an extract, and every raid on record after the guide's release: a new player
+     *       who deployed from the lobby station or {@code /cv deploy}, which skip the terminal step.
+     *       The old builds kept a player's last 20 raid reports, so with fewer the first raid is among
+     *       them, and a veteran's first raid came before the guide.</li>
+     * </ul>
+     * Called on load. A reopened guide has steps on record, so it never matches twice.
      */
     public static void migrate(Profile profile) {
-        if (profile.tutorialStep <= 0) {
-            return;
-        }
-        int steps = Math.min(profile.tutorialStep, Step.values().length);
+        int steps = Math.clamp(profile.tutorialStep, 0, Step.values().length);
         profile.tutorialMask |= (1 << steps) - 1;
-        if (profile.tutorialDone && steps < Step.values().length && profile.stat("extracts") > 0) {
+        profile.tutorialStep = 0;
+        if (steps < Step.values().length && profile.stat("extracts") > 0
+                && (steps > 0 || profile.tutorialMask == 0 && beganWithGuide(profile))) {
             profile.tutorialDone = false;
             profile.tutorialMask |= Step.DEPLOY.bit() | Step.EXTRACT.bit();
         }
-        profile.tutorialStep = 0;
+    }
+
+    private static boolean beganWithGuide(Profile profile) {
+        if (profile.reports.isEmpty() || profile.reports.size() >= 20) {
+            return false;
+        }
+        for (Profile.RaidReport report : profile.reports) {
+            if (report == null || report.time < GUIDE_RELEASED) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

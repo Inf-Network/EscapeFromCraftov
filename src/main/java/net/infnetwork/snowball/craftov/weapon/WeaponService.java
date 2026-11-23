@@ -1455,8 +1455,10 @@ public final class WeaponService implements Listener {
         state.lastOwn = own;
         state.lastAbove = raw;
         // Degrees the view will sit above / right of the anchor once the turns in flight land.
-        double above = raw + inFlight(state, state.turnUp, player, now);
-        double right = wrapDegrees(player.getYaw() - state.anchorYaw) + inFlight(state, state.turnRight, player, now);
+        double flyingUp = inFlight(state, state.turnUp, player, now);
+        double flyingRight = inFlight(state, state.turnRight, player, now);
+        double above = raw + flyingUp;
+        double right = wrapDegrees(player.getYaw() - state.anchorYaw) + flyingRight;
         fold(state, above, right);
         if (firing) {
             return;
@@ -1485,8 +1487,14 @@ public final class WeaponService implements Listener {
             state.kickUp -= up;
             state.kickRight -= side;
         }
-        boolean upDone = state.returnUp < 1e-3 || above < 1e-3;
-        boolean sideDone = Math.abs(state.returnRight) < 1e-3 || room < 1e-3;
+        // At the anchor only once no drift is in flight: the server turns its own copy of the view as
+        // it sends a turn, and a client that does not move its mouse meanwhile never reports the old
+        // view again, so the turns counted in flight are often in the view already. Ending on them
+        // stopped the drift short by a round trip of steps (an AWR shot came back 70 to 80%, not
+        // 85%); now it waits for them to land and then gives back the rest, still never past the
+        // anchor.
+        boolean upDone = state.returnUp < 1e-3 || above < 1e-3 && Math.abs(flyingUp) < 1e-3;
+        boolean sideDone = Math.abs(state.returnRight) < 1e-3 || room < 1e-3 && Math.abs(flyingRight) < 1e-3;
         if (upDone && sideDone) {
             // All given back, or the view is already at (or past) the anchor.
             state.anchorPitch = Float.NaN;

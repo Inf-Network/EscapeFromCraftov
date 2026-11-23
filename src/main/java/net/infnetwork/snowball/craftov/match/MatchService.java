@@ -60,7 +60,7 @@ public final class MatchService {
     public Party ensureParty(Player leader) {
         Party party = parties.get(leader.getUniqueId());
         if (party == null) {
-            party = new Party(leader.getUniqueId());
+            party = new Party(leader.getUniqueId(), leader.getName());
             parties.put(leader.getUniqueId(), party);
         }
         return party;
@@ -71,7 +71,7 @@ public final class MatchService {
             Text.send(leader, "<danger>不能邀请自己。");
             return;
         }
-        Party party = parties.computeIfAbsent(leader.getUniqueId(), Party::new);
+        Party party = ensureParty(leader);
         if (!party.leader.equals(leader.getUniqueId())) {
             Text.send(leader, "<danger>只有队长可以邀请。");
             return;
@@ -106,7 +106,7 @@ public final class MatchService {
                 Text.send(player, "<danger>邀请已失效。");
                 return;
             }
-            party = new Party(leaderId);
+            party = new Party(leaderId, leader.getName());
             parties.put(leaderId, party);
         }
         join(player, party);
@@ -121,7 +121,7 @@ public final class MatchService {
         // A solo player has no Party, so leave() does not reach their own queue entry.
         cancelQueue(player.getUniqueId(), "加入了小队");
         cancelQueue(party.leader, "有新队员加入");
-        party.members.add(player.getUniqueId());
+        party.add(player.getUniqueId(), player.getName());
         parties.put(player.getUniqueId(), party);
         broadcast(party, "<white>" + Text.escape(player.getName()) + "</white> <ok>加入了小队 (" + party.size() + "/3)");
     }
@@ -137,21 +137,22 @@ public final class MatchService {
             return;
         }
         cancelQueue(party.leader, "队员离队");
-        party.members.remove(uuid);
+        String name = party.name(uuid);
+        party.remove(uuid);
         plugin.escorts().onPartyLeave(uuid);
         if (announce) {
             Player player = Bukkit.getPlayer(uuid);
             if (player != null) {
                 Text.send(player, "<muted>你已离开小队。");
             }
-            broadcast(party, "<white>" + Text.escape(nameOf(uuid)) + "</white> <muted>离开了小队");
+            broadcast(party, "<white>" + Text.escape(name) + "</white> <muted>离开了小队");
         }
         if (party.members.isEmpty()) {
             return;
         }
         if (party.leader.equals(uuid)) {
             party.leader = party.members.get(0);
-            broadcast(party, "<muted>新的队长：<white>" + nameOf(party.leader));
+            broadcast(party, "<muted>新的队长：<white>" + Text.escape(party.name(party.leader)));
         }
         if (party.members.size() == 1) {
             parties.remove(party.members.get(0));
@@ -170,7 +171,7 @@ public final class MatchService {
             return;
         }
         // By name among the members, so an offline teammate can be kicked too.
-        UUID target = party.members.stream().filter(uuid -> nameOf(uuid).equalsIgnoreCase(name)).findFirst().orElse(null);
+        UUID target = party.members.stream().filter(uuid -> party.name(uuid).equalsIgnoreCase(name)).findFirst().orElse(null);
         if (target == null) {
             Text.send(leader, "<danger>小队中没有这名玩家。");
             return;
@@ -185,15 +186,6 @@ public final class MatchService {
                 Text.send(p, message);
             }
         }
-    }
-
-    private static String nameOf(UUID uuid) {
-        Player p = Bukkit.getPlayer(uuid);
-        if (p != null) {
-            return p.getName();
-        }
-        String name = Bukkit.getOfflinePlayer(uuid).getName();
-        return name == null ? "?" : name;
     }
 
     // ------------------------------------------------------------------ queue
@@ -259,8 +251,8 @@ public final class MatchService {
         for (UUID uuid : members) {
             Player member = Bukkit.getPlayer(uuid);
             if (member == null) {
-                Text.send(player, "<danger>小队成员 " + Text.escape(nameOf(uuid)) + " 不在线，可以用 /cv party kick "
-                        + Text.escape(nameOf(uuid)) + " 移出小队。");
+                String name = Text.escape(party == null ? "?" : party.name(uuid));
+                Text.send(player, "<danger>小队成员 " + name + " 不在线，可以用 /cv party kick " + name + " 移出小队。");
                 return false;
             }
             if (plugin.raids().launching(uuid)) {

@@ -484,6 +484,13 @@ public final class Nms {
     private static @Nullable Object movementSpeed;
     private static @Nullable Method getAttribute;
     private static @Nullable Class<?> abilitiesPacketClass;
+    /** Abilities' no-argument constructor, its fields in packet order, and the packet's getters in the same order. */
+    private static @Nullable Constructor<?> abilitiesNew;
+    private static final String[] ABILITY_FIELDS = {"invulnerable", "flying", "mayfly", "instabuild", "flyingSpeed"};
+    private static final String[] ABILITY_GETTERS = {"isInvulnerable", "isFlying", "canFly", "canInstabuild", "getFlyingSpeed"};
+    private static final Field[] abilityFields = new Field[ABILITY_FIELDS.length];
+    private static final Method[] abilityGetters = new Method[ABILITY_GETTERS.length];
+    private static @Nullable Field walkingSpeedField;
     private static @Nullable Class<?> setSlotClass;
     private static @Nullable Method setSlotContainer;
     private static @Nullable Method setSlotState;
@@ -516,6 +523,12 @@ public final class Nms {
             getAttribute = Class.forName("net.minecraft.world.entity.LivingEntity")
                     .getMethod("getAttribute", Class.forName("net.minecraft.core.Holder"));
             abilitiesPacketClass = abilitiesPacketCtor.getDeclaringClass();
+            abilitiesNew = abilitiesClass.getConstructor();
+            for (int i = 0; i < ABILITY_FIELDS.length; i++) {
+                abilityFields[i] = abilitiesClass.getField(ABILITY_FIELDS[i]);
+                abilityGetters[i] = abilitiesPacketClass.getMethod(ABILITY_GETTERS[i]);
+            }
+            walkingSpeedField = abilitiesClass.getField("walkingSpeed");
             Class<?> stack = Class.forName("net.minecraft.world.item.ItemStack");
             setSlotClass = Class.forName("net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket");
             setSlotContainer = setSlotClass.getMethod("getContainerId");
@@ -619,7 +632,7 @@ public final class Nms {
                     if (changed) {
                         out = bundleCtor.newInstance(parts);
                     }
-                } else {
+                } else if (concerns(msg)) {
                     java.util.List<Object> parts = new java.util.ArrayList<>(2);
                     if (rewriteAll(java.util.List.of(msg), parts)) {
                         out = parts.size() == 1 ? parts.get(0) : bundleCtor.newInstance(parts);
@@ -629,6 +642,12 @@ public final class Nms {
                 out = msg;
             }
             super.write(ctx, out, promise);
+        }
+
+        /** Whether a packet on its own may need rewriting: most do not, and pass without any allocation. */
+        private boolean concerns(Object msg) {
+            return attributesPacketClass.isInstance(msg) || abilitiesPacketClass.isInstance(msg)
+                    || view.helmet != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg) || equipmentClass.isInstance(msg));
         }
 
         /** Copies {@code in} to {@code out} rewritten; true if anything changed. */
@@ -661,15 +680,13 @@ public final class Nms {
             return changed;
         }
 
+        /** The same abilities packet with the walking speed {@link SelfView} asks for. */
         private Object withWalkingSpeed(Object packet) throws ReflectiveOperationException {
-            Object abilities = abilitiesClass.getConstructor().newInstance();
-            Class<?> type = packet.getClass();
-            abilitiesClass.getField("invulnerable").setBoolean(abilities, (boolean) type.getMethod("isInvulnerable").invoke(packet));
-            abilitiesClass.getField("flying").setBoolean(abilities, (boolean) type.getMethod("isFlying").invoke(packet));
-            abilitiesClass.getField("mayfly").setBoolean(abilities, (boolean) type.getMethod("canFly").invoke(packet));
-            abilitiesClass.getField("instabuild").setBoolean(abilities, (boolean) type.getMethod("canInstabuild").invoke(packet));
-            abilitiesClass.getField("flyingSpeed").setFloat(abilities, (float) type.getMethod("getFlyingSpeed").invoke(packet));
-            abilitiesClass.getField("walkingSpeed").setFloat(abilities, view.walkingSpeed());
+            Object abilities = abilitiesNew.newInstance();
+            for (int i = 0; i < abilityFields.length; i++) {
+                abilityFields[i].set(abilities, abilityGetters[i].invoke(packet));
+            }
+            walkingSpeedField.setFloat(abilities, view.walkingSpeed());
             return abilitiesPacketCtor.newInstance(abilities);
         }
 

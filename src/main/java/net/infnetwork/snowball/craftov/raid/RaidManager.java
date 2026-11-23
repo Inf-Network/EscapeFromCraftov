@@ -1256,9 +1256,12 @@ public final class RaidManager implements Listener {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
-                // One line in chat at once as a record; the damage taken is on the screen, which waits
-                // for the lobby should the player stay to watch a squadmate.
+                // The record in chat at once, with the damage taken: the screen, which shows both too,
+                // waits for the lobby should the player stay to watch a squadmate.
                 p.sendMessage(Text.mm(settlement.summary()));
+                for (String line : settlement.wounds()) {
+                    p.sendMessage(Text.mm(line));
+                }
                 if (!spectateMate(p, raid, rp)) {
                     plugin.match().leaveTeam(p);
                     UiFont.blackout(p, 6, 16, 10);

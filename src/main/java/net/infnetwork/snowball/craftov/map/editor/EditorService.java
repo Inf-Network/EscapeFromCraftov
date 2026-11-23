@@ -465,6 +465,11 @@ public final class EditorService implements Listener {
      * whether it was written.
      */
     private boolean save(Player player, Session session) {
+        return save(player, session, true);
+    }
+
+    /** @param report tell the editor what was saved and what publishing still needs (not on the way to publishing) */
+    private boolean save(Player player, Session session, boolean report) {
         MapDraft d = session.draft;
         MapDef def = d.build();
         MapDef live = plugin.maps().get(d.id);
@@ -479,6 +484,9 @@ public final class EditorService implements Listener {
         } catch (IOException ex) {
             Text.send(player, "<#FF8A80>保存失败：" + Text.escape(ex.getMessage()));
             return false;
+        }
+        if (!report) {
+            return true;
         }
         Text.send(player, "<#5BD16B>草稿已保存<#9AA0A6>（未发布）<#5BD16B>：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size()
                 + " · 物资箱 " + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
@@ -516,7 +524,7 @@ public final class EditorService implements Listener {
                 refuse(player, session.draft.name, problems);
                 return;
             }
-            if (!save(player, session)) {
+            if (!save(player, session, false)) {
                 return;
             }
             close(player, session, true);

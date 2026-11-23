@@ -958,10 +958,14 @@ def build_betterhud():
         'file': {d: {'name': 'craftov/compass/' + d + '.png'} for d in ('n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'chain')},
         'scale': 1.0, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
         'gui': {'x': 50, 'y': 0}, 'pixel': {'x': 0, 'y': 6}, 'apply-opacity': True,
-        'custom-icon': {'extract_open': {'name': 'craftov/compass/extract_open.png'},
-                        'extract_closed': {'name': 'craftov/compass/extract_closed.png'}},
     }}
     compass['craftov_compass']['file']['point'] = {'name': 'craftov/compass/point.png', 'y': -6}
+    # Marker pictures by PointedLocation icon. BetterHud reads them from the same section as the point
+    # (under `file`): at the compass's top level they were never loaded, and every extract was drawn
+    # with the plain amber point instead of its green or grey diamond.
+    compass['craftov_compass']['file']['custom-icon'] = {
+        'extract_open': {'name': 'craftov/compass/extract_open.png'},
+        'extract_closed': {'name': 'craftov/compass/extract_closed.png'}}
     compass['craftov_compass']['conditions'] = cond(('craftov_in_raid', 'true'))
     write_text(os.path.join(BH, 'compasses', 'craftov.yml'), yaml.safe_dump(compass, allow_unicode=True, sort_keys=False))
 

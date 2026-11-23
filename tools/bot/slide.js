@@ -10,6 +10,8 @@
 //            is 0.6 under the ground it slides over and its top 1.2 over it (a standing box held,
 //            not the 1.5 crouching one); mid-slide the server has A neither sneaking nor crouched,
 //            and after it A stands on the ground
+//   boost    with Speed II the sprint is faster, and so is the slide: it sets off at the 0.45 cap
+//            (from a plain sprint 0.40) and goes further than 4.5 blocks
 //   stamina  a slide under 25 kg costs 2 x stamina.sprint-drain (0.3) a tick, about 10; carrying
 //            30 to 40 kg of collectibles the load factor (1 + (kg - 25) / 30) on top
 //   refuse   no slide: within 30 ticks of the last one ended (cooldown); past that but with under
@@ -51,7 +53,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 // rejoin before zones (being shot puts A in a fight, and quitting in one is death), body last.
-const ALL = ['detect', 'box', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'body']
+const ALL = ['detect', 'box', 'boost', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'body']
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ALL
 const tag = String(Math.floor(10000 + Math.random() * 90000))
@@ -366,6 +368,19 @@ async function box () {
     `y ${after.y}, vehicle ${after.vehicle}`)
 }
 let boxFrom = 0
+
+async function boost () {
+  await sleep(2000)
+  await rcon(`effect give ${A_NAME} minecraft:speed 30 1 true`)
+  await rcon(`cv slide ${A_NAME} stamina 100`)
+  await toStart()
+  await sprintAndSlide()
+  const s = (await slideEnded()).last
+  halt(A)
+  await rcon(`effect clear ${A_NAME} minecraft:speed`)
+  check('boost: with Speed II the slide sets off at the 0.45 cap and goes past 4.5 blocks',
+    s && Math.abs(s.speed - 0.45) < 1e-3 && s.distance > 4.5, s && `speed ${s.speed}, ${s.distance} blocks in ${s.ticks} ticks`)
+}
 
 async function stamina () {
   await sleep(2000)
@@ -785,6 +800,7 @@ async function body () {
     try {
       if (scenario === 'detect') await detect()
       else if (scenario === 'box') { boxFrom = logSize(); await box() }
+      else if (scenario === 'boost') await boost()
       else if (scenario === 'stamina') await stamina()
       else if (scenario === 'refuse') await refuse()
       else if (scenario === 'keys') await keysScenario()

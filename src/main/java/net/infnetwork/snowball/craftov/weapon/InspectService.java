@@ -43,8 +43,6 @@ public final class InspectService implements Listener {
 
     /** Ticks the arm swings on the client after a cut, Q or a click (vanilla, no haste or fatigue). */
     private static final int SWING_TICKS = 6;
-    /** A press waits this long at most for the swings to stop (a player cutting on and on). */
-    private static final int SWING_WAIT = 12;
 
     private final CraftovPlugin plugin;
     /** Players inspecting a knife: the tick it ends, the hotbar slot and the knife it started with. */
@@ -147,6 +145,8 @@ public final class InspectService implements Listener {
      */
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        // A press waits this long at most for the swings to stop (a player cutting on and on).
+        int swingWait = Math.max(SWING_TICKS, plugin.getConfig().getInt("combat.melee.inspect-swing-wait-ticks", 12));
         for (Iterator<Map.Entry<UUID, Inspect>> it = waiting.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, Inspect> entry = it.next();
             Inspect press = entry.getValue();
@@ -158,7 +158,7 @@ public final class InspectService implements Listener {
             } else if (!swinging(player)) {
                 it.remove();
                 start(player, def, player.isSprinting(), " after the swing");
-            } else if (now - press.at >= SWING_WAIT) {
+            } else if (now - press.at >= swingWait) {
                 it.remove();
                 refuse(player, "出刀中无法检视");
             }

@@ -259,6 +259,9 @@ combat:
     # baked into the resource pack as 50 frames over the inspect (tools/art/knife_inspect.py): a
     # different length plays the same motion faster or slower.
     inspect-ticks: 50
+    # F during a cut waits for the swing to end and inspects then. A player who keeps cutting gets
+    # 出刀中无法检视 on the action bar once a press has waited this many ticks (6 at least, one swing).
+    inspect-swing-wait-ticks: 12
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming

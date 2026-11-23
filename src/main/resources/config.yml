@@ -278,6 +278,62 @@ weapons:
     pump: 14
     lmg: 18
     bolt: 18
+  ads:
+    # True power of iron sights while aiming, by the gun's ads-class in items.yml (pistol, smg, rifle,
+    # shotgun, dmr, lmg, bolt; optics carry their own magnification in items.yml).
+    iron:
+      pistol: 1.1
+      shotgun: 1.1
+      default: 1.25
+    # Ticks the sights take to come up once the server takes the aim, by ads-class, plus optic-ticks
+    # for the optic's strength (reflex = red dot and holo, low = 3-4x, high = 6x and up). The view,
+    # the spread and the recoil follow that progress: the shots are aimed only once the sights are up.
+    ticks:
+      pistol: 4
+      smg: 5
+      rifle: 6
+      shotgun: 6
+      dmr: 8
+      lmg: 8
+      bolt: 9
+    optic-ticks:
+      iron: 0
+      reflex: 1
+      low: 2
+      high: 3
+    # Aiming slows the player to this share of their speed, by ads-class, times optic-speed for the
+    # optic (on the range too). The aimed cone is the gun's ads-spread times optic-spread.
+    speed:
+      pistol: 0.85
+      smg: 0.8
+      rifle: 0.7
+      shotgun: 0.8
+      dmr: 0.6
+      lmg: 0.55
+      bolt: 0.5
+    optic-speed:
+      iron: 1.0
+      reflex: 1.0
+      low: 0.9
+      high: 0.8
+    optic-spread:
+      iron: 1.0
+      reflex: 0.95
+      low: 0.85
+      high: 0.8
+    # Right mouse held repeats a use packet every 4 ticks: aiming ends this many ticks after the last.
+    timeout-ticks: 5
+    # Let go of a scope, its picture stays this many ticks while the client's view widens back.
+    scope-out-ticks: 2
+    # Right mouse pressed again within this many ticks of aiming ending (let go, or a use packet that
+    # came late over a bad connection) picks the sights up where they were: up stays up, a rise goes
+    # on from where it stopped. 0 always starts again from the hip.
+    resume-ticks: 3
+    # Divide the zoom by the FOV Effects slider players declare with /cv fov, so a slider below 100%
+    # still shows each sight at its power. The server cannot read the slider: anyone could claim a low
+    # one they do not use and see an iron sight at 10x, so it is off, and players are told to keep the
+    # slider at 100%. Turn it on only where every player is trusted (declarations are logged).
+    fov-effects-compensation: false
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.

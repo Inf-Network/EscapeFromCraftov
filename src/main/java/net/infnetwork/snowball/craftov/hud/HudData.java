@@ -309,7 +309,10 @@ public final class HudData {
 
     /** Gaps (GUI pixels from the centre to each arm) of the crosshair pictures the HUD has, narrowest first. */
     public static final int[] CROSSHAIR_GAPS = {3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40};
-    /** {@link #crosshair} when the HUD draws none (the vanilla dot is left): aiming down the sights, or spectating. */
+    /**
+     * {@link #crosshair} when the HUD draws none: aiming down the sights (the sights are the aim point,
+     * and the vanilla crosshair is cleared by the resource pack, so nothing covers a red dot), or spectating.
+     */
     public static final int CROSSHAIR_OFF = -1;
     /** {@link #crosshair} without a gun in hand: the outlined dot alone, for doors, boxes and the knife. */
     public static final int CROSSHAIR_DOT = CROSSHAIR_GAPS.length;
@@ -320,7 +323,7 @@ public final class HudData {
      * knows neither the field of view nor the GUI scale, so the gap is hud.crosshair.pixels-per-degree
      * GUI pixels per degree of half-angle. At the default 70 degree field of view the true figure is
      * about an eightieth of the GUI's height: 3.4 at 1080p on GUI scale 4, 3.7 at 900p on 3, 4.5 at 1080p
-     * on 3. None while aiming: the sights are the crosshair then, with the vanilla dot on them.
+     * on 3. None while aiming: the sights are the crosshair then.
      */
     public int crosshair(Player p) {
         if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {

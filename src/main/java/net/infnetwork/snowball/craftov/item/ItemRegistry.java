@@ -140,7 +140,7 @@ public final class ItemRegistry {
                     g.getDouble("recoil-h", 0.5),
                     Math.max(0, Math.min(1, g.getDouble("recoil-return", 0.7))),
                     g.getInt("reload", 50),
-                    g.getInt("zoom", 1),
+                    adsClass(id, g),
                     g.getInt("pellets", 1),
                     g.getDouble("head", 2.0),
                     (float) g.getDouble("volume", 4.0),
@@ -172,7 +172,17 @@ public final class ItemRegistry {
         net.infnetwork.snowball.craftov.weapon.OpticSpec optic = null;
         ConfigurationSection o = s.getConfigurationSection("optic");
         if (o != null) {
-            optic = new net.infnetwork.snowball.craftov.weapon.OpticSpec(o.getDouble("fov", 0.75), o.getString("overlay"),
+            double power;
+            if (o.contains("magnification")) {
+                power = Math.max(1.0, o.getDouble("magnification"));
+            } else {
+                // An items.yml from before optics gave their true power still has the old field of view.
+                power = net.infnetwork.snowball.craftov.weapon.OpticSpec.legacyPower(o.getDouble("fov", 0.75));
+                logger.warning("items.yml: " + id + " still has optic fov instead of magnification: it zooms "
+                        + net.infnetwork.snowball.craftov.weapon.OpticSpec.label(power) + "x as before. Back up items.yml,"
+                        + " replace it with the one in the plugin jar and restart.");
+            }
+            optic = new net.infnetwork.snowball.craftov.weapon.OpticSpec(power, o.getString("overlay"),
                     Set.copyOf(o.getStringList("mount").isEmpty() ? List.of("rifle") : o.getStringList("mount")));
         }
         net.infnetwork.snowball.craftov.weapon.MeleeSpec melee = null;
@@ -249,6 +259,20 @@ public final class ItemRegistry {
                 optic,
                 melee,
                 attach);
+    }
+
+    /**
+     * The gun's ads-class (GunSpec.ADS_CLASSES): items.yml's ads-class, or, for an items.yml from
+     * before it existed (which had a zoom number instead), the one its action implies.
+     */
+    private String adsClass(String id, ConfigurationSection g) {
+        String action = g.getString("action", "");
+        String wanted = g.getString("ads-class", GunSpec.defaultAdsClass(action)).toLowerCase(Locale.ROOT);
+        if (!GunSpec.ADS_CLASSES.contains(wanted)) {
+            logger.warning("items.yml: " + id + " has an unknown ads-class '" + wanted + "'; it aims like a rifle.");
+            return "rifle";
+        }
+        return wanted;
     }
 
     /**

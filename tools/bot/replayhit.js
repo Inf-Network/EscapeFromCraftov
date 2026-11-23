@@ -104,6 +104,10 @@ async function count (selector) {
 }
 
 async function arm (bot) {
+  // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
+  if (!bot.inventory.slots.some((s, i) => i >= 36 && i <= 44 && s && id(s) === 'm4c')) {
+    await rcon(`item replace entity ${bot.username} hotbar.0 with minecraft:air`)
+  }
   await rcon(`cv give ${bot.username} m4c`)
   await rcon(`cv give ${bot.username} ammo_556_m855 120`)
   await sleep(800)

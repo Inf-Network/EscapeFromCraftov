@@ -180,7 +180,15 @@ async function enterRange () {
 
 /** Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    // Keys 1-2 are the only cells a gun goes to (#10): with both taken, the one that does not hold
+    // the P18 (every scenario's second gun) makes room.
+    if (bot.inventory.slots[36] && bot.inventory.slots[37]) {
+      await rcon(`item replace entity ${name} hotbar.${hotbar('p18') === 36 ? 1 : 0} with minecraft:air`)
+      await sleep(300)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   if (hotbar(id) < 0) throw new Error(id + ' did not reach the hotbar')
   hold(id)

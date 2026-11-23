@@ -311,7 +311,14 @@ async function enterRange () {
 
 /** Gives the gun, holds it and fills its magazine. */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    // Keys 1-2 are the only cells a gun goes to (#10): with both taken, key 1 makes room.
+    if (bot.inventory.slots[36] && bot.inventory.slots[37]) {
+      await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
+      await sleep(300)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   const slot = hotbar(id)
   if (slot < 0) throw new Error(id + ' did not reach the hotbar')

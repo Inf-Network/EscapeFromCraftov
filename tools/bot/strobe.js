@@ -145,7 +145,9 @@ function openSpotNear (bot, soldier) {
   await new Promise(resolve => bot.once('spawn', resolve))
   await sleep(2500)
 
-  // Loadout: an M4 with a tactical light, two flashbangs (in the hotbar) and ammo.
+  // Loadout: an M4 with a tactical light, two flashbangs (in the hotbar) and ammo. Keys 1-2 are the
+  // only cells a gun goes to (#10) and the kit's rifle and pistol hold them: key 1 makes room.
+  await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
   for (const cmd of [`cv give ${name} m4c`, `cv give ${name} att_taclight`, `cv give ${name} flash 2`, `cv give ${name} ammo_556_m855 120`]) {
     log('rcon', cmd, (await rcon(cmd)).replace(/§./g, '').trim())
   }

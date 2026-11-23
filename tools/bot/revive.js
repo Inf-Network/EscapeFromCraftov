@@ -630,9 +630,13 @@ const nameOf = item => {
   const c = item && item.components && item.components.find(x => x.type === 'custom_name' || x.type === 'item_name')
   return c ? txt(c.data) : ''
 }
-/** The secure container's nine cells as `id:count` (`=` for an occupied marker, `#` locked, `-` empty). */
+/**
+ * The secure container's nine cells as `id:count` (`=` for an occupied marker, `#` locked, `-` empty).
+ * A locked cell is the striped secure tile (#10); craftov:ui/locked is what it was before.
+ */
+const LOCKED_MODELS = ['craftov:ui/locked_secure', 'craftov:ui/locked']
 const cellsOf = w => w.slots.slice(0, 9).map(s => !s ? '-' : pdc(s, 'id') ? `${pdc(s, 'id')}:${s.count}`
-  : uiModel(s) === 'craftov:ui/secure_used' ? '=' : uiModel(s) === 'craftov:ui/locked' ? '#' : '?')
+  : uiModel(s) === 'craftov:ui/secure_used' ? '=' : LOCKED_MODELS.includes(uiModel(s)) ? '#' : '?')
 /** The window slot (below the menu's `top` slots) holding item `id`, or -1. */
 const bottomSlot = (w, id, top) => w.slots.findIndex((s, i) => i >= top && s && pdc(s, 'id') === id)
 const countIn = (w, id, top) => w.slots.reduce((n, s, i) => n + (i >= top && s && pdc(s, 'id') === id ? s.count : 0), 0)

@@ -27,9 +27,10 @@
 //  10. (before 7) the rhythm: the starter knife (12-tick interval) swung at the boss every 6 ticks,
 //      12 times, lands one cut every 12 ticks (6, give or take one), counted by the cut's sound.
 //
-// Soldiers are frozen (NoAI) and teleported in front of the attacker; both bots have resistance
-// while soldiers are around (their rounds would otherwise kill them), the soldiers are killed before
-// the bots cut each other. The knife values come from the server's plugins/Craftov/items.yml
+// Soldiers are frozen (NoAI) and teleported in front of the attacker; they still fire (their AI is
+// the plugin's), so while they are around both bots have resistance and are kept free of wounds
+// every second (/cv injure clear: a bleed takes health past resistance), and the soldiers are killed
+// before the bots cut each other. The knife values come from the server's plugins/Craftov/items.yml
 // (SERVER_DIR, default the repository's server/run), or the source one when it has none; a server
 // items.yml from before knives went through armour is reported as a setup failure. The knife arm
 // and leg multipliers come from the server's config.yml (combat.melee.zone-multipliers), 0.6 when
@@ -63,6 +64,8 @@ const run = Math.random().toString(36).slice(2, 6)
 const checks = []
 const check = (name, ok, got) => { checks.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${got === undefined ? '' : ': ' + JSON.stringify(got)}`) }
 const bots = []
+/** The timer that keeps both bots free of wounds while the soldiers are around. */
+let keepWell = null
 
 // ------------------------------------------------------------------ the armour model (DamageService)
 
@@ -457,6 +460,10 @@ async function armourAttr (sel) {
   }
   await sleep(7000)
   for (const bot of bots) await rcon(`effect give ${bot.username} minecraft:resistance infinite 4 true`)
+  // Resistance soaks the frozen soldiers' rounds, but not the bleeding they leave: that takes health
+  // without a damage event (#41), and both bots bled out a minute in, the attacker on the death
+  // camera and then in the lobby, where every cut missed.
+  keepWell = setInterval(() => { for (const bot of bots) rcon(`cv injure ${bot.username} clear`).catch(() => {}) }, 1000)
   await rcon(`execute as ${target.username} at @s run tp @s 40.5 65 95.5`)
   log('in the raid; waiting for the boss (60 s in)')
   const bossNbt = ',attributes:[{id:"minecraft:max_health",base:380.0d}]'
@@ -600,6 +607,7 @@ async function armourAttr (sel) {
 
   // 7-9. The other bot.
   await killSoldiers(attacker, '')
+  clearInterval(keepWell)
   await rcon(`effect clear ${target.username} minecraft:resistance`)
   const tsel = target.username
   const PLAYER_H = 1.8
@@ -690,6 +698,7 @@ async function armourAttr (sel) {
 })().catch(e => { log('ERROR', e.stack || e.message); finish(2) })
 
 async function finish (code) {
+  clearInterval(keepWell)
   log('view kicks (relative rotations) received:', bots.map(b => `${b.username} ${b.viewKicks}`).join(', '))
   for (const bot of bots) {
     try { await rcon(`effect clear ${bot.username}`) } catch (e) { }

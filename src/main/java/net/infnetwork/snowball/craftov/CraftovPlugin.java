@@ -255,6 +255,18 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onDisable() {
         // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
         step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
+        // Whatever is held on the cursor goes back on its player before anything below saves an
+        // inventory or sends someone home. Closing the inventory and logging off do that, but a stop
+        // removes the players only once the plugin is disabled, so neither runs and the item would
+        // be outside every save. In a raid it then stays in the raid with the rest of what they
+        // carry. On the range the hands hold only loaners, which leaving the range throws away.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("cursor of " + player.getName(), carry, () -> {
+                if (range == null || !range.isIn(player)) {
+                    carry.settleCursor(player);
+                }
+            });
+        }
         step("betterhud", betterHud, () -> betterHud.shutdown());
         step("editor", editor, () -> editor.shutdown());
         step("replays", replays, () -> replays.shutdown());

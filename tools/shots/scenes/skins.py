@@ -1,11 +1,17 @@
-"""Knife skins (#106): the 外观 menu, and every skin in first person at rest and mid-inspect.
+"""Knife skins (#106): the 外观 menu, and every skin in first and third person and mid-inspect.
 
-Arg: `menu` (the menu only), a knife id (that knife's skins only) or a skin id (that one), or nothing
-(the menu and all twelve skins). Shots: skins-menu-<knife> (the menu on each knife's tab, pointer
-parked) and skins-menu-card (the pointer on a skin card, its tooltip showing); skin-<id>-rest (the
-skin worn, knife in hand) and skin-<id>-inspect (after F, where that knife's inspect holds it flat
-to the camera). Skins go on through the menu (a left click on the card), so the scene also shows
-that equipping works; every knife gets its own look back at the end. The lobby is dim and a held item takes the
+Arg: `menu` (the menu only), `ground` (the floor only), a knife id (that knife's skins only) or a
+skin id (that one), or nothing (the menu, the floor and all twelve skins).
+
+Shots: skins-menu-<knife> (the menu on each knife's tab, pointer parked) and skins-menu-card (the
+pointer on a skin card, its tooltip showing); skins-ground (one skin of each knife lying on the
+floor, summoned as item entities with the skin's model: the pack's look on the ground); and per
+skin skin-<id>-rest (worn, knife in hand), skin-<id>-inspect (after F, where that knife's inspect
+holds the blade flat to the camera) and skin-<id>-third (the player from the front, F5 twice: the
+knife as everyone else sees it, since knives go out to other players as they are).
+
+Skins go on through the menu (a left click on the card), so the scene also shows that equipping
+works; every knife gets its own look back at the end. The lobby is dim and a held item takes the
 light where the player stands, so the player has night vision meanwhile (as in the inspect scene).
 """
 import re
@@ -86,6 +92,30 @@ def skin(s, sid, knife, card):
     s.wait(max(0.0, pressed + INSPECT_AT[knife] - time.time()))
     s.shot(f'skin-{sid}-inspect', quick=True)
     s.wait(3.0 - INSPECT_AT[knife])
+    s.key('F5', 'F5', gap=0.4)
+    s.wait(1.0)
+    s.shot(f'skin-{sid}-third')
+    s.key('F5')
+    s.wait(0.5)
+
+
+def ground(s, skins):
+    """The first skin of each knife on the floor in front of the player, then cleared away."""
+    first = [next(sid for sid, k in skins.items() if k == knife) for knife in KNIVES]
+    s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~ 40')
+    s.wait(0.5)
+    for sid, side in zip(first, (0.9, 0.3, -0.3, -0.9)):
+        s.rcon(f'execute as {s.name} at @s positioned ^{side} ^0.3 ^2.6 run summon minecraft:item ~ ~ ~ '
+               f'{{PickupDelay:32767s,Tags:["skinshot"],Item:{{id:"minecraft:paper",count:1,'
+               f'components:{{"minecraft:item_model":"craftov:knife_skin/{sid}"}}}}}}')
+    s.select(5)  # an empty hotbar slot: nothing in hand, no key hints
+    s.clear_chat()
+    s.wait(2.0)
+    try:
+        s.shot('skins-ground')
+    finally:
+        s.rcon('kill @e[type=minecraft:item,tag=skinshot]')
+        s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~ 0')
 
 
 def run(s):
@@ -96,6 +126,10 @@ def run(s):
         if s.arg in (None, 'menu'):
             menu(s)
         if s.arg == 'menu':
+            return
+        if s.arg in (None, 'ground'):
+            ground(s, skins)
+        if s.arg == 'ground':
             return
         for knife in KNIVES:
             own = [sid for sid, k in skins.items() if k == knife]

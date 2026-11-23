@@ -305,7 +305,11 @@ public final class WorldService {
             } finally {
                 // Even when the copy died of something copyTemplate does not catch (an Error): the
                 // count must drop, or the map could not be published again until a restart, and
-                // the launch must hear of it rather than wait out its timeout.
+                // the launch must hear of it rather than wait out its timeout. Its half-copied
+                // folder goes too (copyTemplate removes it itself for what it catches).
+                if (!copied) {
+                    deleteQuietly(target);
+                }
                 @Nullable String folder = copied ? name : null;
                 try {
                     Bukkit.getScheduler().runTask(plugin, () -> {

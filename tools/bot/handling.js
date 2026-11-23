@@ -19,10 +19,14 @@
 //           vanilla client does), and the sights come up the gun's sprint-out ticks after the sprint
 //           ended (from the stop the bot sent to the aiming mark, within -1..+2 ticks), the quick
 //           guns sooner.
+//   sway    AWR and SV9 aimed (debug: true: the size of the sway is in the shot's log line): a shot
+//           from the hip has none; the AWR's first aimed shot, on the tick its sights are up, sways
+//           by its full size (handling 16: 0.084 degrees), one 2.5 s later by about the rest share
+//           (0.3) of it; the SV9's is under a fifth of the AWR's.
 //
-//   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node handling.js [ads|draw|sprint ...]
+//   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node handling.js [ads|draw|sprint|sway ...]
 //
-// Server config: debug: true for exact ads ticks (read from the log), the defaults otherwise
+// Server config: debug: true for exact ads ticks and for sway (read from the log), the defaults
 // (weapons.handling, weapons.ads.timeout-ticks 5). Without a handling key in items.yml (a server
 // that kept an older copy) the bot only reports what it measured. The real client's timing, from
 // the press to a settled zoom, is tools/shots/shots.py run adstime. Exit code: number of failed
@@ -40,7 +44,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['ads', 'draw', 'sprint']
+const scenarios = wanted.length ? wanted : ['ads', 'draw', 'sprint', 'sway']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -393,8 +397,70 @@ async function sprint () {
   check('sprint: the more handling, the sooner the sights come up out of a sprint', !bad.length, bad.join('; ') || rows.map(r => `${r.label}:${r.outTicks}`).join(' '))
 }
 
+// ---------------------------------------------------------------- sway
+const dig = (status, cell) => bot._client.write('block_dig', { status, location: cell, face: 1, sequence: sequence++ })
+/** A trigger pull on the capture cell the server keeps in front of the crosshair (TriggerService). */
+function click () {
+  const id = bot.registry.blocksByName.sculk_vein.id
+  const cells = bot.findBlocks({ matching: id, maxDistance: 6, count: 16 })
+  if (!cells.length) throw new Error('no capture cell in front of the crosshair')
+  const eye = bot.entity.position.offset(0, 1.62, 0)
+  const at = cells.reduce((a, b) => a.distanceTo(eye) < b.distanceTo(eye) ? a : b)
+  dig(0, at)
+  bot._client.write('arm_animation', { hand: 0 })
+  dig(1, at)
+}
+/** The sway sizes of this bot's shots logged since `from` (bytes), with their aim flags. */
+const swaysSince = from => [...logSince(from).matchAll(new RegExp(`\\[debug\\] ${name} shot .*? aim=(true|false) .*? sway=([0-9.]+)`, 'g'))]
+  .map(m => ({ aim: m[1] === 'true', sway: Number(m[2]) }))
+
+async function sway () {
+  if (!worldName.includes('craftov_range')) await enterRange()
+  await home()
+  await sleep(400)
+  const full = h => Math.max(0, 0.1 * (1 - h / 100))
+  const sizes = {}
+  for (const gun of ['awr', 'sv9']) {
+    await kit([[gun, null]])
+    hold(gun)
+    await sleep(1400)
+    const slot = hotbar(gun)
+    // From the hip.
+    let from = logSize()
+    click()
+    await sleep(gun === 'awr' ? 1700 : 300) // the bolt
+    const hip = swaysSince(from)
+    check(`sway: ${gun} from the hip does not sway`, hip.length >= 1 && hip.every(x => !x.aim && x.sway === 0), JSON.stringify(hip))
+    // Aimed: a shot the moment the sights are up, and (the AWR) one 2.5 s later.
+    from = logSize()
+    const at = Date.now()
+    const stop = press()
+    while (Date.now() - at < 2000 && !markAt(slot, 4, at)) await sleep(2)
+    click()
+    if (gun === 'awr') {
+      await sleep(2500)
+      click()
+    }
+    await sleep(300)
+    await stop()
+    await sleep(800)
+    const aimed = swaysSince(from)
+    sizes[gun] = aimed.map(x => x.sway)
+    log(gun, 'aimed shots sway', sizes[gun].join(' '))
+    if (gun === 'awr') {
+      const want = full(H.guns.awr == null ? 16 : H.guns.awr)
+      check('sway: the AWR\'s first aimed shot sways by its full size', aimed.length === 2 && aimed[0].aim && Math.abs(aimed[0].sway - want) <= want * 0.15,
+        `${aimed[0] && aimed[0].sway} (want ${want.toFixed(3)})`)
+      check('sway: and 2.5 s later by about the rest share (0.3) of it', aimed.length === 2 && aimed[1].sway <= want * 0.36 && aimed[1].sway >= want * 0.27,
+        `${aimed[1] && aimed[1].sway}`)
+    }
+  }
+  check('sway: the SV9 sways under a fifth of what the AWR does', sizes.sv9 && sizes.awr && sizes.sv9[0] < sizes.awr[0] / 5,
+    `${sizes.sv9 && sizes.sv9[0]} vs ${sizes.awr && sizes.awr[0]}`)
+}
+
 // ---------------------------------------------------------------- run
-const RUN = { ads, draw, sprint }
+const RUN = { ads, draw, sprint, sway }
 bot.once('spawn', async () => {
   await sleep(3000)
   try {

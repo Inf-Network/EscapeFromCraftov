@@ -998,9 +998,10 @@ public final class WeaponService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b sway=%.4f",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), MotionTracker.grounded(player),
-                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player)));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player),
+                    swaySize(state, Bukkit.getCurrentTick())));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -1182,21 +1183,26 @@ public final class WeaponService implements Listener {
      * is wider anyway.
      */
     private double[] sway(GunState state, long now) {
-        if (!state.adsUp || state.upAt < 0) {
-            return NO_SWAY;
-        }
-        var config = plugin.getConfig();
-        double size = Handling.sway(config, state.gun.handling());
+        double size = swaySize(state, now);
         if (size <= 0) {
             return NO_SWAY;
         }
-        double rest = Math.max(0, Math.min(1, config.getDouble("weapons.handling.sway.rest", 0.3)));
-        double settle = Math.max(1, config.getDouble("weapons.handling.sway.settle-ticks", 12));
-        double period = Math.max(4, config.getDouble("weapons.handling.sway.period-ticks", 50));
-        size *= rest + (1 - rest) * Math.exp(-(now - state.upAt) / settle);
+        double period = Math.max(4, plugin.getConfig().getDouble("weapons.handling.sway.period-ticks", 50));
         double phase = 2 * Math.PI * (now + state.swayPhase) / period;
         // Side to side once a period, up and down twice, half as far: a figure of eight.
         return new double[]{size * 0.5 * Math.sin(2 * phase), size * Math.sin(phase)};
+    }
+
+    /** How wide the sway's figure of eight is right now, in degrees (see {@link #sway}): 0 unless the sights are up. */
+    private double swaySize(GunState state, long now) {
+        if (!state.adsUp || state.upAt < 0) {
+            return 0;
+        }
+        var config = plugin.getConfig();
+        double size = Handling.sway(config, state.gun.handling());
+        double rest = Math.max(0, Math.min(1, config.getDouble("weapons.handling.sway.rest", 0.3)));
+        double settle = Math.max(1, config.getDouble("weapons.handling.sway.settle-ticks", 12));
+        return size * (rest + (1 - rest) * Math.exp(-(now - state.upAt) / settle));
     }
 
     /**

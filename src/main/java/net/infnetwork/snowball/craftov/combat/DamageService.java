@@ -47,6 +47,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>Knives go through the same armour with their own damage and penetration (items.yml
  * {@code melee}), land where the blade meets the target's box, and are stopped by a shield from the
  * front like a bullet.
+ *
+ * <p>A frag grenade's shrapnel reaches the head, torso and legs separately ({@link #explosion}):
+ * each part it reaches goes through the armour there with the grenade's low penetration and heavy
+ * wear ({@code throwables.frag}), and may bleed or break like a bullet wound.
  */
 public final class DamageService implements Listener {
 
@@ -71,19 +75,28 @@ public final class DamageService implements Listener {
     }
 
     /**
-     * Who last hurt an entity, for kill credit and kill feed; {@code melee} when it was a knife cut.
-     * {@code tick} starts the 30 seconds of credit (renewed while the attacker's wound bleeds);
-     * {@code struck} is when the attacker last hit the victim themselves, for the kill replay.
+     * Who last hurt an entity, for kill credit and kill feed; {@code melee} when it was a knife cut,
+     * {@code blast} when it was a grenade's shrapnel. {@code tick} starts the 30 seconds of credit
+     * (renewed while the attacker's wound bleeds); {@code struck} is when the attacker last hit the
+     * victim themselves, for the kill replay.
      */
     public record LastHit(@Nullable UUID attacker, String attackerName, String weapon, HitZone zone, BodyPart part, long tick,
-                          boolean melee, long struck) {
+                          boolean melee, long struck, boolean blast) {
         /**
          * A shot to the head. A knife cut that lands on the head is not one: a level swing at a
-         * standing target lands there, so counting it would hand out headshot credit for most knife kills.
+         * standing target lands there, so counting it would hand out headshot credit for most knife
+         * kills. Nor is shrapnel that finds a head showing over cover: nobody aimed it.
          */
         public boolean headshot() {
-            return zone == HitZone.HEAD && !melee;
+            return zone == HitZone.HEAD && !melee && !blast;
         }
+    }
+
+    /**
+     * One line of a blast that reaches a body ({@link #explosion}): the zone it flies at and the
+     * damage it carries there, before armour.
+     */
+    public record Blast(HitZone zone, double damage) {
     }
 
     /** What one hit did to its target, for the shooter's hit sound and marker. */
@@ -152,7 +165,7 @@ public final class DamageService implements Listener {
      * sides as in combat ({@link net.infnetwork.snowball.craftov.raid.RaidManager#onHostileHit}).
      */
     public void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part) {
-        recordHit(victim, attacker, weapon, part, false, false);
+        recordHit(victim, attacker, weapon, part, false, false, false);
     }
 
     /**
@@ -165,22 +178,22 @@ public final class DamageService implements Listener {
     public void recordBleed(LivingEntity victim, String weapon, BodyPart part, java.util.Set<UUID> sources) {
         LastHit last = lastHit(victim.getUniqueId());
         boolean theirs = last != null && last.attacker() != null && sources.contains(last.attacker());
-        recordHit(victim, null, weapon, part, false, theirs);
+        recordHit(victim, null, weapon, part, false, theirs, false);
     }
 
     private void recordHit(LivingEntity victim, @Nullable LivingEntity attacker, String weapon, BodyPart part, boolean melee,
-                           boolean renews) {
+                           boolean renews, boolean blast) {
         long now = Bukkit.getCurrentTick();
         // A disconnected player's stand-in is the player: its bleeding keeps the credit too.
         boolean player = victim instanceof Player || plugin.raids().standInOwner(victim) != null;
         LastHit last = attacker == null && player ? lastHit(victim.getUniqueId()) : null;
         if (last != null && last.attacker() != null) {
             lastHits.put(victim.getUniqueId(), new LastHit(last.attacker(), last.attackerName(), weapon, part.zone(), part,
-                    renews ? now : last.tick(), false, last.struck()));
+                    renews ? now : last.tick(), false, last.struck(), blast));
             return;
         }
         LastHit hit = new LastHit(attacker == null ? null : attacker.getUniqueId(),
-                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee, now);
+                attacker == null ? "未知" : displayName(attacker), weapon, part.zone(), part, now, melee, now, blast);
         lastHits.put(victim.getUniqueId(), hit);
         if (attacker != null && attacker != victim) {
             plugin.raids().onHostileHit(victim, attacker, hit);
@@ -241,6 +254,68 @@ public final class DamageService implements Listener {
             feedback(player, victim, damage, zone, outcome);
         }
         return damage;
+    }
+
+    /**
+     * Applies the shrapnel of a blast at {@code at} to {@code victim}. Each of {@code hits} lands on
+     * a part of its zone (the torso on the chest or stomach, the legs on either leg, at random) and
+     * goes through the helmet or vest covering it like a round of penetration {@code pen}, wearing it
+     * by {@code armorDamage}; the part takes the bullet zone multiplier, but a head no head bonus.
+     * Every part it gets through to may bleed or break as a bullet hit there would, and gets its own
+     * line in the death report. Together they are one hit: dealt at once, recorded once for the kill
+     * credit (never a headshot), one hit marker for the thrower, and the victim's damage indicator
+     * points at the blast. A thrower caught in their own blast is nobody's attacker.
+     *
+     * @return the damage dealt, after armour
+     */
+    public double explosion(LivingEntity thrower, LivingEntity victim, Location at, java.util.List<Blast> hits,
+                            String weaponName, int pen, double armorDamage) {
+        @Nullable LivingEntity attacker = thrower == victim ? null : thrower;
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        int distance = at.getWorld() == victim.getWorld() ? (int) Math.round(at.distance(victim.getLocation())) : 0;
+        double total = 0;
+        @Nullable BodyPart worst = null;
+        double worstDamage = -1;
+        for (Blast hit : hits) {
+            BodyPart part = switch (hit.zone()) {
+                case HEAD -> BodyPart.HEAD;
+                case TORSO -> rng.nextBoolean() ? BodyPart.CHEST : BodyPart.STOMACH;
+                case LEGS -> rng.nextBoolean() ? BodyPart.LEFT_LEG : BodyPart.RIGHT_LEG;
+            };
+            // No impact sound per part: the blast is heard, and three thuds at once would drown it.
+            ArmorHit armorHit = wearArmor(victim, part, hit.damage(), pen, armorDamage);
+            double damage = hit.damage() * zoneMultiplier(part, 1.0) * armorHit.damageMult();
+            if (armorHit.penetrated() && part != BodyPart.HEAD) {
+                rollInjuries(victim, part, damage, attacker);
+            }
+            if (victim instanceof Player) {
+                hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
+                        .add(new HitRecord(displayName(thrower), weaponName, part, damage, distance));
+            }
+            total += damage;
+            if (damage > worstDamage) {
+                worst = part;
+                worstDamage = damage;
+            }
+        }
+        if (worst == null) {
+            return 0;
+        }
+        recordHit(victim, attacker, weaponName, worst, false, false, true);
+        RaidPlayer.@Nullable State before = stateOf(victim);
+        deal(victim, attacker, total);
+        Outcome outcome = outcome(victim, before);
+        if (victim instanceof Player hurt) {
+            plugin.hud().hurt(hurt);
+            plugin.hud().damageFrom(hurt, at);
+        }
+        // A soldier caught in the blast knows roughly where it came from, and a sleeping boss group
+        // wakes, as it would to a bullet.
+        plugin.ai().onBotHurt(victim, thrower);
+        if (attacker instanceof Player player) {
+            feedback(player, victim, total, HitZone.TORSO, outcome);
+        }
+        return total;
     }
 
     /** A ballistic shield takes the hit: sparks and a ring of steel, nothing gets through. */
@@ -543,7 +618,7 @@ public final class DamageService implements Listener {
         if (armorHit.penetrated() && part != BodyPart.HEAD) {
             rollInjuries(victim, part, damage, player);
         }
-        recordHit(victim, player, def.name(), part, true, false);
+        recordHit(victim, player, def.name(), part, true, false, false);
         if (victim instanceof Player) {
             hitsTaken.computeIfAbsent(victim.getUniqueId(), k -> new java.util.ArrayList<>())
                     .add(new HitRecord(player.getName(), def.name(), part, damage, (int) Math.round(eye.toVector().distance(point))));

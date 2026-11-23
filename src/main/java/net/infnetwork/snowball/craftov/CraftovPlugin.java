@@ -94,6 +94,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.luck.LuckService luck;
     private DownedService downed;
     private WeaponService weapons;
+    private net.infnetwork.snowball.craftov.weapon.FovService fov;
     private RaidManager raids;
     private AiService ai;
     private LobbyService lobby;
@@ -163,6 +164,7 @@ public final class CraftovPlugin extends JavaPlugin {
         stamina = new StaminaService(this);
         downed = new DownedService(this);
         weapons = new WeaponService(this);
+        fov = new net.infnetwork.snowball.craftov.weapon.FovService(this);
         triggers = new TriggerService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
@@ -197,7 +199,7 @@ public final class CraftovPlugin extends JavaPlugin {
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
-                new InspectService(this), market, profiles, killFeed);
+                new InspectService(this), market, profiles, killFeed, fov);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -414,6 +416,7 @@ public final class CraftovPlugin extends JavaPlugin {
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
+    public net.infnetwork.snowball.craftov.weapon.FovService fov() { return fov; }
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }

@@ -15,7 +15,8 @@ import java.util.List;
  * @param recoilH     max horizontal kick per shot in degrees
  * @param recoilReturn share (0..1) of a spray's camera kick that drifts back once the gun stops firing
  * @param reloadTicks reload duration
- * @param zoom        ADS zoom strength 0..3
+ * @param adsClass    how the gun handles aimed (see {@link #ADS_CLASSES}): how long its sights take to
+ *                    come up, how much aiming slows the player, what its iron sights magnify
  * @param soundVolume how loud the report is (3.5 pistol .. 7 sniper): how far it carries and how loud
  *                    the shooter hears it (weapons.audio.shooter-volume)
  * @param audio       sound set id under craftov:gun.<audio>.* (see tools/art/gunsamples.py)
@@ -37,7 +38,7 @@ public record GunSpec(
         double recoilH,
         double recoilReturn,
         int reloadTicks,
-        int zoom,
+        String adsClass,
         int pellets,
         double headMultiplier,
         float soundVolume,
@@ -47,6 +48,22 @@ public record GunSpec(
         String audio,
         String action
 ) {
+    /** The ads-class values items.yml may give; unknown ones count as "rifle". */
+    public static final java.util.List<String> ADS_CLASSES = java.util.List.of("pistol", "smg", "rifle", "shotgun", "dmr", "lmg", "bolt");
+
+    /** The ads-class of a gun whose items.yml entry gives none, by its action. */
+    public static String defaultAdsClass(String action) {
+        return switch (action) {
+            case "pistol", "pistol_heavy" -> "pistol";
+            case "smg", "pdw" -> "smg";
+            case "pump" -> "shotgun";
+            case "dmr" -> "dmr";
+            case "lmg" -> "lmg";
+            case "bolt" -> "bolt";
+            default -> "rifle";
+        };
+    }
+
     /** Bullets that break the sound barrier crack past a listener; the rest whiz. */
     public boolean supersonic() {
         return switch (caliber) {
@@ -84,6 +101,6 @@ public record GunSpec(
     /** The same gun with {@code damage} per pellet, for a round that lost some of its punch on the way. */
     public GunSpec withDamage(double damage) {
         return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, moveSpread, recoil, recoilH,
-                recoilReturn, reloadTicks, zoom, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action);
+                recoilReturn, reloadTicks, adsClass, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action);
     }
 }

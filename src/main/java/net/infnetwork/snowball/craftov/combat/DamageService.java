@@ -59,6 +59,8 @@ public final class DamageService implements Listener {
     public static final double FULL_PROTECTION_ABOVE = 0.5;
     /** Default durability lost per point of a hit's damage, times the round's armor-damage. */
     private static final double WEAR = 0.3;
+    /** How long a hit keeps its attacker the credit for the victim's death (30 s), unless renewed. */
+    private static final long CREDIT_TICKS = 20 * 30;
 
     /**
      * What the armour covering a part did to one hit: the share of its damage that gets through,
@@ -100,14 +102,29 @@ public final class DamageService implements Listener {
 
     public DamageService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        // Every victim leaves its last hit here, soldiers, drones, range targets and shelled AI
+        // included, and nothing took them out once the victim was gone (issue #45). A record past
+        // its 30 seconds counts for nothing (lastHit), so dropping it changes nothing; every 30
+        // seconds, so none outlives its credit by more than that.
+        Bukkit.getScheduler().runTaskTimer(plugin, this::pruneHits, CREDIT_TICKS, CREDIT_TICKS);
     }
 
     public @Nullable LastHit lastHit(UUID victim) {
         LastHit hit = lastHits.get(victim);
-        if (hit == null || Bukkit.getCurrentTick() - hit.tick() > 20 * 30) {
+        if (hit == null || Bukkit.getCurrentTick() - hit.tick() > CREDIT_TICKS) {
             return null;
         }
         return hit;
+    }
+
+    private void pruneHits() {
+        long now = Bukkit.getCurrentTick();
+        lastHits.values().removeIf(hit -> now - hit.tick() > CREDIT_TICKS);
+    }
+
+    /** Last-hit records held, expired ones not yet pruned included (shown by /cv raids). */
+    public int trackedHits() {
+        return lastHits.size();
     }
 
     public void forget(UUID victim) {

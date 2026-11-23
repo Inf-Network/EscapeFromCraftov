@@ -58,8 +58,8 @@ import java.util.UUID;
  * out in front as a box of their own ({@link #legs}, HitboxHistory). The seat follows the ground: up
  * steps of up to slide.step-up, down drops of up to slide.max-drop; a wall, a closed door or a ceiling
  * too low to crouch under stops the slide at once, and a deeper drop ends it with the speed handed
- * back, so the player falls on. Jump ends it too, with the speed kept: the client jumps as it lands
- * on its feet.
+ * back, so the player falls on. Jump ends it too, handing back a sprint's momentum (not the slide's,
+ * which would carry the jump further than any sprint-jump): the client jumps as it lands on its feet.
  *
  * <p>Sneak is not sneaking while sliding: the second tap is usually still held, and vanilla dismounts
  * a rider whose sneak key is down. The server's sneak state is cleared every tick before the riders
@@ -83,6 +83,11 @@ public final class SlideService implements Listener {
     private static final double BLOCKS_PER_SPEED = 2.1585;
     /** Ticks a sprint's pace is remembered after it ended, for the slide that follows the taps. */
     private static final int PACE_TICKS = 10;
+    /**
+     * What a tick on ordinary ground leaves of a walker's momentum (vanilla: block friction 0.6 times
+     * 0.91): a sprinting player goes into each tick with its pace times this.
+     */
+    private static final double GROUND_DRAG = 0.546;
     /** Half the width of the sliding body, for collisions. */
     private static final double HALF = 0.3;
     /**
@@ -191,6 +196,8 @@ public final class SlideService implements Listener {
         double yaw;
         double speed;
         final double startSpeed;
+        /** The sprint's pace the slide set off from (before the boost), in blocks a tick. */
+        final double pace;
         int ticks;
         final double startX;
         final double startY;
@@ -202,13 +209,14 @@ public final class SlideService implements Listener {
         double topLow = Double.MAX_VALUE;
         double topHigh = -Double.MAX_VALUE;
 
-        Slide(Player player, ItemDisplay seat, double x, double y, double z, double yaw, double speed, double stamina) {
+        Slide(Player player, ItemDisplay seat, double x, double y, double z, double yaw, double pace, double speed, double stamina) {
             this.player = player;
             this.seat = seat;
             this.x = x;
             this.y = y;
             this.z = z;
             this.yaw = yaw;
+            this.pace = pace;
             this.speed = speed;
             this.startSpeed = speed;
             this.startX = x;
@@ -554,8 +562,8 @@ public final class SlideService implements Listener {
         Location feet = player.getLocation();
         World world = feet.getWorld();
         double boost = setting("boost", 1.4);
-        double pace = Bukkit.getCurrentTick() - s.sprintPaceTick <= PACE_TICKS ? s.sprintPace : 0;
-        double speed = Math.min(setting("max-speed", 0.45), Math.max(pace, setting("min-start-speed", 0.286)) * boost);
+        double pace = Math.max(Bukkit.getCurrentTick() - s.sprintPaceTick <= PACE_TICKS ? s.sprintPace : 0, setting("min-start-speed", 0.286));
+        double speed = Math.min(setting("max-speed", 0.45), pace * boost);
         double yaw = heading(s, player);
         ItemDisplay seat = world.spawn(new Location(world, feet.getX(), feet.getY(), feet.getZ(), (float) yaw, 0), ItemDisplay.class, d -> {
             d.setPersistent(false);
@@ -567,7 +575,7 @@ public final class SlideService implements Listener {
             refuse(player, s, "上不了滑铲座位", false);
             return;
         }
-        Slide slide = new Slide(player, seat, feet.getX(), feet.getY(), feet.getZ(), yaw, speed, plugin.stamina().stamina(player));
+        Slide slide = new Slide(player, seat, feet.getX(), feet.getY(), feet.getZ(), yaw, pace, speed, plugin.stamina().stamina(player));
         slides.put(player.getUniqueId(), slide);
         // Before the riders are moved this tick: a sneak key still down would take the player off again.
         player.setSneaking(false);
@@ -588,7 +596,7 @@ public final class SlideService implements Listener {
         ItemDisplay seat = slide.seat;
         if (!player.isOnline() || !player.isValid() || !seat.isValid() || player.getVehicle() != seat
                 || player.getWorld() != seat.getWorld() || plugin.downed().isDowned(player) || !allowed(player)) {
-            end(slide, "interrupted", false);
+            end(slide, "interrupted", 0);
             return;
         }
         measure(slide);
@@ -601,7 +609,9 @@ public final class SlideService implements Listener {
         }
         Input input = player.getCurrentInput();
         if (input.isJump()) {
-            end(slide, "jump", true);
+            // An ordinary sprint-jump: the momentum a sprint at the pace the slide set off from goes
+            // into a tick with (or less, the slide slowed down), not the slide's own speed.
+            end(slide, "jump", Math.min(slide.speed, slide.pace) * GROUND_DRAG);
             return;
         }
         double steer = setting("steer-degrees", 1.5);
@@ -610,7 +620,7 @@ public final class SlideService implements Listener {
         }
         double friction = move(slide);
         if (friction < 0) {
-            end(slide, friction == WALL ? "wall" : "ledge", friction != WALL);
+            end(slide, friction == WALL ? "wall" : "ledge", friction == WALL ? 0 : slide.speed);
             return;
         }
         plugin.stamina().spend(player, plugin.stamina().sprintDrain() * Math.max(0, setting("stamina-multiplier", 2.0)));
@@ -620,9 +630,9 @@ public final class SlideService implements Listener {
         }
         slide.speed *= friction;
         if (slide.speed < setting("stop-speed", 0.12)) {
-            end(slide, "stopped", true);
+            end(slide, "stopped", slide.speed);
         } else if (slide.ticks >= setting("max-ticks", 20)) {
-            end(slide, "max-ticks", true);
+            end(slide, "max-ticks", slide.speed);
         }
     }
 
@@ -736,16 +746,16 @@ public final class SlideService implements Listener {
     public void stop(Player player) {
         Slide slide = slides.get(player.getUniqueId());
         if (slide != null) {
-            end(slide, "stopped by the game", false);
+            end(slide, "stopped by the game", 0);
         }
     }
 
     /**
      * Takes the rider off the seat, which puts them on it at ground level (vanilla's dismount, a
-     * teleport that keeps their view and their client's momentum), and gives them the slide's speed
-     * if {@code carry}.
+     * teleport that keeps their view and their client's momentum), and sets them going the way the
+     * slide went at {@code carry} blocks a tick (none when 0).
      */
-    private void end(Slide slide, String reason, boolean carry) {
+    private void end(Slide slide, String reason, double carry) {
         Player player = slide.player;
         slides.remove(player.getUniqueId());
         ItemDisplay seat = slide.seat;
@@ -767,8 +777,8 @@ public final class SlideService implements Listener {
             player.teleport(new Location(seat.getWorld(), seatX, seatY, seatZ, player.getYaw(), player.getPitch()));
         }
         settle(player);
-        if (carry && player.isOnline() && !player.isInsideVehicle()) {
-            player.setVelocity(new Vector(slide.dirX() * slide.speed, player.getVelocity().getY(), slide.dirZ() * slide.speed));
+        if (carry > 0 && player.isOnline() && !player.isInsideVehicle()) {
+            player.setVelocity(new Vector(slide.dirX() * carry, player.getVelocity().getY(), slide.dirZ() * carry));
         }
         record(player, slide, reason, seatX, seatY, seatZ);
     }
@@ -845,7 +855,7 @@ public final class SlideService implements Listener {
     /** Puts everyone sliding on their feet and removes the seats (the plugin is shutting down). */
     public void shutdown() {
         for (Slide slide : new ArrayList<>(slides.values())) {
-            end(slide, "shutdown", false);
+            end(slide, "shutdown", 0);
         }
         // Seats are never saved, but one left by a crash in a loaded world would sit there unused.
         for (World world : Bukkit.getWorlds()) {

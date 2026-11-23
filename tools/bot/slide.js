@@ -12,6 +12,9 @@
 //            and after it A stands on the ground
 //   boost    with Speed II the sprint is faster, and so is the slide: it sets off at the 0.45 cap
 //            (from a plain sprint 0.40) and goes further than 4.5 blocks
+//   jump     a plain sprint-jump, then a jump out of a slide (jump pressed 100 ms after sitting
+//            down), both by mineflayer's vanilla physics, takeoff to landing: the slide ends
+//            (reason jump) and its jump goes no further than the plain one
 //   stamina  a slide under 25 kg costs 2 x stamina.sprint-drain (0.3) a tick, about 10; carrying
 //            30 to 40 kg of collectibles the load factor (1 + (kg - 25) / 30) on top
 //   refuse   no slide: within 30 ticks of the last one ended (cooldown); past that but with under
@@ -55,7 +58,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 // rejoin before zones (being shot puts A in a fight, and quitting in one is death), body last.
-const ALL = ['detect', 'box', 'boost', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'body']
+const ALL = ['detect', 'box', 'boost', 'jump', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'body']
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ALL
 const tag = String(Math.floor(10000 + Math.random() * 90000))
@@ -108,6 +111,11 @@ function make (name) {
       const pitch = Math.max(-90, Math.min(90, (p.relativePitch ? conv.toNotchianPitch(bot.entity.pitch) : 0) + p.pitch))
       bot.entity.yaw = conv.fromNotchianYaw(yaw)
       bot.entity.pitch = conv.fromNotchianPitch(pitch)
+    })
+    // 1.21.11 sends a velocity in blocks a tick, which mineflayer still scales as 1/8000ths of one, so
+    // the speed a slide hands back would be lost to its physics: set it again, after mineflayer's own.
+    bot._client.on('entity_velocity', p => {
+      if (bot.entity && p.entityId === bot.entity.id) bot.entity.velocity.set(p.velocity.x, p.velocity.y, p.velocity.z)
     })
   })
   watchEntities(bot)
@@ -382,6 +390,73 @@ async function boost () {
   await rcon(`effect clear ${A_NAME} minecraft:speed`)
   check('boost: with Speed II the slide sets off at the 0.45 cap and goes past 4.5 blocks',
     s && Math.abs(s.speed - 0.45) < 1e-3 && s.distance > 4.5, s && `speed ${s.speed}, ${s.distance} blocks in ${s.ticks} ticks`)
+}
+
+/**
+ * Where `bot` next leaves the ground and lands again, by its own physics: the last position on the
+ * ground before it rose and the first one back on it; null within `ms`.
+ */
+function airborne (bot, ms = 4000) {
+  return new Promise(resolve => {
+    let ground = null
+    let takeoff = null
+    let timer = null
+    // mineflayer's physics (and so this) stops while the bot is sat on something and starts again
+    // with the position the dismount sends; bot.vehicle itself is never cleared.
+    const onTick = () => {
+      const p = bot.entity.position.clone()
+      if (bot.entity.onGround) {
+        if (takeoff) return done({ takeoff, land: p })
+        ground = p
+      } else if (ground && !takeoff && p.y > ground.y + 0.05) {
+        takeoff = ground
+      }
+    }
+    const done = result => {
+      bot.removeListener('physicsTick', onTick)
+      clearTimeout(timer)
+      resolve(result)
+    }
+    bot.on('physicsTick', onTick)
+    timer = setTimeout(() => done(null), ms)
+  })
+}
+
+async function jump () {
+  // A plain sprint-jump along the runway first.
+  await sleep(2000)
+  await rcon(`cv slide ${A_NAME} stamina 100`)
+  await toStart()
+  run(A, true)
+  await sleep(900)
+  let flight = airborne(A)
+  A.setControlState('jump', true)
+  keys(A, { forward: true, sprint: true, jump: true })
+  const plain = await flight
+  A.setControlState('jump', false)
+  halt(A)
+  // Then one out of a slide, while it is still fast: jump (shift let go with it) 100 ms after sitting
+  // down. When the slide handed back its own speed, a jump 150 ms in already went a quarter of a
+  // block further than the plain one (4.40 against 4.15; mineflayer spends a tick in the air after
+  // the dismount, so a vanilla client, which jumps on the first, would go further still).
+  await sleep(2000)
+  await rcon(`cv slide ${A_NAME} stamina 100`)
+  await toStart()
+  const { ride } = await sprintAndSlide()
+  await sleep(100)
+  flight = airborne(A)
+  A.setControlState('jump', true)
+  keys(A, { forward: true, sprint: true, jump: true })
+  const out = await flight
+  A.setControlState('jump', false)
+  halt(A)
+  const s = (await slideEnded()).last
+  const length = f => f ? f.land.x - f.takeoff.x : null
+  log('jump: plain', plain, 'out of a slide', out, s)
+  check('jump: jump pressed mid-slide ends the slide (reason jump)', ride && s && s.reason === 'jump', s && s.reason)
+  check('jump: a jump out of a slide goes no further than a plain sprint-jump',
+    plain && out && length(out) <= length(plain) + 0.1,
+    `${length(out) === null ? '-' : length(out).toFixed(2)} blocks out of the slide, ${length(plain) === null ? '-' : length(plain).toFixed(2)} sprint-jumping`)
 }
 
 async function stamina () {
@@ -820,6 +895,7 @@ async function body () {
       if (scenario === 'detect') await detect()
       else if (scenario === 'box') { boxFrom = logSize(); await box() }
       else if (scenario === 'boost') await boost()
+      else if (scenario === 'jump') await jump()
       else if (scenario === 'stamina') await stamina()
       else if (scenario === 'refuse') await refuse()
       else if (scenario === 'keys') await keysScenario()

@@ -210,7 +210,7 @@ public final class ItemRegistry {
             med = new MedSpec(m.getDouble("use", 2.0), m.getDouble("pool", 0), m.getDouble("per-use", 0),
                     Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)), m.getBoolean("one-part", false),
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
-                    m.getInt("effect-seconds", 0), m.getString("anim", "brush"), m.getString("sound", "med.bandage"));
+                    m.getInt("effect-seconds", 0), m.getString("anim", "none"), medCues(m));
         }
         net.infnetwork.snowball.craftov.weapon.OpticSpec optic = null;
         ConfigurationSection o = s.getConfigurationSection("optic");
@@ -373,5 +373,24 @@ public final class ItemRegistry {
 
     public Set<String> ids() {
         return Collections.unmodifiableSet(items.keySet());
+    }
+
+    /**
+     * A medical item's sounds, items.yml {@code cues: [[0, med.tear], [0.3, med.wrap] ...]}: share of
+     * the use time and sound, sorted by time. An items.yml from before cues (a server only copies
+     * the file from the jar when it is missing) names one {@code sound}, played as the use starts.
+     */
+    private static List<MedSpec.Cue> medCues(ConfigurationSection m) {
+        List<MedSpec.Cue> cues = new ArrayList<>();
+        for (Object entry : m.getList("cues", List.of())) {
+            if (entry instanceof List<?> pair && pair.size() == 2 && pair.get(0) instanceof Number at && pair.get(1) != null) {
+                cues.add(new MedSpec.Cue(Math.max(0, Math.min(1, at.doubleValue())), String.valueOf(pair.get(1))));
+            }
+        }
+        if (cues.isEmpty()) {
+            cues.add(new MedSpec.Cue(0, m.getString("sound", "med.bandage")));
+        }
+        cues.sort(java.util.Comparator.comparingDouble(MedSpec.Cue::at));
+        return List.copyOf(cues);
     }
 }

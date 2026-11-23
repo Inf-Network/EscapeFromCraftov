@@ -74,8 +74,9 @@ public final class ItemFactory {
      * 19: gun models (#4, which used 16): guns carry max_damage 5 and, out of the hand, the holster
      * mark (the item model shows the gun low, as the draw starts).
      * 20: helmets, vests, rigs and backpacks are put on with craftov:gear.equip, not leather (#41).
+     * 21: medical items use silently (craftov:misc.silence); their cues come from HealthService (#41).
      */
-    public static final int VERSION = 20;
+    public static final int VERSION = 21;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -343,10 +344,12 @@ public final class ItemFactory {
             } catch (IllegalArgumentException ex) {
                 animation = ItemUseAnimation.BRUSH;
             }
+            // Silent: vanilla plays a consumable's sound every 4 ticks from a fifth of the use on, the
+            // same sample all through. HealthService plays the item's own cues instead.
             stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
                     .consumeSeconds((float) med.useSeconds())
                     .animation(animation)
-                    .sound(Key.key("craftov", "med.loop"))
+                    .sound(Key.key("craftov", "misc.silence"))
                     .hasConsumeParticles(false)
                     .build());
             stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()

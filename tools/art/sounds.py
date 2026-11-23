@@ -184,6 +184,9 @@ SOUNDS = {
                                       (click(1200, 0.06), 0.7))) * 0.7,
     'med/kit': lambda: norm(mixdown(*[(click(1400 + 90 * i, 0.012, 0.6), 0.018 * i) for i in range(22)],
                                    (swish(0.4, 400, 3000) * 0.6, 0.45))) * 0.7,
+    # Only a medical stack built before ItemFactory.VERSION 21 still names it (until it is rebuilt):
+    # medical items use silently now and play their cues (see the end). Kept here, in its place, so
+    # the shared noise generator gives every sound after it the same samples.
     'med/loop': lambda: norm(swish(0.3, 500, 3000)) * 0.35,
     'misc/silence': lambda: np.zeros(int(SR * 0.05), dtype=np.float32),
     'med/finish': lambda: norm(mixdown((swish(0.2, 500, 3000), 0), (tone(988, 0.3, 0.09), 0.15))) * 0.7,
@@ -400,6 +403,47 @@ add('voice/death3', lambda: cry((voice(0.3, [(0, 210), (0.04, 250), (0.3, 170)],
                                        [(0, 0), (0.05, 0.45), (0.3, 0.25), (0.45, 0)], breath=0.3, open_q=0.6,
                                        creak=(0.05, 1.0)), 0.36),
                                 (breath_out(0.45, 'uh') * 0.35, 0.8), length=1.3))
+
+
+# ---------------------------------------------------------------- medical cues (#41)
+# A medical item in use plays its cues at set points of its use time (items.yml med.cues,
+# HealthService), instead of one 0.3 s swish every 4 ticks all through.
+
+def inhale(sec, vowel='a', gain=0.6):
+    """A sharp breath in through the open mouth, swelling to a catch at the end."""
+    x = hp(noise(sec), 500)
+    for k, w in zip(range(3), (180, 220, 280)):
+        x = resonate(x, np.full(len(x), float(VOWELS[vowel][k])), np.full(len(x), float(w)))
+    return x * curve([(0, 0), (sec * 0.8, 1), (sec, 0)], sec) * gain
+
+
+# Tearing a dressing's wrapper or a strip of tape off the roll.
+add('med/tear', lambda: norm(mixdown(
+    (env(crackle(0.3, 2400, 1500, 9000, ramp=(0.4, 1.6)), 0.03, 0.12), 0),
+    (env(bp(noise(0.3), 2500, 7000), 0.02, 0.08) * 0.3, 0), length=int(SR * 0.4))) * 0.6)
+# A splint's hook-and-loop strap ripped open and pressed shut.
+add('med/strap', lambda: norm(mixdown(
+    (env(crackle(0.32, 3200, 900, 8000, decay=0.001, ramp=(1.5, 0.6)), 0.01, 0.14) * (0.8 + 0.2 * np.sin(2 * np.pi * 38 * t(0.32))), 0),
+    (env(lp(noise(0.06), 900), 0.002, 0.02) * 0.6, 0.4), length=int(SR * 0.5))) * 0.65)
+# The cap pulled off an injector.
+add('med/cap', lambda: norm(mixdown((click(1800, 0.03), 0), (env(sine(lambda tt: 260 - tt * 900, 0.06), 0.001, 0.015) * 0.6, 0),
+                                    (click(3600, 0.015, 0.5), 0.04), length=int(SR * 0.15))) * 0.6)
+# Rummaging through a medical kit: packets and tools knocking about.
+add('med/rummage', lambda: norm(mixdown(
+    (env(crackle(0.55, 400, 800, 5000), 0.1, 0.25) * 0.6, 0),
+    *[(click(1300 + 700 * (i % 3), 0.03, 0.7), 0.07 + 0.11 * i + 0.02 * (i % 2)) for i in range(5)],
+    length=int(SR * 0.65))) * 0.55)
+# Surgical scissors cutting twice.
+add('med/snip', lambda: norm(mixdown(*[part for at in (0, 0.17) for part in (
+    (env(bp(noise(0.05), 3000, 9000), 0.004, 0.012), at), (metal((4200, 6100), 0.03, 0.08) * 0.25, at + 0.01))],
+    length=int(SR * 0.32))) * 0.55)
+# Swallowing the pills.
+add('med/swallow', lambda: norm(mixdown(
+    (env(sine(lambda tt: 190 - tt * 900, 0.08), 0.004, 0.025), 0),
+    (env(resonate(bp(noise(0.12), 200, 1500), np.full(int(SR * 0.12), 330.0), np.full(int(SR * 0.12), 120.0)), 0.01, 0.03) * 0.8, 0.01),
+    (click(900, 0.03, 0.5), 0.16), length=int(SR * 0.3))) * 0.6)
+# Coming round from the self-revive shot: a sharp gasp for air.
+add('med/gasp', lambda: norm(mixdown((inhale(0.38, 'a'), 0), (breath_out(0.35, 'uh') * 0.5, 0.45), length=int(SR * 0.85))) * 0.8)
 
 
 def write_ogg(data, path):

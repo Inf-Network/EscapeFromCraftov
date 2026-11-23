@@ -119,6 +119,20 @@ function stashUsed (w) {
   return m ? { used: Number(m[1]), cap: Number(m[2]) } : null
 }
 
+/**
+ * Money the server announced paying bot in the lines since mark: daily contracts ("[每日任务完成] …
+ * +◈7,000"), the all-done bonus, level-ups, collection milestones and the guide ("奖励 ◈…"). A
+ * refund comes without a line, so a balance change minus these is what was refunded.
+ */
+function announcedSince (bot, mark) {
+  let sum = 0
+  for (const m of bot.msgs.slice(mark)) {
+    const r = m.match(/\[每日任务完成\].*\+◈([\d,]+)/) || m.match(/奖励 ◈([\d,]+)/)
+    if (r) sum += Number(r[1].replace(/,/g, ''))
+  }
+  return sum
+}
+
 async function money (name) {
   const m = (await cmd(`cv money ${name} 0`)).match(/◈([\d,]+)/)
   return m ? Number(m[1].replace(/,/g, '')) : NaN
@@ -549,6 +563,7 @@ async function escortraid () {
     e.closeWindow(list)
   }
   const cBefore = await money(c.username)
+  const cMark = c.msgs.length
   const e1Before = await money(e1.username)
   check('escortraid: squad deployed', await enterRaid([c, e1, e2], () => c.chat('/cv queue proving NORMAL TRIO')))
   c.chat(`/cv party kick ${e1.username}`)
@@ -562,10 +577,18 @@ async function escortraid () {
   const e1Paid = (await money(e1.username)) - e1Before
   // B's balance also moved with his own extraction (level-up and task rewards): read the escort income.
   const e2Paid = (((profile(e2.username) || {}).stats || {}).escort_income || 0)
+  // The client's balance also moves with its own extraction: a daily contract to extract once
+  // pays ◈7,000 right then, and its experience can bring a level-up. Those are announced; the
+  // escort refund is not, so it is what is left of the change.
   const cAfter = await money(c.username)
+  const cRewards = announcedSince(c, cMark)
+  const cRefund = cAfter - cBefore - cRewards
   check('escortraid: the escort kicked in the raid is still paid', e1Paid === 10000, e1Paid)
   check('escortraid: the escort who extracted and logged off is still paid', e2Paid === 10000, e2Paid)
-  check('escortraid: the client gets nothing back', cAfter === cBefore, `${cBefore} -> ${cAfter}`)
+  check('escortraid: the client gets nothing back', cRefund === 0,
+    `${cBefore} -> ${cAfter}, of which rewards ${cRewards}: refund ${cRefund}`)
+  const escrow = (profile(c.username) || {}).escortEscrow
+  check('escortraid: the client\'s escrow is closed', !escrow, escrow)
   await extract(e1)
   c.quit(); e1.quit()
 }

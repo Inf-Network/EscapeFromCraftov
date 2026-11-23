@@ -138,6 +138,8 @@ public final class WeaponService implements Listener {
         long upAt = -1;
         /** Where in its figure of eight this gun's sway starts, in ticks: aims do not all sway alike. */
         final int swayPhase = ThreadLocalRandom.current().nextInt(1000);
+        /** Tick a scope's picture goes up, a tick after the aimed mark (see {@link WeaponService#raise}); -1 for none due. */
+        long scopeAt = -1;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -1737,6 +1739,7 @@ public final class WeaponService implements Listener {
         state.adsMarkAt = now;
         state.adsUp = false;
         state.adsFrames = false;
+        state.scopeAt = -1;
         if (kept < state.adsTicks) {
             state.upAt = -1; // a new rise: the gun has to settle again (see sway); sights picked up as they were go on settling
         }
@@ -1796,6 +1799,10 @@ public final class WeaponService implements Listener {
         }
         double target = fovFor(player, state);
         if (state.adsUp) {
+            if (state.scopeAt >= 0 && now >= state.scopeAt && state.optic != null) {
+                state.scopeAt = -1;
+                plugin.hud().scopeOverlay(player, state.optic.overlay());
+            }
             if (!plugin.fov().settled(player, target)) {
                 plugin.fov().steer(player, target, target);
             }
@@ -1822,9 +1829,19 @@ public final class WeaponService implements Listener {
             plugin.getLogger().info(String.format("[debug] %s aimed %s tick=%d", player.getName(), state.def.id(), now));
         }
         plugin.fov().steer(player, target, target);
+        ItemStack held = stackOf(player, state);
+        boolean masked = held != null && ItemFactory.handMark(held) == ItemFactory.MARK_AIMED;
         setMark(player, state, ItemFactory.MARK_AIMED);
         if (state.optic != null && state.optic.magnified()) {
-            plugin.hud().scopeOverlay(player, state.optic.overlay());
+            // The scope's mask is drawn with the gun under the aimed mark, which the client swaps in on
+            // its next tick, but its reticle (the helmet's camera overlay) shows the moment it comes:
+            // sent together, a frame could show the reticle over the zoomed world with no mask around
+            // it. The reticle waits a tick, unless the gun still carries the mark (picked up as it was).
+            if (masked) {
+                plugin.hud().scopeOverlay(player, state.optic.overlay());
+            } else {
+                state.scopeAt = now + 1;
+            }
         }
     }
 
@@ -1856,6 +1873,7 @@ public final class WeaponService implements Listener {
             state.adsKept = state.adsStart >= 0 ? (int) Math.min(state.adsTicks, now - state.adsStart) : 0;
             state.adsStart = -1;
             state.adsUp = false;
+            state.scopeAt = -1;
         }
         if (scope && linger && out > 0) {
             scopeOut.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + out);

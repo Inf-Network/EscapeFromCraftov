@@ -2,9 +2,11 @@
 // ammo, meds) and enters the range from the lobby rack. On the range: the lobby menus that move items
 // between the inventory and the profile (stash, trader, market, secure container, deploy) must refuse
 // to open, /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out
-// of reach), Q never fires and a left click does. Leaving must give back the lobby inventory slot
-// for slot, with nothing taken on the range, and so must being teleported off the range by an admin,
-// at once, so that a rifle stashed straight after /cv lobby is not handed back a moment later.
+// of reach), Q never fires and a left click does (the capture block in front of the crosshair dug, as
+// the vanilla client sends a click; a bare swing fires nothing, #33). Leaving must give back the
+// lobby inventory slot for slot, with nothing taken on the range, and so must being teleported off
+// the range by an admin, at once, so that a rifle stashed straight after /cv lobby is not handed
+// back a moment later.
 // Then a solo raid on the test map checks that /cv secure still opens mid-raid and that extracting
 // keeps what the bot carried.
 //
@@ -17,6 +19,7 @@
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { pullTrigger } = require('./common')
 
 const PORT = env.PORT
 const RCON_PORT = env.RCON_PORT
@@ -150,7 +153,7 @@ async function rangePhase () {
     await sleep(3500)
     check('Q reloads without firing', shots === 0, shots + ' shots')
     shots = 0
-    bot.swingArm()
+    await pullTrigger(bot)
     await sleep(600)
     check('a left click fires', shots >= 1, shots + ' shots')
   } else check('m4c reached the hotbar on the range', false)
@@ -167,7 +170,7 @@ async function rangePhase () {
   const d = diff(before, after)
   check('every slot is back as it was before the range', d.length === 0, d.join(', '))
   const dFull = diff(beforeFull, layout({ items: false, components: true }))
-  check('every stack is identical, components included', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).map(s => s.slice(0, 120)).join(' | '))
+  check('every stack is identical, components included', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).join(' | '))
   check('no range loaner came back', !bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))
 
   // Being teleported off the range by other means ends the session the same way, and at once: the

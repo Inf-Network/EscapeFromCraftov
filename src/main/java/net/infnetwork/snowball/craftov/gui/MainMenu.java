@@ -1,10 +1,17 @@
 package net.infnetwork.snowball.craftov.gui;
 
+import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.lobby.TutorialService;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Text;
+import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -12,7 +19,9 @@ import java.util.List;
  * Operations is the big deploy button (six slots, one action) with daily tasks and the range;
  * preparation holds the stash, trader, market, secure container, presets, gunsmith, repair and free
  * kit; progress the operator, hideout, collection, season pass and rankings; social the squad,
- * escort hall and bounty board. The bottom bar keeps help, the profile and close in fixed places.
+ * escort hall and bounty board. The bottom bar keeps help, the profile and close in fixed places,
+ * and while the new-player guide runs, its checklist next to help; the button for the guide's next
+ * step shines.
  */
 final class MainMenu extends Menu {
 
@@ -30,15 +39,24 @@ final class MainMenu extends Menu {
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
         long value = plugin.carry().gearValue(viewer);
+        // The new-player guide's next step: its button shines and says so.
+        TutorialService.Step next = plugin.tutorial().guided(p) ? TutorialService.current(p) : null;
         // Operations.
-        bigButton(DEPLOY, "<accent><b>开始行动", List.of("<muted>选择地图、难度、单排或三排", "<muted>支持排位赛与自动补位"),
-                e -> plugin.menus().openDeploy(viewer));
+        List<String> deployLore = new ArrayList<>(List.of("<muted>选择地图、难度、单排或三排", "<muted>支持排位赛与自动补位"));
+        if (next == TutorialService.Step.DEPLOY || next == TutorialService.Step.EXTRACT) {
+            deployLore.add(NEXT);
+        }
+        if (plugin.training().offered(viewer)) {
+            deployLore.add("<muted>新手可以先选「训练行动」：单人，不计战绩");
+        }
+        bigButton(DEPLOY, "<accent><b>开始行动", deployLore, e -> plugin.menus().openDeploy(viewer));
         if (plugin.canUseCatalog(viewer)) {
             button(36, UiItems.button("craftov:ui/icon_catalog", "<text><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）",
                     "<muted>也可以输入 <white>/cv items")), e -> plugin.menus().openCatalog(viewer));
         }
-        button(37, UiItems.button("craftov:ui/tab_weapon", "<text><b>靶场", List.of("<muted>借用任意武器试射，离开时归还",
-                "<muted>身上的装备会先替你保管")), e -> plugin.menus().openStation(viewer, "range_rack"));
+        button(37, guideMark(UiItems.button("craftov:ui/tab_weapon", "<text><b>靶场", List.of("<muted>借用任意武器试射，离开时归还",
+                "<muted>身上的装备会先替你保管")), next == TutorialService.Step.RANGE || next == TutorialService.Step.GUNSMITH),
+                e -> plugin.menus().openStation(viewer, "range_rack"));
         // Preparation.
         button(11, UiItems.button("craftov:ui/icon_stash", "<text><b>仓库", List.of("<muted>存取物资、整理配装", "<muted>已用 " + p.stashUsed() + "/" + p.stashCapacity)),
                 e -> plugin.menus().openStash(viewer));
@@ -90,15 +108,20 @@ final class MainMenu extends Menu {
                 });
         button(25, UiItems.button("craftov:ui/icon_bounty", "<text><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
                 "<muted>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
-        // Bottom bar: help, profile, close.
-        set(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
-                "<white>左键 <muted>开火（按住连发）",
-                "<white>右键 <muted>按住开镜瞄准，松开即腰射",
-                "<white>Q <muted>换弹  <white>潜行+Q <muted>切换弹种",
-                "<white>F <muted>切换射击模式（拿刀时检视）  <white>潜行+F <muted>干员技能",
-                "<white>右键物资箱 <muted>搜索  <white>对准倒地队友按住右键 <muted>救援",
-                "<white>医疗品 <muted>拿在手上按住右键使用，终端里可查看伤势",
-                "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格")));
+        // Bottom bar: help, the guide, profile, close. The keys are the player's own bindings.
+        button(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
+                "<white><key:key.attack> <muted>开火（按住连发）",
+                "<white><key:key.use> <muted>按住开镜瞄准，松开即腰射",
+                "<white><key:key.drop> <muted>换弹  <white><key:key.sneak>+<key:key.drop> <muted>切换弹种",
+                "<white><key:key.swapOffhand> <muted>切换射击模式（拿刀时检视）",
+                "<white><key:key.sneak>+<key:key.swapOffhand> <muted>干员技能  <white><key:key.pickItem> <muted>战术手电",
+                "<white><key:key.use> <muted>物资箱：搜索  对准倒地队友按住 <white><key:key.use> <muted>救援",
+                "<muted>医疗品拿在手上按住 <white><key:key.use> <muted>使用，终端里可查看伤势",
+                "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格",
+                "<accent>点击打开新手简报")), e -> {
+            viewer.closeInventory();
+            plugin.tutorial().openBriefing(viewer, 2);
+        });
         set(49, UiItems.button("craftov:ui/icon_profile", "<text><b>" + Text.escape(viewer.getName()),
                 List.of("<muted>块币 <accent>◈ " + Text.money(p.money),
                         "<muted>等级 <white>Lv." + p.level + " <muted>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",
@@ -106,6 +129,50 @@ final class MainMenu extends Menu {
                         "<muted>当前战备值 <white>◈ " + Text.money(value),
                         "<muted>撤离 <white>" + p.stat("extracts") + " <muted>/ 出击 <white>" + p.stat("raids")
                                 + " <muted>· 击败干员 <white>" + p.stat("kills"))));
+        guide(p, next);
         closeButton(53);
+    }
+
+    private static final String NEXT = "<accent>▶ 新手指引的下一步";
+
+    /** The guide's next step on a button: a shine, and a line saying so. */
+    private static ItemStack guideMark(ItemStack stack, boolean next) {
+        if (next) {
+            stack.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+            List<Component> lore = new ArrayList<>(stack.getData(DataComponentTypes.LORE) == null ? List.of()
+                    : stack.getData(DataComponentTypes.LORE).lines());
+            lore.add(Text.mm(NEXT));
+            stack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+        }
+        return stack;
+    }
+
+    /**
+     * The guide's checklist next to the help button while the guide runs: every step, ticked once
+     * done, the next one marked with what to do, in any order.
+     */
+    private void guide(Profile p, TutorialService.@Nullable Step next) {
+        if (!plugin.tutorial().active(p)) {
+            return;
+        }
+        TutorialService.Step current = TutorialService.current(p);
+        List<String> lore = new ArrayList<>();
+        for (TutorialService.Step step : TutorialService.Step.values()) {
+            lore.add(TutorialService.isDone(p, step) ? "<ok>✔ <muted>" + step.title
+                    : step == current ? "<accent>▶ <text>" + step.title : "<dim>○ " + step.title);
+        }
+        lore.add("<muted>步骤顺序随意，六步做完奖励 <accent>◈" + Text.money(plugin.getConfig().getLong("tutorial.reward", 20_000)));
+        if (p.guideMuted) {
+            lore.add("<dim>目标栏和指引箭头已关闭，在简报里可以重新开启");
+        } else if (next != null) {
+            lore.addAll(Text.wrap("<muted>下一步：" + plugin.tutorial().hint(viewer, next), 40));
+        }
+        lore.add("<accent>点击重看新手简报");
+        ItemStack stack = UiItems.button("craftov:ui/icon_tasks", "<accent><b>新手指引 " + TutorialService.doneCount(p) + "/"
+                + TutorialService.Step.values().length, lore);
+        button(46, stack, e -> {
+            viewer.closeInventory();
+            plugin.tutorial().openBriefing(viewer);
+        });
     }
 }

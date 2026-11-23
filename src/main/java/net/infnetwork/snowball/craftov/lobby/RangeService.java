@@ -98,6 +98,13 @@ public final class RangeService implements Listener {
         return plots.containsKey(player.getUniqueId()) && isRangeWorld(player.getWorld());
     }
 
+    /** The weapon rack on the player's own plot, or null when they are not on the range. */
+    public @Nullable Location rack(Player player) {
+        Integer plot = plots.get(player.getUniqueId());
+        return plot == null || world == null ? null
+                : new Location(world, offset(plot) + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
+    }
+
     private int offset(int plot) {
         return plot * SPACING;
     }
@@ -107,7 +114,7 @@ public final class RangeService implements Listener {
     public void enter(Player player) {
         World lobby = plugin.lobby().world();
         if (world == null || lobby == null || plots.containsKey(player.getUniqueId()) || plugin.raids().raidOf(player) != null
-                || !plugin.lobby().isLobby(player.getWorld())) {
+                || plugin.raids().launching(player.getUniqueId()) || !plugin.lobby().isLobby(player.getWorld())) {
             return;
         }
         // The lobby inventory is the real loadout: save it before anything is handed out.
@@ -218,7 +225,7 @@ public final class RangeService implements Listener {
             }
         }
         List<Entity> spawned = new ArrayList<>();
-        Location rack = new Location(world, dx + 9.5, LobbyBuilder.Y + 1, -4.4);
+        Location rack = new Location(world, dx + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
         spawned.add(world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
             d.setItemStack(UiItems.button("craftov:ui/tab_weapon", "靶场武器架", List.of(), "station"));
             d.setBillboard(Display.Billboard.VERTICAL);

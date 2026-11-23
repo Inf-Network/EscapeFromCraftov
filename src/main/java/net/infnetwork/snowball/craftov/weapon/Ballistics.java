@@ -154,6 +154,9 @@ public final class Ballistics {
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);
+                if (shooter instanceof Player p && plugin.lobby().isTarget(living)) {
+                    plugin.training().onTargetHit(p, living);
+                }
                 if (plugin.drones().isDrone(living)) {
                     world.spawnParticle(Particle.ELECTRIC_SPARK, point, 8, 0.1, 0.1, 0.1, 0.3);
                 } else {

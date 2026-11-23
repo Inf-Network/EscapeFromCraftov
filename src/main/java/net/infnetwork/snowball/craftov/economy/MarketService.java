@@ -11,6 +11,7 @@ import net.infnetwork.snowball.craftov.item.Rarity;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.AtomicFiles;
+import net.infnetwork.snowball.craftov.util.OrderedFile;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -55,6 +56,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * the market before its seller is paid, its buyer gets the item or its seller gets it back, and a
  * listed item leaves the stash before it appears on the market. A crash between two of those
  * writes can cost that one payout or item, but can never sell, return or list anything twice.
+ *
+ * <p>The final save on shutdown comes after the profile writer has finished (or was given up on
+ * after 10 seconds), and every copy of market.json is numbered when it is taken: a copy still
+ * queued behind the final one is dropped instead of landing on top of it, so the file always ends
+ * on the market as the server left it.
  */
 public final class MarketService implements Listener {
 
@@ -99,6 +105,8 @@ public final class MarketService implements Listener {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final CraftovPlugin plugin;
     private final Path file;
+    /** Every write of {@link #file}: numbered copies, so an older one never lands on a newer one. */
+    private final OrderedFile disk;
     private Data data = new Data();
     private boolean dirty;
     private boolean closed;
@@ -106,6 +114,7 @@ public final class MarketService implements Listener {
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.file = plugin.getDataFolder().toPath().resolve("data/market.json");
+        this.disk = new OrderedFile(file);
     }
 
     public void start() {
@@ -181,18 +190,24 @@ public final class MarketService implements Listener {
             return;
         }
         dirty = false;
+        long copy = disk.take();
         String json = GSON.toJson(data);
         // The profile writer, so a save lands in order with the profile writes around it.
-        plugin.profiles().queueWrite(() -> write(json));
+        plugin.profiles().queueWrite(() -> write(copy, json));
     }
 
     /**
      * Shutdown, once the profile writer has finished what was queued (CraftovPlugin.onDisable):
-     * writes the current state last, so no older copy can land on top of it.
+     * writes the current state as the newest copy, so none taken before it can land on top of it,
+     * even one still queued because the writer did not finish in time.
      */
     public void saveSync() {
-        if (!closed) {
-            write(GSON.toJson(data));
+        if (closed) {
+            return;
+        }
+        dirty = false;
+        if (write(disk.take(), GSON.toJson(data))) {
+            plugin.getLogger().info("Saved the market: " + data.listings.size() + " listings.");
         }
     }
 
@@ -212,11 +227,13 @@ public final class MarketService implements Listener {
         plugin.profiles().saveNow(player);
     }
 
-    private void write(String json) {
+    /** Writes copy {@code copy}; false when it failed or a newer copy was already written. */
+    private boolean write(long copy, String json) {
         try {
-            AtomicFiles.write(file, json);
+            return disk.write(copy, json);
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not save market data: " + ex.getMessage());
+            return false;
         }
     }
 

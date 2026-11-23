@@ -400,21 +400,20 @@ def settlement_screen(extracted):
     return make
 
 
-def skin_screen(knife, skins):
+def skin_screen(knife, knives, skins):
     """外观 (knife skins, #106) for one knife: the knives as tabs down the left (this one marked), and a
     card per look (the knife's own, then its skins in skins.yml order): the look drawn at twice the
     size of an item with its name under it, above a well for its state (worn, owned, locked: bought
     with 点券) and one for the inspect preview. The card cells hold invisible buttons, so the art
     shows through. The 点券 shop and balance sit at the right end of the top band, back, help and
-    close in the bottom bar. `skins` is [(name, sprite)] for this knife's skins."""
+    close in the bottom bar. `knives` are the tabs in order, `skins` is [(name, sprite)] for this
+    knife's skins."""
     import icons
     s = Screen(6)
     s.band(0, 0, 6, '皮肤只改变刀的外观').wells([7, 8])
     # Tabs: one well per knife; this one framed in amber and joined to the cards.
-    tab = 9 + 9 * TAB_KNIVES.index(knife)
-    for i in range(len(TAB_KNIVES)):
-        s.wells([9 + 9 * i])
-    x, y = slot_xy(tab)
+    s.wells([9 + 9 * i for i in range(len(knives))])
+    x, y = slot_xy(9 + 9 * knives.index(knife))
     s.d.rectangle([x - 2, y - 2, x + 19, y + 19], outline=rgb(P.ACCENT))
     s.d.rectangle([x + 20, y + 7, x + 22, y + 10], fill=rgb(P.ACCENT))
     looks = [('默认', icons.render(knife))] + list(skins)
@@ -434,17 +433,18 @@ def skin_screen(knife, skins):
 
 
 def skin_screens(catalogue):
-    """Screen id -> maker for the 外观 menu, one per knife (SkinMenu): catalogue is skins.yml's skins."""
+    """Screen id -> maker for the 外观 menu, one per knife (SkinMenu): catalogue is skins.yml's skins.
+    The tabs are the knives in the order they first come in it, as SkinService.knives() has them; the
+    menu has room for four tabs and four cards (the knife's own look and three skins)."""
     import knife_skins
+    knives = list(dict.fromkeys(spec['knife'] for spec in catalogue.values()))
+    assert len(knives) <= 4, 'the 外观 menu has four tabs, skins.yml has skins for %d knives' % len(knives)
     out = {}
-    for knife in TAB_KNIVES:
+    for knife in knives:
         skins = [(spec['name'], knife_skins.render(sid)) for sid, spec in catalogue.items() if spec['knife'] == knife]
-        out['skins_' + knife] = (lambda k, sk: lambda: skin_screen(k, sk))(knife, skins)
+        assert len(skins) <= 3, '%s has %d skins: a tab has room for three' % (knife, len(skins))
+        out['skins_' + knife] = (lambda k, sk: lambda: skin_screen(k, knives, sk))(knife, skins)
     return out
-
-
-# The knives that have skins, in the order of the 外观 menu's tabs (SkinMenu draws them in skins.yml order).
-TAB_KNIVES = ['knife_starter', 'knife_tactical', 'knife_machete', 'knife_karambit']
 
 
 def blackout():

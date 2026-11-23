@@ -3389,9 +3389,25 @@ public final class RaidManager implements Listener {
             }
             return;
         }
-        if (!plugin.carry().hasRoomFor(player, stack)) {
-            event.setCancelled(true);
+        // Vanilla would put it into the first free cell whatever the carry zones take: it goes where it
+        // belongs (CarryService#route) and never into the slot in hand, and only when all of it fits.
+        event.setCancelled(true);
+        if (!plugin.carry().hasRoomFor(player, stack, true)) {
+            return;
         }
+        ItemStack left = plugin.carry().giveOrWear(player, stack, false, true);
+        int taken = stack.getAmount() - (left == null ? 0 : left.getAmount());
+        if (taken <= 0) {
+            return;
+        }
+        player.playPickupItemAnimation(item, taken);
+        if (left == null) {
+            item.remove();
+        } else {
+            item.setItemStack(left);
+        }
+        player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 0.2f,
+                (float) (1.4 + java.util.concurrent.ThreadLocalRandom.current().nextDouble(0.4)));
     }
 
     @EventHandler(priority = EventPriority.LOW)

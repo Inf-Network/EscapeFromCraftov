@@ -100,7 +100,7 @@ public final class TraderService {
         profile.money -= cost;
         boolean toStash = false;
         for (ItemStack stack : stacks) {
-            ItemStack left = plugin.carry().give(player, stack, false);
+            ItemStack left = plugin.carry().giveOrWear(player, stack, false, false);
             if (left != null) {
                 ItemRecord record = plugin.items().toRecord(left);
                 if (record != null) {

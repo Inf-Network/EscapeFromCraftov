@@ -61,7 +61,7 @@ final class CatalogMenu extends Menu {
             button(9 + i, plugin.items().sample(def), e -> {
                 int copies = e.isRightClick() && !def.isGun() ? 5 : 1;
                 for (int k = 0; k < copies; k++) {
-                    plugin.carry().give(viewer, plugin.items().sample(def), true);
+                    plugin.carry().giveOrWear(viewer, plugin.items().sample(def), true, false);
                 }
                 viewer.playSound(viewer.getLocation(), "minecraft:entity.item.pickup", 0.6f, 1.2f);
                 Notify.ok(viewer, "已领取 " + def.coloredName() + " <muted>×" + copies);

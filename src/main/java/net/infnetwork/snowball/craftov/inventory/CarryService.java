@@ -23,10 +23,15 @@ import java.util.Map;
 /**
  * Maps the Delta-style carry layout onto the vanilla player inventory.
  * <pre>
- *  hotbar 0..7   pockets (always usable)      hotbar 8  terminal (locked)
+ *  hotbar 0..1   guns (keys 1-2)               hotbar 2  melee weapon (key 3)
+ *  hotbar 3..7   ammo, meds, grenades, keys    hotbar 8  terminal (locked)
  *  row 9..17     chest rig slots              rows 18..35 backpack slots
  *  36 feet = backpack   37 legs = rig   38 chest = body armor   39 head = helmet
  * </pre>
+ * Each zone takes only what belongs there ({@link #refusal}): keys 1-2 take guns, keys 4-8 ammo,
+ * meds, grenades and keys, and the rig no guns, armour or containers. Loot goes where it belongs
+ * ({@link #route}): ammo, meds and grenades to the free quick keys first, then the rig, then the
+ * backpack; guns to a free gun key, then the backpack; everything else to the backpack, then the rig.
  * Rigs and backpacks carry their contents inside the item stack while unequipped. Whatever does
  * not fit anywhere is dropped at the player's feet in a raid and mailed to the stash mailbox
  * everywhere else, because outside a raid nobody can pick a dropped item up again.
@@ -36,6 +41,10 @@ public final class CarryService {
     public static final int TERMINAL_SLOT = 8;
     /** Hotbar key 3 is reserved for the melee weapon; nothing else goes there and it is never lost. */
     public static final int MELEE_SLOT = 2;
+    /** Hotbar keys 1-2: guns only. */
+    public static final List<Integer> GUN_KEYS = List.of(0, 1);
+    /** Hotbar keys 4-8: ammo, meds, grenades and keys, the things a fight reaches for. */
+    public static final List<Integer> QUICK_KEYS = List.of(3, 4, 5, 6, 7);
     public static final int RIG_START = 9;
     public static final int RIG_MAX = 9;
     public static final int PACK_START = 18;
@@ -102,6 +111,127 @@ public final class CarryService {
         return usableSlots(rigCapacity(player), backpackCapacity(player));
     }
 
+    // ------------------------------------------------------------------ zone rules (#10)
+
+    /** What a quick key (4-8) holds: what a fight reaches for. */
+    private static boolean quick(Category category) {
+        return category == Category.AMMO || category == Category.MEDICAL || category == Category.THROWABLE
+                || category == Category.KEY;
+    }
+
+    /** Guns, armour and rigs or backpacks are too big for a rig pouch. */
+    private static boolean bulky(Category category) {
+        return category == Category.WEAPON || category.isGear();
+    }
+
+    /**
+     * Why {@code stack} may not be put into carry cell {@code slot} (0..35), or null when it may. Keys
+     * 1-2 take guns only, key 3 the melee weapon only, keys 4-8 ammo, meds, grenades and keys, key 9
+     * nothing (the terminal), the rig no guns, armour, rigs or backpacks; the backpack takes anything
+     * but a melee weapon. A stack that is not a Craftov item goes only where anything goes.
+     */
+    public @Nullable String refusal(@Nullable ItemStack stack, int slot) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        if (ItemFactory.isUi(stack)) {
+            return "这里放不下界面物品";
+        }
+        ItemDef def = items.defOf(stack);
+        if (def != null && def.isMelee()) {
+            return slot == MELEE_SLOT ? null : "近战武器只能放在 3 号键";
+        }
+        if (slot == MELEE_SLOT) {
+            return "3 号键只放近战武器";
+        }
+        if (slot == TERMINAL_SLOT) {
+            return "9 号键是战术终端";
+        }
+        Category category = def == null ? null : def.category();
+        if (GUN_KEYS.contains(slot)) {
+            return category == Category.WEAPON ? null : "1、2 号键只放枪械";
+        }
+        if (QUICK_KEYS.contains(slot)) {
+            return category != null && quick(category) ? null : "4–8 号键只放弹药、医疗品、投掷物和钥匙";
+        }
+        if (isRigSlot(slot) && category != null && bulky(category)) {
+            return "胸挂放不下" + category.displayName() + "，请放进背包";
+        }
+        return null;
+    }
+
+    /**
+     * Why a click on the player's own carry cell {@code slot} (0..35) breaks the zone rules, or null:
+     * placing or swapping in the cursor, or a number-key swap, either way. Taking things out is
+     * always fine. Equipment slots (36 and up) have rules of their own.
+     */
+    public @Nullable String clickRefusal(Player player, org.bukkit.event.inventory.InventoryAction action, int slot,
+                                         @Nullable ItemStack current, @Nullable ItemStack cursor, int hotbarButton) {
+        if (slot < 0 || slot >= FEET) {
+            return null;
+        }
+        return switch (action) {
+            case PLACE_ALL, PLACE_ONE, PLACE_SOME, SWAP_WITH_CURSOR -> refusal(cursor, slot);
+            case HOTBAR_SWAP -> {
+                if (hotbarButton < 0 || hotbarButton > 8) {
+                    yield null;
+                }
+                String in = refusal(player.getInventory().getItem(hotbarButton), slot);
+                yield in != null ? in : refusal(current, hotbarButton);
+            }
+            default -> null;
+        };
+    }
+
+    /**
+     * The cells (0..35) that {@code stack} is put into, in order, for a player with this much rig and
+     * backpack: ammo, meds and grenades to the quick keys, then the rig, then the backpack; keys the
+     * same but the backpack first; guns to the gun keys, then the backpack; anything else to the
+     * backpack, then the rig. Every cell listed accepts the stack ({@link #refusal}). With
+     * {@code avoid} >= 0 that cell is left out: loot never lands in the slot the player holds, or the
+     * gun in their hands would turn into whatever they just picked up.
+     */
+    public List<Integer> route(@Nullable ItemStack stack, int rig, int pack, int avoid) {
+        ItemDef def = items.defOf(stack);
+        if (def != null && def.isMelee()) {
+            return List.of(MELEE_SLOT);
+        }
+        Category category = def == null ? null : def.category();
+        List<Integer> rigCells = new ArrayList<>();
+        for (int i = 0; i < rig; i++) {
+            rigCells.add(RIG_START + i);
+        }
+        List<Integer> packCells = new ArrayList<>();
+        for (int i = 0; i < pack; i++) {
+            packCells.add(PACK_START + i);
+        }
+        List<Integer> out = new ArrayList<>();
+        if (category == Category.WEAPON) {
+            out.addAll(GUN_KEYS);
+            out.addAll(packCells);
+        } else if (category == Category.KEY) {
+            out.addAll(packCells);
+            out.addAll(rigCells);
+            out.addAll(QUICK_KEYS);
+        } else if (category != null && quick(category)) {
+            out.addAll(QUICK_KEYS);
+            out.addAll(rigCells);
+            out.addAll(packCells);
+        } else if (category != null && bulky(category)) {
+            out.addAll(packCells);
+        } else {
+            out.addAll(packCells);
+            out.addAll(rigCells);
+        }
+        out.remove(Integer.valueOf(avoid));
+        return out;
+    }
+
+    /** {@link #route} for what the player wears now. */
+    public List<Integer> route(Player player, @Nullable ItemStack stack, boolean looting) {
+        return route(stack, rigCapacity(player), backpackCapacity(player), looting ? player.getInventory().getHeldItemSlot() : -1);
+    }
+
     private static List<Integer> usableSlots(int rig, int pack) {
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < TERMINAL_SLOT; i++) {
@@ -164,6 +294,45 @@ public final class CarryService {
      * {@code dropOverflow} is set that remainder is spilled instead (see {@link #spill}).
      */
     public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow) {
+        return give(player, stack, dropOverflow, false);
+    }
+
+    /** The worn slot this helmet, vest, rig or backpack goes on, or -1 for anything else. */
+    public int wearSlot(@Nullable ItemStack stack) {
+        ItemDef def = items.defOf(stack);
+        if (def == null) {
+            return -1;
+        }
+        if (def.isContainer()) {
+            return containerSlot(def.category());
+        }
+        return def.isArmor() ? def.category() == Category.HELMET ? HEAD : CHEST : -1;
+    }
+
+    /**
+     * Taking something (out of a box, the stash, the trader): a helmet, vest, rig or backpack goes on
+     * when nothing is worn there, since none of them fits anywhere but the backpack; anything else,
+     * or gear whose slot is taken, goes the way of {@link #give(Player, ItemStack, boolean, boolean)}.
+     */
+    public @Nullable ItemStack giveOrWear(Player player, ItemStack stack, boolean dropOverflow, boolean looting) {
+        int slot = wearSlot(stack);
+        ItemStack worn = slot < 0 ? null : player.getInventory().getItem(slot);
+        if (slot >= 0 && (worn == null || worn.isEmpty())) {
+            if (slot == LEGS || slot == FEET) {
+                equip(player, stack.clone());
+            } else {
+                player.getInventory().setItem(slot, stack.clone());
+            }
+            return null;
+        }
+        return give(player, stack, dropOverflow, looting);
+    }
+
+    /**
+     * {@link #give(Player, ItemStack, boolean)} along the item's {@link #route}. With {@code looting}
+     * (a search screen, a pickup from the ground) the slot the player holds is left out.
+     */
+    public @Nullable ItemStack give(Player player, ItemStack stack, boolean dropOverflow, boolean looting) {
         ItemStack remaining = stack.clone();
         PlayerInventory inv = player.getInventory();
         if (isMelee(remaining)) {
@@ -173,7 +342,7 @@ public final class CarryService {
                 inv.setItem(MELEE_SLOT, null);
             }
         }
-        List<Integer> slots = isMelee(remaining) ? List.of(MELEE_SLOT) : usableSlots(player);
+        List<Integer> slots = route(player, remaining, looting);
         boolean containerWithContents = ItemFactory.hasContents(remaining);
         if (!containerWithContents) {
             for (int slot : slots) {
@@ -229,16 +398,13 @@ public final class CarryService {
         if (ItemFactory.hasContents(remaining)) {
             return false;
         }
-        List<Integer> slots;
         if (isMelee(remaining)) {
             ItemDef held = items.defOf(cells[MELEE_SLOT]);
             if (held != null && "knife_starter".equals(held.id())) {
                 cells[MELEE_SLOT] = null;
             }
-            slots = List.of(MELEE_SLOT);
-        } else {
-            slots = usableSlots(capacity(cells[LEGS], RIG_MAX), capacity(cells[FEET], PACK_MAX));
         }
+        List<Integer> slots = route(remaining, capacity(cells[LEGS], RIG_MAX), capacity(cells[FEET], PACK_MAX), -1);
         for (int slot : slots) {
             ItemStack current = cells[slot];
             if (current != null && !ItemFactory.isUi(current) && current.isSimilar(remaining)) {
@@ -419,13 +585,18 @@ public final class CarryService {
                 : "<muted>身上放不下，" + def.coloredName() + amount + " <muted>已放进<accent>仓库邮箱<muted>。");
     }
 
-    public boolean hasRoomFor(Player player, ItemStack stack) {
+    /** Whether {@link #giveOrWear} would place all of {@code stack} (loot: never into the held slot). */
+    public boolean hasRoomFor(Player player, ItemStack stack, boolean looting) {
+        PlayerInventory inv = player.getInventory();
+        int wear = wearSlot(stack);
+        if (wear >= 0 && (inv.getItem(wear) == null || inv.getItem(wear).isEmpty())) {
+            return true;
+        }
         if (ItemFactory.hasContents(stack)) {
             return false;
         }
-        PlayerInventory inv = player.getInventory();
         int need = stack.getAmount();
-        for (int slot : isMelee(stack) ? List.of(MELEE_SLOT) : usableSlots(player)) {
+        for (int slot : route(player, stack, looting)) {
             ItemStack current = inv.getItem(slot);
             if (current == null || current.isEmpty()) {
                 return true;
@@ -438,6 +609,183 @@ public final class CarryService {
             }
         }
         return false;
+    }
+
+    /**
+     * Tidies the rig and the backpack (the inventory's tidy cell, the loot screen's tidy button): stacks
+     * of the same thing merge, and everything is put back along its {@link #route} sorted by category,
+     * then rarity, then value, so ammo and meds fill the rig and the rest the backpack. The hotbar is
+     * left as the player set it. Returns how many cells were freed by merging.
+     */
+    public int tidy(Player player) {
+        plugin.weapons().flush(player);
+        PlayerInventory inv = player.getInventory();
+        int rig = rigCapacity(player);
+        int pack = backpackCapacity(player);
+        List<Integer> cells = new ArrayList<>();
+        for (int i = 0; i < rig; i++) {
+            cells.add(RIG_START + i);
+        }
+        for (int i = 0; i < pack; i++) {
+            cells.add(PACK_START + i);
+        }
+        List<ItemStack> taken = new ArrayList<>();
+        for (int slot : cells) {
+            ItemStack stack = inv.getItem(slot);
+            if (stack != null && !stack.isEmpty() && !ItemFactory.isUi(stack)) {
+                taken.add(stack.clone());
+                inv.setItem(slot, null);
+            }
+        }
+        List<ItemStack> merged = new ArrayList<>();
+        for (ItemStack stack : taken) {
+            for (ItemStack into : merged) {
+                if (stack.getAmount() > 0 && into.isSimilar(stack) && into.getAmount() < into.getMaxStackSize()) {
+                    int moved = Math.min(into.getMaxStackSize() - into.getAmount(), stack.getAmount());
+                    into.setAmount(into.getAmount() + moved);
+                    stack.setAmount(stack.getAmount() - moved);
+                }
+            }
+            if (stack.getAmount() > 0) {
+                merged.add(stack);
+            }
+        }
+        merged.sort(java.util.Comparator.<ItemStack>comparingInt(s -> {
+            ItemDef d = items.defOf(s);
+            return d == null ? 99 : d.category().ordinal();
+        }).thenComparingInt(s -> {
+            ItemDef d = items.defOf(s);
+            return d == null ? 0 : -d.rarity().ordinal();
+        }).thenComparingLong(s -> -items.value(s)));
+        List<ItemStack> unplaced = new ArrayList<>();
+        for (ItemStack stack : merged) {
+            int target = -1;
+            for (int slot : route(stack, rig, pack, -1)) {
+                ItemStack there = inv.getItem(slot);
+                if (cells.contains(slot) && (there == null || there.isEmpty())) {
+                    target = slot;
+                    break;
+                }
+            }
+            if (target < 0) {
+                unplaced.add(stack);
+            } else {
+                inv.setItem(target, stack);
+            }
+        }
+        // Something the rules keep out of every free cell (a gun found in a rig pouch from before the
+        // rules, with the backpack full): it stays in the bag somewhere rather than leaving it.
+        for (ItemStack stack : unplaced) {
+            for (int slot : cells) {
+                ItemStack there = inv.getItem(slot);
+                if (there == null || there.isEmpty()) {
+                    inv.setItem(slot, stack);
+                    stack = null;
+                    break;
+                }
+            }
+            if (stack != null) {
+                give(player, stack, true);
+            }
+        }
+        return taken.size() - merged.size();
+    }
+
+    /**
+     * Shift-click on a carry cell in the inventory screen: the stack moves to the other side, hotbar to
+     * rig and backpack or back to a hotbar key that takes it, and to the other carry zone when that is
+     * all there is. Vanilla would drop it into the first free cell whatever the zone rules say.
+     */
+    public void moveAcross(Player player, int slot) {
+        PlayerInventory inv = player.getInventory();
+        ItemStack stack = inv.getItem(slot);
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack) || isMelee(stack)) {
+            return;
+        }
+        ItemDef def = items.defOf(stack);
+        if (def != null && def.isArmor()) {
+            int armorSlot = def.category() == Category.HELMET ? HEAD : CHEST;
+            ItemStack worn = inv.getItem(armorSlot);
+            if (worn == null || worn.isEmpty()) {
+                inv.setItem(armorSlot, stack);
+                inv.setItem(slot, null);
+                return;
+            }
+        }
+        List<Integer> targets = new ArrayList<>();
+        boolean fromHotbar = slot < RIG_START;
+        for (int cell : route(player, stack, false)) {
+            boolean hotbar = cell < RIG_START;
+            if (cell != slot && (fromHotbar ? !hotbar : hotbar)) {
+                targets.add(cell);
+            }
+        }
+        if (!fromHotbar) {
+            for (int cell : route(player, stack, false)) {
+                if (cell >= RIG_START && isRigSlot(cell) != isRigSlot(slot) && !targets.contains(cell)) {
+                    targets.add(cell);
+                }
+            }
+        }
+        ItemStack moving = stack.clone();
+        inv.setItem(slot, null);
+        for (int cell : targets) {
+            ItemStack there = inv.getItem(cell);
+            if (there != null && !there.isEmpty() && there.isSimilar(moving)) {
+                int moved = Math.min(there.getMaxStackSize() - there.getAmount(), moving.getAmount());
+                there.setAmount(there.getAmount() + moved);
+                moving.setAmount(moving.getAmount() - moved);
+                if (moving.getAmount() <= 0) {
+                    return;
+                }
+            }
+        }
+        for (int cell : targets) {
+            ItemStack there = inv.getItem(cell);
+            if (there == null || there.isEmpty()) {
+                inv.setItem(cell, moving);
+                return;
+            }
+        }
+        inv.setItem(slot, moving);
+    }
+
+    // ------------------------------------------------------------------ secure container
+
+    /** The secure container the player is using now: the raid's copy during a raid, else the profile's. */
+    public List<ItemRecord> secureContents(Player player) {
+        net.infnetwork.snowball.craftov.raid.RaidPlayer rp = plugin.raids().session(player);
+        if (rp != null && rp.active()) {
+            return rp.secure;
+        }
+        return plugin.profiles().get(player).secure;
+    }
+
+    public int secureCapacity(Player player) {
+        return plugin.traders().secureSlots(plugin.profiles().get(player));
+    }
+
+    /** Why {@code stack} may not go into the secure container, or null: no guns, armour, rigs, backpacks or armory items. */
+    public @Nullable String secureRefusal(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack)) {
+            return "该物品无法放入安全箱";
+        }
+        if (ItemFactory.isTest(stack)) {
+            return "试验场物资不能放入安全箱";
+        }
+        ItemDef def = items.defOf(stack);
+        if (def == null || def.isGun() || def.isArmor() || def.isContainer() || def.category() == Category.WEAPON) {
+            return "该物品无法放入安全箱";
+        }
+        return null;
+    }
+
+    /** Saves a change to the secure container: in the lobby it is part of the loadout. */
+    public void secureChanged(Player player) {
+        if (plugin.raids().raidOf(player) == null) {
+            plugin.lobby().captureLoadout(player);
+        }
+        plugin.profiles().markDirty(player.getUniqueId());
     }
 
     /** Non-empty rigs/backpacks that slipped into a carry cell get equipped or spilled. */

@@ -59,6 +59,7 @@
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const config = require('./config')
 
 const PORT = env.PORT
 const RCON = env.RCON
@@ -288,28 +289,19 @@ const scenarios = {
     notes.push(`wall at 12: ${[...far].join(',')}; at 6: ${[...near].join(',')}`)
     await inWorld(A, `fill 50 ${top} 44 70 ${top + 2} 44 minecraft:air`)
     if (env.SERVER_DIR_SET) {
-      // Players back on vanilla steps: the soldiers still hear by the footstep ranges.
-      const fs = require('fs')
-      const file = require('path').join(env.DATA, 'config.yml')
-      const before = fs.readFileSync(file, 'utf8')
-      const off = before.replace(/^(footsteps:\n(?:[ \t]+#.*\n)*[ \t]+enabled: )true$/m, '$1false')
-      if (off === before) {
-        problems.push('footsteps.enabled: true not found in the server config')
-      } else {
-        try {
-          fs.writeFileSync(file, off)
-          await rcon('cv reload')
-          await clearSoldiers(A)
-          await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
-          await sleep(1500)
-          patrol = await post(A, 'patrol', 60.5, top, 52.5)
-          const vanilla = await walkBehind(A, patrol.uuid, 12, 8000)
-          if (vanilla === null) problems.push('footsteps.enabled false: the patrol no longer hears A walking 12 blocks behind it')
-          notes.push(`footsteps off: ${vanilla === null ? '-' : 'noticed after ' + vanilla.toFixed(1) + ' s'}`)
-        } finally {
-          fs.writeFileSync(file, before)
-          await rcon('cv reload')
-        }
+      // Players back on vanilla steps: the soldiers still hear by the footstep ranges. A config.yml
+      // from before footsteps has no such section (the jar's defaults fill in): config.js adds it.
+      const restore = await config.pin({ 'footsteps.enabled': false }, { rcon, log: () => {} })
+      try {
+        await clearSoldiers(A)
+        await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
+        await sleep(1500)
+        patrol = await post(A, 'patrol', 60.5, top, 52.5)
+        const vanilla = await walkBehind(A, patrol.uuid, 12, 8000)
+        if (vanilla === null) problems.push('footsteps.enabled false: the patrol no longer hears A walking 12 blocks behind it')
+        notes.push(`footsteps off: ${vanilla === null ? '-' : 'noticed after ' + vanilla.toFixed(1) + ' s'}`)
+      } finally {
+        await restore()
       }
     }
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'heard walking behind in the open, through a wall only up close'} | ${notes.join('; ')}`]

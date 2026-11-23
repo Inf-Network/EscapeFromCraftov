@@ -29,7 +29,10 @@
 //   preset   a preset saved before the zone rules (a bandage on key 1, a rifle in a rig cell) is
 //            applied: the bandage lands on a quick key and the rifle on a gun key.
 //   secure   a secure record above the stack size (80 rounds, stack 60) shift-clicked into the box
-//            on the search screen: the box gets one stack and the secure container keeps 20.
+//            on the search screen: the box gets one stack and the secure container keeps 20. Then
+//            the secure cells count cells as the secure menu does: a lion statue (6 cells) on the
+//            cursor is refused by the 3-cell container, a master chip (2 cells) goes in beside the
+//            rounds with an occupied marker in its second cell, and the summary reads 3/3 格.
 //   loot     two bots in one proving-ground raid share the armory weapons box and click at random
 //            500 times between them (every click mode, number keys, double clicks, clicks outside):
 //            the box's own cells only ever sit in its 6x6 block, no interface item reaches a carry
@@ -554,6 +557,41 @@ async function secure () {
   const after = { box: ammo(BOX_CELLS), secure: ammo(SECURE) }
   check('secure: shift-click moves one stack into the box and keeps the rest', after.box - before.box === 60 && after.secure === 20,
     { before, after })
+  // The secure cells here count cells as the secure menu does (#37): the 20 rounds left take one of
+  // the three, a lion statue (6 cells) is refused, a master chip (2) goes in with an occupied marker
+  // in its second cell.
+  await cmd(`cv give ${bot.username} lion_statue`)
+  await cmd(`cv give ${bot.username} master_chip`)
+  await settle(bot, 600)
+  const win = () => bot.currentWindow || w
+  const own = id => win().slots.findIndex((s, i) => i >= 54 && idOf(s) === id)
+  const cells = () => SECURE.map(raw => {
+    const s = win().slots[raw]
+    return !s ? '-' : idOf(s) ? `${idOf(s)}:${s.count}` : json(s).includes('secure_used') ? '=' : json(s).includes('locked_secure') ? '#' : '?'
+  })
+  const statueAt = own('lion_statue')
+  const chipAt = own('master_chip')
+  if (statueAt < 0 || chipAt < 0) {
+    check('secure: the bot was given a lion statue and a master chip', false, { statueAt, chipAt })
+  } else {
+    rawClick(bot, win().id, statueAt, 0, 0) // onto the cursor
+    await settle(bot)
+    const from = bot.msgs.length
+    rawClick(bot, win().id, SECURE[1], 0, 0) // onto a free secure cell
+    await settle(bot, 600)
+    check('secure: a lion statue (6 cells) does not go into the 3-cell container, and the bar says why',
+      !cells().some(c => c.startsWith('lion_statue')) && bot.msgs.slice(from).some(m => m.includes('占 6 格')),
+      { cells: cells(), msgs: bot.msgs.slice(from) })
+    rawClick(bot, win().id, statueAt, 0, 0) // back where it was
+    await settle(bot)
+    rawClick(bot, win().id, chipAt, 0, 0)
+    await settle(bot)
+    rawClick(bot, win().id, SECURE[1], 0, 0)
+    await settle(bot, 600)
+    check('secure: a master chip goes in and takes two cells, the second an occupied marker',
+      cells().join(' ') === 'ammo_556_m855:20 master_chip:1 = # # # # # #', cells())
+    check('secure: the summary counts cells', nameOf(win().slots[44]).includes('3/3 格'), nameOf(win().slots[44]))
+  }
   bot.closeWindow(bot.currentWindow || w)
   await cmd(`execute as ${bot.username} at @s run tp @s 106.5 65 8.5`)
   await waitFor(() => !inRaid(), 40000)

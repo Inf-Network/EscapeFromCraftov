@@ -403,7 +403,12 @@ ADS_POSES = {
 # item model steps through these poses as the client counts that cooldown down: the gun snaps back
 # with the flash, then settles over the rest of the shot's kick time.
 HIP_KICK = dict(view=(3.4, 0, 0), roll=0, shift=(0, 0.3, 1.6))
-ADS_KICK = dict(view=(1.2, 0, 0), roll=0, shift=(0, 0.12, 0.8))
+# Aimed, the gun is pushed back and tips up a little but is not lifted: the aimed display is scaled
+# up so far that a lift of a tenth of a pixel carried a red dot 46 px off the crosshair of a 900 px
+# screen with every round, 100 px on the SCR (real-client frames, issue #118), while tipping it moves
+# the dot a few pixels at most. The view's own climb (WeaponService.recoil) is the kick that aims;
+# this one only has to be felt. It is divided by the sight's power as well (kick_pose).
+ADS_KICK = dict(view=(0.35, 0, 0), roll=0, shift=(0, 0, 0.4))
 # Kick strengths there are poses for (fractions of the full kick). The curve is sampled onto these.
 KICK_LEVELS = (1.0, 0.6, 0.3, 0.1)
 # Longest kick, in ticks: a slow gun (bolt, pump, heavy pistol) settles in 0.3 s, not over its whole
@@ -413,11 +418,23 @@ KICK_MAX_TICKS = 6
 FLASH_TICKS = 1.0
 
 
-def kick_pose(kind, level, strength=1.0):
-    """The kick pose at a fraction of full strength, scaled by how hard the gun kicks."""
+def kick_pose(kind, level, strength=1.0, power=1.0):
+    """The kick pose at a fraction of full strength, scaled by how hard the gun kicks; aimed, also
+    divided by the sight's power (sight_power), which magnifies everything the gun does to the view."""
     base = HIP_KICK if kind == 'hip' else ADS_KICK
-    k = level * strength
+    k = level * strength / (1.0 if kind == 'hip' else max(1.0, power))
     return dict(view=tuple(round(v * k, 3) for v in base['view']), roll=0, shift=tuple(round(v * k, 3) for v in base['shift']))
+
+
+# Iron sights' power by the gun's ads-class (config.yml weapons.ads.iron), for the aimed kick.
+IRON_POWER = {'pistol': 1.1, 'shotgun': 1.1}
+
+
+def sight_power(gun_spec, oid, item_defs):
+    """A sight's true power aimed: the optic's magnification (items.yml), or the iron sights' by ads-class."""
+    if oid is not None:
+        return float(((item_defs.get(oid) or {}).get('optic') or {}).get('magnification', 1.0))
+    return IRON_POWER.get(gun_spec.get('ads-class'), 1.25)
 
 
 def kick_strength(recoil):

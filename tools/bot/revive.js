@@ -32,7 +32,10 @@
 //      secure container button is locked and opens nothing; the terminal in hotbar slot 9 opens the
 //      terminal as well, never the container;
 //  11. B dies of a second hit: its saved profile holds the same secure container as before the
-//      knock-down, and the gold bar it tried to put in while downed is not in it.
+//      knock-down, and the gold bar it tried to put in while downed is not in it;
+//  12. (run first, in the lobby) a third bot whose saved container holds three lion statues from
+//      when every item took one slot sees each in one slot and 18/3 格, cannot put a master chip
+//      in, and takes a statue out.
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node revive.js [squad|solo|secure]
 //
@@ -633,6 +636,38 @@ const bottomSlot = (w, id, top) => w.slots.findIndex((s, i) => i >= top && s && 
 const countIn = (w, id, top) => w.slots.reduce((n, s, i) => n + (i >= top && s && pdc(s, 'id') === id ? s.count : 0), 0)
 
 async function secure () {
+  // 12 (first, in the lobby). A container filled when every item took one slot, three lion statues
+  // in the 3 starting slots: it keeps them, one slot each, and takes nothing more until back within
+  // its 3 cells.
+  const old = `rv${run}c`
+  fs.mkdirSync(path.join(DATA, 'data/players'), { recursive: true })
+  fs.writeFileSync(path.join(DATA, 'data/players', offlineUuid(old) + '.json'), JSON.stringify({
+    uuid: offlineUuid(old), name: old, secureTier: 1, secure: [1, 2, 3].map(() => ({ id: 'lion_statue', amount: 1 }))
+  }))
+  const C = await make(old)
+  await rcon(`cv give ${old} master_chip`)
+  await sleep(1000)
+  const live = () => C.currentWindow || { slots: [], title: '' }
+  if (!await opened(C, () => C.chat('/cv secure'))) {
+    log('SETUP: /cv secure opened nothing in the lobby')
+    return 2
+  }
+  check('an old container over its cells shows each statue in one slot', cellsOf(live()).join(' ') ===
+    'lion_statue:1 lion_statue:1 lion_statue:1 # # # # # #', cellsOf(live()))
+  check('and its info button reads 18/3 格', nameOf(live().slots[13]).includes('18/3 格'), nameOf(live().slots[13]))
+  let since = Date.now()
+  const chip = bottomSlot(live(), 'master_chip', 18)
+  if (chip >= 0) await C.clickWindow(chip, 0, 0)
+  await sleep(800)
+  check('it takes no master chip while over its cells, and says so', chip >= 0 && !cellsOf(live()).some(c => c.startsWith('master_chip')) &&
+    barsSince(C, since).some(b => b.includes('超出容量')), { chip, cells: cellsOf(live()), bars: barsSince(C, since).slice(-1) })
+  await C.clickWindow(0, 0, 0)
+  await sleep(800)
+  check('a statue taken out comes back to the inventory', bottomSlot(live(), 'lion_statue', 18) >= 0 &&
+    nameOf(live().slots[13]).includes('12/3 格'), { cells: cellsOf(live()), info: nameOf(live().slots[13]) })
+  C.quit()
+  bots.splice(bots.indexOf(C), 1)
+
   const A = await make(`rv${run}a`)
   const B = await make(`rv${run}b`)
   for (const bot of [A, B]) await rcon(`op ${bot.username}`)
@@ -665,7 +700,7 @@ async function secure () {
   }
   check('a fresh container shows 3 open cells and 6 locked ones', cellsOf(cur()).join(' ') === '- - - # # # # # #', cellsOf(cur()))
   const put = async id => { await B.clickWindow(bottomSlot(cur(), id, TOP), 0, 0); await sleep(800) }
-  let since = Date.now()
+  since = Date.now()
   await put('lion_statue')
   check('the lion statue (6 cells) does not go into a 3-cell container', !cellsOf(cur()).some(c => c.startsWith('lion_statue')) &&
     bottomSlot(cur(), 'lion_statue', TOP) >= 0, cellsOf(cur()))

@@ -293,7 +293,10 @@ def scope_px_per_mil(style, h=1080, fov=70.0):
 def scope_overlay(style='4x', w=1920, h=1080):
     """The reticle seen while aiming through a magnified optic, on clear: 1920x1080, every mark placed
     by its angle (milliradians at the scope's power and a 70 degree field of view). Nothing else: the
-    dark ring around it is the item model drawn with the hand.
+    dark ring around it is the item model drawn with the hand. The lines and posts run on to the
+    picture's edges: the overlay is stretched to the window but the ring keeps its size by the height,
+    so on a window narrower than 16:9 a post ending at the ring's radius would stop short of it, while
+    the near-black ink over the black ring does not show.
 
     3x: illuminated chevron over hash marks every 5 mil. 4x: duplex crosshair, thin within 40 mil of the
     centre. 8x: thin crosshair with mil-dots every 5 mil out to 20, thick posts from 30.
@@ -307,9 +310,9 @@ def scope_overlay(style='4x', w=1920, h=1080):
     red = (235, 60, 40, 255)
     if style == '3x':
         gap = int(round(4 * mil))
-        d.line([(cx - r, cy), (cx - gap * 2, cy)], fill=ink, width=3)
-        d.line([(cx + gap * 2, cy), (cx + r, cy)], fill=ink, width=3)
-        d.line([(cx, cy + gap * 3), (cx, cy + r)], fill=ink, width=3)
+        d.line([(0, cy), (cx - gap * 2, cy)], fill=ink, width=3)
+        d.line([(cx + gap * 2, cy), (w, cy)], fill=ink, width=3)
+        d.line([(cx, cy + gap * 3), (cx, h)], fill=ink, width=3)
         size = max(10, int(round(2.5 * mil)))
         d.polygon([(cx, cy - 2), (cx - size, cy + int(size * 1.4)), (cx - size // 2, cy + int(size * 1.4)), (cx, cy + size // 2),
                    (cx + size // 2, cy + int(size * 1.4)), (cx + size, cy + int(size * 1.4))], fill=red)
@@ -320,23 +323,23 @@ def scope_overlay(style='4x', w=1920, h=1080):
                 d.line([(cx - half, y), (cx + half, y)], fill=ink, width=3)
     elif style == '4x':
         thin = int(round(40 * mil))
-        d.line([(cx - r, cy), (cx - thin, cy)], fill=ink, width=12)
-        d.line([(cx + thin, cy), (cx + r, cy)], fill=ink, width=12)
-        d.line([(cx, cy + thin), (cx, cy + r)], fill=ink, width=12)
-        d.line([(cx, cy - r), (cx, cy - thin)], fill=ink, width=12)
+        d.line([(0, cy), (cx - thin, cy)], fill=ink, width=12)
+        d.line([(cx + thin, cy), (w, cy)], fill=ink, width=12)
+        d.line([(cx, cy + thin), (cx, h)], fill=ink, width=12)
+        d.line([(cx, 0), (cx, cy - thin)], fill=ink, width=12)
         d.line([(cx - thin, cy), (cx + thin, cy)], fill=ink, width=3)
         d.line([(cx, cy - thin), (cx, cy + thin)], fill=ink, width=3)
         d.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=red)
     else:
-        d.line([(cx - r, cy), (cx + r, cy)], fill=ink, width=2)
-        d.line([(cx, cy - r), (cx, cy + r)], fill=ink, width=2)
+        d.line([(0, cy), (w, cy)], fill=ink, width=2)
+        d.line([(cx, 0), (cx, h)], fill=ink, width=2)
         dot = max(3, int(round(0.45 * mil)))
         for i in range(1, 5):
             off = int(round(i * 5 * mil))
             for sx, sy in ((cx + off, cy), (cx - off, cy), (cx, cy + off), (cx, cy - off)):
                 d.ellipse([sx - dot, sy - dot, sx + dot, sy + dot], fill=ink)
         post = int(round(30 * mil))
-        for x0, y0, x1, y1 in ((cx - r, cy, cx - post, cy), (cx + post, cy, cx + r, cy), (cx, cy + post, cx, cy + r)):
+        for x0, y0, x1, y1 in ((0, cy, cx - post, cy), (cx + post, cy, w, cy), (cx, cy + post, cx, h)):
             d.line([(x0, y0), (x1, y1)], fill=ink, width=9)
         d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=red)
     return img

@@ -219,6 +219,7 @@ public final class DownedService implements Listener {
             rp.state = RaidPlayer.State.ALIVE;
         }
         uncrawl(player, state);
+        getUp(player);
         // Getting up, the gun has to come up again: without this the state bound while downed had
         // finished its draw long ago, so a revived player could fire on the tick they stood.
         plugin.weapons().reset(player);
@@ -452,16 +453,19 @@ public final class DownedService implements Listener {
         return false;
     }
 
-    /** The reviver kneels over the downed player and works on them; everyone nearby sees it. */
+    /**
+     * The reviver kneels over the downed player and dresses the wound: others see them crouched with
+     * a bandage worked back and forth in hand (StanceService's revive stance) and hear the bandage
+     * being wrapped, about once a second.
+     */
     private void reviveEffects(Player reviver, Player patient) {
         if (reviver.getPose() != Pose.SNEAKING) {
             reviver.setPose(Pose.SNEAKING, true);
         }
-        Location at = patient.getLocation().add(0, 0.4, 0);
-        reviver.swingMainHand();
-        patient.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, at, 3, 0.35, 0.15, 0.35, 0);
         if (Bukkit.getCurrentTick() % 20 < 5) {
-            patient.getWorld().playSound(at, "minecraft:item.armor.equip_leather", SoundCategory.PLAYERS, 0.6f, 1.2f);
+            Location at = patient.getLocation().add(0, 0.4, 0);
+            patient.getWorld().playSound(at, "craftov:med.bandage", SoundCategory.PLAYERS, 0.7f,
+                    0.95f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.1f);
         }
     }
 
@@ -550,6 +554,25 @@ public final class DownedService implements Listener {
             }
         }
         return false;
+    }
+
+    /**
+     * A revived player comes up through a crouch: everyone else sees them kneel for
+     * downed.get-up-ticks before they stand, instead of springing upright on the spot. (Their own
+     * client stands at once; it decides its own pose.)
+     */
+    private void getUp(Player player) {
+        int ticks = plugin.getConfig().getInt("downed.get-up-ticks", 12);
+        if (ticks <= 0 || !player.isOnline()) {
+            return;
+        }
+        player.setPose(Pose.SNEAKING, true);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline() && !isDowned(player) && !isReviving(player) && player.hasFixedPose()
+                    && player.getPose() == Pose.SNEAKING) {
+                player.setPose(Pose.STANDING, false);
+            }
+        }, ticks);
     }
 
     /** Forces the crawling pose by placing a client-side barrier above the player's head. */

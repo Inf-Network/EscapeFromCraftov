@@ -92,10 +92,10 @@ public final class Attachments {
         effect(out, "移动速度", part.moveSpeed(), false);
         effect(out, "弹匣容量", part.magazine(), false);
         if (part.suppressed()) {
-            out.append(out.isEmpty() ? "" : " ").append("<#5BD16B>消音");
+            out.append(out.isEmpty() ? "" : " ").append("<ok>消音");
         }
         if (part.light() != null) {
-            out.append(out.isEmpty() ? "" : " ").append("<#5BD16B>").append("strobe".equals(part.light()) ? "照明 / 爆闪" : "照明");
+            out.append(out.isEmpty() ? "" : " ").append("<ok>").append("strobe".equals(part.light()) ? "照明 / 爆闪" : "照明");
         }
         return out.toString();
     }
@@ -106,7 +106,7 @@ public final class Attachments {
         }
         int pct = (int) Math.round((mult - 1) * 100);
         boolean good = lowerIsBetter ? pct < 0 : pct > 0;
-        out.append(out.isEmpty() ? "" : " ").append(good ? "<#5BD16B>" : "<#FF8A80>").append(name)
+        out.append(out.isEmpty() ? "" : " ").append(good ? "<ok>" : "<danger>").append(name)
                 .append(pct > 0 ? " +" : " ").append(pct).append('%');
     }
 }

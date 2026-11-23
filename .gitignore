@@ -32,5 +32,6 @@ tools/bot/node_modules
 # Screenshot harness: venv, Minecraft client and screenshots
 tools/shots/.cache/
 tools/shots/out/
-# Sound build: downloaded CC0 recordings and the encoded-sound cache
+# Art build caches: pixel font download (tools/art/pixelfont.py bake),
+# downloaded CC0 recordings and the encoded-sound cache
 tools/art/.cache/

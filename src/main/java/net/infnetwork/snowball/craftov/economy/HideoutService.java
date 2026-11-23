@@ -161,13 +161,13 @@ public final class HideoutService {
     /** "◈20,000 · 一号电池 ×3 (2/3)" with red for what is missing. */
     public String describe(Player player, Cost cost) {
         Profile profile = plugin.profiles().get(player);
-        StringBuilder out = new StringBuilder((profile.money >= cost.money() ? "<#F2C94C>" : "<#FF8A80>") + "◈" + Text.money(cost.money()));
+        StringBuilder out = new StringBuilder((profile.money >= cost.money() ? "<accent>" : "<danger>") + "◈" + Text.money(cost.money()));
         for (Map.Entry<String, Integer> e : cost.items().entrySet()) {
             ItemDef def = plugin.registry().get(e.getKey());
             int has = have(player, e.getKey());
-            out.append(" <#8A8F98>· ").append(has >= e.getValue() ? "<#C8CCD2>" : "<#FF8A80>")
+            out.append(" <muted>· ").append(has >= e.getValue() ? "<text>" : "<danger>")
                     .append(def == null ? e.getKey() : Text.escape(def.name())).append(" ×").append(e.getValue())
-                    .append(" <#8A8F98>(").append(has).append(")");
+                    .append(" <muted>(").append(has).append(")");
         }
         return out.toString();
     }

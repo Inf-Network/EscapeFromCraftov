@@ -2,6 +2,7 @@ package net.infnetwork.snowball.craftov.ai;
 
 import com.destroystokyo.paper.entity.Pathfinder;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.DamageService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -465,7 +466,7 @@ public final class AiService implements Listener {
         bot.looting = null;
     }
 
-    private static final String[] CALLSIGNS = {"夜枭", "灰狼", "蝮蛇", "渡鸦", "铁砧", "猎隼", "幽灵", "黑曜"};
+    private static final String[] CALLSIGNS = {"夜鸮", "灰狼", "蝮蛇", "渡鸦", "铁砧", "猎隼", "幽灵", "黑曜"};
 
     /** A rival operator squad: better gear and aim, they move from container to container taking the best loot. */
     public void operatorSquad(Raid raid, Location at) {
@@ -1316,12 +1317,9 @@ public final class AiService implements Listener {
             rp.aiKills++;
             // A knife kill is one the killing record says was a cut, not whatever is in hand now.
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
-            killer.sendActionBar(Text.mm("<#FFC23D>✖ 击败 <white>" + Text.escape(bot.name)
-                    + (hit.headshot() ? " <#FF4D4D>爆头" : "")));
+            Notify.info(killer, "<accent>✖ 击败 <white>" + Text.escape(bot.name)
+                    + (hit.headshot() ? " <danger>爆头" : ""));
             plugin.killFeed().soldierKilled(raid, killer, bot.name, hit.weapon(), hit.headshot());
-            if (bot.boss) {
-                plugin.raids().announce(raid, "<#FFC23D>" + Text.escape(killer.getName()) + " 击败了 <#FF4D4D>" + Text.escape(bot.name) + "<#FFC23D>！");
-            }
         }
         dropBody(bot);
     }

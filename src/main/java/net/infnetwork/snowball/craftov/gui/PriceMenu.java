@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
@@ -27,7 +28,7 @@ final class PriceMenu extends Menu {
     private long price;
 
     PriceMenu(CraftovPlugin plugin, Player viewer, int stashIndex, ItemRecord record, StashMenu back) {
-        super(viewer, 3, Text.mm("<#F2E6C8>交易行 · 定价"));
+        super(viewer, 3, Text.mm("<text>交易行 · 定价"));
         this.plugin = plugin;
         this.stashIndex = stashIndex;
         this.record = record;
@@ -49,45 +50,45 @@ final class PriceMenu extends Menu {
         }
         double ratio = price / (double) reference;
         double chance = plugin.market().virtualChance(record, price);
-        String hint = virtual <= 0 ? "<#FF4D4D>系统买家不会收购<#8A8F98>（" + plugin.market().virtualRarityNote() + "<#8A8F98>）"
-                : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<#FFC23D>今天系统买家已收满你的这种物品，明天再来"
-                : chance <= 0 && systemOnly ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购；账号等级 "
+        String hint = virtual <= 0 ? "<danger>系统买家不会收购<muted>（" + plugin.market().virtualRarityNote() + "<muted>）"
+                : plugin.market().virtualCapped(viewer.getUniqueId(), record.id) ? "<accent>今天系统买家已收满你的这种物品，明天再来"
+                : chance <= 0 && systemOnly ? "<danger>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购；账号等级 "
                         + plugin.market().minBuyLevel() + " 前其他玩家也不能买，升级前卖不出去"
-                : chance <= 0 ? "<#FF4D4D>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
-                : chance >= 0.3 ? "<#5BD16B>系统买家很快收购" : chance >= 0.12 ? "<#5BD16B>系统买家较快收购"
-                : "<#FFC23D>系统买家可能要等几分钟";
+                : chance <= 0 ? "<danger>高于系统收购价 ◈" + Text.money(virtual) + "，系统买家不会收购，只能等其他玩家"
+                : chance >= 0.3 ? "<ok>系统买家很快收购" : chance >= 0.12 ? "<ok>系统买家较快收购"
+                : "<accent>系统买家可能要等几分钟";
         long fee = Math.round(price * plugin.getConfig().getDouble("market.listing-fee", 0.02));
         long tax = Math.round(price * plugin.getConfig().getDouble("market.sale-tax", 0.05));
         adjust(10, -0.10, "-10%");
         adjust(11, -0.01, "-1%");
-        List<String> info = new ArrayList<>(List.of("<#8A8F98>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)",
-                "<#8A8F98>预计 " + hint, "<#8A8F98>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax)));
+        List<String> info = new ArrayList<>(List.of("<muted>参考价 ◈" + Text.money(reference) + " (" + Math.round(ratio * 100) + "%)",
+                "<muted>预计 " + hint, "<muted>上架手续费 ◈" + Text.money(fee) + " · 成交税 ◈" + Text.money(tax)));
         if (systemOnly) {
-            info.add("<#FFC23D>账号等级 " + plugin.market().minBuyLevel() + " 前只有系统买家会收购");
+            info.add("<accent>账号等级 " + plugin.market().minBuyLevel() + " 前只有系统买家会收购");
         }
         if (plugin.market().traded(record.id)) {
-            info.add("<#8A8F98>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));
+            info.add("<muted>玩家成交均价 ◈" + Text.money(plugin.market().referenceFor(record)));
         }
-        info.add("<#8A8F98>近期成交 " + history() + " <#5F6368>(单件)");
-        info.add(price >= cap ? "<#FFC23D>已达最高售价（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）"
-                : "<#8A8F98>最高售价 ◈" + Text.money(cap));
-        set(13, UiItems.button("craftov:ui/icon_value", "<#F2C94C>售价 ◈" + Text.money(price), info));
+        info.add("<muted>近期成交 " + history() + " <dim>(单件)");
+        info.add(price >= cap ? "<accent>已达最高售价（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）"
+                : "<muted>最高售价 ◈" + Text.money(cap));
+        set(13, UiItems.button("craftov:ui/icon_value", "<accent>售价 ◈" + Text.money(price), info));
         adjust(15, 0.01, "+1%");
         adjust(16, 0.10, "+10%");
-        button(18, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80>返回", List.of()), e -> back.reopen());
+        button(18, UiItems.button("craftov:ui/icon_cancel", "<danger>返回", List.of()), e -> back.reopen());
         if (virtual > 0) {
             button(20, UiItems.button("craftov:ui/icon_value", "<white>系统收购价",
-                    List.of("<#8A8F98>系统买家最多出 ◈" + Text.money(virtual) + "（物品价值的 "
-                            + Math.round(plugin.market().virtualMaxValue() * 100) + "%）", "<#8A8F98>定得越低卖得越快")),
+                    List.of("<muted>系统买家最多出 ◈" + Text.money(virtual) + "（物品价值的 "
+                            + Math.round(plugin.market().virtualMaxValue() * 100) + "%）", "<muted>定得越低卖得越快")),
                     e -> setPrice(virtual));
         } else {
-            set(20, UiItems.button("craftov:ui/icon_value", "<#8A8F98>系统收购价",
-                    List.of("<#FF8A80>" + plugin.market().virtualRarityNote())));
+            set(20, UiItems.button("craftov:ui/icon_value", "<muted>系统收购价",
+                    List.of("<danger>" + plugin.market().virtualRarityNote())));
         }
         button(21, UiItems.button("craftov:ui/icon_value", "<white>参考价 ×0.9", List.of()), e -> setPrice(Math.round(reference * 0.9)));
         button(22, UiItems.button("craftov:ui/icon_value", "<white>参考价", List.of()), e -> setPrice(reference));
         button(23, UiItems.button("craftov:ui/icon_value", "<white>参考价 ×1.2", List.of()), e -> setPrice(Math.round(reference * 1.2)));
-        button(26, UiItems.button("craftov:ui/icon_start", "<#5BD16B><b>确认上架", List.of("<#9AA0A6>物品将从仓库移至交易行")), e -> {
+        button(26, UiItems.button("craftov:ui/icon_start", "<ok><b>确认上架", List.of("<muted>物品将从仓库移至交易行")), e -> {
             if (plugin.market().list(viewer, stashIndex, price)) {
                 back.reopen();
             } else {
@@ -111,8 +112,8 @@ final class PriceMenu extends Menu {
     private void adjust(int slot, double delta, String label) {
         if (delta > 0 && price >= cap) {
             String why = "已达最高售价 ◈" + Text.money(cap) + "（参考价 " + Text.decimal(plugin.market().maxPriceMultiplier()) + " 倍）";
-            button(slot, UiItems.button("craftov:ui/arrow_right", "<#8A8F98>" + label, List.of("<#FFC23D>" + why)),
-                    e -> viewer.sendActionBar(Text.mm("<#FFC23D>" + why)));
+            button(slot, UiItems.button("craftov:ui/arrow_right", "<muted>" + label, List.of("<accent>" + why)),
+                    e -> Notify.info(viewer, "<accent>" + why));
             return;
         }
         // At least one coin per click, so +1% still moves a cheap item towards the cap.

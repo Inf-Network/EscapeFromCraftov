@@ -124,6 +124,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
+        net.infnetwork.snowball.craftov.util.Notify.start(this);
         saveDefaultConfig();
         migrateEntryFees();
         saveResourceIfMissing("items.yml");
@@ -425,7 +426,7 @@ public final class CraftovPlugin extends JavaPlugin {
             }
         }
         if (tiers.isEmpty()) {
-            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#5BD16B", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
+            tiers.put("NORMAL", new Tier("NORMAL", "常规", "#7FD1AE", 0, 0, 0.8, 0.55, 0, false, 1.0, 0));
         }
     }
 

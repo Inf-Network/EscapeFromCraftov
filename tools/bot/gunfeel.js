@@ -6,7 +6,7 @@
 //           after the other within 6 s. The shooter's kill feed (/cv feed) holds three lines, the bot last, and
 //           a streak of 3; the shooter hears kill.1, kill.2 and kill.3 and no plain kill sound; no kill
 //           line reaches the chat; the other bot's feed holds its own death but not the soldiers. The
-//           shooter's raid report (after /kill) counts every round fired as fired standing still.
+//           shooter's settlement screen (after /kill) counts every round fired as fired standing still.
 //   kick    The first-person kick and flash follow the shots the server fires: every shot sends
 //           exactly one craftov:reload cooldown of the gun's kick time (2 ticks for the K47 at 600
 //           rpm, 3 for the P18, 6 for the AWR), as many as the server logged shots in a 1 s K47
@@ -284,24 +284,14 @@ async function lobby () {
 }
 
 // ---------------------------------------------------------------- magazine
-/** The HUD's top bar (BetterHud's boss bar) as plain text, as last sent. */
-let hudText = ''
-bot._client.on('boss_bar', p => {
-  if (!p.title) return
-  const parts = []
-  const walk = n => {
-    if (n === null || n === undefined) return
-    if (typeof n === 'string') { parts.push(n); return }
-    if (Array.isArray(n)) { n.forEach(walk); return }
-    if (typeof n === 'object') { if (typeof n.text === 'string') parts.push(n.text); if (typeof n[''] === 'string') parts.push(n['']); walk(n.extra) }
-  }
-  try { walk(require('prismarine-nbt').simplify(p.title)) } catch (e) { return }
-  hudText = parts.join('')
-})
-/** The 价值 the raid HUD shows, in coins (it rounds to 100 past 10 000), or NaN. */
-function raidValue () {
-  const m = hudText.match(/价值 ([0-9.]+)(万|亿)?/)
-  return m ? Number(m[1]) * (m[2] === '亿' ? 1e8 : m[2] === '万' ? 1e4 : 1) : NaN
+/**
+ * The gear value the raid HUD shows (◈ in the info panel), in coins, or NaN. The HUD draws it in the
+ * pixel font, which the boss bar carries as glyphs a bot cannot read, so `cv hud` prints the
+ * snapshot's figure instead.
+ */
+async function raidValue () {
+  const m = String(await rcon(`cv hud ${name}`)).match(/value=(\d+)/)
+  return m ? Number(m[1]) : NaN
 }
 
 async function magazine () {
@@ -320,16 +310,16 @@ async function magazine () {
     await sleep(1000)
     hold('k47')
     await sleep(2500) // the draw, and the HUD catching up
-    const before = raidValue()
+    const before = await raidValue()
     bot.setControlState('sneak', true)
     await sleep(300)
     dig(4) // sneak+Q: the next ammo type, AP
     await sleep(300)
     bot.setControlState('sneak', false)
     await sleep(5000) // the reload
-    const after = raidValue()
+    const after = await raidValue()
     const ap = bot.inventory.items().filter(i => itemId(i) && itemId(i).includes('ammo_762_ap')).reduce((n, i) => n + i.count, 0)
-    log('magazine: HUD', (hudText.match(/价值 [^撤]*/) || [hudText.slice(0, 60)])[0], '· AP left in the inventory', ap)
+    log('magazine: HUD value', before, '->', after, '· AP left in the inventory', ap)
     check('magazine: the reload to AP took 30 rounds from the inventory', ap === 30, `${ap} AP left`)
     check('magazine: switching the K47 to AP keeps the 价值 on the HUD (within its rounding)', before > 0 && Math.abs(after - before) <= 100,
       `${before} before, ${after} after`)
@@ -337,7 +327,7 @@ async function magazine () {
     await sleep(600)
     hold('k47')
     await sleep(2000)
-    const written = raidValue()
+    const written = await raidValue()
     check('magazine: and once the magazine is written to the stack it is still the same', Math.abs(written - before) <= 100, `${written}`)
   } finally {
     await rcon(`kill ${name}`)
@@ -554,9 +544,10 @@ function barsOf (item) {
       const n = (r.text.match(/▍/g) || []).length
       total += n
       const c = String(r.color || '').toUpperCase()
-      if (c === '#5BD16B') gain += n
-      if (c === '#FF4D4D') loss += n
-      if (c !== '#3A3F47' && c !== '#FF4D4D') filled += n
+      // The palette's ok, danger and line colours (gui/Style).
+      if (c === '#7FD1AE') gain += n
+      if (c === '#E5484D') loss += n
+      if (c !== '#2C333D' && c !== '#E5484D') filled += n
     }
     const tail = text.slice(text.lastIndexOf('▍') + 1).trim()
     const nums = (tail.match(/[\d.]+/g) || []).map(Number)
@@ -708,14 +699,22 @@ async function feed () {
     } finally {
       clearInterval(sweep)
     }
-    // Out of the raid, the report says how many rounds were fired standing still.
-    const reportFrom = Date.now()
+    // Out of the raid, the settlement screen says how many rounds were fired standing still (in the
+    // outcome button's lore, slot 8).
+    const settled = new Promise(resolve => {
+      const timer = setTimeout(() => resolve(null), 25000)
+      const seen = w => setTimeout(() => {
+        const lines = loreLines(w.slots[8]).map(runs => runs.map(r => r.text).join(''))
+        if (lines.some(l => l.includes('急停射击'))) { clearTimeout(timer); bot.removeListener('windowOpen', seen); resolve(lines) }
+      }, 600)
+      bot.on('windowOpen', seen)
+    })
     await rcon(`kill ${name}`)
-    const by = Date.now() + 20000
-    while (Date.now() < by && !chat.some(c => c.at >= reportFrom && c.text.includes('急停射击'))) await sleep(500)
-    const line = (chat.find(c => c.at >= reportFrom && c.text.includes('急停射击')) || {}).text
+    const lines = await settled
+    const line = (lines || []).find(l => l.includes('急停射击'))
     const m = line && line.match(/开火 (\d+) 发 · 急停射击 (\d+) 发/)
-    check('feed: the raid report counts the rounds fired, all of them standing still', !!m && Number(m[1]) >= 3 && m[1] === m[2], line)
+    check('feed: the settlement counts the rounds fired, all of them standing still', !!m && Number(m[1]) >= 3 && m[1] === m[2], line || lines)
+    if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
   } finally {
     victim.quit()
     await sleep(3000) // back in the lobby before the next scenario

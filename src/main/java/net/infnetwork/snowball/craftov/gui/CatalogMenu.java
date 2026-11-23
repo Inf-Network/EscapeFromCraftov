@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.combat.HealthService;
 import net.infnetwork.snowball.craftov.combat.Injury;
 import net.infnetwork.snowball.craftov.item.Category;
@@ -34,7 +35,7 @@ final class CatalogMenu extends Menu {
     private int tab;
 
     CatalogMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>测试军械库"));
+        super(viewer, 6, Text.mm("<text>测试军械库"));
         this.plugin = plugin;
     }
 
@@ -44,8 +45,8 @@ final class CatalogMenu extends Menu {
             Tab t = TABS.get(i);
             int index = i;
             boolean active = i == tab;
-            button(i, UiItems.button(t.icon(), (active ? "<#F2C94C><b>▶ " : "<#C8CCD2>") + t.name(),
-                    List.of(active ? "<#5BD16B>当前分类" : "<#9AA0A6>点击切换")), e -> {
+            button(i, UiItems.button(t.icon(), (active ? "<accent><b>▶ " : "<text>") + t.name(),
+                    List.of(active ? "<ok>当前分类" : "<muted>点击切换")), e -> {
                 tab = index;
                 redraw();
             });
@@ -63,34 +64,34 @@ final class CatalogMenu extends Menu {
                     plugin.carry().give(viewer, plugin.items().sample(def), true);
                 }
                 viewer.playSound(viewer.getLocation(), "minecraft:entity.item.pickup", 0.6f, 1.2f);
-                viewer.sendActionBar(Text.mm("<#5BD16B>已领取 " + def.coloredName() + " <#9AA0A6>×" + copies));
+                Notify.ok(viewer, "已领取 " + def.coloredName() + " <muted>×" + copies);
             });
         }
-        button(45, UiItems.button("craftov:ui/icon_value", "<#F2C94C><b>+ ◈1,000,000", List.of("<#9AA0A6>测试用块币")), e -> {
+        button(45, UiItems.button("craftov:ui/icon_value", "<accent><b>+ ◈1,000,000", List.of("<muted>测试用块币")), e -> {
             Profile p = plugin.profiles().get(viewer);
             p.money += 1_000_000;
             plugin.profiles().markDirty(viewer.getUniqueId());
-            viewer.sendActionBar(Text.mm("<#5BD16B>余额 ◈" + Text.money(p.money)));
+            Notify.ok(viewer, "余额 ◈" + Text.money(p.money));
         });
-        button(46, UiItems.button("craftov:ui/icon_repair", "<#5BD16B><b>满血并清除伤病", List.of("<#9AA0A6>生命回满，清除出血和骨折")), e -> {
+        button(46, UiItems.button("craftov:ui/icon_repair", "<ok><b>满血并清除伤病", List.of("<muted>生命回满，清除出血和骨折")), e -> {
             plugin.health().clear(viewer);
             plugin.health().heal(viewer, HealthService.MAX_HP);
             plugin.health().forceSpeedUpdate(viewer);
-            viewer.sendActionBar(Text.mm("<#5BD16B>状态已恢复"));
+            Notify.ok(viewer, "状态已恢复");
         });
-        button(47, UiItems.button("craftov:ui/icon_cancel", "<#FF8A80><b>模拟受伤", List.of("<#9AA0A6>生命降到 40：胸部出血、左腿和右臂骨折",
-                "<#9AA0A6>用来测试绷带、夹板和急救包")), e -> {
+        button(47, UiItems.button("craftov:ui/icon_cancel", "<danger><b>模拟受伤", List.of("<muted>生命降到 40：胸部出血、左腿和右臂骨折",
+                "<muted>用来测试绷带、夹板和急救包")), e -> {
             viewer.setHealth(Math.min(viewer.getHealth(), 40));
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.CHEST, Injury.LIGHT_BLEED);
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.LEFT_LEG, Injury.FRACTURE);
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.RIGHT_ARM, Injury.FRACTURE);
             plugin.health().forceSpeedUpdate(viewer);
         });
-        set(49, UiItems.button("craftov:ui/icon_help", "<#C8CCD2><b>说明", List.of(
-                "<white>左键 <#9AA0A6>领取 1 个（枪械满弹匣，弹药一整组）",
-                "<white>右键 <#9AA0A6>领取 5 个",
-                "<#9AA0A6>背包放不下的物品会掉在脚下",
-                "<#9AA0A6>本分类 " + defs.size() + " 件")));
-        button(53, UiItems.button("craftov:ui/icon_cancel_small", "<#9AA0A6>关闭", List.of()), e -> viewer.closeInventory());
+        set(49, UiItems.button("craftov:ui/icon_help", "<text><b>说明", List.of(
+                "<white>左键 <muted>领取 1 个（枪械满弹匣，弹药一整组）",
+                "<white>右键 <muted>领取 5 个",
+                "<muted>背包放不下的物品会掉在脚下",
+                "<muted>本分类 " + defs.size() + " 件")));
+        button(53, UiItems.button("craftov:ui/icon_cancel_small", "<muted>关闭", List.of()), e -> viewer.closeInventory());
     }
 }

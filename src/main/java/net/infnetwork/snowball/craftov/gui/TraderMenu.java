@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.economy.TraderService;
@@ -25,13 +26,14 @@ final class TraderMenu extends Menu {
     private TraderService.Tab tab = TraderService.Tab.WEAPON;
 
     TraderMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>商人 · 军需处"));
+        super(viewer, 6, "trader", Text.mm("商人 · 军需处"));
         this.plugin = plugin;
     }
 
     @Override
     protected void draw() {
         Profile p = plugin.profiles().get(viewer);
+        restyle("trader", Text.mm("商人 · 军需处 <muted>· " + tab.label));
         if (tab == TraderService.Tab.SERVICE) {
             drawServices(p);
         } else {
@@ -45,12 +47,12 @@ final class TraderMenu extends Menu {
                 List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
                 lore.add(Component.empty());
                 if (def.category() == Category.AMMO) {
-                    lore.add(Text.mm("<#5BD16B>左键 购买 30 发 <#F2C94C>◈" + Text.money(price * 30)));
-                    lore.add(Text.mm("<#5BD16B>右键 购买 " + def.maxStack() + " 发 <#F2C94C>◈" + Text.money(price * def.maxStack())));
+                    lore.add(Text.mm("<ok>左键 购买 30 发 <accent>◈" + Text.money(price * 30)));
+                    lore.add(Text.mm("<ok>右键 购买 " + def.maxStack() + " 发 <accent>◈" + Text.money(price * def.maxStack())));
                 } else {
-                    lore.add(Text.mm("<#5BD16B>左键 购买 <#F2C94C>◈" + Text.money(price)));
+                    lore.add(Text.mm("<ok>左键 购买 <accent>◈" + Text.money(price)));
                     if (def.maxStack() > 1) {
-                        lore.add(Text.mm("<#5BD16B>右键 购买 " + def.maxStack() + " 个 <#F2C94C>◈" + Text.money(price * def.maxStack())));
+                        lore.add(Text.mm("<ok>右键 购买 " + def.maxStack() + " 个 <accent>◈" + Text.money(price * def.maxStack())));
                     }
                 }
                 display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
@@ -66,8 +68,8 @@ final class TraderMenu extends Menu {
         int slot = 45;
         for (TraderService.Tab t : TraderService.Tab.values()) {
             boolean selected = t == tab;
-            button(slot++, UiItems.button("craftov:ui/tab_" + t.name().toLowerCase(), (selected ? "<#F2C94C>▶ " : "<white>") + t.label,
-                    List.of("<#8A8F98>块币 ◈" + Text.money(p.money), "<#8A8F98>潜行点击下方背包物品可直接出售")), e -> {
+            tabButton(slot++, UiItems.button("craftov:ui/tab_" + t.name().toLowerCase(), (selected ? "<accent>▶ " : "<white>") + t.label,
+                    List.of("<muted>块币 ◈" + Text.money(p.money), "<muted>潜行点击下方背包物品可直接出售")), e -> {
                 tab = t;
                 redraw();
             });
@@ -77,28 +79,28 @@ final class TraderMenu extends Menu {
     private void drawServices(Profile p) {
         int tier = p.secureTier;
         boolean max = tier >= 4;
-        button(10, UiItems.button("craftov:ui/icon_secure", "<#B66BFF><b>升级安全箱", List.of(
-                "<#8A8F98>当前 " + plugin.traders().secureSlots(p) + " 格",
-                max ? "<#5BD16B>已满级" : "<#8A8F98>升级至 " + TraderService.SECURE_SLOTS[tier + 1] + " 格 · ◈" + Text.money(TraderService.SECURE_PRICES[tier + 1]))),
+        button(10, UiItems.button("craftov:ui/icon_secure", "<info><b>升级安全箱", List.of(
+                "<muted>当前 " + plugin.traders().secureSlots(p) + " 格",
+                max ? "<ok>已满级" : "<muted>升级至 " + TraderService.SECURE_SLOTS[tier + 1] + " 格 · ◈" + Text.money(TraderService.SECURE_PRICES[tier + 1]))),
                 e -> {
                     plugin.traders().upgradeSecure(viewer);
                     redraw();
                 });
-        button(12, UiItems.button("craftov:ui/icon_upgrade", "<white><b>仓库扩容 +30", List.of("<#8A8F98>当前 " + p.stashCapacity + " 格",
-                "<#8A8F98>价格 ◈" + Text.money(plugin.traders().stashUpgradePrice(p)))), e -> {
+        button(12, UiItems.button("craftov:ui/icon_upgrade", "<white><b>仓库扩容 +30", List.of("<muted>当前 " + p.stashCapacity + " 格",
+                "<muted>价格 ◈" + Text.money(plugin.traders().stashUpgradePrice(p)))), e -> {
             plugin.traders().upgradeStash(viewer);
             redraw();
         });
-        button(14, UiItems.button("craftov:ui/icon_repair", "<white><b>维修全部护甲", List.of("<#8A8F98>修复身上与背包内护甲的耐久")), e -> {
+        button(14, UiItems.button("craftov:ui/icon_repair", "<white><b>维修全部护甲", List.of("<muted>修复身上与背包内护甲的耐久")), e -> {
             plugin.traders().repairAll(viewer);
             redraw();
         });
-        button(16, UiItems.button("craftov:ui/icon_ammo", "<white><b>补充弹药", List.of("<#8A8F98>为身上每把枪补足 3 个弹匣", "<#8A8F98>（使用当前装填的弹种）")), e -> {
+        button(16, UiItems.button("craftov:ui/icon_ammo", "<white><b>补充弹药", List.of("<muted>为身上每把枪补足 3 个弹匣", "<muted>（使用当前装填的弹种）")), e -> {
             refill();
             redraw();
         });
-        button(22, UiItems.button("craftov:ui/icon_sell", "<#FFC23D><b>一键出售物资", List.of("<#8A8F98>出售背包内所有“物资”类物品",
-                "<#8A8F98>（不包括收藏品、装备、武器、医疗品）")), e -> {
+        button(22, UiItems.button("craftov:ui/icon_sell", "<accent><b>一键出售物资", List.of("<muted>出售背包内所有“物资”类物品",
+                "<muted>（不包括收藏品、装备、武器、医疗品）")), e -> {
             sellValuables();
             redraw();
         });
@@ -149,7 +151,7 @@ final class TraderMenu extends Menu {
             viewer.getInventory().setItem(slot, null);
         }
         plugin.lobby().captureLoadout(viewer);
-        viewer.sendActionBar(Text.mm(count == 0 ? "<#9AA0A6>没有可出售的物资" : "<#FFC23D>出售 " + count + " 件物资，获得 ◈" + Text.money(total)));
+        Notify.info(viewer, count == 0 ? "<muted>没有可出售的物资" : "<accent>出售 " + count + " 件物资，获得 ◈" + Text.money(total));
     }
 
     @Override
@@ -160,11 +162,11 @@ final class TraderMenu extends Menu {
         }
         plugin.weapons().flush(viewer);
         if (ItemFactory.isRange(event.getClickedInventory().getItem(event.getSlot()))) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能出售"));
+            Notify.error(viewer, "靶场武器不能出售");
             return;
         }
         if (ItemFactory.isTest(event.getClickedInventory().getItem(event.getSlot()))) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能出售"));
+            Notify.error(viewer, "试验场物资不能出售");
             return;
         }
         ItemRecord record = plugin.items().toRecord(event.getClickedInventory().getItem(event.getSlot()));
@@ -172,18 +174,18 @@ final class TraderMenu extends Menu {
             return;
         }
         if (plugin.registry().get(record.id) == null) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>物品表里暂时没有这件物品，不能出售"));
+            Notify.error(viewer, "物品表里暂时没有这件物品，不能出售");
             return;
         }
         long price = plugin.traders().sellPrice(record);
         if (!event.isShiftClick()) {
-            viewer.sendActionBar(Text.mm("<#9AA0A6>商人收购价 <#F2C94C>◈" + Text.money(price) + " <#9AA0A6>· 潜行点击出售"));
+            Notify.info(viewer, "<muted>商人收购价 <accent>◈" + Text.money(price) + " <muted>· 潜行点击出售");
             return;
         }
         event.getClickedInventory().setItem(event.getSlot(), null);
         plugin.traders().sell(viewer, record);
         plugin.lobby().captureLoadout(viewer);
-        viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
+        Notify.info(viewer, "<accent>已出售，获得 ◈" + Text.money(price));
         redraw();
     }
 }

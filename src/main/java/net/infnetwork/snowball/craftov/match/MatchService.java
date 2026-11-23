@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.match;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -67,27 +68,27 @@ public final class MatchService {
 
     public void invite(Player leader, Player target) {
         if (leader == target) {
-            Text.send(leader, "<#FF8A80>不能邀请自己。");
+            Text.send(leader, "<danger>不能邀请自己。");
             return;
         }
         Party party = parties.computeIfAbsent(leader.getUniqueId(), Party::new);
         if (!party.leader.equals(leader.getUniqueId())) {
-            Text.send(leader, "<#FF8A80>只有队长可以邀请。");
+            Text.send(leader, "<danger>只有队长可以邀请。");
             return;
         }
         if (party.size() >= 3) {
-            Text.send(leader, "<#FF8A80>小队最多 3 人。");
+            Text.send(leader, "<danger>小队最多 3 人。");
             return;
         }
         if (partyOf(target.getUniqueId()) != null) {
-            Text.send(leader, "<#FF8A80>对方已经在小队中。");
+            Text.send(leader, "<danger>对方已经在小队中。");
             return;
         }
         invites.put(target.getUniqueId(), leader.getUniqueId());
         inviteExpiry.put(target.getUniqueId(), System.currentTimeMillis() + 60_000);
-        Text.send(leader, "<#9AA0A6>已邀请 <white>" + Text.escape(target.getName()) + "</white> 加入小队。");
-        target.sendMessage(Text.mm(Text.PREFIX + "<white>" + Text.escape(leader.getName()) + "</white> <#9AA0A6>邀请你加入小队 ")
-                .append(Text.mm("<#5BD16B><b>[接受]</b>").clickEvent(ClickEvent.runCommand("/cv party accept"))));
+        Text.send(leader, "<muted>已邀请 <white>" + Text.escape(target.getName()) + "</white> 加入小队。");
+        target.sendMessage(Text.mm("<white>" + Text.escape(leader.getName()) + "</white> <muted>邀请你加入小队 ")
+                .append(Text.mm("<ok><b>[接受]</b>").clickEvent(ClickEvent.runCommand("/cv party accept"))));
         target.playSound(target.getLocation(), "craftov:ui.invite", 1f, 1f);
     }
 
@@ -95,14 +96,14 @@ public final class MatchService {
         UUID leaderId = invites.remove(player.getUniqueId());
         Long expiry = inviteExpiry.remove(player.getUniqueId());
         if (leaderId == null || expiry == null || expiry < System.currentTimeMillis()) {
-            Text.send(player, "<#FF8A80>没有有效的邀请。");
+            Text.send(player, "<danger>没有有效的邀请。");
             return;
         }
         Party party = parties.get(leaderId);
         if (party == null) {
             Player leader = Bukkit.getPlayer(leaderId);
             if (leader == null) {
-                Text.send(player, "<#FF8A80>邀请已失效。");
+                Text.send(player, "<danger>邀请已失效。");
                 return;
             }
             party = new Party(leaderId);
@@ -113,7 +114,7 @@ public final class MatchService {
 
     public void join(Player player, Party party) {
         if (party.size() >= 3) {
-            Text.send(player, "<#FF8A80>小队已满。");
+            Text.send(player, "<danger>小队已满。");
             return;
         }
         leave(player, false);
@@ -122,7 +123,7 @@ public final class MatchService {
         cancelQueue(party.leader, "有新队员加入");
         party.members.add(player.getUniqueId());
         parties.put(player.getUniqueId(), party);
-        broadcast(party, "<white>" + Text.escape(player.getName()) + "</white> <#5BD16B>加入了小队 (" + party.size() + "/3)");
+        broadcast(party, "<white>" + Text.escape(player.getName()) + "</white> <ok>加入了小队 (" + party.size() + "/3)");
     }
 
     public void leave(Player player, boolean announce) {
@@ -141,23 +142,23 @@ public final class MatchService {
         if (announce) {
             Player player = Bukkit.getPlayer(uuid);
             if (player != null) {
-                Text.send(player, "<#9AA0A6>你已离开小队。");
+                Text.send(player, "<muted>你已离开小队。");
             }
-            broadcast(party, "<white>" + Text.escape(nameOf(uuid)) + "</white> <#9AA0A6>离开了小队");
+            broadcast(party, "<white>" + Text.escape(nameOf(uuid)) + "</white> <muted>离开了小队");
         }
         if (party.members.isEmpty()) {
             return;
         }
         if (party.leader.equals(uuid)) {
             party.leader = party.members.get(0);
-            broadcast(party, "<#9AA0A6>新的队长：<white>" + nameOf(party.leader));
+            broadcast(party, "<muted>新的队长：<white>" + nameOf(party.leader));
         }
         if (party.members.size() == 1) {
             parties.remove(party.members.get(0));
             plugin.escorts().onPartyLeave(party.members.get(0));
             Player last = Bukkit.getPlayer(party.members.get(0));
             if (last != null) {
-                Text.send(last, "<#9AA0A6>小队已解散。");
+                Text.send(last, "<muted>小队已解散。");
             }
         }
     }
@@ -165,13 +166,13 @@ public final class MatchService {
     public void kick(Player leader, String name) {
         Party party = partyOf(leader.getUniqueId());
         if (party == null || !party.leader.equals(leader.getUniqueId())) {
-            Text.send(leader, "<#FF8A80>你不是队长。");
+            Text.send(leader, "<danger>你不是队长。");
             return;
         }
         // By name among the members, so an offline teammate can be kicked too.
         UUID target = party.members.stream().filter(uuid -> nameOf(uuid).equalsIgnoreCase(name)).findFirst().orElse(null);
         if (target == null) {
-            Text.send(leader, "<#FF8A80>小队中没有这名玩家。");
+            Text.send(leader, "<danger>小队中没有这名玩家。");
             return;
         }
         leave(target, true);
@@ -228,60 +229,60 @@ public final class MatchService {
     public boolean enqueue(Player player, String mapId, String tierId, RaidMode mode, boolean ranked, boolean fill) {
         Party party = partyOf(player.getUniqueId());
         if (party != null && !party.leader.equals(player.getUniqueId())) {
-            Text.send(player, "<#FF8A80>只有队长可以开始匹配。");
+            Text.send(player, "<danger>只有队长可以开始匹配。");
             return false;
         }
         List<UUID> members = group(player);
         if (mode == RaidMode.SOLO && members.size() > 1) {
-            Text.send(player, "<#FF8A80>单人模式需要先离开小队。");
+            Text.send(player, "<danger>单人模式需要先离开小队。");
             return false;
         }
         MapDef map = plugin.maps().get(mapId);
         Tier tier = plugin.tier(tierId);
         if (map == null || tier == null) {
-            Text.send(player, "<#FF8A80>地图或难度不存在。");
+            Text.send(player, "<danger>地图或难度不存在。");
             return false;
         }
         if (!map.enabled()) {
             // A draft from the map editor: until it is published it may have no exit or spawns.
-            Text.send(player, "<#FF8A80>" + Text.escape(map.name()) + " 还没有发布，不能匹配。");
+            Text.send(player, "<danger>" + Text.escape(map.name()) + " 还没有发布，不能匹配。");
             return false;
         }
         if (plugin.editor().underMaintenance(map)) {
-            Text.send(player, "<#FF8A80>" + Text.escape(map.name()) + " 正在维护（地图编辑中），暂时不能匹配。");
+            Text.send(player, "<danger>" + Text.escape(map.name()) + " 正在维护（地图编辑中），暂时不能匹配。");
             return false;
         }
         for (UUID uuid : members) {
             Player member = Bukkit.getPlayer(uuid);
             if (member == null) {
-                Text.send(player, "<#FF8A80>小队成员 " + Text.escape(nameOf(uuid)) + " 不在线，可以用 /cv party kick "
+                Text.send(player, "<danger>小队成员 " + Text.escape(nameOf(uuid)) + " 不在线，可以用 /cv party kick "
                         + Text.escape(nameOf(uuid)) + " 移出小队。");
                 return false;
             }
             if (!plugin.lobby().isLobby(member.getWorld()) || plugin.raids().raidOf(member) != null) {
-                Text.send(player, "<#FF8A80>小队成员 " + Text.escape(member.getName()) + " 不在大厅。");
+                Text.send(player, "<danger>小队成员 " + Text.escape(member.getName()) + " 不在大厅。");
                 return false;
             }
             // Every member, not just the leader: an admin leader must not take ordinary players in.
             if (!plugin.canPlay(member, map)) {
-                Text.send(player, "<#FF8A80>" + Text.escape(map.name()) + "只在测试模式开放"
+                Text.send(player, "<danger>" + Text.escape(map.name()) + "只在测试模式开放"
                         + (member == player ? "。" : "，小队成员 " + Text.escape(member.getName()) + " 不能进入。"));
                 return false;
             }
             plugin.lobby().captureLoadout(member);
             long value = plugin.carry().gearValue(member);
             if (value < tier.minValue()) {
-                Text.send(player, "<#FF8A80>" + Text.escape(member.getName()) + " 的战备值 ◈" + Text.money(value)
+                Text.send(player, "<danger>" + Text.escape(member.getName()) + " 的战备值 ◈" + Text.money(value)
                         + " 不足 " + tier.name() + " 要求的 ◈" + Text.money(tier.minValue()));
                 return false;
             }
             Profile profile = plugin.profiles().get(member);
             if (profile.money < tier.entryFee()) {
-                Text.send(player, "<#FF8A80>" + Text.escape(member.getName()) + " 的块币不足以支付入场费。");
+                Text.send(player, "<danger>" + Text.escape(member.getName()) + " 的块币不足以支付入场费。");
                 return false;
             }
             if (ranked && profile.level < plugin.getConfig().getInt("rank.min-level", 3)) {
-                Text.send(player, "<#FF8A80>排位赛需要账号等级 " + plugin.getConfig().getInt("rank.min-level", 3) + "。");
+                Text.send(player, "<danger>排位赛需要账号等级 " + plugin.getConfig().getInt("rank.min-level", 3) + "。");
                 return false;
             }
         }
@@ -296,8 +297,8 @@ public final class MatchService {
         for (UUID uuid : members) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
-                Text.send(p, "<#F2C94C>开始匹配：<white>" + Text.escape(map.name()) + " " + tier.tag() + " <#9AA0A6>· " + mode.displayName()
-                        + (ranked ? " · <#FFC23D>排位" : "") + " <#8A8F98>· 本场匹配中 " + waiting + " 人");
+                Text.send(p, "<accent>开始匹配：<white>" + Text.escape(map.name()) + " " + tier.tag() + " <muted>· " + mode.displayName()
+                        + (ranked ? " · <accent>排位" : "") + " <muted>· 本场匹配中 " + waiting + " 人");
                 p.playSound(p.getLocation(), "craftov:ui.queue", 1f, 1f);
             }
         }
@@ -313,7 +314,7 @@ public final class MatchService {
         for (UUID uuid : entry.members()) {
             Player p = Bukkit.getPlayer(uuid);
             if (p != null) {
-                Text.send(p, "<#9AA0A6>已取消匹配" + (reason.isEmpty() ? "" : "（" + reason + "）") + "。");
+                Text.send(p, "<muted>已取消匹配" + (reason.isEmpty() ? "" : "（" + reason + "）") + "。");
             }
         }
     }
@@ -376,8 +377,8 @@ public final class MatchService {
             for (UUID uuid : entry.members()) {
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null) {
-                    p.sendActionBar(Text.mm("<#F2C94C>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
-                            + " <#8A8F98>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发"));
+                    Notify.status(p, "queue", "<accent>匹配中 <white>" + Text.duration((now - entry.since()) / 1000)
+                            + " <muted>· 同场 " + players + " 名干员 · 小队 " + squads + "/" + capacity + " · " + left + "s 后出发");
                 }
             }
         }
@@ -466,7 +467,7 @@ public final class MatchService {
                 }
                 if (problem != null) {
                     for (Player p : online) {
-                        Text.send(p, "<#FF8A80>未能出发：" + problem + "，已取消匹配。");
+                        Text.send(p, "<danger>未能出发：" + problem + "，已取消匹配。");
                     }
                     continue;
                 }

@@ -412,11 +412,11 @@ public final class CarryService {
                     }
                 });
         ItemDef def = items.registry().get(record.id);
-        String amount = record.amount > 1 ? " <#9AA0A6>×" + record.amount : "";
+        String amount = record.amount > 1 ? " <muted>×" + record.amount : "";
         Text.send(player, def == null
-                ? "<#FFC23D>物品表里暂时没有 <white>" + Text.escape(record.id) + "</white>" + amount
-                        + "<#FFC23D>，已存入仓库邮箱，恢复后可以从仓库取回。"
-                : "<#9AA0A6>身上放不下，" + def.coloredName() + amount + " <#9AA0A6>已放进<#F2C94C>仓库邮箱<#9AA0A6>。");
+                ? "<accent>物品表里暂时没有 <white>" + Text.escape(record.id) + "</white>" + amount
+                        + "<accent>，已存入仓库邮箱，恢复后可以从仓库取回。"
+                : "<muted>身上放不下，" + def.coloredName() + amount + " <muted>已放进<accent>仓库邮箱<muted>。");
     }
 
     public boolean hasRoomFor(Player player, ItemStack stack) {

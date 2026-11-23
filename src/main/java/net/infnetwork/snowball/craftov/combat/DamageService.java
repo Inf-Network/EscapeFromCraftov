@@ -213,8 +213,11 @@ public final class DamageService implements Listener {
         RaidPlayer.@Nullable State before = stateOf(victim);
         deal(victim, shooter, damage);
         Outcome outcome = outcome(victim, before);
-        if (victim instanceof Player hurt && shooter != null) {
-            plugin.hud().damageFrom(hurt, shooter.getLocation());
+        if (victim instanceof Player hurt) {
+            plugin.hud().hurt(hurt);
+            if (shooter != null) {
+                plugin.hud().damageFrom(hurt, shooter.getLocation());
+            }
         }
         plugin.ai().onBotHurt(victim, shooter);
         if (shooter instanceof Player player) {
@@ -445,12 +448,12 @@ public final class DamageService implements Listener {
             }
             plugin.hud().hitMarker(shooter, zone == HitZone.HEAD, outcome);
         }
-        if (!plugin.getConfig().getBoolean("combat.damage-numbers", true)) {
+        if (!plugin.getConfig().getBoolean("combat.damage-numbers", false)) {
             return;
         }
         Location at = victim.getEyeLocation().add((ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6, 0.35,
                 (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6);
-        String color = zone == HitZone.HEAD ? "#FF4D4D" : "#FFFFFF";
+        String color = zone == HitZone.HEAD ? "danger" : "white";
         TextDisplay text = victim.getWorld().spawn(at, TextDisplay.class, d -> {
             d.text(net.infnetwork.snowball.craftov.util.Text.mm("<" + color + "><b>" + Math.round(damage)));
             d.setBillboard(Display.Billboard.CENTER);
@@ -532,6 +535,7 @@ public final class DamageService implements Listener {
         deal(victim, player, damage);
         Outcome outcome = outcome(victim, before);
         if (victim instanceof Player hurt) {
+            plugin.hud().hurt(hurt);
             plugin.hud().damageFrom(hurt, player.getLocation());
         }
         plugin.ai().onBotHurt(victim, player);

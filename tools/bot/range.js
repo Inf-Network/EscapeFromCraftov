@@ -33,6 +33,17 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name
 bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 const chat = []
 bot.on('messagestr', m => { if (m.trim()) { chat.push(m); log('CHAT', m) } })
+// Refusals come on the action bar (util/Notify): logged with the chat.
+function flatText (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (Array.isArray(n)) return n.map(flatText).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flatText(n.value && n.value.value)
+  if (n.type === 'compound') return flatText(n.value)
+  return flatText(n.text) + flatText(n.extra)
+}
+bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { chat.push(s); log('BAR', s) } })
 bot.on('actionBar', m => { const s = m.toString(); if (s.trim()) log('BAR', s) })
 bot.on('kicked', r => log('KICKED', JSON.stringify(r)))
 bot.on('error', e => log('ERROR', e.message))

@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.raid.Raid;
@@ -106,7 +107,7 @@ public final class BountyService {
         plugin.profiles().markDirty(by.getUniqueId());
         Player marked = Bukkit.getPlayer(target);
         if (marked != null) {
-            Text.send(marked, "<#FF4D4D>有人悬赏了你的人头，<#9AA0A6>现在共计 <#F2C94C>◈" + Text.money(total(target)) + "<#9AA0A6>。");
+            Notify.info(marked, "<danger>有人悬赏了你的人头，<muted>现在共计 <accent>◈" + Text.money(total(target)) + "<muted>。");
         }
         return null;
     }
@@ -118,10 +119,10 @@ public final class BountyService {
             long amount = inRaid(rp);
             if (amount > 0) {
                 targets.append(targets.isEmpty() ? "" : "  ").append("<white>").append(Text.escape(rp.name))
-                        .append(" <#F2C94C>◈").append(Text.money(amount));
+                        .append(" <accent>◈").append(Text.money(amount));
                 Player marked = Bukkit.getPlayer(rp.uuid);
                 if (marked != null) {
-                    Text.send(marked, "<#FF4D4D>你身上有 <#F2C94C>◈" + Text.money(amount) + " <#FF4D4D>的悬赏，所有人都知道你在这局。");
+                    Notify.info(marked, "<danger>你身上有 <accent>◈" + Text.money(amount) + " <danger>的悬赏，所有人都知道你在这局。");
                 }
             }
         }
@@ -129,7 +130,7 @@ public final class BountyService {
             return;
         }
         for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<#FF4D4D>☠ 本局悬赏目标：" + targets));
+            player.sendMessage(Text.mm("<danger>☠ 本局悬赏目标：" + targets));
         }
     }
 
@@ -170,9 +171,9 @@ public final class BountyService {
         }
         plugin.profiles().markDirty(killer.getUniqueId());
         killer.playSound(killer.getLocation(), "craftov:ui.sell", SoundCategory.MASTER, 1f, 1f);
-        for (Player player : raid.online()) {
-            player.sendMessage(Text.mm("<#F2C94C>☠ " + Text.escape(killer.getName()) + " 领取了 " + Text.escape(rp.name)
-                    + " 的悬赏 ◈" + Text.money(amount)));
-        }
+        // Like the kill itself, only the killer's and the victim's squads learn of it: everyone else
+        // knew there was a price on that head, not who took it or where.
+        plugin.raids().feedSquadsOf(raid, "<accent>☠ " + Text.escape(killer.getName()) + " 领取了 " + Text.escape(rp.name)
+                + " 的悬赏 ◈" + Text.money(amount), killer.getUniqueId(), rp.uuid);
     }
 }

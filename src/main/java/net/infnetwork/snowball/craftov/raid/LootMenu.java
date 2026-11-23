@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.raid;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.Menu;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -23,12 +24,29 @@ public final class LootMenu extends Menu {
     private final LootContainer container;
     private int lastProgressStep = -1;
     private int seenVersion = -1;
+    /** The title still says "搜索中…"; it is dropped in place once nothing is left hidden. */
+    private boolean searchingTitle;
+    /** A legendary find shines in its slot (enchantment glint) until this tick. */
+    private int glintSlot = -1;
+    private long glintUntil;
 
     public LootMenu(CraftovPlugin plugin, Player viewer, LootContainer container) {
-        super(viewer, container.type.rows(), Text.mm("<#E8E8E8>" + Text.escape(container.title)
-                + (container.hiddenCount() > 0 ? "  <#8A8F98>搜索中…" : "")));
+        super(viewer, container.type.rows(), "loot_" + Math.max(1, Math.min(6, container.type.rows())),
+                title(container, container.hiddenCount() > 0));
         this.plugin = plugin;
         this.container = container;
+        this.searchingTitle = container.hiddenCount() > 0;
+    }
+
+    private static net.kyori.adventure.text.Component title(LootContainer container, boolean searching) {
+        return Text.mm("<text>" + Text.escape(container.title) + (searching ? "  <muted>搜索中…" : ""));
+    }
+
+    private void dropSearchingTitle() {
+        if (searchingTitle && container.hiddenCount() == 0) {
+            searchingTitle = false;
+            retitle(title(container, false));
+        }
     }
 
     @Override
@@ -41,19 +59,29 @@ public final class LootMenu extends Menu {
                 continue;
             }
             if (container.isRevealed(slot)) {
+                if (slot == glintSlot && Bukkit.getCurrentTick() < glintUntil) {
+                    stack = stack.clone();
+                    stack.setData(io.papermc.paper.datacomponent.DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                }
                 set(slot, stack);
             } else if (slot == next) {
                 set(slot, searching());
             } else {
-                set(slot, UiItems.button("craftov:ui/search_hidden", "<#6B7079>未搜索", List.of(), "search"));
+                set(slot, UiItems.button("craftov:ui/search_hidden", "<dim>未搜索", List.of(), "search"));
             }
         }
     }
 
     private ItemStack searching() {
         double speed = plugin.operators().searchMultiplier(viewer);
-        return UiItems.button("craftov:ui/search_active", "<#F2C94C>搜索中… <white>" + String.format("%.1f", container.secondsLeft(speed)) + "s",
-                List.of("<#8A8F98>品质越高搜索越久，保持界面打开以继续"), "search");
+        return UiItems.button("craftov:ui/search_active", "<accent>搜索中… <white>" + String.format("%.1f", container.secondsLeft(speed)) + "s",
+                List.of("<muted>品质越高搜索越久，保持界面打开以继续"), "search");
+    }
+
+    /** Opening a container plays loot.open (RaidManager), not the menu sound. */
+    @Override
+    protected boolean openSound() {
+        return false;
     }
 
     @Override
@@ -73,10 +101,14 @@ public final class LootMenu extends Menu {
             viewer.closeInventory();
             return;
         }
-        if (container.version() != seenVersion) {
-            redraw(); // another searcher revealed or took something
+        if (container.version() != seenVersion || glintSlot >= 0 && Bukkit.getCurrentTick() >= glintUntil) {
+            if (Bukkit.getCurrentTick() >= glintUntil) {
+                glintSlot = -1;
+            }
+            redraw(); // another searcher revealed or took something, or a find stopped shining
         }
         if (container.hiddenCount() == 0) {
+            dropSearchingTitle();
             return;
         }
         double speed = plugin.operators().searchMultiplier(viewer);
@@ -92,9 +124,10 @@ public final class LootMenu extends Menu {
                 default -> "craftov:loot.reveal";
             };
             viewer.playSound(viewer.getLocation(), sound, SoundCategory.PLAYERS, 0.8f, 1f);
-            if (rarity == Rarity.RED && def != null) {
-                viewer.showTitle(net.kyori.adventure.title.Title.title(Text.mm(""),
-                        Text.mm(rarity.tag() + "★ 发现 " + Text.escape(def.name()) + " ★")));
+            if (rarity == Rarity.RED) {
+                // A title would be hidden behind this very window: the find shines in its slot instead.
+                glintSlot = revealed;
+                glintUntil = Bukkit.getCurrentTick() + 10;
             }
             redraw();
             lastProgressStep = -1;
@@ -146,7 +179,7 @@ public final class LootMenu extends Menu {
         }
         ItemStack left = carry.give(viewer, stack, false);
         if (left != null && left.getAmount() == stack.getAmount()) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>携行空间不足"));
+            Notify.error(viewer, "携行空间不足");
             viewer.playSound(viewer.getLocation(), "minecraft:block.note_block.bass", 0.6f, 0.6f);
             return;
         }
@@ -164,7 +197,7 @@ public final class LootMenu extends Menu {
         }
         int target = container.firstEmpty();
         if (target < 0) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>容器已满"));
+            Notify.error(viewer, "容器已满");
             return;
         }
         plugin.weapons().flush(viewer);

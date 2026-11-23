@@ -159,13 +159,17 @@ async function openArmory (bot) {
 }
 
 /** Puts everything the player carries in their cells into the stash (equipment stays on). */
+// The stash retitles itself when its page count changes (the window is sent again under the same
+// id), and mineflayer then hands out a new window object: read bot.currentWindow after every click.
 async function depositAll (bot, w) {
   for (let round = 0; round < 40; round++) {
     const i = findCarried(w, it => idOf(it) && idOf(it) !== 'knife_starter')
-    if (i < 0) return
+    if (i < 0) return w
     await bot.clickWindow(bottom(w, i), 0, 1) // shift-click: every stack of that item
     await sleep(350)
+    w = bot.currentWindow || w
   }
+  return w
 }
 
 /** Slot of the menu item whose components mention who (escort contract lists), or -1. */
@@ -192,7 +196,7 @@ async function kit () {
   await sleep(1500)
   let w = await openWith(k, () => k.chat('/cv'))
   let mark = k.msgs.length
-  await k.clickWindow(25, 0, 0)
+  await k.clickWindow(30, 0, 0)
   check('kit: new account without gear (about ◈180,000 left) can claim the free kit', !!await heard(k, /已领取免费补给/, mark))
   k.closeWindow(w)
   await sleep(500)
@@ -240,7 +244,7 @@ async function kit () {
   await sleep(1500)
   w = await openWith(r, () => r.chat('/cv'))
   mark = r.msgs.length
-  await r.clickWindow(25, 0, 0)
+  await r.clickWindow(30, 0, 0)
   const refused = await heard(r, /总资产|已领取免费补给/, mark)
   check('kit: an account with a stash worth over ◈1,000,000 is refused, with the reason', /总资产/.test(refused || ''), refused)
   r.closeWindow(w)
@@ -251,7 +255,7 @@ async function kit () {
 async function stash () {
   const s = await make('Stash')
   let w = await openWith(s, () => s.chat('/cv stash'))
-  await depositAll(s, w)
+  w = await depositAll(s, w)
   let st = stashUsed(w)
   log('Stash', 'after deposit', st, 'free cells', freeCells(w))
   for (let round = 0; round < 20 && st && st.used < st.cap; round++) {
@@ -261,6 +265,7 @@ async function stash () {
     const i = findCarried(w, it => idOf(it) === 'armor_1')
     if (i >= 0) await s.clickWindow(bottom(w, i), 0, 1)
     await sleep(800)
+    w = s.currentWindow || w
     st = stashUsed(w)
   }
   log('Stash', 'filled', st)
@@ -370,7 +375,7 @@ async function overfull () {
   await sleep(1500)
   const w = await openWith(o, () => o.chat('/cv'))
   const mark = o.msgs.length
-  await o.clickWindow(25, 0, 0)
+  await o.clickWindow(30, 0, 0)
   const line = await heard(o, /已领取免费补给|仓库空间不足|不能领取|总资产/, mark)
   check('overfull: with the stash over capacity and nothing to store, the free kit is handed out', /已领取免费补给/.test(line || ''), line)
   o.closeWindow(w)
@@ -659,7 +664,7 @@ async function bounty () {
     const before = await money(hunterName)
     hunter.setQuickBarSlot(2) // knife
     const dead = champ.worldChanges
-    for (let i = 0; i < 40 && champ.worldChanges === dead && !champ.msgs.slice(champMark).some(m => /结果 被/.test(m)); i++) {
+    for (let i = 0; i < 40 && champ.worldChanges === dead && !champ.msgs.slice(champMark).some(m => /行动失败 · 被/.test(m)); i++) {
       await cmd(`execute at ${champName} as ${hunterName} run tp @s ~1 ~ ~ facing entity ${champName} eyes`)
       await sleep(150)
       const target = hunter.nearestEntity(e => e.type === 'player' && e.username === champName)
@@ -670,7 +675,7 @@ async function bounty () {
     const paid = (await money(hunterName)) - before
     await extract(hunter)
     // The champion watches the kill replay, then is back in the lobby.
-    await waitFor(() => champ.msgs.slice(champMark).some(m => /结果 被/.test(m)), 5000)
+    await waitFor(() => champ.msgs.slice(champMark).some(m => /行动失败 · 被/.test(m)), 5000)
     await sleep(12000)
     return { paid, announced }
   }

@@ -13,6 +13,7 @@ import net.infnetwork.snowball.craftov.map.MapDef;
 import net.infnetwork.snowball.craftov.map.MapRegistry;
 import net.infnetwork.snowball.craftov.map.Pos;
 import net.infnetwork.snowball.craftov.map.WorldService;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.text.event.ClickEvent;
 import org.bukkit.Bukkit;
@@ -125,21 +126,21 @@ public final class EditorService implements Listener {
 
     public void createWorld(Player player, String name) {
         if (!NAME.matcher(name).matches()) {
-            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线，长度 3–32。");
+            Text.send(player, "<danger>世界名只能包含小写字母、数字和下划线，长度 3–32。");
             return;
         }
         if (plugin.raids().raidOf(player) != null) {
-            Text.send(player, "<#FF8A80>对局中不能前往建图世界。");
+            Text.send(player, "<danger>对局中不能前往建图世界。");
             return;
         }
         if (name.startsWith(WorldService.RAID_PREFIX) || name.startsWith(WorldService.EDIT_PREFIX)) {
-            Text.send(player, "<#FF8A80>这个名字留给对局世界和编辑副本，换一个吧。");
+            Text.send(player, "<danger>这个名字留给对局世界和编辑副本，换一个吧。");
             return;
         }
         MapDef owner = liveTemplateOwner(name);
         if (owner != null) {
             // Changed here, the live template would reach the next raid half built: edit a copy instead.
-            Text.send(player, "<#FF8A80>这是已发布地图 " + Text.escape(owner.name()) + " 的模板世界。<#9AA0A6>用 <white>/cv editor start "
+            Text.send(player, "<danger>这是已发布地图 " + Text.escape(owner.name()) + " 的模板世界。<muted>用 <white>/cv editor start "
                     + Text.escape(owner.id()) + "</white> 在副本上编辑，发布后才会影响对局。");
             return;
         }
@@ -148,7 +149,7 @@ public final class EditorService implements Listener {
             world = WorldService.creator(name).createWorld();
         }
         if (world == null) {
-            Text.send(player, "<#FF8A80>无法创建或加载世界。");
+            Text.send(player, "<danger>无法创建或加载世界。");
             return;
         }
         WorldService.applyRules(world, false);
@@ -158,17 +159,17 @@ public final class EditorService implements Listener {
         }
         player.setGameMode(GameMode.CREATIVE);
         player.teleport(spawn.add(0.5, 0, 0.5));
-        Text.send(player, "<#5BD16B>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
+        Text.send(player, "<ok>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
     }
 
     public void start(Player player, String typed) {
         if (editing(player)) {
-            Text.send(player, "<#FF8A80>你已经在编辑中，先 /cv editor exit。");
+            Text.send(player, "<danger>你已经在编辑中，先 /cv editor exit。");
             return;
         }
         World here = player.getWorld();
         if (plugin.raids().raidOf(player) != null || plugin.raids().isRaidWorld(here) || plugin.range().isRangeWorld(here)) {
-            Text.send(player, "<#FF8A80>先回到大厅或建图世界再开始编辑。");
+            Text.send(player, "<danger>先回到大厅或建图世界再开始编辑。");
             return;
         }
         String id = typed.toLowerCase(Locale.ROOT);
@@ -179,12 +180,12 @@ public final class EditorService implements Listener {
             existing = plugin.maps().get(id);
         }
         if (existing == null && !NAME.matcher(id).matches()) {
-            Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
+            Text.send(player, "<danger>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         Player other = editorOf(existing != null ? existing.id() : id);
         if (other != null) {
-            Text.send(player, "<#FF8A80>" + Text.escape(other.getName()) + " 正在编辑这张地图，两份草稿会互相覆盖。");
+            Text.send(player, "<danger>" + Text.escape(other.getName()) + " 正在编辑这张地图，两份草稿会互相覆盖。");
             return;
         }
         MapDraft draft;
@@ -196,7 +197,7 @@ public final class EditorService implements Listener {
                 // A published map picks up where its last saved draft left off.
                 saved = plugin.maps().loadDraft(existing.id());
             } catch (IOException ex) {
-                Text.send(player, "<#FF8A80>草稿读取失败：" + Text.escape(ex.getMessage()) + "<#9AA0A6>（修好或删掉这个文件再开始）");
+                Text.send(player, "<danger>草稿读取失败：" + Text.escape(ex.getMessage()) + "<muted>（修好或删掉这个文件再开始）");
                 return;
             }
             world = openCopy(player, existing, saved != null);
@@ -205,32 +206,32 @@ public final class EditorService implements Listener {
             }
             draft = MapDraft.of(saved != null ? saved : existing);
             if (saved != null) {
-                Text.send(player, "<#9AA0A6>继续编辑上次保存、还没发布的草稿。");
+                Text.send(player, "<muted>继续编辑上次保存、还没发布的草稿。");
             }
         } else if (existing != null) {
             // Nobody has published it: no raid copies its world, so it is edited where it is,
             // unless a published map uses the same world.
             MapDef owner = liveTemplateOwner(existing.template());
             if (owner != null) {
-                Text.send(player, "<#FF8A80>世界 " + Text.escape(existing.template()) + " 是已发布地图 " + Text.escape(owner.name())
+                Text.send(player, "<danger>世界 " + Text.escape(existing.template()) + " 是已发布地图 " + Text.escape(owner.name())
                         + " 的模板，不能在里面直接编辑。");
                 return;
             }
             world = WorldService.exists(existing.template()) ? plugin.worlds().load(existing.template()) : null;
             if (world == null) {
-                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 的世界 " + Text.escape(existing.template()) + " 不存在。");
+                Text.send(player, "<danger>地图 " + Text.escape(existing.id()) + " 的世界 " + Text.escape(existing.template()) + " 不存在。");
                 return;
             }
             draft = MapDraft.of(existing);
         } else {
             world = here;
             if (plugin.lobby().isLobby(world) || world.getName().startsWith(WorldService.EDIT_PREFIX)) {
-                Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
+                Text.send(player, "<danger>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
                 return;
             }
             MapDef owner = templateOwner(world.getName());
             if (owner != null) {
-                Text.send(player, "<#FF8A80>这个世界已经是地图 " + Text.escape(owner.name()) + " 的模板，<white>/cv editor start "
+                Text.send(player, "<danger>这个世界已经是地图 " + Text.escape(owner.name()) + " 的模板，<white>/cv editor start "
                         + Text.escape(owner.id()) + "</white> 编辑它。");
                 return;
             }
@@ -258,13 +259,13 @@ public final class EditorService implements Listener {
         }
         giveTools(player, session);
         refreshLabels(player, session);
-        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
+        Text.send(player, "<ok>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
         if (copy) {
-            Text.send(player, "<#9AA0A6>这张图已经发布：你在编辑副本 <white>" + world.getName() + "</white> 里，方块和标记的改动发布前都不影响对局，"
+            Text.send(player, "<muted>这张图已经发布：你在编辑副本 <white>" + world.getName() + "</white> 里，方块和标记的改动发布前都不影响对局，"
                     + "<white>/cv editor discard</white> 可以全部放弃。");
         }
-        Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
-        Text.send(player, "<#9AA0A6>用“保存”工具或 <white>/cv editor save</white> 保存草稿，<white>/cv editor publish</white> 发布后才会出现在「开始行动」里；"
+        Text.send(player, "<muted>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
+        Text.send(player, "<muted>用“保存”工具或 <white>/cv editor save</white> 保存草稿，<white>/cv editor publish</white> 发布后才会出现在「开始行动」里；"
                 + "<white>/cv editor set name|minutes|time <值></white> 修改属性。");
     }
 
@@ -298,11 +299,11 @@ public final class EditorService implements Listener {
             }
         }
         if (!WorldService.exists(live.template())) {
-            Text.send(player, "<#FF8A80>地图 " + Text.escape(live.id()) + " 的模板世界 " + Text.escape(live.template()) + " 不存在。");
+            Text.send(player, "<danger>地图 " + Text.escape(live.id()) + " 的模板世界 " + Text.escape(live.template()) + " 不存在。");
             return null;
         }
         if (drafted) {
-            Text.send(player, "<#FFC23D>上次的编辑副本不见了，已从线上模板重新复制：之前的地形改动没有保留，标记照旧。");
+            Text.send(player, "<accent>上次的编辑副本不见了，已从线上模板重新复制：之前的地形改动没有保留，标记照旧。");
         }
         World stale = Bukkit.getWorld(name);
         if (stale != null) {
@@ -311,7 +312,7 @@ public final class EditorService implements Listener {
         }
         World world = plugin.worlds().copyForEditing(live.template(), name);
         if (world == null) {
-            Text.send(player, "<#FF8A80>无法创建编辑副本，详见控制台。");
+            Text.send(player, "<danger>无法创建编辑副本，详见控制台。");
         }
         return world;
     }
@@ -380,17 +381,17 @@ public final class EditorService implements Listener {
     public void exit(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         if (!save(player, session)) {
-            Text.send(player, "<#FF8A80>草稿没有保存，仍在编辑模式。<#9AA0A6>不要保存就退出用 /cv editor discard。");
+            Text.send(player, "<danger>草稿没有保存，仍在编辑模式。<muted>不要保存就退出用 /cv editor discard。");
             return;
         }
         close(player, session, false);
         if (session.copy) {
             unloadWhenEmpty(session.world.getName());
-            Text.send(player, "<#9AA0A6>草稿和编辑副本已保存，还没发布：<white>/cv editor start " + Text.escape(session.draft.id)
+            Text.send(player, "<muted>草稿和编辑副本已保存，还没发布：<white>/cv editor start " + Text.escape(session.draft.id)
                     + "</white> 继续，<white>/cv editor publish " + Text.escape(session.draft.id) + "</white> 发布。");
         }
     }
@@ -403,13 +404,13 @@ public final class EditorService implements Listener {
     public void discard(Player player, boolean confirmed) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         String id = session.draft.id;
         if (session.copy && plugin.maps().hasDraft(id) && !confirmed) {
-            player.sendMessage(Text.mm(Text.PREFIX + "<#FFC23D>放弃会删掉这张图所有没发布的改动：上次保存的草稿，和编辑副本里的方块改动。线上版本不变。 ")
-                    .append(Text.mm("<#FF8A80><b>[确认放弃]</b>").clickEvent(ClickEvent.runCommand("/cv editor discard confirm"))));
+            player.sendMessage(Text.mm("<accent>放弃会删掉这张图所有没发布的改动：上次保存的草稿，和编辑副本里的方块改动。线上版本不变。 ")
+                    .append(Text.mm("<danger><b>[确认放弃]</b>").clickEvent(ClickEvent.runCommand("/cv editor discard confirm"))));
             return;
         }
         close(player, session, false);
@@ -419,7 +420,7 @@ public final class EditorService implements Listener {
                 plugin.getLogger().warning("Could not unload the working copy " + session.world.getName() + " to delete it");
             }
             plugin.maps().deleteDraft(id);
-            Text.send(player, "<#9AA0A6>已放弃这张图所有没发布的改动，线上版本不变。");
+            Text.send(player, "<muted>已放弃这张图所有没发布的改动，线上版本不变。");
         }
     }
 
@@ -447,13 +448,13 @@ public final class EditorService implements Listener {
                 player.teleport(origin);
             }
         }
-        Text.send(player, "<#9AA0A6>已退出编辑模式。");
+        Text.send(player, "<muted>已退出编辑模式。");
     }
 
     public void save(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         save(player, session);
@@ -482,18 +483,18 @@ public final class EditorService implements Listener {
                 plugin.maps().save(def);
             }
         } catch (IOException ex) {
-            Text.send(player, "<#FF8A80>保存失败：" + Text.escape(ex.getMessage()));
+            Text.send(player, "<danger>保存失败：" + Text.escape(ex.getMessage()));
             return false;
         }
         if (!report) {
             return true;
         }
-        Text.send(player, "<#5BD16B>草稿已保存<#9AA0A6>（未发布）<#5BD16B>：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size()
+        Text.send(player, "<ok>草稿已保存<muted>（未发布）<ok>：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size()
                 + " · 物资箱 " + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
         List<String> missing = MapRegistry.publishProblems(def, squads());
         Text.send(player, missing.isEmpty()
-                ? "<#9AA0A6>已满足发布条件：<white>/cv editor publish</white> 发布后，下一局起出现在「开始行动」里。"
-                : "<#FFC23D>发布前还需要：" + Text.escape(String.join("；", missing)));
+                ? "<muted>已满足发布条件：<white>/cv editor publish</white> 发布后，下一局起出现在「开始行动」里。"
+                : "<accent>发布前还需要：" + Text.escape(String.join("；", missing)));
         List<String> hints = new ArrayList<>();
         for (var close : MapRegistry.closeSpawns(def)) {
             hints.add(String.format(Locale.ROOT, "%s点 (%.0f, %.0f, %.0f) 离第 %d 组出生点只有 %.0f 格（建议 %d 格以上）",
@@ -501,7 +502,7 @@ public final class EditorService implements Listener {
                     close.group(), close.distance(), (int) MapRegistry.SPAWN_CLEARANCE));
         }
         if (!hints.isEmpty()) {
-            Text.send(player, "<#FFC23D>提示：" + String.join("、", hints));
+            Text.send(player, "<accent>提示：" + String.join("、", hints));
         }
         return true;
     }
@@ -532,7 +533,7 @@ public final class EditorService implements Listener {
             return;
         }
         if (typed == null) {
-            Text.send(player, "<#9AA0A6>用法：/cv editor publish <地图ID>（编辑中可以省略）");
+            Text.send(player, "<muted>用法：/cv editor publish <地图ID>（编辑中可以省略）");
             return;
         }
         publishSaved(player, typed);
@@ -544,13 +545,13 @@ public final class EditorService implements Listener {
             live = plugin.maps().get(typed.toLowerCase(Locale.ROOT));
         }
         if (live == null) {
-            Text.send(player, "<#FF8A80>没有地图 " + Text.escape(typed) + "。");
+            Text.send(player, "<danger>没有地图 " + Text.escape(typed) + "。");
             return;
         }
         String id = live.id();
         Player other = editorOf(id);
         if (other != null) {
-            Text.send(player, "<#FF8A80>" + Text.escape(other.getName()) + " 正在编辑这张地图，等他保存退出后再发布。");
+            Text.send(player, "<danger>" + Text.escape(other.getName()) + " 正在编辑这张地图，等他保存退出后再发布。");
             return;
         }
         MapDef def;
@@ -558,11 +559,11 @@ public final class EditorService implements Listener {
             try {
                 def = plugin.maps().loadDraft(id);
             } catch (IOException ex) {
-                Text.send(player, "<#FF8A80>草稿读取失败：" + Text.escape(ex.getMessage()));
+                Text.send(player, "<danger>草稿读取失败：" + Text.escape(ex.getMessage()));
                 return;
             }
             if (def == null) {
-                Text.send(player, "<#9AA0A6>地图 " + Text.escape(live.name()) + " 已经发布，没有未发布的改动。");
+                Text.send(player, "<muted>地图 " + Text.escape(live.name()) + " 已经发布，没有未发布的改动。");
                 return;
             }
         } else {
@@ -576,7 +577,7 @@ public final class EditorService implements Listener {
         String copy = WorldService.editCopy(id);
         boolean edited = live.enabled() && WorldService.exists(copy);
         if (!edited && !WorldService.exists(def.template())) {
-            Text.send(player, "<#FF8A80>不能发布：模板世界 " + Text.escape(def.template()) + " 不存在。");
+            Text.send(player, "<danger>不能发布：模板世界 " + Text.escape(def.template()) + " 不存在。");
             return;
         }
         World template = Bukkit.getWorld(def.template());
@@ -591,12 +592,12 @@ public final class EditorService implements Listener {
             }
             String failure = plugin.worlds().replaceTemplate(def.template(), copy);
             if (failure != null) {
-                Text.send(player, "<#FF8A80>发布失败：" + Text.escape(failure) + "<#9AA0A6>（草稿和编辑副本都还在，可以再试）");
+                Text.send(player, "<danger>发布失败：" + Text.escape(failure) + "<muted>（草稿和编辑副本都还在，可以再试）");
                 return;
             }
         } else if (!plugin.worlds().unload(def.template(), true)) {
             // Unloaded once published: a loaded template with someone in it holds raids back.
-            Text.send(player, "<#FF8A80>发布失败：模板世界 " + Text.escape(def.template()) + " 卸载不了。");
+            Text.send(player, "<danger>发布失败：模板世界 " + Text.escape(def.template()) + " 卸载不了。");
             return;
         }
         if (live.enabled()) {
@@ -606,25 +607,25 @@ public final class EditorService implements Listener {
             plugin.maps().save(def.withEnabled(true));
         } catch (IOException ex) {
             // The draft stays: publishing again writes the definition (the terrain is in place already).
-            Text.send(player, "<#FF8A80>发布失败：" + Text.escape(ex.getMessage()) + "<#9AA0A6>（草稿还在，修好后再发布一次）");
+            Text.send(player, "<danger>发布失败：" + Text.escape(ex.getMessage()) + "<muted>（草稿还在，修好后再发布一次）");
             return;
         }
         plugin.maps().deleteDraft(id);
         plugin.getLogger().info(player.getName() + " published map " + id + " (template " + def.template() + ")");
-        Text.send(player, "<#5BD16B>地图 <white>" + Text.escape(def.name()) + "</white> 已发布，下一局起出现在「开始行动」里。");
+        Text.send(player, "<ok>地图 <white>" + Text.escape(def.name()) + "</white> 已发布，下一局起出现在「开始行动」里。");
     }
 
     private static void refuse(Player player, String name, List<String> problems) {
-        Text.send(player, "<#FF8A80>地图 " + Text.escape(name) + " 还不能发布：");
+        Text.send(player, "<danger>地图 " + Text.escape(name) + " 还不能发布：");
         for (String problem : problems) {
-            player.sendMessage(Text.mm("<#FF8A80> · " + Text.escape(problem)));
+            player.sendMessage(Text.mm("<danger> · " + Text.escape(problem)));
         }
     }
 
     public void set(Player player, String key, String value) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         // Every key but camera needs a value: without one, the list of keys below.
@@ -636,7 +637,7 @@ public final class EditorService implements Listener {
                 try {
                     minutes = Integer.parseInt(value.trim());
                 } catch (IllegalArgumentException ex) {
-                    Text.send(player, "<#9AA0A6>用法：/cv editor set minutes <分钟数>（至少 5）");
+                    Text.send(player, "<muted>用法：/cv editor set minutes <分钟数>（至少 5）");
                     return;
                 }
                 session.draft.raidMinutes = Math.max(5, minutes);
@@ -645,30 +646,30 @@ public final class EditorService implements Listener {
             case "test" -> session.draft.test = Boolean.parseBoolean(value);
             case "camera" -> session.draft.camera = Pos.of(player.getEyeLocation());
             default -> {
-                Text.send(player, "<#FF8A80>可设置：name / description / minutes / time(day|dusk|night|dawn) / test(true|false) / camera");
+                Text.send(player, "<danger>可设置：name / description / minutes / time(day|dusk|night|dawn) / test(true|false) / camera");
                 return;
             }
         }
-        Text.send(player, "<#5BD16B>已设置 " + key + " = " + Text.escape(value));
+        Text.send(player, "<ok>已设置 " + key + " = " + Text.escape(value));
     }
 
     public void info(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         MapDraft d = session.draft;
-        Text.send(player, "<white>" + Text.escape(d.name) + " <#8A8F98>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time
-                + (d.test ? " · <#FFB74D>测试图" : ""));
-        Text.send(player, "<#9AA0A6>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
+        Text.send(player, "<white>" + Text.escape(d.name) + " <muted>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time
+                + (d.test ? " · <accent>测试图" : ""));
+        Text.send(player, "<muted>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
                 + " · 敌兵 " + d.ai.size() + " · 首领 " + d.bosses.size() + " · 门禁 " + d.doors.size() + " · 电闸 " + d.switches.size());
         Text.send(player, session.copy
-                ? "<#9AA0A6>已发布的地图：在编辑副本 " + session.world.getName() + " 里改，发布前对局照旧用线上版本。"
-                : "<#9AA0A6>还没发布：不会出现在「开始行动」里。");
+                ? "<muted>已发布的地图：在编辑副本 " + session.world.getName() + " 里改，发布前对局照旧用线上版本。"
+                : "<muted>还没发布：不会出现在「开始行动」里。");
         List<String> missing = MapRegistry.publishProblems(d.build(), squads());
-        Text.send(player, missing.isEmpty() ? "<#5BD16B>已满足发布条件。"
-                : "<#FFC23D>发布前还需要：" + Text.escape(String.join("；", missing)));
+        Text.send(player, missing.isEmpty() ? "<ok>已满足发布条件。"
+                : "<accent>发布前还需要：" + Text.escape(String.join("；", missing)));
     }
 
     // ------------------------------------------------------------------ tools
@@ -682,8 +683,8 @@ public final class EditorService implements Listener {
 
     private ItemStack toolItem(Session session, Tool tool) {
         String option = optionLabel(session, tool);
-        return UiItems.button(tool.icon, "<#F2C94C>" + tool.label + (option.isEmpty() ? "" : " <#9AA0A6>[" + option + "]"),
-                List.of("<#9AA0A6>右键方块：" + switch (tool) {
+        return UiItems.button(tool.icon, "<accent>" + tool.label + (option.isEmpty() ? "" : " <muted>[" + option + "]"),
+                List.of("<muted>右键方块：" + switch (tool) {
                     case SPAWN -> "放置出生点（同组为同一小队的出生位置）";
                     case EXTRACT -> "放置撤离点";
                     case CONTAINER -> "放置物资箱（朝向跟随视角）";
@@ -693,7 +694,7 @@ public final class EditorService implements Listener {
                     case REMOVE -> "删除 3 格内最近的标记";
                     case SCAN -> "把附近 64 格内的箱子/木桶等转换为物资箱";
                     case SAVE -> "保存草稿（潜行右键方块：依次设置边界两个角）";
-                }, "<#9AA0A6>潜行+右键空气：切换选项"), "editor_" + tool.name());
+                }, "<muted>潜行+右键空气：切换选项"), "editor_" + tool.name());
     }
 
     private String optionLabel(Session session, Tool tool) {
@@ -742,7 +743,7 @@ public final class EditorService implements Listener {
         if (player.isSneaking() && action == Action.RIGHT_CLICK_AIR) {
             session.option.merge(tool, 1, Integer::sum);
             player.getInventory().setItemInMainHand(toolItem(session, tool));
-            player.sendActionBar(Text.mm("<#F2C94C>" + tool.label + " · " + optionLabel(session, tool)));
+            Notify.info(player, "<accent>" + tool.label + " · " + optionLabel(session, tool));
             return;
         }
         if (action != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) {
@@ -753,7 +754,7 @@ public final class EditorService implements Listener {
         }
         if (!player.getWorld().equals(session.world)) {
             // Coordinates from another world would land on whatever stands there in this map.
-            player.sendActionBar(Text.mm("<#FF8A80>这里不是正在编辑的世界 " + session.world.getName() + "，标记没有放下"));
+            Notify.error(player, "这里不是正在编辑的世界 " + session.world.getName() + "，标记没有放下");
             return;
         }
         Block block = event.getClickedBlock();
@@ -772,7 +773,7 @@ public final class EditorService implements Listener {
                         type == ExtractType.PAID ? 10_000 : 0, type == ExtractType.TIMED ? 600 : 0, 0,
                         type == ExtractType.SWITCH ? sw : "", type == ExtractType.LIMITED ? 4 : 0, 1.0));
                 if (type == ExtractType.SWITCH && sw.isEmpty()) {
-                    Text.send(player, "<#FFC23D>这是“需拉闸”撤离点，请用门禁/电闸工具点击一个拉杆来绑定。");
+                    Text.send(player, "<accent>这是“需拉闸”撤离点，请用门禁/电闸工具点击一个拉杆来绑定。");
                 }
             }
             case CONTAINER -> {
@@ -794,7 +795,7 @@ public final class EditorService implements Listener {
                     }
                     ItemDef key = keys.get(o % keys.size());
                     d.doors.add(new MapDef.DoorDef(key.lockId(), new Pos(lower.getX() + 0.5, lower.getY(), lower.getZ() + 0.5, 0)));
-                    Text.send(player, "<#5BD16B>已设置门禁，需要钥匙：" + key.coloredName());
+                    Text.send(player, "<ok>已设置门禁，需要钥匙：" + key.coloredName());
                 } else if (type == Material.LEVER || type.name().endsWith("_BUTTON")) {
                     // Past the highest number in use, not the count: after a removal the count names
                     // a lever that still exists, and two levers with one id open each other's extracts.
@@ -811,17 +812,17 @@ public final class EditorService implements Listener {
                             bound.add(e.name());
                         }
                     }
-                    Text.send(player, "<#5BD16B>已设置电闸 " + id + (bound.isEmpty() ? ""
-                            : "<#9AA0A6>，绑定撤离点：<white>" + Text.escape(String.join("、", bound))));
+                    Text.send(player, "<ok>已设置电闸 " + id + (bound.isEmpty() ? ""
+                            : "<muted>，绑定撤离点：<white>" + Text.escape(String.join("、", bound))));
                 } else {
-                    Text.send(player, "<#FF8A80>请点击铁门、拉杆或按钮。");
+                    Text.send(player, "<danger>请点击铁门、拉杆或按钮。");
                     return;
                 }
             }
             case REMOVE -> {
                 Object removed = removeNear(d, block.getLocation().add(0.5, 1, 0.5));
                 if (removed == null) {
-                    player.sendActionBar(Text.mm("<#FF8A80>附近 3 格内没有标记"));
+                    Notify.error(player, "附近 3 格内没有标记");
                     return;
                 }
                 if (removed instanceof MapDef.SwitchDef sw) {
@@ -830,20 +831,20 @@ public final class EditorService implements Listener {
             }
             case SCAN -> {
                 int n = scan(d, player.getLocation(), 64);
-                Text.send(player, "<#5BD16B>已把 " + n + " 个箱子/木桶转换为物资箱。");
+                Text.send(player, "<ok>已把 " + n + " 个箱子/木桶转换为物资箱。");
             }
             case SAVE -> {
                 if (player.isSneaking()) {
                     if (session.corner == null) {
                         session.corner = block.getLocation();
-                        Text.send(player, "<#9AA0A6>已记录边界第一角，再点击另一角。");
+                        Text.send(player, "<muted>已记录边界第一角，再点击另一角。");
                     } else {
                         d.minX = Math.min(session.corner.getX(), block.getX());
                         d.minZ = Math.min(session.corner.getZ(), block.getZ());
                         d.maxX = Math.max(session.corner.getX(), block.getX());
                         d.maxZ = Math.max(session.corner.getZ(), block.getZ());
                         session.corner = null;
-                        Text.send(player, "<#5BD16B>已设置地图边界。");
+                        Text.send(player, "<ok>已设置地图边界。");
                     }
                 } else {
                     save(player, session);
@@ -893,8 +894,8 @@ public final class EditorService implements Listener {
                 names.add(e.name());
             }
         }
-        Text.send(player, "<#FFC23D>已删除电闸 " + Text.escape(removed.id()) + (names.isEmpty() ? "。"
-                : "，撤离点 <white>" + Text.escape(String.join("、", names)) + "</white> 不再绑定电闸<#9AA0A6>（再点一个拉杆会自动绑定）"));
+        Text.send(player, "<accent>已删除电闸 " + Text.escape(removed.id()) + (names.isEmpty() ? "。"
+                : "，撤离点 <white>" + Text.escape(String.join("、", names)) + "</white> 不再绑定电闸<muted>（再点一个拉杆会自动绑定）"));
     }
 
     private static MapDef.ExtractDef withSwitch(MapDef.ExtractDef e, String switchId) {
@@ -975,17 +976,17 @@ public final class EditorService implements Listener {
         clearLabels(session);
         World world = session.world;
         MapDraft d = session.draft;
-        for (MapDef.SpawnDef s : d.spawns) label(player, session, world, s.pos(), "<#4FA3FF>◆ 出生点 · 第" + s.group() + "组");
-        for (MapDef.ExtractDef e : d.extracts) label(player, session, world, e.pos(), "<#5BD16B>⬆ " + Text.escape(e.name()) + " <#8A8F98>" + e.type().displayName()
+        for (MapDef.SpawnDef s : d.spawns) label(player, session, world, s.pos(), "<info>◆ 出生点 · 第" + s.group() + "组");
+        for (MapDef.ExtractDef e : d.extracts) label(player, session, world, e.pos(), "<ok>⬆ " + Text.escape(e.name()) + " <muted>" + e.type().displayName()
                 + (e.switchId().isEmpty() ? "" : " → " + e.switchId()));
         for (MapDef.ContainerDef c : d.containers) {
             ContainerType type = plugin.loot().type(c.type());
-            label(player, session, world, c.pos(), "<#F2C94C>▣ " + (type == null ? c.type() : type.name()));
+            label(player, session, world, c.pos(), "<accent>▣ " + (type == null ? c.type() : type.name()));
         }
-        for (MapDef.AiDef a : d.ai) label(player, session, world, a.pos(), "<#FF8A80>✦ 敌兵 ×" + a.count() + " " + a.kind());
-        for (MapDef.BossDef b : d.bosses) label(player, session, world, b.pos(), "<#FF4D4D>☠ " + Text.escape(b.name()));
-        for (MapDef.DoorDef dd : d.doors) label(player, session, world, dd.pos(), "<#B66BFF>🔒 门禁 " + dd.lock());
-        for (MapDef.SwitchDef sw : d.switches) label(player, session, world, sw.pos(), "<#FFC23D>⚡ " + Text.escape(sw.name()) + " (" + sw.id() + ")");
+        for (MapDef.AiDef a : d.ai) label(player, session, world, a.pos(), "<danger>✦ 敌兵 ×" + a.count() + " " + a.kind());
+        for (MapDef.BossDef b : d.bosses) label(player, session, world, b.pos(), "<danger>☠ " + Text.escape(b.name()));
+        for (MapDef.DoorDef dd : d.doors) label(player, session, world, dd.pos(), "<info>🔒 门禁 " + dd.lock());
+        for (MapDef.SwitchDef sw : d.switches) label(player, session, world, sw.pos(), "<accent>⚡ " + Text.escape(sw.name()) + " (" + sw.id() + ")");
     }
 
     private void label(Player player, Session session, World world, Pos pos, String text) {

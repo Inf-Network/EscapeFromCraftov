@@ -1,0 +1,4 @@
+Fusion Pixel Font 2026.11.10, 10px proportional zh_hans (fusion-pixel-10px-proportional-zh_hans.pcf)
+https://github.com/TakWolf/fusion-pixel-font/releases/download/2026.11.10/fusion-pixel-font-10px-proportional-pcf-v2026.11.10.zip
+sha256 5f8945721efe5a80e441e26593fcf6d60c883dcae5f28c9f562624237564677d
+License: SIL Open Font License 1.1 (OFL.txt, LICENSES/). Baked by tools/art/pixelfont.py.

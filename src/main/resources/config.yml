@@ -346,6 +346,9 @@ throwables:
     # stop on the ground.
     wall: 0.35
     floor: 0.25
+  # While the pin is out (right mouse held), dots that only the thrower sees trace where the grenade
+  # would fly if let go now, bounces included, and a red dot marks where it would go off.
+  preview: true
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

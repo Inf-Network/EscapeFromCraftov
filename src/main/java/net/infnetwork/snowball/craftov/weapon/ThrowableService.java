@@ -79,6 +79,11 @@ public final class ThrowableService implements Listener {
     private static final int HOLD_GRACE = 2;
     /** Notify key of the fuse countdown, so each update replaces the last. */
     private static final String COOK_LINE = "grenade-cook";
+    /** The longest flight the preview follows, in ticks (longer than any fuse in items.yml). */
+    private static final int PREVIEW_TICKS = 100;
+    /** Preview dots: small and pale along the path, bigger and red where the grenade goes off. */
+    private static final Particle.DustOptions PREVIEW_ARC = new Particle.DustOptions(org.bukkit.Color.fromRGB(0xF2F2F2), 0.8f);
+    private static final Particle.DustOptions PREVIEW_END = new Particle.DustOptions(org.bukkit.Color.fromRGB(0xFF4D4D), 1.1f);
 
     /** Share of the speed into a face a grenade keeps off it: walls and ceilings, and the floor. */
     private record Bounce(double wall, double floor) {
@@ -238,8 +243,35 @@ public final class ThrowableService implements Listener {
             if ((now - cook.start) % 2 == 0) {
                 Notify.critical(player, COOK_LINE, "<accent>已拉环 <text>" + String.format(java.util.Locale.ROOT, "%.1f", (cook.goesOff() - now) / 20.0)
                         + " 秒 <muted>· 松开右键投掷");
+                if (plugin.getConfig().getBoolean("throwables.preview", true)) {
+                    preview(player, cook, now);
+                }
             }
         }
+    }
+
+    /**
+     * Dots only the thrower sees along the path the grenade would take if let go now, bounces and
+     * all, and a red one where it would go off: where it comes to rest, or wherever its fuse runs
+     * out first. The client cannot draw an arc of its own, so particles stand in for one; the first
+     * blocks are left out, where they would only get in the way of the view.
+     */
+    private void preview(Player player, Cook cook, long now) {
+        World world = player.getWorld();
+        double[] pos = throwOrigin(player);
+        double[] vel = throwVelocity(player);
+        Bounce bounce = bounce();
+        long ticks = Math.min(cook.goesOff() - now, PREVIEW_TICKS);
+        for (int t = 1; t <= ticks; t++) {
+            step(world, pos, vel, bounce);
+            if (vel[0] == 0 && vel[1] == 0 && vel[2] == 0) {
+                break; // at rest
+            }
+            if (t > 2) {
+                player.spawnParticle(Particle.DUST, pos[0], pos[1], pos[2], 1, 0, 0, 0, 0, PREVIEW_ARC, true);
+            }
+        }
+        player.spawnParticle(Particle.DUST, pos[0], pos[1], pos[2], 1, 0, 0, 0, 0, PREVIEW_END, true);
     }
 
     /** Whether a menu of the server's is open over the screen (the player's own inventory is not one it knows of). */

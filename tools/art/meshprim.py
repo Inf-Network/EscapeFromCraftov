@@ -375,8 +375,33 @@ def fit(gid):
             prims += _round(p, rule.get('round', 0))
     for extra in s.get('parts', []):
         prims += _round(_extra(extra), extra.get('round', 0))
+    _separate(prims)
     _PRIMS[gid] = prims
     return prims
+
+
+def _separate(prims, eps=0.003):
+    """Unturned boxes whose faces lie in one plane, facing the same way and overlapping (a hand-placed
+    sight block as wide as the part under it), would flicker: the smaller box of each such pair is made
+    a hair narrower across that plane until no two faces coincide."""
+    for _ in range(8):
+        moved = False
+        flat = [p for p in prims if not any(abs(r) > 1e-6 for r in p.rot)]
+        for i, a in enumerate(flat):
+            for b in flat[i + 1:]:
+                for axis in range(3):
+                    u, v = [k for k in range(3) if k != axis]
+                    overlap = (max(0.0, min(a.centre[u] + a.half[u], b.centre[u] + b.half[u]) - max(a.centre[u] - a.half[u], b.centre[u] - b.half[u]))
+                               * max(0.0, min(a.centre[v] + a.half[v], b.centre[v] + b.half[v]) - max(a.centre[v] - a.half[v], b.centre[v] - b.half[v])))
+                    if overlap <= 1e-4:
+                        continue
+                    for sign in (-1, 1):
+                        if abs((a.centre[axis] + sign * a.half[axis]) - (b.centre[axis] + sign * b.half[axis])) < 0.002:
+                            small = a if a.volume() < b.volume() else b
+                            small.half = small.half - eps * np.eye(3)[axis]
+                            moved = True
+        if not moved:
+            return
 
 
 def _extra(e):

@@ -229,8 +229,9 @@ def _inside(points, prims, skip):
     return meshprim.inside_any(points, prims, skip=skip)
 
 
-def paint_face(p, face, cols, rows, prims, k):
-    """RGBA texels (rows x cols x 4) of one face."""
+def paint_face(p, face, cols, rows, prims, k, samples=None):
+    """RGBA texels (rows x cols x 4) of one face. `samples`, a list, gets (material, occlusion, rgb) of
+    every texel for stats()."""
     dark, light, finish = MATERIALS[p.mat]
     local, world = face_points(p, face, cols, rows)
     normal = np.array(FACES[face][0], float) @ p.matrix().T
@@ -242,8 +243,34 @@ def paint_face(p, face, cols, rows, prims, k):
     edge = _edges(p, face, cols, rows, prims, k).reshape(-1)
     shade = shade * np.where(edge > 0, EDGE[finish], 1.0)
     rgb = np.clip(base * shade[:, None], 0, 255)
+    if samples is not None:
+        samples.append((p.mat, occ, rgb))
     out = np.concatenate([rgb, np.full((len(rgb), 1), 255.0)], 1)
     return out.reshape(rows, cols, 4).astype(np.uint8)
+
+
+def stats(samples):
+    """Per material: texels, mean luminance and saturation (0-1), and the mean luminance of creases
+    (occlusion over 0.3) against open faces (under 0.05)."""
+    out = {}
+    for mat in sorted({m for m, _, _ in samples}):
+        occ = np.concatenate([o for m, o, _ in samples if m == mat])
+        rgb = np.concatenate([c for m, _, c in samples if m == mat]) / 255.0
+        lum = rgb @ np.array([0.2126, 0.7152, 0.0722])
+        sat = (rgb.max(1) - rgb.min(1)) / np.maximum(rgb.max(1), 1e-6)
+        crease, open_ = lum[occ > 0.3], lum[occ < 0.05]
+        out[mat] = {'texels': int(len(lum)), 'lum': float(lum.mean()), 'sat': float(sat.mean()),
+                    'crease': float(crease.mean()) if len(crease) else None,
+                    'open': float(open_.mean()) if len(open_) else None}
+    return out
+
+
+def target_lum(mat):
+    """The luminance range a material's texels should average in: its darkest and lightest base colour,
+    allowing for occlusion below and edge light above."""
+    dark, light, _ = MATERIALS[mat]
+    w = np.array([0.2126, 0.7152, 0.0722])
+    return float(_hex(dark) @ w / 255 * 0.7), float(_hex(light) @ w / 255 * 1.15)
 
 
 class Atlas:
@@ -311,13 +338,15 @@ def paint(prims, levels):
                 need[(k, face)] = True
     atlas = Atlas()
     patches = {}
+    samples = []
     for (k, face) in sorted(need):
         p = prims[k]
         _, _, ua, _, va, _, w, h = face_frame(p, face)
         cols = max(1, int(round(w * DENSITY[face])))
         rows = max(1, int(round(h * DENSITY[face])))
-        patches[(k, face)] = atlas.add(paint_face(p, face, cols, rows, prims, k))
+        patches[(k, face)] = atlas.add(paint_face(p, face, cols, rows, prims, k, samples))
     texture = atlas.pack()
+    texture.info['stats'] = stats(samples)
     out = {}
     for name, boxes in levels.items():
         elements = []

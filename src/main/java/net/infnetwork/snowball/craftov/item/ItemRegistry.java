@@ -43,15 +43,27 @@ public final class ItemRegistry {
      * {@code size} existed (revision 7 and older) would let every statue and generator into a single
      * cell, and one written before {@code handling} (revision 8 and older) would leave every gun alike:
      * an item whose entry lacks the key takes the jar's. A value written in the server's file always wins.
+     * The same goes for a medical item's pose and cues: a file from before cues (#41) names one
+     * {@code sound} and the vanilla poses (brush, crossbow, bundle, trident) that the item models' own
+     * frames replaced, which would now play on top of them, so a medical item whose entry has no
+     * {@code cues} takes the jar's pose and cues together.
      */
     private final Bundled bundled;
 
-    /** The jar's {@code size} by item id, and its {@code handling} by gun, sight or part id. */
-    public record Bundled(Map<String, Integer> sizes, Map<String, Double> handling) {
+    /**
+     * The jar's {@code size} by item id, its {@code handling} by gun, sight or part id, and its pose and
+     * cues by medical item id (those with cues).
+     */
+    public record Bundled(Map<String, Integer> sizes, Map<String, Double> handling, Map<String, MedUse> meds) {
         public Bundled {
             sizes = Map.copyOf(sizes);
             handling = Map.copyOf(handling);
+            meds = Map.copyOf(meds);
         }
+    }
+
+    /** A medical item's vanilla pose ({@code anim}) and sounds ({@code cues}) as an items.yml gives them. */
+    public record MedUse(String animation, List<MedSpec.Cue> cues) {
     }
 
     /** The sections of an item that carry a handling: a gun's own, a sight's or a part's change to it. */
@@ -62,22 +74,26 @@ public final class ItemRegistry {
         this.bundled = bundled;
     }
 
-    /** The {@code size} and {@code handling} of every item in an items.yml (the jar's copy), or none if it cannot be read. */
+    /**
+     * The {@code size}, {@code handling} and medical pose and cues of every item in an items.yml (the
+     * jar's copy), or none if it cannot be read.
+     */
     public static Bundled bundled(@Nullable InputStream in) {
         Map<String, Integer> sizes = new LinkedHashMap<>();
         Map<String, Double> handling = new LinkedHashMap<>();
+        Map<String, MedUse> meds = new LinkedHashMap<>();
         if (in == null) {
-            return new Bundled(sizes, handling);
+            return new Bundled(sizes, handling, meds);
         }
         YamlConfiguration yaml = new YamlConfiguration();
         try (in) {
             yaml.loadFromString(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException | InvalidConfigurationException ex) {
-            return new Bundled(sizes, handling);
+            return new Bundled(sizes, handling, meds);
         }
         ConfigurationSection root = yaml.getConfigurationSection("items");
         if (root == null) {
-            return new Bundled(sizes, handling);
+            return new Bundled(sizes, handling, meds);
         }
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
@@ -92,8 +108,12 @@ public final class ItemRegistry {
                     handling.put(id, s.getDouble(part + ".handling"));
                 }
             }
+            ConfigurationSection m = s.getConfigurationSection("med");
+            if (m != null && m.contains("cues")) {
+                meds.put(id, new MedUse(m.getString("anim", "none"), medCues(m)));
+            }
         }
-        return new Bundled(sizes, handling);
+        return new Bundled(sizes, handling, meds);
     }
 
     /**
@@ -119,6 +139,7 @@ public final class ItemRegistry {
         List<String> errors = new ArrayList<>();
         List<String> borrowed = new ArrayList<>();
         List<String> borrowedHandling = new ArrayList<>();
+        List<String> borrowedMeds = new ArrayList<>();
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
             if (s == null) {
@@ -137,6 +158,9 @@ public final class ItemRegistry {
                 if (s.isConfigurationSection(part) && !s.contains(part + ".handling") && bundled.handling().containsKey(id)) {
                     borrowedHandling.add(id);
                 }
+            }
+            if (s.isConfigurationSection("med") && !s.contains("med.cues") && bundled.meds().containsKey(id)) {
+                borrowedMeds.add(id);
             }
         }
         if (!errors.isEmpty()) {
@@ -157,6 +181,11 @@ public final class ItemRegistry {
             logger.warning(file.getName() + " gives no handling for " + borrowedHandling.size() + " guns and parts ("
                     + String.join(", ", borrowedHandling) + "): they take the jar's. Replace the file with the jar's"
                     + " copy, or add handling: to each, to change them.");
+        }
+        if (!borrowedMeds.isEmpty()) {
+            logger.warning(file.getName() + " gives no cues for " + borrowedMeds.size() + " medical items ("
+                    + String.join(", ", borrowedMeds) + "): they are used with the jar's sounds and pose. Replace the"
+                    + " file with the jar's copy, or add cues: to each, to change them.");
         }
         return null;
     }
@@ -238,6 +267,10 @@ public final class ItemRegistry {
         MedSpec med = null;
         ConfigurationSection m = s.getConfigurationSection("med");
         if (m != null) {
+            MedUse use = m.contains("cues") ? null : bundled.meds().get(id);
+            if (use == null) {
+                use = new MedUse(m.getString("anim", "none"), medCues(m));
+            }
             Set<Injury> cures = EnumSet.noneOf(Injury.class);
             for (String c : m.getStringList("cures")) {
                 cures.add(Injury.valueOf(c.toUpperCase(Locale.ROOT)));
@@ -245,7 +278,7 @@ public final class ItemRegistry {
             med = new MedSpec(m.getDouble("use", 2.0), m.getDouble("pool", 0), m.getDouble("per-use", 0),
                     Collections.unmodifiableSet(cures), Math.max(1, m.getInt("count", 1)), m.getBoolean("one-part", false),
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
-                    m.getInt("effect-seconds", 0), m.getString("anim", "brush"), m.getString("sound", "med.bandage"));
+                    m.getInt("effect-seconds", 0), use.animation(), use.cues());
         }
         OpticSpec optic = null;
         ConfigurationSection o = s.getConfigurationSection("optic");
@@ -411,5 +444,24 @@ public final class ItemRegistry {
 
     public Set<String> ids() {
         return Collections.unmodifiableSet(items.keySet());
+    }
+
+    /**
+     * A medical item's sounds, items.yml {@code cues: [[0, med.tear], [0.3, med.wrap] ...]}: share of
+     * the use time and sound, sorted by time. A medical item with no cues that the jar has none for
+     * either (one a server added to its own file) may name one {@code sound}, played as the use starts.
+     */
+    private static List<MedSpec.Cue> medCues(ConfigurationSection m) {
+        List<MedSpec.Cue> cues = new ArrayList<>();
+        for (Object entry : m.getList("cues", List.of())) {
+            if (entry instanceof List<?> pair && pair.size() == 2 && pair.get(0) instanceof Number at && pair.get(1) != null) {
+                cues.add(new MedSpec.Cue(Math.max(0, Math.min(1, at.doubleValue())), String.valueOf(pair.get(1))));
+            }
+        }
+        if (cues.isEmpty()) {
+            cues.add(new MedSpec.Cue(0, m.getString("sound", "med.bandage")));
+        }
+        cues.sort(java.util.Comparator.comparingDouble(MedSpec.Cue::at));
+        return List.copyOf(cues);
     }
 }

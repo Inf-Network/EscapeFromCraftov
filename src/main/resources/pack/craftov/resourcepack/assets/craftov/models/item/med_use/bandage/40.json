@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/bandage",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -0.0,
+    -44.313,
+    55.321
+   ],
+   "translation": [
+    -3.993,
+    0.755,
+    -0.393
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -180.0,
+    44.313,
+    124.679
+   ],
+   "translation": [
+    -3.993,
+    0.755,
+    -0.393
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -91.373,
+    0.0,
+    -146.933
+   ],
+   "translation": [
+    -0.555,
+    4.523,
+    -1.201
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    88.627,
+    -0.0,
+    -33.067
+   ],
+   "translation": [
+    -0.555,
+    4.523,
+    -1.201
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

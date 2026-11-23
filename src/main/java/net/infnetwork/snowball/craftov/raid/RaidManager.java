@@ -4,6 +4,7 @@ import com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent;
 import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
+import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.gui.SettlementMenu;
 import net.infnetwork.snowball.craftov.gui.UiFont;
 import net.infnetwork.snowball.craftov.combat.DamageService;
@@ -1390,18 +1391,53 @@ public final class RaidManager implements Listener {
 
     // ------------------------------------------------------------------ death
 
-    /** Lethal damage to a raid player: downed if possible, otherwise death. */
+    /**
+     * Lethal damage to a raid player: downed if possible, otherwise death. The hit itself was
+     * cancelled, so it made no hurt sound: the player cries out here, with vanilla's player death
+     * event (the resource pack's voices), for everyone around.
+     */
     public void lethal(Player player, DamageService.@Nullable LastHit hit) {
         Raid raid = raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
         if (raid == null || rp == null || !rp.active()) {
             return;
         }
+        if (rp.state == RaidPlayer.State.ALIVE) {
+            player.getWorld().playSound(player.getLocation(), "minecraft:entity.player.death", SoundCategory.PLAYERS, 1f, 1f);
+        }
         if (rp.state == RaidPlayer.State.ALIVE && plugin.downed().canBeDowned(raid, rp)) {
             plugin.downed().down(raid, rp, player, hit);
             return;
         }
         die(raid, player, rp, deathReason(hit), hit);
+    }
+
+    /**
+     * Health a standing raid player loses without being hit: a wound bleeding (HealthService). It is
+     * taken straight off their health, with no damage event, so none of a hit's effects come with
+     * it: no hurt sound for everyone around, no hurt flash of their body, no damage packet. Their own
+     * client is not told either (Nms.quietHealthLoss): it would take any drop of its health for a
+     * hit, and tilt the view and flash the player's own model red. A hit's
+     * rules still hold ({@link #onDamage}, the only handler of a raid player's damage): nothing
+     * during spawn protection, and an amount that would kill downs or kills them, as the last hit
+     * recorded says (DamageService.recordBleed names the bleeding, and who made the wound).
+     */
+    public void loseHealth(Player player, double amount) {
+        Raid raid = raidOf(player);
+        RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
+        if (amount <= 0 || rp == null || rp.state != RaidPlayer.State.ALIVE || !player.getWorld().equals(raid.world)
+                || isProtected(rp) || player.isDead()) {
+            return;
+        }
+        if (amount >= player.getHealth()) {
+            lethal(player, plugin.damage().lastHit(player.getUniqueId()));
+            return;
+        }
+        Nms.SelfView view = plugin.fov().selfView(player);
+        if (view != null) {
+            Nms.quietHealthLoss(view);
+        }
+        player.setHealth(player.getHealth() - amount);
     }
 
     public static String deathReason(DamageService.@Nullable LastHit hit) {
@@ -1983,8 +2019,14 @@ public final class RaidManager implements Listener {
         }
         Mannequin standIn = rp.standIn != null && rp.standIn.isValid() ? rp.standIn : null;
         if (standIn != null) {
+            // Off its health without a hit, as for the player (loseHealth): a bleeding stand-in that
+            // cried out every 1.5 seconds would give away where the player left the game.
             plugin.damage().recordBleed(standIn, "失血", worst, sources);
-            plugin.damage().deal(standIn, null, amount); // a lethal amount ends in onStandInDamage
+            if (amount >= standIn.getHealth()) {
+                diedOffline(raid, rp, plugin.damage().lastHit(standIn.getUniqueId()));
+                return;
+            }
+            standIn.setHealth(standIn.getHealth() - amount);
             standIn.getWorld().spawnParticle(Particle.BLOCK, standIn.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                     Material.REDSTONE_BLOCK.createBlockData());
             return;
@@ -3377,6 +3419,14 @@ public final class RaidManager implements Listener {
             return;
         }
         RaidPlayer rp = raid.player(player.getUniqueId());
+        if (rp != null && rp.state == RaidPlayer.State.DOWNED) {
+            // Lying down, the floor in front of the face is in reach, so a right click lands on it
+            // more often than not. Nothing there is theirs to work, but the item in hand still goes:
+            // cancelling the whole click kept the self-revive injector (the only item DownedService
+            // lets a downed player use) from ever starting unless they looked up.
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            return;
+        }
         if (rp == null || rp.state != RaidPlayer.State.ALIVE) {
             event.setCancelled(true);
             return;
@@ -3525,7 +3575,7 @@ public final class RaidManager implements Listener {
                         Item dropped = player.getWorld().dropItem(player.getLocation(), old);
                         dropped.setPickupDelay(40);
                     }
-                    player.playSound(player.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
+                    player.playSound(player.getLocation(), "craftov:gear.equip", 1f, 1f);
                 } else {
                     Notify.hint(player, "潜行拾取可直接替换当前的" + def.category().displayName());
                 }

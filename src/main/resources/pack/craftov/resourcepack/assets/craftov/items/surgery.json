@@ -74,8 +74,1437 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:model",
-   "model": "craftov:item/surgery"
+   "type": "minecraft:condition",
+   "property": "minecraft:using_item",
+   "on_true": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:use_duration",
+    "scale": 0.004167,
+    "entries": [
+     {
+      "threshold": 0.0,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/0"
+      }
+     },
+     {
+      "threshold": 0.00208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/1"
+      }
+     },
+     {
+      "threshold": 0.00625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/2"
+      }
+     },
+     {
+      "threshold": 0.01042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/3"
+      }
+     },
+     {
+      "threshold": 0.01458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/4"
+      }
+     },
+     {
+      "threshold": 0.01875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/5"
+      }
+     },
+     {
+      "threshold": 0.02292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/6"
+      }
+     },
+     {
+      "threshold": 0.02708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/7"
+      }
+     },
+     {
+      "threshold": 0.03125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/8"
+      }
+     },
+     {
+      "threshold": 0.03542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/9"
+      }
+     },
+     {
+      "threshold": 0.03958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/10"
+      }
+     },
+     {
+      "threshold": 0.04375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/11"
+      }
+     },
+     {
+      "threshold": 0.04792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/12"
+      }
+     },
+     {
+      "threshold": 0.05208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/13"
+      }
+     },
+     {
+      "threshold": 0.05625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/14"
+      }
+     },
+     {
+      "threshold": 0.06042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/15"
+      }
+     },
+     {
+      "threshold": 0.06458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/16"
+      }
+     },
+     {
+      "threshold": 0.06875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/17"
+      }
+     },
+     {
+      "threshold": 0.07292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/18"
+      }
+     },
+     {
+      "threshold": 0.07708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/19"
+      }
+     },
+     {
+      "threshold": 0.08125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/20"
+      }
+     },
+     {
+      "threshold": 0.08542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/21"
+      }
+     },
+     {
+      "threshold": 0.08958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/22"
+      }
+     },
+     {
+      "threshold": 0.09375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/23"
+      }
+     },
+     {
+      "threshold": 0.10208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/24"
+      }
+     },
+     {
+      "threshold": 0.11458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/25"
+      }
+     },
+     {
+      "threshold": 0.11875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/26"
+      }
+     },
+     {
+      "threshold": 0.12292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/27"
+      }
+     },
+     {
+      "threshold": 0.12708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/28"
+      }
+     },
+     {
+      "threshold": 0.13542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/29"
+      }
+     },
+     {
+      "threshold": 0.14375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/30"
+      }
+     },
+     {
+      "threshold": 0.14792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/31"
+      }
+     },
+     {
+      "threshold": 0.15208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/32"
+      }
+     },
+     {
+      "threshold": 0.15625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/33"
+      }
+     },
+     {
+      "threshold": 0.16458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/34"
+      }
+     },
+     {
+      "threshold": 0.16875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/35"
+      }
+     },
+     {
+      "threshold": 0.17292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/36"
+      }
+     },
+     {
+      "threshold": 0.18125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/37"
+      }
+     },
+     {
+      "threshold": 0.18542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/38"
+      }
+     },
+     {
+      "threshold": 0.18958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/39"
+      }
+     },
+     {
+      "threshold": 0.19375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/40"
+      }
+     },
+     {
+      "threshold": 0.19792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/41"
+      }
+     },
+     {
+      "threshold": 0.20208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/42"
+      }
+     },
+     {
+      "threshold": 0.20625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/43"
+      }
+     },
+     {
+      "threshold": 0.21042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/44"
+      }
+     },
+     {
+      "threshold": 0.21458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/45"
+      }
+     },
+     {
+      "threshold": 0.21875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/46"
+      }
+     },
+     {
+      "threshold": 0.22292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/47"
+      }
+     },
+     {
+      "threshold": 0.22708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/48"
+      }
+     },
+     {
+      "threshold": 0.23125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/49"
+      }
+     },
+     {
+      "threshold": 0.23542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/50"
+      }
+     },
+     {
+      "threshold": 0.23958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/51"
+      }
+     },
+     {
+      "threshold": 0.24375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/52"
+      }
+     },
+     {
+      "threshold": 0.24792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/53"
+      }
+     },
+     {
+      "threshold": 0.25208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/54"
+      }
+     },
+     {
+      "threshold": 0.25625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/55"
+      }
+     },
+     {
+      "threshold": 0.26042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/56"
+      }
+     },
+     {
+      "threshold": 0.26875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/57"
+      }
+     },
+     {
+      "threshold": 0.27292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/58"
+      }
+     },
+     {
+      "threshold": 0.27708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/59"
+      }
+     },
+     {
+      "threshold": 0.28542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/60"
+      }
+     },
+     {
+      "threshold": 0.28958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/61"
+      }
+     },
+     {
+      "threshold": 0.29375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/62"
+      }
+     },
+     {
+      "threshold": 0.30208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/63"
+      }
+     },
+     {
+      "threshold": 0.30625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/64"
+      }
+     },
+     {
+      "threshold": 0.31042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/65"
+      }
+     },
+     {
+      "threshold": 0.31458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/66"
+      }
+     },
+     {
+      "threshold": 0.31875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/67"
+      }
+     },
+     {
+      "threshold": 0.32292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/68"
+      }
+     },
+     {
+      "threshold": 0.32708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/69"
+      }
+     },
+     {
+      "threshold": 0.33125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/70"
+      }
+     },
+     {
+      "threshold": 0.33542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/71"
+      }
+     },
+     {
+      "threshold": 0.33958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/72"
+      }
+     },
+     {
+      "threshold": 0.34375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/73"
+      }
+     },
+     {
+      "threshold": 0.34792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/74"
+      }
+     },
+     {
+      "threshold": 0.35208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/75"
+      }
+     },
+     {
+      "threshold": 0.35625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/76"
+      }
+     },
+     {
+      "threshold": 0.36042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/77"
+      }
+     },
+     {
+      "threshold": 0.36458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/78"
+      }
+     },
+     {
+      "threshold": 0.37292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/79"
+      }
+     },
+     {
+      "threshold": 0.37708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/80"
+      }
+     },
+     {
+      "threshold": 0.38125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/81"
+      }
+     },
+     {
+      "threshold": 0.38958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/82"
+      }
+     },
+     {
+      "threshold": 0.39375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/83"
+      }
+     },
+     {
+      "threshold": 0.39792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/84"
+      }
+     },
+     {
+      "threshold": 0.40625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/85"
+      }
+     },
+     {
+      "threshold": 0.41042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/86"
+      }
+     },
+     {
+      "threshold": 0.41458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/87"
+      }
+     },
+     {
+      "threshold": 0.42292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/88"
+      }
+     },
+     {
+      "threshold": 0.42708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/89"
+      }
+     },
+     {
+      "threshold": 0.43125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/90"
+      }
+     },
+     {
+      "threshold": 0.43542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/91"
+      }
+     },
+     {
+      "threshold": 0.43958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/92"
+      }
+     },
+     {
+      "threshold": 0.44375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/93"
+      }
+     },
+     {
+      "threshold": 0.44792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/94"
+      }
+     },
+     {
+      "threshold": 0.45208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/95"
+      }
+     },
+     {
+      "threshold": 0.45625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/96"
+      }
+     },
+     {
+      "threshold": 0.46042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/97"
+      }
+     },
+     {
+      "threshold": 0.46458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/98"
+      }
+     },
+     {
+      "threshold": 0.46875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/99"
+      }
+     },
+     {
+      "threshold": 0.47292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/100"
+      }
+     },
+     {
+      "threshold": 0.47708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/101"
+      }
+     },
+     {
+      "threshold": 0.48125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/102"
+      }
+     },
+     {
+      "threshold": 0.48542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/103"
+      }
+     },
+     {
+      "threshold": 0.49375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/104"
+      }
+     },
+     {
+      "threshold": 0.49792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/105"
+      }
+     },
+     {
+      "threshold": 0.50208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/106"
+      }
+     },
+     {
+      "threshold": 0.51042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/107"
+      }
+     },
+     {
+      "threshold": 0.51458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/108"
+      }
+     },
+     {
+      "threshold": 0.51875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/109"
+      }
+     },
+     {
+      "threshold": 0.52708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/110"
+      }
+     },
+     {
+      "threshold": 0.53125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/111"
+      }
+     },
+     {
+      "threshold": 0.53542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/112"
+      }
+     },
+     {
+      "threshold": 0.54375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/113"
+      }
+     },
+     {
+      "threshold": 0.54792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/114"
+      }
+     },
+     {
+      "threshold": 0.55208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/115"
+      }
+     },
+     {
+      "threshold": 0.55625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/116"
+      }
+     },
+     {
+      "threshold": 0.56042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/117"
+      }
+     },
+     {
+      "threshold": 0.56458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/118"
+      }
+     },
+     {
+      "threshold": 0.56875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/119"
+      }
+     },
+     {
+      "threshold": 0.57292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/120"
+      }
+     },
+     {
+      "threshold": 0.57708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/121"
+      }
+     },
+     {
+      "threshold": 0.58125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/122"
+      }
+     },
+     {
+      "threshold": 0.58542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/123"
+      }
+     },
+     {
+      "threshold": 0.58958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/124"
+      }
+     },
+     {
+      "threshold": 0.59375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/125"
+      }
+     },
+     {
+      "threshold": 0.59792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/126"
+      }
+     },
+     {
+      "threshold": 0.60208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/127"
+      }
+     },
+     {
+      "threshold": 0.60625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/128"
+      }
+     },
+     {
+      "threshold": 0.61458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/129"
+      }
+     },
+     {
+      "threshold": 0.61875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/130"
+      }
+     },
+     {
+      "threshold": 0.62292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/131"
+      }
+     },
+     {
+      "threshold": 0.63125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/132"
+      }
+     },
+     {
+      "threshold": 0.63542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/133"
+      }
+     },
+     {
+      "threshold": 0.63958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/134"
+      }
+     },
+     {
+      "threshold": 0.64792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/135"
+      }
+     },
+     {
+      "threshold": 0.65208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/136"
+      }
+     },
+     {
+      "threshold": 0.65625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/137"
+      }
+     },
+     {
+      "threshold": 0.66458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/138"
+      }
+     },
+     {
+      "threshold": 0.66875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/139"
+      }
+     },
+     {
+      "threshold": 0.67292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/140"
+      }
+     },
+     {
+      "threshold": 0.67708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/141"
+      }
+     },
+     {
+      "threshold": 0.68125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/142"
+      }
+     },
+     {
+      "threshold": 0.68542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/143"
+      }
+     },
+     {
+      "threshold": 0.68958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/144"
+      }
+     },
+     {
+      "threshold": 0.69375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/145"
+      }
+     },
+     {
+      "threshold": 0.69792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/146"
+      }
+     },
+     {
+      "threshold": 0.70208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/147"
+      }
+     },
+     {
+      "threshold": 0.70625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/148"
+      }
+     },
+     {
+      "threshold": 0.71042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/149"
+      }
+     },
+     {
+      "threshold": 0.71458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/150"
+      }
+     },
+     {
+      "threshold": 0.71875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/151"
+      }
+     },
+     {
+      "threshold": 0.72292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/152"
+      }
+     },
+     {
+      "threshold": 0.72708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/153"
+      }
+     },
+     {
+      "threshold": 0.73542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/154"
+      }
+     },
+     {
+      "threshold": 0.73958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/155"
+      }
+     },
+     {
+      "threshold": 0.74375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/156"
+      }
+     },
+     {
+      "threshold": 0.75208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/157"
+      }
+     },
+     {
+      "threshold": 0.75625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/158"
+      }
+     },
+     {
+      "threshold": 0.76042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/159"
+      }
+     },
+     {
+      "threshold": 0.76875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/160"
+      }
+     },
+     {
+      "threshold": 0.77292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/161"
+      }
+     },
+     {
+      "threshold": 0.77708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/162"
+      }
+     },
+     {
+      "threshold": 0.78542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/163"
+      }
+     },
+     {
+      "threshold": 0.78958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/164"
+      }
+     },
+     {
+      "threshold": 0.79375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/165"
+      }
+     },
+     {
+      "threshold": 0.79792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/166"
+      }
+     },
+     {
+      "threshold": 0.80208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/167"
+      }
+     },
+     {
+      "threshold": 0.80625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/168"
+      }
+     },
+     {
+      "threshold": 0.81042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/169"
+      }
+     },
+     {
+      "threshold": 0.81458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/170"
+      }
+     },
+     {
+      "threshold": 0.81875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/171"
+      }
+     },
+     {
+      "threshold": 0.82292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/172"
+      }
+     },
+     {
+      "threshold": 0.82708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/173"
+      }
+     },
+     {
+      "threshold": 0.83125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/174"
+      }
+     },
+     {
+      "threshold": 0.83542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/175"
+      }
+     },
+     {
+      "threshold": 0.83958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/176"
+      }
+     },
+     {
+      "threshold": 0.84375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/177"
+      }
+     },
+     {
+      "threshold": 0.84792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/178"
+      }
+     },
+     {
+      "threshold": 0.85625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/179"
+      }
+     },
+     {
+      "threshold": 0.86042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/180"
+      }
+     },
+     {
+      "threshold": 0.86458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/181"
+      }
+     },
+     {
+      "threshold": 0.89375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/182"
+      }
+     },
+     {
+      "threshold": 0.90208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/183"
+      }
+     },
+     {
+      "threshold": 0.91042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/184"
+      }
+     },
+     {
+      "threshold": 0.92292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/185"
+      }
+     },
+     {
+      "threshold": 0.93125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/186"
+      }
+     },
+     {
+      "threshold": 0.93542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/187"
+      }
+     },
+     {
+      "threshold": 0.93958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/188"
+      }
+     },
+     {
+      "threshold": 0.94375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/189"
+      }
+     },
+     {
+      "threshold": 0.94792,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/190"
+      }
+     },
+     {
+      "threshold": 0.95208,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/191"
+      }
+     },
+     {
+      "threshold": 0.95625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/192"
+      }
+     },
+     {
+      "threshold": 0.96042,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/193"
+      }
+     },
+     {
+      "threshold": 0.96458,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/194"
+      }
+     },
+     {
+      "threshold": 0.96875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/195"
+      }
+     },
+     {
+      "threshold": 0.97292,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/196"
+      }
+     },
+     {
+      "threshold": 0.97708,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/197"
+      }
+     },
+     {
+      "threshold": 0.98125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/198"
+      }
+     },
+     {
+      "threshold": 0.98542,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/199"
+      }
+     },
+     {
+      "threshold": 0.98958,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/200"
+      }
+     },
+     {
+      "threshold": 0.99375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/surgery/201"
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:model",
+     "model": "craftov:item/surgery"
+    }
+   },
+   "on_false": {
+    "type": "minecraft:model",
+    "model": "craftov:item/surgery"
+   }
   }
  },
  "oversized_in_gui": true

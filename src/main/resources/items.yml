@@ -12,7 +12,7 @@
 # Revision of this file. The server copies it from the jar only when it is missing, so raise this
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
-revision: 9
+revision: 10
 items:
   # ------------------------------------------------------------------ handguns
   p18:
@@ -162,15 +162,16 @@ items:
   pack_3: { name: "大型登山包", category: BACKPACK, rarity: BLUE, value: 38000, slots: 18, speed-penalty: 0.03 }
 
   # ------------------------------------------------------------------ medical
-  bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住一处轻度出血。", med: { use: 2.5, cures: [LIGHT_BLEED], anim: brush, sound: med.bandage } }
-  hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住一处重度或轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED], anim: brush, sound: med.bandage } }
-  splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定一处骨折的肢体。", med: { use: 4.0, cures: [FRACTURE], anim: crossbow, sound: med.splint } }
-  medkit_s:   { weight: 0.5, name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次处理一处轻度出血，再回复最多 60 点生命，可多次使用。处理伤口也消耗治疗量。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED], anim: bundle, sound: med.kit } }
-  medkit_l:   { weight: 1.2, name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱。每次处理一处出血，再回复最多 100 点生命。处理伤口也消耗治疗量。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED], anim: bundle, sound: med.kit } }
-  surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 15000, stack: 1, lore: "每次处理伤得最重的一个部位的骨折与出血，再回复最多 20 点生命。每处伤口都消耗治疗量。", med: { use: 12.0, pool: 160, per-use: 20, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, one-part: true, anim: brush, sound: med.kit } }
-  painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, sound: med.pills } }
-  adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: trident, sound: med.inject } }
-  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，打完针自己站起来。带在身上时，没有队友能救也会先倒地。", med: { use: 4.0, effect: SELF_REVIVE, anim: trident, sound: med.inject } }
+  # use: seconds a use takes; cues: [share of the use time 0..1, craftov sound], played in turn as it goes.
+  bandage:    { name: "绷带", category: MEDICAL, rarity: WHITE, value: 800, stack: 3, lore: "止住一处轻度出血。", med: { use: 2.5, cures: [LIGHT_BLEED], anim: none, cues: [[0, med.tear], [0.3, med.wrap], [0.62, med.wrap]] } }
+  hemostat:   { name: "止血敷料", category: MEDICAL, rarity: GREEN, value: 2600, stack: 2, lore: "止住一处重度或轻度出血。", med: { use: 3.0, cures: [HEAVY_BLEED, LIGHT_BLEED], anim: none, cues: [[0, med.tear], [0.25, med.wrap], [0.6, med.wrap]] } }
+  splint:     { name: "夹板", category: MEDICAL, rarity: GREEN, value: 2200, stack: 2, lore: "固定一处骨折的肢体。", med: { use: 4.0, cures: [FRACTURE], anim: none, cues: [[0, med.splint], [0.45, med.strap], [0.72, med.strap]] } }
+  medkit_s:   { weight: 0.5, name: "急救包", category: MEDICAL, rarity: GREEN, value: 3500, stack: 1, lore: "每次处理一处轻度出血，再回复最多 60 点生命，可多次使用。处理伤口也消耗治疗量。", med: { use: 3.0, pool: 120, per-use: 60, cures: [LIGHT_BLEED], anim: none, cues: [[0, med.kit], [0.35, med.tear], [0.65, med.wrap]] } }
+  medkit_l:   { weight: 1.2, name: "军用医疗箱", category: MEDICAL, rarity: BLUE, value: 12000, stack: 1, lore: "大容量医疗箱。每次处理一处出血，再回复最多 100 点生命。处理伤口也消耗治疗量。", med: { use: 4.5, pool: 400, per-use: 100, cures: [LIGHT_BLEED, HEAVY_BLEED], anim: none, cues: [[0, med.kit], [0.25, med.rummage], [0.5, med.tear], [0.75, med.wrap]] } }
+  surgery:    { weight: 0.9, name: "手术包", category: MEDICAL, rarity: PURPLE, value: 15000, stack: 1, lore: "每次处理伤得最重的一个部位的骨折与出血，再回复最多 20 点生命。每处伤口都消耗治疗量。", med: { use: 12.0, pool: 160, per-use: 20, cures: [FRACTURE, HEAVY_BLEED, LIGHT_BLEED], count: 99, one-part: true, anim: none, cues: [[0, med.kit], [0.1, med.rummage], [0.22, med.snip], [0.35, med.inject], [0.5, med.snip], [0.62, med.wrap], [0.78, med.wrap], [0.9, med.tear]] } }
+  painkiller: { name: "止痛药", category: MEDICAL, rarity: BLUE, value: 4500, stack: 2, lore: "120 秒内无视骨折带来的影响。", med: { use: 1.5, effect: PAINKILLER, effect-seconds: 120, anim: eat, cues: [[0, med.pills], [0.7, med.swallow]] } }
+  adrenaline: { name: "肾上腺素", category: MEDICAL, rarity: PURPLE, value: 9000, stack: 1, lore: "20 秒内移动速度提升，体力不再消耗。", med: { use: 1.5, effect: ADRENALINE, effect-seconds: 20, anim: none, cues: [[0, med.cap], [0.3, med.inject]] } }
+  revive_kit: { name: "自救注射器", category: MEDICAL, rarity: GOLD, value: 32000, stack: 1, lore: "倒地时使用，打完针自己站起来。带在身上时，没有队友能救也会先倒地。", med: { use: 4.0, effect: SELF_REVIVE, anim: none, cues: [[0, med.cap], [0.15, med.inject], [0.7, med.gasp]] } }
 
   # ------------------------------------------------------------------ throwables
   frag:  { name: "破片手雷", category: THROWABLE, rarity: BLUE, value: 6000, stack: 2, lore: "按住右键拉环，松开投掷。引信从拉环算起 3.5 秒：捏一会儿再扔，落地后炸得更快；捏过头会在手里爆炸。", throwable: { type: FRAG, fuse: 70, radius: 6, damage: 115 } }

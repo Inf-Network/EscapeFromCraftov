@@ -21,6 +21,7 @@ import hudart  # noqa: E402
 import icons  # noqa: E402
 import knife_inspect  # noqa: E402
 import knife_skins  # noqa: E402
+import med_use  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
@@ -415,6 +416,8 @@ def build_items(item_defs):
             build_gun(item_id, spec, item_defs)
         elif item_id in knife_inspect.KEYS:
             write_knife_item(item_id, item_id, item_id, held)
+        elif item_id in med_use.ITEMS:
+            write_med_item(item_id, spec, held)
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
@@ -474,6 +477,26 @@ def write_knife_item(name, frames_name, knife, held):
                    'model': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
                              'entries': entries, 'fallback': gloved(held, 0)}}],
         'fallback': model_ref(held)}, 'oversized_in_gui': True, 'swap_animation_scale': KNIFE_SWAP_SCALE})
+
+
+def write_med_item(item_id, spec, held):
+    """The item definition of a medical item (#41): its icon in menus, otherwise `held`, and while it
+    is being used the frames of its motion (med_use.py), picked by how far through its use time
+    (items.yml med.use) the holder is, as the vanilla bow picks its pull."""
+    seconds = spec['med']['use']
+    entries = []
+    for k, (threshold, fp, tp) in enumerate(med_use.frames(item_id, seconds)):
+        path = 'med_use/%s/%d' % (item_id, k)
+        write_json(os.path.join(CV, 'models', 'item', path + '.json'), med_use.frame_model(held, fp, tp))
+        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+    write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
+        'type': 'minecraft:select', 'property': 'minecraft:display_context',
+        'cases': [{'when': ['gui'], 'model': gui_case(item_id)}],
+        'fallback': {'type': 'minecraft:condition', 'property': 'minecraft:using_item',
+                     'on_true': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:use_duration',
+                                 'scale': round(1.0 / max(1, round(seconds * 20)), 6),
+                                 'entries': entries, 'fallback': model_ref(held)},
+                     'on_false': model_ref(held)}}, 'oversized_in_gui': True})
 
 
 def load_knife_skins():
@@ -1275,7 +1298,9 @@ def build_trigger_capture():
     is invisible and silent when "mined", stood in (its step sound replaces the floor's) or landed on.
 
     Also the vanilla sound overrides: the AI are zombies (patrols) and husks (elite) re-skinned as
-    soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
+    soldiers (soldiers.py), so their groans are muted and they walk like people. Everyone who can be
+    shot (players, soldiers, and the mannequins that stand in for players who left) cries out with
+    the voices of sounds.py when hurt or killed, instead of vanilla's "oof" (#41).
     """
     save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
     # The ceiling that keeps a downed player crawling on a slab (DownedService.HALF_CEILING): a top purpur
@@ -1287,10 +1312,16 @@ def build_trigger_capture():
         'type=double': {'model': 'minecraft:block/purpur_block'},
         'type=top': {'model': 'craftov:block/empty'}}})
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
-    hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
-    death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}
+    hurt = {'replace': True, 'sounds': [{'name': 'craftov:voice/hurt%d' % i, 'volume': 0.9} for i in range(1, 5)]}
+    death = {'replace': True, 'sounds': [{'name': 'craftov:voice/death%d' % i} for i in range(1, 4)]}
     step = {'replace': True, 'sounds': [{'name': 'minecraft:step/stone%d' % i, 'volume': 0.9} for i in range(1, 7)]}
     overrides = {'block.sculk_vein.%s' % event: silence for event in ('hit', 'step', 'fall')}
+    # A player's hurt sound depends on what hurt them; a mannequin (a stand-in) has the generic ones.
+    for event in ('hurt', 'hurt_on_fire', 'hurt_drown', 'hurt_freeze', 'hurt_sweet_berry_bush'):
+        overrides['entity.player.' + event] = hurt
+    overrides['entity.player.death'] = death
+    overrides['entity.generic.hurt'] = hurt
+    overrides['entity.generic.death'] = death
     for mob in ('zombie', 'husk', 'drowned'):
         overrides['entity.%s.ambient' % mob] = silence
         overrides['entity.%s.hurt' % mob] = hurt

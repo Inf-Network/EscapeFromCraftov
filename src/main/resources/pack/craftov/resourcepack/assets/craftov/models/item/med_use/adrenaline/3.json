@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/adrenaline",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -0.0,
+    -77.302,
+    129.762
+   ],
+   "translation": [
+    -2.68,
+    3.771,
+    0.178
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -180.0,
+    77.302,
+    50.238
+   ],
+   "translation": [
+    -2.68,
+    3.771,
+    0.178
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -57.143,
+    0.0,
+    28.571
+   ],
+   "translation": [
+    -0.317,
+    3.635,
+    1.899
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    122.857,
+    -0.0,
+    151.429
+   ],
+   "translation": [
+    -0.317,
+    3.635,
+    1.899
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

@@ -13,11 +13,16 @@ with raw packets):
     in the server log has sprint=true, sprint pace (over 0.25 blocks a tick) and ground=true.
   - Right mouse on a sprint ends it (food level 6, which the vanilla client cannot sprint at) and the
     sights come up; let go, the food level is back at 20.
+  - The newer press wins: walking forward with the sights up and right mouse held, left Ctrl drops the
+    sights and the client sprints (food level 20, sprint pace); letting go of W ends that sprint and,
+    right mouse still held, the sights come up again (food level 6).
 
 Shots: rag-stand (arms 12 GUI pixels out with a K47), rag-walk (strafing: wider), rag-stand-fire (a
 full-auto burst standing), rag-walk-fire (walking forward and firing), rag-sprint (sprinting, not firing:
 the arms at their widest), rag-sprint-fire-a/b/c (firing on the sprint, 0.1 s apart), rag-sprint-ads
-(right mouse on the sprint: sights up, no crosshair arms).
+(right mouse on the sprint: sights up, no crosshair arms), rag-sprint-key (left Ctrl pressed while
+aiming, right mouse still held: sprinting with the gun at the hip, crosshair arms open) and
+rag-sprint-key-after (W let go, right mouse still held: the sights back up).
 """
 import re
 import time
@@ -201,7 +206,38 @@ def run(s):
     results.append(_check('so the client stops sprinting while the sprint key is still held (under 0.24 blocks a tick: walking pace)',
                           0 <= pace < 0.24, f'{pace:.3f} blocks a tick'))
     results.append(_check('and sprints again once right mouse is let go (food back at 20)', after == 20, f'food {after}'))
+
+    # The sprint key while aiming: the newer press wins, and right mouse held on aims again after.
+    _tp(s, *runway)
+    s.clear_chat()
+    time.sleep(0.5)
+    try:
+        with s.mouse(3):
+            time.sleep(0.8)
+            aimed_food = _food(s)
+            s.down('w')
+            time.sleep(0.4)
+            s.down('Control_L')
+            time.sleep(0.35)
+            key_food = _food(s)
+            moved_from, t_from = _pos(s, '@s'), time.time()
+            time.sleep(0.4)
+            moved_to, t_to = _pos(s, '@s'), time.time()
+            s.shot('rag-sprint-key', quick=True)
+            s.up('w')
+            time.sleep(0.9)
+            back_food = _food(s)
+            s.shot('rag-sprint-key-after', quick=True)
+    finally:
+        s.up('w')
+        s.up('Control_L')
+    ticks = (t_to - t_from) * 20
+    pace = ((moved_to[0] - moved_from[0]) ** 2 + (moved_to[2] - moved_from[2]) ** 2) ** 0.5 / ticks if moved_from and moved_to else -1
+    results.append(_check('aiming holds the food level at 6', aimed_food == 6, f'food {aimed_food}'))
+    results.append(_check('left Ctrl while walking aimed (right mouse held) puts it back at 20 and the client sprints (over 0.25 blocks a tick)',
+                          key_food == 20 and pace > 0.25, f'food {key_food}, {pace:.3f} blocks a tick'))
+    results.append(_check('W let go with right mouse still held: the sights come back up (food 6 again)', back_food == 6, f'food {back_food}'))
     print(f'[runandgun] {sum(1 for r in results if r)}/{len(results)} checks passed; look at rag-stand, rag-walk, rag-sprint, '
-          'rag-sprint-fire-a..c and rag-sprint-ads', flush=True)
+          'rag-sprint-fire-a..c, rag-sprint-ads, rag-sprint-key and rag-sprint-key-after', flush=True)
     time.sleep(0.5)
     s.lobby()

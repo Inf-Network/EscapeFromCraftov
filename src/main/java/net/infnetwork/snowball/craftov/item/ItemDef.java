@@ -16,6 +16,8 @@ import java.util.List;
  * @param armorClass protection level 1..6 for helmets/armor
  * @param durability max durability for armor, uses for keys
  * @param lockId  door lock opened by a key
+ * @param size    cells the item takes in the secure container
+ * @param secureStack how many of a stacking item share those cells (30 rounds of ammo)
  */
 public record ItemDef(
         String id,
@@ -41,8 +43,23 @@ public record ItemDef(
         double weight,
         net.infnetwork.snowball.craftov.weapon.@Nullable OpticSpec optic,
         net.infnetwork.snowball.craftov.weapon.@Nullable MeleeSpec melee,
-        net.infnetwork.snowball.craftov.weapon.@Nullable AttachSpec attach
+        net.infnetwork.snowball.craftov.weapon.@Nullable AttachSpec attach,
+        int size,
+        int secureStack
 ) {
+
+    /** True for what the secure container takes: anything but guns, armour, rigs and backpacks. */
+    public boolean fitsSecure() {
+        return !isGun() && !isArmor() && !isContainer() && category != Category.WEAPON;
+    }
+
+    /**
+     * Secure-container cells {@code amount} of this item take: its size for every
+     * {@link #secureStack} begun, so a box of 60 rounds takes two cells and a statue several.
+     */
+    public int secureCells(int amount) {
+        return size * Math.max(1, (amount + secureStack - 1) / secureStack);
+    }
 
     public boolean isMelee() {
         return melee != null;

@@ -46,6 +46,9 @@ final class MainMenu extends Menu {
         if (next == TutorialService.Step.DEPLOY || next == TutorialService.Step.EXTRACT) {
             deployLore.add(NEXT);
         }
+        if (plugin.training().offered(viewer)) {
+            deployLore.add("<muted>新手可以先选「训练行动」：单人，不计战绩");
+        }
         bigButton(DEPLOY, "<accent><b>开始行动", deployLore, e -> plugin.menus().openDeploy(viewer));
         if (plugin.canUseCatalog(viewer)) {
             button(36, UiItems.button("craftov:ui/icon_catalog", "<text><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）",

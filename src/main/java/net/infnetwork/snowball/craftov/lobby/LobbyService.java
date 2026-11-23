@@ -66,7 +66,7 @@ public final class LobbyService implements Listener {
             {"operator", "干员", "选择干员与技能", "craftov:ui/icon_operator"},
             {"escort", "护航大厅", "发布或接取护航委托", "craftov:ui/icon_escort"},
             {"collection", "收藏室", "收藏品图鉴", "craftov:ui/icon_collection"},
-            {"rank", "排行榜", "排位赛积分", "craftov:ui/icon_rank"},
+            {"rank", "排位 · 战绩", "排行榜 · 行动报告", "craftov:ui/icon_rank"},
     };
 
     /** The range weapon rack's spot on the hangar's firing line (and on every range plot, shifted). */

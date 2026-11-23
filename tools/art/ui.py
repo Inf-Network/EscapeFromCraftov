@@ -271,47 +271,113 @@ def attachment_tab():
 UI['tab_attachment'] = attachment_tab
 
 
-def scope_overlay(style='4x', w=960, h=540):
-    """Full-screen camera overlay seen while aiming through a magnified optic.
+# Scope reticles are drawn for the default 70 degree field of view at each scope's power (OpticSpec):
+# the overlay is stretched over the whole window, so a 16:9 window shows the marks at their true
+# angles (a 16:10 one about a tenth narrower across). Only at 70 degrees: at another declared field
+# of view (/cv fov) the scope keeps its power relative to that view, so the scoped view is wider or
+# narrower than these marks assume (at 90 every angle is about 1.4 times what the marks read). The
+# scope's round mask is an item model drawn with the hand (models.scope_mask_model), which stays
+# round at any window shape.
+SCOPE_POWER = {'3x': 3, '4x': 4, '8x': 8}
+SCOPE_HOLE = {'3x': 0.47, '4x': 0.45, '8x': 0.43}   # mask radius, a share of the screen height (models.MASK_HOLE)
 
-    3x: compact prism sight, wide eyebox, illuminated chevron. 4x: duplex crosshair.
-    8x: thin crosshair with mil-dots and a tighter eyebox.
+
+def scope_px_per_mil(style, h=1080, fov=70.0):
+    """Pixels per milliradian near the centre of a 1080-pixel-high overlay for this scope."""
+    n = SCOPE_POWER[style]
+    half = math.radians(fov / 2)
+    zoomed_half = math.atan(math.tan(half) / n)
+    return (h / 2) * 0.001 / math.tan(zoomed_half)
+
+
+def scope_overlay(style='4x', w=1920, h=1080):
+    """The reticle seen while aiming through a magnified optic, on clear: 1920x1080, every mark placed
+    by its angle (milliradians at the scope's power and a 70 degree field of view). Nothing else: the
+    dark ring around it is the item model drawn with the hand. The lines and posts run on to the
+    picture's edges: the overlay is stretched to the window but the ring keeps its size by the height,
+    so on a window narrower than 16:9 a post ending at the ring's radius would stop short of it, while
+    the ink, as black as the ring, does not show over it.
+
+    3x: illuminated chevron over hash marks every 5 mil. 4x: duplex crosshair, thin within 40 mil of the
+    centre. 8x: thin crosshair with mil-dots every 5 mil out to 20, thick posts from 30.
     """
-    img = Image.new('RGBA', (w, h), (0, 0, 0, 255))
+    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    r = int(h * {'3x': 0.47, '4x': 0.45, '8x': 0.43}[style])
+    mil = scope_px_per_mil(style, h)
+    r = int(h * SCOPE_HOLE[style])
     cx, cy = w // 2, h // 2
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(0, 0, 0, 0))
-    for k in range(14):
-        rr = r - k
-        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(0, 0, 0, max(0, 235 - k * 17)))
-    ink = (12, 12, 12, 255)
+    ink = (0, 0, 0, 255)
+    red = (235, 60, 40, 255)
     if style == '3x':
-        for x in (cx - r, cx + int(r * 0.35)):
-            d.line([(x, cy), (x + int(r * 0.65), cy)], fill=ink, width=2)
-        d.line([(cx, cy + 14), (cx, cy + r)], fill=ink, width=2)
-        d.polygon([(cx, cy - 2), (cx - 9, cy + 12), (cx - 5, cy + 12), (cx, cy + 5), (cx + 5, cy + 12), (cx + 9, cy + 12)],
-                  fill=(235, 70, 45, 255))
+        gap = int(round(4 * mil))
+        d.line([(0, cy), (cx - gap * 2, cy)], fill=ink, width=3)
+        d.line([(cx + gap * 2, cy), (w, cy)], fill=ink, width=3)
+        d.line([(cx, cy + gap * 3), (cx, h)], fill=ink, width=3)
+        size = max(10, int(round(2.5 * mil)))
+        d.polygon([(cx, cy - 2), (cx - size, cy + int(size * 1.4)), (cx - size // 2, cy + int(size * 1.4)), (cx, cy + size // 2),
+                   (cx + size // 2, cy + int(size * 1.4)), (cx + size, cy + int(size * 1.4))], fill=red)
         for i in range(1, 5):
-            d.line([(cx - 5 + i, cy + 18 + i * 16), (cx + 5 - i, cy + 18 + i * 16)], fill=ink, width=2)
+            y = cy + int(round(i * 5 * mil))
+            half = max(6, int(round((5 - i) * 0.6 * mil)))
+            if y < cy + r:
+                d.line([(cx - half, y), (cx + half, y)], fill=ink, width=3)
     elif style == '4x':
-        thick = 6
-        d.line([(cx - r, cy), (cx - 70, cy)], fill=ink, width=thick)
-        d.line([(cx + 70, cy), (cx + r, cy)], fill=ink, width=thick)
-        d.line([(cx, cy + 70), (cx, cy + r)], fill=ink, width=thick)
-        d.line([(cx, cy - r), (cx, cy - 70)], fill=ink, width=thick)
-        d.line([(cx - 70, cy), (cx + 70, cy)], fill=ink, width=2)
-        d.line([(cx, cy - 70), (cx, cy + 70)], fill=ink, width=2)
-        d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(220, 40, 40, 255))
+        thin = int(round(40 * mil))
+        d.line([(0, cy), (cx - thin, cy)], fill=ink, width=12)
+        d.line([(cx + thin, cy), (w, cy)], fill=ink, width=12)
+        d.line([(cx, cy + thin), (cx, h)], fill=ink, width=12)
+        d.line([(cx, 0), (cx, cy - thin)], fill=ink, width=12)
+        d.line([(cx - thin, cy), (cx + thin, cy)], fill=ink, width=3)
+        d.line([(cx, cy - thin), (cx, cy + thin)], fill=ink, width=3)
+        d.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=red)
     else:
-        d.line([(cx - r, cy), (cx + r, cy)], fill=ink, width=1)
-        d.line([(cx, cy - r), (cx, cy + r)], fill=ink, width=1)
-        for i in range(1, 9):
-            for sx, sy in ((cx + i * 20, cy), (cx - i * 20, cy), (cx, cy + i * 20), (cx, cy - i * 20)):
-                d.ellipse([sx - 2, sy - 2, sx + 2, sy + 2], fill=ink)
-        for x0, y0, x1, y1 in ((cx - r, cy, cx - 180, cy), (cx + 180, cy, cx + r, cy), (cx, cy + 180, cx, cy + r)):
-            d.line([(x0, y0), (x1, y1)], fill=ink, width=5)
-        d.ellipse([cx - 1, cy - 1, cx + 1, cy + 1], fill=(220, 40, 40, 255))
+        d.line([(0, cy), (w, cy)], fill=ink, width=2)
+        d.line([(cx, 0), (cx, h)], fill=ink, width=2)
+        dot = max(3, int(round(0.45 * mil)))
+        for i in range(1, 5):
+            off = int(round(i * 5 * mil))
+            for sx, sy in ((cx + off, cy), (cx - off, cy), (cx, cy + off), (cx, cy - off)):
+                d.ellipse([sx - dot, sy - dot, sx + dot, sy + dot], fill=ink)
+        post = int(round(30 * mil))
+        for x0, y0, x1, y1 in ((0, cy, cx - post, cy), (cx + post, cy, w, cy), (cx, cy + post, cx, h)):
+            d.line([(x0, y0), (x1, y1)], fill=ink, width=9)
+        d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=red)
+    return img
+
+
+# The range's calibration target (RangeService): CALIBRATION_SIZE blocks square, set CALIBRATION_DISTANCE
+# blocks down the range at eye height. Its ring is 40 mil across the radius, where the 4x reticle's thin
+# centre ends and its posts begin (scope_overlay): with the zoom right (4x at a 70 degree field of view
+# and FOV Effects at 100%), the posts just touch the ring. At another field of view the reticle's marks
+# no longer hold (see scope_overlay), and neither does this. Ticks every 5 mil match the 3x hash marks
+# and the 8x mil-dots.
+CALIBRATION_SIZE = 5.0
+CALIBRATION_DISTANCE = 50.0
+
+
+def calibration_target(px=512):
+    img = Image.new('RGBA', (px, px), (226, 222, 210, 255))
+    d = ImageDraw.Draw(img)
+    per_block = px / CALIBRATION_SIZE
+    mil = CALIBRATION_DISTANCE * 0.001 * per_block  # pixels per milliradian at that distance
+    c = px / 2
+    ink = (20, 20, 22, 255)
+    d.rectangle([0, 0, px - 1, px - 1], outline=(90, 90, 92, 255), width=6)
+    r = 40 * mil
+    for w in range(5):
+        d.ellipse([c - r + w, c - r + w, c + r - w, c + r - w], outline=ink)
+    r2 = 20 * mil
+    for w in range(2):
+        d.ellipse([c - r2 + w, c - r2 + w, c + r2 - w, c + r2 - w], outline=(120, 120, 120, 255))
+    d.line([(c - r, c), (c + r, c)], fill=ink, width=2)
+    d.line([(c, c - r), (c, c + r)], fill=ink, width=2)
+    for i in range(1, 9):
+        off = i * 5 * mil
+        half = 7 if i % 2 == 0 else 4
+        for sx in (-1, 1):
+            d.line([(c + sx * off, c - half), (c + sx * off, c + half)], fill=ink, width=2)
+            d.line([(c - half, c + sx * off), (c + half, c + sx * off)], fill=ink, width=2)
+    d.ellipse([c - 5, c - 5, c + 5, c + 5], fill=(220, 40, 30, 255))
     return img
 
 

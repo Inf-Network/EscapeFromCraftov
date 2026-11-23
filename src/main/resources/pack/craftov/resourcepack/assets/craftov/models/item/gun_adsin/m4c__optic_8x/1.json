@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_opt/m4c__optic_8x",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.0,
+    93.375,
+    2.531
+   ],
+   "translation": [
+    -2.412,
+    2.487,
+    -1.411
+   ],
+   "scale": [
+    0.524,
+    0.524,
+    0.524
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.0,
+    -86.625,
+    -2.531
+   ],
+   "translation": [
+    -2.412,
+    2.487,
+    -1.411
+   ],
+   "scale": [
+    0.524,
+    0.524,
+    0.524
+   ]
+  }
+ }
+}

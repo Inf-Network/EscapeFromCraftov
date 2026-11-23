@@ -18,6 +18,9 @@ ROOT = os.path.join(os.path.dirname(__file__), '..', '..', 'src', 'main', 'resou
                     'resourcepack', 'assets', 'craftov')
 W, H = 1000, 584          # the player's window aspect (2000x1168)
 HAND_FOV = 70.0           # the hand is always rendered with a fixed 70 degree FOV
+# The vanilla crosshair is a clear picture now (Craftov's own is a HUD that hides while aiming); a cross
+# drawn here still helps when tuning hip poses, but would cover a red dot.
+CROSSHAIR = True
 SHADE = {'up': 1.0, 'down': 0.5, 'north': 0.8, 'south': 0.8, 'east': 0.6, 'west': 0.6}
 
 
@@ -220,8 +223,9 @@ def render_many(posed, out, label=''):
     zbuffer_fill(img, polys)
     d = ImageDraw.Draw(img)
     cx, cy = W // 2, H // 2
-    d.line([cx - 8, cy, cx + 8, cy], fill=(255, 255, 255), width=2)
-    d.line([cx, cy - 8, cx, cy + 8], fill=(255, 255, 255), width=2)
+    if CROSSHAIR:
+        d.line([cx - 8, cy, cx + 8, cy], fill=(255, 255, 255), width=2)
+        d.line([cx, cy - 8, cx, cy + 8], fill=(255, 255, 255), width=2)
     hw = int(W * 0.131)
     d.rectangle([cx - hw, H - 40, cx + hw, H - 4], outline=(30, 30, 30), width=2)
     d.text((10, 10), label, fill=(255, 255, 255))

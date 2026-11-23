@@ -28,7 +28,6 @@ import java.util.UUID;
 public final class StaminaService implements Listener {
 
     public static final double MAX = 100.0;
-    private static final double RECOVER_AT = 30.0;
 
     private static final class State {
         double stamina = MAX;
@@ -57,6 +56,46 @@ public final class StaminaService implements Listener {
 
     public boolean exhausted(Player player) {
         return state(player).exhausted;
+    }
+
+    /**
+     * Sets the player's stamina (an admin's test hook): at 0 they are out of breath until it is back
+     * at stamina.recover-at, as if they had run it down.
+     */
+    public void set(Player player, double value) {
+        State s = state(player);
+        s.stamina = Math.max(0, Math.min(MAX, value));
+        s.lastSpend = Bukkit.getCurrentTick();
+        boolean out = s.stamina <= 0 || s.exhausted && s.stamina < recoverAt();
+        if (out != s.exhausted) {
+            s.exhausted = out;
+            plugin.health().updateFood(player);
+        }
+    }
+
+    /**
+     * Spends {@code perTick} stamina this tick, times the load factor, as a sprint does: a slide costs
+     * its own (SlideService), since the vanilla client stops sprinting on a seat. Regeneration waits
+     * stamina.regen-delay-ticks from here, and at 0 the player is out of breath. Nothing outside a
+     * raid or under adrenaline, as for a sprint.
+     */
+    public void spend(Player player, double perTick) {
+        if (perTick <= 0 || !plugin.raids().isInRaid(player) || plugin.health().adrenaline(player)) {
+            return;
+        }
+        State s = state(player);
+        s.stamina = Math.max(0, s.stamina - perTick * drainFactor(player));
+        s.lastSpend = Bukkit.getCurrentTick();
+    }
+
+    /** Stamina a sprint spends a tick before the load factor (stamina.sprint-drain). */
+    public double sprintDrain() {
+        return setting("sprint-drain", 0.3);
+    }
+
+    /** Stamina at which a player out of breath may sprint again. */
+    private double recoverAt() {
+        return Math.max(0, Math.min(MAX, setting("recover-at", 30)));
     }
 
     public void refill(Player player) {
@@ -167,16 +206,16 @@ public final class StaminaService implements Listener {
                 continue;
             }
             if (player.isSprinting()) {
-                s.stamina = Math.max(0, s.stamina - setting("sprint-drain", 0.3) * drainFactor(player));
+                s.stamina = Math.max(0, s.stamina - sprintDrain() * drainFactor(player));
                 s.lastSpend = now;
-            } else if (now - s.lastSpend > 15) {
+            } else if (now - s.lastSpend > setting("regen-delay-ticks", 15)) {
                 s.stamina = Math.min(MAX, s.stamina + (player.isSneaking() ? setting("regen-sneaking", 0.5) : setting("regen", 0.4)));
             }
             if (!s.exhausted && s.stamina <= 0) {
                 s.exhausted = true;
                 plugin.health().updateFood(player);
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1.3f);
-            } else if (s.exhausted && s.stamina >= RECOVER_AT) {
+            } else if (s.exhausted && s.stamina >= recoverAt()) {
                 s.exhausted = false;
                 plugin.health().updateFood(player);
             }

@@ -107,7 +107,7 @@ public final class RangeService implements Listener {
     public void enter(Player player) {
         World lobby = plugin.lobby().world();
         if (world == null || lobby == null || plots.containsKey(player.getUniqueId()) || plugin.raids().raidOf(player) != null
-                || !plugin.lobby().isLobby(player.getWorld())) {
+                || plugin.raids().launching(player.getUniqueId()) || !plugin.lobby().isLobby(player.getWorld())) {
             return;
         }
         // The lobby inventory is the real loadout: save it before anything is handed out.

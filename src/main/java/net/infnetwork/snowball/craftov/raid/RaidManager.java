@@ -91,6 +91,11 @@ public final class RaidManager implements Listener {
     private final Map<String, Raid> raids = new HashMap<>();
     private final Map<UUID, Raid> byPlayer = new HashMap<>();
     private final Map<World, Raid> byWorld = new HashMap<>();
+    /**
+     * Players matched into a raid whose map is still being copied ({@link #start}). They are in
+     * the lobby and in no raid yet, and nothing has been taken from them.
+     */
+    private final Map<UUID, Launch> launching = new HashMap<>();
     private int counter;
 
     public RaidManager(CraftovPlugin plugin) {
@@ -291,15 +296,156 @@ public final class RaidManager implements Listener {
     /**
      * Starts a raid for the given squads. Players must currently be in the lobby. The roster is final:
      * nobody joins a raid after it starts. {@code ranked} holds the players who win or lose rank points.
+     *
+     * <p>The squads hear "match found" at once, while the map's template is copied off the server
+     * thread ({@link net.infnetwork.snowball.craftov.map.WorldService#copyRaidTemplate}); until the
+     * copy is done they are {@link #launching} and cannot queue again. Then, back on the server
+     * thread, the raid takes whoever is still fit to go and loads its world. A copy that fails or
+     * outlasts raid.map-copy-timeout-seconds calls the launch off.
      */
-    public void start(MapDef map, Tier tier, List<List<Player>> squads, java.util.Set<UUID> ranked) {
-        World world = plugin.worlds().createRaidWorld(map);
-        if (world == null) {
-            for (List<Player> squad : squads) {
-                squad.forEach(p -> Text.send(p, "<danger>创建行动地图失败，请联系管理员。"));
+    public void start(MapDef map, Tier tier, List<List<Player>> squads, Set<UUID> ranked) {
+        List<List<UUID>> roster = new ArrayList<>();
+        Launch launch = new Launch(map, tier, roster, Set.copyOf(ranked));
+        for (List<Player> squad : squads) {
+            List<UUID> members = new ArrayList<>();
+            for (Player player : squad) {
+                members.add(player.getUniqueId());
+                launching.put(player.getUniqueId(), launch);
+                player.showTitle(Title.title(Text.mm("<accent>匹配成功"), Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
+                        Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
+                player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
             }
-            return;
+            roster.add(members);
         }
+        long timeout = Math.max(1, plugin.getConfig().getInt("raid.map-copy-timeout-seconds", 60)) * 20L;
+        launch.timeout = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!finish(launch)) {
+                return;
+            }
+            plugin.getLogger().warning("Raid launch on " + map.id() + " called off: the map copy took longer than "
+                    + timeout / 20 + " s");
+            for (Player player : launch.online()) {
+                Text.send(player, "<danger>未能出发：行动地图准备超时，已取消本次匹配。<muted>装备和块币都没有动，可以重新匹配。");
+            }
+        }, timeout);
+        plugin.worlds().copyRaidTemplate(map).thenAccept(folder -> {
+            if (launch.over) {
+                // Timed out (and told) or the server is stopping: nobody waits for this copy.
+                if (folder != null) {
+                    plugin.worlds().discardRaidCopy(folder);
+                }
+                return;
+            }
+            List<List<Player>> going = launch.takers();
+            finish(launch);
+            if (folder == null) {
+                going.forEach(squad -> squad.forEach(p -> Text.send(p, "<danger>创建行动地图失败，请联系管理员。")));
+                return;
+            }
+            if (going.isEmpty()) {
+                plugin.getLogger().info("Raid launch on " + map.id() + " called off: everyone dropped out while the map was copied");
+                plugin.worlds().discardRaidCopy(folder);
+                return;
+            }
+            World world = plugin.worlds().loadRaidWorld(folder, map);
+            if (world == null) {
+                going.forEach(squad -> squad.forEach(p -> Text.send(p, "<danger>创建行动地图失败，请联系管理员。")));
+                return;
+            }
+            open(map, tier, world, going, launch.ranked);
+        }).exceptionally(ex -> {
+            finish(launch);
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not start a raid on " + map.id(), ex);
+            return null;
+        });
+    }
+
+    /** Whether this player was matched into a raid whose map is still being copied ({@link #start}). */
+    public boolean launching(UUID uuid) {
+        return launching.containsKey(uuid);
+    }
+
+    /** Raids whose map is still being copied. */
+    public int launches() {
+        return (int) launching.values().stream().distinct().count();
+    }
+
+    /** Ends a launch's wait: its players are free again. False when it had ended already. */
+    private boolean finish(Launch launch) {
+        if (launch.over) {
+            return false;
+        }
+        launch.over = true;
+        if (launch.timeout != null) {
+            launch.timeout.cancel();
+        }
+        launching.values().removeIf(l -> l == launch);
+        return true;
+    }
+
+    /** A raid between "match found" and its world being loaded: the squads as matched, and who of them play ranked. */
+    private final class Launch {
+        final MapDef map;
+        final Tier tier;
+        final List<List<UUID>> squads;
+        final Set<UUID> ranked;
+        org.bukkit.scheduler.@Nullable BukkitTask timeout;
+        boolean over;
+
+        Launch(MapDef map, Tier tier, List<List<UUID>> squads, Set<UUID> ranked) {
+            this.map = map;
+            this.tier = tier;
+            this.squads = squads;
+            this.ranked = ranked;
+        }
+
+        List<Player> online() {
+            List<Player> online = new ArrayList<>();
+            for (List<UUID> squad : squads) {
+                for (UUID uuid : squad) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null) {
+                        online.add(player);
+                    }
+                }
+            }
+            return online;
+        }
+
+        /**
+         * The squads as they go once the map is ready, without the empty ones. Whoever left the
+         * server meanwhile (even if they came back) drops out, as do players who got into another
+         * raid or the queue or no longer pass the queue's checks (they are told why). Nothing has
+         * been taken from anyone yet, so dropping out costs nothing.
+         */
+        List<List<Player>> takers() {
+            List<List<Player>> going = new ArrayList<>();
+            for (List<UUID> squad : squads) {
+                List<Player> team = new ArrayList<>();
+                for (UUID uuid : squad) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player == null || launching.get(uuid) != this || raidOf(uuid) != null || isSpectating(player)
+                            || plugin.match().queued(uuid) != null) {
+                        continue;
+                    }
+                    String why = plugin.match().unfit(player, map, tier);
+                    if (why != null) {
+                        Text.send(player, "<danger>未能出发：" + Text.escape(player.getName()) + " " + why
+                                + "，已退出本局。<muted>装备和安全箱都没有动。");
+                        continue;
+                    }
+                    team.add(player);
+                }
+                if (!team.isEmpty()) {
+                    going.add(team);
+                }
+            }
+            return going;
+        }
+    }
+
+    /** The raid itself, once its world is loaded: the roster goes in, the map is pinned, then deployment. */
+    private void open(MapDef map, Tier tier, World world, List<List<Player>> squads, Set<UUID> ranked) {
         String id = "R" + (++counter);
         Raid raid = new Raid(id, map, tier, world);
         raids.put(id, raid);
@@ -313,9 +459,6 @@ public final class RaidManager implements Listener {
                 raid.players.put(player.getUniqueId(), rp);
                 byPlayer.put(player.getUniqueId(), raid);
                 members.add(player.getUniqueId());
-                player.showTitle(Title.title(Text.mm("<accent>匹配成功"), Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
-                        Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
-                player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
             }
             raid.squads.add(members);
         }
@@ -2102,6 +2245,9 @@ public final class RaidManager implements Listener {
      * instead, the same way (their profile still holds the deployment record).
      */
     public void shutdown() {
+        // Squads whose map is still being copied are in the lobby with nothing taken: they stay
+        // there, and the copy is deleted when it ends (WorldService.copyRaidTemplate).
+        new ArrayList<>(launching.values()).forEach(this::finish);
         for (Raid raid : new ArrayList<>(raids.values())) {
             // A loading raid has not taken anything from its squads yet: they are still in the lobby.
             List<RaidPlayer> voided = new ArrayList<>();
@@ -3013,6 +3159,9 @@ public final class RaidManager implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        // Matched, but the map is still being copied: they just drop out of that raid (nothing
+        // has been charged or taken), even if they are back before the copy is done.
+        launching.remove(player.getUniqueId());
         Raid raid = raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
         if (raid == null || rp == null) {

@@ -115,6 +115,10 @@ raid:
   # Whoever is still on the entry camera this long after deployment (s) is put down on their insertion
   # point at once. The camera itself takes about 7 s; values below 10 count as 10.
   deploy-timeout-seconds: 20
+  # After "match found" the map's template folder is copied off the main thread while the squads wait in
+  # the lobby (they cannot queue again meanwhile; whoever leaves the server drops out). A copy that has
+  # not finished after this many seconds calls the launch off: everyone is told and can queue again.
+  map-copy-timeout-seconds: 60
   # A raid the server stops in (or crashes in) is void for everyone still in it, flying in, downed or
   # disconnected included: back to the gear and secure container they went in with, entry fee and
   # insurance premium refunded, and nothing gained in it counts. Each of them also gets a letter in the

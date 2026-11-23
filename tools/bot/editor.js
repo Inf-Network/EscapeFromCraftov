@@ -186,6 +186,8 @@ async function cycle (bot, slot, n) {
   bot.setControlState('sneak', false)
   await sleep(400)
 }
+/** The name of the editor tool in a hotbar slot, option included ("撤离点 [需拉闸]"). */
+const toolName = (bot, slot) => title(bot.inventory.slots[36 + slot])
 /** In world w, runs a command at a position (the console's own commands run in the overworld). */
 const inWorld = (w, cmd) => rcon(`execute in minecraft:${w} run ${cmd}`)
 const blockIs = async (w, x, y, z, type) => /Test passed/.test(await rcon(`execute in minecraft:${w} if block ${x} ${y} ${z} minecraft:${type}`))
@@ -248,8 +250,9 @@ async function main () {
   let from = A.chatLog.length
   await click(A, LOCK, at(3, 0, 0))
   check('the first lever is switch_1', A.chatLog.slice(from).some(l => l.includes('已设置电闸 switch_1')), A.chatLog.slice(from))
+  // The tool's name carries its option (the action bar may be showing something else by then).
   await cycle(A, EXTRACT, 3)
-  check('the extract tool is on lever extracts', A.bars.slice(-1)[0] && A.bars.slice(-1)[0].includes('需拉闸'), A.bars.slice(-1))
+  check('the extract tool is on lever extracts', await waitFor(() => toolName(A, EXTRACT).includes('需拉闸'), 4000), toolName(A, EXTRACT))
   await click(A, EXTRACT, at(2, -1, -3))
   from = A.chatLog.length
   await click(A, LOCK, at(-3, 0, 0))
@@ -268,7 +271,8 @@ async function main () {
   const there = A.entity.position.floored()
   const bars = A.bars.length
   await click(A, SPAWN, new Vec3(there.x, there.y - 1, there.z))
-  check('a tool click in another world is refused', A.bars.slice(bars).some(b => b.includes('不是正在编辑的世界')), A.bars.slice(bars))
+  check('a tool click in another world is refused', await waitFor(() => A.bars.slice(bars).some(b => b.includes('不是正在编辑的世界')), 4000),
+    A.bars.slice(bars))
   await inWorld(id, `tp ${aName} ${p.x + 0.5} ${p.y} ${p.z + 0.5}`)
   await waitFor(() => A.worldName === id, 8000)
   await sleep(1500)
@@ -319,7 +323,8 @@ async function main () {
     await click(A, SPAWN, at(spawns[g][0], -1, spawns[g][1]))
   }
   await cycle(A, EXTRACT, 3) // lever extracts (3) -> always open (6 % 6)
-  check('the extract tool is back on always-open extracts', A.bars.slice(-1)[0] && A.bars.slice(-1)[0].includes('常驻撤离'), A.bars.slice(-1))
+  check('the extract tool is back on always-open extracts', await waitFor(() => toolName(A, EXTRACT).includes('常驻撤离'), 4000),
+    toolName(A, EXTRACT))
   // Clear of both lever extracts (radius 3.5): a player standing in two extract areas uses the first.
   await click(A, EXTRACT, at(1, -1, 3))
   for (const [dx, dz] of [[-1, 1], [1, 1], [-1, -1], [1, -1], [-2, 1]]) await click(A, CONTAINER, at(dx, -1, dz))

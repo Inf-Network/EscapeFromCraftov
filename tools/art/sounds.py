@@ -270,6 +270,12 @@ add('med/wrap', lambda: norm(mixdown(
     (swish(0.3, 500, 3200) * 0.8, 0),
     (env(crackle(0.26, 650, 1200, 6000, ramp=(0.6, 1.6)), 0.06, 0.09) * 0.45, 0.28),
     (swish(0.28, 600, 3500) * 0.7, 0.28), length=int(SR * 0.6))) * 0.6)
+# A soft drip and a dull throb, heard only by the one bleeding, every time a wound bleeds (1.5 s).
+add('status/bleed', lambda: norm(mixdown(
+    (env(sine(lambda tt: 1100 * np.exp(-tt * 18) + 380, 0.12), 0.002, 0.03), 0),
+    (env(sine(lambda tt: 900 * np.exp(-tt * 18) + 330, 0.1), 0.002, 0.025) * 0.5, 0.21),
+    (env(sine(52, 0.25), 0.01, 0.07) * 0.8, 0.02), length=int(SR * 0.35))) * 0.5)
+
 
 def write_ogg(data, path):
     import oggenc

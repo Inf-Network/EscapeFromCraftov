@@ -92,8 +92,6 @@ public final class HealthService implements Listener {
     private final Map<UUID, Double> lastJump = new HashMap<>();
     private final Map<UUID, MedUse> medUse = new HashMap<>();
     private final Map<UUID, WorldBorder> vignettes = new HashMap<>();
-    /** True while a wound's bleeding is being dealt, so listeners can tell it from a hit. */
-    private boolean bleeding;
 
     public HealthService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -464,12 +462,12 @@ public final class HealthService implements Listener {
             }
             Bleed bleed = bleed(map, bleedSources.get(player.getUniqueId()));
             if (bleed != null) {
+                // Not a hit: no hurt sound for everyone around, no hurt flash, only a quiet drip
+                // for the one bleeding (the HUD's body shows where).
                 plugin.damage().recordBleed(player, "失血", bleed.worst(), bleed.sources());
-                bleeding = true;
-                try {
-                    plugin.damage().deal(player, null, bleed.amount());
-                } finally {
-                    bleeding = false;
+                plugin.raids().loseHealth(player, bleed.amount());
+                if (!plugin.downed().isDowned(player) && plugin.raids().isInRaid(player)) {
+                    player.playSound(player.getLocation(), "craftov:status.bleed", SoundCategory.PLAYERS, 0.4f, 1f);
                 }
                 bleedDrops(player);
             }
@@ -489,11 +487,6 @@ public final class HealthService implements Listener {
                 }
             }
         }
-    }
-
-    /** True during the damage event of a wound bleeding, not a hit. */
-    public boolean isBleeding() {
-        return bleeding;
     }
 
     private void tickSpeed() {

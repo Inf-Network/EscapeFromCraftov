@@ -1409,6 +1409,28 @@ public final class RaidManager implements Listener {
         die(raid, player, rp, deathReason(hit), hit);
     }
 
+    /**
+     * Health a standing raid player loses without being hit: a wound bleeding (HealthService). It is
+     * taken straight off their health, with no damage event, so none of a hit's effects come with
+     * it: no hurt sound for everyone around, no hurt flash of their body, no damage packet. A hit's
+     * rules still hold ({@link #onDamage}, the only handler of a raid player's damage): nothing
+     * during spawn protection, and an amount that would kill downs or kills them, as the last hit
+     * recorded says (DamageService.recordBleed names the bleeding, and who made the wound).
+     */
+    public void loseHealth(Player player, double amount) {
+        Raid raid = raidOf(player);
+        RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
+        if (amount <= 0 || rp == null || rp.state != RaidPlayer.State.ALIVE || !player.getWorld().equals(raid.world)
+                || isProtected(rp) || player.isDead()) {
+            return;
+        }
+        if (amount >= player.getHealth()) {
+            lethal(player, plugin.damage().lastHit(player.getUniqueId()));
+            return;
+        }
+        player.setHealth(player.getHealth() - amount);
+    }
+
     public static String deathReason(DamageService.@Nullable LastHit hit) {
         if (hit == null) {
             return "阵亡";
@@ -1985,8 +2007,14 @@ public final class RaidManager implements Listener {
         }
         Mannequin standIn = rp.standIn != null && rp.standIn.isValid() ? rp.standIn : null;
         if (standIn != null) {
+            // Off its health without a hit, as for the player (loseHealth): a bleeding stand-in that
+            // cried out every 1.5 seconds would give away where the player left the game.
             plugin.damage().recordBleed(standIn, "失血", worst, sources);
-            plugin.damage().deal(standIn, null, amount); // a lethal amount ends in onStandInDamage
+            if (amount >= standIn.getHealth()) {
+                diedOffline(raid, rp, plugin.damage().lastHit(standIn.getUniqueId()));
+                return;
+            }
+            standIn.setHealth(standIn.getHealth() - amount);
             standIn.getWorld().spawnParticle(Particle.BLOCK, standIn.getLocation().add(0, 0.8, 0), 6, 0.2, 0.3, 0.2,
                     Material.REDSTONE_BLOCK.createBlockData());
             return;

@@ -407,11 +407,12 @@ public final class DownedService implements Listener {
 
     /**
      * A reviver who takes damage loses the progress they made. Their own wounds bleeding does not
-     * count: a medic who is bleeding could never finish otherwise.
+     * count (a medic who is bleeding could never finish otherwise): bleeding is no damage event, it
+     * comes straight off their health (RaidManager.loseHealth).
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onReviverHurt(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0 || plugin.health().isBleeding()) {
+        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0) {
             return;
         }
         UUID id = hurt.getUniqueId();

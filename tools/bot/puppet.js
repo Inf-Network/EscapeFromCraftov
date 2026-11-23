@@ -11,6 +11,8 @@
 //   drop                the drop key (Q): reloads a gun
 //   revive <name> on|off  hold right click on that player (a downed squadmate), or let go
 //   chat <text>         say something or run a /command
+//   click <slot>        left-click a slot of the open menu (e.g. post an escort contract)
+//   close               close the open menu
 //   quit
 const readline = require('readline')
 const mineflayer = require('mineflayer')
@@ -62,6 +64,8 @@ readline.createInterface({ input: process.stdin })
         reviving = setInterval(() => bot.activateEntity(target), 200)
       } else if (on) console.log('revive: no', rest[0], 'in sight')
     } else if (cmd === 'chat') bot.chat(rest.join(' '))
+    else if (cmd === 'click' && bot.currentWindow) bot.clickWindow(Number(rest[0]), 0, 0).catch(e => console.log('error', e.message))
+    else if (cmd === 'close' && bot.currentWindow) bot.closeWindow(bot.currentWindow)
     else if (cmd === 'quit') quit()
   })
   .on('close', quit)

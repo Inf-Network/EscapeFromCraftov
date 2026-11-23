@@ -308,6 +308,14 @@ public abstract class Menu implements InventoryHolder {
     protected void onTopClick(InventoryClickEvent event) {
     }
 
+    /**
+     * Whether a drag may go ahead as vanilla does it. Menus refuse every drag; one that lets the
+     * player move their own things (LootMenu) checks the cells it covers.
+     */
+    public boolean drag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        return false;
+    }
+
     protected void onBottomClick(InventoryClickEvent event) {
     }
 

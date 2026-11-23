@@ -67,20 +67,36 @@ class Canvas:
         self.img.save(path)
 
 
-def gradient_bg(size, color, strength=0.55):
-    """Rarity background: soft vertical gradient with a bright bottom bar."""
-    w, h = size
-    img = Image.new('RGBA', size, (0, 0, 0, 0))
-    base = np.zeros((h, w, 4), dtype=np.float32)
-    for y in range(h):
-        t = y / (h - 1)
-        a = 40 + 120 * t ** 1.6
-        base[y, :, 0] = color[0] * (0.45 + 0.55 * t)
-        base[y, :, 1] = color[1] * (0.45 + 0.55 * t)
-        base[y, :, 2] = color[2] * (0.45 + 0.55 * t)
-        base[y, :, 3] = a * strength
-    base[h - 2:, :, :3] = color[:3]
-    base[h - 2:, :, 3] = 235
-    base[0, :, 3] = 0
-    img = Image.fromarray(base.clip(0, 255).astype(np.uint8))
-    return img
+TILE = 36          # a GUI item texture: the whole 18x18 slot at 2 texture pixels per GUI pixel
+TILE_ICON = 2      # where the 32x32 icon sits on the tile (its 16 GUI pixels, as vanilla draws an item)
+TILE_SCALE = TILE / 32  # the GUI model's scale, so the 32 px icon keeps its size and the tile fills the well
+
+
+def rarity_tile(color, rank, backdrop=(13, 16, 20, 255)):
+    """Rarity tile behind an item in a slot (#10): a solid, dark tint of the rarity colour over the
+    whole 18x18 well, lighter towards the bottom, with a 1 GUI px bar of the full colour along the
+    bottom. Purple and above (rank >= 3) are framed in their colour; gold and red (rank >= 4) also
+    get bright corners and a brighter fill, so the rarest finds stand out from purple at a glance.
+    Every feature is a whole GUI pixel (2 texture pixels), so nothing shimmers at any GUI scale."""
+    img = np.zeros((TILE, TILE, 4), dtype=np.float32)
+    keep = {0: 0.80, 1: 0.74, 2: 0.70, 3: 0.66, 4: 0.58, 5: 0.56}[rank]
+    for y in range(TILE):
+        t = y / (TILE - 1)
+        k = keep + 0.08 * (1 - t) - 0.04   # top a little darker than the bottom
+        img[y, :, :3] = [color[i] * (1 - k) + backdrop[i] * k for i in range(3)]
+        img[y, :, 3] = 208
+    img[TILE - 2:, :, :3] = color[:3]
+    img[TILE - 2:, :, 3] = 235
+    if rank >= 3:
+        edge = [color[i] * 0.85 + backdrop[i] * 0.15 for i in range(3)]
+        for sl in (np.s_[0:2, :], np.s_[:, 0:2], np.s_[:, TILE - 2:]):
+            img[sl][..., :3] = edge
+            img[sl][..., 3] = 225
+    if rank >= 4:
+        bright = [min(255, color[i] * 0.6 + 255 * 0.4) for i in range(3)]
+        n = 8
+        for ys, xs in ((np.s_[0:2], np.s_[0:n]), (np.s_[0:n], np.s_[0:2]), (np.s_[0:2], np.s_[TILE - n:]),
+                       (np.s_[0:n], np.s_[TILE - 2:])):
+            img[ys, xs, :3] = bright
+            img[ys, xs, 3] = 245
+    return Image.fromarray(img.clip(0, 255).astype(np.uint8))

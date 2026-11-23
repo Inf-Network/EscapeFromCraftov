@@ -32,6 +32,8 @@ const RIG = 7
 const PACK = 8
 const MELEE = 38
 const POCKETS = [36, 37, 39, 40, 41, 42, 43] // hotbar minus the melee slot and the terminal (44)
+// Keys 4-8 take medkits; keys 1-2 take guns only and a rig or backpack goes into a backpack cell (#10).
+const QUICK = [39, 40, 41, 42, 43]
 const RIG_CELLS = range(9, 9)
 const PACK_CELLS = range(18, 18)
 const OUTSIDE = -999
@@ -144,14 +146,15 @@ function check (label, ok, detail) {
 
 // ------------------------------------------------------------------ kit
 
-const emptyPocket = () => POCKETS.find(s => !bot.inventory.slots[s])
+/** A free cell for what is on the cursor: a quick key for a medkit, a backpack cell for a rig or backpack. */
+const emptyPocket = () => [...QUICK, ...PACK_CELLS].find(s => !bot.inventory.slots[s])
 
 /** Frees a pocket by deleting a filler medkit, so a container given next is not dropped on the floor. */
 async function freePocket () {
   if (emptyPocket() !== undefined) return
-  const filler = POCKETS.find(s => at(s) === 'medkit_s')
+  const filler = PACK_CELLS.find(s => at(s) === 'medkit_s')
   if (filler !== undefined) {
-    await cmd(`item replace entity ${name} hotbar.${filler - 36} with minecraft:air`)
+    await cmd(`item replace entity ${name} container.${filler} with minecraft:air`)
     await settle()
   }
 }
@@ -181,7 +184,7 @@ async function wear (slot, id) {
 async function kit () {
   await wear(RIG, 'rig_3')
   await wear(PACK, 'pack_3')
-  const empty = [...POCKETS, ...RIG_CELLS, ...PACK_CELLS].filter(s => !bot.inventory.slots[s]).length
+  const empty = [...QUICK, ...RIG_CELLS, ...PACK_CELLS].filter(s => !bot.inventory.slots[s]).length
   for (let i = 0; i < empty; i++) await cmd(`cv give ${name} medkit_s`)
   await settle()
   log('kit', describe())
@@ -284,22 +287,23 @@ const checks = [
     check('lobby-shift-wear', onCursor === 'pack_3' && at(PACK) === 'pack_3' && cursor() === null && world() === before,
       `cursorBefore=${onCursor} before=${before} after=${world()} ${describe()}`)
   }],
-  ['lobby-shift-blocked', 'lobby: with the full backpack on the cursor, shift-clicking another backpack on is refused and nothing is mailed', async () => {
+  ['lobby-shift-blocked', 'lobby: with the full rig on the cursor, shift-clicking another rig on is refused and nothing is mailed', async () => {
+    // A spare rig fits in a backpack cell only (#10 zone rules), so it is the rig that comes off.
     await freePocket()
-    await cmd(`cv give ${name} pack_2`)
+    await cmd(`cv give ${name} rig_2`)
     await settle()
-    const spare = POCKETS.find(s => at(s) === 'pack_2')
+    const spare = PACK_CELLS.find(s => at(s) === 'rig_2')
     const mailBefore = await mailbox()
-    click(PACK); await settle()
+    click(RIG); await settle()
     const before = world()
     chat.length = 0
     click(spare, 0, 1)
     await settle()
-    const refused = at(spare) === 'pack_2' && at(PACK) === null && cursor() === 'pack_3'
+    const refused = at(spare) === 'rig_2' && at(RIG) === null && cursor() === 'rig_3'
     closeInv()
     await settle()
     const mailAfter = await mailbox()
-    check('lobby-shift-blocked', spare !== undefined && refused && at(PACK) === 'pack_3' && at(spare) === 'pack_2' && world() === before && mailAfter === mailBefore,
+    check('lobby-shift-blocked', spare !== undefined && refused && at(RIG) === 'rig_3' && at(spare) === 'rig_2' && world() === before && mailAfter === mailBefore,
       `spare=${spare} refused=${refused} before=${before} after=${world()} mailbox ${mailBefore} -> ${mailAfter} ${describe()} chat=${JSON.stringify(chat.slice(-2))}`)
   }],
   ['lobby-quit', 'lobby: leaving with the full backpack on the cursor keeps it for the next login', async () => {

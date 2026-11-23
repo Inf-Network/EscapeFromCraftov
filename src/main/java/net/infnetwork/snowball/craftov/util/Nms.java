@@ -647,6 +647,11 @@ public final class Nms {
          * the network thread, on a copy.
          */
         volatile java.util.function.@Nullable UnaryOperator<org.bukkit.inventory.ItemStack> helmet;
+        /**
+         * What the player's own crafting grid shows (raw slots 0..4 of container 0, as NMS stacks), or
+         * null for what is really there (always nothing). Client-only: the inventory screen's info cells.
+         */
+        volatile Object @Nullable [] crafting;
 
         /**
          * The walking speed to send: the client's multiplier is lerp(slider, 1, (move / walk + 1) / 2),
@@ -798,6 +803,75 @@ public final class Nms {
         view.helmet = selfReady ? helmet : null;
     }
 
+    /** The crafting grid's raw slots 0..4 in the player's own inventory menu. */
+    public static final int CRAFTING_SLOTS = 5;
+
+    /**
+     * Shows {@code shown} (raw slots 0..4: result, then the 2x2 grid) in the player's own crafting
+     * grid from the next update on, or the real, empty grid again for null. The stacks exist only in
+     * packets: the server's grid stays empty, so nothing shown there can ever be taken out or be
+     * dropped back into the inventory when the screen closes. Returns false when the own view cannot
+     * be rewritten on this server.
+     */
+    public static boolean selfCrafting(SelfView view, org.bukkit.inventory.@Nullable ItemStack @Nullable [] shown) {
+        if (!selfReady) {
+            view.crafting = null;
+            return false;
+        }
+        if (shown == null) {
+            view.crafting = null;
+            return true;
+        }
+        try {
+            Object[] nms = new Object[CRAFTING_SLOTS];
+            for (int i = 0; i < CRAFTING_SLOTS; i++) {
+                org.bukkit.inventory.ItemStack stack = i < shown.length ? shown[i] : null;
+                nms[i] = asNmsCopy.invoke(null, stack == null ? org.bukkit.inventory.ItemStack.empty() : stack);
+            }
+            view.crafting = nms;
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            view.crafting = null;
+            return false;
+        }
+    }
+
+    /**
+     * Sends the player their own inventory menu's {@code slots} as the server has them, so the own-view
+     * rewriting dresses them again (the crafting grid's info cells after a click the client already
+     * acted out, or after the screen closed). Uses the menu's current state id, so no resync follows.
+     */
+    public static void resendOwnSlots(Player player, int... slots) {
+        if (!selfReady) {
+            return;
+        }
+        try {
+            Object handle = getHandle.invoke(player);
+            if (inventoryMenu == null) {
+                inventoryMenu = Class.forName("net.minecraft.world.entity.player.Player").getField("inventoryMenu");
+                menuStateId = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu").getMethod("getStateId");
+                menuSlot = Class.forName("net.minecraft.world.inventory.AbstractContainerMenu").getMethod("getSlot", int.class);
+                slotItem = Class.forName("net.minecraft.world.inventory.Slot").getMethod("getItem");
+                itemCopy = Class.forName("net.minecraft.world.item.ItemStack").getMethod("copy");
+            }
+            Object menu = inventoryMenu.get(handle);
+            int state = (int) menuStateId.invoke(menu);
+            Object connection = playerConnection.get(handle);
+            for (int slot : slots) {
+                Object item = itemCopy.invoke(slotItem.invoke(menuSlot.invoke(menu, slot)));
+                sendPacket.invoke(connection, setSlotCtor.newInstance(0, state, slot, item));
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // the cells come back with the next inventory update
+        }
+    }
+
+    private static @Nullable Field inventoryMenu;
+    private static @Nullable Method menuStateId;
+    private static @Nullable Method menuSlot;
+    private static @Nullable Method slotItem;
+    private static @Nullable Method itemCopy;
+
     /**
      * Rewrites what the player is told about themselves: every abilities packet carries the walking
      * speed {@link SelfView} asks for, every update of their movement speed is followed in the same
@@ -842,7 +916,8 @@ public final class Nms {
         /** Whether a packet on its own may need rewriting: most do not, and pass without any allocation. */
         private boolean concerns(Object msg) {
             return attributesPacketClass.isInstance(msg) || abilitiesPacketClass.isInstance(msg)
-                    || view.helmet != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg) || equipmentClass.isInstance(msg));
+                    || view.helmet != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg) || equipmentClass.isInstance(msg))
+                    || view.crafting != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg));
         }
 
         /** Copies {@code in} to {@code out} rewritten; true if anything changed. */
@@ -865,6 +940,10 @@ public final class Nms {
                     java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress = view.helmet;
                     if (dress != null) {
                         replaced = withHelmet(part, dress);
+                    }
+                    Object[] crafting = view.crafting;
+                    if (crafting != null) {
+                        replaced = withCrafting(replaced, crafting);
                     }
                 }
                 changed |= replaced != part;
@@ -892,6 +971,29 @@ public final class Nms {
         private static Object dressed(Object real, java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress)
                 throws ReflectiveOperationException {
             return asNmsCopy.invoke(null, dress.apply((org.bukkit.inventory.ItemStack) asBukkitCopy.invoke(null, real)));
+        }
+
+        /** The same slot or content update of container 0 with the crafting grid showing {@code shown}. */
+        private static Object withCrafting(Object part, Object[] shown) throws ReflectiveOperationException {
+            if (setSlotClass.isInstance(part)) {
+                int slot = (int) setSlotSlot.invoke(part);
+                if ((int) setSlotContainer.invoke(part) == 0 && slot >= 0 && slot < shown.length) {
+                    return setSlotCtor.newInstance(0, setSlotState.invoke(part), slot, shown[slot]);
+                }
+                return part;
+            }
+            if (setContentClass.isInstance(part)) {
+                java.util.List<?> items = (java.util.List<?>) setContentItems.invoke(part);
+                if ((int) setContentContainer.invoke(part) != 0 || items.size() < shown.length) {
+                    return part;
+                }
+                java.util.List<Object> copy = new java.util.ArrayList<>(items);
+                for (int i = 0; i < shown.length; i++) {
+                    copy.set(i, shown[i]);
+                }
+                return setContentCtor.newInstance(0, setContentState.invoke(part), copy, setContentCarried.invoke(part));
+            }
+            return part;
         }
 
         private Object withHelmet(Object part, java.util.function.UnaryOperator<org.bukkit.inventory.ItemStack> dress)

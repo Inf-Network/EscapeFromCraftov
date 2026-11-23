@@ -131,6 +131,7 @@ final class HealthMenu extends Menu {
         }
         if (from != held) {
             plugin.weapons().flush(viewer);
+            plugin.health().interruptMed(viewer);
             ItemStack med = inv.getItem(from);
             ItemStack current = inv.getItem(held);
             inv.setItem(held, med);

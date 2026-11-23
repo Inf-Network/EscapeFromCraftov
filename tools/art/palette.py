@@ -16,6 +16,10 @@ DIM = '#69707A'      # disabled, placeholders
 OK = '#7FD1AE'
 DANGER = '#E5484D'
 INFO = '#8AB4F8'
+# Carry zones (#10): the rig row and the backpack rows are told apart by a hue of their own, kept dull
+# so they never read as a rarity. Used for the wells, the margin tags and the locked-cell stripes.
+ZONE_RIG = '#5C87A8'   # steel blue
+ZONE_PACK = '#8C8A5A'  # olive drab
 
 
 def luminance(color):

@@ -28,13 +28,15 @@ import sounds  # noqa: E402
 import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
 import gunsamples  # noqa: E402
+import guiview  # noqa: E402
 import hands  # noqa: E402
 import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
 import screens  # noqa: E402
 import ui  # noqa: E402
-from px import gradient_bg, rgb  # noqa: E402
+import px  # noqa: E402
+from px import rgb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 RES = os.path.join(ROOT, 'src', 'main', 'resources')
@@ -70,7 +72,33 @@ def model_ref(model):
 
 def gui_select(gui_model, other_model):
     return {'model': {'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                      'cases': [{'when': ['gui'], 'model': model_ref(gui_model)}], 'fallback': model_ref(other_model)}}
+                      'cases': [{'when': ['gui'], 'model': gui_model}], 'fallback': model_ref(other_model)},
+            'oversized_in_gui': True}
+
+
+# GUI item models cover the whole 18x18 slot (#10): their textures are px.TILE (36) wide with the 32 px
+# icon in the middle, and the model is scaled up so the icon keeps its 16 GUI px and the tile reaches the
+# well's edges. The client clips a GUI item to 16x16 unless its definition says oversized_in_gui.
+GUI_DISPLAY = {'gui': {'scale': [px.TILE_SCALE] * 3}}
+# Badges sit a little nearer the eye than the item under them, so the two never fight for depth.
+BADGE_DISPLAY = {'gui': {'scale': [px.TILE_SCALE] * 3, 'translation': [0, 0, 2]}}
+BADGE_VALUE, BADGE_PLUS = 6, 7   # custom_model_data strings the stash sets on its display copies (StashMenu)
+
+
+def gui_tile_model(texture, display=None):
+    return {'parent': 'minecraft:item/generated', 'textures': {'layer0': texture}, 'display': display or GUI_DISPLAY}
+
+
+def gui_case(item_id):
+    """An item's look in a slot: its tile and icon, and the stash's corner badges over them."""
+    return {'type': 'minecraft:composite', 'models': [
+        model_ref('craftov:item/gui/' + item_id),
+        {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': BADGE_VALUE,
+         'cases': [{'when': 'v%d' % k, 'model': model_ref('craftov:item/badge/value_%d' % k)} for k in range(1, 5)],
+         'fallback': {'type': 'minecraft:empty'}},
+        {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': BADGE_PLUS,
+         'cases': [{'when': 'plus', 'model': model_ref('craftov:item/badge/plus')}],
+         'fallback': {'type': 'minecraft:empty'}}]}
 
 
 def generated(texture, parent='minecraft:item/generated'):
@@ -340,7 +368,7 @@ def build_gun(item_id, spec, item_defs):
 
     atts = attachments_for(spec, item_defs)
     tree = {'type': 'minecraft:select', 'property': 'minecraft:display_context',
-            'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)},
+            'cases': [{'when': ['gui'], 'model': gui_case(item_id)},
                       {'when': ['firstperson_righthand', 'firstperson_lefthand'],
                        'model': wrap_attachments(first_person, item_id, atts)}],
             'fallback': wrap_attachments(others, item_id, atts)}
@@ -352,13 +380,13 @@ def build_gun(item_id, spec, item_defs):
     path = os.path.join(CV, 'items', item_id + '.json')
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'model': tree, 'hand_animation_on_swap': False}, f, separators=(',', ':'))
+        json.dump({'model': tree, 'hand_animation_on_swap': False, 'oversized_in_gui': True}, f, separators=(',', ':'))
 
 
 def build_items(item_defs):
     for item_id, spec in item_defs.items():
         rarity = spec.get('rarity', 'WHITE')
-        bg = gradient_bg((32, 32), rgb(RARITY_COLORS[rarity]))
+        bg = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
         if item_id in models.GUNS:
             icon = models.gun_icon(item_id)
             held = 'craftov:item/gun/' + item_id
@@ -380,15 +408,15 @@ def build_items(item_defs):
                 write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id))
         save(icon, os.path.join(CV, 'textures', 'item', item_id + '.png'))
         composite = bg.copy()
-        composite.alpha_composite(icon)
+        composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
-        write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), generated('craftov:item/gui/' + item_id))
+        write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), gui_tile_model('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
             build_gun(item_id, spec, item_defs)
         elif item_id in knife_inspect.KEYS:
             write_knife_item(item_id, item_id, item_id, held)
         else:
-            write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
+            write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
     save(hands.texture(), os.path.join(CV, 'textures', 'item', 'hands.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
@@ -433,11 +461,11 @@ def write_knife_item(name, frames_name, knife, held):
         entries.append({'threshold': threshold, 'model': gloved('craftov:item/' + path, k + 1)})
     write_json(os.path.join(CV, 'items', name + '.json'), {'model': {
         'type': 'minecraft:select', 'property': 'minecraft:display_context',
-        'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + name)},
+        'cases': [{'when': ['gui'], 'model': gui_case(name)},
                   {'when': ['firstperson_righthand', 'firstperson_lefthand'],
                    'model': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
                              'entries': entries, 'fallback': gloved(held, 0)}}],
-        'fallback': model_ref(held)}})
+        'fallback': model_ref(held)}, 'oversized_in_gui': True})
 
 
 def load_knife_skins():
@@ -465,10 +493,11 @@ def build_knife_skins(item_defs):
         save(icon, os.path.join(CV, 'textures', 'item', name + '.png'))
         write_json(os.path.join(CV, 'models', 'item', name + '.json'),
                    knife_model('craftov:item/' + name))
-        composite = gradient_bg((32, 32), rgb(RARITY_COLORS[item_defs[knife].get('rarity', 'WHITE')]))
-        composite.alpha_composite(icon)
+        rarity = item_defs[knife].get('rarity', 'WHITE')
+        composite = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
+        composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', name + '.png'))
-        write_json(os.path.join(CV, 'models', 'item', 'gui', name + '.json'), generated('craftov:item/gui/' + name))
+        write_json(os.path.join(CV, 'models', 'item', 'gui', name + '.json'), gui_tile_model('craftov:item/gui/' + name))
         write_knife_item(name, sid, knife, 'craftov:item/' + name)
 
 
@@ -634,6 +663,21 @@ def build_ui():
         save(img, os.path.join(CV, 'textures', 'item', 'ui', name + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), generated('craftov:item/ui/' + name))
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
+    # Slot-filling tiles (locked carry cells) and the stash's corner badges: 36 px, scaled over the well.
+    for name, fn in ui.TILES.items():
+        save(fn(), os.path.join(CV, 'textures', 'item', 'ui', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), gui_tile_model('craftov:item/ui/' + name))
+        write_json(os.path.join(CV, 'items', 'ui', name + '.json'),
+                   {'model': model_ref('craftov:item/ui/' + name), 'oversized_in_gui': True})
+    for name, fn in ui.BADGES.items():
+        save(fn(), os.path.join(CV, 'textures', 'item', 'badge', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'badge', name + '.json'),
+                   gui_tile_model('craftov:item/badge/' + name, BADGE_DISPLAY))
+    # The load gauge in the inventory's info cell: CarryInfo puts the frame in custom_model_data float 0.
+    write_json(os.path.join(CV, 'items', 'ui', 'info_weight.json'), {'model': {
+        'type': 'minecraft:range_dispatch', 'property': 'minecraft:custom_model_data', 'index': 0,
+        'entries': [{'threshold': k, 'model': model_ref('craftov:item/ui/info_weight_%d' % k)} for k in range(ui.WEIGHT_LEVELS)],
+        'fallback': model_ref('craftov:item/ui/info_weight_0')}})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
     save(models.mask_image(), os.path.join(CV, 'textures', 'item', 'scope', 'mask.png'))
     for oid in models.MASK_HOLE:
@@ -671,6 +715,13 @@ def build_screens():
     save(screens.inventory(), os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png'))
     for kind in ('helmet', 'chestplate', 'leggings', 'boots'):
         save(screens.silhouette(kind), os.path.join(MC, 'textures', 'gui', 'sprites', 'container', 'slot', kind + '.png'))
+    # The offhand is never used and the recipe book has nothing in it: neither shows (#10). The
+    # recipe-book button is still there to click, so the inventory art keeps its spot clear.
+    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)),
+         os.path.join(MC, 'textures', 'gui', 'sprites', 'container', 'slot', 'shield.png'))
+    for sprite in ('button', 'button_highlighted'):
+        save(Image.new('RGBA', (20, 18), (0, 0, 0, 0)),
+             os.path.join(MC, 'textures', 'gui', 'sprites', 'recipe_book', sprite + '.png'))
     for lang in ('zh_cn', 'zh_tw', 'zh_hk', 'en_us'):
         write_json(os.path.join(MC, 'lang', lang + '.json'), screens.LANG)
     ratios = screens.contrast_report()
@@ -1274,6 +1325,15 @@ def main():
     build_betterhud()
     count = sum(len(files) for _, _, files in os.walk(PACK))
     print(f'pack files: {count}, betterhud files: {sum(len(f) for _, _, f in os.walk(BH))}')
+    # Slot wells, glyph grid, code points, oversized GUI models, tooltip nine-slices: a failure here
+    # means a screen would not line up in the game (tools/art/guiview.py makes previews of them).
+    problems = guiview.check()
+    if problems:
+        print('guiview: %d problem(s)' % len(problems))
+        for problem in problems:
+            print('  ' + problem)
+        sys.exit(1)
+    print('guiview: all screens line up')
     # The gun reports as the client will decode them: a failure here means the pack must not ship.
     failures = audiocheck.check(os.path.join(CV, 'sounds'), verbose=False)
     if failures:

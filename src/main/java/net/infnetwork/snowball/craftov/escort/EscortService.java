@@ -130,8 +130,9 @@ public final class EscortService {
     }
 
     public void create(Player client, long reward, String note) {
-        if (involving(client.getUniqueId()) != null) {
-            Notify.error(client, "你已经有一份进行中的护航委托。");
+        Contract held = involving(client.getUniqueId());
+        if (held != null) {
+            Notify.error(client, busy(held, client.getUniqueId(), "发布新的委托"));
             return;
         }
         Profile profile = plugin.profiles().get(client);
@@ -166,8 +167,7 @@ public final class EscortService {
         }
         Contract held = involving(escort.getUniqueId());
         if (held != null) {
-            Text.send(escort, held == c ? "<danger>你已经接取了这份委托。"
-                    : "<danger>你已经在 " + Text.escape(held.clientName) + " 的护航委托中，离开其小队后才能接取别的委托。");
+            Notify.error(escort, held == c ? "你已经接取了这份委托。" : busy(held, escort.getUniqueId(), "接取别的委托"));
             return;
         }
         if (c.escorts.size() >= 2) {
@@ -188,6 +188,22 @@ public final class EscortService {
         c.state = State.ACCEPTED;
         Text.send(escort, "<ok>已接取 " + Text.escape(c.clientName) + " 的护航委托。保护老板安全撤离即可获得 ◈" + Text.money(c.reward));
         Text.send(client, "<ok>" + Text.escape(escort.getName()) + " 接取了你的护航委托！");
+    }
+
+    /**
+     * Why a player already on {@code held} cannot take on another contract ({@code then} is what
+     * they tried, e.g. "接取别的委托"), and what frees them up. A client hears about the contract
+     * they posted and an escort about the client they guard: a client used to read their own name
+     * as the client of the contract they were "in". Once the client has deployed, neither a cancel
+     * nor leaving the squad frees anyone (both skip a contract in a raid): the client's raid has
+     * to end first, which also lets an escort who died or got out early move on.
+     */
+    private static String busy(Contract held, UUID uuid, String then) {
+        boolean out = held.state == State.IN_RAID;
+        if (held.client.equals(uuid)) {
+            return (out ? "你的护航委托正在行动中，这局结束后才能" : "你已经发布了一份护航委托，取消后才能") + then + "。";
+        }
+        return "你正在护航 " + Text.escape(held.clientName) + (out ? "，老板这局结束后才能" : "，离开其小队后才能") + then + "。";
     }
 
     public void cancel(Player client) {

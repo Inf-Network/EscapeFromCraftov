@@ -267,7 +267,7 @@ public final class CraftovCommand implements TabExecutor {
                 if (optic != null && optic.optic() != null && def.gun().accepts(optic.optic())) {
                     stack = plugin.items().withOptic(stack, optic.id()); // /cv give <玩家> <枪> 1 <瞄准镜>
                 }
-                plugin.carry().give(target, stack, true);
+                plugin.carry().giveOrWear(target, stack, true, false);
                 // The stack is capped at the item's stack size: say what was handed out.
                 Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + stack.getAmount());
             }

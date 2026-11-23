@@ -258,7 +258,7 @@ async function deposit (role, wanted) {
   for (let round = 0; round < 12; round++) {
     const i = findCarried(w, it => wanted.includes(cid(it)))
     if (i < 0) break
-    await bot.clickWindow(bottom(w, i), 0, 0) // a click moves the stack into the box
+    await bot.clickWindow(bottom(w, i), 0, 1) // shift-left moves the stack into the box (#10)
     await sleep(400)
   }
   const box = [...empty].filter(s => wanted.includes(cid(w.slots[s]))).map(s => [s, cid(w.slots[s])])

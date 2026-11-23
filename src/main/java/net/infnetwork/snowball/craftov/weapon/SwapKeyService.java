@@ -24,22 +24,21 @@ import java.util.UUID;
  * every swap).
  *
  * <p>A client sends F from the middle of its tick, before what else that tick did: Shift going up or
- * down and W let go (and so a sprint ending) are only sent at the end of the same tick, and the slot
- * change of a hotbar key pressed in the same tick only at the start of the next one. Read as it came
- * in, F pressed as Shift went up fired the skill, Shift and F pressed together inspected the knife
- * instead of firing it, F as W went up after a sprint was refused as sprinting, and 3 then F in one
- * tick switched the gun's fire mode instead of inspecting the knife (#104). So F waits for the
+ * down is only sent at the end of the same tick, and the slot change of a hotbar key pressed in the
+ * same tick only at the start of the next one. Read as it came in, F pressed as Shift went up fired
+ * the skill, Shift and F pressed together inspected the knife instead of firing it, and 3 then F in
+ * one tick switched the gun's fire mode instead of inspecting the knife (#104). So F waits for the
  * client's ticks to end (the client sends {@link ClientTickEndEvent} as the last packet of every
- * tick): Shift and the sprint are read at the end of the tick F was pressed in, the hand at the end
- * of the next one, after its slot change. That is 50 to 100 ms, less than a frame of the inspect or
- * the fire-mode sound. A client that sends no tick ends (a bot) has its F read
- * {@link #FALLBACK_TICKS} server ticks after it came in. A client that sent the first tick end does
- * send them, and its second one is only late (a few frames a second put the next tick in the next
- * frame, or the connection jitters): reading the hand before it would bring the 3-then-F race back,
- * so that F waits up to {@link #LATE_TICKS}.
+ * tick): Shift is read at the end of the tick F was pressed in, the hand at the end of the next one,
+ * after its slot change. That is 50 to 100 ms, less than a frame of the inspect or the fire-mode
+ * sound. A client that sends no tick ends (a bot) has its F read {@link #FALLBACK_TICKS} server
+ * ticks after it came in. A client that sent the first tick end does send them, and its second one
+ * is only late (a few frames a second put the next tick in the next frame, or the connection
+ * jitters): reading the hand before it would bring the 3-then-F race back, so that F waits up to
+ * {@link #LATE_TICKS}.
  *
- * <p>Each F is read on its own and in order, with the Shift, sprint and hand of its own tick: two
- * quick taps on a gun step the fire mode twice, as they did when F was read as it came in.
+ * <p>Each F is read on its own and in order, with the Shift and hand of its own tick: two quick taps
+ * on a gun step the fire mode twice, as they did when F was read as it came in.
  */
 public final class SwapKeyService implements Listener {
 
@@ -56,10 +55,9 @@ public final class SwapKeyService implements Listener {
 
     private static final class Press {
         final long arrived;
-        /** Client tick ends seen since F: the first fixes Shift and the sprint, the second reads F. */
+        /** Client tick ends seen since F: the first fixes Shift, the second reads F. */
         int tickEnds;
         boolean sneaking;
-        boolean sprinting;
 
         Press(long arrived) {
             this.arrived = arrived;
@@ -90,7 +88,6 @@ public final class SwapKeyService implements Listener {
         for (Press press : presses) {
             if (++press.tickEnds == 1) {
                 press.sneaking = player.isSneaking();
-                press.sprinting = player.isSprinting();
             }
         }
         // Presses came in order, so the ones whose second tick end this was are at the front.
@@ -117,7 +114,6 @@ public final class SwapKeyService implements Listener {
                 Press press = presses.pollFirst();
                 if (press.tickEnds == 0) {
                     press.sneaking = player.isSneaking();
-                    press.sprinting = player.isSprinting();
                 }
                 read(player, press);
             }
@@ -139,14 +135,14 @@ public final class SwapKeyService implements Listener {
                 plugin.weapons().nextFireMode(player);
             } else if (def != null && def.isMelee()) {
                 what = "knife";
-                plugin.inspect().press(player, def, press.sprinting);
+                plugin.inspect().press(player, def);
             } else {
                 what = "nothing";
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
             plugin.getLogger().info(String.format("[debug] F %s -> %s (sneak=%b sprint=%b slot=%d, read after %d client tick ends, %d ticks)",
-                    player.getName(), what, press.sneaking, press.sprinting, player.getInventory().getHeldItemSlot(),
+                    player.getName(), what, press.sneaking, player.isSprinting(), player.getInventory().getHeldItemSlot(),
                     press.tickEnds, Bukkit.getCurrentTick() - press.arrived));
         }
     }

@@ -14,93 +14,123 @@
   "advance": 177,
   "left": 0
  },
- "stash": {
+ "stash_0": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "trader": {
+ "stash_1": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_1": {
+ "stash_2": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_2": {
+ "stash_3": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_3": {
+ "stash_4": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_4": {
+ "stash_5": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_5": {
+ "stash_6": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_6": {
+ "stash_7": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "health": {
+ "stash_8": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "gunsmith": {
+ "trader": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_ok": {
+ "loot_9": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_fail": {
+ "loot_18": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_training_ok": {
+ "loot_27": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_training_fail": {
+ "loot_36": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_starter": {
+ "health": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_tactical": {
+ "gunsmith": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_machete": {
+ "settlement_ok": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_karambit": {
+ "settlement_fail": {
   "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "settlement_training_ok": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "settlement_training_fail": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_starter": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_tactical": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_machete": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_karambit": {
+  "char": "",
   "advance": 177,
   "left": 0
  }

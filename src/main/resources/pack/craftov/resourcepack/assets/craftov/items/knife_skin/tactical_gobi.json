@@ -8,8 +8,68 @@
      "gui"
     ],
     "model": {
-     "type": "minecraft:model",
-     "model": "craftov:item/gui/knife_skin/tactical_gobi"
+     "type": "minecraft:composite",
+     "models": [
+      {
+       "type": "minecraft:model",
+       "model": "craftov:item/gui/knife_skin/tactical_gobi"
+      },
+      {
+       "type": "minecraft:select",
+       "property": "minecraft:custom_model_data",
+       "index": 6,
+       "cases": [
+        {
+         "when": "v1",
+         "model": {
+          "type": "minecraft:model",
+          "model": "craftov:item/badge/value_1"
+         }
+        },
+        {
+         "when": "v2",
+         "model": {
+          "type": "minecraft:model",
+          "model": "craftov:item/badge/value_2"
+         }
+        },
+        {
+         "when": "v3",
+         "model": {
+          "type": "minecraft:model",
+          "model": "craftov:item/badge/value_3"
+         }
+        },
+        {
+         "when": "v4",
+         "model": {
+          "type": "minecraft:model",
+          "model": "craftov:item/badge/value_4"
+         }
+        }
+       ],
+       "fallback": {
+        "type": "minecraft:empty"
+       }
+      },
+      {
+       "type": "minecraft:select",
+       "property": "minecraft:custom_model_data",
+       "index": 7,
+       "cases": [
+        {
+         "when": "plus",
+         "model": {
+          "type": "minecraft:model",
+          "model": "craftov:item/badge/plus"
+         }
+        }
+       ],
+       "fallback": {
+        "type": "minecraft:empty"
+       }
+      }
+     ]
     }
    },
    {
@@ -1046,5 +1106,6 @@
    "type": "minecraft:model",
    "model": "craftov:item/knife_skin/tactical_gobi"
   }
- }
+ },
+ "oversized_in_gui": true
 }

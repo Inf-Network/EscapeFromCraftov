@@ -7,6 +7,7 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
+import net.infnetwork.snowball.craftov.security.VanillaGuardService;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -1993,7 +1994,7 @@ public final class WeaponService implements Listener {
     public void onEntityUse(PlayerInteractEntityEvent event) {
         long now = Bukkit.getCurrentTick();
         lastEntityUse.put(event.getPlayer().getUniqueId(), now);
-        if (event.isCancelled()) {
+        if (VanillaGuardService.taken(event)) {
             handledUse.put(event.getPlayer().getUniqueId(), now);
         }
     }

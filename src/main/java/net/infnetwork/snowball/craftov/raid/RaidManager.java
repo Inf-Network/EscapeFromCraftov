@@ -66,7 +66,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,14 +77,6 @@ import java.util.function.Supplier;
 
 /** Owns every running raid: deployment, extraction, death, disconnects and settlement. */
 public final class RaidManager implements Listener {
-
-    private static final Set<Material> BLOCKED_INTERACT = EnumSet.of(Material.CHEST, Material.TRAPPED_CHEST, Material.BARREL,
-            Material.FURNACE, Material.BLAST_FURNACE, Material.SMOKER, Material.CRAFTING_TABLE, Material.ANVIL,
-            Material.CHIPPED_ANVIL, Material.DAMAGED_ANVIL, Material.ENCHANTING_TABLE, Material.BREWING_STAND,
-            Material.LOOM, Material.CARTOGRAPHY_TABLE, Material.SMITHING_TABLE, Material.STONECUTTER, Material.GRINDSTONE,
-            Material.LECTERN, Material.HOPPER, Material.DROPPER, Material.DISPENSER, Material.ENDER_CHEST, Material.BEACON,
-            Material.CRAFTER, Material.DECORATED_POT, Material.JUKEBOX, Material.NOTE_BLOCK, Material.CAULDRON,
-            Material.FLOWER_POT, Material.CHISELED_BOOKSHELF, Material.RESPAWN_ANCHOR, Material.BELL);
 
     private final CraftovPlugin plugin;
     private final Map<String, Raid> raids = new HashMap<>();
@@ -3233,8 +3224,7 @@ public final class RaidManager implements Listener {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }
-        if (BLOCKED_INTERACT.contains(block.getType()) || block.getType().name().endsWith("_BED")
-                || block.getType().name().endsWith("SHULKER_BOX")) {
+        if (net.infnetwork.snowball.craftov.security.VanillaGuardService.locked(block)) {
             event.setCancelled(true);
             return;
         }
@@ -3398,9 +3388,25 @@ public final class RaidManager implements Listener {
             }
             return;
         }
-        if (!plugin.carry().hasRoomFor(player, stack)) {
-            event.setCancelled(true);
+        // Vanilla would put it into the first free cell whatever the carry zones take: it goes where it
+        // belongs (CarryService#route) and never into the slot in hand, and only when all of it fits.
+        event.setCancelled(true);
+        if (!plugin.carry().hasRoomFor(player, stack, true)) {
+            return;
         }
+        ItemStack left = plugin.carry().giveOrWear(player, stack, false, true);
+        int taken = stack.getAmount() - (left == null ? 0 : left.getAmount());
+        if (taken <= 0) {
+            return;
+        }
+        player.playPickupItemAnimation(item, taken);
+        if (left == null) {
+            item.remove();
+        } else {
+            item.setItemStack(left);
+        }
+        player.getWorld().playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 0.2f,
+                (float) (1.4 + java.util.concurrent.ThreadLocalRandom.current().nextDouble(0.4)));
     }
 
     @EventHandler(priority = EventPriority.LOW)

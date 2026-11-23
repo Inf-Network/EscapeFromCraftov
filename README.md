@@ -213,6 +213,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - 护甲数值表：`python3 tools/combat/armor.py`（按 `items.yml` 和 `config.yml` 的 `combat.armor` 算每把枪每种子弹打倒穿各级护甲的玩家要几枪（霰弹枪一枪按所有弹丸都打中胸口算，每颗弹丸都磨损背心），并检查新手枪打 2 / 3 级甲、穿甲弹打 4 级甲的枪数下限，不满足时退出码为 1）
 - 近战数值表：`python3 tools/combat/melee.py`（同样按 `items.yml` 和 `config.yml` 算每把刀砍倒玩家（胸口对没穿和各级背心、头对没戴和各级头盔、手臂和腿）和首领（胸口、头、手脚）要几刀、要挥多少秒，并检查首领砍哪里都至少 10 刀、4 级以上背心的玩家砍胸口和 4 级以上头盔的玩家砍头（平视就砍在头上）至少 5 刀、砍手脚至少 4 刀、没穿护甲的胸口和头 2–3 刀，不满足时退出码为 1）
 - 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）；`fpview.py knife_karambit inspect sheet.png` 出刀检视动画的逐帧预览（关键帧在 `tools/art/knife_inspect.py`），`tools/shots/shots.py run inspect:knife_karambit` 在真客户端里截检视过程（不写刀就四把都截）；`tools/shots/shots.py run inspectkeys` 用真客户端在 28 种情况下按 F（走路、跳起、冲刺中和刚停下、挥刀后、切到刀、松开 / 按下 Shift、关背包后、检视中和快结束时、Q 和右键后，「同时」的两个键落在同一个客户端 tick 里），从服务器的 debug 日志（要开 `debug: true`）读每次按键的结果、逐条打印 PASS / FAIL，每次按键后 0.6 秒截一张图，拼成一张标好结果的 `inspect-keys-sheet.png`
+- 刀具皮肤：配色和花纹在 `tools/art/knife_skins.py`（按皮肤 ID 给刀的每个部件换颜色或图案），清单（名字、对应的刀、点券价格）在 `src/main/resources/skins.yml`，两边对不上时 `build.py` 直接报错；`fpview.py karambit_gilded inspect sheet.png` 出某套皮肤的检视逐帧预览。真客户端截图：`tools/shots/shots.py run skins`（外观菜单每个分页、每套皮肤的第一人称和检视各一帧；`skins:menu` 只截菜单，`skins:<刀ID 或皮肤ID>` 只截那几套）。回归（bot）：`PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node tools/bot/skins.js`，检查点券指令和显示、外观菜单装备、皮肤不是物品（进仓库、安全箱、上架交易行的都是原样的刀，档案和 market.json 里没有皮肤）、局内和阵亡后、重新登录后仍是所选皮肤、预览检视，给了 `SERVER_DIR` 时再临时改 `skins.own-all` / `skins.shop-open` 检查没拥有时不能装备、商店没开时不能买、用点券购买（结束后还原）
 
 ### 左键开火的实现
 

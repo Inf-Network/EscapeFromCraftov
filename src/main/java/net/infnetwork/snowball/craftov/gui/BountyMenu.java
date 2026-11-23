@@ -31,8 +31,11 @@ final class BountyMenu extends Menu {
         set(4, UiItems.button("craftov:ui/icon_bounty", "<danger><b>悬赏榜", List.of(
                 "<muted>点击玩家头像，花 ◈" + Text.money(plugin.bounties().step()) + " 追加悬赏",
                 "<muted>在行动中击杀被悬赏的玩家即可领取全部赏金",
-                "<muted>排位第一的玩家自带 ◈" + Text.money(plugin.bounties().houseBounty()) + " 系统悬赏",
-                "<muted>（只在排位赛、其战备值不低于 ◈" + Text.money(plugin.bounties().houseMinValue()) + " 时有效，每天一次）")));
+                "<muted>排位第一的玩家自带 ◈" + Text.money(plugin.bounties().houseBounty()) + " 系统悬赏，",
+                // Ranked is chosen per squad at the queue, not per raid (#11): what counts is
+                // whether that player went in for ranked, whatever the other squads chose.
+                "<muted>只在其本人以排位赛出发、出发战备值",
+                "<muted>不低于 ◈" + Text.money(plugin.bounties().houseMinValue()) + " 时有效，每天最多一次")));
         int slot = 9;
         List<Player> online = new ArrayList<>(Bukkit.getOnlinePlayers());
         online.sort((a, b) -> Long.compare(plugin.bounties().total(b.getUniqueId()), plugin.bounties().total(a.getUniqueId())));

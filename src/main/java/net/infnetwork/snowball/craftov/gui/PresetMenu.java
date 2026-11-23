@@ -182,18 +182,23 @@ final class PresetMenu extends Menu {
         return plugin.carry().usableSlots(viewer).contains(slot);
     }
 
-    /** Puts a stack into its preset slot (or anywhere free); returns what could not be placed. */
+    /**
+     * Puts a stack into its preset slot, or where it belongs ({@link CarryService#giveOrWear}) when
+     * that slot is taken or its zone does not take it: a preset saved before the zone rules may have
+     * a bandage on key 1 or a rifle in the rig. Returns what could not be placed.
+     */
     private @Nullable ItemStack place(int slot, ItemStack stack, ItemDef def) {
         if (def.isContainer() && (slot == CarryService.LEGS || slot == CarryService.FEET)) {
             plugin.carry().equip(viewer, stack);
             return null;
         }
         ItemStack current = viewer.getInventory().getItem(slot);
-        if (slot <= CarryService.HEAD && slot != CarryService.TERMINAL_SLOT && (current == null || current.isEmpty())) {
+        boolean allowed = slot >= CarryService.FEET || plugin.carry().refusal(stack, slot) == null;
+        if (slot <= CarryService.HEAD && slot != CarryService.TERMINAL_SLOT && allowed && (current == null || current.isEmpty())) {
             viewer.getInventory().setItem(slot, stack);
             return null;
         }
-        return plugin.carry().give(viewer, stack, false);
+        return plugin.carry().giveOrWear(viewer, stack, false, false);
     }
 
     private ItemStack takeFromStash(Profile p, ItemDef def, int want) {

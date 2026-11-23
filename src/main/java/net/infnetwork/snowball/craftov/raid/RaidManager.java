@@ -1150,26 +1150,21 @@ public final class RaidManager implements Listener {
     /**
      * The raid ran out before this player landed (in practice an admin's /cv end during the entry
      * camera): void for them ({@link #evacuate}), so home with everything they brought, and the
-     * entry fee and insurance premium back (no compensation letter: that is for a raid the server
-     * stops in). That goes for whoever dropped out of the camera too (DISCONNECTED, still
-     * inFlight): they never landed either, and find it all back when they come back.
+     * entry fee and insurance premium back (no compensation: that is for a raid the server stops
+     * in). That goes for whoever dropped out of the camera too (DISCONNECTED, still inFlight): they
+     * never landed either, and the raid in their stats and what it paid out are taken back just the
+     * same. They are not there to read the chat, so a letter says so instead.
      */
     private void callOff(Raid raid, RaidPlayer rp) {
         rp.inFlight = false;
         Player player = rp.state == RaidPlayer.State.DISCONNECTED ? null : Bukkit.getPlayer(rp.uuid);
         if (player == null) {
-            if (rp.state == RaidPlayer.State.DISCONNECTED && rp.disconnectedInventory != null) {
-                // As far as other players' profit goes, they went home with all of it (see held).
-                List<ItemRecord> home = homeOffline(raid, rp, rp.fees, "raid " + raid.id + " ended during the entry camera");
-                rp.carriedOut = stackCounts(home);
-                rp.disconnectedInventory = null;
-                leftWith(raid, rp, home);
-            }
-            // Otherwise (not expected: leaving turns DEPLOYING into DISCONNECTED in onQuit) the next
-            // join finds the raid gone and keeps the lobby loadout (LobbyService.onJoin).
-            rp.state = RaidPlayer.State.LEFT;
-            byPlayer.remove(rp.uuid, raid);
-            plugin.escorts().voided(rp);
+            // What the camera left them with (the snapshot taken as they dropped out) stays in the raid.
+            List<ItemStack> carried = leftBehind(rp);
+            List<ItemRecord> holding = new ArrayList<>(rp.secure);
+            carried.forEach(stack -> addRecord(stack, holding));
+            rp.disconnectedInventory = null;
+            voidLeft(raid, rp, carried, holding, VoidCause.DROPPED);
             plugin.match().droppedOut(rp.uuid);
             return;
         }
@@ -2470,14 +2465,29 @@ public final class RaidManager implements Listener {
         holding.addAll(rp.secure);
         player.setItemOnCursor(null);
         player.closeInventory();
+        Voided voided = voidLeft(raid, rp, carried, holding, VoidCause.LEFT);
+        plugin.match().leaveTeam(player);
+        // The lobby puts the loadout they went in with on them.
+        plugin.lobby().enterLobby(player);
+        Text.send(player, "<accent>" + message + (voided == null ? "" : voided.summary()));
+    }
+
+    /**
+     * Voids the raid for {@code rp}, who is out of it while it goes on ({@link #evacuate}, or
+     * {@link #callOff} for one who dropped out on the entry camera): {@code carried} is what they
+     * had on them, which stays in the raid (someone else's insured gear among it is paid out to its
+     * owner when the raid closes, and nothing of theirs is then, Raid.voided), and {@code holding}
+     * the same as records, with their secure container ({@link #leaveBehind}).
+     */
+    private @Nullable Voided voidLeft(Raid raid, RaidPlayer rp, List<ItemStack> carried, List<ItemRecord> holding, VoidCause why) {
         rp.state = RaidPlayer.State.LEFT;
         rp.extracting = null;
-        byPlayer.remove(player.getUniqueId());
+        byPlayer.remove(rp.uuid, raid);
         raid.voided.add(rp.uuid);
         raid.voidedCarried.addAll(carried);
         leaveBehind(raid, rp, stackCounts(holding));
         plugin.escorts().voided(rp);
-        Voided voided = voidRaid(rp.uuid, rp.name, rp.deployment, VoidCause.LEFT);
+        Voided voided = voidRaid(rp.uuid, rp.name, rp.deployment, why);
         if (voided != null) {
             // Nothing they carried goes home: each of their luck hand-outs comes back in full when the
             // raid closes, unless someone else carries it out.
@@ -2487,10 +2497,7 @@ public final class RaidManager implements Listener {
         Map<String, Long> home = rp.deployment == null ? new HashMap<>() : refundable(rp.deployment, rp.deployment.gone);
         home.values().removeIf(n -> n <= 0);
         rp.carriedOut = home;
-        plugin.match().leaveTeam(player);
-        // The lobby puts the loadout they went in with on them.
-        plugin.lobby().enterLobby(player);
-        Text.send(player, "<accent>" + message + (voided == null ? "" : voided.summary()));
+        return voided;
     }
 
     /**
@@ -2765,7 +2772,12 @@ public final class RaidManager implements Listener {
         /** The server went down with them in it, found on their next login: the same, and the luck as at the deploy. */
         CRASH,
         /** They are out of a raid that goes on ({@link #evacuate}): no letter and no compensation. */
-        LEFT
+        LEFT,
+        /**
+         * They dropped out on the entry camera and the raid ended before they landed ({@link #callOff}):
+         * as LEFT, but with a letter (no compensation), since they are not there to read the chat.
+         */
+        DROPPED
     }
 
     /**
@@ -2791,13 +2803,14 @@ public final class RaidManager implements Listener {
         // no letter and no compensation.
         boolean training = known != null && known.training;
         boolean crash = why == VoidCause.CRASH;
-        boolean left = why == VoidCause.LEFT;
+        boolean left = why == VoidCause.LEFT || why == VoidCause.DROPPED;
         // A letter for whoever cannot read it in chat: not someone moved out of a raid that goes on.
         boolean letterSent = !training && why != VoidCause.LEFT;
         long compensation = training || left ? 0 : Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
         Voided[] sent = new Voided[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
         String cause = (training ? "training raid ended" : crash ? "raid lost when the server went down"
+                : why == VoidCause.DROPPED ? "raid ended before landing, while disconnected"
                 : left ? "left a raid that goes on" : "server stopped during the raid")
                 + ", voided for " + name
                 + (crash ? ", luck.pity and luck.jackpots as at the deploy and the quota its hand-outs spent back" : "")
@@ -2909,17 +2922,20 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * The letter that tells a player their raid was voided, with the compensation attached.
-     * {@code gone} names what had left the raid with others and was not handed back ({@link #gone}).
+     * The letter that tells a player their raid was voided, with the compensation attached (none
+     * for a raid that ended before they landed, {@code why} DROPPED). {@code gone} names what had
+     * left the raid with others, or is still in it, and was not handed back ({@link #gone}).
      */
     private Profile.Mail voidLetter(Profile.@Nullable Deployment d, List<String> gone, long compensation, VoidCause why) {
+        boolean dropped = why == VoidCause.DROPPED;
         String raid = d == null ? "行动" : "「" + d.map + "」（" + d.tier + "）的行动";
-        StringBuilder body = new StringBuilder((why == VoidCause.CRASH ? "服务器意外中断时" : "服务器维护时") + "你还在" + raid
-                + "中，这局行动已作废。\n")
+        StringBuilder body = new StringBuilder(dropped ? "你在" + raid + "入场途中掉线，行动在你落地前就结束了，这局行动已作废。\n"
+                : (why == VoidCause.CRASH ? "服务器意外中断时" : "服务器维护时") + "你还在" + raid + "中，这局行动已作废。\n")
                 .append(d == null ? "你的配装和安全箱仍是出发前的样子，局内捡到的物品不计。"
                         : "出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
         if (!gone.isEmpty()) {
-            body.append("\n已被其他干员带出本局的不再退回：").append(String.join("、", gone)).append("。");
+            body.append(dropped ? "\n还留在局内的和已被其他干员带出本局的不再退回：" : "\n已被其他干员带出本局的不再退回：")
+                    .append(String.join("、", gone)).append("。");
         }
         if (d != null && d.entryFee + d.premium > 0) {
             body.append("\n已退还").append(d.entryFee > 0 ? "入场费 ◈" + Text.money(d.entryFee) : "")
@@ -2935,7 +2951,7 @@ public final class RaidManager implements Listener {
         if (compensation > 0) {
             body.append("\n附件是 ◈").append(Text.money(compensation)).append(" 补偿，领取后到账。");
         }
-        return MailService.letter("服务器维护补偿", body.toString(), compensation, List.of());
+        return MailService.letter(dropped ? "行动作废" : "服务器维护补偿", body.toString(), compensation, List.of());
     }
 
     /**
@@ -3187,32 +3203,6 @@ public final class RaidManager implements Listener {
                 instanceIds(record.contents, into);
             }
         }
-    }
-
-    /**
-     * Sends a disconnected player home from a raid that is void for them: what they carried when
-     * they dropped out becomes their loadout, the secure container goes back as it was, and
-     * {@code refund} is paid back. Armory items are left out; own items from an armory rig or
-     * backpack that find no free pocket go to the mailbox. Returns everything that went home.
-     */
-    private List<ItemRecord> homeOffline(Raid raid, RaidPlayer rp, long refund, String why) {
-        List<ItemRecord> homeless = new ArrayList<>();
-        Map<Integer, ItemRecord> inv = rp.disconnectedInventory == null ? new HashMap<>()
-                : plugin.carry().persistent(rp.disconnectedInventory, homeless);
-        plugin.profiles().edit(rp.uuid, () -> why + ": loadout = "
-                + ProfileService.json(inv) + (homeless.isEmpty() ? "" : ", add to mailbox " + ProfileService.json(homeless))
-                + ", secure = " + ProfileService.json(rp.secure) + ", activeRaid = null, deployment = null"
-                + (refund > 0 ? ", money +" + refund : ""), profile -> {
-            profile.loadout = inv;
-            profile.mailbox.addAll(homeless);
-            profile.secure = new ArrayList<>(rp.secure);
-            profile.leaveRaid();
-            profile.money += refund;
-        });
-        List<ItemRecord> home = new ArrayList<>(inv.values());
-        home.addAll(homeless);
-        home.addAll(rp.secure);
-        return home;
     }
 
     /** Rejoin after a disconnect. Returns true if the player was put back into their raid. */

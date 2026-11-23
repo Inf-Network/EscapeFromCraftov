@@ -127,9 +127,9 @@ public final class ThrowableService implements Listener {
     /**
      * Right mouse going down with a grenade in hand pulls the pin: the fuse starts now, and the
      * client goes on holding the grenade (vanilla's item use, see ItemFactory) until the button comes
-     * up ({@link #onRelease}). Doors, levers and buttons within reach still work with a grenade in
-     * hand, and so does a click on a box, a body or a downed squadmate: the client sends the use
-     * straight after one, which must not pull the pin.
+     * up ({@link #onRelease}). Doors, levers and buttons still work with a grenade in hand, and so
+     * does a click on a box, a body or a downed squadmate: the client sends the use straight after
+     * one, which must not pull the pin.
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onPress(PlayerInteractEvent event) {
@@ -146,22 +146,26 @@ public final class ThrowableService implements Listener {
             event.setUseItemInHand(Event.Result.DENY); // thrown from the main hand only, never off a click on an entity
             return;
         }
+        // A block with a use of its own is left to it. Only the client knows whether it took the
+        // click: a door, lever or button it opens or flips and sends nothing more, while a fence
+        // post, an iron door or trapdoor answers nothing and the grenade's use follows. So the cook
+        // starts either way and only counts once the client holds the grenade (tickCooks).
         Block clicked = event.getClickedBlock();
-        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && clicked != null && clicked.getType().isInteractable()
-                && !player.isSneaking() && clicked.getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
-            return; // the client uses the door instead of the grenade
-        }
+        boolean usable = event.getAction() == Action.RIGHT_CLICK_BLOCK && clicked != null && clicked.getType().isInteractable();
         if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())
                 || player.getCooldown(ItemFactory.THROW_GROUP) > 0 || event.useItemInHand() == Event.Result.DENY) {
-            event.setCancelled(true);
+            if (usable) {
+                event.setUseItemInHand(Event.Result.DENY);
+            } else {
+                event.setCancelled(true);
+            }
             return;
         }
-        event.setUseInteractedBlock(Event.Result.DENY);
+        if (!usable) {
+            event.setUseInteractedBlock(Event.Result.DENY);
+        }
         event.setUseItemInHand(Event.Result.ALLOW);
-        // Clicking a block, the client sends the use straight after this; the cook only counts once
-        // it is holding the grenade (tickCooks).
         if (!cooks.containsKey(player.getUniqueId())) {
-            plugin.raids().onAttack(player);
             cooks.put(player.getUniqueId(), new Cook(def, Bukkit.getCurrentTick()));
         }
     }
@@ -294,8 +298,14 @@ public final class ThrowableService implements Listener {
         entityClicks.remove(event.getPlayer().getUniqueId());
     }
 
-    private static void pinOut(Player player) {
+    /**
+     * The pin comes out for real (the client holds the grenade, or it has left the hand): heard
+     * around, and it ends the soldiers' grace on the player as a shot does. Not on the click
+     * itself, which may have been a door opened with a grenade in hand.
+     */
+    private void pinOut(Player player) {
         player.getWorld().playSound(player.getLocation(), "craftov:throw.pin", SoundCategory.PLAYERS, 1f, 1f);
+        plugin.raids().onAttack(player);
     }
 
     /** One grenade out of the hand, as thrown: counted as used, and every grenade locked for a second. */

@@ -49,7 +49,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link Stance#RELOAD}: low, but the use runs on, so the support arm comes up to the
  *   magazine; it is restarted as the new magazine goes in and comes up again.</li>
  *   <li>{@link Stance#THROW}: a grenade being cooked is held overhead (the trident throw).</li>
- *   <li>{@link Stance#DOWNED}: crawling with empty hands.</li>
+ *   <li>{@link Stance#DOWNED}: crawling with empty hands, except while the self-revive injector is
+ *   used: that is shown as it is, its use and all, so others see it go in (its third-person frames,
+ *   #41).</li>
  *   <li>{@link Stance#REVIVE}: working on a downed squadmate with a bandage (the brush pose).</li>
  * </ul>
  *
@@ -196,9 +198,15 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
         if (want != had) {
             told.remove(id);
         }
+        // Back to the real item while it is being used (a downed player's injector): the stance kept
+        // that use from everyone, and the server sends the flags again only when they change.
+        byte realUse = want == Stance.NONE && entity.isHandRaised()
+                ? (byte) (USING | (entity.getHandRaised() == EquipmentSlot.OFF_HAND ? 2 : 0)) : 0;
         for (Player viewer : entity.getTrackedBy()) {
             viewer.sendEquipmentChange(entity, EquipmentSlot.HAND, hand);
-            if (had.using() && !want.using()) {
+            if (realUse != 0) {
+                Nms.sendLivingFlags(viewer, id, realUse);
+            } else if (had.using() && !want.using()) {
                 Nms.sendLivingFlags(viewer, id, (byte) 0);
             }
         }
@@ -238,7 +246,7 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
             return Stance.NONE;
         }
         if (plugin.downed().isDowned(player)) {
-            return Stance.DOWNED;
+            return player.hasActiveItem() && isMedical(player.getActiveItem()) ? Stance.NONE : Stance.DOWNED;
         }
         if (plugin.downed().isReviving(player)) {
             return Stance.REVIVE;
@@ -305,6 +313,11 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     private boolean isGun(@Nullable ItemStack stack) {
         ItemDef def = defOf(stack);
         return def != null && def.isGun();
+    }
+
+    private boolean isMedical(@Nullable ItemStack stack) {
+        ItemDef def = defOf(stack);
+        return def != null && def.med() != null;
     }
 
     private boolean isThrowable(@Nullable ItemStack stack) {

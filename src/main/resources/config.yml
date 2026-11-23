@@ -267,6 +267,8 @@ weapons:
   # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
   # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
   # held fires as soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
+  # The draw animation is baked into the resource pack at these defaults, one frame a tick; another
+  # value plays the same motion faster or slower.
   draw-ticks:
     pistol: 6
     pistol_heavy: 6

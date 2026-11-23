@@ -9,9 +9,11 @@
 //   pump   R12 (70 rpm: 17 ticks, 14 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
 //   draw   M4C to P18 (6 ticks to draw): clicks in the first 200 ms after the switch fire nothing
 //          before the tick the gun is up, one at 500 ms fires, and the action bar says the gun is
-//          being drawn; the pistol's stack carries the draw mark (damage 1, which keeps its model
-//          from aiming or flashing) from the switch until it is up, and a gun switched away from
-//          mid-draw loses it; the trigger held from the moment of the switch fires once, 6 ticks
+//          being drawn; the pistol waits in the hotbar with the holster mark (damage 5, the draw's
+//          first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
+//          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
+//          the draw (6 ticks; 12 for the M4C); a gun switched away from mid-draw is holstered
+//          again (damage 5) and its draw cooldown stops; the trigger held from the moment of the switch fires once, 6 ticks
 //          after the draw began, though the dig starts over (abort and start) each time the mark
 //          goes on or comes off, as the vanilla client does when the held stack changes; right
 //          mouse held from the switch aims on the tick the gun is up.
@@ -231,7 +233,10 @@ async function draw (spot) {
   let from = logSize()
   const barsFrom = bars.length
   const slotsFrom = slotUpdates.length
+  const coolsFrom = cooldowns.length
   const pistolSlot = hotbar('p18')
+  check('draw: the pistol waits in the hotbar holstered (damage 5)', damageOf(bot.inventory.slots[pistolSlot]) === 5,
+    `damage ${damageOf(bot.inventory.slots[pistolSlot])}`)
   hold('p18')
   let swapped = Date.now()
   for (const ms of [50, 120, 200]) {
@@ -260,17 +265,26 @@ async function draw (spot) {
   check('draw: the pistol carries the draw mark from the switch until it is up', !!on && !!off && on.at - swapped < 200 &&
     off.at - on.at >= 200 && off.at - on.at <= 450 && damageOf(bot.inventory.slots[pistolSlot]) === 0,
     on ? `marked ${on.at - swapped} ms after the switch, cleared ${off ? off.at - on.at + ' ms later' : 'never'}` : 'never marked')
+  // The draw frames run on the gun's cooldown: sent with the draw mark, as long as the draw.
+  const drawCools = cooldowns.slice(coolsFrom)
+  const drawCool = drawCools.find(c => c.ticks > 0)
+  check('draw: the draw cooldown is sent with the switch, as long as the draw (6 ticks)', !!drawCool && drawCool.ticks === 6 &&
+    drawCool.at - swapped < 250, drawCools.map(c => `${c.ticks} ticks at ${c.at - swapped} ms`).join(', ') || 'none')
 
-  // A gun switched away from before it is up loses the mark.
+  // A gun switched away from before it is up is holstered again, and its draw frames stop.
   const rifleSlot = hotbar('m4c')
   const leaveFrom = slotUpdates.length
+  const leaveCools = cooldowns.length
   hold('m4c')
   await sleep(150) // the M4C takes 12 ticks
   hold('p18')
   await sleep(700)
   const rifle = slotUpdates.slice(leaveFrom).filter(u => u.slot === rifleSlot).map(u => u.damage)
-  check('draw: a gun switched away from mid-draw loses the mark', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 0,
+  check('draw: a gun switched away from mid-draw is holstered again', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 5,
     `M4C slot damage over the switch: ${rifle.join(',')}`)
+  const leftCools = cooldowns.slice(leaveCools).map(c => c.ticks)
+  check('draw: the M4C draw cooldown (12 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
+    leftCools.slice(0, 4).join(',') === '12,0,6,0', `cooldowns ${leftCools.join(',')}`)
 
   // The trigger held from the moment of the switch fires once, as the gun comes up.
   hold('m4c')

@@ -479,6 +479,13 @@ public final class WeaponService implements Listener {
         // stack carries is replaced whenever the gun is bound.
         state.drawPending = state.drawing();
         ItemFactory.setHandMark(held, state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE);
+        if (state.drawing()) {
+            // The draw frames run on the gun's cooldown, as long as the draw. The gun arrived carrying
+            // the holster mark, the draw's first frame, which reads no cooldown: whichever of the two
+            // packets the client takes in first, it shows the gun low and then coming up.
+            Nms.syncInventory(player);
+            player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.readyAt - now));
+        }
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -576,10 +583,12 @@ public final class WeaponService implements Listener {
         }
         // The cooldown belongs to every gun: the next one must not show this one's kick, reload or
         // sights coming up.
-        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks() || state.adsStart >= 0 && !state.adsUp) {
+        if (state.reloading() || state.drawing() || now - state.lastShotTick < state.gun.kickTicks()
+                || state.adsStart >= 0 && !state.adsUp) {
             player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
         }
-        setMark(player, state, ItemFactory.MARK_NONE);
+        // Put away: the next switch to it shows it low at once (ItemFactory.MARK_HOLSTER).
+        setMark(player, state, ItemFactory.MARK_HOLSTER);
         return state;
     }
 
@@ -616,6 +625,11 @@ public final class WeaponService implements Listener {
      */
     private void drawn(Player player, GunState state, long now) {
         state.drawPending = false;
+        if (!state.reloading()) {
+            // The draw frames end at rest anyway; a last tick of their cooldown, late by a network hitch,
+            // must not be read by the model at rest as a shot's kick and flash.
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
         setMark(player, state, wantedMark(player, state));
         if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
                 && !player.isSprinting()) {
@@ -1852,7 +1866,7 @@ public final class WeaponService implements Listener {
         if (fromInventoryScreen) {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
-                ItemFactory.setDrawing(dropped, false);
+                ItemFactory.setHolstered(dropped);
                 event.getItemDrop().setItemStack(dropped);
                 stow(player);
             }

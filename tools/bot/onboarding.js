@@ -20,7 +20,8 @@
 //   PORT=25565 RCON_PORT=25575 node onboarding.js [deploy objective dialog skip]
 //
 // The server runs without test.enabled (the proving ground must be hidden) and with a short
-// match.wait-seconds. Exit code: failed checks.
+// match.wait-seconds. In skip the map's soldiers are killed so they leave the bot alone. Exit code:
+// failed checks.
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled false (the proving ground
 // must be hidden), match.wait-seconds 3.
@@ -96,6 +97,12 @@ async function money (name) {
 }
 
 const hud = async name => rcon(`cv hud ${name}`)
+/** Kills every soldier and drone in the player's raid world. */
+async function killSoldiers (name) {
+  for (const type of ['zombie', 'husk', 'drowned', 'bee']) {
+    await rcon(`execute at ${name} run kill @e[type=minecraft:${type},distance=..1000]`)
+  }
+}
 const objectiveOf = async name => ((await hud(name)).match(/objective=([^|]*)/) || [, ''])[1].trim()
 
 /** A bot that records chat, action bars, dialogs, screens and world changes. */
@@ -262,7 +269,10 @@ async function skip () {
   check('one landing briefing, which points out the extract (6/6)', !!briefing && briefing.includes('新手指引 6/6'), briefing)
   const o = await objectiveOf(name)
   check('in the raid the objective is the extraction, with a distance', o.includes('撤离点') && /\d+m/.test(o), o)
-  // A minute in the raid: reminders come every 45 s, and none may name a lobby step.
+  // A minute in the raid: reminders come every 45 s, and none may name a lobby step. The map's
+  // soldiers are killed first and again before the extract: resistance does not stop a bleed (it
+  // takes health without a damage event, #41), and a minute in sight of a DM14 bled the bot out.
+  await killSoldiers(name)
   await rcon(`effect give ${name} minecraft:resistance 120 4 true`)
   const barsFrom = bot.bars.length
   await sleep(60000)
@@ -271,6 +281,7 @@ async function skip () {
     !guideBars.some(b => /战术终端|靶场|改枪台|开始行动/.test(b.text)), guideBars.map(b => b.text))
   log(name, 'guide bars in the raid', guideBars.map(b => b.text))
   const world = bot.worldChanges
+  await killSoldiers(name)
   await rcon(`execute as ${name} at @s run tp @s 89.5 65 3.5`)
   const home = await waitFor(() => bot.worldChanges > world, 30000)
   check('the bot extracts', home)

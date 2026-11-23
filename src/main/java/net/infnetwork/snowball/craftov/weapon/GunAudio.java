@@ -567,6 +567,15 @@ public final class GunAudio {
         queue.add(new Delayed(tick, listener.getUniqueId(), source.clone(), key, gain, pitch, seed, restart));
     }
 
+    /**
+     * Plays {@code key} to the listener alone at exactly {@code gain}, from the direction of
+     * {@code source}, with our own loudness instead of Minecraft's roll-off (see {@link #emit}): the
+     * footsteps use it.
+     */
+    public void heard(Player listener, Location source, String key, double gain, float pitch) {
+        emit(listener, source, key, gain, pitch, ThreadLocalRandom.current().nextLong(), false);
+    }
+
     /** Plays key at gain for this listener only, keeping the direction of source. */
     private static void emit(Player listener, Location source, String key, double gain, float pitch, long seed, boolean restart) {
         Location ear = listener.getEyeLocation();

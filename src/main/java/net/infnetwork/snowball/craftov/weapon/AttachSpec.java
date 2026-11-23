@@ -12,7 +12,9 @@ import java.util.Set;
  * @param mounts     gun classes it fits: rifle, pistol, shotgun (see {@link Attachments#gunClass})
  * @param suppressed quieter report, no muzzle flash, AI hear it from much closer
  * @param light      tactical light mode set: "light" (steady only) or "strobe" (steady and strobe), or null
+ * @param handling   added to the gun's handling (points, not a multiplier; see {@link Handling})
  */
 public record AttachSpec(String slot, Set<String> mounts, double recoil, double recoilH, double hipSpread, double adsSpread,
-                         double reload, double moveSpeed, double magazine, boolean suppressed, @Nullable String light) {
+                         double reload, double moveSpeed, double magazine, boolean suppressed, @Nullable String light,
+                         double handling) {
 }

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_hand/knife_karambit_glove",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    27.306,
+    0.687,
+    119.135
+   ],
+   "translation": [
+    -12.319,
+    8.039,
+    -9.956
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -152.694,
+    -0.687,
+    60.865
+   ],
+   "translation": [
+    -12.319,
+    8.039,
+    -9.956
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
+ }
+}

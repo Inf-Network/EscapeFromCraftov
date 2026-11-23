@@ -11,10 +11,12 @@ import java.util.Set;
  *                      whatever field of view the player plays at (see {@link #fovMultiplier})
  * @param overlay       camera overlay texture under craftov:misc/ for magnified scopes, or null for 1x sights
  * @param mounts        rail types it fits: "rifle", "pistol"
+ * @param handling      what fitting it adds to the gun's handling (negative: a heavier sight is slower
+ *                      to bring up, see {@link Handling}); a gun's built-in scope is counted in its own
  */
-public record OpticSpec(double magnification, @Nullable String overlay, Set<String> mounts) {
+public record OpticSpec(double magnification, @Nullable String overlay, Set<String> mounts, double handling) {
 
-    /** How long sights take to come up and how much they slow the player, by how strong the optic is. */
+    /** How much a sight slows the player and narrows the aimed cone, by how strong the optic is. */
     public enum Tier {
         /** Iron sights: no optic at all. */
         IRON,

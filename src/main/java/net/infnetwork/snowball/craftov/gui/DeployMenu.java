@@ -192,8 +192,8 @@ final class DeployMenu extends Menu {
             partyLore.add("<muted>单人");
         } else {
             for (UUID uuid : party.members) {
-                Player p = Bukkit.getPlayer(uuid);
-                partyLore.add((uuid.equals(party.leader) ? "<accent>★ " : "<white>· ") + (p == null ? "离线" : Text.escape(p.getName())));
+                partyLore.add((uuid.equals(party.leader) ? "<accent>★ " : "<white>· ") + Text.escape(party.name(uuid))
+                        + (Bukkit.getPlayer(uuid) == null ? " <muted>(离线)" : ""));
             }
         }
         set(38, UiItems.button("craftov:ui/icon_party", "<white>小队成员", partyLore));

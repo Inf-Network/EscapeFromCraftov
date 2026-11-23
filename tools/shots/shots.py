@@ -921,7 +921,8 @@ class Puppet:
         self.proc = proc
 
     def send(self, line):
-        """One puppet.js command: slot N, sneak on|off, use on|off, chat <text>."""
+        """One puppet.js command: slot N, sneak on|off, use on|off, hold on|off, drop, revive <name> on|off,
+        chat <text>."""
         self.proc.stdin.write((line + '\n').encode('utf-8'))
         self.proc.stdin.flush()
         time.sleep(0.3)
@@ -941,8 +942,10 @@ class Puppet:
         s = self.session
         side = -distance * math.sin(math.radians(degrees))
         ahead = distance * math.cos(math.radians(degrees))
-        # Feet to feet: on level ground that is a level look, with the puppet's body mid-screen.
-        s.rcon(f'execute as {s.name} at {self.name} run tp @s ^{side:.2f} ^ ^{ahead:.2f} facing entity {self.name} feet')
+        # Feet to feet: on level ground that is a level look, with the puppet's body mid-screen. Round
+        # the puppet's yaw only: a puppet looking down (crawling, downed) would put the camera into the
+        # floor.
+        s.rcon(f'execute as {s.name} at {self.name} rotated ~ 0 run tp @s ^{side:.2f} ^ ^{ahead:.2f} facing entity {self.name} feet')
         time.sleep(1)
 
 

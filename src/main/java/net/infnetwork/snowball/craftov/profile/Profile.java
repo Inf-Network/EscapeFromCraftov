@@ -111,7 +111,10 @@ public final class Profile {
     /** Knife item id -> the skin that knife wears (SkinService); a knife not listed wears its own look. */
     public Map<String, String> knifeSkins = new HashMap<>();
 
-    /** Raid id while the player is inside a raid; a crash leaves it set (see {@link #deployment}). */
+    /**
+     * Raid.key while the player is inside a raid (ids start again at R1 after a restart, keys never
+     * repeat); a crash leaves it set (see {@link #deployment}).
+     */
     public @Nullable String activeRaid;
     /**
      * What the player took into the raid they are in, saved with the deploy (RaidManager.prepare)
@@ -312,6 +315,7 @@ public final class Profile {
 
     /** Luck as it was when the player deployed (Profile.Luck.deployed). */
     public static final class LuckDeploy {
+        /** Raid.key, unique across restarts. */
         public String raid = "";
         public Map<String, Integer> pity = new HashMap<>();
         public Map<String, Integer> jackpots = new HashMap<>();

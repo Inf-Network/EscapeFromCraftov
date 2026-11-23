@@ -20,9 +20,10 @@
 //            again; the sprint key without forward changes nothing. A client that runs at sprint pace
 //            with the sights up (ignoring the food level and the aiming slowdown, and never saying it
 //            sprints) loses them: its shots go from the hip with the sprint cone.
-//   stance   a spectator next to the runway sees the M4C up while standing, low on a sprint, up while
-//            firing on the sprint, low half a second after the last shot and up again once the sprint
-//            is over.
+//   stance   a spectator next to the runway sees the M4C carried low while standing (#3), low on a
+//            sprint, up while firing on the sprint, low half a second after the last shot, still low
+//            once the sprint is over; a short burst standing puts it up, and it is low again 2 s after
+//            the last shot.
 //   recoil   M4C on full auto, 30 rounds without touching the mouse: a second after letting go the
 //            camera must have come back down at least half of the climb, and not past where it
 //            started; pulling all or half of the climb down while firing is not pulled further. A
@@ -166,8 +167,13 @@ async function enterRange () {
   if (!dim.includes('craftov_range')) throw new Error('not on the range: ' + dim)
 }
 
-/** Gives the gun, holds it and fills its magazine. */
+/**
+ * Gives the gun, holds it and fills its magazine. Guns go to the two weapon slots only (hotbar 0 and
+ * 1, then a backpack: CarryService.route), so both are emptied first for a third gun to land.
+ */
 async function arm (id) {
+  for (const slot of [0, 1]) await rcon(`item replace entity ${name} hotbar.${slot} with minecraft:air`)
+  await sleep(200)
   await rcon(`cv give ${name} ${id}`)
   await sleep(800)
   const slot = hotbar(id)
@@ -539,7 +545,8 @@ async function sprint (spot) {
 // ---------------------------------------------------------------- stance
 /**
  * What another player sees: a spectator next to the runway watches the shooter's main hand. A gun
- * held up is sent as a charged crossbow (StanceService), carried low as the real item (paper).
+ * held up is sent as a charged crossbow (StanceService), carried low as the real item (paper): low
+ * unless it is aimed or has fired in the last 1.5 s (0.5 s on a sprint).
  */
 async function stance (spot) {
   const viewerName = 'Vw' + name.slice(3)
@@ -575,13 +582,22 @@ async function stance (spot) {
     await sleep(800)
     const after = raisedNow()
     stopSprint()
-    await sleep(600)
+    await sleep(2000)
+    const stopped = raisedNow()
+    const burst = holdTrigger(200)
+    await sleep(350)
+    const standFiring = raisedNow()
+    await burst
+    await sleep(2200)
+    const standAfter = raisedNow()
     log('viewer saw', seen.map(e => e.raised ? 'up' : 'low').join(' '))
-    check('stance: others see the gun up while standing', standing === true, String(standing))
+    check('stance: others see the gun carried low while standing', standing === false, String(standing))
     check('stance: carried low on a sprint', sprinting === false, String(sprinting))
     check('stance: shouldered while firing on the sprint', sprintFiring === true, String(sprintFiring))
     check('stance: and low again half a second after the last shot, still sprinting', after === false, String(after))
-    check('stance: up again once the sprint is over', raisedNow() === true, String(raisedNow()))
+    check('stance: still low once the sprint is over', stopped === false, String(stopped))
+    check('stance: a burst standing shoulders it', standFiring === true, String(standFiring))
+    check('stance: and it is low again 2 s after the last shot', standAfter === false, String(standAfter))
   } finally {
     viewer.quit()
   }

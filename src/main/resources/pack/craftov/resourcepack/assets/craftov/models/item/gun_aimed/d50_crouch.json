@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_low/d50",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    28.648,
+    72.81,
+    -0.0
+   ],
+   "translation": [
+    0.0,
+    0.532,
+    1.31
+   ],
+   "scale": [
+    0.75,
+    0.75,
+    0.75
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    28.648,
+    -72.81,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    0.532,
+    1.31
+   ],
+   "scale": [
+    0.75,
+    0.75,
+    0.75
+   ]
+  }
+ }
+}

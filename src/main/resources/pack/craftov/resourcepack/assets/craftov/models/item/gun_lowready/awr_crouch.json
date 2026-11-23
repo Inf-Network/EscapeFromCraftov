@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_low/awr",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    -16.448,
+    78.416,
+    50.981
+   ],
+   "translation": [
+    0.529,
+    3.667,
+    -3.773
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    -16.448,
+    -78.416,
+    -50.981
+   ],
+   "translation": [
+    0.529,
+    3.667,
+    -3.773
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

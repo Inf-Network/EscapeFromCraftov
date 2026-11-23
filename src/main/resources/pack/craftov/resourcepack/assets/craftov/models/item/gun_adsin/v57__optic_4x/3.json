@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/v57",
+ "parent": "craftov:item/gun_aimhands/v57",
  "display": {
   "firstperson_righthand": {
    "rotation": [

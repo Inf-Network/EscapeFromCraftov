@@ -213,7 +213,7 @@ def change(a, b):
 
 
 def timeline(gid, base, ticks, lift=0.0):
-    """[(cooldown threshold, frame)] for a cooldown of `ticks` ticks: one sample a tick, a frame kept where
+    """[(cooldown threshold, frame, progress)] for a cooldown of `ticks` ticks: one sample a tick, a frame kept where
     the pose has moved MIN_TURN degrees or MIN_MOVE pixels since the last kept one, each kept frame held
     until the next. The client reads (ticks - t) / ticks on tick t; a frame held up to tick `end` gets
     the threshold halfway between that tick's value and the one before, so float rounding never decides
@@ -229,5 +229,31 @@ def timeline(gid, base, ticks, lift=0.0):
     out = []
     for i, k in enumerate(keep):
         end = keep[i + 1] if i + 1 < len(keep) else ticks
-        out.append((round(1 - (end - 0.5) / ticks, 5), samples[k]))
+        out.append((round(1 - (end - 0.5) / ticks, 5), samples[k], (k + 0.5) / ticks))
     return out
+
+
+# Where the left hand is through the reload (models.reload_hand): on the handguard, then to the magazine,
+# out of view with it and back with the new one, then back to the handguard. (progress, where) keys:
+# 'fore' the handguard, 'mag' on the magazine, a number t between the two (0 the handguard, 1 the magazine).
+HAND_KEYS = [(0.0, 'fore'), (0.10, 'fore'), (0.20, 'mag'), (0.58, 'mag'), (0.70, 'fore'), (1.0, 'fore')]
+
+
+def hand_at(gid, p):
+    """Where the left hand is at progress p of the reload: ('fore', None), ('mag', travel) or
+    ('between', t, travel) with t from the handguard (0) to the magazine (1); for a pump gun ('pump',
+    None) or ('shell', None) while a shell is pushed in."""
+    kind = style(gid)
+    if kind == 'pump':
+        shell = sample(PUMP_KEYS, p)[6]
+        return ('pump', None) if shell is None else ('shell', None)
+    if kind != 'mag':
+        return ('fore', None)
+    travel = sample(MAG_KEYS, p)[6]
+    for (p0, a), (p1, b) in zip(HAND_KEYS, HAND_KEYS[1:]):
+        if p0 <= p <= p1:
+            if a == b:
+                return (a, travel)
+            t = _ease('smooth', (p - p0) / max(1e-6, p1 - p0))
+            return ('between', t if b == 'mag' else 1 - t, travel)
+    return ('fore', travel)

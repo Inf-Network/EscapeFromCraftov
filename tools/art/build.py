@@ -30,6 +30,7 @@ import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
 import gunsamples  # noqa: E402
 import guiview  # noqa: E402
+import hands  # noqa: E402
 import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
@@ -108,7 +109,7 @@ def generated(texture, parent='minecraft:item/generated'):
 ATT_SLOTS = ['muzzle', 'grip', 'tactical', 'mag']   # custom_model_data strings 1..4 (Attachments.java)
 # Leaves that are the whole gun body: every attachment and the mounted optic (string 0) ride on them.
 BODY_LEAVES = ('item/gun/', 'item/gun_low/', 'item/gun_mid/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_aimed/',
-               'item/gun_adsin/', 'item/gun_draw/')
+               'item/gun_lowready/', 'item/gun_adsin/', 'item/gun_draw/')
 
 
 def attachments_for(spec, item_defs):
@@ -203,17 +204,31 @@ def build_gun(item_id, spec, item_defs):
     gun_spec = spec.get('gun') or {}
     scoped = bool(gun_spec.get('scope'))
     fine = models.gun_model(item_id)
-    write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), fine)
+    # The gloved hands ride in the first-person bodies (models.hand_elements): the right fist on the
+    # grip and the left hand on the handguard in the fine model (rest, poses, kicks, sights) and the mid
+    # one (draw frames), the right fist alone in the reload's body part, whose frames put the left
+    # hand on the magazine (models.reload_hand). The low model, which everyone else sees, has none.
+    write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), models.with_hands(fine, models.hand_elements(item_id)))
     skin = models.gun_skin_image(item_id)
     if skin is not None:
         save(skin, os.path.join(CV, 'textures', 'item', 'gun', item_id + '_skin.png'))
     held = 'craftov:item/gun/' + item_id
+    # Aimed, the eye is down on the stock right over the grip: a long gun's right fist would fill the
+    # view (and is below the screen anyway), so the sights coming up and the aimed poses use a body with
+    # the left hand alone. A pistol, held out at arm's length, keeps both fists.
+    aim_held = held
+    if item_id not in models.PISTOLS:
+        aim_held = 'craftov:item/gun_aimhands/' + item_id
+        write_json(os.path.join(CV, 'models', 'item', 'gun_aimhands', item_id + '.json'),
+                   models.with_hands(fine, models.fore_hand(item_id)))
     if models.has_lods(item_id):
         write_json(os.path.join(CV, 'models', 'item', 'gun_low', item_id + '.json'), models.gun_low_model(item_id))
-        write_json(os.path.join(CV, 'models', 'item', 'gun_mid', item_id + '.json'), models.gun_mid_model(item_id))
+        write_json(os.path.join(CV, 'models', 'item', 'gun_mid', item_id + '.json'),
+                   models.with_hands(models.gun_mid_model(item_id), models.hand_elements(item_id)))
         for part in models.voxel_gun(item_id)['mid']:
+            mid = models.gun_mid_model(item_id, part)
             write_json(os.path.join(CV, 'models', 'item', 'gun_mid', '%s_%s.json' % (item_id, part)),
-                       models.gun_mid_model(item_id, part))
+                       models.with_hands(mid, models.grip_hand(item_id)) if part == 'body' else mid)
     else:
         for part in models.gun_parts(item_id):
             write_json(os.path.join(CV, 'models', 'item', 'gun_part', item_id + '_' + part + '.json'),
@@ -263,7 +278,10 @@ def build_gun(item_id, spec, item_defs):
     # carry while the trigger is down, so a spray kicks and flashes from one pose instead of dropping
     # back to the carry between rounds.
     sprint = key('key.attack', hip_idle, hp['sprint'])
-    hip_rest = key('key.forward', key('key.sprint', sprint, hip_idle), hip_idle)
+    # The carry only on a real sprint: forward and sprint held, and neither crouch (which stops a sprint)
+    # nor back (forward and back cancel out, and nobody runs).
+    running = key('key.sneak', hip_idle, key('key.back', hip_idle, sprint))
+    hip_rest = key('key.forward', key('key.sprint', running, hip_idle), hip_idle)
     hip_tree = kicked('hip', item_id, held, hip_display, hip_rest)
 
     # Aimed, per sight: iron sights and 1x sights show the gun aimed (and kick), a scope its mask.
@@ -275,7 +293,7 @@ def build_gun(item_id, spec, item_defs):
             return model_ref('craftov:item/scope_mask/' + oid)
         name = item_id if oid is None else item_id + '__' + oid
         display = models.ads_display(item_id, oid)
-        ads = leaf('gun_ads/' + name, {'parent': held, 'display': display})
+        ads = leaf('gun_ads/' + name, {'parent': aim_held, 'display': display})
         ads_ref = 'craftov:item/gun_ads/' + name
         ap = {n: pose('ads', name, ads_ref, display, n, sp) for n, sp in models.ADS_POSES.items()}
         return kicked('ads', name, ads_ref, display, strafe(ads, ap))
@@ -292,7 +310,7 @@ def build_gun(item_id, spec, item_defs):
             target = models.optic_rise_display(item_id, oid)
         entries = []
         for k, (threshold, progress) in enumerate(models.ads_rise_frames()):
-            ref = leaf('gun_adsin/%s/%d' % (name, k), {'parent': held, 'display': {
+            ref = leaf('gun_adsin/%s/%d' % (name, k), {'parent': aim_held, 'display': {
                 side: models.lerp_display(hip_display[side], target[side], progress)
                 for side in ('firstperson_righthand', 'firstperson_lefthand')}})
             entries.append({'threshold': threshold, 'model': ref})
@@ -303,17 +321,19 @@ def build_gun(item_id, spec, item_defs):
     # composite of its moving parts.
     reload_entries = []
     reload_ticks = models.reload_cooldown(gun_spec.get('reload', 48))
-    for k, (threshold, parts) in enumerate(models.reload_timeline(item_id, reload_ticks)):
+    for k, (threshold, parts, hand) in enumerate(models.reload_timeline(item_id, reload_ticks)):
         members = []
         for part, (parent, right) in parts.items():
             members.append(leaf('gun_reload/%s/%s_%d' % (item_id, part, k), models.frame_model(parent, right)))
+        if hand is not None:
+            members.append(leaf('gun_reload/%s/hand_%d' % (item_id, k), models.reload_hand_model(*hand)))
         reload_entries.append({'threshold': threshold, 'model': {'type': 'minecraft:composite', 'models': members}})
     reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': reload_entries,
                    'fallback': hip_rest}
 
     # Coming up after a switch: one frame a tick of the draw time (models.draw_frames).
     draw_entries = []
-    for k, (threshold, right, left) in enumerate(models.draw_frames(item_id, models.draw_ticks(gun_spec.get('action')))):
+    for k, (threshold, right, left) in enumerate(models.draw_frames(item_id, models.draw_ticks(gun_spec))):
         ref = leaf('gun_draw/%s/%d' % (item_id, k), {'parent': models.mid_ref(item_id), 'display': {
             'firstperson_righthand': right, 'firstperson_lefthand': left}})
         draw_entries.append({'threshold': threshold, 'model': ref})
@@ -328,12 +348,24 @@ def build_gun(item_id, spec, item_defs):
                                 {'threshold': 4.5, 'model': holstered}],
                     'fallback': hip_tree}
 
-    # Everyone else sees the low model. Other players receive the gun as a charged crossbow while it is
-    # raised (StanceService), which gives the two-handed aiming pose; gun_aimed keeps the barrel straight.
+    # Everyone else sees the low model, posed for the stance StanceService shows them: shouldered, the
+    # gun comes as a charged crossbow (the two-handed aim; gun_aimed keeps the barrel straight); carried
+    # low, it comes with custom_model_data flag 0 and a crossbow's use (gun_lowready holds it low and
+    # level in the crossbow-charge pose). Without either (the ground, an item frame) it is the plain one.
+    # Flag 1 says the holder is crouching, whose arms swing back with the body's lean: the _crouch
+    # variants turn the gun back in the hand by as much.
     low = models.low_ref(item_id)
-    aimed_low = leaf('gun_aimed/' + item_id, models.gun_aimed_model(item_id, low))
+
+    def flag(index, on, off):
+        return {'type': 'minecraft:condition', 'property': 'minecraft:custom_model_data', 'index': index,
+                'on_true': on, 'on_false': off}
+
+    def stances(folder, make):
+        return flag(1, leaf('%s/%s_crouch' % (folder, item_id), make(item_id, low, True)),
+                    leaf('%s/%s' % (folder, item_id), make(item_id, low)))
     others = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
-              'cases': [{'when': 'arrow', 'model': aimed_low}], 'fallback': model_ref(low)}
+              'cases': [{'when': 'arrow', 'model': stances('gun_aimed', models.gun_aimed_model)}],
+              'fallback': flag(0, stances('gun_lowready', models.gun_lowready_model), model_ref(low))}
 
     atts = attachments_for(spec, item_defs)
     tree = {'type': 'minecraft:select', 'property': 'minecraft:display_context',
@@ -371,8 +403,10 @@ def build_items(item_defs):
             icon = icons.render(item_id)
             held = 'craftov:item/' + item_id
             # Melee weapons are held like a sword; everything else like a flat item.
-            parent = 'minecraft:item/handheld' if spec.get('category') == 'MELEE' else 'minecraft:item/generated'
-            write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id, parent))
+            if spec.get('category') == 'MELEE':
+                write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), knife_model('craftov:item/' + item_id))
+            else:
+                write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id))
         save(icon, os.path.join(CV, 'textures', 'item', item_id + '.png'))
         composite = bg.copy()
         composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
@@ -387,8 +421,26 @@ def build_items(item_defs):
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
+    save(hands.texture(), os.path.join(CV, 'textures', 'item', 'hands.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
     save(models.palette_texture(models.BOX_PALETTE), os.path.join(CV, 'textures', 'item', 'box_palette.png'))
+
+
+def knife_model(texture):
+    """A knife's sprite held like a sword (minecraft:item/handheld), at rest in first person as
+    knife_inspect.BASE has it: up enough for the gloved fist to show."""
+    model = generated(texture, 'minecraft:item/handheld')
+    model['display'] = {'firstperson_righthand': knife_inspect.BASE,
+                        'firstperson_lefthand': models.reload.mirrored(knife_inspect.BASE)}
+    return model
+
+
+# How far a knife drops in first person after a cut or a miss, and comes up when drawn, as a share of
+# vanilla's (the item definition's swap_animation_scale). The client lowers the item in hand after every
+# attack and raises it again over the attack interval (Player.resetAttackStrengthTicker): a knife,
+# held up enough for the gloved fist to show, dropped out of view at full scale and its 8-tick stab
+# (the STAB swing, which tips it forward at the crosshair) was never seen.
+KNIFE_SWAP_SCALE = 0.25
 
 
 def write_knife_item(name, frames_name, knife, held):
@@ -397,16 +449,34 @@ def write_knife_item(name, frames_name, knife, held):
     craftov:inspect cooldown (InspectService), and the client steps through the knife's inspect frames
     (knife_inspect/<frames_name>/<k>, each `held` in that frame's pose) while it counts down, as for the
     gun reload."""
+    # In first person the gloved fist holds it, and a sleeve runs back from it (models.knife_hand_frames):
+    # one fist and one sleeve model per knife, and per inspect frame a child of each with that frame's
+    # displays, drawn with the frame.
+    glove, sleeve = 'knife_hand/%s_glove' % knife, 'knife_hand/sleeve'
+    write_json(os.path.join(CV, 'models', 'item', glove + '.json'), models.knife_glove_model(knife))
+    write_json(os.path.join(CV, 'models', 'item', sleeve + '.json'), models.knife_sleeve_model())
+    hand_frames = models.knife_hand_frames(knife)
+
+    def gloved(ref, k):
+        fist, arm = hand_frames[k]
+        refs = []
+        for part, parent, display in (('glove', glove, fist), ('sleeve', sleeve, arm)):
+            path = 'knife_hand/%s/%s_%d' % (frames_name, part, k)
+            write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model('craftov:item/' + parent, display))
+            refs.append(model_ref('craftov:item/' + path))
+        return {'type': 'minecraft:composite', 'models': [model_ref(ref)] + refs}
     entries = []
     for k, (right, threshold) in enumerate(zip(knife_inspect.frames(knife), knife_inspect.thresholds())):
         path = 'knife_inspect/%s/%d' % (frames_name, k)
         write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
-        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+        entries.append({'threshold': threshold, 'model': gloved('craftov:item/' + path, k + 1)})
     write_json(os.path.join(CV, 'items', name + '.json'), {'model': {
         'type': 'minecraft:select', 'property': 'minecraft:display_context',
-        'cases': [{'when': ['gui'], 'model': gui_case(name)}],
-        'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
-                     'entries': entries, 'fallback': model_ref(held)}}, 'oversized_in_gui': True})
+        'cases': [{'when': ['gui'], 'model': gui_case(name)},
+                  {'when': ['firstperson_righthand', 'firstperson_lefthand'],
+                   'model': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
+                             'entries': entries, 'fallback': gloved(held, 0)}}],
+        'fallback': model_ref(held)}, 'oversized_in_gui': True, 'swap_animation_scale': KNIFE_SWAP_SCALE})
 
 
 def write_med_item(item_id, spec, held):
@@ -453,7 +523,7 @@ def build_knife_skins(item_defs):
         icon = knife_skins.render(sid)
         save(icon, os.path.join(CV, 'textures', 'item', name + '.png'))
         write_json(os.path.join(CV, 'models', 'item', name + '.json'),
-                   generated('craftov:item/' + name, 'minecraft:item/handheld'))
+                   knife_model('craftov:item/' + name))
         rarity = item_defs[knife].get('rarity', 'WHITE')
         composite = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
         composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
@@ -769,6 +839,15 @@ def build_vanilla_hud():
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_progress.png'))
 
 
+# Footsteps (FootstepService): the server plays craftov:step.<surface>.<kind> to each listener at its own
+# loudness, so these only name the client's own step recordings (nothing is added to the pack). A run is
+# the same steps a little heavier, a landing the same at a low pitch.
+STEP_FILES = {'stone': ('step/stone', 6), 'wood': ('step/wood', 6), 'metal': ('block/iron/step', 4),
+              'gravel': ('step/gravel', 4), 'grass': ('step/grass', 6), 'sand': ('step/sand', 5),
+              'snow': ('step/snow', 4), 'cloth': ('step/cloth', 4)}
+STEP_KINDS = {'walk': 1.0, 'run': 0.88, 'land': 0.7}
+
+
 def build_sounds():
     entries = {}
     for path, fn in sounds.SOUNDS.items():
@@ -778,6 +857,10 @@ def build_sounds():
         if path in ('throw/explode',):
             entry['sounds'][0]['attenuation_distance'] = 32
         entries[key] = entry
+    for surface, (stem, count) in STEP_FILES.items():
+        for kind, pitch in STEP_KINDS.items():
+            entries['step.%s.%s' % (surface, kind)] = {'sounds': [
+                {'name': 'minecraft:%s%d' % (stem, i), 'pitch': pitch} for i in range(1, count + 1)]}
     # Bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its variants;
     # the client picks one at random per play.
     for key, variants, attenuation in gunaudio.catalogue():
@@ -1220,6 +1303,14 @@ def build_trigger_capture():
     the voices of sounds.py when hurt or killed, instead of vanilla's "oof" (#41).
     """
     save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
+    # The ceiling that keeps a downed player crawling on a slab (DownedService.HALF_CEILING): a top purpur
+    # slab sent to that player alone, drawn as nothing. Purpur is in no Craftov map.
+    write_json(os.path.join(CV, 'models', 'block', 'empty.json'),
+               {'textures': {'particle': 'minecraft:block/purpur_block'}, 'elements': []})
+    write_json(os.path.join(MC, 'blockstates', 'purpur_slab.json'), {'variants': {
+        'type=bottom': {'model': 'minecraft:block/purpur_slab'},
+        'type=double': {'model': 'minecraft:block/purpur_block'},
+        'type=top': {'model': 'craftov:block/empty'}}})
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
     hurt = {'replace': True, 'sounds': [{'name': 'craftov:voice/hurt%d' % i, 'volume': 0.9} for i in range(1, 5)]}
     death = {'replace': True, 'sounds': [{'name': 'craftov:voice/death%d' % i} for i in range(1, 4)]}

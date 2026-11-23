@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_hand/sleeve",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -0.0,
+    -56.31,
+    -31.39
+   ],
+   "translation": [
+    -1.41,
+    3.868,
+    -6.118
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -180.0,
+    56.31,
+    -148.61
+   ],
+   "translation": [
+    -1.41,
+    3.868,
+    -6.118
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
+ }
+}

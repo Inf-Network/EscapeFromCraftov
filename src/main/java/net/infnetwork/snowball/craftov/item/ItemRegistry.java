@@ -5,6 +5,8 @@ import net.infnetwork.snowball.craftov.combat.MedSpec;
 import net.infnetwork.snowball.craftov.weapon.AmmoSpec;
 import net.infnetwork.snowball.craftov.weapon.FireMode;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
+import net.infnetwork.snowball.craftov.weapon.Handling;
+import net.infnetwork.snowball.craftov.weapon.OpticSpec;
 import net.infnetwork.snowball.craftov.weapon.ThrowableSpec;
 import net.infnetwork.snowball.craftov.weapon.WeaponSlot;
 import org.bukkit.configuration.ConfigurationSection;
@@ -36,76 +38,82 @@ public final class ItemRegistry {
     private final Map<String, ItemDef> items = new LinkedHashMap<>();
     private final Logger logger;
     /**
-     * Secure-container cells per id in the jar's own items.yml. A server keeps the items.yml it was
-     * first given (CraftovPlugin copies it only when missing), so one written before {@code size}
-     * existed (revision 7 and older) would let every statue and generator into a single cell: an item
-     * whose entry has no size takes the jar's. A size written in the server's file always wins.
+     * What the jar's own items.yml gives for the keys a server's copy may lack. A server keeps the
+     * items.yml it was first given (CraftovPlugin copies it only when missing), so one written before
+     * {@code size} existed (revision 7 and older) would let every statue and generator into a single
+     * cell, and one written before {@code handling} (revision 8 and older) would leave every gun alike:
+     * an item whose entry lacks the key takes the jar's. A value written in the server's file always wins.
+     * The same goes for a medical item's pose and cues: a file from before cues (#41) names one
+     * {@code sound} and the vanilla poses (brush, crossbow, bundle, trident) that the item models' own
+     * frames replaced, which would now play on top of them, so a medical item whose entry has no
+     * {@code cues} takes the jar's pose and cues together.
      */
-    private final Map<String, Integer> bundledSizes;
+    private final Bundled bundled;
 
     /**
-     * How each medical item in the jar's items.yml is used: its vanilla pose and its cues. The same
-     * goes for a server's file from before cues (#41): its entries name one {@code sound} and the
-     * vanilla poses (brush, crossbow, bundle, trident) that the item models' own frames replaced,
-     * which would now play on top of them. A medical item whose entry has no {@code cues} takes the
-     * jar's pose and cues. Cues written in the server's file always win.
+     * The jar's {@code size} by item id, its {@code handling} by gun, sight or part id, and its pose and
+     * cues by medical item id (those with cues).
      */
-    private final Map<String, MedUse> bundledMeds;
+    public record Bundled(Map<String, Integer> sizes, Map<String, Double> handling, Map<String, MedUse> meds) {
+        public Bundled {
+            sizes = Map.copyOf(sizes);
+            handling = Map.copyOf(handling);
+            meds = Map.copyOf(meds);
+        }
+    }
 
     /** A medical item's vanilla pose ({@code anim}) and sounds ({@code cues}) as an items.yml gives them. */
     public record MedUse(String animation, List<MedSpec.Cue> cues) {
     }
 
-    public ItemRegistry(Logger logger, Map<String, Integer> bundledSizes, Map<String, MedUse> bundledMeds) {
+    /** The sections of an item that carry a handling: a gun's own, a sight's or a part's change to it. */
+    private static final List<String> HANDLED = List.of("gun", "optic", "attach");
+
+    public ItemRegistry(Logger logger, Bundled bundled) {
         this.logger = logger;
-        this.bundledSizes = Map.copyOf(bundledSizes);
-        this.bundledMeds = Map.copyOf(bundledMeds);
+        this.bundled = bundled;
     }
 
-    /** The {@code size} of every item in an items.yml (the jar's copy), or none if it cannot be read. */
-    public static Map<String, Integer> sizes(@Nullable InputStream in) {
-        Map<String, Integer> out = new LinkedHashMap<>();
-        ConfigurationSection root = itemsOf(in);
-        if (root == null) {
-            return out;
-        }
-        for (String id : root.getKeys(false)) {
-            ConfigurationSection s = root.getConfigurationSection(id);
-            if (s != null && s.contains("size")) {
-                out.put(id, Math.max(1, s.getInt("size", 1)));
-            }
-        }
-        return out;
-    }
-
-    /** The pose and cues of every medical item with cues in an items.yml (the jar's copy), or none if it cannot be read. */
-    public static Map<String, MedUse> medUses(@Nullable InputStream in) {
-        Map<String, MedUse> out = new LinkedHashMap<>();
-        ConfigurationSection root = itemsOf(in);
-        if (root == null) {
-            return out;
-        }
-        for (String id : root.getKeys(false)) {
-            ConfigurationSection m = root.getConfigurationSection(id + ".med");
-            if (m != null && m.contains("cues")) {
-                out.put(id, new MedUse(m.getString("anim", "none"), medCues(m)));
-            }
-        }
-        return out;
-    }
-
-    /** The {@code items} section of an items.yml, or null if it cannot be read. */
-    private static @Nullable ConfigurationSection itemsOf(@Nullable InputStream in) {
+    /**
+     * The {@code size}, {@code handling} and medical pose and cues of every item in an items.yml (the
+     * jar's copy), or none if it cannot be read.
+     */
+    public static Bundled bundled(@Nullable InputStream in) {
+        Map<String, Integer> sizes = new LinkedHashMap<>();
+        Map<String, Double> handling = new LinkedHashMap<>();
+        Map<String, MedUse> meds = new LinkedHashMap<>();
         if (in == null) {
-            return null;
+            return new Bundled(sizes, handling, meds);
         }
         YamlConfiguration yaml = new YamlConfiguration();
         try (in) {
             yaml.loadFromString(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException | InvalidConfigurationException ex) {
-            return null;
+            return new Bundled(sizes, handling, meds);
         }
-        return yaml.getConfigurationSection("items");
+        ConfigurationSection root = yaml.getConfigurationSection("items");
+        if (root == null) {
+            return new Bundled(sizes, handling, meds);
+        }
+        for (String id : root.getKeys(false)) {
+            ConfigurationSection s = root.getConfigurationSection(id);
+            if (s == null) {
+                continue;
+            }
+            if (s.contains("size")) {
+                sizes.put(id, Math.max(1, s.getInt("size", 1)));
+            }
+            for (String part : HANDLED) {
+                if (s.contains(part + ".handling")) {
+                    handling.put(id, s.getDouble(part + ".handling"));
+                }
+            }
+            ConfigurationSection m = s.getConfigurationSection("med");
+            if (m != null && m.contains("cues")) {
+                meds.put(id, new MedUse(m.getString("anim", "none"), medCues(m)));
+            }
+        }
+        return new Bundled(sizes, handling, meds);
     }
 
     /**
@@ -130,6 +138,7 @@ public final class ItemRegistry {
         Map<String, ItemDef> parsed = new LinkedHashMap<>();
         List<String> errors = new ArrayList<>();
         List<String> borrowed = new ArrayList<>();
+        List<String> borrowedHandling = new ArrayList<>();
         List<String> borrowedMeds = new ArrayList<>();
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
@@ -142,11 +151,16 @@ public final class ItemRegistry {
             } catch (RuntimeException ex) {
                 errors.add(id + "：" + ex.getMessage());
             }
-            if (s.isConfigurationSection("med") && !s.contains("med.cues") && bundledMeds.containsKey(id)) {
-                borrowedMeds.add(id);
-            }
-            if (!s.contains("size") && bundledSizes.getOrDefault(id, 1) > 1) {
+            if (!s.contains("size") && bundled.sizes().getOrDefault(id, 1) > 1) {
                 borrowed.add(id);
+            }
+            for (String part : HANDLED) {
+                if (s.isConfigurationSection(part) && !s.contains(part + ".handling") && bundled.handling().containsKey(id)) {
+                    borrowedHandling.add(id);
+                }
+            }
+            if (s.isConfigurationSection("med") && !s.contains("med.cues") && bundled.meds().containsKey(id)) {
+                borrowedMeds.add(id);
             }
         }
         if (!errors.isEmpty()) {
@@ -162,6 +176,11 @@ public final class ItemRegistry {
             logger.warning(file.getName() + " gives no secure-container size for " + borrowed.size() + " items ("
                     + String.join(", ", borrowed) + "): they take the jar's sizes. Replace the file with the jar's"
                     + " copy, or add size: to each, to change them.");
+        }
+        if (!borrowedHandling.isEmpty()) {
+            logger.warning(file.getName() + " gives no handling for " + borrowedHandling.size() + " guns and parts ("
+                    + String.join(", ", borrowedHandling) + "): they take the jar's. Replace the file with the jar's"
+                    + " copy, or add handling: to each, to change them.");
         }
         if (!borrowedMeds.isEmpty()) {
             logger.warning(file.getName() + " gives no cues for " + borrowedMeds.size() + " medical items ("
@@ -236,7 +255,8 @@ public final class ItemRegistry {
                     g.getString("scope"),
                     g.getString("audio", id),
                     g.getString("action", modes.contains(FireMode.PUMP) ? "pump" : modes.contains(FireMode.BOLT) ? "bolt"
-                            : "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "pistol" : "ar"));
+                            : "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "pistol" : "ar"),
+                    Handling.clamp(g.getDouble("handling", bundled.handling().getOrDefault(id, Handling.fallback(adsClass(id, g))))));
         }
         AmmoSpec ammo = null;
         ConfigurationSection a = s.getConfigurationSection("ammo");
@@ -247,7 +267,7 @@ public final class ItemRegistry {
         MedSpec med = null;
         ConfigurationSection m = s.getConfigurationSection("med");
         if (m != null) {
-            MedUse use = m.contains("cues") ? null : bundledMeds.get(id);
+            MedUse use = m.contains("cues") ? null : bundled.meds().get(id);
             if (use == null) {
                 use = new MedUse(m.getString("anim", "none"), medCues(m));
             }
@@ -260,7 +280,7 @@ public final class ItemRegistry {
                     MedSpec.Effect.valueOf(m.getString("effect", "NONE").toUpperCase(Locale.ROOT)),
                     m.getInt("effect-seconds", 0), use.animation(), use.cues());
         }
-        net.infnetwork.snowball.craftov.weapon.OpticSpec optic = null;
+        OpticSpec optic = null;
         ConfigurationSection o = s.getConfigurationSection("optic");
         if (o != null) {
             double power;
@@ -268,13 +288,15 @@ public final class ItemRegistry {
                 power = Math.max(1.0, o.getDouble("magnification"));
             } else {
                 // An items.yml from before optics gave their true power still has the old field of view.
-                power = net.infnetwork.snowball.craftov.weapon.OpticSpec.legacyPower(o.getDouble("fov", 0.75));
+                power = OpticSpec.legacyPower(o.getDouble("fov", 0.75));
                 logger.warning("items.yml: " + id + " still has optic fov instead of magnification: it zooms "
-                        + net.infnetwork.snowball.craftov.weapon.OpticSpec.label(power) + "x as before. Back up items.yml,"
+                        + OpticSpec.label(power) + "x as before. Back up items.yml,"
                         + " replace it with the one in the plugin jar and restart.");
             }
-            optic = new net.infnetwork.snowball.craftov.weapon.OpticSpec(power, o.getString("overlay"),
-                    Set.copyOf(o.getStringList("mount").isEmpty() ? List.of("rifle") : o.getStringList("mount")));
+            OpticSpec.Tier tier = new OpticSpec(power, null, Set.of(), 0).tier();
+            optic = new OpticSpec(power, o.getString("overlay"),
+                    Set.copyOf(o.getStringList("mount").isEmpty() ? List.of("rifle") : o.getStringList("mount")),
+                    o.getDouble("handling", bundled.handling().getOrDefault(id, Handling.opticFallback(tier))));
         }
         net.infnetwork.snowball.craftov.weapon.MeleeSpec melee = null;
         ConfigurationSection me = s.getConfigurationSection("melee");
@@ -297,7 +319,8 @@ public final class ItemRegistry {
                     Set.copyOf(at.getStringList("mount").isEmpty() ? List.of("rifle") : at.getStringList("mount")),
                     at.getDouble("recoil", 1), at.getDouble("recoil-h", 1), at.getDouble("hip-spread", 1), at.getDouble("ads-spread", 1),
                     at.getDouble("reload", 1), at.getDouble("move-speed", 1), at.getDouble("magazine", 1),
-                    at.getBoolean("suppressed", false), at.getString("light"));
+                    at.getBoolean("suppressed", false), at.getString("light"),
+                    at.getDouble("handling", bundled.handling().getOrDefault(id, 0.0)));
         }
         ThrowableSpec throwable = null;
         ConfigurationSection t = s.getConfigurationSection("throwable");
@@ -354,7 +377,7 @@ public final class ItemRegistry {
                 optic,
                 melee,
                 attach,
-                Math.max(1, s.contains("size") ? s.getInt("size", 1) : bundledSizes.getOrDefault(id, 1)),
+                Math.max(1, s.contains("size") ? s.getInt("size", 1) : bundled.sizes().getOrDefault(id, 1)),
                 secureStack);
     }
 

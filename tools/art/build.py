@@ -246,8 +246,10 @@ def build_items(item_defs):
                         'firstperson_lefthand': models.lerp_display(hip_display['firstperson_lefthand'],
                                                                     rise['firstperson_lefthand'], progress)}})
                     rise_entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+                # Without the cooldown (the tick before it comes, see WeaponService.startAds) the gun is at
+                # the hip: the aimed model shows only once the server marks the sights up (damage 4).
                 rise_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': rise_entries,
-                             'fallback': ads_tree}
+                             'fallback': rise_entries[0]['model']}
                 # While the reload cooldown runs, the client steps through the reload frames itself.
                 entries = [{'threshold': threshold, 'model': {
                     'type': 'minecraft:composite', 'models': [model_ref(n) for n in reload_frames[k]]}}

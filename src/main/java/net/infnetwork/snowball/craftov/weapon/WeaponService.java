@@ -113,6 +113,8 @@ public final class WeaponService implements Listener {
          */
         long adsStart = -1;
         int adsTicks = 1;
+        /** The cooldown that runs the frames of the sights coming up has been sent (a tick after the mark). */
+        boolean adsFrames;
         /** The sights are all the way up: the gun carries the aimed mark, a scope shows its picture. */
         boolean adsUp;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
@@ -1472,12 +1474,17 @@ public final class WeaponService implements Listener {
         state.adsStart = now;
         state.adsTicks = adsTicks(state);
         state.adsUp = false;
+        state.adsFrames = false;
         plugin.health().forceSpeedUpdate(player);
-        // The mark first and at once, then the cooldown: the other way round the model would read the
-        // cooldown as a shot's kick for a moment.
+        // The mark now; the cooldown that runs the frames on the next tick (see raise). The client swaps
+        // the stack in on its own next tick, but reads a cooldown at once: sent together, the frames
+        // drawn in between would show the old stack reading the cooldown as a shot's kick, flash and all.
+        // Until the cooldown comes, the aiming mark shows the gun at the hip.
+        if (player.getCooldown(ItemFactory.RELOAD_GROUP) > 0) {
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
         setMark(player, state, ItemFactory.MARK_AIM);
         Nms.syncInventory(player);
-        player.setCooldown(ItemFactory.RELOAD_GROUP, state.adsTicks);
         plugin.fov().show(player, 1.0);
         player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
         plugin.fov().aimed(player);
@@ -1488,6 +1495,15 @@ public final class WeaponService implements Listener {
      * they are up the gun takes the aimed mark (its cooldown is a shot's kick again) and a scope
      * shows its picture.
      */
+    /**
+     * Ticks between the aiming mark and the cooldown that runs the frames of the sights coming up. The
+     * client swaps a changed stack in on its next tick but reads a cooldown at once, and the two
+     * packets may reach it in the same tick: two ticks apart, the stack is always in first.
+     */
+    private static final int ADS_FRAMES_DELAY = 2;
+    /** Share of that cooldown, at its end, that holds the last frame (tools/art/models.py ADS_RISE_TAIL). */
+    private static final double ADS_FRAMES_TAIL = 0.25;
+
     private void raise(Player player, GunState state, long now) {
         if (state.adsStart < 0) {
             return;
@@ -1495,6 +1511,13 @@ public final class WeaponService implements Listener {
         double target = fovFor(player, state);
         if (state.adsUp) {
             return;
+        }
+        if (!state.adsFrames && now >= state.adsStart + ADS_FRAMES_DELAY) {
+            // The frames take the rest of the ads time; the cooldown runs a quarter longer, its last
+            // quarter holding the final frame, so the aimed mark that ends them can come a little late.
+            state.adsFrames = true;
+            int frames = Math.max(1, state.adsTicks - ADS_FRAMES_DELAY);
+            player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.ceil(frames / (1 - ADS_FRAMES_TAIL)));
         }
         double t = Math.max(0, Math.min(1, (now - state.adsStart) / (double) Math.max(1, state.adsTicks)));
         if (t < 1) {

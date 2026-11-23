@@ -489,10 +489,18 @@ def ads_ease(t):
     return t * t * (3 - 2 * t)
 
 
+# The last ADS_RISE_TAIL of that cooldown holds the final frame (WeaponService.ADS_FRAMES_TAIL): the
+# server's aimed mark, which ends the frames, may come a tick late without the gun dropping back.
+ADS_RISE_TAIL = 0.25
+
+
 def ads_rise_frames(n=ADS_RISE_FRAMES):
     """(cooldown threshold, progress 0..1) per frame, the first first. The cooldown runs from 1 down
-    to 0; below the last threshold (once it has run out) the model is the aimed one."""
-    return [(max(1e-4, round(1 - (k + 1) / n, 5)), round(ads_ease((k + 0.5) / n), 4)) for k in range(n)]
+    to 0: the frames step through its first 1 - ADS_RISE_TAIL, the last one holds to the end. Once it
+    has run out (and before it comes) the model is the first frame, the gun at the hip."""
+    span = 1 - ADS_RISE_TAIL
+    return [(max(1e-4, round(ADS_RISE_TAIL + span * (1 - (k + 1) / n), 5)) if k < n - 1 else 1e-4, round(ads_ease((k + 0.5) / n), 4))
+            for k in range(n)]
 
 
 def lerp_display(a, b, t):

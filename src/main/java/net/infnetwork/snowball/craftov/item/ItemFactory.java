@@ -60,8 +60,9 @@ public final class ItemFactory {
      * lore with stat bars (GunStats) in place of the damage and rate line.
      * 13: optic lore gives the true power (the red dot reads 1.5x, the old 0.74 field of view).
      * 14: max_damage 4 for the aiming marks (the sights are the server's, see {@link #setHandMark}).
+     * 15: guns always carry a damage component (0 without a mark), see {@link #setHandMark}.
      */
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -281,6 +282,7 @@ public final class ItemFactory {
             // down, shows no durability bar and no tooltip line; a damageable item may not stack.
             stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
             stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_AIMED);
+            stack.setData(DataComponentTypes.DAMAGE, MARK_NONE);
             stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
@@ -581,14 +583,13 @@ public final class ItemFactory {
      * the sights show when the server aims, so the view, the spread and the pose always agree. The
      * mark is the stack's damage, against max_damage 4, because damage is the only component the
      * vanilla 1.21.11 client swaps in on a held item without lowering and raising it again
-     * (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun.
+     * (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun. "No mark" is a
+     * damage of 0, never a missing component: ItemStack.matchesIgnoringComponents first compares how
+     * many components the two stacks have, so a damage that came and went dipped the gun anyway (at
+     * the start and end of every reload, and of the sights coming up).
      */
     public static void setHandMark(ItemStack stack, int mark) {
-        if (mark > MARK_NONE) {
-            stack.setData(DataComponentTypes.DAMAGE, Math.min(MARK_AIMED, mark));
-        } else if (stack.hasData(DataComponentTypes.DAMAGE)) {
-            stack.resetData(DataComponentTypes.DAMAGE);
-        }
+        stack.setData(DataComponentTypes.DAMAGE, Math.max(MARK_NONE, Math.min(MARK_AIMED, mark)));
     }
 
     public void setDura(ItemStack stack, double dura) {

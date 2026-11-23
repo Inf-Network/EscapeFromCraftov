@@ -31,8 +31,9 @@ import java.util.UUID;
  * way (an extraction is what the guide is there to teach). Hints say what to do where the player
  * is: on the range the gunsmith is behind the weapon rack, and in a raid only the extraction can be
  * done, so that is all a raid ever reminds of. Players who extracted before the guide existed are
- * veterans and never see it; whoever turns the guide's pointers off keeps the reward for the first
- * extraction but gets no objective line, waypoints or reminders.
+ * veterans and never see it. A new player is first shown the briefing ({@link Briefing}), which
+ * starts the guide or skips it; whoever skips keeps the reward for the first extraction but gets no
+ * objective line, waypoints or reminders, until the terminal's guide button turns them back on.
  * <p>
  * The goal is always in view: a line under the HUD's top-left panel says what to do next and how
  * far it is, the compass points at the lobby station it is done at (in a raid it already points at
@@ -184,12 +185,43 @@ public final class TutorialService {
                 + " <muted>· 之后可以试试每日任务、藏身处和排位赛。");
     }
 
-    /** The player turned the guide's pointers off or back on. */
+    /** The player turned the guide's pointers off (the briefing's skip) or back on (its start button). */
     public void mute(Player player, boolean muted) {
         Profile profile = plugin.profiles().get(player);
         profile.guideMuted = muted;
         profile.briefed = true;
         plugin.profiles().markDirty(player.getUniqueId());
+    }
+
+    // ------------------------------------------------------------------ briefing
+
+    /** The briefing from its first page (the terminal's guide button, /cv guide). */
+    public void openBriefing(Player player) {
+        openBriefing(player, 0);
+    }
+
+    /** The briefing at a page: 0 the goal, 1 the rules, 2 the controls. */
+    public void openBriefing(Player player, int page) {
+        Briefing.open(plugin, player, page);
+    }
+
+    /**
+     * Joining: a new player who has not answered the briefing yet gets it once they stand in the
+     * lobby (a moment after joining, so it comes after the resource pack and the welcome line).
+     */
+    public void briefOnJoin(Player player) {
+        Profile profile = plugin.profiles().get(player);
+        if (!active(profile) || profile.briefed || !plugin.getConfig().getBoolean("tutorial.briefing", true)) {
+            return;
+        }
+        java.util.UUID uuid = player.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p != null && plugin.lobby().isLobby(p.getWorld()) && plugin.raids().raidOf(p) == null
+                    && !plugin.profiles().get(p).briefed) {
+                openBriefing(p);
+            }
+        }, 60L);
     }
 
     // ------------------------------------------------------------------ hints

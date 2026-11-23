@@ -485,7 +485,7 @@ public final class LobbyService implements Listener {
                 }
             }
         }
-        Text.send(player, "<accent>欢迎来到锈港行动！<muted>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
+        Text.send(player, "<accent>欢迎来到 Craftov！<muted>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
     }
 
     @EventHandler
@@ -529,6 +529,7 @@ public final class LobbyService implements Listener {
             if (player.isOnline()) {
                 enterLobby(player);
                 plugin.hud().onJoin(player);
+                plugin.tutorial().briefOnJoin(player);
             }
         });
     }

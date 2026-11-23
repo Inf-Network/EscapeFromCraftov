@@ -1086,6 +1086,11 @@ def up(cfg, state, started=None):
         if state_now != 'applied':
             raise Fail(f'the resource pack was dropped after loading ({detail or "vanilla reload"}); '
                        f'see {GAME_DIR / "logs" / "latest.log"}')
+        if cfg.fresh:
+            # A new profile gets the first-join briefing (a dialog window) a few seconds after joining.
+            # It would cover every shot and swallow the chat key, so it is closed unanswered: it comes
+            # back on the next fresh join, and a scene that wants it opens it with /cv guide.
+            rcon(cfg, f'cv close {cfg.name}')
     save_state(state)
     return started
 

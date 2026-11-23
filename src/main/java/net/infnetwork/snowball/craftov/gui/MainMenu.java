@@ -5,7 +5,6 @@ import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.lobby.TutorialService;
 import net.infnetwork.snowball.craftov.profile.Profile;
-import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
@@ -106,15 +105,20 @@ final class MainMenu extends Menu {
                 });
         button(25, UiItems.button("craftov:ui/icon_bounty", "<text><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
                 "<muted>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
-        // Bottom bar: help, profile, close.
-        set(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
-                "<white>左键 <muted>开火（按住连发）",
-                "<white>右键 <muted>按住开镜瞄准，松开即腰射",
-                "<white>Q <muted>换弹  <white>潜行+Q <muted>切换弹种",
-                "<white>F <muted>切换射击模式（拿刀时检视）  <white>潜行+F <muted>干员技能",
-                "<white>右键物资箱 <muted>搜索  <white>对准倒地队友按住右键 <muted>救援",
-                "<white>医疗品 <muted>拿在手上按住右键使用，终端里可查看伤势",
-                "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格")));
+        // Bottom bar: help, the guide, profile, close. The keys are the player's own bindings.
+        button(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
+                "<white><key:key.attack> <muted>开火（按住连发）",
+                "<white><key:key.use> <muted>按住开镜瞄准，松开即腰射",
+                "<white><key:key.drop> <muted>换弹  <white><key:key.sneak>+<key:key.drop> <muted>切换弹种",
+                "<white><key:key.swapOffhand> <muted>切换射击模式（拿刀时检视）",
+                "<white><key:key.sneak>+<key:key.swapOffhand> <muted>干员技能  <white><key:key.pickItem> <muted>战术手电",
+                "<white><key:key.use> <muted>物资箱：搜索  对准倒地队友按住 <white><key:key.use> <muted>救援",
+                "<muted>医疗品拿在手上按住 <white><key:key.use> <muted>使用，终端里可查看伤势",
+                "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格",
+                "<accent>点击打开新手简报")), e -> {
+            viewer.closeInventory();
+            plugin.tutorial().openBriefing(viewer, 2);
+        });
         set(49, UiItems.button("craftov:ui/icon_profile", "<text><b>" + Text.escape(viewer.getName()),
                 List.of("<muted>块币 <accent>◈ " + Text.money(p.money),
                         "<muted>等级 <white>Lv." + p.level + " <muted>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",
@@ -157,16 +161,16 @@ final class MainMenu extends Menu {
         lore.add("<muted>步骤顺序随意，第一次撤离成功即完成");
         lore.add("<muted>奖励 <accent>◈" + Text.money(plugin.getConfig().getLong("tutorial.reward", 20_000)));
         if (p.guideMuted) {
-            lore.add("<dim>目标栏和指引箭头已关闭，点击重新开启");
+            lore.add("<dim>目标栏和指引箭头已关闭，在简报里可以重新开启");
         } else if (next != null) {
             lore.addAll(Text.wrap("<muted>下一步：" + plugin.tutorial().hint(viewer, next), 40));
         }
+        lore.add("<accent>点击重看新手简报");
         ItemStack stack = UiItems.button("craftov:ui/icon_tasks", "<accent><b>新手指引 " + TutorialService.doneCount(p) + "/"
                 + TutorialService.Step.values().length, lore);
         button(46, stack, e -> {
-            plugin.tutorial().mute(viewer, false);
-            Notify.ok(viewer, "已开启新手指引：左上角显示当前目标，罗盘和箭头指路");
-            redraw();
+            viewer.closeInventory();
+            plugin.tutorial().openBriefing(viewer);
         });
     }
 }

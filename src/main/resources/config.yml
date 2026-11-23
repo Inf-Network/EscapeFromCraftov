@@ -480,9 +480,12 @@ escort:
   failure-share: 0.3
 
 tutorial:
-  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward.
+  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward,
+  # paid on the first extraction whatever steps were skipped.
   enabled: true
   reward: 20000
+  # The three-page briefing (goal, rules, controls) that opens for a new player after joining.
+  briefing: true
 
 season:
   # Changing the id starts a new season (everyone's pass progress resets).

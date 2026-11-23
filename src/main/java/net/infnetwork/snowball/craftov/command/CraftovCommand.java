@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod");
+            "leave", "help", "mod", "guide");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "feed", "marketaudit", "ai", "lagcomp", "luck");
 
@@ -85,6 +85,26 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "mod" -> {
                 if (player != null) plugin.menus().openGunsmith(player);
+            }
+            case "guide" -> {
+                // /cv guide: the new-player briefing again; /cv guide start|skip answers it without the
+                // window (for bots and players whose client cannot show dialogs).
+                if (player == null) {
+                    return true;
+                }
+                String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+                if (action.equals("start") || action.equals("skip")) {
+                    plugin.tutorial().mute(player, action.equals("skip"));
+                    Text.send(player, action.equals("skip") ? "<muted>已关闭新手指引的目标栏、箭头和提醒（第一次撤离照样发奖励）。"
+                            : "<ok>已开启新手指引。");
+                    if (action.equals("start")) {
+                        plugin.tutorial().show(player, plugin.profiles().get(player));
+                    }
+                } else {
+                    // /cv guide 1|2|3 opens that page (the controls page straight away, say).
+                    int page = action.matches("[1-3]") ? Integer.parseInt(action) - 1 : 0;
+                    plugin.tutorial().openBriefing(player, page);
+                }
             }
             case "queue" -> {
                 // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
@@ -156,7 +176,7 @@ public final class CraftovCommand implements TabExecutor {
         sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
         sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
-        sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配"));
+        sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配  <muted>/cv guide <muted>新手简报（start | skip 开启或关闭指引）"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
             sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }
@@ -259,6 +279,7 @@ public final class CraftovCommand implements TabExecutor {
                     return;
                 }
                 target.closeInventory();
+                target.closeDialog(); // the first-join briefing, too
             }
             case "hud" -> {
                 // /cv hud <player>: what that player's BetterHud shows besides the panels (bots cannot see it).

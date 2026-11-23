@@ -11,9 +11,9 @@
 //      the secure container; a tactical dagger wearing 黑曜, put into the stash and listed on the
 //      market, is listed as the plain dagger; meanwhile the starter knife given in its place wears
 //      锈港 again (each kind of knife keeps its own skin);
-//   4. the dagger wears 黑曜 in a raid on the proving ground; clicked into the gallery crate there it
-//      is the plain dagger in the crate (no skin model or name), and taken back out it wears 黑曜
-//      again; after dying in the raid it still wears 黑曜 in the lobby;
+//   4. the dagger wears 黑曜 in a raid on the proving ground; a click on it in the gallery crate's
+//      search screen puts nothing into the crate (the melee knife never moves there, #10) and it
+//      still wears 黑曜 afterwards; after dying in the raid it still wears 黑曜 in the lobby;
 //   5. after logging out and back in it still wears 黑曜, and the profile file (with SERVER_DIR)
 //      holds the choice and no record anywhere (stash, loadout, secure container, mailbox, market)
 //      carries a skin;
@@ -260,6 +260,9 @@ async function scenario (name, botRef) {
   if (!w) throw new Error('stash did not open')
   const before = w.slots.slice(0, 45).filter(s => cid(s) === 'knife_starter').length
   await click(bot, meleeSlotIn(w), 0, 800)
+  // The stash retitles itself after a deposit (room and value in the title), which mineflayer takes
+  // for a new window: read the current one.
+  w = bot.currentWindow || w
   const stored = w.slots.slice(0, 45).map((s, i) => [s, i]).filter(([s]) => cid(s) === 'knife_starter')
   check('the skinned knife goes into the stash', stored.length === before + 1, stored.length)
   const entry = stored.length ? stored[stored.length - 1] : [null, -1]
@@ -270,8 +273,9 @@ async function scenario (name, botRef) {
   await waitFor(() => model(melee(bot)) === SKIN('starter_rustport'), 8000)
   check('the replacement starter knife wears 锈港 too', model(melee(bot)) === SKIN('starter_rustport'), model(melee(bot)))
   w = await openWith(bot, () => bot.chat('/cv stash'))
-  for (let i = 0; i < 3 && !title(w.slots[48]).includes('取出'); i++) await click(bot, 48, 0, 300)
-  await click(bot, entry[1], 0, 800)
+  // A left click on an item takes it out (the stash has no modes since #10).
+  const stashed = w ? w.slots.slice(0, 45).findIndex(s => cid(s) === 'knife_starter') : -1
+  if (stashed >= 0) await click(bot, stashed, 0, 800)
   await closeAll(bot)
   await waitFor(() => model(melee(bot)) === SKIN('starter_rustport'), 3000)
   check('taken back out of the stash, the knife wears 锈港 in the melee slot', model(melee(bot)) === SKIN('starter_rustport'), model(melee(bot)))
@@ -298,13 +302,14 @@ async function scenario (name, botRef) {
   check('黑曜 goes on the dagger from its tab', model(melee(bot)) === SKIN('tactical_obsidian'), model(melee(bot)))
   w = await openWith(bot, () => bot.chat('/cv stash'))
   await click(bot, meleeSlotIn(w), 0, 800)
-  for (let i = 0; i < 3 && !title(w.slots[48]).includes('上架'); i++) await click(bot, 48, 0, 300)
+  w = bot.currentWindow || w
   const dagger = w.slots.slice(0, 45).findIndex(s => cid(s) === 'knife_tactical')
   check('the dagger is in the stash as the plain dagger', dagger >= 0 && model(w.slots[dagger]) === 'craftov:knife_tactical',
     dagger >= 0 ? model(w.slots[dagger]) : '(not there)')
   let listed = null
   if (dagger >= 0) {
-    const pm = await openWith(bot, () => bot.clickWindow(dagger, 0, 0))
+    // A right click on an item opens its market listing.
+    const pm = await openWith(bot, () => bot.clickWindow(dagger, 1, 0))
     if (pm) {
       const from = bot.chatLog.length
       const back = await openWith(bot, () => bot.clickWindow(26, 0, 0))
@@ -333,7 +338,9 @@ async function scenario (name, botRef) {
   if (!await deploy(bot)) throw new Error('the bot never reached the proving ground')
   await waitFor(() => model(melee(bot)) === SKIN('tactical_obsidian'), 3000)
   check('in the raid the dagger wears 黑曜', model(melee(bot)) === SKIN('tactical_obsidian'), model(melee(bot)))
-  // A crate copies the stack as it is: the dagger must go in without the skin, and come back out with it.
+  // The search screen (#10) never moves the melee knife: a click on it puts nothing into the crate,
+  // so no skin can get there, and the dagger stays in the melee slot wearing its skin. (A body still
+  // copies a knife as it is; SkinService#undress covers that.)
   w = await openCrate(bot)
   if (!w) throw new Error('the gallery crate on the proving ground did not open')
   await sleep(1000)
@@ -342,16 +349,18 @@ async function scenario (name, botRef) {
   const daggersBefore = topDaggers(w)
   await click(bot, meleeSlotIn(w), 0, 800)
   w = bot.currentWindow || w
+  // The click was refused: the client guessed it picked the dagger up, so ask for the window as the
+  // server has it.
+  if (bot._syncWindow) await Promise.race([bot._syncWindow(w), sleep(1500)])
+  w = bot.currentWindow || w
   const putAt = topDaggers(w).find(i => !daggersBefore.includes(i))
-  const inCrate = putAt === undefined ? null : w.slots[putAt]
-  check('the dagger clicked into a crate lies there as the plain dagger (its own model and name)',
-    !!inCrate && model(inCrate) === 'craftov:knife_tactical' && !skinned(inCrate) && !title(inCrate).includes('黑曜'),
-    inCrate ? [model(inCrate), title(inCrate)] : '(not in the crate)')
-  if (putAt !== undefined) await click(bot, putAt, 0, 800)
+  check('a click on the dagger in the melee slot puts nothing into the crate',
+    putAt === undefined && cid(w.slots[meleeSlotIn(w)]) === 'knife_tactical',
+    putAt === undefined ? cid(w.slots[meleeSlotIn(w)]) : [model(w.slots[putAt]), title(w.slots[putAt])])
   check('no stack but the melee knife shows a skin while the crate is open', strays(bot).length === 0, strays(bot))
   await closeAll(bot)
   await waitFor(() => cid(melee(bot)) === 'knife_tactical' && model(melee(bot)) === SKIN('tactical_obsidian'), 3000)
-  check('taken back out of the crate, the dagger wears 黑曜 again', cid(melee(bot)) === 'knife_tactical'
+  check('after the crate, the dagger still wears 黑曜', cid(melee(bot)) === 'knife_tactical'
     && model(melee(bot)) === SKIN('tactical_obsidian'), [cid(melee(bot)), model(melee(bot))])
   const from = bot.chatLog.length
   await rcon(`damage ${name} 1000 minecraft:generic`)

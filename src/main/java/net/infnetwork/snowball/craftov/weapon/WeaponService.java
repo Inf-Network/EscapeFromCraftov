@@ -114,6 +114,17 @@ public final class WeaponService implements Listener {
          */
         long adsStart = -1;
         int adsTicks = 1;
+        /**
+         * Tick the aiming mark went on: the cooldown that runs the frames waits a little after it. The
+         * same as adsStart unless the aim picked up a rise already under way (see startAds).
+         */
+        long adsMarkAt = -1;
+        /**
+         * Tick right mouse was last let go of (the use packets stopped), and how many ticks of the rise
+         * the sights had then: aiming again within weapons.ads.resume-ticks picks up from there.
+         */
+        long adsLetGo = -100;
+        int adsKept;
         /** The cooldown that runs the frames of the sights coming up has been sent (a tick after the mark). */
         boolean adsFrames;
         /** The sights are all the way up: the gun carries the aimed mark, a scope shows its picture. */
@@ -1504,23 +1515,41 @@ public final class WeaponService implements Listener {
         }
         long now = Bukkit.getCurrentTick();
         ads.put(player.getUniqueId(), true);
-        scopeOut.remove(player.getUniqueId());
-        state.adsStart = now;
+        boolean scopeShown = scopeOut.remove(player.getUniqueId()) != null;
         state.adsTicks = adsTicks(state);
+        // Right mouse back within moments of letting go, or a use packet that came a little late (a
+        // network hitch): the sights pick up where they were instead of coming up from the hip again,
+        // so a late packet never drops the scope, the zoom and the aimed spread for a whole new rise.
+        int kept = now - state.adsLetGo <= Math.max(0, plugin.getConfig().getInt("weapons.ads.resume-ticks", 3))
+                ? Math.min(state.adsKept, state.adsTicks) : 0;
+        state.adsLetGo = -100;
+        state.adsStart = now - kept;
+        state.adsMarkAt = now;
         state.adsUp = false;
         state.adsFrames = false;
         plugin.health().forceSpeedUpdate(player);
-        // The mark now; the cooldown that runs the frames on the next tick (see raise). The client swaps
-        // the stack in on its own next tick, but reads a cooldown at once: sent together, the frames
-        // drawn in between would show the old stack reading the cooldown as a shot's kick, flash and all.
-        // Until the cooldown comes, the aiming mark shows the gun at the hip.
-        if (player.getCooldown(ItemFactory.RELOAD_GROUP) > 0) {
-            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        if (kept < state.adsTicks) {
+            if (scopeShown) {
+                // The last aim's scope picture is still up: the sights come up without it (raise puts
+                // it back once they are up), or its reticle would hang over the unzoomed view.
+                plugin.hud().scopeOverlay(player, null);
+            }
+            // The mark now; the cooldown that runs the frames a little later (see raise). The client
+            // swaps the stack in on its own next tick, but reads a cooldown at once: sent together, the
+            // frames drawn in between would show the old stack reading the cooldown as a shot's kick,
+            // flash and all. Until the cooldown comes, the aiming mark shows the gun at the hip.
+            if (player.getCooldown(ItemFactory.RELOAD_GROUP) > 0) {
+                player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+            }
+            setMark(player, state, ItemFactory.MARK_AIM);
+            Nms.syncInventory(player);
         }
-        setMark(player, state, ItemFactory.MARK_AIM);
-        Nms.syncInventory(player);
-        plugin.fov().show(player, 1.0);
-        player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
+        // The view at this point of the rise: the hip for a new aim; sights that were up go straight
+        // back to the aimed mark, the zoom and the scope's picture.
+        raise(player, state, now);
+        if (kept == 0) {
+            player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
+        }
         plugin.fov().aimed(player);
     }
 
@@ -1546,11 +1575,11 @@ public final class WeaponService implements Listener {
         if (state.adsUp) {
             return;
         }
-        if (!state.adsFrames && now >= state.adsStart + ADS_FRAMES_DELAY) {
+        if (!state.adsFrames && now >= state.adsMarkAt + ADS_FRAMES_DELAY) {
             // The frames take the rest of the ads time; the cooldown runs a quarter longer, its last
             // quarter holding the final frame, so the aimed mark that ends them can come a little late.
             state.adsFrames = true;
-            int frames = Math.max(1, state.adsTicks - ADS_FRAMES_DELAY);
+            int frames = (int) Math.max(1, state.adsStart + state.adsTicks - now);
             player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.ceil(frames / (1 - ADS_FRAMES_TAIL)));
         }
         double t = Math.max(0, Math.min(1, (now - state.adsStart) / (double) Math.max(1, state.adsTicks)));
@@ -1588,6 +1617,11 @@ public final class WeaponService implements Listener {
                 // or the hip model would read what is left of them as a shot's kick.
                 player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
             }
+            // Let go (or the use packets stopped coming): aiming again within a few ticks picks up from
+            // here (see startAds). A switch, a reload, a sprint or a menu starts over.
+            long now = Bukkit.getCurrentTick();
+            state.adsLetGo = linger && state.adsStart >= 0 ? now : -100;
+            state.adsKept = state.adsStart >= 0 ? (int) Math.min(state.adsTicks, now - state.adsStart) : 0;
             state.adsStart = -1;
             state.adsUp = false;
         }
@@ -1714,7 +1748,12 @@ public final class WeaponService implements Listener {
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null
                 && event.getClickedBlock().getType().isInteractable() && !player.isSneaking()
                 && event.getClickedBlock().getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
-            return; // let doors, levers and buttons work while holding a gun
+            // Let doors, levers and buttons work while holding a gun. Right mouse is still held, though:
+            // an aim under way goes on while the crosshair passes over one.
+            if (isAiming(player)) {
+                holdAim(player, Bukkit.getCurrentTick());
+            }
+            return;
         }
         // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
         // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.

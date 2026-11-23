@@ -325,6 +325,10 @@ weapons:
     timeout-ticks: 5
     # Let go of a scope, its picture stays this many ticks while the client's view widens back.
     scope-out-ticks: 2
+    # Right mouse pressed again within this many ticks of aiming ending (let go, or a use packet that
+    # came late over a bad connection) picks the sights up where they were: up stays up, a rise goes
+    # on from where it stopped. 0 always starts again from the hip.
+    resume-ticks: 3
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.

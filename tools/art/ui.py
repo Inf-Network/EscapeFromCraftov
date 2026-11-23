@@ -31,6 +31,21 @@ def person(c, x, col):
     c.poly([(x - 6, 26), (x - 5, 16), (x + 5, 16), (x + 6, 26)], col)
 
 
+def occupied_cell():
+    """A secure-container cell taken by the big item to its left (SecureMenu): a sunken, hatched
+    plate with an arrow pointing back at the item."""
+    c = Canvas()
+    plate(c, shade(PLATE, 0.75))
+    hatch = shade(rgb(PAL.DIM), 0.7)
+    for k in range(6, 58, 5):
+        x0, x1 = max(3, k - 28), min(28, k - 3)
+        if x0 <= x1:
+            c.line([(x0, k - x0), (x1, k - x1)], hatch)
+    c.poly([(6, 16), (13, 9), (13, 23)], G)
+    c.rect(13, 14, 24, 18, G)
+    return c.img
+
+
 UI = {
     'blank': lambda: Image.new('RGBA', (16, 16), (0, 0, 0, 0)),
     'locked': lambda: icon(lambda c: (c.box(10, 14, 21, 24, G), c.ellipse(11, 7, 20, 17, (0, 0, 0, 0)),
@@ -53,6 +68,7 @@ UI = {
                                             c.poly([(9, 26), (10, 20), (22, 20), (23, 26)], shade(O, 0.8)))),
     'icon_secure': lambda: icon(lambda c: (c.box(7, 7, 24, 25, P), c.ellipse(12, 11, 19, 18, D), c.rect(15, 14, 16, 15, P),
                                           c.rect(20, 12, 22, 14, W))),
+    'secure_used': occupied_cell,
     'icon_escort': lambda: icon(lambda c: (c.poly([(16, 5), (25, 9), (24, 18), (16, 26), (8, 18), (7, 9)], C),
                                           c.poly([(16, 9), (21, 11), (20, 17), (16, 22), (12, 17), (11, 11)], shade(C, 0.6)))),
     'icon_collection': lambda: icon(lambda c: c.poly([(16, 5), (19, 13), (27, 13), (21, 18), (23, 26), (16, 21), (9, 26), (11, 18),

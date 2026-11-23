@@ -237,13 +237,17 @@ public final class ItemRegistry {
             case MELEE -> 0.3;
             default -> 0.6;
         };
+        int maxStack = Math.max(1, Math.min(99, s.getInt("stack", defaultStack)));
+        // Ammo shares a secure-container cell 30 rounds at a time: a whole box of 60 per cell made
+        // the container a free ammo store.
+        int secureStack = Math.max(1, Math.min(maxStack, s.getInt("secure-stack", category == Category.AMMO ? 30 : maxStack)));
         return new ItemDef(
                 id,
                 s.getString("name", id),
                 category,
                 rarity,
                 s.getLong("value", 100),
-                Math.max(1, Math.min(99, s.getInt("stack", defaultStack))),
+                maxStack,
                 s.getString("model", "craftov:" + id),
                 List.copyOf(lore),
                 gun, ammo, med, throwable,
@@ -258,7 +262,9 @@ public final class ItemRegistry {
                 s.getDouble("weight", defaultWeight),
                 optic,
                 melee,
-                attach);
+                attach,
+                Math.max(1, s.getInt("size", 1)),
+                secureStack);
     }
 
     /**

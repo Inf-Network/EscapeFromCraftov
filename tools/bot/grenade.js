@@ -21,7 +21,9 @@
 //   8. held too long: C keeps holding a frag past its fuse; it goes off in its hand, the frag is gone
 //      and C is hurt;
 //   9. pin back: T pulls the pin and takes out another item; nothing goes off, T keeps the frag and
-//      no throw cooldown is set;
+//      no throw cooldown is set, and the item use the server started for the pull (T's own living
+//      entity flags, which the client follows) ends with the swap, so it does not carry over to the
+//      painkiller (a client still "using" something can neither fire nor aim);
 //  10. flash: a flashbang (radius 10) at T's feet rings the ears of A four blocks away facing it, and
 //      not C at the diagonal (8, 0, 8), 11.4 blocks from it;
 //  11. wounds: the bare C two blocks from a blast bleeds or has a fracture on its HUD body (/cv hud)
@@ -29,15 +31,20 @@
 //  12. menu: a menu opening while the pin is out (the item catalog) puts the pin back: nothing goes
 //      off once T closes it and lets go;
 //  13. box: a right click on an armory box with a frag in hand (the click on the box, then the item
-//      use the vanilla client sends after it) opens the box and pulls no pin.
+//      use the vanilla client sends after it) opens the box and pulls no pin;
+//  14. fence: a right click on a fence post (which the client does not use, so the item use follows
+//      the click) pulls the pin and throws the frag;
+//  15. door: a right click on a wooden door (which the client opens itself, sending nothing more)
+//      opens the door and pulls no pin.
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node grenade.js [only...]
 //
 // Name scenarios (cooldown armour sphere cover death bounce cook overcook pinback flash wounds menu
-// box) to run only those; the setup is the same. Needs test.enabled true (the proving ground) and a short match.wait-seconds; the
+// box fence door) to run only those; the setup is the same. Needs test.enabled true (the proving ground) and a short match.wait-seconds; the
 // bots are made op for /cv queue and /cv items and deopped when done. Exit code 0 when every check
 // passes, 1 when one fails, 2 when the scenario could not be set up.
 const mineflayer = require('mineflayer')
+const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 
 const PORT = Number(process.env.PORT || process.env.MC_PORT || 25565)
@@ -73,6 +80,14 @@ function make (name) {
   const heard = s => { s = String(s); if (/craftov:(throw|med|status)\./.test(s)) bot.sounds.push({ name: s, at: Date.now() }) }
   bot.on('soundEffectHeard', heard)
   bot._client.on('entity_sound_effect', p => { const m = JSON.stringify(p).match(/craftov:[a-z0-9_.\/]+/); if (m) heard(m[0]) })
+  // Whether the server has the bot using an item: bit 1 of its own living entity flags, which the
+  // vanilla client follows (it stops its own use when the server clears it).
+  bot.using = []
+  bot._client.on('entity_metadata', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    const key = bot.registry.entitiesByName.player.metadataKeys.indexOf('living_entity_flags')
+    for (const m of p.metadata) if (m.key === key) bot.using.push({ on: (m.value & 1) !== 0, at: Date.now() })
+  })
   bot.msgs = []
   bot.on('messagestr', m => bot.msgs.push(m))
   bot.on('kicked', r => log(name, 'KICKED', r))
@@ -357,17 +372,26 @@ async function healthAfter (victims, before, since, T) {
     await sleep(1200) // the last throw's cooldown is long over
     const frags = countIn(T, FRAG)
     T.cooldowns.length = 0
+    T.using.length = 0
     const mark = Date.now()
     T.activateItem()
     await sleep(600)
+    const pulled = T.using.some(u => u.on)
+    const swap = Date.now()
     T.setQuickBarSlot(PILL)
     await sleep(600)
+    const ended = T.using.find(u => !u.on && u.at > swap)
+    const after = T.using.filter(u => u.at > swap)
     T.deactivateItem()
     const blast = await nextBlast(T, mark, FUSE_MS + 1500)
-    log('pin back: blast', blast && blast - mark, 'frags', frags, '->', countIn(T, FRAG), 'cooldowns', T.cooldowns)
+    log('pin back: blast', blast && blast - mark, 'frags', frags, '->', countIn(T, FRAG), 'cooldowns', T.cooldowns,
+      'use flag', T.using.map(u => `${u.on ? 'on' : 'off'}@${u.at - mark}`))
     check('pin back: nothing went off', blast === null, blast && blast - mark)
     check('pin back: T still has the frag', countIn(T, FRAG) === frags, [frags, countIn(T, FRAG)])
     check('pin back: no throw cooldown was set', !T.cooldowns.some(c => c.group === 'craftov:throw' && c.ticks > 0), T.cooldowns)
+    check('pin back: the pull started an item use (T\'s own use flag came on)', pulled, T.using)
+    check('pin back: and the swap ended it (flag off within 500 ms, and not back on): no use carries over to the painkiller',
+      !!ended && ended.at - swap < 500 && !after.some(u => u.on && u.at > ended.at), after.map(u => `${u.on ? 'on' : 'off'}@${u.at - swap}`))
   }
 
   // 12. Menu: the pin comes out, then the item catalog opens over the screen.
@@ -437,6 +461,67 @@ async function healthAfter (victims, before, since, T) {
     }
     check('box: the box opened and no pin came out', !pin, T.sounds.filter(s => s.at > mark))
     check('box: nothing went off and T keeps its frags', blast === null && countIn(T, FRAG) === frags, { blast, frags: [frags, countIn(T, FRAG)] })
+  }
+
+  // 14. Fence: T two blocks from a spruce fence post, looking at it, presses and lets go. What the
+  // vanilla client sends: the click on the post (which it does not use itself), then the item use.
+  if (want('fence')) {
+    if (!await topUp()) return finish(2)
+    await rcon(`execute in ${W(T)} run setblock ${X + 2} ${Y} ${Z} minecraft:spruce_fence`)
+    for (const v of [A, B, C]) await place(v, X - 8.5, Z + 8.5)
+    await place(T, X + 0.5, Z + 0.5, -90, 0)
+    T.setQuickBarSlot(FRAG)
+    await sleep(1200)
+    const fence = T.blockAt(new Vec3(X + 2, Y, Z))
+    if (!fence || fence.name !== 'spruce_fence') {
+      log('SETUP: no fence post in front of T', fence && fence.name)
+      return finish(2)
+    }
+    const frags = countIn(T, FRAG)
+    const mark = Date.now()
+    await T.activateBlock(fence)
+    T.activateItem()
+    await sleep(300)
+    T.deactivateItem()
+    await sleep(150)
+    await place(T, X + 8.5, Z - 8.5)
+    const blast = await nextBlast(T, mark, FUSE_MS + 1500)
+    const pin = T.sounds.some(s => s.name === 'craftov:throw.pin' && s.at > mark)
+    await rcon(`execute in ${W(T)} run setblock ${X + 2} ${Y} ${Z} minecraft:air`)
+    log('fence: pin', pin, 'blast', blast && blast - mark, 'frags', frags, '->', countIn(T, FRAG))
+    check('fence: a right click on a fence post pulled the pin', pin, T.sounds.filter(s => s.at > mark))
+    check('fence: and the frag left the hand and went off', blast !== null && countIn(T, FRAG) === frags - 1, { blast: blast && blast - mark, frags: [frags, countIn(T, FRAG)] })
+    await sleep(1000)
+  }
+
+  // 15. Door: T two blocks from an oak door, looking at it, clicks it once. The vanilla client opens
+  // a wooden door itself and sends no item use after the click.
+  if (want('door')) {
+    if (!await topUp()) return finish(2)
+    await rcon(`execute in ${W(T)} run setblock ${X + 2} ${Y} ${Z} minecraft:oak_door[half=lower,facing=west]`)
+    await rcon(`execute in ${W(T)} run setblock ${X + 2} ${Y + 1} ${Z} minecraft:oak_door[half=upper,facing=west]`)
+    const doorOpen = async () => /passed/i.test(await rcon(`execute in ${W(T)} if block ${X + 2} ${Y} ${Z} minecraft:oak_door[open=true]`))
+    for (const v of [A, B, C]) await place(v, X - 8.5, Z + 8.5)
+    await place(T, X + 0.5, Z + 0.5, -90, 0)
+    T.setQuickBarSlot(FRAG)
+    await sleep(1200)
+    const door = T.blockAt(new Vec3(X + 2, Y, Z))
+    if (!door || door.name !== 'oak_door' || await doorOpen()) {
+      log('SETUP: no closed oak door in front of T', door && door.name)
+      return finish(2)
+    }
+    const frags = countIn(T, FRAG)
+    const mark = Date.now()
+    await T.activateBlock(door)
+    await sleep(600)
+    const open = await doorOpen()
+    const blast = await nextBlast(T, mark, FUSE_MS + 1000)
+    const pin = T.sounds.some(s => s.name === 'craftov:throw.pin' && s.at > mark)
+    await rcon(`execute in ${W(T)} run fill ${X + 2} ${Y} ${Z} ${X + 2} ${Y + 1} ${Z} minecraft:air`)
+    log('door: open', open, 'pin', pin, 'blast', blast && blast - mark, 'frags', frags, '->', countIn(T, FRAG))
+    check('door: a right click on a wooden door with a frag in hand opened it', open)
+    check('door: and pulled no pin, nothing went off, T keeps its frags', !pin && blast === null && countIn(T, FRAG) === frags,
+      { pin, blast, frags: [frags, countIn(T, FRAG)] })
   }
 
   // 11. Wounds: the bare C two blocks from the blast, again and again until a line of shrapnel that

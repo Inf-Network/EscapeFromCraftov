@@ -441,6 +441,7 @@ public final class CraftovCommand implements TabExecutor {
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
                 plugin.maps().warnCloseSpawns();
+                plugin.maps().warnLiveProblems(Math.max(1, plugin.getConfig().getInt("match.max-squads", 4)));
                 plugin.loadTiers();
                 if (itemError == null) {
                     Text.send(sender, "<ok>已重新加载配置、物品、掉落与地图。");

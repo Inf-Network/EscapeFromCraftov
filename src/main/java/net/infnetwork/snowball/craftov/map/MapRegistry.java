@@ -350,6 +350,27 @@ public final class MapRegistry {
         return out;
     }
 
+    /**
+     * Logs the live maps that {@link #publishProblems} would refuse today: files from before drafts
+     * existed have no {@code enabled} key and count as published however unfinished they are (a
+     * map with no spawns lands every squad on the world spawn; one without an always-open exit
+     * loses everybody when time runs out). They stay live, so the admin is told which to fix in the
+     * editor or set to {@code enabled: false}.
+     */
+    public void warnLiveProblems(int squads) {
+        for (MapDef def : maps.values()) {
+            if (!def.enabled()) {
+                continue;
+            }
+            List<String> problems = publishProblems(def, squads);
+            if (!problems.isEmpty()) {
+                logger.warning("Map " + def.name() + " (" + def.id() + ") is live but would not pass /cv editor publish: "
+                        + String.join("; ", problems) + ". Fix it with /cv editor start " + def.id()
+                        + ", or set enabled: false in maps/" + def.id() + ".yml to take it out of matchmaking");
+            }
+        }
+    }
+
     /** Logs every map's {@link #closeSpawns}. */
     public void warnCloseSpawns() {
         for (MapDef def : maps.values()) {

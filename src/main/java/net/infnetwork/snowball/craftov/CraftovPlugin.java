@@ -216,6 +216,7 @@ public final class CraftovPlugin extends JavaPlugin {
         worlds.ensureBuiltins();
         maps.load();
         maps.warnCloseSpawns();
+        maps.warnLiveProblems(Math.max(1, getConfig().getInt("match.max-squads", 4)));
         lobby.start();
         range.start();
         stance.start();

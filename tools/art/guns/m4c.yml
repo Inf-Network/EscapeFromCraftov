@@ -1,0 +1,51 @@
+# M4C: an M4-pattern carbine, black aluminium receivers with FDE furniture. Built by
+# tools/art/meshprim.py from Quaternius' AssaultRifle2_1; the keys are described in k47.yml.
+#
+# Real widths at this scale (30 units for 840 mm, 28 mm a unit): receivers 1.1, the handguard 1.7
+# and round, the barrel 0.5, the magazine 0.85, the stock 1.4.
+source: AssaultRifle2_1
+length: 30.0
+paint: {Main: alu, MainDark: polymer, MainLight: alu}
+pieces:
+  - {piece: 0}                                                # handguard and barrel (see boxes)
+  - {piece: 1, width: 1.1}                                    # lower receiver, magazine well
+  - {piece: 2, skip: true}                                    # stock: rebuilt below
+  - {piece: 3, width: 1.05, mat: polymer}                     # pistol grip
+  - {piece: 4, width: 1.12}                                   # upper receiver
+  - {piece: 5, part: mag, mat: fde, width: 0.86}              # magazine
+  - {piece: 6, width: 0.55}                                   # front sight (A-frame)
+  - {piece: 7, width: 0.62}                                   # rear sight base
+  - {piece: 8, round: 8, width: 1.0}                          # buffer tube
+  - {piece: 9, width: 0.18, detail: true}                     # trigger
+  - {piece: [10, 11, 12, 13, 14, 15, 16, 17], width: 0.86, detail: true}   # rail slots
+boxes:
+  - {at: [12.0, 10.5], piece: 0, round: 8, width: 1.7, height: 1.95, mat: fde}   # handguard
+  - {at: [19.0, 10.5], piece: 0, round: 8, width: 0.5, mat: steel}         # barrel
+parts:
+  # Stock: the butt, the bar over the buffer tube, the web along its slanted underside, a rubber pad.
+  - {from: [-7.05, 6.75, 7.3], to: [-5.9, 11.5, 8.7], mat: fde}
+  - {from: [-5.95, 9.7, 7.3], to: [0.5, 11.45, 8.7], mat: fde}
+  - {centre: [-4.91, 8.64, 8.0], size: [4.3, 1.2, 1.36], rot: 43, mat: fde}
+  - {from: [-7.25, 6.75, 7.36], to: [-7.04, 11.5, 8.64], mat: rubber}
+  # Rear aperture: a square ring round the peep, on a block over the receiver.
+  - {from: [1.9, 12.3, 7.72], to: [2.5, 12.72, 8.28]}
+  - {from: [2.1, 12.72, 7.72], to: [2.3, 12.86, 8.28], detail: true}
+  - {from: [2.1, 13.04, 7.72], to: [2.3, 13.18, 8.28], detail: true}
+  - {from: [2.1, 12.86, 7.72], to: [2.3, 13.04, 7.9], detail: true}
+  - {from: [2.1, 12.86, 8.1], to: [2.3, 13.04, 8.28], detail: true}
+  # Front sight post.
+  - {from: [16.55, 12.3, 7.93], to: [16.7, 12.95, 8.07], detail: true}
+  # Birdcage flash hider.
+  - {from: [21.7, 10.27, 7.67], to: [23.3, 10.93, 8.33], round: 8}
+  # Charging handle (top, behind the rear sight) and its T.
+  - {from: [0.75, 11.25, 7.55], to: [2.0, 11.6, 8.45]}
+  - {from: [0.45, 11.25, 7.2], to: [0.85, 11.6, 8.8], detail: true}
+  # Left side (seen from the hip): selector and bolt catch.
+  - {from: [1.9, 9.25, 7.36], to: [2.7, 9.55, 7.45], rot: 12, detail: true}
+  - {from: [4.55, 9.6, 7.36], to: [5.2, 10.0, 7.45], detail: true}
+  # Right side: forward assist, the bolt in the ejection port.
+  - {from: [2.3, 10.55, 8.5], to: [3.3, 11.05, 9.05], round: 8, detail: true}
+  - {from: [3.8, 10.3, 8.53], to: [6.0, 10.95, 8.57], mat: bare, detail: true}
+sight_y: 12.95
+eye: [2.2, 0.13]
+rail: [6.4, 11.62]

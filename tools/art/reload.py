@@ -13,6 +13,7 @@ with the gun's normal hip pose and converted back into the X-Y-Z Euler angles it
 import math
 
 import gunvox
+import meshprim
 
 FRAMES = 24
 HIDE_BEYOND = 20.0  # magazine travel (model units) past which it is out of view and hidden
@@ -156,6 +157,8 @@ def mirrored(right):
 
 
 def style(gid):
+    if meshprim.has_spec(gid):
+        return meshprim.style(gid)
     spec = gunvox.PAINT.get(gid, {})
     if 'pump' in spec:
         return 'pump'
@@ -167,7 +170,7 @@ def frames(gid, base, lift=0.0):
 
     `lift` raises the gun while it is canted, for pistols whose grip sits below the screen at the hip."""
     kind = style(gid)
-    ax, ay = gunvox.mag_axis(gid)
+    ax, ay = meshprim.mag_axis(gid) if meshprim.has_spec(gid) else gunvox.mag_axis(gid)
     out = []
     for k in range(FRAMES):
         p = (k + 0.5) / FRAMES

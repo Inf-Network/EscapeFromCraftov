@@ -5,6 +5,7 @@ import os
 from PIL import Image, ImageDraw
 
 import gunvox
+import meshprim
 import reload
 from px import Canvas, rgb, shade
 
@@ -141,7 +142,10 @@ SMGS = {'sv9', 'v57'}
 
 
 def voxel_gun(gid):
-    """Painted, textured box model built by gunvox.py from a CC0 mesh, or None to fall back to the hand-built one."""
+    """Painted, textured model built from a CC0 mesh: rotated primitives by meshprim.py when the gun has a
+    tools/art/guns/<id>.yml, else voxels by gunvox.py; None falls back to the hand-built boxes."""
+    if meshprim.has_spec(gid):
+        return meshprim.build(gid)
     if not os.path.exists(os.path.join(gunvox.VOXGUNS, gid + '.json')):
         return None
     return gunvox.build(gid)
@@ -467,6 +471,15 @@ def pose_model(parent, base_display, pose):
         'firstperson_lefthand': posed(base_display['firstperson_lefthand'], left=True, **pose)}}
 
 
+def iron_sights(gid):
+    """(sight line height, (rear sight x, blocks from the eye)) of a gun with modelled iron sights, else
+    (None, None): aiming then puts the gun's top edge under the crosshair."""
+    if meshprim.has_spec(gid) and meshprim.sight_y(gid) is not None:
+        eye = meshprim.spec(gid).get('eye')
+        return meshprim.sight_y(gid), tuple(eye) if eye else None
+    return None, None
+
+
 def gun_ads_model(gid, scoped=False):
     """Aim-down-sights pose, selected client-side while the use key (right mouse) is held.
 
@@ -475,7 +488,8 @@ def gun_ads_model(gid, scoped=False):
     if scoped:
         hidden = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
         return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': hidden, 'firstperson_lefthand': hidden}}
-    fp_r, fp_l = first_person(gid, gun_elements(gid), True)
+    sight, eye = iron_sights(gid)
+    fp_r, fp_l = first_person(gid, gun_elements(gid), True, sight_y=sight, eye=eye)
     return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': fp_r, 'firstperson_lefthand': fp_l}}
 
 
@@ -575,6 +589,10 @@ def gun_ai_model(gid):
 
 def gun_icon(gid):
     """Side-view 2D icon rendered from the box geometry (z horizontal, y vertical)."""
+    if meshprim.has_spec(gid):
+        import gunpaint
+        data = meshprim.build(gid)
+        return side_icon(gunpaint.side_image([e for part in data['parts'].values() for e in part], data['texture'], 4))
     if voxel_gun(gid):
         return side_icon(gunvox.side_image(gid, 4))
     boxes = GUNS[gid]()
@@ -869,8 +887,15 @@ def optic_skin_image(oid):
 def placed_optic(gid, oid):
     """The optic's elements sitting on the gun's top rail, plus its sight line height (None for scopes)."""
     optic, _, sight = optic_data(oid)
-    mx, my = rail_mount(gun_elements(gid))
+    mx, my = gun_rail(gid)
     return _shift(optic, mx, my, 8), (None if sight is None else my + sight)
+
+
+def gun_rail(gid):
+    """Where an optic's base sits: the gun spec's rail, else the flattest stretch of the top."""
+    if meshprim.has_spec(gid) and meshprim.rail(gid):
+        return meshprim.rail(gid)
+    return rail_mount(gun_elements(gid))
 
 
 def _gun_scale(gid):
@@ -881,7 +906,7 @@ def sight_window(gid, oid):
     """A 1x sight's window on this gun, in the gun's model units: the far end of the housing (x), the
     sight line (y) and the opening (y0..y1 high, z0..z1 wide)."""
     r = RETICLE[oid]
-    mx, my = rail_mount(gun_elements(gid))
+    mx, my = gun_rail(gid)
     return {'x': mx + r['x'], 'y': my + r['y'], 'y0': my + r['y'] - r['half_h'], 'y1': my + r['y'] + r['half_h'],
             'z0': 8 - r['half_w'], 'z1': 8 + r['half_w']}
 

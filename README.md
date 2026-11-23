@@ -2,7 +2,7 @@
 
 Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战斗 · 撤离」玩法：带装备进入地图，搜索物资、对抗 AI 敌兵与其他小队，活着撤离后战利品才真正属于你。
 
-地图、物品、界面、贴图与枪声以外的音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。界面和 HUD 的中文用 10 像素点阵字体 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）绘制，`tools/art/pixelfont.py` 把用到的字形烘焙进 `tools/art/fonts/`。枪声来自真实枪械的 CC0 录音（[The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) 和两段 Freesound 消音枪录音，见「许可」），由 `tools/art/gunsamples.py` 切出单发并处理成各距离的版本。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（CC0 公有领域，[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)）转换而来：用到的网格原样放在 `tools/art/src/quaternius/`（来源和 SHA-256 见同目录的 `sources.json`），`tools/art/meshvox.py` 把网格体素化并合并成 Minecraft 能用的方块元素，结果保存在 `tools/art/voxguns/`。
+地图、物品、界面、贴图与枪声以外的音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。界面和 HUD 的中文用 10 像素点阵字体 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）绘制，`tools/art/pixelfont.py` 把用到的字形烘焙进 `tools/art/fonts/`。枪声来自真实枪械的 CC0 录音（[The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) 和两段 Freesound 消音枪录音，见「许可」），由 `tools/art/gunsamples.py` 切出单发并处理成各距离的版本。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（CC0 公有领域，[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)）转换而来：用到的网格原样放在 `tools/art/src/quaternius/`（来源和 SHA-256 见同目录的 `sources.json`）。K47、M4C、P18 由 `tools/art/meshprim.py` 用任意角度旋转的盒子拟合网格的每个部件，再按 `tools/art/guns/<枪>.yml` 补上真实的部件宽度、圆形枪管和手放的准星照门、拉机柄、快慢机、枪口装置；`tools/art/gunpaint.py` 给每个面画材质贴图并烘焙环境光遮蔽。其余枪仍由 `tools/art/meshvox.py` 体素化后合并成方块元素（`tools/art/voxguns/`）。
 
 ## 一键开服（玩家输入 IP 即可游玩）
 
@@ -230,7 +230,7 @@ Copyright (C) 2026 Inf Network 及贡献者。
 
 | 内容 | 来源 | 许可 |
 |---|---|---|
-| 枪械网格（原样放在 `tools/art/src/quaternius/`，转换为 `tools/art/voxguns/`） | [Quaternius · Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)） | CC0（公有领域） |
+| 枪械网格（原样放在 `tools/art/src/quaternius/`，由 `meshprim.py` 拟合或转换为 `tools/art/voxguns/`） | [Quaternius · Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)） | CC0（公有领域） |
 | 点阵字体（烘焙为 `tools/art/fonts/pixel10.png`，随资源包分发） | [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font) 10px（含 Ark Pixel、Galmuri、Boutique Bitmap 9x9 的字形） | SIL Open Font License 1.1（`tools/art/fonts/OFL.txt`、`LICENSES/`） |
 | 枪声录音（`sounds/gun/` 下的枪声，切自哪段录音见 `tools/art/audio_sources.json`） | [The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library)（Prepared SFX Library），Ben Jaszczak、Brian Nelson、Kevin Heras、Matthew Nanney 录制 | CC0（公有领域） |
 | 消音手枪、冲锋枪的枪声 | [FN FNX .45 Tactical (SilencerCo Osprey)](https://freesound.org/people/areniporgen/sounds/693855/)，areniporgen（Freesound 公开试听版） | CC0（公有领域） |

@@ -215,7 +215,12 @@ async function replay () {
   const still = await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
   check('the replay was still playing during the shots', still >= 3, `${still} stand-ins left`)
 
-  // How the stand-ins were posed for B.
+  // How the stand-ins were posed for B. A's shooting can sit in the last half second of the
+  // six-second clip (a quick kill), which plays last and in slow motion, so read the poses once
+  // the replay is over and the stand-ins are gone.
+  const standing = async () => await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
+  const over = await waitFor(async () => (await standing()) === 0, 12000, 500)
+  log('replay over before the pose checks', over)
   const paper = b.registry.itemsByName.paper.id
   const crossbow = b.registry.itemsByName.crossbow.id
   const handsOf = id => b.hands.filter(h => h.entityId === id)

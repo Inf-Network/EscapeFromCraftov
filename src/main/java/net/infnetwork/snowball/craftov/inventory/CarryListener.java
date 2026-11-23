@@ -51,10 +51,15 @@ public final class CarryListener implements Listener {
             return; // menus handle every click themselves
         }
         boolean ownScreen = event.getView().getType() == InventoryType.CRAFTING;
-        // Crafting grid and any foreign container top inventory are off limits.
+        // Crafting grid and any foreign container top inventory are off limits. On the player's own
+        // screen the grid holds the info cells (CarryInfo), which exist only on the client: a click
+        // there is that cell's button, and the cells are sent again since the client already moved them.
         if (event.getClickedInventory() != null && event.getClickedInventory() != player.getInventory()) {
             if (ownScreen || event.getView().getType() == InventoryType.WORKBENCH) {
                 event.setCancelled(true);
+                if (ownScreen) {
+                    plugin.carryInfo().clicked(player, event.getRawSlot(), event.getClick());
+                }
                 return;
             }
         }
@@ -314,6 +319,9 @@ public final class CarryListener implements Listener {
         for (int raw : event.getRawSlots()) {
             if (raw < topSize && (event.getView().getType() == InventoryType.CRAFTING || event.getView().getType() == InventoryType.WORKBENCH)) {
                 event.setCancelled(true);
+                if (event.getView().getType() == InventoryType.CRAFTING) {
+                    plugin.carryInfo().resend(player);
+                }
                 return;
             }
             int slot = event.getView().convertSlot(raw);
@@ -370,6 +378,11 @@ public final class CarryListener implements Listener {
         }
         if (managed(player)) {
             settleCursor(player);
+            if (event.getView().getType() == InventoryType.CRAFTING) {
+                // Closing the inventory screen clears the crafting result slot on the client, and with
+                // it the protection cell (CarryInfo); the server never sees it go, so it is sent again.
+                plugin.carryInfo().resend(player);
+            }
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !managed(player)) {

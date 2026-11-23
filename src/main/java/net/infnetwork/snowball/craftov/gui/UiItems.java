@@ -56,6 +56,40 @@ public final class UiItems {
         return stack;
     }
 
+    /** The carry zones a locked cell can belong to, each with its own striped tile (tools/art/ui.py, TILES). */
+    public enum Zone {
+        RIG("locked_rig", "胸挂", "装备更大的胸挂解锁"),
+        PACK("locked_pack", "背包", "装备更大的背包解锁"),
+        SECURE("locked_secure", "安全箱", "在商人处升级安全箱解锁");
+
+        final String model;
+        final String label;
+        final String unlock;
+
+        Zone(String model, String label, String unlock) {
+            this.model = model;
+            this.label = label;
+            this.unlock = unlock;
+        }
+    }
+
+    /**
+     * A cell the zone does not open: diagonal stripes in the zone's colour over the whole slot. Only the
+     * {@code first} locked cell of a zone has a tooltip ("战术胸挂 4/9 · 装备更大的胸挂解锁"); the
+     * others hide theirs, so moving the pointer along a row of them shows one answer, not nine.
+     *
+     * @param wearing the worn rig or backpack's name, or null for none
+     */
+    public static ItemStack lockedCell(Zone zone, boolean first, @org.jspecify.annotations.Nullable String wearing, int open, int max) {
+        String title = (wearing == null ? "未装备" + zone.label : Text.escape(wearing)) + " <muted>" + open + "/" + max;
+        ItemStack stack = button("craftov:ui/" + zone.model, "<text>" + title,
+                List.of("<muted>" + zone.unlock, "<dim>斜纹格暂不可用"), LOCKED);
+        if (!first) {
+            stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay().hideTooltip(true).build());
+        }
+        return stack;
+    }
+
     public static ItemStack lobbyMenu() {
         return button("craftov:ui/terminal", "<accent>战术终端</accent> <muted>(右键)",
                 List.of("<muted>开始行动、仓库、商人、交易行、干员……", "<muted>也可以输入 <white>/cv</white> 打开"), LOBBY_MENU);

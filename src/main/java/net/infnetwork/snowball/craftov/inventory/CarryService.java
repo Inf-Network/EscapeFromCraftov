@@ -248,17 +248,25 @@ public final class CarryService {
         return out;
     }
 
-    /** Places locked placeholders on unusable slots and moves stray items to free cells. */
+    /**
+     * Places locked placeholders on unusable slots and moves stray items to free cells. A locked cell
+     * is striped in its zone's colour (UiItems.lockedCell); only the first one of each zone has a
+     * tooltip, which gives the zone's capacity, so the hover over a row of them does not flicker.
+     */
     public void refreshLocks(Player player) {
         PlayerInventory inv = player.getInventory();
         int rig = rigCapacity(player);
         int pack = backpackCapacity(player);
         List<ItemStack> strays = new ArrayList<>();
+        ItemDef rigDef = items.defOf(inv.getItem(LEGS));
+        ItemDef packDef = items.defOf(inv.getItem(FEET));
         for (int i = 0; i < RIG_MAX; i++) {
-            fixSlot(inv, RIG_START + i, i < rig, "装备胸挂解锁此格", strays);
+            fixSlot(inv, RIG_START + i, i < rig, UiItems.lockedCell(UiItems.Zone.RIG, i == rig,
+                    rigDef == null ? null : rigDef.name(), rig, RIG_MAX), strays);
         }
         for (int i = 0; i < PACK_MAX; i++) {
-            fixSlot(inv, PACK_START + i, i < pack, "装备背包解锁此格", strays);
+            fixSlot(inv, PACK_START + i, i < pack, UiItems.lockedCell(UiItems.Zone.PACK, i == pack,
+                    packDef == null ? null : packDef.name(), pack, PACK_MAX), strays);
         }
         ItemStack off = inv.getItem(OFFHAND);
         if (off != null && !off.isEmpty()) {
@@ -274,7 +282,7 @@ public final class CarryService {
         }
     }
 
-    private void fixSlot(PlayerInventory inv, int slot, boolean usable, String reason, List<ItemStack> strays) {
+    private void fixSlot(PlayerInventory inv, int slot, boolean usable, ItemStack lock, List<ItemStack> strays) {
         ItemStack current = inv.getItem(slot);
         boolean locked = UiItems.LOCKED.equals(ItemFactory.uiTag(current));
         if (usable) {
@@ -285,7 +293,10 @@ public final class CarryService {
             if (current != null && !current.isEmpty()) {
                 strays.add(current);
             }
-            inv.setItem(slot, UiItems.locked(reason));
+            inv.setItem(slot, lock);
+        } else if (!lock.isSimilar(current)) {
+            // Still locked, but the zone's capacity (in the first cell's tooltip) or its look changed.
+            inv.setItem(slot, lock);
         }
     }
 

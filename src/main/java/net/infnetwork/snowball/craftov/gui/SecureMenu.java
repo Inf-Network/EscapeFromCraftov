@@ -2,8 +2,6 @@ package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
-import net.infnetwork.snowball.craftov.item.Category;
-import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.Profile;
@@ -43,7 +41,7 @@ final class SecureMenu extends Menu {
         int cap = capacity();
         for (int slot = 0; slot < 9; slot++) {
             if (slot >= cap) {
-                set(slot, UiItems.locked("在商人处升级安全箱"));
+                set(slot, UiItems.lockedCell(UiItems.Zone.SECURE, slot == cap, "安全箱", cap, 9));
                 continue;
             }
             if (slot < items.size()) {
@@ -94,13 +92,9 @@ final class SecureMenu extends Menu {
         if (stack == null || stack.isEmpty() || ItemFactory.isUi(stack) || event.getClickedInventory() == null) {
             return;
         }
-        ItemDef def = plugin.items().defOf(stack);
-        if (ItemFactory.isTest(stack)) {
-            Notify.error(viewer, "试验场物资不能放入安全箱");
-            return;
-        }
-        if (def == null || def.isGun() || def.isArmor() || def.isContainer() || def.category() == Category.WEAPON) {
-            Notify.error(viewer, "该物品无法放入安全箱");
+        String why = plugin.carry().secureRefusal(stack);
+        if (why != null) {
+            Notify.error(viewer, why);
             return;
         }
         List<ItemRecord> items = contents();

@@ -519,6 +519,21 @@ def build_ui():
         save(img, os.path.join(CV, 'textures', 'item', 'ui', name + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), generated('craftov:item/ui/' + name))
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
+    # Slot-filling tiles (locked carry cells) and the stash's corner badges: 36 px, scaled over the well.
+    for name, fn in ui.TILES.items():
+        save(fn(), os.path.join(CV, 'textures', 'item', 'ui', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), gui_tile_model('craftov:item/ui/' + name))
+        write_json(os.path.join(CV, 'items', 'ui', name + '.json'),
+                   {'model': model_ref('craftov:item/ui/' + name), 'oversized_in_gui': True})
+    for name, fn in ui.BADGES.items():
+        save(fn(), os.path.join(CV, 'textures', 'item', 'badge', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'badge', name + '.json'),
+                   gui_tile_model('craftov:item/badge/' + name, BADGE_DISPLAY))
+    # The load gauge in the inventory's info cell: CarryInfo puts the frame in custom_model_data float 0.
+    write_json(os.path.join(CV, 'items', 'ui', 'info_weight.json'), {'model': {
+        'type': 'minecraft:range_dispatch', 'property': 'minecraft:custom_model_data', 'index': 0,
+        'entries': [{'threshold': k, 'model': model_ref('craftov:item/ui/info_weight_%d' % k)} for k in range(ui.WEIGHT_LEVELS)],
+        'fallback': model_ref('craftov:item/ui/info_weight_0')}})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
     save(models.mask_image(), os.path.join(CV, 'textures', 'item', 'scope', 'mask.png'))
     for oid in models.MASK_HOLE:
@@ -556,6 +571,13 @@ def build_screens():
     save(screens.inventory(), os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png'))
     for kind in ('helmet', 'chestplate', 'leggings', 'boots'):
         save(screens.silhouette(kind), os.path.join(MC, 'textures', 'gui', 'sprites', 'container', 'slot', kind + '.png'))
+    # The offhand is never used and the recipe book has nothing in it: neither shows (#10). The
+    # recipe-book button is still there to click, so the inventory art keeps its spot clear.
+    save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)),
+         os.path.join(MC, 'textures', 'gui', 'sprites', 'container', 'slot', 'shield.png'))
+    for sprite in ('button', 'button_highlighted'):
+        save(Image.new('RGBA', (20, 18), (0, 0, 0, 0)),
+             os.path.join(MC, 'textures', 'gui', 'sprites', 'recipe_book', sprite + '.png'))
     for lang in ('zh_cn', 'zh_tw', 'zh_hk', 'en_us'):
         write_json(os.path.join(MC, 'lang', lang + '.json'), screens.LANG)
     ratios = screens.contrast_report()

@@ -72,6 +72,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private ProfileService profiles;
     private net.infnetwork.snowball.craftov.profile.MailService mail;
     private CarryService carry;
+    private net.infnetwork.snowball.craftov.inventory.CarryInfo carryInfo;
     private LootService loot;
     private MapRegistry maps;
     private WorldService worlds;
@@ -197,6 +198,7 @@ public final class CraftovPlugin extends JavaPlugin {
         hud = new HudService(this);
         killFeed = new net.infnetwork.snowball.craftov.hud.KillFeedService(this);
         menus = new MenuService(this);
+        carryInfo = new net.infnetwork.snowball.craftov.inventory.CarryInfo(this);
         editor = new net.infnetwork.snowball.craftov.map.editor.EditorService(this);
         var adminGuard = new net.infnetwork.snowball.craftov.security.AdminGuardService(this);
         adminGuard.start();
@@ -204,7 +206,7 @@ public final class CraftovPlugin extends JavaPlugin {
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
-                inspect, new SwapKeyService(this), market, profiles, killFeed, fov);
+                inspect, new SwapKeyService(this), market, profiles, killFeed, fov, carryInfo);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -387,6 +389,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public ProfileService profiles() { return profiles; }
     public net.infnetwork.snowball.craftov.profile.MailService mail() { return mail; }
     public CarryService carry() { return carry; }
+    public net.infnetwork.snowball.craftov.inventory.CarryInfo carryInfo() { return carryInfo; }
     public LootService loot() { return loot; }
     public MapRegistry maps() { return maps; }
     public WorldService worlds() { return worlds; }

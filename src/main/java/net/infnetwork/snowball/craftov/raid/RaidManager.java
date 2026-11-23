@@ -398,11 +398,6 @@ public final class RaidManager implements Listener {
         return launching.containsKey(uuid);
     }
 
-    /** Raids whose map is still being copied. */
-    public int launches() {
-        return (int) launching.values().stream().distinct().count();
-    }
-
     /** Ends a launch's wait: its players are free again. False when it had ended already. */
     private boolean finish(Launch launch) {
         if (launch.over) {

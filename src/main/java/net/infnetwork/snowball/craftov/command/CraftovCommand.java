@@ -278,7 +278,7 @@ public final class CraftovCommand implements TabExecutor {
                             + " · 剩余 " + Text.duration(raid.remainingSeconds()) + " · 玩家 " + raid.activeCount() + " · AI " + plugin.ai().count(raid));
                 }
                 // For checking that nothing piles up over a long uptime (issue #45).
-                Text.send(sender, "<muted>正在复制地图 " + plugin.raids().launches() + " 局 · 击中记录 lastHits "
+                Text.send(sender, "<muted>正在复制地图 " + plugin.worlds().copies() + " 份 · 击中记录 lastHits "
                         + plugin.damage().trackedHits() + " 条 · 在线 " + Bukkit.getOnlinePlayers().size() + " 人");
             }
             case "event" -> {

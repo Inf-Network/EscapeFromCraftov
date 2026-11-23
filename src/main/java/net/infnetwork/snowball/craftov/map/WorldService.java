@@ -326,6 +326,15 @@ public final class WorldService {
         return copying.containsKey(template);
     }
 
+    /**
+     * Raid copies of templates under way on scheduler threads, for /cv raids: what makes
+     * {@link #replaceTemplate} refuse, counted even when nobody waits for the copy any more (its
+     * launch timed out, or everyone in it left).
+     */
+    public int copies() {
+        return copying.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
     /** Copies a template folder for a raid, logging how long it took. A failed copy is removed. */
     private boolean copyTemplate(String template, Path source, Path target) {
         long start = System.nanoTime();

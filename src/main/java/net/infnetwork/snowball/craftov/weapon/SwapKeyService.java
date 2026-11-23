@@ -33,7 +33,10 @@ import java.util.UUID;
  * tick): Shift and the sprint are read at the end of the tick F was pressed in, the hand at the end
  * of the next one, after its slot change. That is 50 to 100 ms, less than a frame of the inspect or
  * the fire-mode sound. A client that sends no tick ends (a bot) has its F read
- * {@link #FALLBACK_TICKS} server ticks after it came in.
+ * {@link #FALLBACK_TICKS} server ticks after it came in. A client that sent the first tick end does
+ * send them, and its second one is only late (a few frames a second put the next tick in the next
+ * frame, or the connection jitters): reading the hand before it would bring the 3-then-F race back,
+ * so that F waits up to {@link #LATE_TICKS}.
  *
  * <p>Each F is read on its own and in order, with the Shift, sprint and hand of its own tick: two
  * quick taps on a gun step the fire mode twice, as they did when F was read as it came in.
@@ -42,6 +45,8 @@ public final class SwapKeyService implements Listener {
 
     /** Server ticks an F waits for the client's tick ends before it is read anyway. */
     private static final int FALLBACK_TICKS = 3;
+    /** Server ticks an F waits for its second tick end once the first came in. */
+    private static final int LATE_TICKS = 10;
     /** F presses kept per player until read; more within 0.1 s is a macro, and the rest is dropped. */
     private static final int MAX_PENDING = 4;
 
@@ -107,7 +112,8 @@ public final class SwapKeyService implements Listener {
                 pending.remove(id);
                 continue;
             }
-            while (!presses.isEmpty() && now - presses.peekFirst().arrived >= FALLBACK_TICKS) {
+            while (!presses.isEmpty()
+                    && now - presses.peekFirst().arrived >= (presses.peekFirst().tickEnds == 0 ? FALLBACK_TICKS : LATE_TICKS)) {
                 Press press = presses.pollFirst();
                 if (press.tickEnds == 0) {
                     press.sneaking = player.isSneaking();

@@ -127,5 +127,6 @@ tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/Remote
 - **倒地姿势**：`setPose(Pose.SWIMMING, true)` 让所有人看到爬行。
 - **AI**：zombie / husk / drowned 身体 + 资源包换皮，Paper Pathfinder；无人机用 Bee 碰撞箱。
 - **对局世界**：虚空生成器，每局复制模板文件夹，结束后销毁。控制台 `/tp` 会传到主世界，要用 `execute as X at @s run tp @s ...`。
+- **定时任务的节拍要自己数**：插件启用时调度器的 tick 是 -1，`runTaskTimer(task, delay, period)` 第一次跑在第 `delay - 1` tick，之后每 `period` tick 一次，而 `Bukkit.getCurrentTick()` 和调度器是同一个数。所以周期大于 1 的任务里不要用 `getCurrentTick() % N == 0` 做节拍：它可能永远不成立（#40：10 tick 一次的心跳只跑在个位是 9 的 tick 上，从没响过；撤离点光圈也从没画过），热重载后相位还会变。要么给这件事单开一个周期就是 N 的定时任务，要么在任务里数自己跑了几次（`runs++ % k == 0`）。每 tick 都跑的任务可以直接用 `% N`；拿 tick 当时间戳（`now + 40`、`now >= until`）不受影响。
 - `fpview.py <枪id>` 能离线渲染第一 / 第三人称持枪画面，调枪的位置不用进游戏。
 - BetterHud 罗盘内部偶尔有 ConcurrentModificationException，来自 BetterHud 自身，无害。

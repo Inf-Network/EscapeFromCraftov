@@ -107,6 +107,12 @@ public final class DownedService implements Listener {
     private static final int REFUSAL_TICKS = 40;
     /** How long a refusal stays on the revive bar. */
     private static final int BUSY_REFUSAL_TICKS = 20;
+    /**
+     * Runs of {@link #tick} (every 5 ticks) so far. The heartbeat and the bandage sound come round
+     * on every fourth, once a second, counted here rather than read off the server tick, whose
+     * phase against this timer depends on when the plugin was enabled.
+     */
+    private long runs;
 
     public DownedService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -312,6 +318,7 @@ public final class DownedService implements Listener {
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        boolean second = runs++ % 4 == 0;
         refusals.keySet().retainAll(downed.keySet());
         refusals.values().removeIf(refusal -> now - refusal.getValue() >= REFUSAL_TICKS);
         busyRefusals.values().removeIf(refusal -> now - refusal.getValue() >= BUSY_REFUSAL_TICKS);
@@ -346,7 +353,7 @@ public final class DownedService implements Listener {
                     interrupt(state, at);
                 }
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
-                reviveEffects(reviver, player);
+                reviveEffects(reviver, player, second);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
                 String note = now - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
                 // What either of them just tried and could not do goes on their own revive bar,
@@ -370,7 +377,7 @@ public final class DownedService implements Listener {
             state.reviver = null;
             state.reviveTicks = 0;
             state.pool -= 0.25;
-            if (Bukkit.getCurrentTick() % 20 < 5) {
+            if (second) {
                 player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.2, 0), 4, 0.3, 0.05, 0.3,
                         Material.REDSTONE_BLOCK.createBlockData());
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
@@ -473,13 +480,13 @@ public final class DownedService implements Listener {
     /**
      * The reviver kneels over the downed player and dresses the wound: others see them crouched with
      * a bandage worked back and forth in hand (StanceService's revive stance) and hear the bandage
-     * being wrapped, about once a second.
+     * being wrapped once a second (on {@code second}).
      */
-    private void reviveEffects(Player reviver, Player patient) {
+    private void reviveEffects(Player reviver, Player patient, boolean second) {
         if (reviver.getPose() != Pose.SNEAKING) {
             reviver.setPose(Pose.SNEAKING, true);
         }
-        if (Bukkit.getCurrentTick() % 20 < 5) {
+        if (second) {
             Location at = patient.getLocation().add(0, 0.4, 0);
             patient.getWorld().playSound(at, "craftov:med.wrap", SoundCategory.PLAYERS, 0.7f,
                     0.95f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.1f);

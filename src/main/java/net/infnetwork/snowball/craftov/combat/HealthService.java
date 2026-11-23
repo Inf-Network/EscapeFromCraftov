@@ -92,6 +92,12 @@ public final class HealthService implements Listener {
     private final Map<UUID, Double> lastJump = new HashMap<>();
     private final Map<UUID, MedUse> medUse = new HashMap<>();
     private final Map<UUID, WorldBorder> vignettes = new HashMap<>();
+    /**
+     * Runs of {@link #tickLowHealth} so far: the heartbeat's beat. The server tick will not do, as
+     * the timer never runs on a multiple of 10 (the scheduler counts from -1 while the plugin
+     * enables), and a test for one silenced the heartbeat altogether.
+     */
+    private long lowHealthRuns;
 
     public HealthService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -551,15 +557,18 @@ public final class HealthService implements Listener {
         return Math.max(0.2, factor);
     }
 
-    /** Red vignette and heartbeat below 35 HP. */
+    /**
+     * Red vignette and heartbeat below 35 HP. Runs every 10 ticks: the heart beats on every run
+     * below 18 HP (twice a second) and on every other run from 18 to 35 (once a second).
+     */
     private void tickLowHealth() {
-        long tick = Bukkit.getCurrentTick();
+        boolean everyOther = lowHealthRuns++ % 2 == 0;
         for (Player player : Bukkit.getOnlinePlayers()) {
             boolean active = plugin.raids().isInRaid(player) && !player.isDead() && !plugin.downed().isDowned(player);
             double hp = player.getHealth();
             double intensity = active && hp < 35 ? Math.min(0.85, 0.25 + (35 - hp) / 35.0 * 0.6) : 0;
             setVignette(player, intensity);
-            if (intensity > 0 && tick % (hp < 18 ? 10 : 20) == 0) {
+            if (intensity > 0 && (hp < 18 || everyOther)) {
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.9f, 1f);
             }
         }

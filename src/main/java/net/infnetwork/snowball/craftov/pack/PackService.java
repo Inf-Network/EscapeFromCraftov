@@ -51,6 +51,7 @@ public final class PackService {
                 File bhFolder = new File(plugin.getDataFolder().getParentFile(), "BetterHud");
                 changed |= extract(BH_PREFIX, bhFolder);
                 changed |= configureBetterHud(new File(bhFolder, "config.yml"));
+                switchOffSamples(bhFolder);
             }
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not install resource pack files: " + ex.getMessage());
@@ -135,19 +136,36 @@ public final class PackService {
             yaml.set("merge-with-external-resources", true);
             changed = true;
         }
-        // BetterHud's bundled sample compass is shown to everyone by default; Craftov has its own.
-        File sample = new File(config.getParentFile(), "compasses/default_compass.yml");
+        if (changed) {
+            yaml.save(config);
+        }
+        return changed;
+    }
+
+    /**
+     * BetterHud writes a few samples into its data folder when the folder is new, never again after
+     * that, and reads them only after Craftov is enabled, so what is switched off here is off from
+     * this start-up on. Two of them show up in a raid: a compass shown to everyone by default, where
+     * Craftov has its own, and an English "Health: x / y" bar with the target's head that pops up at
+     * the top left whenever anyone hits a mob (#134). Nothing to rebuild in the resource pack.
+     */
+    private void switchOffSamples(File folder) throws IOException {
+        File sample = new File(folder, "compasses/default_compass.yml");
         if (sample.exists()) {
             YamlConfiguration compass = YamlConfiguration.loadConfiguration(sample);
             if (compass.getBoolean("default_compass.default", false)) {
                 compass.set("default_compass.default", false);
                 compass.save(sample);
-                changed = true;
             }
         }
-        if (changed) {
-            yaml.save(config);
+        // BetterHud skips files whose names start with a hyphen. Renamed rather than deleted, so the
+        // sample is still at hand: an admin who wants it back gives it some other name (as
+        // entity-popup.yml it would be switched off again at the next start).
+        File popup = new File(folder, "popups/entity-popup.yml");
+        if (popup.exists()) {
+            Path off = popup.toPath().resolveSibling("-entity-popup.yml");
+            Files.move(popup.toPath(), off, StandardCopyOption.REPLACE_EXISTING);
+            plugin.getLogger().info("Switched off BetterHud's sample entity health popup: renamed it to popups/" + off.getFileName());
         }
-        return changed;
     }
 }

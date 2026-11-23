@@ -3,7 +3,7 @@
 # Goes up with every plugin update that changes a default. On start-up a server copy with a lower
 # number gets each such key moved to the new default if it still holds an old one; a value someone
 # changed stays, and so do the comments. The log lists what changed. Leave it to the plugin.
-config-revision: 1
+config-revision: 2
 
 # New players receive this once. Loadout keys are inventory slots:
 # 0-7 hotbar, 9-17 chest rig cells, 18-35 backpack cells, 36 backpack, 37 rig, 38 body armor, 39 helmet.
@@ -119,6 +119,9 @@ raid:
   # the lobby (they cannot queue again meanwhile; whoever leaves the server drops out). A copy that has
   # not finished after this many seconds calls the launch off: everyone is told and can queue again.
   map-copy-timeout-seconds: 60
+  # Every extract has a ring of dust on the ground at its radius; only players within this many blocks
+  # of it are sent the ring (the beam over it goes to the whole map).
+  extract-ring-range: 48
   # A raid the server stops in (or crashes in) is void for everyone still in it, flying in, downed or
   # disconnected included: back to the gear and secure container they went in with, entry fee and
   # insurance premium refunded, and nothing gained in it counts. Each of them also gets a letter in the
@@ -465,11 +468,17 @@ weapons:
       lmg: 1.8
       bolt: 2.0
   recoil:
-    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming, while sneaking
-    # and when fired from the hip on a sprint.
-    ads: 0.6
+    # Camera kick per shot is the gun's recoil (items.yml, degrees up; recoil-h at most sideways)
+    # times these while sneaking and when fired from the hip on a sprint.
     sneak: 0.8
     sprint: 1.15
+    # With the sights up a shot kicks this share of the gun's recoil up and of its recoil-h sideways
+    # (the side-to-side jitter is what cannot be pulled against, so it shrinks most); in between
+    # while the sights come up. These are for a gun neither the server's items.yml nor the jar's
+    # gives an ads-recoil / ads-recoil-h for (an added gun): every bundled gun gives both, and an
+    # older items.yml without them takes the jar's.
+    ads: 0.5
+    ads-h: 0.35
     # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.
     first-tick-share: 0.6
     # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
@@ -484,8 +493,9 @@ weapons:
     # In full-auto and burst fire this share of every kick lifts only the bullets, not the camera. The
     # camera kick is a packet the client could ignore; this part cannot be. Each round lifts them less
     # the higher they already are: muzzle-soft is the climb (degrees) at which a round's lift has
-    # halved, so an M4C spray aimed down the sights is about 0.6 degrees above the crosshair at round 10
-    # and 1.4 at round 30, still creeping up. muzzle-max is a hard ceiling no magazine reaches.
+    # halved, so an M4C spray aimed through a red dot is about 0.45 degrees above the crosshair at
+    # round 10 and 1.0 at round 30, still creeping up. muzzle-max is a hard ceiling no magazine
+    # reaches.
     # It comes back to the crosshair over muzzle-return-ticks once the camera starts drifting back.
     # Single shots (semi, bolt, pump) are not lifted.
     muzzle-share: 0.2

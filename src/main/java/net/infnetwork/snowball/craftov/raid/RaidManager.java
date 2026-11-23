@@ -93,6 +93,7 @@ public final class RaidManager implements Listener {
     public RaidManager(CraftovPlugin plugin) {
         this.plugin = plugin;
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickFast, 10L, 5L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickExtractMarkers, 10L, 10L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSecond, 20L, 20L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSpectators, 30L, 20L);
     }
@@ -875,9 +876,6 @@ public final class RaidManager implements Listener {
             if (raid.state != Raid.State.RUNNING) {
                 continue;
             }
-            for (ExtractPoint point : raid.extracts) {
-                drawExtract(raid, point, now);
-            }
             for (RaidPlayer rp : raid.players.values()) {
                 Player player = rp.active() ? Bukkit.getPlayer(rp.uuid) : null;
                 if (player != null && player.getWorld() != raid.world) {
@@ -1002,26 +1000,77 @@ public final class RaidManager implements Listener {
         return null;
     }
 
-    private void drawExtract(Raid raid, ExtractPoint point, long now) {
-        if (now % 10 != 0) {
-            return;
+    /**
+     * Every extract's marker on the ground, on a timer of its own: the colour of the ring says
+     * whether it can be used now, and one that can still be used this raid has a beam over it. The
+     * markers used to be drawn from {@link #tickFast} when the server tick was a multiple of 10, but
+     * that timer only ever runs on ticks ending in 4 and 9 (the scheduler counts from -1 while the
+     * plugin enables), so not one was ever drawn.
+     */
+    private void tickExtractMarkers() {
+        long now = Bukkit.getCurrentTick();
+        double ringRange = plugin.getConfig().getDouble("raid.extract-ring-range", 48);
+        List<Player> near = new ArrayList<>();
+        for (Raid raid : raids.values()) {
+            if (raid.state != Raid.State.RUNNING) {
+                continue;
+            }
+            for (ExtractPoint point : raid.extracts) {
+                near.clear();
+                for (Player player : raid.world.getPlayers()) {
+                    if (player.getLocation().distanceSquared(point.center) <= ringRange * ringRange) {
+                        near.add(player);
+                    }
+                }
+                drawExtract(raid, point, now, near);
+            }
         }
+    }
+
+    /**
+     * One extract's marker. The ring only goes to {@code near}, the players within
+     * {@code raid.extract-ring-range} of it: it shows where to stand, which nobody needs from across
+     * the map, and forced on every player of a large map it came to a few hundred packets a second
+     * each (24 per extract per draw). The beam is still forced on the whole map, as it is what shows
+     * the way from afar.
+     */
+    private void drawExtract(Raid raid, ExtractPoint point, long now, List<Player> near) {
         Location c = point.center;
-        boolean open = point.available && extractOpenByTime(raid, point);
-        Color color = !point.available ? Color.fromRGB(90, 90, 90) : open ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);
-        Particle.DustOptions dust = new Particle.DustOptions(color, 1.3f);
-        double r = point.def.radius();
-        for (int i = 0; i < 24; i++) {
-            double a = i / 24.0 * Math.PI * 2 + now * 0.02;
-            raid.world.spawnParticle(Particle.DUST, c.getX() + Math.cos(a) * r, c.getY() + 0.15, c.getZ() + Math.sin(a) * r,
-                    1, 0, 0, 0, 0, dust, true);
+        // Grey once it is shut for the rest of the raid (closed, or every place taken, not only one
+        // that never opened): orange would say "not yet" and send players to one that never opens.
+        boolean shut = extractShut(raid, point);
+        Color color = shut ? Color.fromRGB(90, 90, 90)
+                : extractOpenByTime(raid, point) ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);
+        if (!near.isEmpty()) {
+            Particle.DustOptions dust = new Particle.DustOptions(color, 1.3f);
+            double r = point.def.radius();
+            for (int i = 0; i < 24; i++) {
+                double a = i / 24.0 * Math.PI * 2 + now * 0.02;
+                double x = c.getX() + Math.cos(a) * r;
+                double z = c.getZ() + Math.sin(a) * r;
+                for (Player player : near) {
+                    player.spawnParticle(Particle.DUST, x, c.getY() + 0.15, z, 1, 0, 0, 0, 0, dust, true);
+                }
+            }
         }
-        if (point.available) {
+        if (!shut) {
             for (int y = 0; y < 8; y++) {
                 raid.world.spawnParticle(Particle.DUST, c.getX(), c.getY() + y * 1.5, c.getZ(), 1, 0.05, 0.2, 0.05, 0,
                         new Particle.DustOptions(color, 2.0f), true);
             }
         }
+    }
+
+    /**
+     * Whether {@code point} cannot be used again this raid: it is not open this raid, its closing time
+     * has passed, or all of its places have been taken (what {@link #extractBlocker} refuses as
+     * "已关闭" and "名额已满").
+     */
+    public boolean extractShut(Raid raid, ExtractPoint point) {
+        MapDef.ExtractDef def = point.def;
+        return !point.available
+                || def.closesAt() > 0 && raid.elapsedSeconds() >= def.closesAt()
+                || def.capacity() > 0 && point.used >= def.capacity();
     }
 
     public boolean extractOpenByTime(Raid raid, ExtractPoint point) {
@@ -1465,6 +1514,10 @@ public final class RaidManager implements Listener {
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
+        // A flashbang's white-out (and blindness) must not hang over the death camera and the replay.
+        // Only once dead: the low-health blood edge follows the raid state, so cleared while still
+        // alive it stayed up (or came out from under the white-out) for another tick.
+        plugin.hud().clearCameraEffects(player);
         Location at = player.getLocation();
         // Body with everything the player carried but the melee weapon, which is kept.
         List<ItemStack> drop = new ArrayList<>();

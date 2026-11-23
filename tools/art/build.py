@@ -259,12 +259,12 @@ def build_gun(item_id, spec, item_defs):
     def strafe(base, poses):
         return key('key.left', poses['left'], key('key.right', poses['right'], base))
 
-    def kicked(kind, name, base, display, rest):
+    def kicked(kind, name, base, display, rest, power=1.0):
         # Shots are not a key: the server starts the gun's cooldown on every shot it really fires
         # (WeaponService.shoot), and the gun kicks back and flashes while the client counts it down.
         entries = []
         for threshold, level, lit in kicks:
-            kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength)
+            kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength, power)
             model = pose(kind, name, base, display, 'kick%d' % level, kick)
             if lit:
                 model = {'type': 'minecraft:composite', 'models': [model, flash(kind, name, base, display, kick)]}
@@ -296,7 +296,7 @@ def build_gun(item_id, spec, item_defs):
         ads = leaf('gun_ads/' + name, {'parent': aim_held, 'display': display})
         ads_ref = 'craftov:item/gun_ads/' + name
         ap = {n: pose('ads', name, ads_ref, display, n, sp) for n, sp in models.ADS_POSES.items()}
-        return kicked('ads', name, ads_ref, display, strafe(ads, ap))
+        return kicked('ads', name, ads_ref, display, strafe(ads, ap), models.sight_power(gun_spec, oid, item_defs))
     if scoped:
         leaf('gun_ads/' + item_id, models.gun_ads_model(item_id, True))
 

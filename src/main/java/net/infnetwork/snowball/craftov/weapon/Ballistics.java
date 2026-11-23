@@ -352,7 +352,8 @@ public final class Ballistics {
      * Muzzle smoke and sparks where the muzzle is, for everyone within 32 blocks. {@code shooterSees}
      * false leaves the shooter out: a player firing on a sprint runs into their own smoke within a few
      * ticks, and up against the camera it covers the middle of the screen in big blocky puffs (the
-     * gun's own flash in the item model still shows). Sent unforced, as World.spawnParticle sends
+     * gun's own flash in the item model still shows); aiming, the puffs sit right beside the sight and
+     * burst over it with every round (issue #118). Sent unforced, as World.spawnParticle sends
      * them: a builder forces by default, which would override each viewer's particle setting and widen
      * the reach to 512 blocks; unforced, the server also keeps them to 32 blocks of each receiver.
      */

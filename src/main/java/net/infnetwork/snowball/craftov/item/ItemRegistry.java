@@ -46,19 +46,25 @@ public final class ItemRegistry {
      * The same goes for a medical item's pose and cues: a file from before cues (#41) names one
      * {@code sound} and the vanilla poses (brush, crossbow, bundle, trident) that the item models' own
      * frames replaced, which would now play on top of them, so a medical item whose entry has no
-     * {@code cues} takes the jar's pose and cues together.
+     * {@code cues} takes the jar's pose and cues together. And for a gun's aimed kick: a file from
+     * before {@code ads-recoil} and {@code ads-recoil-h} (revision 10 and older) would give every gun the
+     * same one, so a gun whose entry lacks either takes the jar's.
      */
     private final Bundled bundled;
 
     /**
-     * The jar's {@code size} by item id, its {@code handling} by gun, sight or part id, and its pose and
-     * cues by medical item id (those with cues).
+     * The jar's {@code size} by item id, its {@code handling} by gun, sight or part id, its pose and
+     * cues by medical item id (those with cues), and its {@code ads-recoil} and {@code ads-recoil-h} by
+     * gun id.
      */
-    public record Bundled(Map<String, Integer> sizes, Map<String, Double> handling, Map<String, MedUse> meds) {
+    public record Bundled(Map<String, Integer> sizes, Map<String, Double> handling, Map<String, MedUse> meds,
+                          Map<String, Double> adsRecoil, Map<String, Double> adsRecoilH) {
         public Bundled {
             sizes = Map.copyOf(sizes);
             handling = Map.copyOf(handling);
             meds = Map.copyOf(meds);
+            adsRecoil = Map.copyOf(adsRecoil);
+            adsRecoilH = Map.copyOf(adsRecoilH);
         }
     }
 
@@ -75,25 +81,27 @@ public final class ItemRegistry {
     }
 
     /**
-     * The {@code size}, {@code handling} and medical pose and cues of every item in an items.yml (the
-     * jar's copy), or none if it cannot be read.
+     * The {@code size}, {@code handling}, medical pose and cues and aimed kick of every item in an
+     * items.yml (the jar's copy), or none if it cannot be read.
      */
     public static Bundled bundled(@Nullable InputStream in) {
         Map<String, Integer> sizes = new LinkedHashMap<>();
         Map<String, Double> handling = new LinkedHashMap<>();
         Map<String, MedUse> meds = new LinkedHashMap<>();
+        Map<String, Double> adsRecoil = new LinkedHashMap<>();
+        Map<String, Double> adsRecoilH = new LinkedHashMap<>();
         if (in == null) {
-            return new Bundled(sizes, handling, meds);
+            return new Bundled(sizes, handling, meds, adsRecoil, adsRecoilH);
         }
         YamlConfiguration yaml = new YamlConfiguration();
         try (in) {
             yaml.loadFromString(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException | InvalidConfigurationException ex) {
-            return new Bundled(sizes, handling, meds);
+            return new Bundled(sizes, handling, meds, adsRecoil, adsRecoilH);
         }
         ConfigurationSection root = yaml.getConfigurationSection("items");
         if (root == null) {
-            return new Bundled(sizes, handling, meds);
+            return new Bundled(sizes, handling, meds, adsRecoil, adsRecoilH);
         }
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
@@ -112,8 +120,14 @@ public final class ItemRegistry {
             if (m != null && m.contains("cues")) {
                 meds.put(id, new MedUse(m.getString("anim", "none"), medCues(m)));
             }
+            if (s.contains("gun.ads-recoil")) {
+                adsRecoil.put(id, s.getDouble("gun.ads-recoil"));
+            }
+            if (s.contains("gun.ads-recoil-h")) {
+                adsRecoilH.put(id, s.getDouble("gun.ads-recoil-h"));
+            }
         }
-        return new Bundled(sizes, handling, meds);
+        return new Bundled(sizes, handling, meds, adsRecoil, adsRecoilH);
     }
 
     /**
@@ -140,6 +154,7 @@ public final class ItemRegistry {
         List<String> borrowed = new ArrayList<>();
         List<String> borrowedHandling = new ArrayList<>();
         List<String> borrowedMeds = new ArrayList<>();
+        List<String> borrowedKick = new ArrayList<>();
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
             if (s == null) {
@@ -161,6 +176,10 @@ public final class ItemRegistry {
             }
             if (s.isConfigurationSection("med") && !s.contains("med.cues") && bundled.meds().containsKey(id)) {
                 borrowedMeds.add(id);
+            }
+            if (s.isConfigurationSection("gun") && (!s.contains("gun.ads-recoil") && bundled.adsRecoil().containsKey(id)
+                    || !s.contains("gun.ads-recoil-h") && bundled.adsRecoilH().containsKey(id))) {
+                borrowedKick.add(id);
             }
         }
         if (!errors.isEmpty()) {
@@ -186,6 +205,11 @@ public final class ItemRegistry {
             logger.warning(file.getName() + " gives no cues for " + borrowedMeds.size() + " medical items ("
                     + String.join(", ", borrowedMeds) + "): they are used with the jar's sounds and pose. Replace the"
                     + " file with the jar's copy, or add cues: to each, to change them.");
+        }
+        if (!borrowedKick.isEmpty()) {
+            logger.warning(file.getName() + " gives no aimed kick for " + borrowedKick.size() + " guns ("
+                    + String.join(", ", borrowedKick) + "): they take the jar's ads-recoil and ads-recoil-h. Replace"
+                    + " the file with the jar's copy, or add them to each, to change them.");
         }
         return null;
     }
@@ -256,7 +280,9 @@ public final class ItemRegistry {
                     g.getString("audio", id),
                     g.getString("action", modes.contains(FireMode.PUMP) ? "pump" : modes.contains(FireMode.BOLT) ? "bolt"
                             : "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "pistol" : "ar"),
-                    Handling.clamp(g.getDouble("handling", bundled.handling().getOrDefault(id, Handling.fallback(adsClass(id, g))))));
+                    Handling.clamp(g.getDouble("handling", bundled.handling().getOrDefault(id, Handling.fallback(adsClass(id, g))))),
+                    share(g, "ads-recoil", bundled.adsRecoil().get(id)),
+                    share(g, "ads-recoil-h", bundled.adsRecoilH().get(id)));
         }
         AmmoSpec ammo = null;
         ConfigurationSection a = s.getConfigurationSection("ammo");
@@ -379,6 +405,15 @@ public final class ItemRegistry {
                 attach,
                 Math.max(1, s.contains("size") ? s.getInt("size", 1) : bundled.sizes().getOrDefault(id, 1)),
                 secureStack);
+    }
+
+    /**
+     * A share (0..2) the section gives under {@code key}, else the jar's for the same gun ({@code jar}),
+     * else NaN: a gun neither gives one for takes config.yml's (weapons.recoil.ads, ads-h).
+     */
+    private static double share(ConfigurationSection section, String key, @Nullable Double jar) {
+        double value = section.contains(key) ? section.getDouble(key) : jar != null ? jar : Double.NaN;
+        return Double.isNaN(value) ? Double.NaN : Math.max(0, Math.min(2, value));
     }
 
     /**

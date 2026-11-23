@@ -256,7 +256,8 @@ public final class CraftovPlugin extends JavaPlugin {
             });
         }
         // Offline edits made while sending everyone home and queued market saves (both go through
-        // the profile writer) finish landing before the final saves, so none lands on top of them.
+        // the profile writer) finish landing before the final saves. Should that wait time out, the
+        // final saves are still the newest copies: an older one that comes up later is dropped.
         step("queued profile writes", profiles, () -> profiles.awaitWrites());
         step("market", market, () -> market.saveSync());
         step("profiles", profiles, () -> profiles.shutdown());

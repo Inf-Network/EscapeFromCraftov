@@ -10,7 +10,8 @@
 //                 back with an empty loadout, a missing-in-action report, no "server interrupted"
 //                 restore and the right refund (raid.reconnect-seconds is set to 10 for this)
 //  stop-mid-raid  the server stops while a bot is in a raid: no shutdown step fails, and the
-//                 profile has no raid left and holds what the bot carried
+//                 profile has no raid left; the raid is void (#67), so the loadout is the one it
+//                 went in with and what it found in the raid is not in it
 //  hot-reload     /bukkit:reload confirm with a bot online holding a gun: a middle click keeps the
 //                 connection and is answered by the reloaded plugin, the gun fires in the range
 //                 without reconnecting, and the log has no plugin errors
@@ -47,6 +48,7 @@ const crypto = require('crypto')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { pullTrigger } = require('./common')
 
 const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
@@ -369,7 +371,7 @@ async function lostEdit () {
     log('journal', text)
     const left = text.match(/missing in raid \S+: loadout = (\{.*?\}) \(the rest of that gear stayed in the raid\)/)
     check('lost-edit: the timeout is journaled with its resets', !!left && Object.keys(JSON.parse(left[1])).every(slot => slot === '2')
-      && /missing in raid .*activeRaid = null, stats\.deaths \+1/.test(text), left && left[1])
+      && /missing in raid .*activeRaid = null, (deployment = null, )?stats\.deaths \+1/.test(text), left && left[1])
     check('lost-edit: the escrow release is journaled after it', text.indexOf('escortEscrow -20000') > text.indexOf('missing in raid')
       && text.includes('money +14000'))
     check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
@@ -389,6 +391,9 @@ async function lostEdit () {
     p.loadout = left ? JSON.parse(left[1]) : {}
     p.secure = secure ? JSON.parse(secure[1]) : p.secure
     p.activeRaid = null
+    // The deployment record goes too (the journal says so): one left behind is a raid the server
+    // stopped in, which the next login would void.
+    if (/deployment = null/.test(text)) p.deployment = null
     p.stats = p.stats || {}
     p.stats.deaths = (p.stats.deaths || 0) + 1
     p.escortEscrow = Math.max(0, (p.escortEscrow || 0) - 20000)
@@ -592,7 +597,8 @@ async function stopMidRaid () {
   const carried = Object.values(p.loadout || {}).map(r => r.id)
   check('stop-mid-raid: no failed shutdown step', !text.includes('Shutdown step') && !text.includes('Could not send'), text.match(/.*(Shutdown step|Could not send).*/g))
   check('stop-mid-raid: raid cleared from the profile', p.activeRaid == null, p.activeRaid)
-  check('stop-mid-raid: went home with what was carried', carried.includes('surgery'), carried)
+  // A raid the server stops in is void (#67): the kit it went in with, not the surgery kit it found.
+  check('stop-mid-raid: void, the loadout it went in with and nothing found in the raid', !carried.includes('surgery') && carried.includes('k47'), carried)
   await start()
 }
 
@@ -606,6 +612,8 @@ async function hotReload () {
   bot._client.on('entity_sound_effect', heard)
   let ended = false
   bot.on('end', () => { ended = true })
+  // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
+  await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
   await rcon(`cv give ${name} m4c`)
   await rcon(`cv give ${name} ammo_556_m855 60`)
   await sleep(800)
@@ -639,12 +647,12 @@ async function hotReload () {
     await sleep(800)
     if (gunSlot() >= 0) bot.setQuickBarSlot(gunSlot() - 36)
     await sleep(800)
-    // Q loads the magazine first (the gun from /cv give is empty), then one tap of the trigger.
+    // Q loads the magazine first, then one tap of the trigger as the vanilla client sends it (the
+    // capture block in front of the crosshair dug, a swing, the abort).
     bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
-    bot.swingArm()
     await sleep(4500)
     shots = 0
-    bot.swingArm()
+    await pullTrigger(bot)
     await sleep(800)
     check('hot-reload: the gun fires after /reload without reconnecting', shots > 0, shots)
     await leave(bot)

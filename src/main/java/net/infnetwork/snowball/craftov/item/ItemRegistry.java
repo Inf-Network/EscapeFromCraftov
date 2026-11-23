@@ -14,6 +14,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
@@ -34,9 +35,42 @@ public final class ItemRegistry {
 
     private final Map<String, ItemDef> items = new LinkedHashMap<>();
     private final Logger logger;
+    /**
+     * Secure-container cells per id in the jar's own items.yml. A server keeps the items.yml it was
+     * first given (CraftovPlugin copies it only when missing), so one written before {@code size}
+     * existed (revision 7 and older) would let every statue and generator into a single cell: an item
+     * whose entry has no size takes the jar's. A size written in the server's file always wins.
+     */
+    private final Map<String, Integer> bundledSizes;
 
-    public ItemRegistry(Logger logger) {
+    public ItemRegistry(Logger logger, Map<String, Integer> bundledSizes) {
         this.logger = logger;
+        this.bundledSizes = Map.copyOf(bundledSizes);
+    }
+
+    /** The {@code size} of every item in an items.yml (the jar's copy), or none if it cannot be read. */
+    public static Map<String, Integer> sizes(@Nullable InputStream in) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (in == null) {
+            return out;
+        }
+        YamlConfiguration yaml = new YamlConfiguration();
+        try (in) {
+            yaml.loadFromString(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (IOException | InvalidConfigurationException ex) {
+            return out;
+        }
+        ConfigurationSection root = yaml.getConfigurationSection("items");
+        if (root == null) {
+            return out;
+        }
+        for (String id : root.getKeys(false)) {
+            ConfigurationSection s = root.getConfigurationSection(id);
+            if (s != null && s.contains("size")) {
+                out.put(id, Math.max(1, s.getInt("size", 1)));
+            }
+        }
+        return out;
     }
 
     /**
@@ -60,6 +94,7 @@ public final class ItemRegistry {
         }
         Map<String, ItemDef> parsed = new LinkedHashMap<>();
         List<String> errors = new ArrayList<>();
+        List<String> borrowed = new ArrayList<>();
         for (String id : root.getKeys(false)) {
             ConfigurationSection s = root.getConfigurationSection(id);
             if (s == null) {
@@ -71,6 +106,9 @@ public final class ItemRegistry {
             } catch (RuntimeException ex) {
                 errors.add(id + "：" + ex.getMessage());
             }
+            if (!s.contains("size") && bundledSizes.getOrDefault(id, 1) > 1) {
+                borrowed.add(id);
+            }
         }
         if (!errors.isEmpty()) {
             return fail(file.getName() + " 中有 " + errors.size() + " 个物品无效：" + String.join("；", errors));
@@ -81,6 +119,11 @@ public final class ItemRegistry {
         items.clear();
         items.putAll(parsed);
         logger.info("Loaded " + items.size() + " item definitions");
+        if (!borrowed.isEmpty()) {
+            logger.warning(file.getName() + " gives no secure-container size for " + borrowed.size() + " items ("
+                    + String.join(", ", borrowed) + "): they take the jar's sizes. Replace the file with the jar's"
+                    + " copy, or add size: to each, to change them.");
+        }
         return null;
     }
 
@@ -263,7 +306,7 @@ public final class ItemRegistry {
                 optic,
                 melee,
                 attach,
-                Math.max(1, s.getInt("size", 1)),
+                Math.max(1, s.contains("size") ? s.getInt("size", 1) : bundledSizes.getOrDefault(id, 1)),
                 secureStack);
     }
 

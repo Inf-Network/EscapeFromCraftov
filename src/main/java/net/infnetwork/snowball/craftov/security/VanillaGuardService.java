@@ -21,6 +21,7 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.jspecify.annotations.Nullable;
@@ -37,9 +38,10 @@ import java.util.Set;
  * So the rule is a whitelist, for everyone but builders in creative mode: the only screens that
  * open are the plugin's own menus ({@link Menu}); blocks that hold items or open a vanilla screen
  * do nothing when right-clicked ({@link #locked(Block)}); and the vanilla entities that hold items
- * cannot be used, nor hit to knock out or break off what they hold ({@link #locked(Entity)}).
- * Players (a downed squadmate is revived by clicking them) and the plugin's own entities (loot
- * boxes, bodies, lobby stations) are never locked.
+ * cannot be used, nor hit to knock out or break off what they hold ({@link #locked(Entity)}). The
+ * map's paintings, minecarts and boats cannot be knocked down or broken into items either. Players
+ * (a downed squadmate is revived by clicking them) and the plugin's own entities (loot boxes,
+ * bodies, lobby stations) are never locked.
  */
 public final class VanillaGuardService implements Listener {
 
@@ -146,6 +148,18 @@ public final class VanillaGuardService implements Listener {
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onBreak(HangingBreakByEntityEvent event) {
         if (guarded(attacker(event.getRemover()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * A minecart or a boat hit a few times breaks into its item, and a chest or hopper one spills
+     * what it holds as well. Vehicles take hits outside the entity damage events, and adventure mode
+     * does not stop them, so they are refused here, as the hits on frames and stands are above.
+     */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onVehicleHit(VehicleDamageEvent event) {
+        if (guarded(attacker(event.getAttacker()))) {
             event.setCancelled(true);
         }
     }

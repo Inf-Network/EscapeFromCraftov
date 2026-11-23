@@ -72,7 +72,7 @@ public final class MatchService {
             return;
         }
         Party party = ensureParty(leader);
-        if (!party.leader.equals(leader.getUniqueId())) {
+        if (!leads(leader, party)) {
             Text.send(leader, "<danger>只有队长可以邀请。");
             return;
         }
@@ -176,9 +176,30 @@ public final class MatchService {
         }
     }
 
+    /**
+     * Whether {@code player} leads {@code party}, taking the lead over if its leader is offline. A
+     * leader who dropped out of a raid stays in the party until their reconnect window ends (two
+     * minutes by default, see droppedOut); the rest of the squad, back in the lobby meanwhile, would
+     * otherwise be stuck with no way to queue, invite or kick them. The first member to try takes
+     * over, and everyone is told; the old leader stays a member, and can be kicked now.
+     */
+    private boolean leads(Player player, Party party) {
+        if (party.leader.equals(player.getUniqueId())) {
+            return true;
+        }
+        if (Bukkit.getPlayer(party.leader) != null || !party.members.contains(player.getUniqueId())) {
+            return false;
+        }
+        String was = party.name(party.leader);
+        party.leader = player.getUniqueId();
+        broadcast(party, "<muted>队长 <white>" + Text.escape(was) + "</white> 不在线，<white>" + Text.escape(player.getName())
+                + "</white> 接任队长。");
+        return true;
+    }
+
     public void kick(Player leader, String name) {
         Party party = partyOf(leader.getUniqueId());
-        if (party == null || !party.leader.equals(leader.getUniqueId())) {
+        if (party == null || !leads(leader, party)) {
             Text.send(leader, "<danger>你不是队长。");
             return;
         }
@@ -232,7 +253,7 @@ public final class MatchService {
     /** Validates and enqueues the player's party. */
     public boolean enqueue(Player player, String mapId, String tierId, RaidMode mode, boolean ranked, boolean fill) {
         Party party = partyOf(player.getUniqueId());
-        if (party != null && !party.leader.equals(player.getUniqueId())) {
+        if (party != null && !leads(player, party)) {
             Text.send(player, "<danger>只有队长可以开始匹配。");
             return false;
         }

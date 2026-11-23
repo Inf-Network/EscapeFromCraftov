@@ -10,6 +10,7 @@ import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.loot.ContainerType;
 import net.infnetwork.snowball.craftov.map.ExtractType;
 import net.infnetwork.snowball.craftov.map.MapDef;
+import net.infnetwork.snowball.craftov.map.MapRegistry;
 import net.infnetwork.snowball.craftov.map.Pos;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -47,6 +48,11 @@ import java.util.UUID;
  * Click-to-place map editor. An admin stands in the template world, takes the tool kit and
  * right-clicks blocks: spawns, extracts, containers, AI, bosses, doors and switches are dropped on
  * the clicked block and shown with floating labels only editors can see.
+ *
+ * <p>Saving (the tool, /cv editor save or exit, leaving the server, a shutdown) only ever writes a
+ * draft: a new map stays off the deploy screen, and changes to a published one go to
+ * maps/drafts/ while raids keep using the live file. {@code /cv editor publish} makes the draft
+ * live, and refuses a map that cannot carry a raid (see {@link MapRegistry#publishProblems}).
  */
 public final class EditorService implements Listener {
 
@@ -148,13 +154,29 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
             return;
         }
+        Player other = existing == null ? null : editorOf(existing.id());
+        if (other != null) {
+            Text.send(player, "<#FF8A80>" + Text.escape(other.getName()) + " 正在编辑这张地图，两份草稿会互相覆盖。");
+            return;
+        }
         MapDraft draft;
         if (existing != null) {
             if (!existing.template().equals(world.getName())) {
                 Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
                 return;
             }
-            draft = MapDraft.of(existing);
+            MapDef saved;
+            try {
+                // A published map picks up where its last saved draft left off.
+                saved = existing.enabled() ? plugin.maps().loadDraft(existing.id()) : null;
+            } catch (IOException ex) {
+                Text.send(player, "<#FF8A80>草稿读取失败：" + Text.escape(ex.getMessage()) + "<#9AA0A6>（修好或删掉这个文件再开始）");
+                return;
+            }
+            draft = MapDraft.of(saved != null ? saved : existing);
+            if (saved != null) {
+                Text.send(player, "<#9AA0A6>继续编辑上次保存、还没发布的草稿。");
+            }
         } else {
             draft = new MapDraft();
             draft.id = id;
@@ -170,18 +192,36 @@ public final class EditorService implements Listener {
         refreshLabels(player, session);
         Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
         Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
-        Text.send(player, "<#9AA0A6>完成后用“保存”工具或 <white>/cv editor save</white>；<white>/cv editor set name|minutes|time <值></white> 修改属性。");
+        Text.send(player, "<#9AA0A6>用“保存”工具或 <white>/cv editor save</white> 保存草稿，<white>/cv editor publish</white> 发布后才会出现在「开始行动」里；"
+                + "<white>/cv editor set name|minutes|time <值></white> 修改属性。");
+    }
+
+    /** The player editing this map, or null. */
+    private @Nullable Player editorOf(String mapId) {
+        for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
+            if (entry.getValue().draft.id.equals(mapId)) {
+                return Bukkit.getPlayer(entry.getKey());
+            }
+        }
+        return null;
     }
 
     public void exit(Player player, boolean save) {
-        Session session = sessions.remove(player.getUniqueId());
+        Session session = sessions.get(player.getUniqueId());
         if (session == null) {
             Text.send(player, "<#9AA0A6>你不在编辑模式。");
             return;
         }
-        if (save) {
-            save(player, session);
+        if (save && !save(player, session)) {
+            Text.send(player, "<#FF8A80>草稿没有保存，仍在编辑模式。<#9AA0A6>不要保存就退出用 /cv editor discard。");
+            return;
         }
+        close(player, session);
+    }
+
+    /** Ends the session: back to the inventory and game mode the editor had, labels gone. */
+    private void close(Player player, Session session) {
+        sessions.remove(player.getUniqueId());
         clearLabels(session);
         player.getInventory().clear();
         plugin.carry().apply(player, session.inventory, UiItems.lobbyMenu());
@@ -198,31 +238,137 @@ public final class EditorService implements Listener {
         save(player, session);
     }
 
-    private void save(Player player, Session session) {
+    /**
+     * Saves the draft: maps/&lt;id&gt;.yml (unpublished) for a map nobody has published yet,
+     * maps/drafts/&lt;id&gt;.yml for a published one, whose live file stays as it is. Returns
+     * whether it was written.
+     */
+    private boolean save(Player player, Session session) {
         MapDraft d = session.draft;
-        List<String> problems = new ArrayList<>();
-        if (d.spawns.isEmpty()) problems.add("没有出生点");
-        if (d.extracts.isEmpty()) problems.add("没有撤离点");
-        if (d.containers.size() < 5) problems.add("物资箱少于 5 个");
+        MapDef def = d.build();
+        MapDef live = plugin.maps().get(d.id);
         try {
-            World world = Bukkit.getWorld(d.template);
-            if (world != null) {
-                world.save();
-            }
-            net.infnetwork.snowball.craftov.map.MapDef def = d.build();
-            plugin.maps().save(def);
-            Text.send(player, "<#5BD16B>地图已保存：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 "
-                    + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
-            for (var close : net.infnetwork.snowball.craftov.map.MapRegistry.closeSpawns(def)) {
-                problems.add(String.format(java.util.Locale.ROOT, "%s点 (%.0f, %.0f, %.0f) 离第 %d 组出生点只有 %.0f 格（建议 %d 格以上）",
-                        "boss".equals(close.kind()) ? "首领" : "敌兵", close.post().x(), close.post().y(), close.post().z(),
-                        close.group(), close.distance(), (int) net.infnetwork.snowball.craftov.map.MapRegistry.SPAWN_CLEARANCE));
-            }
-            if (!problems.isEmpty()) {
-                Text.send(player, "<#FFC23D>提示：" + String.join("、", problems) + "（地图仍可保存，但不建议开放）");
+            session.world.save();
+            if (live != null && live.enabled()) {
+                plugin.maps().saveDraft(def);
+            } else {
+                plugin.maps().save(def);
             }
         } catch (IOException ex) {
             Text.send(player, "<#FF8A80>保存失败：" + Text.escape(ex.getMessage()));
+            return false;
+        }
+        Text.send(player, "<#5BD16B>草稿已保存<#9AA0A6>（未发布）<#5BD16B>：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size()
+                + " · 物资箱 " + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
+        List<String> missing = MapRegistry.publishProblems(def, squads());
+        Text.send(player, missing.isEmpty()
+                ? "<#9AA0A6>已满足发布条件：<white>/cv editor publish</white> 发布后，下一局起出现在「开始行动」里。"
+                : "<#FFC23D>发布前还需要：" + Text.escape(String.join("；", missing)));
+        List<String> hints = new ArrayList<>();
+        for (var close : MapRegistry.closeSpawns(def)) {
+            hints.add(String.format(Locale.ROOT, "%s点 (%.0f, %.0f, %.0f) 离第 %d 组出生点只有 %.0f 格（建议 %d 格以上）",
+                    "boss".equals(close.kind()) ? "首领" : "敌兵", close.post().x(), close.post().y(), close.post().z(),
+                    close.group(), close.distance(), (int) MapRegistry.SPAWN_CLEARANCE));
+        }
+        if (!hints.isEmpty()) {
+            Text.send(player, "<#FFC23D>提示：" + String.join("、", hints));
+        }
+        return true;
+    }
+
+    /** Squads one raid takes (match.max-squads): a published map needs a spawn group for each. */
+    private int squads() {
+        return Math.max(1, plugin.getConfig().getInt("match.max-squads", 4));
+    }
+
+    /**
+     * /cv editor publish [id]: in a session (for its own map) saves and leaves first; otherwise
+     * publishes what was saved. Refused, with every reason listed, while the map cannot carry a
+     * raid.
+     */
+    public void publish(Player player, @Nullable String typed) {
+        Session session = sessions.get(player.getUniqueId());
+        if (session != null && (typed == null || typed.equalsIgnoreCase(session.draft.id))) {
+            List<String> problems = MapRegistry.publishProblems(session.draft.build(), squads());
+            if (!problems.isEmpty()) {
+                refuse(player, session.draft.name, problems);
+                return;
+            }
+            if (!save(player, session)) {
+                return;
+            }
+            close(player, session);
+            publishSaved(player, session.draft.id);
+            return;
+        }
+        if (typed == null) {
+            Text.send(player, "<#9AA0A6>用法：/cv editor publish <地图ID>（编辑中可以省略）");
+            return;
+        }
+        publishSaved(player, typed);
+    }
+
+    private void publishSaved(Player player, String typed) {
+        MapDef live = plugin.maps().get(typed);
+        if (live == null) {
+            live = plugin.maps().get(typed.toLowerCase(Locale.ROOT));
+        }
+        if (live == null) {
+            Text.send(player, "<#FF8A80>没有地图 " + Text.escape(typed) + "。");
+            return;
+        }
+        String id = live.id();
+        Player other = editorOf(id);
+        if (other != null) {
+            Text.send(player, "<#FF8A80>" + Text.escape(other.getName()) + " 正在编辑这张地图，等他保存退出后再发布。");
+            return;
+        }
+        MapDef def;
+        if (live.enabled()) {
+            try {
+                def = plugin.maps().loadDraft(id);
+            } catch (IOException ex) {
+                Text.send(player, "<#FF8A80>草稿读取失败：" + Text.escape(ex.getMessage()));
+                return;
+            }
+            if (def == null) {
+                Text.send(player, "<#9AA0A6>地图 " + Text.escape(live.name()) + " 已经发布，没有未发布的改动。");
+                return;
+            }
+        } else {
+            def = live;
+        }
+        List<String> problems = MapRegistry.publishProblems(def, squads());
+        if (!problems.isEmpty()) {
+            refuse(player, def.name(), problems);
+            return;
+        }
+        if (!new java.io.File(Bukkit.getWorldContainer(), def.template()).isDirectory()) {
+            Text.send(player, "<#FF8A80>不能发布：模板世界 " + Text.escape(def.template()) + " 不存在。");
+            return;
+        }
+        World template = Bukkit.getWorld(def.template());
+        if (template != null) {
+            template.save();
+        }
+        if (live.enabled()) {
+            plugin.maps().keepPrevious(id);
+        }
+        try {
+            plugin.maps().save(def.withEnabled(true));
+        } catch (IOException ex) {
+            Text.send(player, "<#FF8A80>发布失败：" + Text.escape(ex.getMessage()));
+            return;
+        }
+        plugin.maps().deleteDraft(id);
+        plugin.getLogger().info(player.getName() + " published map " + id + " (template " + def.template() + ")");
+        Text.send(player, "<#5BD16B>地图 <white>" + Text.escape(def.name()) + "</white> 已发布，下一局起出现在「开始行动」里。");
+    }
+
+    private static void refuse(Player player, String name, List<String> problems) {
+        Text.send(player, "<#FF8A80>地图 " + Text.escape(name) + " 还不能发布：");
+        for (String problem : problems) {
+            player.sendMessage(Text.mm("<#FF8A80> · " + Text.escape(problem)));
         }
     }
 
@@ -268,6 +414,13 @@ public final class EditorService implements Listener {
                 + (d.test ? " · <#FFB74D>测试图" : ""));
         Text.send(player, "<#9AA0A6>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
                 + " · 敌兵 " + d.ai.size() + " · 首领 " + d.bosses.size() + " · 门禁 " + d.doors.size() + " · 电闸 " + d.switches.size());
+        MapDef live = plugin.maps().get(d.id);
+        Text.send(player, live != null && live.enabled()
+                ? "<#9AA0A6>已发布的地图：改动存为草稿，发布前对局照旧用线上版本。"
+                : "<#9AA0A6>还没发布：不会出现在「开始行动」里。");
+        List<String> missing = MapRegistry.publishProblems(d.build(), squads());
+        Text.send(player, missing.isEmpty() ? "<#5BD16B>已满足发布条件。"
+                : "<#FFC23D>发布前还需要：" + Text.escape(String.join("；", missing)));
     }
 
     // ------------------------------------------------------------------ tools
@@ -291,7 +444,7 @@ public final class EditorService implements Listener {
                     case LOCK -> "点击铁门设为门禁 / 点击拉杆或按钮设为电闸";
                     case REMOVE -> "删除 3 格内最近的标记";
                     case SCAN -> "把附近 64 格内的箱子/木桶等转换为物资箱";
-                    case SAVE -> "保存地图（潜行右键方块：依次设置边界两个角）";
+                    case SAVE -> "保存草稿（潜行右键方块：依次设置边界两个角）";
                 }, "<#9AA0A6>潜行+右键空气：切换选项"), "editor_" + tool.name());
     }
 
@@ -606,18 +759,23 @@ public final class EditorService implements Listener {
         session.labels.clear();
     }
 
+    /** Leaving the server saves the draft (never publishes it) and ends the session even if the save failed. */
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        if (editing(event.getPlayer())) {
-            exit(event.getPlayer(), true);
+        Session session = sessions.get(event.getPlayer().getUniqueId());
+        if (session != null) {
+            save(event.getPlayer(), session);
+            close(event.getPlayer(), session);
         }
     }
 
+    /** A shutdown saves every open draft, as leaving does. */
     public void shutdown() {
-        for (UUID uuid : new ArrayList<>(sessions.keySet())) {
-            Player player = Bukkit.getPlayer(uuid);
+        for (Map.Entry<UUID, Session> entry : new ArrayList<>(sessions.entrySet())) {
+            Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null) {
-                exit(player, true);
+                save(player, entry.getValue());
+                close(player, entry.getValue());
             }
         }
     }

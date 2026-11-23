@@ -26,16 +26,22 @@ import java.util.logging.Logger;
 /**
  * Loads and saves maps/*.yml. A file that does not parse is reported and left alone (see
  * {@link #broken()}), never replaced by a default.
+ *
+ * <p>Drafts: a map the editor has made but nobody has published is an ordinary file with
+ * {@code enabled: false}, loaded but kept out of matchmaking. Changes to a published map are saved
+ * apart, in maps/drafts/&lt;id&gt;.yml, so the live file is only replaced when they are published.
  */
 public final class MapRegistry {
 
     private final File dir;
+    private final File drafts;
     private final Logger logger;
     private final Map<String, MapDef> maps = new LinkedHashMap<>();
     private final Set<String> broken = new LinkedHashSet<>();
 
     public MapRegistry(File dir, Logger logger) {
         this.dir = dir;
+        this.drafts = new File(dir, "drafts");
         this.logger = logger;
     }
 
@@ -149,15 +155,121 @@ public final class MapRegistry {
      * plugins/Craftov/config.yml) is refused with an IllegalArgumentException.
      */
     public File file(String id) {
-        Path base = dir.toPath().toAbsolutePath().normalize();
-        Path file = base.resolve(id + ".yml").normalize(); // InvalidPathException is an IllegalArgumentException too
+        return inside(dir, id + ".yml");
+    }
+
+    /** maps/drafts/&lt;id&gt;.yml: unpublished changes to a published map. Ids are checked as in {@link #file}. */
+    public File draftFile(String id) {
+        return inside(drafts, id + ".yml");
+    }
+
+    private static File inside(File folder, String name) {
+        Path base = folder.toPath().toAbsolutePath().normalize();
+        Path file = base.resolve(name).normalize(); // InvalidPathException is an IllegalArgumentException too
         if (!base.equals(file.getParent())) {
-            throw new IllegalArgumentException("map id \"" + id + "\" would write outside " + base);
+            throw new IllegalArgumentException("map file \"" + name + "\" would be written outside " + base);
         }
         return file.toFile();
     }
 
+    // ------------------------------------------------------------------ drafts
+
+    /** The saved draft of a published map, or null if there is none. Throws if the file does not parse. */
+    public @Nullable MapDef loadDraft(String id) throws IOException {
+        File file;
+        try {
+            file = draftFile(id);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.load(file);
+            return read(yaml).withEnabled(false);
+        } catch (InvalidConfigurationException | RuntimeException ex) {
+            throw new IOException("maps/drafts/" + file.getName() + ": " + String.valueOf(ex.getMessage()).strip().replace('\n', ' '), ex);
+        }
+    }
+
+    public boolean hasDraft(String id) {
+        try {
+            return draftFile(id).isFile();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    /** Saves changes to a published map without touching the live file or what matchmaking uses. */
+    public void saveDraft(MapDef def) throws IOException {
+        File target;
+        try {
+            target = draftFile(def.id());
+        } catch (IllegalArgumentException ex) {
+            throw new IOException(ex.getMessage(), ex);
+        }
+        drafts.mkdirs();
+        write(def.withEnabled(false), target);
+    }
+
+    public void deleteDraft(String id) {
+        try {
+            Files.deleteIfExists(draftFile(id).toPath());
+        } catch (IOException | IllegalArgumentException ex) {
+            logger.warning("Could not delete the draft of map " + id + ": " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Keeps the live file as maps/&lt;id&gt;.yml.prev before a publish replaces it (one generation:
+     * enough to go back by hand when a publish was a mistake).
+     */
+    public void keepPrevious(String id) {
+        try {
+            File live = file(id);
+            if (live.isFile()) {
+                Files.copy(live.toPath(), new File(dir, live.getName() + ".prev").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException | IllegalArgumentException ex) {
+            logger.warning("Could not keep a copy of maps/" + id + ".yml: " + ex.getMessage());
+        }
+    }
+
     // ------------------------------------------------------------------ checks
+
+    /** Fewest loot containers a published map has. */
+    public static final int MIN_CONTAINERS = 5;
+
+    /**
+     * Why this map may not be published, in Chinese for the editor; empty when it may. A published
+     * map has to work for a full raid: an exit that is always there, a spawn group for each squad a
+     * raid takes ({@code squads}, match.max-squads), something to loot, and lever extracts that can
+     * open. Without spawns every squad lands on one block at the world spawn; without an exit the
+     * whole raid goes missing when time runs out.
+     */
+    public static List<String> publishProblems(MapDef def, int squads) {
+        List<String> out = new ArrayList<>();
+        if (def.extracts().stream().noneMatch(e -> e.type() == ExtractType.ALWAYS && e.chance() >= 1.0)) {
+            out.add("没有每局都开放的常驻撤离点（类型“常驻撤离”、出现概率 1）");
+        }
+        long groups = def.spawns().stream().map(MapDef.SpawnDef::group).distinct().count();
+        if (groups < squads) {
+            out.add("出生点只有 " + groups + " 组，至少要 " + squads + " 组（每支小队一组，match.max-squads）");
+        }
+        if (def.containers().size() < MIN_CONTAINERS) {
+            out.add("物资箱只有 " + def.containers().size() + " 个，至少要 " + MIN_CONTAINERS + " 个");
+        }
+        for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
+            out.add("需拉闸撤离点 " + extract.name() + (extract.switchId().isEmpty()
+                    ? " 没有绑定电闸" : " 绑定的电闸 " + extract.switchId() + " 不存在"));
+        }
+        duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList()).forEach(id -> out.add("撤离点编号 " + id + " 重复"));
+        duplicates(def.switches().stream().map(MapDef.SwitchDef::id).toList()).forEach(id -> out.add("电闸编号 " + id + " 重复"));
+        duplicates(def.bosses().stream().map(MapDef.BossDef::id).toList()).forEach(id -> out.add("首领编号 " + id + " 重复"));
+        return out;
+    }
 
     /** Soldier and boss posts closer than this (flat) to a player spawn point are reported. */
     public static final double SPAWN_CLEARANCE = 30;
@@ -241,7 +353,9 @@ public final class MapRegistry {
                 bounds == null ? 10000 : bounds.getDouble("max-z"),
                 y.getString("time", "day"),
                 // Proving ground files written before the flag existed have no key: still a test map.
-                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)));
+                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)),
+                // Maps saved before drafts existed were all live.
+                y.getBoolean("enabled", true));
     }
 
     private static <T> List<T> list(YamlConfiguration y, String key, Function<Map<?, ?>, T> mapper) {
@@ -267,6 +381,7 @@ public final class MapRegistry {
 
     // ------------------------------------------------------------------ writing
 
+    /** Writes maps/&lt;id&gt;.yml and puts the map in the registry as it is (published or not). */
     public void save(MapDef def) throws IOException {
         File target;
         try {
@@ -274,6 +389,12 @@ public final class MapRegistry {
         } catch (IllegalArgumentException ex) {
             throw new IOException(ex.getMessage(), ex);
         }
+        dir.mkdirs();
+        write(def, target);
+        maps.put(def.id(), def);
+    }
+
+    private static void write(MapDef def, File target) throws IOException {
         YamlConfiguration y = new YamlConfiguration();
         y.set("id", def.id());
         y.set("name", def.name());
@@ -282,6 +403,7 @@ public final class MapRegistry {
         y.set("raid-minutes", def.raidSeconds() / 60);
         y.set("time", def.timeOfDay());
         y.set("test", def.test());
+        y.set("enabled", def.enabled());
         y.set("camera", def.camera().write());
         Map<String, Object> bounds = new LinkedHashMap<>();
         bounds.put("min-x", def.minX());
@@ -348,8 +470,6 @@ public final class MapRegistry {
             m.put("active", s.activeSeconds());
             return m;
         }).toList());
-        dir.mkdirs();
         y.save(target);
-        maps.put(def.id(), def);
     }
 }

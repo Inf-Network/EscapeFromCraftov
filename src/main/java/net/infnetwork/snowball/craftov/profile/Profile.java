@@ -59,9 +59,18 @@ public final class Profile {
     public String seasonId = "";
     public long seasonXp;
     public Set<Integer> seasonClaimed = new LinkedHashSet<>();
-    /** New-player guide progress (TutorialService). */
+    /**
+     * New-player guide progress (TutorialService): {@link #tutorialSteps} has bit n set once step n is
+     * done, in any order. {@link #tutorialStep} is the old in-order counter, read once to fill the
+     * bits for profiles saved before them.
+     */
     public int tutorialStep;
+    public int tutorialSteps;
     public boolean tutorialDone;
+    /** The first-join briefing was answered (either button): it no longer opens by itself. */
+    public boolean briefed;
+    /** The player chose to skip the guide: no objective line, waypoints or reminders. */
+    public boolean guideMuted;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     /**

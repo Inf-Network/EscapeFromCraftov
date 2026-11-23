@@ -228,7 +228,8 @@ async function unknown () {
   const at = stash ? top(stash).findIndex(s => cid(s) === 'medkit_s') : -1
   check('restored item shows in the stash', at >= 0)
   if (at >= 0) { await bot.clickWindow(at, 0, 0); await sleep(600) }
-  if (stash) bot.closeWindow(stash)
+  if (bot.currentWindow || stash) bot.closeWindow(bot.currentWindow || stash)
+  await resync(bot) // the stash retitles itself on every take, and mineflayer then stops mirroring the inventory
   check('restored item taken out of the stash', carried(bot).some(s => cid(s) === 'medkit_s'), carriedIds(bot))
   await leave(bot)
 }

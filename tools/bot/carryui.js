@@ -1,0 +1,503 @@
+// The carry interface (issue #10), checked from the protocol side:
+//
+//   zones    a new account (starter rig_1 + pack_1): each carry zone has locked cells, and exactly
+//            one of them per zone shows a tooltip. Ammo, a gold bar, a rifle and a bandage given
+//            land where their category goes: ammo and the bandage on a free quick key (4-8), the
+//            gold bar in the backpack, the rifle in the backpack once keys 1-2 hold guns.
+//   rules    zone rules on the inventory screen: a gold bar placed on key 1 or on a quick key, a
+//            gun placed in the rig and a number-key swap that would put a gun on a quick key are
+//            all refused (nothing moves); placing ammo on a quick key is fine; shift-click on the
+//            gold bar moves it within the backpack zones, never onto the hotbar.
+//   matrix   every kind of item (gun, ammo, med, key, valuable, armour) x every zone (gun key, quick
+//            key, rig, backpack): picked up and placed on an empty cell of the zone, and for the two
+//            hotbar zones moved there with a number key; it moves exactly when the zone takes it
+//            (CarryService.refusal), and a refused one stays where it was. A drag of a gold bar over
+//            two quick keys is refused; one of ammo over two rig cells goes through.
+//   info     the inventory screen's crafting grid shows the five info cells (raw 0..4) after a
+//            full resync and after a click on them; a click on raw 3 opens the secure container;
+//            the player never holds an info cell afterwards (server-side count).
+//   stash    three items picked with shift-click and sold with two clicks of the sell button: money
+//            goes up by exactly the three sell prices shown in their lore; a single click on the
+//            sell button, or plain clicks on items, never sell anything; every tab and every sort
+//            shows the same items in total.
+//   loot     two bots in one proving-ground raid share the armory weapons box and click at random
+//            500 times between them (every click mode, number keys, double clicks, clicks outside):
+//            the box's own cells only ever sit in its 6x6 block, no interface item reaches a carry
+//            cell, and every 50 clicks, with both screens closed, the items in the box, on both
+//            bots (packed contents counted), in both secure containers and on the ground nearby
+//            add up to what there was before.
+//
+//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info stash loot]
+//
+// The server needs test.enabled (loot queues for the proving ground). Bots use random names (new
+// accounts with the starter kit). Prints PASS/FAIL lines and exits with the number of failures.
+const mineflayer = require('mineflayer')
+const rcon = require('./rcon')
+
+const PORT = Number(process.env.PORT || 25565)
+const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const t0 = Date.now()
+const tag = String(Math.floor(Math.random() * 9000) + 1000)
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
+const cmd = c => rcon(c, RCON).then(r => r.replace(/§./g, ''))
+const wanted = process.argv.slice(2)
+const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'stash', 'loot']
+const failures = []
+function check (name, ok, detail) {
+  if (!ok) failures.push(name)
+  log(ok ? 'PASS' : 'FAIL', name, detail === undefined ? '' : detail)
+}
+
+// ------------------------------------------------------------------ bots and items
+
+function flat (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') return n
+  if (Array.isArray(n)) return n.map(flat).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flat(n.value && n.value.value)
+  if (n.type === 'compound') return flat(n.value)
+  return flat(n.text) + flat(n.extra)
+}
+
+function make (prefix) {
+  const name = prefix + tag
+  const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
+  bot.msgs = []
+  bot.worldName = ''
+  const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
+  bot._client.on('login', track)
+  bot._client.on('respawn', track)
+  bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
+  bot.on('messagestr', m => { if (m.trim() && !m.includes('新手指引')) bot.msgs.push(m) })
+  bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) bot.msgs.push(s) })
+  bot.on('kicked', r => log(name, 'KICKED', JSON.stringify(r)))
+  bot.on('error', e => log(name, 'ERROR', e.message))
+  return new Promise(resolve => bot.once('spawn', async () => { await sleep(3000); resolve(bot) }))
+}
+
+async function waitFor (pred, ms) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await pred()) return true
+    await sleep(250)
+  }
+  return false
+}
+
+function openWith (bot, fn, ms = 4000) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), ms)
+    bot.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    fn()
+  })
+}
+
+const json = item => JSON.stringify(item ? item.components || '' : '')
+const idOf = item => { const m = json(item).match(/"craftov:id":\{"type":"string","value":"([^"]+)"/); return m ? m[1] : null }
+const uiTag = item => { const m = json(item).match(/"craftov:ui":\{"type":"string","value":"([^"]+)"/); return m ? m[1] : null }
+const isTest = item => json(item).includes('"craftov:test"')
+const hidesTooltip = item => /"hideTooltip":(\{"type":"byte","value":)?(1|true)/.test(json(item)) || json(item).includes('"hide_tooltip":true')
+const nameOf = item => {
+  const c = (item?.components || []).find(x => x.type === 'item_name' || x.type === 'custom_name')
+  return c ? flat(c.data) : ''
+}
+const loreOf = item => {
+  const c = (item?.components || []).find(x => x.type === 'lore')
+  return c ? (c.data || []).map(flat) : []
+}
+function contentsCount (item) {
+  const m = json(item).match(/"craftov:contents":\{"type":"string","value":"((?:[^"\\]|\\.)*)"/)
+  if (!m) return 0
+  const count = rs => (rs || []).reduce((n, r) => n + (r.amount || 1) + count(r.contents), 0)
+  try { return count(JSON.parse(JSON.parse('"' + m[1] + '"'))) } catch (e) { return 0 }
+}
+/** Items in a stack, packed contents included; interface stacks count nothing. */
+const units = item => idOf(item) && !uiTag(item) ? item.count + contentsCount(item) : 0
+
+/** One raw click on window `windowId`; a stale state id makes the server send the whole window again. */
+function rawClick (bot, windowId, slot, button, mode) {
+  bot._client.write('window_click', { windowId, stateId: -1, slot, mouseButton: button, mode, changedSlots: [], cursorItem: undefined })
+}
+/** Lets the server answer, then pulls the real window state. */
+async function settle (bot, ms = 350) {
+  await sleep(ms)
+  if (bot._syncWindow) await Promise.race([bot._syncWindow(bot.currentWindow || bot.inventory), sleep(1500)])
+  await sleep(80)
+}
+
+/** How many of an item (or interface stacks with a tag) the server says the player holds, cursor aside. */
+async function serverCount (bot, predicate, where = 'container.*') {
+  const out = await cmd(`execute if items entity ${bot.username} ${where} ${predicate}`)
+  const m = out.match(/(\d+)/)
+  return m ? Number(m[1]) : out.includes('passed') ? 1 : 0
+}
+
+// Player inventory window: 5 head, 6 chest, 7 legs = rig, 8 feet = backpack, 9..35 main, 36..44 hotbar.
+const RIG_CELLS = Array.from({ length: 9 }, (_, i) => 9 + i)
+const PACK_CELLS = Array.from({ length: 18 }, (_, i) => 18 + i)
+const QUICK = [39, 40, 41, 42, 43] // keys 4..8
+const GUNS = [36, 37]
+const where = (bot, id) => bot.inventory.slots.map((s, i) => [i, s]).filter(([i, s]) => i >= 5 && idOf(s) === id).map(([i]) => i)
+const zoneOf = slot => QUICK.includes(slot) ? 'quick' : GUNS.includes(slot) ? 'gun' : RIG_CELLS.includes(slot) ? 'rig'
+  : PACK_CELLS.includes(slot) ? 'pack' : 'other'
+
+// ------------------------------------------------------------------ scenarios
+
+async function zones () {
+  const bot = await make('Cz')
+  await settle(bot)
+  const lockedRig = RIG_CELLS.filter(i => uiTag(bot.inventory.slots[i]) === 'locked')
+  const lockedPack = PACK_CELLS.filter(i => uiTag(bot.inventory.slots[i]) === 'locked')
+  const tipsRig = lockedRig.filter(i => !hidesTooltip(bot.inventory.slots[i]))
+  const tipsPack = lockedPack.filter(i => !hidesTooltip(bot.inventory.slots[i]))
+  check('zones: the rig has locked cells, exactly one with a tooltip', lockedRig.length > 0 && tipsRig.length === 1,
+    `${lockedRig.length} locked, tooltip on ${tipsRig} "${nameOf(bot.inventory.slots[tipsRig[0]])}"`)
+  check('zones: the backpack has locked cells, exactly one with a tooltip', lockedPack.length > 0 && tipsPack.length === 1,
+    `${lockedPack.length} locked, tooltip on ${tipsPack} "${nameOf(bot.inventory.slots[tipsPack[0]])}"`)
+  check('zones: the rig tooltip gives its capacity', /\d+\/9/.test(nameOf(bot.inventory.slots[tipsRig[0]])), nameOf(bot.inventory.slots[tipsRig[0]]))
+  check('zones: the first locked cell comes right after the open ones', tipsRig[0] === lockedRig[0] && tipsPack[0] === lockedPack[0])
+  const quickFree = QUICK.filter(i => !bot.inventory.slots[i])
+  for (const [id, n] of [['ammo_556_m855', 30], ['gold_bar', 1], ['m4c', 1], ['bandage', 1]]) {
+    await cmd(`cv give ${bot.username} ${id} ${n}`)
+    await sleep(300)
+  }
+  await settle(bot, 600)
+  const land = id => where(bot, id).map(zoneOf)
+  check('zones: ammo lands on a free quick key', quickFree.length === 0 || land('ammo_556_m855').includes('quick'), land('ammo_556_m855'))
+  check('zones: the gold bar lands in the backpack', land('gold_bar').length === 1 && land('gold_bar')[0] === 'pack', land('gold_bar'))
+  check('zones: the rifle lands in the backpack (keys 1-2 hold the starter guns)', land('m4c').length === 1 && land('m4c')[0] === 'pack', land('m4c'))
+  check('zones: the bandage stacks onto the bandage on a quick key', land('bandage').every(z => z === 'quick'), land('bandage'))
+  bot.quit()
+}
+
+async function rules () {
+  const bot = await make('Cr')
+  await settle(bot)
+  await cmd(`cv give ${bot.username} gold_bar 1`)
+  await cmd(`cv give ${bot.username} m4c 1`)
+  await cmd(`cv give ${bot.username} ammo_556_m855 20`)
+  await settle(bot, 700)
+  const gold = where(bot, 'gold_bar')[0]
+  const gun = where(bot, 'm4c')[0]
+  const snapshot = () => bot.inventory.slots.slice(5, 45).map(s => s ? idOf(s) + ':' + s.count : '-').join(',')
+  const tryPlace = async (from, to) => {
+    rawClick(bot, 0, from, 0, 0); await settle(bot)
+    rawClick(bot, 0, to, 0, 0); await settle(bot)
+    if (bot.inventory.selectedItem) { rawClick(bot, 0, from, 0, 0); await settle(bot) }
+  }
+  let before = snapshot()
+  await tryPlace(gold, 36) // key 1: guns only
+  check('rules: a gold bar is refused on key 1', where(bot, 'gold_bar')[0] === gold && snapshot() === before, where(bot, 'gold_bar'))
+  const quickEmpty = QUICK.find(i => !bot.inventory.slots[i])
+  if (quickEmpty !== undefined) {
+    before = snapshot()
+    await tryPlace(gold, quickEmpty)
+    check('rules: a gold bar is refused on an empty quick key', where(bot, 'gold_bar')[0] === gold && snapshot() === before, where(bot, 'gold_bar'))
+  }
+  const rigFree = RIG_CELLS.find(i => !bot.inventory.slots[i])
+  if (rigFree !== undefined) {
+    before = snapshot()
+    await tryPlace(gun, rigFree)
+    check('rules: a rifle is refused in the rig', where(bot, 'm4c')[0] === gun && snapshot() === before, where(bot, 'm4c'))
+  }
+  if (quickEmpty !== undefined) {
+    before = snapshot()
+    rawClick(bot, 0, gun, quickEmpty - 36, 2); await settle(bot) // number key: the rifle onto a quick key
+    check('rules: a number key cannot put a rifle on a quick key', where(bot, 'm4c')[0] === gun && snapshot() === before, where(bot, 'm4c'))
+    const ammo = where(bot, 'ammo_556_m855')[0]
+    if (zoneOf(ammo) !== 'quick') {
+      await tryPlace(ammo, quickEmpty)
+      check('rules: ammo may go on a quick key', zoneOf(where(bot, 'ammo_556_m855')[0]) === 'quick', where(bot, 'ammo_556_m855'))
+    }
+  }
+  rawClick(bot, 0, gold, 0, 1); await settle(bot) // shift-click
+  check('rules: shift-click keeps a gold bar off the hotbar', where(bot, 'gold_bar').every(s => s < 36), where(bot, 'gold_bar'))
+  bot.quit()
+}
+
+/** What each zone takes, as CarryService.refusal says: kind -> [gun key, quick key, rig, backpack]. */
+const TAKES = {
+  m4c: [true, false, false, true],
+  ammo_556_m855: [false, true, true, true],
+  bandage: [false, true, true, true],
+  key_dorm: [false, true, true, true],
+  gold_bar: [false, false, true, true],
+  armor_1: [false, false, false, true]
+}
+
+async function matrix () {
+  const bot = await make('Cm')
+  await settle(bot)
+  const snapshot = () => bot.inventory.slots.slice(5, 45).map(s => s ? idOf(s) + ':' + s.count : '-').join(',')
+  // One of every kind given (the rifle lands in the backpack: keys 1-2 hold the starter guns), then
+  // key 1 emptied (the starter K47 goes into the backpack too).
+  const firstFreePack = () => PACK_CELLS.find(i => !bot.inventory.slots[i])
+  for (const id of ['m4c', 'gold_bar', 'key_dorm', 'armor_1']) await cmd(`cv give ${bot.username} ${id} 1`)
+  await cmd(`cv give ${bot.username} ammo_556_m855 10`)
+  await settle(bot, 700)
+  rawClick(bot, 0, 36, 0, 0); await settle(bot)
+  rawClick(bot, 0, firstFreePack(), 0, 0); await settle(bot)
+  const targets = () => [36, QUICK.find(i => !bot.inventory.slots[i]), RIG_CELLS.find(i => !bot.inventory.slots[i]), firstFreePack()]
+  let wrong = 0
+  let cases = 0
+  for (const [id, takes] of Object.entries(TAKES)) {
+    for (let zone = 0; zone < 4; zone++) {
+      const to = targets()[zone]
+      const from = where(bot, id).find(i => i >= 9 && i < 45 && i !== to)
+      if (from === undefined || to === undefined) { log('matrix', 'no cell for', id, zone, from, to); wrong++; continue }
+      for (const how of zone < 2 ? ['place', 'key'] : ['place']) {
+        const before = snapshot()
+        if (how === 'place') {
+          rawClick(bot, 0, from, 0, 0); await settle(bot, 200)
+          rawClick(bot, 0, to, 0, 0); await settle(bot, 200)
+        } else {
+          rawClick(bot, 0, from, to - 36, 2); await settle(bot, 200)
+        }
+        const moved = idOf(bot.inventory.slots[to]) === id && !bot.inventory.slots[from]
+        const stayed = snapshot() === before || (bot.inventory.selectedItem && idOf(bot.inventory.selectedItem) === id)
+        cases++
+        if (takes[zone] ? !moved : !stayed || moved) {
+          wrong++
+          log('matrix', 'WRONG', id, ['gun key', 'quick key', 'rig', 'backpack'][zone], how, { from, to, moved })
+        }
+        // Back where it came from, for the next case.
+        if (bot.inventory.selectedItem) { rawClick(bot, 0, from, 0, 0); await settle(bot, 200) }
+        if (moved) {
+          rawClick(bot, 0, to, 0, 0); await settle(bot, 200)
+          rawClick(bot, 0, from, 0, 0); await settle(bot, 200)
+        }
+      }
+    }
+  }
+  check('matrix: every kind of item goes into exactly the zones that take it', wrong === 0, `${cases} cases, ${wrong} wrong`)
+  // Drags (vanilla: start, a slot each, end) over two cells.
+  const drag = async (from, slots) => {
+    rawClick(bot, 0, from, 0, 0); await settle(bot, 200)
+    rawClick(bot, 0, -999, 0, 5)
+    for (const s of slots) rawClick(bot, 0, s, 1, 5)
+    rawClick(bot, 0, -999, 2, 5)
+    await settle(bot, 300)
+    if (bot.inventory.selectedItem) { rawClick(bot, 0, from, 0, 0); await settle(bot, 200) }
+  }
+  const quick = QUICK.filter(i => !bot.inventory.slots[i]).slice(0, 2)
+  if (quick.length === 2) {
+    await drag(where(bot, 'gold_bar').find(i => i >= 9 && i < 36), quick)
+    check('matrix: a gold bar dragged over two quick keys stays off them', quick.every(i => idOf(bot.inventory.slots[i]) !== 'gold_bar'), where(bot, 'gold_bar'))
+  }
+  const rig = RIG_CELLS.filter(i => !bot.inventory.slots[i]).slice(0, 2)
+  if (rig.length === 2) {
+    await drag(where(bot, 'ammo_556_m855')[0], rig)
+    check('matrix: ammo dragged over two rig cells is shared between them', rig.every(i => idOf(bot.inventory.slots[i]) === 'ammo_556_m855'), where(bot, 'ammo_556_m855'))
+  }
+  bot.quit()
+}
+
+async function info () {
+  const bot = await make('Ci')
+  await sleep(1500) // the cells are rebuilt every half second
+  await settle(bot)
+  const cells = () => [0, 1, 2, 3, 4].map(i => uiTag(bot.inventory.slots[i]))
+  check('info: raw 0..4 show the info cells', cells().every(t => t === 'info'), cells())
+  check('info: the load cell names the weight', /负重 .*kg/.test(nameOf(bot.inventory.slots[1])), nameOf(bot.inventory.slots[1]))
+  rawClick(bot, 0, 1, 0, 0) // a click on the load cell, which the client acts out
+  await settle(bot, 600)
+  check('info: the cells are back after a click on one', cells().every(t => t === 'info') && !uiTag(bot.inventory.selectedItem), cells())
+  const secure = await openWith(bot, () => rawClick(bot, 0, 3, 0, 0))
+  check('info: a click on raw 3 opens the secure container', !!secure && flat(secure.title).includes('安全箱'), secure && flat(secure.title))
+  if (secure) bot.closeWindow(secure)
+  await sleep(800)
+  const held = await serverCount(bot, '*[minecraft:custom_data~{PublicBukkitValues:{"craftov:ui":"info"}}]')
+  check('info: the player never holds an info cell', held === 0, `server count ${held}`)
+  bot.quit()
+}
+
+async function stash () {
+  const bot = await make('Cs')
+  await settle(bot)
+  for (const id of ['laptop', 'gold_bar', 'circuit', 'screws']) await cmd(`cv give ${bot.username} ${id} 1`)
+  await sleep(800)
+  const w = await openWith(bot, () => bot.chat('/cv stash'))
+  if (!w) return check('stash: opens', false)
+  // The stash retitles itself in place, which mineflayer takes for a new window: always read the current one.
+  const win = () => bot.currentWindow || w
+  // Deposit what was just given (the backpack row).
+  for (let i = w.inventoryStart; i < w.slots.length; i++) {
+    if (['laptop', 'gold_bar', 'circuit', 'screws'].includes(idOf(win().slots[i]))) { await bot.clickWindow(i, 0, 0); await sleep(300) }
+  }
+  await settle(bot)
+  const items = () => win().slots.slice(9, 45).map((s, i) => [i + 9, s]).filter(([, s]) => idOf(s))
+  const total = () => items().length
+  const balance = () => Number((nameOf(win().slots[49]) + loreOf(win().slots[49]).join(' ')).match(/块币 ◈([\d,]+)/)?.[1].replace(/,/g, '') || -1)
+  const startMoney = balance()
+  const all = total()
+  // A plain left click on the sell button with nothing picked, then plain clicks on items: never a sale.
+  await bot.clickWindow(48, 0, 0); await settle(bot)
+  await bot.clickWindow(48, 0, 0); await settle(bot)
+  check('stash: the sell button sells nothing with nothing picked', balance() === startMoney, `${startMoney} -> ${balance()}`)
+  // Pick three with shift-click.
+  const pick = items().slice(0, 3)
+  let expected = 0
+  for (const [slot, s] of pick) {
+    expected += Number((loreOf(s).find(l => l.includes('商人收购价')) || '').replace(/[^\d]/g, '') || 0)
+    await bot.clickWindow(slot, 0, 1); await settle(bot)
+  }
+  const picked = items().filter(([, s]) => loreOf(s).some(l => l.includes('已选中'))).length
+  check('stash: shift-click picks items', picked === 3, `${picked} picked`)
+  await bot.clickWindow(48, 0, 0); await settle(bot)
+  check('stash: one click on sell only arms it', balance() === startMoney && total() === all, `${balance()} items ${total()}`)
+  await bot.clickWindow(48, 0, 0); await settle(bot, 600)
+  const gained = balance() - startMoney
+  check('stash: the second click sells exactly the three picked', gained === expected && total() === all - 3, `gained ${gained}, expected ${expected}, items ${all} -> ${total()}`)
+  // Every tab and sort shows the same items in total.
+  const left = total()
+  let sum = 0
+  for (let tab = 1; tab <= 8; tab++) { await bot.clickWindow(tab, 0, 0); await settle(bot, 250); sum += total() }
+  await bot.clickWindow(0, 0, 0); await settle(bot)
+  const counts = []
+  for (let s = 0; s < 4; s++) { await bot.clickWindow(46, 0, 0); await settle(bot, 250); counts.push(total()) }
+  check('stash: the tabs together show every item once', sum === left, `tabs ${sum}, all ${left}`)
+  check('stash: every sort shows the same items', counts.every(c => c === left), counts)
+  bot.closeWindow(win())
+  bot.quit()
+}
+
+// ------------------------------------------------------------------ loot fuzz
+
+const GEAR = [6, 15, 24, 33]
+const BOX_CELLS = Array.from({ length: 36 }, (_, k) => Math.floor(k / 6) * 9 + k % 6)
+const SECURE = [7, 8, 16, 17, 25, 26, 34, 35, 43]
+
+/** Units in the box (its cells), in the bot's secure container and the bot's carried items (not the mirrors). */
+function tally (bot, w) {
+  const box = BOX_CELLS.reduce((n, raw) => n + units(w.slots[raw]), 0)
+  const secure = SECURE.reduce((n, raw) => n + units(w.slots[raw]), 0)
+  return { box, secure }
+}
+/** `data get entity` of one value of the bot's, or null when there is none. */
+async function dataOf (bot, path) {
+  const out = await cmd(`data get entity ${bot.username} ${path}`)
+  const marker = 'has the following entity data: '
+  return out.includes(marker) ? out.split(marker)[1].trim() : null
+}
+
+/**
+ * What the server says the bot carries, in units: every Craftov stack (interface stacks have no item
+ * id) in the carry cells and the worn slots, slot by slot (a whole inventory comes back abridged).
+ * Read with the screens closed, when nothing is on the cursor; packed contents only ever travel on
+ * the cursor or in the box.
+ */
+async function carried (bot) {
+  const id = '.components."minecraft:custom_data".PublicBukkitValues."craftov:id"'
+  const paths = []
+  for (let slot = 0; slot < 36; slot++) paths.push(`Inventory[{Slot:${slot}b}]`)
+  for (const part of ['head', 'chest', 'legs', 'feet']) paths.push(`equipment.${part}`)
+  let n = 0
+  for (const path of paths) {
+    if (await dataOf(bot, path + id) === null) continue
+    n += Number((await dataOf(bot, path + '.count')) || 1)
+  }
+  return n
+}
+
+function ground (bot) {
+  return Object.values(bot.entities).filter(e => e.name === 'item' && e.position.distanceTo(bot.entity.position) <= 12)
+    .map(e => e.getDroppedItem()).filter(Boolean).reduce((n, it) => n + units(it), 0)
+}
+
+async function openBox (bot) {
+  await cmd(`execute as ${bot.username} at @s run tp @s 8.5 65 78.9 180 20`)
+  await sleep(1200)
+  const target = bot.nearestEntity(e => e.name === 'interaction')
+  if (!target) return null
+  return openWith(bot, () => bot.activateEntity(target))
+}
+
+async function loot () {
+  const a = await make('La')
+  const b = await make('Lb')
+  for (const bot of [a, b]) {
+    for (const id of ['bandage', 'screws', 'circuit', 'gold_bar']) await cmd(`cv give ${bot.username} ${id} 1`)
+  }
+  a.chat('/cv queue proving NORMAL SOLO')
+  b.chat('/cv queue proving NORMAL SOLO')
+  const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
+  if (!await waitFor(() => inRaid(a) && inRaid(b), 150000)) return check('loot: both bots in a raid', false, [a.worldName, b.worldName])
+  check('loot: both bots in the same raid', a.worldName === b.worldName, [a.worldName, b.worldName])
+  await sleep(6000)
+  let wa = await openBox(a)
+  let wb = await openBox(b)
+  if (!wa || !wb) return check('loot: the armory box opens for both', false)
+  check('loot: the search screen is six rows', wa.slots.length - 36 === 54, wa.slots.length)
+  await waitFor(() => BOX_CELLS.every(raw => !json(wa.slots[raw]).includes('search_')), 90000)
+  await settle(a); await settle(b)
+  const measure = async () => {
+    // Both screens closed: the cursors are settled; then the box and the secure containers are read again.
+    a.closeWindow(wa); b.closeWindow(wb)
+    // Closing drops the client's cursor (the server puts it back on the player, CarryListener).
+    a.inventory.selectedItem = null
+    b.inventory.selectedItem = null
+    await sleep(1200)
+    wa = await openBox(a); wb = await openBox(b)
+    if (!wa || !wb) return null
+    await settle(a); await settle(b)
+    const ta = tally(a, wa)
+    const tb = tally(b, wb)
+    return { box: ta.box, boxB: tb.box, a: await carried(a) + ta.secure, b: await carried(b) + tb.secure, ground: Math.max(ground(a), ground(b)) }
+  }
+  const start = await measure()
+  if (!start) return check('loot: the box reopens', false)
+  const sum = m => m.box + m.a + m.b + m.ground
+  log('loot', 'start', start)
+  let bad = 0
+  let leaks = 0
+  const misplaced = []
+  for (let i = 0; i < 500; i++) {
+    const bot = i % 2 ? b : a
+    const w = i % 2 ? wb : wa
+    const mode = [0, 0, 0, 1, 1, 2, 3, 4, 6][Math.floor(Math.random() * 9)]
+    const slot = Math.random() < 0.03 ? -999 : Math.floor(Math.random() * (w.slots.length))
+    const button = mode === 2 ? Math.floor(Math.random() * 9) : mode === 4 ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 2)
+    rawClick(bot, w.id, slot, mode === 6 ? 0 : button, mode)
+    await settle(bot, 120)
+    // The box's own cells never leave its 6x6 block: columns 6-8 hold only gear, secure cells and buttons.
+    for (let raw = 0; raw < 54; raw++) {
+      const s = w.slots[raw]
+      if (raw % 9 >= 6 && s && idOf(s) && !GEAR.includes(raw) && !SECURE.includes(raw)) misplaced.push(raw)
+    }
+    for (let k = w.inventoryStart; k < w.slots.length; k++) {
+      const tagged = uiTag(w.slots[k])
+      if (tagged && tagged !== 'locked' && !(k === w.inventoryStart + 35 && tagged === 'lobby_menu') && tagged !== 'raid_terminal') leaks++
+    }
+    if ((i + 1) % 50 === 0) {
+      const m = await measure()
+      if (!m) { bad++; break }
+      const ok = sum(m) === sum(start) && m.box === m.boxB
+      if (!ok) bad++
+      log('loot', `after ${i + 1} clicks`, m, ok ? 'ok' : `MISMATCH ${sum(m)} vs ${sum(start)}`)
+    }
+  }
+  check('loot: 500 random clicks never create or destroy an item', bad === 0, `${bad} bad checkpoints`)
+  check('loot: the box only ever shows in its 6x6 block', misplaced.length === 0, misplaced.slice(0, 10))
+  check('loot: no interface item reaches a carry cell', leaks === 0, `${leaks} sightings`)
+  for (const bot of [a, b]) {
+    bot.closeWindow(bot.currentWindow || wa)
+    await cmd(`execute as ${bot.username} at @s run tp @s 106.5 65 8.5`)
+  }
+  await waitFor(() => !inRaid(a) && !inRaid(b), 40000)
+  a.quit(); b.quit()
+}
+
+;(async () => {
+  const all = { zones, rules, matrix, info, stash, loot }
+  for (const name of scenarios) {
+    try {
+      await all[name]()
+    } catch (e) {
+      check(name + ': ran', false, e.stack)
+    }
+  }
+  log('done', failures.length ? 'FAILED ' + failures.join(', ') : 'all passed')
+  process.exit(failures.length)
+})()

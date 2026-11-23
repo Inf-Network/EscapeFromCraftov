@@ -219,13 +219,13 @@ async function kit () {
   w = await openWith(k, () => k.chat('/cv stash'))
   const again = findCarried(w, it => idOf(it) === 'medkit_s' && isKit(it))
   if (again >= 0) { await k.clickWindow(bottom(w, again), 0, 0); await sleep(500) }
-  await k.clickWindow(48, 0, 0); await sleep(300)
-  await k.clickWindow(48, 0, 0); await sleep(300) // LIST mode
+  w = k.currentWindow || w // the stash retitles itself on a deposit
   let listSlot = -1
-  for (let s = 0; s < 45; s++) if (idOf(w.slots[s]) === 'medkit_s' && isKit(w.slots[s])) listSlot = s
+  for (let s = 9; s < 45; s++) if (idOf(w.slots[s]) === 'medkit_s' && isKit(w.slots[s])) listSlot = s
   mark = k.msgs.length
   let priceMenu = null
-  if (listSlot >= 0) priceMenu = await openWith(k, () => k.clickWindow(listSlot, 0, 0), 2500)
+  // A right-click lists an item on the market (#10: the stash has no modes).
+  if (listSlot >= 0) priceMenu = await openWith(k, () => k.clickWindow(listSlot, 1, 0), 2500)
   check('kit: a kit item cannot be listed on the market', listSlot >= 0 && !priceMenu && !!await heard(k, /不能上架交易行/, mark),
     `stash slot ${listSlot}, price menu opened: ${!!priceMenu}`)
   k.closeWindow(priceMenu || w)
@@ -275,7 +275,8 @@ async function stash () {
   w = await openWith(s, () => s.chat('/cv trader'))
   const fill = freeCells(w) - 1
   w && s.closeWindow(w)
-  for (let i = 0; i < fill; i++) await cmd(`cv give ${s.username} armor_1`)
+  // Medkits fill the quick keys, the rig and the backpack alike (#10: armour only fits the backpack).
+  for (let i = 0; i < fill; i++) await cmd(`cv give ${s.username} medkit_s`)
   await sleep(800)
   w = await openWith(s, () => s.chat('/cv trader'))
   log('Stash', 'free cells before refill', freeCells(w))
@@ -399,7 +400,7 @@ async function insurance () {
   w = await openArmory(p)
   if (!w) { check('insurance: armory opened', false); p.quit(); return }
   const pack2 = findCarried(w, it => idOf(it) === 'pack_2')
-  if (pack2 >= 0) { await p.clickWindow(bottom(w, pack2), 0, 0); await sleep(500) }
+  if (pack2 >= 0) { await p.clickWindow(bottom(w, pack2), 0, 1); await sleep(500) }
   let boxSlot = -1
   for (let s = 0; s < w.inventoryStart; s++) if (idOf(w.slots[s]) === 'pack_2') boxSlot = s
   if (boxSlot >= 0) { await p.clickWindow(boxSlot, 1, 0); await sleep(600) } // right-click: swap backpacks
@@ -468,7 +469,7 @@ async function profit () {
   for (let s = 0; s < w.inventoryStart; s++) if (!w.slots[s]) empty.add(s)
   for (const id of ['k47', 'p18']) {
     const i = findCarried(w, it => idOf(it) === id)
-    if (i >= 0) { await a.clickWindow(bottom(w, i), 0, 0); await sleep(400) }
+    if (i >= 0) { await a.clickWindow(bottom(w, i), 0, 1); await sleep(400) }
   }
   const handed = [...empty].filter(s => ['k47', 'p18'].includes(idOf(w.slots[s])))
   a.closeWindow(w)
@@ -502,7 +503,7 @@ async function stacks () {
   for (let s = 0; s < w.inventoryStart; s++) if (!w.slots[s]) empty.add(s)
   for (let n = 0; n < 3; n++) {
     const i = findCarried(w, it => idOf(it) === 'ammo_338_fmj')
-    if (i >= 0) { await a.clickWindow(bottom(w, i), 0, 0); await sleep(400) }
+    if (i >= 0) { await a.clickWindow(bottom(w, i), 0, 1); await sleep(400) }
   }
   const handed = [...empty].filter(s => idOf(w.slots[s]) === 'ammo_338_fmj')
   a.closeWindow(w)

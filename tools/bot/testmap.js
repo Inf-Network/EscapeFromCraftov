@@ -135,7 +135,8 @@ async function openContainerAt (bot, x, y, z) {
   return openWindow(bot, () => bot.activateEntity(target))
 }
 
-const top = w => w.slots.slice(0, w.inventoryStart).map((s, i) => [i, s]).filter(([, s]) => s)
+/** The container's own cells of a search screen: its 6x6 block (#10); the right-hand columns are the bot's gear. */
+const top = w => w.slots.slice(0, w.inventoryStart).map((s, i) => [i, s]).filter(([i, s]) => s && i % 9 < 6)
 /** Map buttons of the deploy screen (slots 10-16): [slot, name]; the selected one is marked ▶. */
 const mapButtons = menu => [10, 11, 12, 13, 14, 15, 16].map(i => [i, itemName(menu.slots[i])]).filter(([, n]) => n)
 const selectedMap = menu => (mapButtons(menu).find(([, n]) => n.includes('▶')) || [null, ''])[1]
@@ -324,7 +325,13 @@ const scenarios = {
     a.chat('/cv queue proving NORMAL SOLO')
     if (!await waitFor(() => inRaid(a), 120000)) return [false, { error: 'never reached the raid', world: a.worldName }]
     await sleep(6000)
-    // An armory K47 first (it lands in the free hotbar slot), then armory 7.62x39 rounds.
+    // Keys 1-2 take guns only (#10): the pistol goes into the backpack, so the armory K47 lands on key 2.
+    const freeCell = [18, 19, 20, 21, 22, 23].find(i => !a.inventory.slots[i])
+    if (freeCell !== undefined && itemId(a.inventory.slots[37]) === 'p18') {
+      await a.clickWindow(37, 0, 0); await sleep(300)
+      await a.clickWindow(freeCell, 0, 0); await sleep(500)
+    }
+    // An armory K47 first (it lands on the free gun key), then armory 7.62x39 rounds.
     let w = await openContainerAt(a, 8.5, 65, 77.5)
     if (!w) return [false, { error: 'armory weapons box did not open' }]
     await waitFor(() => revealed(w).some(([, s]) => itemId(s) === 'k47'), 60000)
@@ -360,6 +367,9 @@ const scenarios = {
     const ownGun = a.inventory.slots[ownSlot]
     const afterOwn = { gunType: pdc(ownGun, 'ammo_type'), own: rounds(a, 'ammo_762_ps', false), testBp: rounds(a, 'ammo_762_bp', true), testAp: rounds(a, 'ammo_762_ap', true) }
     await cycle(testSlot)
+    // The magazine reaches the stack only when the gun could move: switching hands writes it.
+    a.setQuickBarSlot(ownSlot - 36)
+    await sleep(800)
     const testGun = a.inventory.slots[testSlot]
     const afterTest = { gunType: pdc(testGun, 'ammo_type'), gunTest: isTest(testGun), own: rounds(a, 'ammo_762_ps', false), testPs: rounds(a, 'ammo_762_ps', true) }
     await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 8.5`)
@@ -398,13 +408,14 @@ const scenarios = {
     if (own) { await a.clickWindow(own[0], 0, 0); await sleep(600) }
     a.closeWindow(w)
     await sleep(500)
-    // The bot's own bandage (hotbar) into the first cell of the armory backpack (window slot 18).
+    // The bot's own bandage (hotbar) into a free cell of the armory backpack (its own pack_1 took the first).
     const bandageSlot = [36, 37, 38, 39, 40, 41, 42, 43].find(i => itemId(a.inventory.slots[i]) === 'bandage')
-    if (bandageSlot !== undefined && !a.inventory.slots[18]) {
+    const cell = PACK_CELLS.find(i => !a.inventory.slots[i])
+    if (bandageSlot !== undefined && cell !== undefined) {
       await a.clickWindow(bandageSlot, 0, 0); await sleep(300)
-      await a.clickWindow(18, 0, 0); await sleep(500)
+      await a.clickWindow(cell, 0, 0); await sleep(500)
     }
-    notes.bandageInArmoryPack = itemId(a.inventory.slots[18]) === 'bandage' && !isTest(a.inventory.slots[18])
+    notes.bandageInArmoryPack = cell !== undefined && itemId(a.inventory.slots[cell]) === 'bandage' && !isTest(a.inventory.slots[cell])
 
     // Collectibles, valuables and one gun from the armory.
     for (const [x, rows, want] of [[112.5, 'collectibles', 3], [99.5, 'valuables', 4], [8.5, 'weapons', 1]]) {
@@ -579,12 +590,14 @@ const scenarios = {
     await sleep(500)
     const bandages = ownCount(a, 'bandage')
     const bandageSlot = POCKETS.concat([38]).find(i => itemId(a.inventory.slots[i]) === 'bandage' && !isTest(a.inventory.slots[i]))
-    if (bandageSlot !== undefined && !a.inventory.slots[18]) {
+    // The own pack_1 took the first backpack cell (#10: a backpack fits nowhere else): the next free one.
+    const cell = PACK_CELLS.find(i => !a.inventory.slots[i])
+    if (bandageSlot !== undefined && cell !== undefined) {
       await a.clickWindow(bandageSlot, 0, 0); await sleep(300)
-      await a.clickWindow(18, 0, 0); await sleep(500)
+      await a.clickWindow(cell, 0, 0); await sleep(500)
     }
     notes.bandages = bandages
-    notes.bandageInArmoryPack = itemId(a.inventory.slots[18]) === 'bandage' && !isTest(a.inventory.slots[18])
+    notes.bandageInArmoryPack = cell !== undefined && itemId(a.inventory.slots[cell]) === 'bandage' && !isTest(a.inventory.slots[cell])
     const ownPack = a.inventory.slots.findIndex((s, i) => i >= 9 && s && itemId(s) === 'pack_1' && !isTest(s))
     if (ownPack < 0) return [false, { error: 'own pack_1 not carried', notes }]
     // Own pack_1 onto the cursor, then onto the backpack slot: the armory backpack, packed, takes its place on the cursor.

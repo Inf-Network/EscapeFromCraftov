@@ -1,7 +1,9 @@
-// Minimal RCON client for driving the local test server.
+// Minimal RCON client for driving the local test server: the port and password come from env.js
+// (RCON_PORT, RCON_PASSWORD) unless the caller passes its own.
 const net = require('net')
+const env = require('./env')
 
-module.exports = function rcon (cmd, { host = '127.0.0.1', port = 25575, password = 'craftov-local' } = {}) {
+module.exports = function rcon (cmd, { host = env.HOST, port = env.RCON_PORT, password = env.RCON_PASSWORD } = {}) {
   return new Promise((resolve, reject) => {
     const sock = net.createConnection({ host, port })
     let buf = Buffer.alloc(0)

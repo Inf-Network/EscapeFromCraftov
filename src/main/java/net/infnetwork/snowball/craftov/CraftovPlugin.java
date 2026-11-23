@@ -145,7 +145,7 @@ public final class CraftovPlugin extends JavaPlugin {
                     + " copy (or merge the changes and set revision: " + old.bundled() + "), then /cv reload.");
         }
         loadTiers();
-        registry = new ItemRegistry(getLogger(), ItemRegistry.sizes(getResource("items.yml")));
+        registry = new ItemRegistry(getLogger(), ItemRegistry.bundled(getResource("items.yml")));
         if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
             // Running without an item table would empty every loadout it captures: stay off until
             // the file is fixed instead.

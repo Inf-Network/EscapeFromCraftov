@@ -1293,7 +1293,8 @@ public final class AiService implements Listener {
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
                 gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.moveSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.adsClass(),
-                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
+                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action(),
+                gun.handling());
     }
 
     // ------------------------------------------------------------------ events

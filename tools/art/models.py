@@ -506,7 +506,7 @@ def iron_eye(gid):
 
 # The sights coming up (WeaponService.startAds): the server runs the gun's cooldown for its ads time with
 # the aiming mark on, and the item model steps through these frames while the client counts it down,
-# eased in and out like the zoom the server sends alongside.
+# eased in and out (the zoom the server sends alongside eases out a little, and lands with them).
 ADS_RISE_FRAMES = 6
 
 
@@ -514,8 +514,10 @@ def ads_ease(t):
     return t * t * (3 - 2 * t)
 
 
-# The last ADS_RISE_TAIL of that cooldown holds the final frame (WeaponService.ADS_FRAMES_TAIL): the
-# server's aimed mark, which ends the frames, may come a tick late without the gun dropping back.
+# The last ADS_RISE_TAIL of that cooldown holds the final frame: the server runs it two ticks past the
+# rest of the ads time (WeaponService.ADS_FRAMES_HOLD), until the client has swapped the aimed mark in,
+# so the gun never drops back to the hip in between. A rise of 4 to 6 frames lands on its own tick;
+# a shorter one (the quickest guns) a tick late, a longer one a tick early.
 ADS_RISE_TAIL = 0.25
 
 
@@ -640,16 +642,23 @@ def part_ref(gid, part):
 # The gun coming up after a switch (WeaponService.bind): the server marks it drawing and runs its
 # cooldown for the draw time, and the item model steps through these frames as the client counts it
 # down, one a tick. A gun out of the hand carries the holster mark, which shows the first frame, so
-# a switch shows the gun low at once, before the server has answered. The draw times are
-# weapons.draw-ticks' defaults; a server that changes them plays the same motion faster or slower.
-DRAW_TICKS = {'pistol': 6, 'pistol_heavy': 6, 'smg': 10, 'pdw': 10, 'pump': 14, 'lmg': 18, 'bolt': 18}
+# a switch shows the gun low at once, before the server has answered. The frames are baked for the
+# gun's own draw time: its handling in items.yml through weapons.handling.draw in config.yml, as
+# Handling.drawTicks works it out (issue #117). A sight or a part that changes the handling, or a
+# server with other times, plays the same frames a little faster or slower: the cooldown property is
+# a share of the whole.
+DRAW_SLOW, DRAW_QUICK = 0.85, 0.25  # seconds at handling 0 and 100: weapons.handling.draw's defaults
 # Where the draw starts: muzzle down and canted, swung in from the right, below the hip pose.
 HOLSTER = dict(pitch=-32.0, roll=35.0, yaw=-12.0, drop=2.5, back=1.0)
 DRAW_OVERSHOOT = 1.2      # easeOutBack: the muzzle comes up about 3 degrees past level, then settles
 
 
-def draw_ticks(action):
-    return DRAW_TICKS.get(action, 12)
+def draw_ticks(gun_spec):
+    """Ticks a gun (its items.yml gun section) takes to come up: Handling.drawTicks at its handling,
+    rounded half up as Java's Math.round does."""
+    handling = max(0.0, min(100.0, float(gun_spec.get('handling', 65))))
+    seconds = DRAW_SLOW + (DRAW_QUICK - DRAW_SLOW) * handling / 100.0
+    return max(1, int(math.floor(max(0.0, seconds) * 20 + 0.5)))
 
 
 def draw_pose(p):

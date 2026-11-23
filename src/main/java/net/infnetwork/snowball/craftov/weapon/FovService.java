@@ -78,10 +78,105 @@ public final class FovService implements Listener {
      * and sends it now. Sent even when unchanged: a client that missed one gets it again.
      */
     public void show(Player player, double multiplier) {
+        show(player, multiplier, Bukkit.getCurrentTick());
+    }
+
+    /** {@link #show(Player, double)}, counted as sent in {@code tick} (see {@link #steer(Player, double, double, long)}). */
+    private void show(Player player, double multiplier, long tick) {
         Nms.SelfView view = view(player);
         view.fov = Math.max(0.1, Math.min(1.0, multiplier));
         view.effects = effects(player);
         Nms.sendView(player);
+        eased(player).sent(view.fov, tick);
+    }
+
+    /**
+     * Where the vanilla client's view is. The client does not jump to the field of view the server asks
+     * for: each tick it goes half the way there from where it was (GameRenderer.tickFov), so a zoom the
+     * server sends over a few ticks showed a tick late and then crept in over four or five more, about
+     * a quarter of a second that every sight had, quick or slow (issue #117). This follows the client a
+     * step a tick, one client tick for each server tick, from what was sent.
+     */
+    private static final class Eased {
+        /** The client's view once it has taken what was sent in {@code tick}. */
+        double view = 1.0;
+        /** Its view before that, which a second send in the same tick starts from again. */
+        double before = 1.0;
+        /** What was sent last. */
+        double sent = 1.0;
+        long tick = Long.MIN_VALUE;
+
+        /** The client's view before it takes anything sent in {@code now}. */
+        double before(long now) {
+            if (tick == now) {
+                return before;
+            }
+            if (tick == Long.MIN_VALUE) {
+                return view;
+            }
+            // Each tick since, it went half the way to what was sent last.
+            return sent + (view - sent) * Math.pow(0.5, Math.max(0, now - 1 - tick));
+        }
+
+        void sent(double value, long now) {
+            double from = before(now);
+            before = from;
+            view = from + (value - from) * 0.5;
+            sent = value;
+            tick = now;
+        }
+    }
+
+    private final Map<UUID, Eased> eased = new HashMap<>();
+
+    private Eased eased(Player player) {
+        return eased.computeIfAbsent(player.getUniqueId(), id -> new Eased());
+    }
+
+    /**
+     * How far past a sight's zoom the view is ever asked to go (a share of its multiplier, about as much
+     * more magnification), see {@link #steer}.
+     */
+    private static final double PAST = 0.06;
+
+    /**
+     * Has the client's view at {@code at} once it takes this tick's packet, on the way to {@code target}
+     * (the sight's own zoom): it asks for twice as far as {@code at} is from where the view is now, so
+     * that half the way lands on it. Asking past the target is how the last of the way is covered in a
+     * tick instead of five, but a client that takes one packet again and again (the next ones came
+     * late: a server or network hitch) goes on toward what it asked for. So the ask never goes further
+     * past the target than {@link #PAST} of it, nor further than lands on it in one go: whatever the
+     * hitch, the view goes at most about that much past the sight's power (an 8x shows 8.5x for the
+     * moment) before the next packets bring it back. (Bounded instead by how far a client that took
+     * the packet just once more would go, a hitch of 100 ms could zoom an 8x past 9x, issue #117.)
+     */
+    public void steer(Player player, double at, double target) {
+        steer(player, at, target, Bukkit.getCurrentTick());
+    }
+
+    /**
+     * {@link #steer(Player, double, double)} sent now but counted as sent in {@code tick}, the next: the
+     * client takes it, or the one that tick sends, which steering again in that tick works out the same.
+     */
+    public void steer(Player player, double at, double target, long tick) {
+        double from = eased(player).before(tick);
+        double left = Math.abs(from - target);
+        double past = Math.min(left, PAST * target);
+        double ask = 2 * at - from;
+        if (target < from) {
+            ask = Math.min(from, Math.max(ask, target - past));
+        } else if (target > from) {
+            ask = Math.max(from, Math.min(ask, target + past));
+        } else {
+            ask = target;
+        }
+        show(player, ask, tick);
+    }
+
+    /** The client's view has reached {@code target} and nothing else is on its way (see {@link #steer}). */
+    public boolean settled(Player player, double target) {
+        Eased e = eased.get(player.getUniqueId());
+        return e != null && Math.abs(e.sent - target) < 1e-4 && Math.abs(e.before(Bukkit.getCurrentTick()) - target) < 1e-3;
     }
 
     /** The server owner lets the zoom make up for a FOV Effects slider the player declared below 100%. */
@@ -187,6 +282,7 @@ public final class FovService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         views.remove(event.getPlayer().getUniqueId());
+        eased.remove(event.getPlayer().getUniqueId());
         warned.remove(event.getPlayer().getUniqueId());
     }
 }

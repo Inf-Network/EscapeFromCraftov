@@ -1,18 +1,18 @@
 // Switching guns (issue #34), on the private range: a switch neither skips a bolt or pump cycle nor
-// clears bloom, and a gun takes its draw time (weapons.draw-ticks) to come up before it fires or aims.
+// clears bloom, and a gun takes its draw time (by its handling, issue #117) to come up before it fires or aims.
 //
-//   bolt   AWR (42 rpm: 29 ticks between shots, 18 to draw): one shot, then over to the P18 and
+//   bolt   AWR (42 rpm: 29 ticks between shots, 15 to draw): one shot, then over to the P18 and
 //          straight back. Clicks 0.4 to 1.25 s after the shot fire nothing before the cycle is over
 //          and the gun is up again (the last one comes after the draw but inside the bolt cycle); by
 //          a click at 1.6 s it has fired again, at least 29 ticks after the first. Shots are judged by
 //          the server ticks in the log, not by when the clicks were sent.
-//   pump   R12 (70 rpm: 17 ticks, 14 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
+//   pump   R12 (70 rpm: 17 ticks, 10 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
 //   draw   M4C to P18 (6 ticks to draw): clicks in the first 200 ms after the switch fire nothing
 //          before the tick the gun is up, one at 500 ms fires, and the action bar says the gun is
 //          being drawn; the pistol waits in the hotbar with the holster mark (damage 5, the draw's
 //          first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
 //          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
-//          the draw (6 ticks; 12 for the M4C), ahead of the draw mark (the holster frame reads no
+//          the draw (6 ticks; 8 for the M4C), ahead of the draw mark (the holster frame reads no
 //          cooldown, the draw's rest pose would show between the two); a gun switched away from mid-draw is holstered
 //          again (damage 5) and its draw cooldown stops; the trigger held from the moment of the switch fires once, 6 ticks
 //          after the draw began, though the dig starts over (abort and start) each time the mark
@@ -30,7 +30,7 @@
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node swap.js [scenario ...]
 //
 // Needs `debug: true` in the server's plugins/Craftov/config.yml (shots and draws are read from the
-// log) and the default weapons.draw-ticks. Exit code: number of failed checks (2+ also when a
+// log), items.yml's handling and the default weapons.handling. Exit code: number of failed checks (2+ also when a
 // scenario could not be set up).
 const fs = require('fs')
 const path = require('path')
@@ -285,15 +285,15 @@ async function draw (spot) {
   const leaveFrom = slotUpdates.length
   const leaveCools = cooldowns.length
   hold('m4c')
-  await sleep(150) // the M4C takes 12 ticks
+  await sleep(150) // the M4C takes 8 ticks
   hold('p18')
   await sleep(700)
   const rifle = slotUpdates.slice(leaveFrom).filter(u => u.slot === rifleSlot).map(u => u.damage)
   check('draw: a gun switched away from mid-draw is holstered again', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 5,
     `M4C slot damage over the switch: ${rifle.join(',')}`)
   const leftCools = cooldowns.slice(leaveCools).map(c => c.ticks)
-  check('draw: the M4C draw cooldown (12 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
-    leftCools.slice(0, 4).join(',') === '12,0,6,0', `cooldowns ${leftCools.join(',')}`)
+  check('draw: the M4C draw cooldown (8 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
+    leftCools.slice(0, 4).join(',') === '8,0,6,0', `cooldowns ${leftCools.join(',')}`)
 
   // The trigger held from the moment of the switch fires once, as the gun comes up.
   hold('m4c')
@@ -403,7 +403,7 @@ async function bloom (spot) {
   hold('p18')
   await sleep(100)
   hold('m4c')
-  await sleep(800) // M4C draws in 12 ticks
+  await sleep(800) // M4C draws in 8 ticks
   const after = logSize()
   click()
   await sleep(400)

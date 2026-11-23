@@ -166,8 +166,12 @@ async function enterRange () {
   if (!dim.includes('craftov_range')) throw new Error('not on the range: ' + dim)
 }
 
-/** Gives the gun, holds it and fills its magazine. */
+/**
+ * Gives the gun, holds it and fills its magazine. Only keys 1 and 2 take guns (and a third one goes
+ * to the backpack), so both are emptied first.
+ */
 async function arm (id) {
+  for (const key of [0, 1]) await rcon(`item replace entity ${name} hotbar.${key} with minecraft:air`)
   await rcon(`cv give ${name} ${id}`)
   await sleep(800)
   const slot = hotbar(id)

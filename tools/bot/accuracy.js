@@ -13,7 +13,13 @@
 //            full auto with the sprint cone while the sprint goes on; running at sprint pace without
 //            the sprint command fires with the sprint cone as well. Right mouse on a sprint drops the
 //            food level to 6 (the vanilla client stops sprinting there), the sights come up 0.2-0.7 s
-//            after the press, and the food level is back at 20 once right mouse is let go.
+//            after the press, and the food level is back at 20 once right mouse is let go. The newer
+//            press wins: the sprint key pressed with forward while aiming (right mouse still held) drops
+//            the sights and puts the food level back at 20 at once, the sprint that follows fires from
+//            the hip and right mouse held on does not stop it, and once it is over the sights come up
+//            again; the sprint key without forward changes nothing. A client that runs at sprint pace
+//            with the sights up (ignoring the food level and the aiming slowdown, and never saying it
+//            sprints) loses them: its shots go from the hip with the sprint cone.
 //   stance   a spectator next to the runway sees the M4C up while standing, low on a sprint, up while
 //            firing on the sprint, low half a second after the last shot and up again once the sprint
 //            is over.
@@ -70,8 +76,10 @@ bot.on('error', e => log('ERROR', e.message))
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
 // the range too), walks faster than it may, and the server takes the strafe for running.
+// `ignoreSlow` plays a modified client that keeps its full pace whatever the server says.
+let ignoreSlow = false
 bot.on('entityAttributes', e => {
-  if (e === bot.entity && e.attributes['generic.movement_speed']) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
+  if (e === bot.entity && e.attributes['generic.movement_speed'] && !ignoreSlow) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
 })
 let worldChanges = 0
 bot.on('respawn', () => worldChanges++)
@@ -282,6 +290,17 @@ async function spread (spot) {
 // mineflayer 4.39 sends the 1.21.11 sprint command with the old numeric id, which the server reads as
 // a horse jump; send the right one as well.
 const command = actionId => bot._client.write('entity_action', { entityId: bot.entity.id, actionId, jumpBoost: 0 })
+/** The movement keys held, as the vanilla client reports them (mineflayer sends none of its own but sneak). */
+const keys = (held = {}) => bot._client.write('player_input', { inputs: held })
+/** Waits up to `ms` for `test` to hold, polling; the milliseconds it took, or null. */
+async function within (ms, test) {
+  const from = Date.now()
+  while (Date.now() - from < ms) {
+    if (test()) return Date.now() - from
+    await sleep(10)
+  }
+  return test() ? Date.now() - from : null
+}
 /** Sprints forward, as a vanilla client does with W and the sprint key (`flag` false: without saying so). */
 async function startSprint (flag = true) {
   bot.setControlState('forward', true)
@@ -449,6 +468,72 @@ async function sprint (spot) {
   check('sprint: the sights come up once the sprint is over (0.2 to 0.7 s after the press)', aimedAt !== null && aimedAt >= 200 && aimedAt <= 700,
     aimedAt === null ? 'never aimed' : `${aimedAt} ms after the press, ${stoppedAt ? adsHeard[0] - stoppedAt : '?'} ms after the sprint stopped`)
   check('sprint: no sprint while aiming, and it may start again once right mouse is let go', stillLow && bot.food === 20, `food ${stillLow ? 6 : 'not 6'} while aiming, ${bot.food} after`)
+
+  // The newer press wins: the sprint key pressed while aiming, right mouse still held, takes the player
+  // out of the sights and lets the client sprint; once that sprint is over the sights come up again.
+  await arm('m4c')
+  await runway(spot)
+  keys({})
+  adsHeard.length = 0
+  let stopHold = aimWhile()
+  const up = await within(1500, () => adsHeard.length > 0)
+  await sleep(300)
+  check('sprint: (sprint key) aimed, with the food level at 6', up !== null && bot.food <= 6, `${up} ms, food ${bot.food}`)
+  keys({ sprint: true }) // the sprint key alone: the vanilla client does not sprint standing still
+  await sleep(400)
+  check('sprint: the sprint key without forward leaves the sights up', bot.food <= 6, `food ${bot.food}`)
+  keys({ forward: true, sprint: true })
+  const freed = await within(400, () => bot.food === 20)
+  check('sprint: forward with the sprint key held puts the food level back at 20 at once', freed !== null && freed < 300, `${freed} ms`)
+  await startSprint() // what the vanilla client does at food 20 with both keys held
+  from = logSize()
+  const heardBefore = adsHeard.length
+  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
+  const won = shotLines(from)
+  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
+    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
+  check('sprint: right mouse held on neither aims nor stops it', adsHeard.length === heardBefore && bot.food === 20, `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}`)
+  stopSprint()
+  keys({})
+  const stopped = Date.now()
+  const back = await within(1500, () => adsHeard.length > heardBefore)
+  await sleep(200)
+  check('sprint: once that sprint is over the sights come up again (right mouse still held)', back !== null && back <= 900 && bot.food <= 6,
+    `${back === null ? 'never' : back + ' ms'} after the stop, food ${bot.food}`)
+  stopHold()
+  await sleep(800)
+  log(`sprint key: food back at ${bot.food} ${Date.now() - stopped} ms after the stop, right mouse let go`)
+
+  // A client running at sprint pace with the sights up, which a vanilla client cannot do: it ignores the
+  // food level and the aiming slowdown and never says it sprints. It holds the trigger from before the
+  // run, which keeps an aim up without the use packets (they do not hold it on a run). The sights drop
+  // as for a sprint once the server measures the run.
+  await arm('m4c')
+  await runway(spot)
+  adsHeard.length = 0
+  stopHold = aimWhile()
+  const aimedUp = await within(1500, () => adsHeard.length > 0)
+  await sleep(400)
+  ignoreSlow = true
+  bot.entity.attributes['minecraft:movement_speed'] = { value: 0.1, modifiers: [] }
+  from = logSize()
+  const stopTrigger = triggerWhile()
+  await sleep(150)
+  await startSprint(false)
+  await sleep(500)
+  stopTrigger()
+  stopSprint(false)
+  stopHold()
+  ignoreSlow = false
+  if (bot.entity.attributes['generic.movement_speed']) bot.entity.attributes['minecraft:movement_speed'] = bot.entity.attributes['generic.movement_speed']
+  await sleep(600)
+  const cheat = shotLines(from)
+  const running = cheat.filter(l => l.run)
+  log('sights up on a run: ' + cheat.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.run ? 'R' : ''}`).join(' '))
+  check('sprint: aimed before the run, the first rounds aimed', aimedUp !== null && cheat.length > 0 && cheat[0].aim && !cheat[0].run,
+    `aimed ${aimedUp} ms, first ${cheat.length ? (cheat[0].aim ? 'aimed' : 'hip') : 'none'}`)
+  check('sprint: running at sprint pace with the sights up drops them: every round on the run from the hip, with the sprint cone',
+    running.length >= 4 && running.every(l => !l.aim && l.spread > 5), `${running.length} rounds on the run, ${running.filter(l => l.aim).length} aimed`)
 }
 
 // ---------------------------------------------------------------- stance

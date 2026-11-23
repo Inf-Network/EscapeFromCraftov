@@ -189,7 +189,7 @@ public final class HudService {
         if (s != null) {
             player.hideBossBar(s);
         }
-        scopeOverlay(player, null);
+        clearCameraEffects(player);
         if (vanilla()) {
             player.showBossBar(bar(info, player));
         }
@@ -505,11 +505,34 @@ public final class HudService {
 
     /** Leaving the server mid-flash: the blindness that goes with the white-out must not be saved with the player. */
     public void onQuit(Player player) {
+        endFlash(player);
+    }
+
+    /** Drops a flashbang white-out at once, with the blindness that goes with it. */
+    private void endFlash(Player player) {
         UUID id = player.getUniqueId();
         flashed.remove(id);
         if (flashBlinded.remove(id)) {
             player.removePotionEffect(PotionEffectType.BLINDNESS);
         }
+    }
+
+    /**
+     * Takes every raid camera effect off at once: a flashbang white-out and its blindness, a strobe,
+     * the suppression vignette, the red flash of a hit and a scope picture; the real helmet goes back
+     * on the client. For going back to the lobby and for dying: a white-out used to fade out over
+     * the lobby for up to four seconds after an extract, a voided raid or /cv lobby, and over the
+     * death camera and the kill replay (blind too) after dying mid-flash. Spectators cannot be
+     * flashed, so the squadmate camera after a death stays clear.
+     */
+    public void clearCameraEffects(Player player) {
+        UUID id = player.getUniqueId();
+        endFlash(player);
+        dazzledUntil.remove(id);
+        suppressedUntil.remove(id);
+        hitUntil.remove(id);
+        scopes.remove(id);
+        refreshOverlay(player);
     }
 
     /**

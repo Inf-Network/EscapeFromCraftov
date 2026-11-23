@@ -9,7 +9,8 @@
 //   parapet    the sniper moved to the ground 41 blocks south of the drill building, the target on the
 //              roof right behind the 1-high stone brick parapet: the sniper must fire at it, and aim at the
 //              head that shows over the wall (aim >= 1.3), not at the hidden middle.
-//   soldierlag a patrol soldier walks 24 blocks across the shooter's view 12 blocks away (soldiers send
+//   soldierlag a patrol soldier (a fresh one, posted with /cv ai spawn: the map's has been fighting the
+//              shooter) walks 24 blocks across the shooter's view 12 blocks away (soldiers send
 //              their position every 3 ticks). The shooter aims at where a vanilla client would draw it
 //              (vanillaView: each update eased into over 3 client ticks, frames drawn between ticks) and
 //              fires single M4C rounds while it walks, aiming down the sights, with lag compensation on
@@ -514,12 +515,19 @@ async function soldierlag () {
   // at 30 28 stay).
   await rcon(`execute at ${SHOOTER} run fill 22 65 12 54 68 19 minecraft:air`)
   await rcon(`execute at ${SHOOTER} run fill 31 65 19 46 68 27 minecraft:air`)
-  const there = await rcon(`execute at ${SHOOTER} if entity ${PATROL}`)
-  if (!/Test passed/.test(there)) throw new Error('no patrol soldier was kept')
   await setAi({ 'awareness.rate': -50, 'threat.seconds': 0 })
   await tp(SHOOTER, spot.x, 65, spot.z, 180, 0)
-  await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
   await tp(TARGET, W.x, 65, W.z, -90, 0)
+  // A fresh patrol at the east end. The map's own has been fighting the shooter since sniper and
+  // parapet, and a soldier keeps a target it still sees whatever ai.awareness.rate is (that only
+  // drains what it has not noticed yet): it stood and fired at the shooter, stepping aside now and
+  // then, and never took the walk.
+  await rcon(`kill ${PATROL}`)
+  const posted = await rcon(`cv ai spawn patrol ${E.x} 65 ${E.z} ${ourRaids[0]}`)
+  await rcon(`execute at ${SHOOTER} run tag @e[type=minecraft:zombie,x=${E.x},y=65,z=${E.z},distance=..2,sort=nearest,limit=1] add hrpatrol`)
+  const there = await rcon(`execute at ${SHOOTER} if entity ${PATROL}`)
+  if (!/Test passed/.test(there)) throw new Error('no patrol soldier could be posted: ' + posted.trim())
+  await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
   await sleep(2500)
   // It may have walked on a little from where it was put (a path it already had): look for it where the
   // server has it.

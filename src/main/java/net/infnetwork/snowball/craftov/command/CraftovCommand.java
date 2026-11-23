@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod");
+            "leave", "help", "mod", "fov");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event", "feed",
             "marketaudit", "ai", "lagcomp", "luck");
 
@@ -85,6 +85,7 @@ public final class CraftovCommand implements TabExecutor {
             case "mod" -> {
                 if (player != null) plugin.menus().openGunsmith(player);
             }
+            case "fov" -> fov(player, args);
             case "queue" -> {
                 if (player != null && args.length >= 3) {
                     RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
@@ -145,12 +146,55 @@ public final class CraftovCommand implements TabExecutor {
         }
     }
 
+    /**
+     * /cv fov [视野 [FOV特效%]] | ok: what the player's client plays at, which the server cannot read
+     * (FovService). "ok" confirms FOV Effects is at its default 100% (the tip's button).
+     */
+    private void fov(Player player, String[] args) {
+        if (player == null) {
+            return;
+        }
+        Profile profile = plugin.profiles().get(player);
+        if (args.length >= 2 && args[1].equalsIgnoreCase("ok")) {
+            String why = plugin.fov().declare(player, profile.fov, 100);
+            Text.send(player, why == null ? "<#5BD16B>已记录：FOV 特效 100%，视野 " + profile.fov + "。<#9AA0A6>瞄准镜按真实倍率放大。" : "<#FF8A80>" + why);
+            plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.FOV);
+            return;
+        }
+        if (args.length < 2) {
+            Text.send(player, "<#9AA0A6>服务器记录的设置：视野 <white>" + profile.fov + "</white>，FOV 特效 <white>"
+                    + Math.round(profile.fovEffects * 100) + "%</white>。");
+            Text.send(player, net.infnetwork.snowball.craftov.weapon.FovService.tip());
+            return;
+        }
+        int fov;
+        int effects;
+        try {
+            fov = Integer.parseInt(args[1]);
+            effects = args.length >= 3 ? Integer.parseInt(args[2].replace("%", "")) : (int) Math.round(profile.fovEffects * 100);
+        } catch (NumberFormatException ex) {
+            Text.send(player, "<#9AA0A6>用法：/cv fov <视野 30-110> [FOV特效 0-100]，例如 <white>/cv fov 70 100</white>");
+            return;
+        }
+        String why = plugin.fov().declare(player, fov, effects);
+        if (why != null) {
+            Text.send(player, "<#FF8A80>" + why);
+            return;
+        }
+        Text.send(player, "<#5BD16B>已记录：视野 " + fov + "，FOV 特效 " + effects + "%。"
+                + (effects * 0.01 < net.infnetwork.snowball.craftov.weapon.FovService.MIN_EFFECTS
+                ? "<#FF4D4D> FOV 特效为 0，瞄准镜无法放大，请调回 100%。"
+                : "<#9AA0A6> 瞄准镜按真实倍率放大" + (effects < 100 ? "（已按 FOV 特效补偿）。" : "。")));
+        plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.FOV);
+    }
+
     private void help(CommandSender sender) {
         Text.send(sender, "<#F2E6C8>Craftov 指令");
         sender.sendMessage(Text.mm("<#9AA0A6>/cv <#8A8F98>打开战术终端  <#9AA0A6>/cv deploy <#8A8F98>开始行动"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<#9AA0A6>/cv leave <#8A8F98>取消匹配"));
+        sender.sendMessage(Text.mm("<#9AA0A6>/cv fov <视野> <FOV特效%> <#8A8F98>告诉服务器你的视野设置（瞄准镜倍率按它换算）"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
             sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
         }
@@ -502,6 +546,10 @@ public final class CraftovCommand implements TabExecutor {
             if (sender.hasPermission("craftov.admin")) {
                 out.addAll(ADMIN_SUBS);
             }
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("fov")) {
+            out.addAll(List.of("ok", "70", "90"));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("fov")) {
+            out.addAll(List.of("100", "50"));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("party")) {
             out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {

@@ -1373,8 +1373,9 @@ public final class WeaponService implements Listener {
             plugin.hud().scopeOverlay(player, null);
         }
         if (on && state != null) {
-            plugin.fov().show(player, fovFor(state));
+            plugin.fov().show(player, fovFor(player, state));
             player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
+            plugin.fov().aimed(player);
         } else if (!on) {
             plugin.fov().show(player, 1.0);
         }
@@ -1396,9 +1397,15 @@ public final class WeaponService implements Listener {
         };
     }
 
-    /** Field-of-view multiplier while aiming, at the default 70 degree field of view. */
-    private double fovFor(GunState state) {
-        return OpticSpec.fovMultiplier(magnification(state), 70);
+    /** Field-of-view multiplier while aiming, at the field of view the player declared (70 by default). */
+    private double fovFor(Player player, GunState state) {
+        return plugin.fov().multiplier(player, magnification(state));
+    }
+
+    /** Shows the zoom again after the player declared another field of view or FOV Effects (/cv fov). */
+    public void refreshZoom(Player player) {
+        GunState state = state(player);
+        plugin.fov().show(player, isAiming(player) && state != null ? fovFor(player, state) : 1.0);
     }
 
     /** Explains, at most once a second, why a trigger pull did nothing. */

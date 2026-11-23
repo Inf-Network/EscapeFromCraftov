@@ -1,7 +1,9 @@
 package net.infnetwork.snowball.craftov.weapon;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Nms;
+import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -12,7 +14,9 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -25,11 +29,21 @@ import java.util.UUID;
  * one bundle with a matching walking speed, so the client never draws a tick with one and not the
  * other, and gamemode changes or respawns, which resend the abilities, keep the zoom (see
  * {@link Nms.SelfView}).
+ *
+ * <p>The client then scales that effect by its "FOV Effects" accessibility slider (100% by default,
+ * 0% turns every zoom off), and a sight's true power also depends on the field of view the player
+ * plays at. The server can read neither, so players declare them with /cv fov: the zoom is divided
+ * by the slider and worked out for their field of view, and a sight shows its power either way.
  */
 public final class FovService implements Listener {
 
+    /** FOV Effects below this cannot be made up for: the zoom would need a multiplier the client clamps. */
+    public static final double MIN_EFFECTS = 0.05;
+
     private final CraftovPlugin plugin;
     private final Map<UUID, Nms.SelfView> views = new HashMap<>();
+    /** Players told this session that FOV Effects at 0 means no zoom. */
+    private final Set<UUID> warned = new HashSet<>();
 
     public FovService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -44,6 +58,7 @@ public final class FovService implements Listener {
 
     private void attach(Player player) {
         Nms.SelfView view = view(player);
+        view.effects = plugin.profiles().get(player).fovEffects;
         Nms.installSelf(player, view);
         Nms.sendView(player);
     }
@@ -55,6 +70,7 @@ public final class FovService implements Listener {
     public void show(Player player, double multiplier) {
         Nms.SelfView view = view(player);
         view.fov = Math.max(0.1, Math.min(1.0, multiplier));
+        view.effects = plugin.profiles().get(player).fovEffects;
         Nms.sendView(player);
     }
 
@@ -64,9 +80,59 @@ public final class FovService implements Listener {
         return view == null ? 1.0 : view.fov;
     }
 
+    /** The multiplier that shows {@code power} times magnification at the field of view the player declared. */
+    public double multiplier(Player player, double power) {
+        return OpticSpec.fovMultiplier(power, plugin.profiles().get(player).fov);
+    }
+
     /** The self view the network handler reads, for the scope helmet (see HudService). */
     public Nms.@Nullable SelfView selfView(Player player) {
         return views.get(player.getUniqueId());
+    }
+
+    /**
+     * The player aims for the first time this session: once ever, the tip about FOV Effects; and every
+     * session in which they declared it below {@link #MIN_EFFECTS}, the warning that sights cannot zoom.
+     */
+    public void aimed(Player player) {
+        Profile profile = plugin.profiles().get(player);
+        if (profile.fovEffects < MIN_EFFECTS && warned.add(player.getUniqueId())) {
+            Text.send(player, "<#FF4D4D>FOV 特效为 0，瞄准镜无法放大。<#9AA0A6>按 Esc → 选项 → 辅助功能，把 <white>FOV 特效</white> 调回 100%，"
+                    + "再输入 <white>/cv fov " + profile.fov + " 100</white>。");
+        }
+        if (!profile.fovTip) {
+            profile.fovTip = true;
+            plugin.profiles().markDirty(player.getUniqueId());
+            Text.send(player, tip());
+        }
+    }
+
+    /** What FOV Effects does to the sights and how to tell the server, with a button to confirm 100%. */
+    public static String tip() {
+        return "<#F2C94C>开镜提示：<#C8CCD2>瞄准镜放大靠原版的 <white>选项 → 辅助功能 → FOV 特效</white>，请保持 <white>100%</white>（默认值）。"
+                + "调低了倍率会变小，0% 时完全不放大。改过视野或 FOV 特效的话，用 <white>/cv fov <视野> <FOV特效%></white> 告诉服务器，倍率会自动补回来。 "
+                + "<click:run_command:'/cv fov ok'><hover:show_text:'<#9AA0A6>确认 FOV 特效是 100%'><#5BD16B>[已是 100%]</hover></click>";
+    }
+
+    /**
+     * Records the field of view and FOV Effects (0..100%) the player plays at and applies them to the
+     * view at once. Returns null, or why the values were refused.
+     */
+    public @Nullable String declare(Player player, int fov, int effectsPercent) {
+        if (fov < 30 || fov > 110) {
+            return "视野要在 30 到 110 之间（原版 选项 → 视野）";
+        }
+        if (effectsPercent < 0 || effectsPercent > 100) {
+            return "FOV 特效要在 0 到 100 之间（原版 选项 → 辅助功能 → FOV 特效）";
+        }
+        plugin.profiles().edit(player.getUniqueId(), () -> "fov " + fov + " " + effectsPercent, profile -> {
+            profile.fov = fov;
+            profile.fovEffects = effectsPercent / 100.0;
+            profile.fovTip = true;
+        });
+        warned.remove(player.getUniqueId());
+        plugin.weapons().refreshZoom(player);
+        return null;
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -77,5 +143,6 @@ public final class FovService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         views.remove(event.getPlayer().getUniqueId());
+        warned.remove(event.getPlayer().getUniqueId());
     }
 }

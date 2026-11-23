@@ -8,15 +8,17 @@ import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 
 /**
- * First steps for a new player: open the terminal, try a gun on the range, fit an attachment at the
- * gunsmith, deploy, and extract. Each step is pointed out until done; finishing pays a starter bonus.
- * Steps only count in order, and the guide stays quiet once a player has extracted before.
+ * First steps for a new player: open the terminal, try a gun on the range, check the client's FOV
+ * Effects slider (every scope zooms through it), fit an attachment at the gunsmith, deploy, and
+ * extract. Each step is pointed out until done; finishing pays a starter bonus. Steps only count in
+ * order, and the guide stays quiet once a player has extracted before.
  */
 public final class TutorialService {
 
     public enum Step {
         TERMINAL("右键快捷栏第 9 格的<white>战术终端</white>，打开大厅菜单"),
         RANGE("到大厅东侧的<white>靶场入口</white>右键进入个人靶场，试一把枪"),
+        FOV("按 <white>Esc → 选项 → 辅助功能</white>，确认 <white>FOV 特效</white> 是 100%（瞄准镜靠它放大），再输入 <white>/cv fov ok</white>"),
         GUNSMITH("打开<white>改枪台</white>（菜单或 /cv mod），给枪装上任意一个配件"),
         DEPLOY("在菜单里点<white>开始行动</white>，选择地图出发"),
         EXTRACT("在局内找到<white>撤离点</white>（战术终端可查看），活着撤离");
@@ -28,6 +30,12 @@ public final class TutorialService {
         }
     }
 
+    /**
+     * Version of the step list: 1 added {@link Step#FOV} after the range. A profile saved under an older
+     * list counts its step in that one, and is moved on once (see {@link #upgrade}).
+     */
+    public static final int VERSION = 1;
+
     private final CraftovPlugin plugin;
 
     public TutorialService(CraftovPlugin plugin) {
@@ -36,7 +44,25 @@ public final class TutorialService {
     }
 
     private boolean active(Profile profile) {
+        upgrade(profile);
         return !profile.tutorialDone && plugin.getConfig().getBoolean("tutorial.enabled", true);
+    }
+
+    /**
+     * Moves a profile's step into the current list: a player past the range under the old list (no FOV
+     * step) keeps their place, so the step they were on is still the one shown.
+     */
+    private void upgrade(Profile profile) {
+        if (profile.tutorialVersion >= VERSION) {
+            return;
+        }
+        if (profile.tutorialStep > Step.RANGE.ordinal()) {
+            profile.tutorialStep++;
+        }
+        profile.tutorialVersion = VERSION;
+        if (profile.uuid != null) {
+            plugin.profiles().markDirty(profile.uuid);
+        }
     }
 
     /** Marks a step done if it is the current one, then shows the next. */
@@ -70,7 +96,8 @@ public final class TutorialService {
             return;
         }
         Step step = Step.values()[profile.tutorialStep];
-        Text.send(player, "<#F2C94C>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<#C8CCD2>" + step.hint);
+        Text.send(player, "<#F2C94C>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<#C8CCD2>" + step.hint
+                + (step == Step.FOV ? " <click:run_command:'/cv fov ok'><hover:show_text:'<#9AA0A6>确认 FOV 特效是 100%'><#5BD16B>[已是 100%]</hover></click>" : ""));
     }
 
     private void remind() {

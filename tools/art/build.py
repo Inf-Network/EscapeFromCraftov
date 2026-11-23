@@ -284,7 +284,7 @@ def build_gun(item_id, spec, item_defs):
 
     # Coming up after a switch: one frame a tick of the draw time (models.draw_frames).
     draw_entries = []
-    for k, (threshold, right, left) in enumerate(models.draw_frames(item_id, models.draw_ticks(gun_spec.get('action')))):
+    for k, (threshold, right, left) in enumerate(models.draw_frames(item_id, models.draw_ticks(gun_spec))):
         ref = leaf('gun_draw/%s/%d' % (item_id, k), {'parent': models.mid_ref(item_id), 'display': {
             'firstperson_righthand': right, 'firstperson_lefthand': left}})
         draw_entries.append({'threshold': threshold, 'model': ref})

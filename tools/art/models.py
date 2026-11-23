@@ -641,19 +641,24 @@ def part_ref(gid, part):
 # ---------------------------------------------------------------- drawing the gun
 # The gun coming up after a switch (WeaponService.bind): the server marks it drawing and runs its
 # cooldown for the draw time, and the item model steps through these frames as the client counts it
-# down (one a tick at the times below). A gun out of the hand carries the holster mark, which shows the first frame, so
-# a switch shows the gun low at once, before the server has answered. The frames are baked for these
-# draw times, by action (the draw times before each gun had a handling, issue #117); the server's
-# draw time comes from the gun's handling now (weapons.handling.draw), and the client steps through
-# the same frames over it, a little faster: the cooldown property is a share of the whole.
-DRAW_TICKS = {'pistol': 6, 'pistol_heavy': 6, 'smg': 10, 'pdw': 10, 'pump': 14, 'lmg': 18, 'bolt': 18}
+# down, one a tick. A gun out of the hand carries the holster mark, which shows the first frame, so
+# a switch shows the gun low at once, before the server has answered. The frames are baked for the
+# gun's own draw time: its handling in items.yml through weapons.handling.draw in config.yml, as
+# Handling.drawTicks works it out (issue #117). A sight or a part that changes the handling, or a
+# server with other times, plays the same frames a little faster or slower: the cooldown property is
+# a share of the whole.
+DRAW_SLOW, DRAW_QUICK = 0.85, 0.25  # seconds at handling 0 and 100: weapons.handling.draw's defaults
 # Where the draw starts: muzzle down and canted, swung in from the right, below the hip pose.
 HOLSTER = dict(pitch=-32.0, roll=35.0, yaw=-12.0, drop=2.5, back=1.0)
 DRAW_OVERSHOOT = 1.2      # easeOutBack: the muzzle comes up about 3 degrees past level, then settles
 
 
-def draw_ticks(action):
-    return DRAW_TICKS.get(action, 12)
+def draw_ticks(gun_spec):
+    """Ticks a gun (its items.yml gun section) takes to come up: Handling.drawTicks at its handling,
+    rounded half up as Java's Math.round does."""
+    handling = max(0.0, min(100.0, float(gun_spec.get('handling', 65))))
+    seconds = DRAW_SLOW + (DRAW_QUICK - DRAW_SLOW) * handling / 100.0
+    return max(1, int(math.floor(max(0.0, seconds) * 20 + 0.5)))
 
 
 def draw_pose(p):

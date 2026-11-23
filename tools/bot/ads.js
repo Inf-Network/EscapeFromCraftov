@@ -11,9 +11,21 @@
 //   optics   Every sight on the range (iron sights of the P18, R12 and K47, the red dot and holo on
 //            the K47, 3x and 4x on the K47, the DM14's 4x and the AWR's 8x), right mouse held (a use
 //            packet every 4 ticks): once up, the view is the sight's target multiplier
-//            2 atan(tan(F/2) / N) / F within 0.005 for a slider declared at 100, 50 and 25%
-//            (/cv fov F s), and the magnification tan(F/2) / tan(F m / 2) is N within 2% at F 70
-//            and 90. Let go, the view is back to 1.000 within 8 ticks.
+//            2 atan(tan(F/2) / N) / F within 0.005, and the magnification tan(F/2) / tan(F m / 2) is
+//            N within 2%, at F 70 and 90 (/cv fov F 100). No declaration zooms further than vanilla's
+//            defaults: FOV Effects declared at 50% sends the same view as 100% (the server does not
+//            compensate unless weapons.ads.fov-effects-compensation is on, see effects), and a
+//            declared FOV of 50 the view for 70. Let go, the view is back to 1.000 within 8 ticks.
+//   effects  The compensation turned on in the server's config.yml (SERVER_DIR, default the
+//            repository's server/run; restored after) and /cv reload: the K47's iron sights, its 4x
+//            and the AWR's 8x show their target for a slider declared at 50 and 25%, and the
+//            declaration is in the server log.
+//   resume   The AWR (8x, 12 ticks up): up, then the use packets stop until the server lowers the
+//            sights, and right mouse comes straight back (a late packet): no new rise (no aiming
+//            mark), the zoom and the scope picture are back at once. Back only after 8 ticks: a new
+//            rise from the hip. One use packet only (the server lowers the sights half way up), then
+//            back: the rise goes on from half way, up in about 6 ticks rather than 12, its frames'
+//            cooldown again after the aiming mark.
 //   time     K47 iron sights, P18, AWR: the view narrows over the gun's ads time and not at once
 //            (half way in, it is between hip and aimed); the hand mark on the held stack says
 //            aiming (3) once the server takes the aim, aimed (4) when the sights are up, none once
@@ -29,20 +41,26 @@
 //   heavy    Solo on the proving ground (test mode, test.enabled: true): helmet_6, armor_6, pack_3
 //            and eight 3 kg reactor cells: the hip view is still 1.000 within 0.002, aimed the K47's 1.25x.
 //
-//   PORT=25565 RCON_PORT=25575 node ads.js [scenario ...]
+//   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node ads.js [scenario ...]
+//
+// Server config: the defaults (weapons.ads.timeout-ticks 5, scope-out-ticks 2, resume-ticks 3,
+// fov-effects-compensation false).
 //
 // Exit code: number of failed checks (2+ also when a scenario could not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
+const fs = require('fs')
+const path = require('path')
 
 const PORT = Number(process.env.PORT || 25565)
 const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['hip', 'optics', 'time', 'mode', 'helmet', 'heavy']
+const scenarios = wanted.length ? wanted : ['hip', 'optics', 'effects', 'time', 'resume', 'mode', 'helmet', 'heavy']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -213,26 +231,180 @@ const SIGHTS = [
   { gun: 'awr', power: 8, label: 'AWR built-in 8x' }
 ]
 
+/** Aims with the sight held for each declaration and checks the view the server sends against `expect`. */
+async function aimEach (sight, cases, prefix) {
+  for (const { fov, percent, s, want, power: wantPower, label } of cases) {
+    await declare(fov, percent)
+    let seen = 0
+    await aimFor(900, async () => { seen = shown(s) })
+    const got = power(seen, fov)
+    check(`${prefix}: ${sight.label} ${label}: ${want.toFixed(3)}`, Math.abs(seen - want) < 0.005 && (!wantPower || Math.abs(got / wantPower - 1) < 0.02),
+      `shows ${seen.toFixed(4)} = ${got.toFixed(2)}x at FOV ${fov}`)
+    const letGo = Date.now()
+    while (Date.now() - letGo < 1500 && Math.abs(shown(s) - 1) > 0.002) await sleep(50)
+    check(`${prefix}: ${sight.label} let go: back to 1.000 within 8 ticks`, Date.now() - letGo <= 400 + 150, `${Date.now() - letGo} ms`)
+    await sleep(300)
+  }
+}
+
 async function optics () {
   if (!worldName.includes('craftov_range')) await enterRange()
   for (const sight of SIGHTS) {
     await arm(sight.gun, sight.optic)
-    for (const [fov, percent] of [[70, 100], [70, 50], [70, 25], [90, 100]]) {
-      await declare(fov, percent)
-      const s = percent / 100
-      let seen = 0
-      await aimFor(900, async () => { seen = shown(s) })
-      const want = target(sight.power, fov)
-      const got = power(seen, fov)
-      check(`optics: ${sight.label} at FOV ${fov}, FOV Effects ${percent}%: ${want.toFixed(3)}`, Math.abs(seen - want) < 0.005 && Math.abs(got / sight.power - 1) < 0.02,
-        `shows ${seen.toFixed(4)} = ${got.toFixed(2)}x`)
-      const letGo = Date.now()
-      while (Date.now() - letGo < 1500 && Math.abs(shown(s) - 1) > 0.002) await sleep(50)
-      check(`optics: ${sight.label} let go: back to 1.000 within 8 ticks`, Date.now() - letGo <= 400 + 150, `${Date.now() - letGo} ms`)
-      await sleep(300)
-    }
+    const at70 = target(sight.power, 70)
+    await aimEach(sight, [
+      { fov: 70, percent: 100, s: 1, want: at70, power: sight.power, label: 'at FOV 70' },
+      { fov: 90, percent: 100, s: 1, want: target(sight.power, 90), power: sight.power, label: 'at FOV 90' },
+      // What the server sends, as a client at 100% would show it: a claimed low slider gains nothing.
+      { fov: 70, percent: 50, s: 1, want: at70, label: 'declared at FOV Effects 50%, no stronger than at 100%' },
+      // Declared narrower than 70, the view for 70: never more zoom than vanilla's default gets.
+      { fov: 50, percent: 100, s: 1, want: at70, label: 'declared at FOV 50, the view for FOV 70' }
+    ], 'optics')
   }
   await declare(70, 100)
+}
+
+/** The server's config.yml with weapons.ads.fov-effects-compensation set to `on`, or null if it cannot be. */
+function withCompensation (text, on) {
+  const key = /^(\s*)fov-effects-compensation:.*$/m
+  if (key.test(text)) return text.replace(key, `$1fov-effects-compensation: ${on}`)
+  // An older config without the key: add it to the weapons.ads section, which then holds the default.
+  const lines = text.split('\n')
+  let inWeapons = false
+  for (let i = 0; i < lines.length; i++) {
+    if (/^weapons:\s*$/.test(lines[i])) inWeapons = true
+    else if (/^\S/.test(lines[i])) inWeapons = false
+    const m = inWeapons && lines[i].match(/^(\s+)ads:\s*$/)
+    if (m) {
+      lines.splice(i + 1, 0, `${m[1]}  fov-effects-compensation: ${on}`)
+      return lines.join('\n')
+    }
+  }
+  return null
+}
+
+async function effects () {
+  const file = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
+  let original
+  try { original = fs.readFileSync(file, 'utf8') } catch (e) { throw new Error('cannot read ' + file) }
+  const on = withCompensation(original, true)
+  if (!on) throw new Error('no weapons.ads section in ' + file)
+  fs.writeFileSync(file, on)
+  try {
+    if (!(await rcon('cv reload')).includes('已重新加载')) throw new Error('cv reload failed')
+    if (!worldName.includes('craftov_range')) await enterRange()
+    for (const sight of SIGHTS.filter(x => ['K47 iron sights', 'K47 4x', 'AWR built-in 8x'].includes(x.label))) {
+      await arm(sight.gun, sight.optic)
+      const at70 = target(sight.power, 70)
+      await aimEach(sight, [50, 25].map(percent => ({
+        fov: 70, percent, s: percent / 100, want: at70, power: sight.power, label: `compensated for FOV Effects ${percent}%`
+      })), 'effects')
+    }
+    const logFile = path.join(SERVER_DIR, 'logs/latest.log')
+    const logged = fs.existsSync(logFile) && fs.readFileSync(logFile, 'utf8').includes(`${name} declared FOV 70, FOV Effects 25% (zoom compensated)`)
+    check('effects: the declaration is in the server log', logged)
+  } finally {
+    fs.writeFileSync(file, original)
+    await rcon('cv reload').catch(() => {})
+    await declare(70, 100)
+  }
+}
+
+/** Starts the use packets of right mouse held (one at once, then every 4 ticks); returns the stop. */
+function press () {
+  let on = true
+  const done = (async () => {
+    while (on) {
+      useItem()
+      await sleep(200)
+    }
+  })()
+  return async () => { on = false; await done }
+}
+/** Waits until the server has put the view back to the hip (it lowered the sights); false on a timeout. */
+async function lowered (ms = 1500) {
+  const by = Date.now() + ms
+  while (Date.now() < by) {
+    if (Math.abs(shown() - 1) < 0.002) return true
+    await sleep(5)
+  }
+  return false
+}
+const heldMark = () => damageOf(bot.heldItem)
+
+async function resume () {
+  if (!worldName.includes('craftov_range')) await enterRange()
+  await declare(70, 100)
+  await arm('awr')
+  const slot = hotbar('awr')
+  const want = target(8)
+  const marksOf = from => marks.slice(from).filter(m => m.slot === slot).map(m => m.damage)
+
+  // A late packet: the sights were up, the server lowered them, right mouse comes straight back.
+  let stop = press()
+  await sleep(1100)
+  await stop()
+  const upBefore = heldMark() === 4 && Math.abs(shown() - want) < 0.005 && heads.length && heads[heads.length - 1].overlay
+  check('resume: the AWR is up (aimed mark, 8x, scope picture) before the packets stop', upBefore, `mark ${heldMark()} shows ${shown().toFixed(4)}`)
+  const stopAt = marks.length
+  const headsAt = heads.length
+  if (!await lowered()) throw new Error('the server never lowered the sights')
+  const back = Date.now()
+  stop = press()
+  let zoomBack = -1
+  while (Date.now() - back < 600) {
+    if (zoomBack < 0 && Math.abs(shown() - want) < 0.005) zoomBack = Date.now() - back
+    await sleep(5)
+  }
+  const seq = marksOf(stopAt)
+  const headsSince = heads.slice(headsAt)
+  check('resume: back at once, no new rise (no aiming mark), aimed mark held', !seq.includes(3) && heldMark() === 4, `marks ${seq.join(',') || 'none'}, now ${heldMark()}`)
+  check('resume: the 8x zoom is back within 2 ticks', zoomBack >= 0 && zoomBack <= 150, `${zoomBack} ms`)
+  check('resume: the scope picture is on the head slot', heads.length > 0 && heads[heads.length - 1].overlay,
+    headsSince.map(h => h.overlay ? 'scope' : 'plain').join(',') || 'never taken down')
+  await stop()
+  await lowered()
+  await sleep(800)
+
+  // Back only after 8 ticks: from the hip again.
+  stop = press()
+  await sleep(1100)
+  await stop()
+  if (!await lowered()) throw new Error('the server never lowered the sights')
+  await sleep(400)
+  const lateAt = marks.length
+  stop = press()
+  await sleep(1000)
+  await stop()
+  const late = marksOf(lateAt)
+  check('resume: back after 8 ticks, the sights come up from the hip (aiming, then aimed)', late.join(',').startsWith('3,4'), late.join(','))
+  await lowered()
+  await sleep(800)
+
+  // Half way up: one use packet, the server lowers the sights 6 ticks in, then right mouse is back.
+  useItem()
+  const by = Date.now() + 1000
+  while (Date.now() < by && shown() > 0.999) await sleep(5)
+  if (shown() > 0.999) throw new Error('one use packet never started the aim')
+  if (!await lowered(1000)) throw new Error('the server never lowered the sights')
+  const halfAt = marks.length
+  const orderAt = order.length
+  const again = Date.now()
+  stop = press()
+  let upAfter = -1
+  while (Date.now() - again < 1200) {
+    if (upAfter < 0 && heldMark() === 4) upAfter = Date.now() - again
+    await sleep(5)
+  }
+  await stop()
+  const half = marksOf(halfAt)
+  check('resume: half way up and back, the rise goes on: up in 4-9 ticks rather than 12', upAfter >= 150 && upAfter <= 450,
+    `${upAfter} ms, marks ${half.join(',')}`)
+  const got = order.slice(orderAt)
+  const rise = got.findIndex(e => /^c[1-9]/.test(e))
+  check('resume: and the frames\' cooldown comes after the aiming mark', got.indexOf('m3') >= 0 && rise > got.indexOf('m3'), got.join(' '))
+  await lowered()
+  await sleep(500)
 }
 
 /** The views the bot was shown since `from` (ms), with the time since then. */
@@ -366,7 +538,7 @@ async function heavy () {
 }
 
 // ---------------------------------------------------------------- run
-const RUN = { hip, optics, time, mode, helmet, heavy }
+const RUN = { hip, optics, effects, time, resume, mode, helmet, heavy }
 bot.once('spawn', async () => {
   await sleep(3000)
   try {

@@ -942,6 +942,54 @@ def optic_item_model(oid):
                         'fixed': {'rotation': [0, 180, 0], 'scale': [1.5, 1.5, 1.5]}}}
 
 
+# The dark ring around a magnified scope's view: a square picture with a round hole, drawn with the
+# hand. The hand is projected at a fixed 70 degree field of view with the window's own aspect, so the
+# hole stays round at any window shape (the camera overlay, stretched over the window, would not) and
+# the same size at any zoom. The quad is MASK_DIST blocks in front of the eye and covers windows up to
+# 2.5:1; the hole's radius is MASK_HOLE of the screen height, as the reticles assume (ui.SCOPE_HOLE).
+MASK_DIST = 0.45
+MASK_HALF = 14.0          # model units either side of the centre: the quad is 28 units across
+MASK_SIZE = 1024
+MASK_BASE = 0.45
+MASK_HOLE = {'optic_3x': 0.47, 'optic_4x': 0.45, 'optic_8x': 0.43}
+MASK_TEXTURE = 'craftov:item/scope/mask'
+
+
+def mask_hole_fraction():
+    """The hole's radius as a share of the quad's half side, at the base size (MASK_BASE)."""
+    quad = MASK_HALF / 16 / MASK_DIST
+    hole = 2 * MASK_BASE * math.tan(math.radians(35))
+    return hole / quad
+
+
+def mask_image(size=MASK_SIZE):
+    """Black, with a clear round hole and a soft dark edge just inside it, like looking down a tube."""
+    import numpy as np
+    yy, xx = np.mgrid[0:size, 0:size] + 0.5
+    r = np.hypot(xx - size / 2, yy - size / 2) / (size / 2)
+    hole = mask_hole_fraction()
+    edge = 0.035 * hole
+    a = np.clip((r - (hole - edge)) / edge, 0, 1) ** 1.6
+    alpha = np.where(r >= hole, 255, (a * 235).astype(np.uint8)).astype(np.uint8)
+    rgba = np.zeros((size, size, 4), np.uint8)
+    rgba[..., 3] = alpha
+    return Image.fromarray(rgba, 'RGBA')
+
+
+def scope_mask_model(oid):
+    """The mask posed straight ahead in first person only (both hands: it sits on the view axis)."""
+    scale = round(MASK_HOLE[oid] / MASK_BASE, 4)
+    lo, hi = 8 - MASK_HALF, 8 + MASK_HALF
+    face = {'uv': [0, 0, 16, 16], 'texture': '#m'}
+    fp = {'rotation': [0, 0, 0], 'translation': [-8.96, 8.32, round(16 * (0.72 - MASK_DIST), 3)], 'scale': [scale] * 3}
+    display = {k: HIDDEN for k in ('thirdperson_righthand', 'thirdperson_lefthand', 'ground', 'fixed', 'head', 'gui')}
+    display['firstperson_righthand'] = fp
+    display['firstperson_lefthand'] = fp
+    return {'textures': {'m': MASK_TEXTURE, 'particle': MASK_TEXTURE},
+            'elements': [{'from': [lo, lo, 8], 'to': [hi, hi, 8], 'shade': False, 'faces': {'south': face, 'north': face}}],
+            'display': display}
+
+
 def optic_icon(oid):
     if os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
         return side_icon(gunvox.side_image(oid, 4), tilt=0)

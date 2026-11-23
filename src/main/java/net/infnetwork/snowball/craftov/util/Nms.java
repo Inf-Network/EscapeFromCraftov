@@ -534,6 +534,11 @@ public final class Nms {
         }
     }
 
+    /** True when each player's own view can be rewritten (zoom and the scope helmet, see {@link SelfView}). */
+    public static boolean selfReady() {
+        return selfReady;
+    }
+
     /** Routes everything this player is sent about their own speed, abilities and helmet through {@code view}. */
     public static void installSelf(Player player, SelfView view) {
         if (!selfReady) {

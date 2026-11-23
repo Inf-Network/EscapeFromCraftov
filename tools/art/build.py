@@ -191,7 +191,7 @@ def build_items(item_defs):
             # as long as the gun's ads time, runs the frames of the gun rising to the eye), 4 aimed (the
             # cooldown is a shot's kick again; a scope shows its mask instead of the gun). Damage is the
             # one component the client swaps in without lowering and raising the gun again.
-            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames, rise_display=None):
+            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames, rise_display=None, mask=None):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
                             'on_true': on, 'on_false': off}
@@ -226,7 +226,10 @@ def build_items(item_defs):
                 hip_idle = strafe(model_ref(hip), hp)
                 hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
                 hip_tree = kicked('hip', hip, hip_display, hip_rest)
-                if ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
+                if mask:
+                    # A scope: its round mask in first person, the gun (hidden in first person) for the rest.
+                    ads_tree = {'type': 'minecraft:composite', 'models': [model_ref(ads), model_ref(mask)]}
+                elif ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
                     ads_tree = model_ref(ads)
                 else:
                     ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
@@ -258,7 +261,8 @@ def build_items(item_defs):
             in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
                                models.gun_model(item_id)['display'], models.gun_ads_model(item_id, scoped)['display'],
                                [frames[k] for k in range(len(frames))],
-                               models.gun_rise_display(item_id) if scoped else None)
+                               models.gun_rise_display(item_id) if scoped else None,
+                               'craftov:item/scope_mask/' + gun_spec['scope'] if scoped else None)
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.
             write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
@@ -283,7 +287,8 @@ def build_items(item_defs):
                 cases.append({'when': oid, 'model': gun_tree(
                     combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
                     models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display'],
-                    [frames[k] + [optic_frames[k]] for k in range(len(frames))], models.optic_rise_display(item_id, oid))})
+                    [frames[k] + [optic_frames[k]] for k in range(len(frames))], models.optic_rise_display(item_id, oid),
+                    'craftov:item/scope_mask/' + oid if oid in models.MASK_HOLE else None)})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}
@@ -476,6 +481,9 @@ def build_ui():
         write_json(os.path.join(CV, 'models', 'item', 'ui', name + '.json'), generated('craftov:item/ui/' + name))
         write_json(os.path.join(CV, 'items', 'ui', name + '.json'), {'model': model_ref('craftov:item/ui/' + name)})
     save(ui.scope_overlay('4x'), os.path.join(CV, 'textures', 'misc', 'scope.png'))
+    save(models.mask_image(), os.path.join(CV, 'textures', 'item', 'scope', 'mask.png'))
+    for oid in models.MASK_HOLE:
+        write_json(os.path.join(CV, 'models', 'item', 'scope_mask', oid + '.json'), models.scope_mask_model(oid))
     save(ui.suppression_overlay(), os.path.join(CV, 'textures', 'misc', 'suppressed.png'))
     save(ui.strobe_overlay(), os.path.join(CV, 'textures', 'misc', 'strobe.png'))
     for level in range(1, len(ui.FLASH_ALPHA) + 1):

@@ -19,13 +19,24 @@
 //             as it went in, the bar once.
 //   finder  - in the same raid holds a pocket watch found there (cv give): it stays in the raid,
 //             in neither the loadout nor the mailbox.
+//   holder  - in the same raid picks up the insured m4c that owner threw on the ground, holds it on
+//             the cursor and fills its last free pocket (cv give), so at the stop the m4c has no
+//             room and drops at its feet. owner has been killed by then: the m4c is paid out to
+//             owner once (from the ground, the raid world is scanned before it is deleted), and
+//             holder's raid is void with the loadout as it went in.
 //   Then the server is started again (SERVER_DIR/start.sh, detached, output appended to
 //   SERVER_DIR/console.log) and lobby must find the gold bar in its inventory on joining.
 //
 // Env: PORT / RCON_PORT / RCON_PASS of the local test server (default 25565 / 25575 / craftov-local),
 // SERVER_DIR = its folder (default ../../server/run). The server must be running with test mode on
 // (test.enabled) so the bots can queue for the proving ground, and without a whitelist. deploy sets
-// insurance.loss-chance and return-minutes to 0 in config.yml while it runs (see insurance.js).
+// insurance.loss-chance and return-minutes to 0 in config.yml while it runs (see insurance.js), and so
+// does stop.
+//
+// Every case but holder already passed before #60 was fixed (the lobby loadout capture at a stop
+// and the trip home from a raid both settled the cursor then): they pin the issue's outcome down.
+// holder covers what the fix changed at a stop, a raider's cursor going back on them, or down at
+// their feet, before the raid is voided and its insured gear paid out.
 // Exits 0 when every check passes, 1 otherwise.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
@@ -254,7 +265,16 @@ async function deployOne () {
 }
 
 async function stopScenario () {
-  const names = { lobby: 'Cl' + tag, full: 'Cf' + tag, own: 'Co' + tag, finder: 'Cw' + tag }
+  const restore = await pinInsurance(DATA, rcon, log)
+  try {
+    await stopOne()
+  } finally {
+    await restore()
+  }
+}
+
+async function stopOne () {
+  const names = { lobby: 'Cl' + tag, full: 'Cf' + tag, own: 'Co' + tag, finder: 'Cw' + tag, owner: 'Cn' + tag, holder: 'Ch' + tag }
   await prepare(names.lobby, p => { p.mailbox = []; p.loadout = { 0: rec('gold_bar') } })
   // Every pocket full but for the server drive's, and no rig or backpack.
   await prepare(names.full, p => {
@@ -264,16 +284,49 @@ async function stopScenario () {
   })
   await prepare(names.own, p => { p.mailbox = []; p.loadout = { 0: rec('gold_bar'), 1: rec('screws') } })
   await prepare(names.finder, p => { p.mailbox = []; p.loadout = { 1: rec('screws') } })
+  await prepare(names.owner, p => {
+    p.autoInsure = true
+    p.money = 1000000
+    p.mailbox = []
+    p.claims = []
+    p.loadout = { 0: loaded('m4c', 'ammo_556_m855') }
+  })
+  // Every pocket full but the first, and no rig or backpack.
+  await prepare(names.holder, p => {
+    p.mailbox = []
+    p.loadout = {}
+    for (const s of [1, 3, 4, 5, 6, 7]) p.loadout[s] = rec('screws')
+  })
 
   const own = await make(names.own)
   const finder = await make(names.finder)
-  await deploy([own, finder])
+  const owner = await make(names.owner)
+  const holder = await make(names.holder)
+  await deploy([own, finder, owner, holder])
   const wentIn = readProfile(names.own).deployment
   check('own: deployment recorded', !!wentIn && countIds(wentIn.loadout, 'gold_bar') === 1, wentIn && ids(wentIn.loadout))
+  const holderIn = readProfile(names.holder).deployment
+  check('owner: the m4c is insured', owner.chats.some(c => c.includes('已为 1 件装备投保')), owner.chats.filter(c => c.includes('投保')))
   await pickUp(own, 'gold_bar')
   await rcon(`cv give ${names.finder} pocket_watch`)
   await sleep(800)
   await pickUp(finder, 'pocket_watch')
+
+  // Owner throws the insured m4c on the ground (from the inventory screen: Q alone reloads) and
+  // holder picks it up into its one free pocket, then holds it on the cursor and fills that pocket.
+  const gun = owner.inventory.items().find(i => cid(i) === 'm4c')
+  if (gun) { await owner.tossStack(gun).catch(e => log(names.owner, 'toss', e.message)); await sleep(800) }
+  check('owner: threw the m4c on the ground', !!gun && slotOf(owner, 'm4c') < 0, carried(owner))
+  await sleep(1500) // a thrown item's pickup delay
+  await rcon(`execute at ${names.owner} as @e[type=minecraft:item,distance=..8,sort=nearest,limit=1] at @s run tp ${names.holder} ~ ~ ~`)
+  check('holder: picked the m4c up', await waitFor(() => slotOf(holder, 'm4c') >= 0, 8000), carried(holder))
+  await pickUp(holder, 'm4c')
+  await rcon(`cv give ${names.holder} dossier`)
+  await sleep(800)
+  check('holder: every pocket taken again', slotOf(holder, 'dossier') >= 0 && cursor(holder) === 'm4c', { cursor: cursor(holder), carried: carried(holder) })
+  await rcon('kill ' + names.owner)
+  // Settled as a death at once (the report is saved then): no deployment left on disk.
+  check('owner: died in the raid', await waitFor(() => !readProfile(names.owner).deployment, 15000))
 
   const lobby = await make(names.lobby)
   const full = await make(names.full)
@@ -307,6 +360,17 @@ async function stopScenario () {
   const watches = countIds(w.loadout, 'pocket_watch') + countIds(w.mailbox, 'pocket_watch') + countIds(w.stash, 'pocket_watch')
   check('finder: the watch found in the raid stayed there', watches === 0 && !w.deployment,
     { loadout: ids(w.loadout), mailbox: ids(w.mailbox), stash: ids(w.stash) })
+  const n = readProfile(names.owner)
+  check('owner: the insurance paid the m4c out once', countIds(n.mailbox, 'm4c') === 1 && countIds(n.loadout, 'm4c') === 0
+    && countIds(n.claims && n.claims.map(c => c.item), 'm4c') === 0, { loadout: ids(n.loadout), mailbox: ids(n.mailbox) })
+  check('owner: the claim is in the log', new RegExp(`Insurance claim from raid \\S+ for ${offlineUuid(names.owner)}: 1 returned`).test(text))
+  const h = readProfile(names.holder)
+  const guns = countIds(h.loadout, 'm4c') + countIds(h.mailbox, 'm4c') + countIds(h.stash, 'm4c')
+  check('holder: the raid was voided, the loadout as it went in',
+    !h.deployment && !h.activeRaid && JSON.stringify(ids(h.loadout)) === JSON.stringify(ids(holderIn && holderIn.loadout)),
+    { loadout: ids(h.loadout), wentIn: holderIn && ids(holderIn.loadout) })
+  check('holder: the m4c stayed in the raid', guns === 0 && countIds(h.loadout, 'dossier') === 0,
+    { loadout: ids(h.loadout), mailbox: ids(h.mailbox), stash: ids(h.stash) })
 
   await startServer(stoppedAt)
   const back = await make(names.lobby)

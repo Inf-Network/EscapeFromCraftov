@@ -13,15 +13,16 @@
 //             report's net profit is 0 rather than the bar's ◈68,000, and the bar comes home once.
 // stop: the server is stopped over RCON while
 //   lobby   - in the lobby holds its gold bar: afterwards it is in the loadout, once.
-//   full    - in the lobby holds its server drive, and the pocket it came from has been filled
-//             since (cv give): afterwards the drive is in the mailbox, once.
+//   full    - in the lobby holds its server drive, and the backpack cell it came from has been
+//             filled since (cv give; no rig, and valuables go nowhere else): afterwards the drive is
+//             in the mailbox, once.
 //   own     - in a raid holds the gold bar it brought in: the raid is void, the loadout comes back
 //             as it went in, the bar once.
 //   finder  - in the same raid holds a pocket watch found there (cv give): it stays in the raid,
 //             in neither the loadout nor the mailbox.
-//   holder  - in the same raid picks up the insured m4c that owner threw on the ground, holds it on
-//             the cursor and fills its last free pocket (cv give), so at the stop the m4c has no
-//             room and drops at its feet. owner has been killed by then: the m4c is paid out to
+//   holder  - in the same raid picks up the insured m4c that owner threw on the ground onto its
+//             free gun key (no backpack), holds it on the cursor and fills that key with another
+//             gun (cv give), so at the stop the m4c has no room and drops at its feet. owner has been killed by then: the m4c is paid out to
 //             owner once (from the ground, the raid world is scanned before it is deleted), and
 //             holder's raid is void with the loadout as it went in.
 //   Then the server is started again (SERVER_DIR/start.sh, detached, output appended to
@@ -86,6 +87,8 @@ function countIds (records, id) {
   return n
 }
 const ids = records => Object.values(records || {}).map(r => r.id).sort()
+/** The worn backpack's slot in a loadout (the boots slot). */
+const PACK = 36
 
 // ------------------------------------------------------------------ bots
 
@@ -275,15 +278,17 @@ async function stopScenario () {
 
 async function stopOne () {
   const names = { lobby: 'Cl' + tag, full: 'Cf' + tag, own: 'Co' + tag, finder: 'Cw' + tag, owner: 'Cn' + tag, holder: 'Ch' + tag }
-  await prepare(names.lobby, p => { p.mailbox = []; p.loadout = { 0: rec('gold_bar') } })
-  // Every pocket full but for the server drive's, and no rig or backpack.
+  // Valuables go in the backpack only (the carry zones, #10), so the bots that hold one wear pack_1
+  // (six cells, 18-23 while worn) and carry it there.
+  await prepare(names.lobby, p => { p.mailbox = []; p.loadout = { [PACK]: rec('pack_1'), 18: rec('gold_bar') } })
+  // Every backpack cell full but for the server drive's, and no rig: nowhere else takes a valuable.
   await prepare(names.full, p => {
     p.mailbox = []
-    p.loadout = { 0: rec('server_drive') }
-    for (const s of [1, 3, 4, 5, 6, 7]) p.loadout[s] = rec('screws')
+    p.loadout = { [PACK]: rec('pack_1'), 18: rec('server_drive') }
+    for (const s of [19, 20, 21, 22, 23]) p.loadout[s] = rec('screws')
   })
-  await prepare(names.own, p => { p.mailbox = []; p.loadout = { 0: rec('gold_bar'), 1: rec('screws') } })
-  await prepare(names.finder, p => { p.mailbox = []; p.loadout = { 1: rec('screws') } })
+  await prepare(names.own, p => { p.mailbox = []; p.loadout = { [PACK]: rec('pack_1'), 18: rec('gold_bar'), 19: rec('screws') } })
+  await prepare(names.finder, p => { p.mailbox = []; p.loadout = { [PACK]: rec('pack_1'), 18: rec('screws') } })
   await prepare(names.owner, p => {
     p.autoInsure = true
     p.money = 1000000
@@ -291,11 +296,10 @@ async function stopOne () {
     p.claims = []
     p.loadout = { 0: loaded('m4c', 'ammo_556_m855') }
   })
-  // Every pocket full but the first, and no rig or backpack.
+  // Gun key 2 taken, gun key 1 free, and no backpack: a gun fits nowhere but on key 1.
   await prepare(names.holder, p => {
     p.mailbox = []
-    p.loadout = {}
-    for (const s of [1, 3, 4, 5, 6, 7]) p.loadout[s] = rec('screws')
+    p.loadout = { 1: loaded('p18', 'ammo_9_fmj') }
   })
 
   const own = await make(names.own)
@@ -313,17 +317,20 @@ async function stopOne () {
   await pickUp(finder, 'pocket_watch')
 
   // Owner throws the insured m4c on the ground (from the inventory screen: Q alone reloads) and
-  // holder picks it up into its one free pocket, then holds it on the cursor and fills that pocket.
+  // holder picks it up onto its free gun key, then holds it on the cursor and fills that key. A
+  // pickup never lands in the slot in hand, so holder holds its knife (key 3) meanwhile.
   const gun = owner.inventory.items().find(i => cid(i) === 'm4c')
   if (gun) { await owner.tossStack(gun).catch(e => log(names.owner, 'toss', e.message)); await sleep(800) }
   check('owner: threw the m4c on the ground', !!gun && slotOf(owner, 'm4c') < 0, carried(owner))
   await sleep(1500) // a thrown item's pickup delay
+  holder.setQuickBarSlot(2)
+  await sleep(300)
   await rcon(`execute at ${names.owner} as @e[type=minecraft:item,distance=..8,sort=nearest,limit=1] at @s run tp ${names.holder} ~ ~ ~`)
   check('holder: picked the m4c up', await waitFor(() => slotOf(holder, 'm4c') >= 0, 8000), carried(holder))
   await pickUp(holder, 'm4c')
-  await rcon(`cv give ${names.holder} dossier`)
+  await rcon(`cv give ${names.holder} k47`)
   await sleep(800)
-  check('holder: every pocket taken again', slotOf(holder, 'dossier') >= 0 && cursor(holder) === 'm4c', { cursor: cursor(holder), carried: carried(holder) })
+  check('holder: both gun keys taken again', slotOf(holder, 'k47') >= 0 && cursor(holder) === 'm4c', { cursor: cursor(holder), carried: carried(holder) })
   await rcon('kill ' + names.owner)
   // Settled as a death at once (the report is saved then): no deployment left on disk.
   check('owner: died in the raid', await waitFor(() => !readProfile(names.owner).deployment, 15000))
@@ -334,7 +341,7 @@ async function stopOne () {
   await pickUp(full, 'server_drive')
   await rcon(`cv give ${names.full} dossier`)
   await sleep(800)
-  check('full: every pocket taken again', slotOf(full, 'dossier') >= 0, carried(full))
+  check('full: every backpack cell taken again', slotOf(full, 'dossier') >= 0, carried(full))
   await sleep(3000) // a periodic lobby save, which leaves the cursor alone
 
   const stoppedAt = Date.now()
@@ -350,7 +357,7 @@ async function stopOne () {
   const f = readProfile(names.full)
   check('full: the server drive went to the mailbox, once', countIds(f.mailbox, 'server_drive') === 1 && countIds(f.loadout, 'server_drive') === 0,
     { loadout: ids(f.loadout), mailbox: ids(f.mailbox) })
-  check('full: the rest of the loadout is kept', countIds(f.loadout, 'dossier') === 1 && countIds(f.loadout, 'screws') === 6, ids(f.loadout))
+  check('full: the rest of the loadout is kept', countIds(f.loadout, 'dossier') === 1 && countIds(f.loadout, 'screws') === 5, ids(f.loadout))
   const o = readProfile(names.own)
   check('own: the raid was voided', !o.deployment && !o.activeRaid, { deployment: !!o.deployment, activeRaid: o.activeRaid })
   check('own: the loadout as it went in, the gold bar once',
@@ -369,7 +376,7 @@ async function stopOne () {
   check('holder: the raid was voided, the loadout as it went in',
     !h.deployment && !h.activeRaid && JSON.stringify(ids(h.loadout)) === JSON.stringify(ids(holderIn && holderIn.loadout)),
     { loadout: ids(h.loadout), wentIn: holderIn && ids(holderIn.loadout) })
-  check('holder: the m4c stayed in the raid', guns === 0 && countIds(h.loadout, 'dossier') === 0,
+  check('holder: the m4c stayed in the raid', guns === 0 && countIds(h.loadout, 'k47') === 0,
     { loadout: ids(h.loadout), mailbox: ids(h.mailbox), stash: ids(h.stash) })
 
   await startServer(stoppedAt)

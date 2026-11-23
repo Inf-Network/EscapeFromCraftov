@@ -572,3 +572,162 @@ FLASH_ALPHA = (70, 140, 205, 255)
 def flash_overlay(level, w=32, h=18):
     """Plain white camera overlay for a flashbanged player at fade step ``level`` (1..4)."""
     return Image.new('RGBA', (w, h), (255, 255, 255, FLASH_ALPHA[level - 1]))
+
+
+# ---------------------------------------------------------------- carry interface (#10)
+#
+# Pictograms for the inventory screen's info cells, the loot screen and the stash, and the 18x18
+# tiles (36x36 at two texture pixels per GUI pixel, see px.TILE) that fill a whole slot: locked carry
+# cells and the corner badges stash items wear. build.py gives the tiles a GUI model scaled to cover
+# the well and marks them oversized_in_gui.
+
+def info_armor(c):
+    # A plate carrier on a shield: the protection summary (its count is the best armour class worn).
+    c.poly([(16, 4), (26, 8), (25, 19), (16, 28), (7, 19), (6, 8)], G)
+    c.poly([(16, 7), (23, 10), (22, 18), (16, 24), (10, 18), (9, 10)], shade(G, 0.6))
+    c.rect(13, 12, 19, 13, W)
+    c.rect(13, 16, 19, 17, W)
+
+
+def info_tidy(c):
+    # Three bars falling into line beside an arrow.
+    for y, x1, col in ((8, 17, W), (14, 21, G), (20, 25, G)):
+        c.rect(6, y, x1, y + 3, col)
+    c.poly([(24, 5), (28, 10), (20, 10)], Y)
+    c.rect(23, 10, 25, 15, Y)
+
+
+def info_take_all(c):
+    # Everything into the bag: three items and an arrow down into a tray.
+    c.rect(6, 5, 10, 9, W)
+    c.rect(13, 4, 18, 9, G)
+    c.rect(21, 5, 25, 9, W)
+    c.rect(14, 11, 17, 17, Y)
+    c.poly([(10, 17), (21, 17), (16, 22)], Y)
+    c.box(5, 23, 26, 27, G)
+
+
+def info_select(c):
+    # Two ticked boxes: pick several items.
+    for x, y in ((5, 6), (13, 14)):
+        c.d.rectangle([x, y, x + 12, y + 12], outline=W, width=2)
+    c.line([(16, 20), (18, 23), (24, 16)], GR, 2)
+    c.line([(8, 12), (10, 15), (15, 9)], GR, 2)
+
+
+def info_sell_confirm(c):
+    # The sell coin with a warning mark: the second click sells.
+    c.ellipse(4, 9, 19, 24, Y)
+    c.ellipse(8, 13, 15, 20, shade(Y, 0.7))
+    c.rect(22, 6, 25, 18, R)
+    c.rect(22, 21, 25, 24, R)
+
+
+def tab_all(c):
+    for x in (7, 17):
+        for y in (7, 17):
+            c.box(x, y, x + 7, y + 7, G if (x, y) != (7, 7) else W)
+
+
+def tab_loot(c):
+    # A gold bar: valuables and collectibles.
+    c.poly([(5, 22), (9, 13), (23, 13), (27, 22)], Y)
+    c.poly([(9, 13), (12, 9), (21, 9), (23, 13)], shade(Y, 1.25))
+    c.rect(5, 22, 27, 24, shade(Y, 0.7))
+
+
+def tab_key(c):
+    # A key: keys and special items.
+    c.d.ellipse([4, 9, 15, 20], outline=W, width=3)
+    c.rect(14, 13, 27, 15, W)
+    c.rect(22, 15, 23, 19, W)
+    c.rect(26, 15, 27, 18, W)
+
+
+for _fn in (info_armor, info_tidy, info_take_all, info_select, info_sell_confirm, tab_all, tab_loot, tab_key):
+    UI[_fn.__name__] = (lambda fn: lambda: icon(fn))(_fn)
+
+
+def weight_gauge(level, levels):
+    """Load gauge for the inventory's weight cell: an arc filling clockwise, green up to the
+    comfortable load, amber past it and red past the overload (CarryInfo picks the frame)."""
+    def make():
+        c = Canvas()
+        plate(c)
+        cx, cy, r = 16, 19, 11
+        steps = levels - 1
+        for k in range(steps):
+            a0 = 180 + 180 * k / steps
+            a1 = 180 + 180 * (k + 1) / steps - 4
+            lit = k < level
+            col = (GR if k < 5 else Y if k < 7 else R) if lit else rgb('#2E353F')
+            c.d.arc([cx - r, cy - r, cx + r, cy + r], a0, a1, fill=col, width=4)
+        angle = math.radians(180 + 180 * level / steps)
+        c.line([(cx, cy), (cx + (r - 3) * math.cos(angle), cy + (r - 3) * math.sin(angle))], W, 2)
+        c.ellipse(cx - 2, cy - 2, cx + 2, cy + 2, W)
+        c.rect(8, 23, 24, 24, G)
+        return c.img
+    return make
+
+
+WEIGHT_LEVELS = 9
+"""Frames of the load gauge; gui/CarryInfo.java picks one through custom_model_data float 0."""
+for _k in range(WEIGHT_LEVELS):
+    UI['info_weight_%d' % _k] = weight_gauge(_k, WEIGHT_LEVELS)
+
+
+def _gui_grid(draw):
+    """An 18x18 picture at GUI resolution, doubled to the 36x36 tile so every edge is a whole GUI pixel."""
+    img = Image.new('RGBA', (18, 18), (0, 0, 0, 0))
+    draw(ImageDraw.Draw(img))
+    return img.resize((36, 36), Image.NEAREST)
+
+
+def locked_tile(zone_hex):
+    """A carry cell the worn rig or backpack does not open (or a secure-container cell not bought yet):
+    dark diagonal stripes in the zone's colour over the whole well, so capacity reads at a glance and
+    a locked cell never looks like an empty one."""
+    from px import mix
+    zone = rgb(zone_hex)
+    base = mix(rgb(PAL.BG), zone, 0.10)
+    stripe = mix(rgb(PAL.BG), zone, 0.30)
+
+    def draw(d):
+        d.rectangle([0, 0, 17, 17], fill=base)
+        for i in range(-18, 18, 4):
+            d.line([(i, 17), (i + 17, 0)], fill=stripe)
+        d.line([0, 0, 16, 0], fill=rgb('#080A0D'))
+        d.line([0, 0, 0, 16], fill=rgb('#080A0D'))
+        d.line([1, 17, 17, 17], fill=mix(base, zone, 0.4))
+        d.line([17, 1, 17, 17], fill=mix(base, zone, 0.4))
+    return lambda: _gui_grid(draw)
+
+
+def value_badge(pips):
+    """Stash corner badge: one to four amber pips along the top-left edge, one per value band
+    (StashMenu.VALUE_BANDS)."""
+    def draw(d):
+        for i in range(pips):
+            x = 1 + i * 3
+            d.rectangle([x, 1, x + 2, 3], fill=rgb('#07090C'))
+            d.rectangle([x, 1, x + 1, 2], fill=Y)
+    return lambda: _gui_grid(draw)
+
+
+def plus_badge():
+    """Stash corner badge on a rig or backpack with things packed inside (the count says how many)."""
+    def draw(d):
+        d.rectangle([12, 0, 17, 5], fill=rgb('#07090C'))
+        d.rectangle([14, 1, 15, 4], fill=W)
+        d.rectangle([13, 2, 16, 3], fill=W)
+    return lambda: _gui_grid(draw)
+
+
+TILES = {
+    'locked_rig': locked_tile(PAL.ZONE_RIG),
+    'locked_pack': locked_tile(PAL.ZONE_PACK),
+    'locked_secure': locked_tile('#9C8CF0'),
+}
+"""Slot-filling interface tiles, item models craftov:ui/<name> (UiItems)."""
+BADGES = {**{'value_%d' % k: value_badge(k) for k in range(1, 5)}, 'plus': plus_badge()}
+"""Corner badges over a stash item's own GUI model (custom_model_data strings 6 and 7, build.py)."""

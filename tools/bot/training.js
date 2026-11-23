@@ -241,7 +241,8 @@ async function course () {
     await sleep(6000) // the search
     for (let i = 0; i < loot.inventoryStart; i++) {
       const s = loot.slots[i]
-      if (s && !itemId(s).startsWith('ui/')) { await bot.clickWindow(i, 0, 0); await sleep(250) }
+      // Only the crate's own cells: the right-hand columns of the search screen are the bot's gear (#10).
+      if (i % 9 < 6 && s && !itemId(s).startsWith('ui/')) { await bot.clickWindow(i, 0, 0); await sleep(250) }
     }
     bot.closeWindow(loot)
     await sleep(500)

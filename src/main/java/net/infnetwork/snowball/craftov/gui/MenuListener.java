@@ -36,8 +36,8 @@ public final class MenuListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDrag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder() instanceof Menu) {
-            event.setCancelled(true);
+        if (event.getView().getTopInventory().getHolder() instanceof Menu menu) {
+            event.setCancelled(!menu.drag(event));
         }
     }
 

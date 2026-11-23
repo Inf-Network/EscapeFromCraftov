@@ -760,10 +760,29 @@ class Session:
     def give(self, item, amount=1, who=None):
         self.rcon(f'cv give {who or self.name} {item} {amount}')
 
+    def category_of(self, item):
+        """The item's category in the server's items.yml (or the repo's), e.g. WEAPON, or None."""
+        for path in (self.cfg.server_dir / 'plugins' / 'Craftov' / 'items.yml', ROOT / 'src' / 'main' / 'resources' / 'items.yml'):
+            try:
+                text = path.read_text(encoding='utf-8')
+            except OSError:
+                continue
+            found = re.search(rf'(?m)^  {re.escape(item)}:\s*{{?.*?category: (\w+)', text)
+            if found is None:
+                block = re.search(rf'(?m)^  {re.escape(item)}:\s*\n((?:    .*\n)+)', text)
+                found = block and re.search(r'category: (\w+)', block.group(1))
+            if found:
+                return found.group(1)
+        return None
+
     def hotbar_slot(self, item, who=None):
-        """The hotbar slot holding the item, giving it first if it is not there yet."""
+        """The hotbar slot holding the item, giving it first if it is not there yet. Guns only go on
+        keys 1-2 (CarryService zone rules), so key 1 is emptied first when both hold something."""
         slot = self.slot_of(item, who)
         if slot is None:
+            if self.category_of(item) == 'WEAPON' and all(self.item_in(k, who) for k in (0, 1)):
+                self.rcon(f'item replace entity {who or self.name} hotbar.0 with minecraft:air')
+                time.sleep(0.3)
             self.give(item, who=who)
             time.sleep(0.5)
             slot = self.slot_of(item, who)

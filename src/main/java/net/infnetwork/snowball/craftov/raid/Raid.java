@@ -53,6 +53,17 @@ public final class Raid {
     public long blackoutUntil;
     /** Luck hand-outs carried out or waiting for a refund (LuckService). */
     public final net.infnetwork.snowball.craftov.luck.RaidLuck luck = new net.infnetwork.snowball.craftov.luck.RaidLuck();
+    /**
+     * Players the raid was voided for while it went on (moved out of its world: RaidManager.evacuate).
+     * Their gear went home as it went in and their premium was refunded, so nothing of theirs is paid
+     * out by the insurance when the raid closes, wherever it lies.
+     */
+    public final java.util.Set<UUID> voided = new java.util.HashSet<>();
+    /**
+     * Copies of what those players had on them, which left the game with them: someone else's insured
+     * gear among it is paid out to its owner when the raid closes, as if it had stayed in the raid.
+     */
+    public final List<org.bukkit.inventory.ItemStack> voidedCarried = new ArrayList<>();
 
     /** A training raid (TrainingService): one player, nothing at stake, undone whichever way it ends. */
     public boolean training() {

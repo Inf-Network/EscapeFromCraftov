@@ -174,12 +174,12 @@ public final class CraftovCommand implements TabExecutor {
                     Text.send(player, "<muted>你不在小队中。<white>/cv party invite <玩家></white> 邀请队友。");
                     return;
                 }
-                StringBuilder sb = new StringBuilder();
+                List<String> names = new ArrayList<>();
                 for (var uuid : party.members) {
-                    Player p = Bukkit.getPlayer(uuid);
-                    sb.append(uuid.equals(party.leader) ? "★" : "").append(p == null ? "?" : p.getName()).append("  ");
+                    names.add((uuid.equals(party.leader) ? "★" : "") + Text.escape(party.name(uuid))
+                            + (Bukkit.getPlayer(uuid) == null ? " <muted>(离线)</muted>" : ""));
                 }
-                Text.send(player, "<muted>小队 (" + party.size() + "/3)：<white>" + Text.escape(sb.toString().trim()));
+                Text.send(player, "<muted>小队 (" + party.size() + "/3)：<white>" + String.join("  ", names));
             }
         }
     }
@@ -267,7 +267,7 @@ public final class CraftovCommand implements TabExecutor {
                 if (optic != null && optic.optic() != null && def.gun().accepts(optic.optic())) {
                     stack = plugin.items().withOptic(stack, optic.id()); // /cv give <玩家> <枪> 1 <瞄准镜>
                 }
-                plugin.carry().give(target, stack, true);
+                plugin.carry().giveOrWear(target, stack, true, false);
                 // The stack is capped at the item's stack size: say what was handed out.
                 Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + stack.getAmount());
             }
@@ -450,7 +450,8 @@ public final class CraftovCommand implements TabExecutor {
                 }
             }
             case "lobby" -> {
-                if (sender instanceof Player p) {
+                // From inside a raid it is void for them, before the lobby puts anything on them.
+                if (sender instanceof Player p && !plugin.raids().evacuate(p)) {
                     plugin.lobby().enterLobby(p);
                 }
             }

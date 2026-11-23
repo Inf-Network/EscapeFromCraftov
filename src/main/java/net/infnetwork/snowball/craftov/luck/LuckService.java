@@ -335,7 +335,7 @@ public final class LuckService {
         Profile.Luck luck = plugin.profiles().get(player).luck;
         decay(luck, System.currentTimeMillis());
         Profile.LuckDeploy deployed = new Profile.LuckDeploy();
-        deployed.raid = raid.id;
+        deployed.raid = raid.key;
         deployed.pity = new java.util.HashMap<>(luck.pity);
         deployed.jackpots = new java.util.HashMap<>(luck.jackpots);
         luck.deployed = deployed;

@@ -41,15 +41,15 @@ bot.once('spawn', async () => {
     // Stash: take the first stash entry (sv9) and deposit it back.
     w = await openWith(() => bot.chat('/cv stash'))
     log('stash', top(w).slice(0, 200))
-    await bot.clickWindow(0, 0, 0); await sleep(400)
+    w = bot.currentWindow || w
+    const first = w.slots.findIndex((s, i) => i >= 9 && i < 45 && s && id(s) === 'sv9')
+    await bot.clickWindow(first >= 0 ? first : 9, 0, 0); await sleep(400) // 0-8 are the tabs (#10)
     log('after take', inv())
     const slot = w.slots.findIndex((s, i) => i >= w.inventoryStart && s && id(s) === 'sv9')
     if (slot >= 0) { await bot.clickWindow(slot, 0, 0); await sleep(400) }
     log('after deposit', inv(), '| stash', top(w).slice(0, 120))
-    // Market: switch to LIST mode and list the first stash item at reference price.
-    await bot.clickWindow(48, 0, 0); await sleep(300)
-    await bot.clickWindow(48, 0, 0); await sleep(300)
-    const priceWin = await openWith(() => bot.clickWindow(0, 0, 0))
+    // Market: a right-click lists the first stash item at reference price (#10: no modes).
+    const priceWin = await openWith(() => bot.clickWindow(9, 1, 0))
     if (priceWin) {
       log('price menu', top(priceWin))
       await bot.clickWindow(21, 0, 0); await sleep(300) // 0.9x reference

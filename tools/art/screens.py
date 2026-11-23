@@ -77,6 +77,95 @@ def title_marker(img, x, y):
     ImageDraw.Draw(img).rectangle([x, y, x + 1, y + 7], fill=rgb(P.ACCENT))
 
 
+# ---------------------------------------------------------------- carry zones (#10)
+
+ZONES = {'rig': P.ZONE_RIG, 'pack': P.ZONE_PACK}
+SILHOUETTE = rgb('#252B33')     # empty-slot hints drawn into the wells
+
+
+def zone_well(img, x, y, zone):
+    """A carry cell: a well tinted in its zone's hue with a hairline of it along the top, so the rig
+    row and the backpack rows read as two areas even when empty."""
+    c = rgb(ZONES[zone])
+    well(img, x, y, fill=mix(rgb(P.BG), c, 0.16))
+    ImageDraw.Draw(img).line([x + 1, y + 1, x + 16, y + 1], fill=mix(rgb(P.BG), c, 0.45))
+
+
+# 3x5 digits for the key caps under the hotbar.
+DIGITS = {
+    '1': ['010', '110', '010', '010', '111'], '2': ['110', '001', '010', '100', '111'],
+    '3': ['110', '001', '010', '001', '110'], '4': ['101', '101', '111', '001', '001'],
+    '5': ['111', '100', '110', '001', '110'], '6': ['011', '100', '110', '101', '010'],
+    '7': ['111', '001', '010', '010', '010'], '8': ['010', '101', '010', '101', '010'],
+    '9': ['010', '101', '011', '001', '110'],
+}
+
+
+def digit(img, x, y, ch, color):
+    for r, row in enumerate(DIGITS[ch]):
+        for c, bit in enumerate(row):
+            if bit == '1':
+                img.putpixel((x + c, y + r), color)
+
+
+def hint(img, x, y, kind):
+    """A faint 16x16 picture inside an empty hotbar well, saying what the key is for: guns on 1-2,
+    the knife on 3, ammo, meds, grenades and keys on 4-8, the terminal on 9 (CarryService rules)."""
+    t = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+    d = ImageDraw.Draw(t)
+    c = SILHOUETTE
+    if kind == 'gun':
+        d.polygon([(1, 8), (4, 6), (4, 9), (2, 10)], fill=c)
+        d.rectangle([4, 5, 11, 7], fill=c)
+        d.rectangle([11, 6, 15, 6], fill=c)
+        d.polygon([(6, 8), (8, 8), (8, 12), (6, 12)], fill=c)
+        d.rectangle([9, 8, 9, 9], fill=c)
+    elif kind == 'knife':
+        d.polygon([(3, 13), (11, 4), (13, 3), (12, 6), (5, 14)], fill=c)
+        d.rectangle([2, 12, 4, 14], fill=c)
+    elif kind == 'util':                    # a round and a cross
+        d.rectangle([3, 6, 5, 13], fill=c)
+        d.ellipse([3, 3, 5, 7], fill=c)
+        d.rectangle([10, 5, 11, 12], fill=c)
+        d.rectangle([7, 8, 14, 9], fill=c)
+    else:                                   # terminal
+        d.rectangle([4, 2, 11, 13], fill=c)
+        d.rectangle([5, 3, 10, 9], fill=mix(c, rgb(P.BG), 0.5))
+    img.alpha_composite(t, (x + 1, y + 1))
+
+
+HOTBAR_HINTS = ['gun', 'gun', 'knife', 'util', 'util', 'util', 'util', 'util', 'terminal']
+
+
+def carry_rows(img, top, hotbar_y, keycaps_y):
+    """The rig row, the two backpack rows and the hotbar of the player's own inventory, as laid out in
+    both the inventory screen and the lower half of every chest window: zone-tinted wells, a tag in the
+    zone's colour in the left margin, hints in the empty hotbar wells and the key caps under them."""
+    d = ImageDraw.Draw(img)
+    for c in range(9):
+        zone_well(img, 7 + c * 18, top, 'rig')
+        zone_well(img, 7 + c * 18, top + 18, 'pack')
+        zone_well(img, 7 + c * 18, top + 36, 'pack')
+        well(img, 7 + c * 18, hotbar_y)
+        hint(img, 7 + c * 18, hotbar_y, HOTBAR_HINTS[c])
+        digit(img, 7 + c * 18 + 8, keycaps_y, str(c + 1), rgb(P.DIM) if c not in (2, 8) else mix(rgb(P.DIM), rgb(P.BG), 0.4))
+    d.rectangle([3, top + 1, 4, top + 16], fill=rgb(P.ZONE_RIG))
+    d.rectangle([3, top + 19, 4, top + 52], fill=rgb(P.ZONE_PACK))
+    d.rectangle([3, hotbar_y + 1, 4, hotbar_y + 16], fill=rgb(P.ACCENT))
+
+
+def legend(img, x, y, vertical=False):
+    """Swatches naming the two carry zones, side by side or one under the other."""
+    d = ImageDraw.Draw(img)
+    for zone, text in (('rig', '胸挂'), ('pack', '背包')):
+        d.rectangle([x, y + 2, x + 4, y + 7], fill=rgb(ZONES[zone]))
+        label(img, x + 7, y - 1, text)
+        if vertical:
+            y += 11
+        else:
+            x += 7 + pixelfont.width(text) + 6
+
+
 # ---------------------------------------------------------------- vanilla container textures
 
 def generic_54():
@@ -95,18 +184,22 @@ def generic_54():
     d = ImageDraw.Draw(low)
     d.line([1, 0, W - 2, 0], fill=rgb(P.LINE))
     label(low, 8, 1, '随身物品')
-    for r in range(3):
-        for c in range(9):
-            well(low, 7 + c * 18, 13 + r * 18)
-    for c in range(9):
-        well(low, 7 + c * 18, 71)
+    legend(low, 100, 2)
+    carry_rows(low, 13, 71, 90)
     img.paste(low, (0, 126))
     return img
 
 
+INFO_CELLS = {0: (153, 27), 1: (97, 17), 2: (115, 17), 3: (97, 35), 4: (115, 35)}
+"""Inventory-screen raw slot -> well: the crafting result and the 2x2 grid hold the info cells (#10,
+gui/CarryInfo.java): protection, load, value, secure container, tidy."""
+
+
 def inventory():
-    """The player's inventory screen (E): armour column, model, offhand, the 2x2 crafting grid
-    (unused in Craftov, so hatched), rig row, backpack rows and hotbar."""
+    """The player's inventory screen (E): armour column (helmet, body armour, rig, backpack), model,
+    the five info cells where the crafting grid was, the rig row, the backpack rows and the hotbar.
+    The offhand is never used, so its well is left out; the recipe-book button is drawn invisible
+    (build.py) and nothing here sits under it (x 104..123, y 61..78)."""
     img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
     window(img, 0, 0, W - 1, 165)
     d = ImageDraw.Draw(img)
@@ -115,21 +208,14 @@ def inventory():
     # Player model: a darker recess.
     d.rectangle([25, 7, 76, 78], fill=WELL_DARK)
     d.rectangle([26, 8, 75, 77], fill=rgb('#0F1318'))
-    well(img, 76, 61)                       # offhand
-    for c in range(2):                      # 2x2 crafting, then the result slot
-        for r in range(2):
-            hatched_well(img, 97 + c * 18, 17 + r * 18)
-    hatched_well(img, 153, 27)
-    label(img, 97, 4, '合成不可用', P.DIM)  # above the grid: the recipe-book button sits below it
-    # Rig row, backpack rows, hotbar; a 2 px tag in the left margin tells them apart.
-    for r in range(3):
-        for c in range(9):
-            well(img, 7 + c * 18, 83 + r * 18)
-    for c in range(9):
-        well(img, 7 + c * 18, 141)
-    d.rectangle([3, 84, 4, 99], fill=rgb(P.MUTED))      # rig
-    d.rectangle([3, 102, 4, 135], fill=rgb(P.DIM))      # backpack
-    d.rectangle([3, 142, 4, 157], fill=rgb(P.ACCENT))   # hotbar
+    # The info cells on a raised plate under a label; the result cell sits apart like vanilla's.
+    d.rectangle([94, 14, 135, 54], fill=rgb(P.RAISED), outline=rgb(P.LINE))
+    d.rectangle([150, 24, 173, 47], fill=rgb(P.RAISED), outline=rgb(P.LINE))
+    label(img, 95, 2, '随身概况')
+    for x, y in INFO_CELLS.values():
+        well(img, x, y)
+    legend(img, 140, 57, vertical=True)
+    carry_rows(img, 83, 141, 159)
     return img
 
 
@@ -308,12 +394,29 @@ def deploy_screen(queued=False):
     return s.done()
 
 
-def stash_screen():
-    """Stash: five rows of stored items and the control bar."""
-    s = Screen(6)
-    s.wells(slots(0, 0, 4, 8))
-    s.toolbar(5).wells(slots(5, 0, 5, 8))
-    return s.done()
+def stash_screen(tab):
+    """Stash (#10): nine category tabs along the top with the chosen one lit (one screen per tab, so
+    the tab shows even under the pointer), four rows of stored items, and the control bar (pages,
+    sort, multi-select, sell, capacity, mail, secure container, more room)."""
+    def make():
+        s = Screen(6)
+        s.toolbar(0)
+        for i in slots(0, 0, 0, 8):
+            x, y = slot_xy(i)
+            on = i == tab
+            s.d.rectangle([x, y, x + 17, y + 17], fill=WELL_DARK)
+            s.d.rectangle([x + 1, y + 1, x + 16, y + 17], fill=mix(rgb(P.RAISED), rgb(P.ACCENT), 0.14) if on else rgb(P.PANEL))
+            s.d.line([x + 1, y + 1, x + 16, y + 1], fill=rgb(P.LINE))
+            if on:
+                # The tab's icon covers the inner 16x16: the frame round it shows.
+                s.d.rectangle([x, y, x + 17, y + 17], outline=rgb(P.ACCENT))
+        s.wells(slots(1, 0, 4, 8))
+        s.toolbar(5).wells(slots(5, 0, 5, 8))
+        return s.done()
+    return make
+
+
+STASH_TABS = 9
 
 
 def trader_screen():
@@ -329,12 +432,44 @@ def trader_screen():
     return s.done()
 
 
-def loot_screen(rows):
+LOOT_SIZES = (9, 18, 27, 36)
+"""Container sizes the loot screen has art for; a larger one (a body) shows 35 cells a page."""
+SECURE_CELLS = (7, 8, 16, 17, 25, 26, 34, 35, 43)
+SECURE = '#9C8CF0'
+
+
+def loot_screen(size):
+    """The search screen (#10): the container on the left in six columns (`size` cells, the rest of the
+    6x6 block blank), "我的装备" on the right: helmet, body armour, rig and backpack, take-all and tidy,
+    the secure container (up to nine cells) and the load and value cells. Raw slots as in LootMenu."""
     def make():
-        s = Screen(rows)
-        s.wells(slots(0, 0, rows - 1, 8))
-        # A hazard-striped lip along the top edge marks a container; the title keeps its band clear.
-        s.hazard(3, 2, W - 4, 3)
+        s = Screen(6)
+        # A hazard-striped lip over the container half marks it; the title keeps its band clear.
+        s.hazard(3, 2, 6 * 18 + 6, 3)
+        s.wells([(k // 6) * 9 + k % 6 for k in range(size)])
+        if size < 36:
+            last = size - 1
+            x0, y0 = slot_xy((last // 6) * 9 + last % 6)
+            label(s.img, 9, y0 + 20, '容量 %d 格' % size, P.DIM)
+        # Gear column and secure container, set off from the container by a divider.
+        x = 7 + 6 * 18
+        s.d.line([x + 1, 4, x + 1, 6 * 18 + 16], fill=rgb(P.LINE))
+        label(s.img, x + 5, 4, '我的装备', P.MUTED)
+        for i, kind in zip((6, 15, 24, 33), ('helmet', 'chestplate', 'leggings', 'boots')):
+            cx, cy = slot_xy(i)
+            if kind == 'leggings':
+                zone_well(s.img, cx, cy, 'rig')
+            elif kind == 'boots':
+                zone_well(s.img, cx, cy, 'pack')
+            else:
+                well(s.img, cx, cy)
+            s.img.alpha_composite(silhouette(kind), (cx + 1, cy + 1))
+        s.wells([42, 51])
+        x0, y0 = slot_xy(7)
+        x1, y1 = slot_xy(43)
+        s.d.rectangle([x0 - 2, y0 - 2, x0 + 2 * 18 + 1, y1 + 18 + 1], outline=mix(rgb(SECURE), rgb(P.PANEL), 0.45))
+        s.wells(SECURE_CELLS)
+        s.wells([44, 52, 53])
         return s.done()
     return make
 
@@ -481,9 +616,9 @@ SCREENS = {
     'main': main_screen,
     'deploy': deploy_screen,
     'deploy_queued': lambda: deploy_screen(True),
-    'stash': stash_screen,
+    **{'stash_%d' % t: stash_screen(t) for t in range(STASH_TABS)},
     'trader': trader_screen,
-    **{'loot_%d' % r: loot_screen(r) for r in range(1, 7)},
+    **{'loot_%d' % n: loot_screen(n) for n in LOOT_SIZES},
     'health': health_screen,
     'gunsmith': gunsmith_screen,
     'settlement_ok': settlement_screen(True),

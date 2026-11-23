@@ -121,6 +121,13 @@ async function claimMailbox (bot) {
 }
 
 const carried = bot => bot.inventory.slots.slice(5, 45).filter(s => s && !String(cid(s)).startsWith('ui/'))
+/** A click outside the inventory with a stale state id: the server sends the whole inventory again. */
+async function resync (bot) {
+  bot._client.write('window_click', { windowId: 0, stateId: -1, slot: -999, mouseButton: 0, mode: 0, changedSlots: [], cursorItem: undefined })
+  await sleep(800)
+}
+/** The box's own cells of a search screen (its 6x6 block, #10), the page button left out. */
+const boxCells = w => w.slots.slice(0, w.inventoryStart).filter((s, i) => i % 9 < 6 && s && !String(cid(s)).startsWith('ui/arrow'))
 const carriedIds = bot => carried(bot).map(s => cid(s) + 'x' + s.count).join(' ')
 const top = w => w.slots.slice(0, w.inventoryStart)
 
@@ -239,9 +246,16 @@ async function raid () {
   let w = await openBody(looter, at)
   check('body of the full loadout opened', !!w)
   if (w) {
-    const items = top(w).filter(Boolean).length
-    check('body has 5 rows and all 38 items', w.inventoryStart === 45 && items === 38, { rows: w.inventoryStart / 9, items })
-    looter.closeWindow(w)
+    // The search screen shows 35 of a big body's cells a page, the last cell turning the page (#10).
+    let items = boxCells(w).length
+    const first = items
+    if (w.slots[50]) {
+      await looter.clickWindow(50, 0, 0)
+      await sleep(800)
+      items += boxCells(looter.currentWindow || w).length
+    }
+    check('body holds all 38 items over its two pages', items === 38, { first, items })
+    looter.closeWindow(looter.currentWindow || w)
   }
 
   // A backpack picked up onto the cursor goes into the body with its contents.
@@ -254,9 +268,9 @@ async function raid () {
   w = await openBody(looter, at)
   check('body of the cursor player opened', !!w)
   if (w) {
-    await waitFor(() => top(w).some(s => cid(s) === 'pack_3'), 10000)
-    const pack = top(w).find(s => cid(s) === 'pack_3')
-    check('body holds the backpack from the cursor with its 3 items', !!pack && text(pack).includes('内含 3'), top(w).filter(Boolean).map(cid))
+    await waitFor(() => boxCells(w).some(s => cid(s) === 'pack_3'), 10000)
+    const pack = boxCells(w).find(s => cid(s) === 'pack_3')
+    check('body holds the backpack from the cursor with its 3 items', !!pack && text(pack).includes('内含 3'), boxCells(w).map(cid))
     looter.closeWindow(w)
   }
 
@@ -268,12 +282,17 @@ async function raid () {
   log('looter cursor', cid(looter.inventory.selectedItem))
   check('extracted', await waitFor(() => looter.worldChanges > before, 20000))
   await sleep(2000)
-  check('gold bar back in the inventory after extracting', carried(looter).some(s => cid(s) === 'gold_bar'), carriedIds(looter))
+  // A gold bar fits neither a gun key nor a quick key (#10), and the looter wears no rig or backpack:
+  // it comes home in the stash mailbox.
+  await resync(looter)
+  const goldHome = () => carried(looter).some(s => cid(s) === 'gold_bar') || countIds(readProfile(names[2]).mailbox || [], 'gold_bar') === 1
+  check('gold bar comes home (the inventory, or the mailbox when it has no room)', await waitFor(goldHome, 8000), carriedIds(looter))
   const report = looter.chats.find(c => c.includes('带出') || c.includes('撤离成功'))
   log('report line', report || '(none)')
   for (const b of [full38, cursor, looter]) await leave(b)
   const p = readProfile(names[2])
-  check('gold bar saved in the loadout', countIds(Object.values(p.loadout), 'gold_bar') === 1, Object.values(p.loadout).map(r => r.id))
+  check('gold bar saved in the loadout or the mailbox', countIds(Object.values(p.loadout), 'gold_bar') + countIds(p.mailbox || [], 'gold_bar') === 1,
+    { loadout: Object.values(p.loadout).map(r => r.id), mailbox: (p.mailbox || []).map(r => r.id) })
 }
 
 async function cursorpack () {
@@ -529,7 +548,11 @@ async function preset () {
   const p = readProfile(name)
   const all = Object.values(p.loadout).concat(p.stash)
   check('ten medkits still there', countIds(all, 'medkit_s') === 10, { stash: p.stash.map(r => r.id), loadout: Object.values(p.loadout).map(r => r.id) })
-  check('screws and bandage carried', countIds(Object.values(p.loadout), 'screws') === 1 && countIds(Object.values(p.loadout), 'bandage') === 1)
+  // The preset has them on keys 1 and 2, which take guns only (#10): the bandage goes to a quick key,
+  // and the screws, with no rig or backpack to carry them, back to the stash.
+  const slotsOf = id => Object.entries(p.loadout).filter(([, r]) => r.id === id).map(([slot]) => Number(slot))
+  check('the bandage carried on a quick key', slotsOf('bandage').length === 1 && slotsOf('bandage')[0] >= 3 && slotsOf('bandage')[0] <= 7, p.loadout)
+  check('the screws kept in the stash, not on a gun key', slotsOf('screws').length === 0 && countIds(p.stash, 'screws') === 1, slotsOf('screws'))
   check('only the bandage was paid for', p.money === 5000 - 920, p.money)
 }
 
@@ -551,8 +574,9 @@ async function season () {
   bot.closeWindow(pass)
   await openWindow(bot, () => bot.chat('/cv stash'))
   const stash = await claimMailbox(bot)
-  for (let i = 0; i < 5; i++) { await bot.clickWindow(0, 0, 0); await sleep(500) }
-  if (stash) bot.closeWindow(stash)
+  for (let i = 0; i < 5; i++) { await bot.clickWindow(9, 0, 0); await sleep(500) } // the first stash cell (0-8 are the tabs)
+  if (bot.currentWindow || stash) bot.closeWindow(bot.currentWindow || stash)
+  await resync(bot) // the stash retitles itself on every take, and mineflayer then stops mirroring the inventory
   const cases = carried(bot).filter(s => cid(s) === 'medkit_l').length
   check('four military med cases taken (2 from the pass, 2 from the old record)', cases === 4, carriedIds(bot))
   await leave(bot)

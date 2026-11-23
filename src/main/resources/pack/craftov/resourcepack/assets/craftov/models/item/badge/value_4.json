@@ -1,0 +1,20 @@
+{
+ "parent": "minecraft:item/generated",
+ "textures": {
+  "layer0": "craftov:item/badge/value_4"
+ },
+ "display": {
+  "gui": {
+   "scale": [
+    1.125,
+    1.125,
+    1.125
+   ],
+   "translation": [
+    0,
+    0,
+    2
+   ]
+  }
+ }
+}

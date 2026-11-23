@@ -343,12 +343,11 @@ public final class WeaponService implements Listener {
             return 1.0;
         }
         GunState state = state(player);
-        int zoom = state == null ? 1 : state.gun.zoom();
-        return switch (zoom) {
-            case 0 -> 0.85;
-            case 1 -> 0.7;
-            case 2 -> 0.5;
-            default -> 0.3;
+        return switch (state == null ? "rifle" : state.gun.adsClass()) {
+            case "pistol", "shotgun" -> 0.85;
+            case "dmr" -> 0.5;
+            case "bolt" -> 0.3;
+            default -> 0.7;
         };
     }
 
@@ -1386,15 +1385,25 @@ public final class WeaponService implements Listener {
         }
     }
 
-    /** Zoom level at which ADS looks through a scope (overlay + strong magnification) instead of iron sights. */
-    public static final int SCOPE_ZOOM = 2;
-
-    /** Field-of-view multiplier while aiming: the optic's magnification, or a slight zoom on iron sights. */
-    private static double fovFor(GunState state) {
+    /**
+     * True power of the sights while aiming: the optic's, or the iron sights' by the gun's ads-class
+     * (weapons.ads.iron: a slight zoom, a little less on handguns and the shotgun).
+     */
+    public double magnification(GunState state) {
         if (state.optic != null) {
-            return state.optic.fov();
+            return state.optic.magnification();
         }
-        return state.gun.zoom() <= 0 ? 0.86 : 0.8;
+        var iron = plugin.getConfig();
+        return switch (state.gun.adsClass()) {
+            case "pistol" -> iron.getDouble("weapons.ads.iron.pistol", 1.1);
+            case "shotgun" -> iron.getDouble("weapons.ads.iron.shotgun", 1.1);
+            default -> iron.getDouble("weapons.ads.iron.default", 1.25);
+        };
+    }
+
+    /** Field-of-view multiplier while aiming, at the default 70 degree field of view. */
+    private double fovFor(GunState state) {
+        return OpticSpec.fovMultiplier(magnification(state), 70);
     }
 
     private void applyZoom(Player player, GunState state) {

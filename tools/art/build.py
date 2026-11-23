@@ -150,8 +150,8 @@ def build_items(item_defs):
                            models.frame_model(parent, right))
                 frames.setdefault(k, []).append(name)
             write_json(os.path.join(CV, 'models', 'item', 'gun_ai', item_id + '.json'), models.gun_ai_model(item_id))
-            zoom = (spec.get('gun') or {}).get('zoom', 0)
-            write_json(os.path.join(CV, 'models', 'item', 'gun_ads', item_id + '.json'), models.gun_ads_model(item_id, zoom))
+            scoped = bool((spec.get('gun') or {}).get('scope'))
+            write_json(os.path.join(CV, 'models', 'item', 'gun_ads', item_id + '.json'), models.gun_ads_model(item_id, scoped))
             write_json(os.path.join(CV, 'items', 'ai_' + item_id + '.json'), {'model': model_ref('craftov:item/gun_ai/' + item_id)})
             held = 'craftov:item/gun/' + item_id
         elif item_id in models.OPTICS:
@@ -236,7 +236,7 @@ def build_items(item_defs):
                         'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree}],
                         'fallback': normal}
             in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
-                               models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display'],
+                               models.gun_model(item_id)['display'], models.gun_ads_model(item_id, scoped)['display'],
                                [frames[k] for k in range(len(frames))])
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.

@@ -463,12 +463,12 @@ def pose_model(parent, base_display, pose):
         'firstperson_lefthand': posed(base_display['firstperson_lefthand'], left=True, **pose)}}
 
 
-def gun_ads_model(gid, zoom=0):
+def gun_ads_model(gid, scoped=False):
     """Aim-down-sights pose, selected client-side while the use key (right mouse) is held.
 
-    Scoped guns (zoom 2+) look through the scope overlay instead, so the gun itself is hidden.
+    Guns with a built-in scope (items.yml scope) look through the scope overlay instead, so the gun itself is hidden.
     """
-    if zoom >= 2:
+    if scoped:
         hidden = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
         return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': hidden, 'firstperson_lefthand': hidden}}
     fp_r, fp_l = first_person(gid, gun_elements(gid), True)

@@ -268,6 +268,13 @@ weapons:
     pump: 14
     lmg: 18
     bolt: 18
+  ads:
+    # True power of iron sights while aiming, by the gun's ads-class in items.yml (pistol, smg, rifle,
+    # shotgun, dmr, lmg, bolt; optics carry their own magnification in items.yml).
+    iron:
+      pistol: 1.1
+      shotgun: 1.1
+      default: 1.25
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.

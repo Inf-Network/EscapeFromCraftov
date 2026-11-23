@@ -58,8 +58,9 @@ public final class ItemFactory {
      * 12: the gun-feel line (#8, which used 10) on top: max_damage 2 for the reload mark, and no "dry"
      * model string (the flash follows the shots the server fires, see {@link #setHandMark}), and gun
      * lore with stat bars (GunStats) in place of the damage and rate line.
+     * 13: optic lore gives the true power (the red dot reads 1.5x, the old 0.74 field of view).
      */
-    public static final int VERSION = 12;
+    public static final int VERSION = 13;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -709,9 +710,9 @@ public final class ItemFactory {
             ItemDef optic = registry.get(opticId(stack));
             ItemDef builtIn = registry.get(gun.scope());
             if (optic != null) {
-                lore.add(Text.mm("<#8A8F98>瞄准镜 " + optic.coloredName() + " <#8A8F98>(" + optic.optic().magnification() + " 倍)"));
+                lore.add(Text.mm("<#8A8F98>瞄准镜 " + optic.coloredName() + " <#8A8F98>(" + optic.optic().magnificationLabel() + " 倍)"));
             } else if (builtIn != null) {
-                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>自带 " + builtIn.optic().magnification() + " 倍"));
+                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>自带 " + builtIn.optic().magnificationLabel() + " 倍"));
             } else if (!"none".equals(gun.mount())) {
                 lore.add(Text.mm("<#8A8F98>瞄准镜 <white>机械瞄具 <#6B7079>(可在改枪台安装瞄准镜)"));
             }
@@ -746,7 +747,7 @@ public final class ItemFactory {
             }
         }
         if (def.optic() != null) {
-            lore.add(Text.mm("<#8A8F98>放大倍率 <white>" + def.optic().magnification() + " 倍  <#8A8F98>适用 <white>"
+            lore.add(Text.mm("<#8A8F98>放大倍率 <white>" + def.optic().magnificationLabel() + " 倍  <#8A8F98>适用 <white>"
                     + (def.optic().mounts().contains("pistol") ? "步枪 / 冲锋枪 / 霰弹枪 / 手枪" : "步枪 / 冲锋枪 / 霰弹枪")));
         }
         if (def.ammo() != null) {

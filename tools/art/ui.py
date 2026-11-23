@@ -273,8 +273,11 @@ UI['tab_attachment'] = attachment_tab
 
 # Scope reticles are drawn for the default 70 degree field of view at each scope's power (OpticSpec):
 # the overlay is stretched over the whole window, so a 16:9 window shows the marks at their true
-# angles (a 16:10 one about a tenth narrower across). The scope's round mask is an item model drawn
-# with the hand (models.scope_mask_model), which stays round at any window shape.
+# angles (a 16:10 one about a tenth narrower across). Only at 70 degrees: at another declared field
+# of view (/cv fov) the scope keeps its power relative to that view, so the scoped view is wider or
+# narrower than these marks assume (at 90 every angle is about 1.4 times what the marks read). The
+# scope's round mask is an item model drawn with the hand (models.scope_mask_model), which stays
+# round at any window shape.
 SCOPE_POWER = {'3x': 3, '4x': 4, '8x': 8}
 SCOPE_HOLE = {'3x': 0.47, '4x': 0.45, '8x': 0.43}   # mask radius, a share of the screen height (models.MASK_HOLE)
 
@@ -342,8 +345,9 @@ def scope_overlay(style='4x', w=1920, h=1080):
 # The range's calibration target (RangeService): CALIBRATION_SIZE blocks square, set CALIBRATION_DISTANCE
 # blocks down the range at eye height. Its ring is 40 mil across the radius, where the 4x reticle's thin
 # centre ends and its posts begin (scope_overlay): with the zoom right (4x at a 70 degree field of view
-# and FOV Effects at 100%, or as declared with /cv fov), the posts just touch the ring. Ticks every 5 mil
-# match the 3x hash marks and the 8x mil-dots.
+# and FOV Effects at 100%), the posts just touch the ring. At another field of view the reticle's marks
+# no longer hold (see scope_overlay), and neither does this. Ticks every 5 mil match the 3x hash marks
+# and the 8x mil-dots.
 CALIBRATION_SIZE = 5.0
 CALIBRATION_DISTANCE = 50.0
 

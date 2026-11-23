@@ -8,9 +8,9 @@
 //          the server ticks in the log, not by when the clicks were sent.
 //   pump   R12 (70 rpm: 17 ticks, 14 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
 //   draw   M4C to P18 (6 ticks to draw): clicks in the first 200 ms after the switch fire nothing
-//          before the tick the gun is up, one at 500 ms fires, and the action bar says the gun is
-//          being drawn; the pistol waits in the hotbar with the holster mark (damage 5, the draw's
-//          first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
+//          before the tick the gun is up, one at 500 ms fires, the action bar says the gun is being
+//          drawn and the draw is heard (gun.foley.pistol.draw); the pistol waits in the hotbar
+//          with the holster mark (damage 5, the draw's first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
 //          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
 //          the draw (6 ticks; 12 for the M4C), ahead of the draw mark (the holster frame reads no
 //          cooldown, the draw's rest pose would show between the two); a gun switched away from mid-draw is holstered
@@ -69,9 +69,15 @@ bot.once('login', () => {
     bot.entity.pitch = conv.fromNotchianPitch(pitch)
   })
 })
-/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads). */
+/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads), and draw sounds. */
 const adsHeard = []
-const onSound = p => { if (/gun\.ads\b/.test(JSON.stringify(p.sound || p.soundId || ''))) adsHeard.push(Date.now()) }
+const drawHeard = []
+const onSound = p => {
+  const name = JSON.stringify(p.sound || p.soundId || '')
+  if (/gun\.ads\b/.test(name)) adsHeard.push(Date.now())
+  const draw = name.match(/gun\.foley\.([a-z_]+)\.draw/)
+  if (draw) drawHeard.push({ at: Date.now(), family: draw[1] })
+}
 bot._client.on('entity_sound_effect', onSound)
 bot._client.on('sound_effect', onSound)
 /** Action bar lines and craftov:reload cooldowns the bot was sent: { at, text } and { at, ticks }. */
@@ -265,6 +271,9 @@ async function draw (spot) {
   check('draw: a click at 500 ms fires', late.length === 1, `${late.length} shots`)
   check('draw: a click while drawing says so', bars.slice(barsFrom).some(b => b.at - swapped < 400 && b.text.includes('拔枪中')),
     `${bars.length - barsFrom} action bar lines`)
+  const drawn = drawHeard.filter(h => h.at >= swapped - 50)
+  check('draw: the pistol coming up is heard (gun.foley.pistol.draw), once', drawn.length === 1 && drawn[0].family === 'pistol' &&
+    drawn[0].at - swapped < 250, drawn.map(h => `${h.family} at ${h.at - swapped} ms`).join(', ') || 'none')
   // The mark goes on with the switch and comes off when the gun is up (6 ticks), by the slot updates.
   const marks = slotUpdates.slice(slotsFrom).filter(u => u.slot === pistolSlot)
   const on = marks.find(u => u.damage === 1)

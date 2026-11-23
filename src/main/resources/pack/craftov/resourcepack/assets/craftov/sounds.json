@@ -1303,6 +1303,14 @@
    }
   ]
  },
+ "gun.foley.ar.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.ak.magout": {
   "sounds": [
    {
@@ -1331,6 +1339,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/ak_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -1367,6 +1383,14 @@
    }
   ]
  },
+ "gun.foley.dmr.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.lmg.magout": {
   "sounds": [
    {
@@ -1395,6 +1419,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/lmg_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -1431,6 +1463,14 @@
    }
   ]
  },
+ "gun.foley.smg.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pdw.magout": {
   "sounds": [
    {
@@ -1459,6 +1499,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/pdw_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -1495,6 +1543,14 @@
    }
   ]
  },
+ "gun.foley.pistol.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pistol_heavy.magout": {
   "sounds": [
    {
@@ -1527,6 +1583,14 @@
    }
   ]
  },
+ "gun.foley.pistol_heavy.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pump.pump": {
   "sounds": [
    {
@@ -1547,6 +1611,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/pump_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pump.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pump_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -1587,6 +1659,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/bolt_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_draw_0",
     "attenuation_distance": 12
    }
   ]

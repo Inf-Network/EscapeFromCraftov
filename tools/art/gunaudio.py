@@ -5,7 +5,8 @@ from a few primitives (filtered noise, envelopes, struck-metal modes):
   bullet     the supersonic crack (an N-wave) or subsonic whiz of a round passing close by
   impact     a round hitting concrete, metal, wood, glass, soil, flesh, a plate or a helmet
   casing     brass or a shotgun hull landing on hard or soft ground
-  foley      magazines, charging handles, pumps and bolts for each action family, and the dry click
+  foley      magazines, charging handles, pumps and bolts for each action family, the dry click, and the
+             gun coming up into the hands after a switch
   tinnitus   the ringing after a flashbang
 """
 import zlib
@@ -276,6 +277,11 @@ def foley(family, part, v=0):
         place(out, friction(rng, .1, 1400, 4500), 0, .45)
         place(out, modal(rng, [(1600, .016, 1), (2700, .01, .6), (720, .03, .5)], .1), .1, .65)
         place(out, modal(rng, [(2200, .01, 1), (3500, .006, .5)], .05), .17, .5)
+    elif part == 'draw':
+        # The gun coming off the sling into the hands: cloth, the sling's buckle, and the gun settling.
+        place(out, friction(rng, .16, 500 * k, 2400 * k), 0, .4)
+        place(out, friction(rng, .07, 1600, 5200), .09, .22)
+        place(out, modal(rng, [(1900 * k, .012, 1), (3100 * k, .008, .6), (820 * k, .02, .5)], .08), .19, .45)
     elif part == 'dry':
         place(out, modal(rng, [(2840 * k, .004, 1), (4130 * k, .004, .7), (6320, .003, .5), (1210 * k, .008, .4)], .05), 0, .7)
         place(out, tick(rng, .006, 2000), 0, .6)
@@ -316,9 +322,9 @@ def catalogue():
     for kind in ('brass', 'brass_soft', 'shell'):
         out.append(('casing.%s' % kind, files('casing/' + kind, [lambda v=v: casing(kind, v) for v in range(3)], 32000), 12))
     for family in ('ar', 'ak', 'dmr', 'lmg', 'smg', 'pdw', 'pistol', 'pistol_heavy'):
-        for part in ('magout', 'magin', 'charge', 'dry'):
+        for part in ('magout', 'magin', 'charge', 'dry', 'draw'):
             out.append(('gun.foley.%s.%s' % (family, part), files('gun/foley/%s_%s' % (family, part), [lambda: foley(family, part)], 32000), 12))
-    for family, parts in (('pump', ('pump', 'shell', 'dry')), ('bolt', ('bolt_open', 'bolt_close', 'magout', 'magin', 'dry'))):
+    for family, parts in (('pump', ('pump', 'shell', 'dry', 'draw')), ('bolt', ('bolt_open', 'bolt_close', 'magout', 'magin', 'dry', 'draw'))):
         for part in parts:
             out.append(('gun.foley.%s.%s' % (family, part), files('gun/foley/%s_%s' % (family, part), [lambda: foley(family, part)], 32000), 12))
     out.append(('status.tinnitus', [('status/tinnitus', tinnitus(), SR)], 16))

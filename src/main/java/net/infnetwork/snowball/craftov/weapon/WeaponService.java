@@ -518,6 +518,8 @@ public final class WeaponService implements Listener {
             player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.readyAt - now));
             ItemFactory.setHandMark(held, ItemFactory.MARK_DRAW);
             Nms.syncInventory(player);
+            // Heard by the holder and everyone close by: the gun coming off the sling into the hands.
+            audio.foley(player, state.gun, "draw", 0.55f);
         } else {
             ItemFactory.setHandMark(held, ItemFactory.MARK_NONE);
         }

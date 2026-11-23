@@ -234,7 +234,10 @@ def build_gun(item_id, spec, item_defs):
     # carry while the trigger is down, so a spray kicks and flashes from one pose instead of dropping
     # back to the carry between rounds.
     sprint = key('key.attack', hip_idle, hp['sprint'])
-    hip_rest = key('key.forward', key('key.sprint', sprint, hip_idle), hip_idle)
+    # The carry only on a real sprint: forward and sprint held, and neither crouch (which stops a sprint)
+    # nor back (forward and back cancel out, and nobody runs).
+    running = key('key.sneak', hip_idle, key('key.back', hip_idle, sprint))
+    hip_rest = key('key.forward', key('key.sprint', running, hip_idle), hip_idle)
     hip_tree = kicked('hip', item_id, held, hip_display, hip_rest)
 
     # Aimed, per sight: iron sights and 1x sights show the gun aimed (and kick), a scope its mask.

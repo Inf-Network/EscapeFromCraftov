@@ -191,7 +191,7 @@ def _hazard():
 
 
 def _obsidian():
-    glass, sheen, glints = rgb('#241F2C'), rgb('#5A4C72'), specks(41, 0.06)
+    glass, sheen, glints = rgb('#2A2433'), rgb('#6E5E8C'), specks(41, 0.06)
 
     def blade(p):
         if glints[p.y, p.x]:

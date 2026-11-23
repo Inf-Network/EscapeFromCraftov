@@ -126,7 +126,7 @@ HUD（需要 BetterHud）的文字全部用 10 像素点阵字体按整数倍绘
 管理（`craftov.admin`，默认 OP；服务器是离线模式时 OP 只能从局域网登录，见「配置文件」末尾）：
 
 - `/cv give <玩家> <物品ID> [数量]`、`/cv money <玩家> <数量>`
-- `/cv raids`、`/cv end [对局ID]`（立刻结束）、`/cv tp <对局ID>`（旁观）
+- `/cv raids`（进行中的对局；最后一行是正在复制地图的局数、击杀归属用的击中记录条数和在线人数，击中记录 30 秒后作废、每 30 秒清理一次，空闲时不应多于在线人数）、`/cv end [对局ID]`（立刻结束）、`/cv tp <对局ID>`（旁观）
 - `/cv injure <玩家> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [造成伤口的玩家]`（测试伤势；写了造成伤口的玩家时，这处出血算他打的，会顺延他的击杀归属）
 - `/cv reload`（重载配置、物品、掉落表、地图）、`/cv lobby`
 - `/cv feed <玩家>`：这名玩家击杀栏里的几条击杀（不论是否已经从屏幕上消失）和当前连杀数

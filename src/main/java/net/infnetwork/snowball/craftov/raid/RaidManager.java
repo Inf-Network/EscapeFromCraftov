@@ -953,7 +953,7 @@ public final class RaidManager implements Listener {
         }
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 true, report.outcome, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
-                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, rp.shots, rp.stillShots);
+                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, List.of(), rp.shots, rp.stillShots);
         // Black curtain over the trip home, so the world loading never shows.
         UiFont.blackout(player, 6, 16, 10);
         if (handed > 0) {
@@ -1142,16 +1142,15 @@ public final class RaidManager implements Listener {
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 false, reason, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
                 recordsValue(rp.secure), -lost, SettlementMenu.top(plugin, drop, 10), List.of(),
-                hit == null || hit.attacker() == null ? null : hit.attackerName(), rp.shots, rp.stillShots);
+                hit == null || hit.attacker() == null ? null : hit.attackerName(), damageLog(hit, hits), rp.shots, rp.stillShots);
         // The kill replay (if there is a killer to follow) plays first, then the report and spectating.
         plugin.replays().afterDeath(player, raid, hit, () -> {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
-                // The record in chat at once, with the damage taken; only the screen waits for the
-                // lobby, should the player stay to watch a squadmate.
+                // One line in chat at once as a record; the damage taken is on the screen, which waits
+                // for the lobby should the player stay to watch a squadmate.
                 p.sendMessage(Text.mm(settlement.summary()));
-                sendDamageLog(p, hit, hits);
                 if (!spectateMate(p, raid, rp)) {
                     plugin.match().leaveTeam(p);
                     UiFont.blackout(p, 6, 16, 10);
@@ -1784,15 +1783,20 @@ public final class RaidManager implements Listener {
         }
     }
 
-    /** Who hurt the player, where and how badly: one line per attacker and weapon. */
-    private void sendDamageLog(Player player, DamageService.@Nullable LastHit killing, List<DamageService.HitRecord> hits) {
+    /**
+     * The death's damage record for the settlement screen's outcome button: the killing blow (who,
+     * with what, where it hit and from how far), then the hits taken in the raid by attacker and
+     * body part.
+     */
+    private static List<String> damageLog(DamageService.@Nullable LastHit killing, List<DamageService.HitRecord> hits) {
+        List<String> lines = new ArrayList<>();
         if (hits.isEmpty()) {
-            return;
+            return lines;
         }
         if (killing != null && killing.attacker() != null) {
             DamageService.HitRecord last = hits.get(hits.size() - 1);
-            player.sendMessage(Text.mm("<danger>致命一击 <white>" + Text.escape(killing.attackerName()) + " <muted>· "
-                    + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m"));
+            lines.add("<danger>致命一击 <white>" + Text.escape(killing.attackerName()) + " <muted>· "
+                    + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m");
         }
         java.util.Map<String, java.util.Map<net.infnetwork.snowball.craftov.combat.BodyPart, double[]>> byAttacker = new java.util.LinkedHashMap<>();
         for (DamageService.HitRecord h : hits) {
@@ -1801,13 +1805,14 @@ public final class RaidManager implements Listener {
             acc[0] += 1;
             acc[1] += h.damage();
         }
-        player.sendMessage(Text.mm("<muted>受到的伤害"));
+        lines.add("<muted>受到的伤害");
         byAttacker.forEach((who, parts) -> {
             StringBuilder sb = new StringBuilder("<white>" + Text.escape(who) + " <muted>→ ");
             parts.forEach((part, acc) -> sb.append("<text>").append(part.displayName()).append(" ×").append((int) acc[0])
                     .append(" <danger>").append(Math.round(acc[1])).append("  "));
-            player.sendMessage(Text.mm(sb.toString().trim()));
+            lines.add(sb.toString().trim());
         });
+        return lines;
     }
 
     /** What the records are worth together (the secure container, items mailed on the way out). */

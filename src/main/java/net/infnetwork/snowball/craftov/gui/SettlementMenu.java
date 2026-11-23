@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * The raid result, shown in the lobby right after an extraction or after a death (once the kill
  * replay and spectating are over), instead of a report in chat. The outcome (with the rounds fired
- * and how many of them standing still), a row of figures (time,
+ * and how many of them standing still; after a death the killing blow's weapon, body part and
+ * distance and the hits taken), a row of figures (time,
  * kills, experience, rank points, value brought in and out, net result, new collectibles), the ten
  * most valuable items taken out or lost, and back to the lobby, the stash or straight into another
  * raid. Chat keeps one summary line.
@@ -25,7 +26,7 @@ public final class SettlementMenu extends Menu {
     /** Everything the screen shows, gathered when the raid ends for this player. */
     public record Settlement(boolean extracted, String outcome, String map, String tier, int seconds, int kills, int aiKills,
                              long xp, int rankDelta, long broughtIn, long broughtOut, long net, List<ItemStack> items,
-                             List<String> collectibles, @Nullable String killer, int shots, int stillShots) {
+                             List<String> collectibles, @Nullable String killer, List<String> wounds, int shots, int stillShots) {
 
         /** The one chat line kept as a record. */
         public String summary() {
@@ -59,6 +60,8 @@ public final class SettlementMenu extends Menu {
         if (s.killer() != null) {
             report.add("<muted>击杀者 <danger>" + Text.escape(s.killer()));
         }
+        // A death's damage record: the killing blow with weapon, body part and distance, then the hits taken.
+        report.addAll(s.wounds());
         report.add("<muted>地图 <white>" + Text.escape(s.map()) + " <muted>· " + Text.escape(s.tier()));
         if (s.shots() > 0) {
             // How many rounds went out standing still, where moving no longer widens the spread (#8).

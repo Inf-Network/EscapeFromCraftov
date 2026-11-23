@@ -270,13 +270,19 @@ public final class WorldService {
         }
         String name = RAID_PREFIX + System.currentTimeMillis() % 100000 + "_" + counter.incrementAndGet();
         File target = new File(container, name);
+        long start = System.nanoTime();
+        long bytes;
         try {
-            copy(source.toPath(), target.toPath());
+            bytes = copy(source.toPath(), target.toPath());
         } catch (IOException ex) {
             plugin.getLogger().severe("Could not copy template " + map.template() + ": " + ex.getMessage());
             return null;
         }
+        long copied = System.nanoTime();
         World world = creator(name).createWorld();
+        // Both halves hold up every world while they run (issue #45): logged to see which one counts.
+        plugin.getLogger().info("Raid world " + name + ": copied " + map.template() + " (" + megabytes(bytes) + ") in "
+                + millis(copied - start) + ", createWorld in " + millis(System.nanoTime() - copied));
         if (world == null) {
             return null;
         }
@@ -320,7 +326,9 @@ public final class WorldService {
         }
     }
 
-    private static void copy(Path from, Path to) throws IOException {
+    /** Copies a world folder (without its lock and uid). Returns the bytes copied. */
+    private static long copy(Path from, Path to) throws IOException {
+        long[] bytes = {0};
         Files.walkFileTree(from, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -332,10 +340,20 @@ public final class WorldService {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (!SKIP.contains(file.getFileName().toString())) {
                     Files.copy(file, to.resolve(from.relativize(file)), StandardCopyOption.REPLACE_EXISTING);
+                    bytes[0] += attrs.size();
                 }
                 return FileVisitResult.CONTINUE;
             }
         });
+        return bytes[0];
+    }
+
+    private static String millis(long nanos) {
+        return nanos / 1_000_000 + " ms";
+    }
+
+    private static String megabytes(long bytes) {
+        return String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0);
     }
 
     private void deleteQuietly(Path root) {

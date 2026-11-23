@@ -35,3 +35,5 @@ tools/shots/out/
 # Art build caches: pixel font download (tools/art/pixelfont.py bake),
 # downloaded CC0 recordings and the encoded-sound cache
 tools/art/.cache/
+# Bot suite runs (tools/bot/suite.js)
+tools/bot/out/

@@ -7,6 +7,8 @@
 //   sneak on|off     crouch
 //   use on|off       hold or release right click (aim a gun)
 //   chat <text>      say something or run a /command
+//   click <slot>     left-click a slot of the open menu (e.g. post an escort contract)
+//   close            close the open menu
 //   quit
 const readline = require('readline')
 const mineflayer = require('mineflayer')
@@ -33,6 +35,8 @@ readline.createInterface({ input: process.stdin })
     else if (cmd === 'sneak') bot.setControlState('sneak', on)
     else if (cmd === 'use') on ? bot.activateItem() : bot.deactivateItem()
     else if (cmd === 'chat') bot.chat(rest.join(' '))
+    else if (cmd === 'click' && bot.currentWindow) bot.clickWindow(Number(rest[0]), 0, 0).catch(e => console.log('error', e.message))
+    else if (cmd === 'close' && bot.currentWindow) bot.closeWindow(bot.currentWindow)
     else if (cmd === 'quit') quit()
   })
   .on('close', quit)

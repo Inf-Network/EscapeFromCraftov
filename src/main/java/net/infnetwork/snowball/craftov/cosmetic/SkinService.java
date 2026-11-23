@@ -55,7 +55,8 @@ import java.util.UUID;
  * <p>
  * The 外观 menu can preview any skin's inspect: the menu closes, the knife in the melee slot takes
  * the skin's look and is inspected once, and the menu comes back when the inspect has run its
- * course (anything that cuts it short ends the preview there).
+ * course (anything that cuts it short ends the preview there, and F starting it over does not
+ * make the preview last longer; a raid that starts meanwhile ends it too).
  */
 public final class SkinService implements Listener {
 
@@ -72,8 +73,9 @@ public final class SkinService implements Listener {
     private final Map<String, Component> names = new HashMap<>();
 
     /**
-     * A preview of {@code skin} (null: the knife's own look) on {@code knife}: the inspect starts
-     * at tick {@code start}; {@code back} reopens the menu once it has run its course.
+     * A preview of {@code skin} (null: the knife's own look) on {@code knife}: its inspect started
+     * at tick {@code start} (-1 while the knife is still coming up); {@code back} reopens the menu
+     * once it has run its course.
      */
     private record Preview(String knife, @Nullable String skin, long start, Runnable back) {
     }
@@ -298,18 +300,20 @@ public final class SkinService implements Listener {
             }
             player.getInventory().setHeldItemSlot(CarryService.MELEE_SLOT);
         }
-        long start = Bukkit.getCurrentTick() + PREVIEW_DELAY;
-        Preview preview = new Preview(knife, skin == null ? null : skin.id(), start, back);
+        Preview preview = new Preview(knife, skin == null ? null : skin.id(), -1, back);
         previews.put(player.getUniqueId(), preview);
         apply(player);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (previews.get(player.getUniqueId()) != preview || !player.isOnline()) {
                 return;
             }
-            if (player.getInventory().getHeldItemSlot() != CarryService.MELEE_SLOT
+            if (player.getInventory().getHeldItemSlot() != CarryService.MELEE_SLOT || plugin.raids().raidOf(player) != null
                     || plugin.inspect().inspectNow(player) != null) {
                 end(player);
+                return;
             }
+            // The tick the inspect started, the same one InspectService counts its end from.
+            previews.put(player.getUniqueId(), new Preview(knife, preview.skin, Bukkit.getCurrentTick(), back));
         }, PREVIEW_DELAY);
         return null;
     }
@@ -332,15 +336,28 @@ public final class SkinService implements Listener {
                 it.remove();
                 continue;
             }
-            // Over once no inspect runs any more: run to the end (the menu comes back), or cut short.
-            if (now > preview.start && !plugin.inspect().inspecting(player)) {
+            // A raid that starts during a preview (the player was queued) gets the knife as they wear it.
+            if (plugin.raids().raidOf(player) != null) {
                 it.remove();
                 apply(player);
-                boolean ranOut = now - preview.start >= inspectTicks - 1;
-                if (ranOut && plugin.raids().raidOf(player) == null
-                        && player.getOpenInventory().getTopInventory().getType() == org.bukkit.event.inventory.InventoryType.CRAFTING) {
-                    preview.back.run();
-                }
+                continue;
+            }
+            if (preview.start < 0) {
+                continue; // the knife is still coming up
+            }
+            // A preview lasts one inspect: over when that has run its course (the menu comes back) or
+            // was cut short. F starts the inspect over but not the preview, which then ends at the
+            // same tick, so tapping F cannot keep a skin (one the player may not own) on for good.
+            boolean running = plugin.inspect().inspecting(player);
+            boolean ranOut = now >= preview.start + inspectTicks;
+            if (running && !ranOut) {
+                continue;
+            }
+            it.remove();
+            apply(player);
+            if (!running && ranOut
+                    && player.getOpenInventory().getTopInventory().getType() == org.bukkit.event.inventory.InventoryType.CRAFTING) {
+                preview.back.run();
             }
         }
         for (Player player : Bukkit.getOnlinePlayers()) {

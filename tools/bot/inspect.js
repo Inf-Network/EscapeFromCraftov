@@ -138,6 +138,11 @@ async function inspectsDuring (bot, fn, ms) {
 }
 
 const barsSince = (bot, from) => bot.bars.filter(b => b.at >= from).map(b => b.text)
+/**
+ * The fire-mode switches (射击模式: 单发) on the action bar since `from`. Not the gun's key hints
+ * (… <F> 射击模式), which the first draws of a gun show and the bar may still carry.
+ */
+const modeSwitches = (bot, from) => barsSince(bot, from).filter(t => t.includes('射击模式:'))
 
 /** Ends a running inspect (a slot switch away and back) and waits until nothing is in flight. */
 async function settle (bot) {
@@ -326,7 +331,7 @@ async function killSoldiers (bot) {
       a.updateHeldItem()
       tickEnd(a)
     }, 800)
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('3 then F in one client tick, from the gun, inspects the knife and leaves the fire mode alone',
       got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
     await sleep(ticks * 50)
@@ -346,7 +351,7 @@ async function killSoldiers (bot) {
       tickEnd(a)
     }, 800)
     a.paused = false
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('3 then F from the gun, the next client tick 250 ms late: inspects the knife, the fire mode stays',
       got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
     await sleep(ticks * 50)
@@ -412,7 +417,7 @@ async function killSoldiers (bot) {
     await sleep(500)
     const from = Date.now()
     const got = await inspectsDuring(a, () => pressF(a), 600)
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('F with a gun in hand switches the fire mode and does not inspect', got.length === 0 && mode.length === 1, { got, mode })
   }
   {

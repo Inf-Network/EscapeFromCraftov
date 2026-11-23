@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/machete_magma",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -170.764,
+    3.92,
+    147.574
+   ],
+   "translation": [
+    -4.562,
+    4.84,
+    -5.904
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    9.236,
+    -3.92,
+    32.426
+   ],
+   "translation": [
+    -4.562,
+    4.84,
+    -5.904
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

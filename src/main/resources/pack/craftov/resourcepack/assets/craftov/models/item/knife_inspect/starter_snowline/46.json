@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/starter_snowline",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    37.416,
+    -69.218,
+    68.794
+   ],
+   "translation": [
+    -0.181,
+    4.226,
+    -0.296
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -142.584,
+    69.218,
+    111.206
+   ],
+   "translation": [
+    -0.181,
+    4.226,
+    -0.296
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

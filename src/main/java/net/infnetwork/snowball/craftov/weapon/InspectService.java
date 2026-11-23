@@ -61,7 +61,8 @@ public final class InspectService implements Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
     }
 
-    private boolean inspecting(Player player) {
+    /** Whether the player is inspecting a knife right now. */
+    public boolean inspecting(Player player) {
         Inspect inspect = active.get(player.getUniqueId());
         return inspect != null && Bukkit.getCurrentTick() < inspect.at;
     }
@@ -85,6 +86,22 @@ public final class InspectService implements Listener {
             return;
         }
         start(player, knife, sprinting, "");
+    }
+
+    /**
+     * Inspects the knife in hand at once, as F would but without waiting for a swing to end: the
+     * skin preview of the 外观 menu (SkinService). Null when it started, otherwise why not (the
+     * action bar says so too).
+     */
+    public @Nullable String inspectNow(Player player) {
+        ItemDef def = knife(player);
+        if (def == null) {
+            return "手上没有刀";
+        }
+        waiting.remove(player.getUniqueId());
+        String why = refusal(player, player.isSprinting());
+        start(player, def, player.isSprinting(), " (skin preview)");
+        return why;
     }
 
     /**

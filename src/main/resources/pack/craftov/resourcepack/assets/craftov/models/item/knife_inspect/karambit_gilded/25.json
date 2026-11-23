@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/karambit_gilded",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    30.085,
+    -2.045,
+    -120.736
+   ],
+   "translation": [
+    -3.514,
+    0.181,
+    -11.328
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -149.915,
+    2.045,
+    -59.264
+   ],
+   "translation": [
+    -3.514,
+    0.181,
+    -11.328
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

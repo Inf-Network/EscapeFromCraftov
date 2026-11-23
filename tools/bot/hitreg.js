@@ -58,7 +58,6 @@ const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
 const env = require('./env')
-const { pullTrigger } = require('./common')
 
 const PORT = env.PORT
 const RCON = env.RCON
@@ -507,9 +506,6 @@ async function soldierlag () {
     for (const give of ['m4c', 'ammo_556_m855 60']) await rcon(`cv give ${TARGET} ${give}`)
     await sleep(800)
   }
-  // The target's shots draw the patrol: two rounds a pull on full auto, up to five pulls a pass and
-  // six passes, more than one magazine. Spare rounds, and a reload before every pass (below).
-  await rcon(`cv give ${TARGET} ammo_556_m855 120`)
   await arm('m4c', target)
   const W = { x: 26.5, z: 15.5 }
   const E = { x: 50.5, z: 15.5 }
@@ -556,9 +552,7 @@ async function soldierlag () {
       // Into the air: a swing with a block within reach under the crosshair is a click on it, not a shot.
       lookAt(target.entity.position.offset(-10, 8, 0), target)
       await sleep(200)
-      // A real trigger pull (the capture block in front of the crosshair dug, as the vanilla client
-      // does): a bare swing does not reliably fire the target's M4C, which is on full auto.
-      await pullTrigger(target)
+      target.swingArm()
       await sleep(1500)
       walking = motion.velocity().x < -1.2
     }
@@ -606,7 +600,6 @@ async function soldierlag () {
       // and put it back at the east end.
       if (i > 0 || label !== 'compensated') {
         reloadKey(shooter)
-        reloadKey(target)
         await sleep(11000)
         await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
         await sleep(2500)

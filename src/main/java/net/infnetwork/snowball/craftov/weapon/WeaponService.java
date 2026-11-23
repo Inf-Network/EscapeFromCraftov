@@ -697,6 +697,13 @@ public final class WeaponService implements Listener {
                 lastSprint.put(player.getUniqueId(), now);
             }
             GunState state = bind(player);
+            if (isAiming(player) && motion.running(player)) {
+                // Aiming holds the vanilla client off a sprint (see stopsSprint), and the sights only come
+                // up once a run is over (see sightsUp), so running with them up is a client that ignores
+                // both and never says it sprints. They drop as for a sprint, so its shots go from the hip
+                // with the sprint cone rather than aimed with only the walking penalty.
+                setAds(player, false);
+            }
             syncSprintStop(player);
             if (state == null) {
                 continue;

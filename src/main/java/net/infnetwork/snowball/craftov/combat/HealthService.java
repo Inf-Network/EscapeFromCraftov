@@ -780,12 +780,16 @@ public final class HealthService implements Listener {
             msg.append("<ok>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
         }
         if (med.pool() > 0) {
-            // Whatever the wounds left of the pool heals, up to the item's per-use amount.
-            double missing = MAX_HP - player.getHealth();
-            double heal = Math.max(0, Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining));
-            heal *= plugin.operators().healMultiplier(player);
+            // Whatever the wounds left of the pool heals, up to the item's per-use amount. A medic's
+            // bonus makes each point of the pool heal more (1.2 HP), so the pool pays only for what
+            // was healed: multiplying the heal and then capping it at full health took the whole
+            // multiplied amount out of the pool for health that was never restored.
+            double missing = Math.max(0, MAX_HP - player.getHealth());
+            double mult = plugin.operators().healMultiplier(player);
+            double base = Math.max(0, Math.min(med.healPerUse() > 0 ? med.healPerUse() : remaining, remaining));
+            double heal = Math.min(missing, base * mult);
             heal(player, heal);
-            remaining -= heal;
+            remaining -= heal / mult;
             if (remaining > 0.5) {
                 consumed = false;
                 ItemStack updated = stack.clone();

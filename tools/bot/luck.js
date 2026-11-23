@@ -244,11 +244,14 @@ async function search (bot, c) {
   await bot.lookAt(target.position.offset(0, 0.3, 0), true)
   const w = await openWith(bot, () => bot.activateEntity(target))
   if (!w) return null
+  // The search screen's container is its 6x6 block; the columns on the right are the searcher's gear (#10).
   const size = w.inventoryStart
-  await waitFor(() => { for (let s = 0; s < size; s++) if (hidden(w.slots[s])) return false; return true }, 10000)
+  const box = s => s % 9 < 6
+  await waitFor(() => { for (let s = 0; s < size; s++) if (box(s) && hidden(w.slots[s])) return false; return true }, 10000)
   await sleep(150)
   const items = []
   for (let s = 0; s < size; s++) {
+    if (!box(s)) continue
     const id = cid(w.slots[s])
     if (id) items.push({ id, uid: pbv(w.slots[s], 'uid'), slot: s })
   }
@@ -578,7 +581,8 @@ async function handGuns (giver, taker) {
   for (const id of GUNS) {
     for (let i = 0; i < 36; i++) {
       const it = g.window.slots[bottom(g.window, i)]
-      if (it && cid(it) === id) { await giver.clickWindow(bottom(g.window, i), 0, 0); await sleep(400); break }
+      // Shift-left puts an own stack into the container (#10: a plain click picks it up).
+      if (it && cid(it) === id) { await giver.clickWindow(bottom(g.window, i), 0, 1); await sleep(400); break }
     }
   }
   giver.closeWindow(g.window)
@@ -588,7 +592,7 @@ async function handGuns (giver, taker) {
   const uids = []
   for (let s = 0; s < t.window.inventoryStart; s++) {
     const it = t.window.slots[s]
-    if (it && GUNS.includes(cid(it))) { uids.push(pbv(it, 'uid')); await taker.clickWindow(s, 0, 0); await sleep(400) }
+    if (s % 9 < 6 && it && GUNS.includes(cid(it))) { uids.push(pbv(it, 'uid')); await taker.clickWindow(s, 0, 0); await sleep(400) }
   }
   taker.closeWindow(t.window)
   await sleep(600)

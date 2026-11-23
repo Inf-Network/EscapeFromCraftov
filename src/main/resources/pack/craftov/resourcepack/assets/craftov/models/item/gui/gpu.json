@@ -2,5 +2,14 @@
  "parent": "minecraft:item/generated",
  "textures": {
   "layer0": "craftov:item/gui/gpu"
+ },
+ "display": {
+  "gui": {
+   "scale": [
+    1.125,
+    1.125,
+    1.125
+   ]
+  }
  }
 }

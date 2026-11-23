@@ -275,6 +275,26 @@ weapons:
       pistol: 1.1
       shotgun: 1.1
       default: 1.25
+    # Ticks the sights take to come up once the server takes the aim, by ads-class, plus optic-ticks
+    # for the optic's strength (reflex = red dot and holo, low = 3-4x, high = 6x and up). The view,
+    # the spread and the recoil follow that progress: the shots are aimed only once the sights are up.
+    ticks:
+      pistol: 4
+      smg: 5
+      rifle: 6
+      shotgun: 6
+      dmr: 8
+      lmg: 8
+      bolt: 9
+    optic-ticks:
+      iron: 0
+      reflex: 1
+      low: 2
+      high: 3
+    # Right mouse held repeats a use packet every 4 ticks: aiming ends this many ticks after the last.
+    timeout-ticks: 5
+    # Let go of a scope, its picture stays this many ticks while the client's view widens back.
+    scope-out-ticks: 2
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.

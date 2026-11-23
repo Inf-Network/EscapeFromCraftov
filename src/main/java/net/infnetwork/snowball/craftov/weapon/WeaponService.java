@@ -107,6 +107,14 @@ public final class WeaponService implements Listener {
         boolean reloadShown;
         /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
         long aimAsked = -100;
+        /**
+         * Tick the server took the aim, and the ticks the sights take to come up from there (see
+         * {@link WeaponService#adsTicks}); the view, the spread and the recoil follow that progress.
+         */
+        long adsStart = -1;
+        int adsTicks = 1;
+        /** The sights are all the way up: the gun carries the aimed mark, a scope shows its picture. */
+        boolean adsUp;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
         /** A suppressor is fitted: quieter report, short range, no tail to speak of. */
@@ -262,6 +270,12 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
     private final Map<UUID, Long> adsUntil = new HashMap<>();
+    /**
+     * Players let go of a scope: until this tick the scope's picture and the aimed mark stay while the
+     * client's view widens back (it eases 0.5 of the way per tick), so the zoomed world never shows
+     * without the scope around it.
+     */
+    private final Map<UUID, Long> scopeOut = new HashMap<>();
     private final Map<UUID, Long> lastHint = new HashMap<>();
     private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
@@ -322,6 +336,40 @@ public final class WeaponService implements Listener {
 
     public boolean isAiming(Player player) {
         return ads.getOrDefault(player.getUniqueId(), false);
+    }
+
+    /** How far the sights are up, 0 at the hip to 1 aimed: they take the gun's ads time to come up. */
+    public double adsProgress(Player player) {
+        GunState state = states.get(player.getUniqueId());
+        if (!isAiming(player) || state == null || state.adsStart < 0) {
+            return 0;
+        }
+        return Math.max(0, Math.min(1, (Bukkit.getCurrentTick() - state.adsStart) / (double) Math.max(1, state.adsTicks)));
+    }
+
+    /**
+     * Ticks the sights take to come up (weapons.ads.ticks by ads-class: a pistol is quickest, a bolt
+     * rifle slowest), plus a little for an optic, more the stronger it is (weapons.ads.optic-ticks).
+     */
+    int adsTicks(GunState state) {
+        var config = plugin.getConfig();
+        String kind = state.gun.adsClass();
+        int fallback = switch (kind) {
+            case "pistol" -> 4;
+            case "smg" -> 5;
+            case "dmr", "lmg" -> 8;
+            case "bolt" -> 9;
+            default -> 6; // rifle, shotgun
+        };
+        int ticks = config.getInt("weapons.ads.ticks." + kind, fallback);
+        OpticSpec.Tier tier = state.optic == null ? OpticSpec.Tier.IRON : state.optic.tier();
+        int extra = switch (tier) {
+            case IRON -> 0;
+            case REFLEX -> 1;
+            case LOW -> 2;
+            case HIGH -> 3;
+        };
+        return Math.max(1, ticks + config.getInt("weapons.ads.optic-ticks." + tier.key(), extra));
     }
 
     /** Vanilla walking pace in blocks per tick, the unit of {@link #horizontalSpeed}. */
@@ -482,17 +530,27 @@ public final class WeaponService implements Listener {
         if (now < state.nextShotTick || state.bloom > 0) {
             stowed.put(state.uid, new Stowed(player.getUniqueId(), state.nextShotTick, state.bloom, now));
         }
-        // The cooldown belongs to every gun: the next one must not show this one's kick or reload.
-        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks()) {
+        // The cooldown belongs to every gun: the next one must not show this one's kick, reload or
+        // sights coming up.
+        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks() || state.adsStart >= 0 && !state.adsUp) {
             player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
         }
         setMark(player, state, ItemFactory.MARK_NONE);
         return state;
     }
 
-    /** The hand mark the gun's state calls for: reloading, coming up, or none. */
-    private static int wantedMark(GunState state) {
-        return state.reloading() ? ItemFactory.MARK_RELOAD : state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE;
+    /** The hand mark the gun's state calls for: reloading, coming up, aiming, aimed, or none. */
+    private int wantedMark(Player player, GunState state) {
+        if (state.reloading()) {
+            return ItemFactory.MARK_RELOAD;
+        }
+        if (state.drawing()) {
+            return ItemFactory.MARK_DRAW;
+        }
+        if (isAiming(player) && state.adsStart >= 0) {
+            return state.adsUp ? ItemFactory.MARK_AIMED : ItemFactory.MARK_AIM;
+        }
+        return ItemFactory.MARK_NONE;
     }
 
     /**
@@ -514,10 +572,10 @@ public final class WeaponService implements Listener {
      */
     private void drawn(Player player, GunState state, long now) {
         state.drawPending = false;
-        setMark(player, state, wantedMark(state));
+        setMark(player, state, wantedMark(player, state));
         if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
                 && !player.isSprinting()) {
-            adsUntil.put(player.getUniqueId(), now + 6);
+            holdAim(player, now);
             setAds(player, true);
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
@@ -532,6 +590,18 @@ public final class WeaponService implements Listener {
         long now = Bukkit.getCurrentTick();
         if (now % 20 == 0) {
             stowed.values().removeIf(kept -> kept.spent(now));
+        }
+        if (!scopeOut.isEmpty()) {
+            scopeOut.entrySet().removeIf(e -> {
+                if (now < e.getValue()) {
+                    return false;
+                }
+                Player out = Bukkit.getPlayer(e.getKey());
+                if (out != null && !isAiming(out)) {
+                    lowerScope(out);
+                }
+                return true;
+            });
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);
@@ -564,10 +634,13 @@ public final class WeaponService implements Listener {
             }
             if (isAiming(player)) {
                 if (held) {
-                    adsUntil.put(player.getUniqueId(), now + 6);
+                    holdAim(player, now);
                 } else if (now > adsUntil.getOrDefault(player.getUniqueId(), 0L)) {
-                    setAds(player, false);
+                    endAds(player, true);
                 }
+            }
+            if (isAiming(player)) {
+                raise(player, state, now);
             }
             if (!held && state.triggerHeld) {
                 release(state, !plugin.triggers().stale(player));
@@ -756,8 +829,12 @@ public final class WeaponService implements Listener {
         }
         Ballistics.muzzle(player, dir);
         // The first-person kick and muzzle flash: the item model plays them while this cooldown counts
-        // down on the client, so they follow the shots the server fires, not the trigger finger.
-        player.setCooldown(ItemFactory.RELOAD_GROUP, gun.kickTicks());
+        // down on the client, so they follow the shots the server fires, not the trigger finger. While
+        // the sights come up the same cooldown runs their frames instead, so a shot then kicks the
+        // camera only.
+        if (!isAiming(player) || state.adsUp) {
+            player.setCooldown(ItemFactory.RELOAD_GROUP, gun.kickTicks());
+        }
         Location muzzle = Ballistics.muzzlePoint(player, dir);
         audio.shot(player, muzzle, gun, state.suppressed, reportRounds(state));
         if (!state.suppressed) {
@@ -816,9 +893,12 @@ public final class WeaponService implements Listener {
      */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
-        boolean aiming = isAiming(player);
+        double up = adsProgress(player);
+        boolean aiming = up >= 1;
         var config = plugin.getConfig();
-        double spread = aiming ? gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0) : gun.hipSpread();
+        double aimed = gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0);
+        // The cone narrows as the sights come up, and is the aimed one only once they are.
+        double spread = gun.hipSpread() + (aimed - gun.hipSpread()) * up;
         if (player.isSneaking()) {
             spread *= config.getDouble("weapons.spread.sneak", 0.7);
         }
@@ -883,7 +963,7 @@ public final class WeaponService implements Listener {
         var config = plugin.getConfig();
         long now = Bukkit.getCurrentTick();
         kickPending(player, state, now);
-        double scale = (isAiming(player) ? config.getDouble("weapons.recoil.ads", 0.6) : 1.0)
+        double scale = (1.0 + (config.getDouble("weapons.recoil.ads", 0.6) - 1.0) * adsProgress(player))
                 * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
@@ -1324,7 +1404,7 @@ public final class WeaponService implements Listener {
         state.reloadStart = -1;
         state.reloadEnd = -1;
         state.reloadType = null;
-        setMark(player, state, wantedMark(state));
+        setMark(player, state, wantedMark(player, state));
         if (type == null) {
             return;
         }
@@ -1358,26 +1438,116 @@ public final class WeaponService implements Listener {
 
     // ------------------------------------------------------------------ ADS
 
+    /** Right mouse is still held (a use packet, or the trigger held while aiming): aiming lasts a while longer. */
+    private void holdAim(Player player, long now) {
+        adsUntil.put(player.getUniqueId(), now + Math.max(1, plugin.getConfig().getInt("weapons.ads.timeout-ticks", 5)));
+    }
+
+    /**
+     * Starts or ends aiming down the sights. The aim is the server's: the item model shows the sights
+     * only when the gun carries the aiming marks, so what the player sees is what the shots get. On,
+     * the gun takes the aiming mark (sent at once) and then a cooldown of its ads time that runs the
+     * frames of the sights coming up on the client, while the view narrows tick by tick (see
+     * {@link #raise}). Off, everything goes back at once.
+     */
     public void setAds(Player player, boolean on) {
-        boolean was = isAiming(player);
-        if (was == on) {
+        if (on) {
+            startAds(player);
+        } else {
+            endAds(player, false);
+        }
+    }
+
+    private void startAds(Player player) {
+        if (isAiming(player)) {
             return;
         }
-        ads.put(player.getUniqueId(), on);
-        plugin.health().forceSpeedUpdate(player);
         GunState state = state(player);
-        boolean scoped = state != null && state.optic != null && state.optic.magnified();
-        if (on && scoped) {
-            plugin.hud().scopeOverlay(player, state.optic.overlay());
-        } else if (!on) {
-            plugin.hud().scopeOverlay(player, null);
+        if (state == null) {
+            return;
         }
-        if (on && state != null) {
-            plugin.fov().show(player, fovFor(player, state));
-            player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
-            plugin.fov().aimed(player);
-        } else if (!on) {
-            plugin.fov().show(player, 1.0);
+        long now = Bukkit.getCurrentTick();
+        ads.put(player.getUniqueId(), true);
+        scopeOut.remove(player.getUniqueId());
+        state.adsStart = now;
+        state.adsTicks = adsTicks(state);
+        state.adsUp = false;
+        plugin.health().forceSpeedUpdate(player);
+        // The mark first and at once, then the cooldown: the other way round the model would read the
+        // cooldown as a shot's kick for a moment.
+        setMark(player, state, ItemFactory.MARK_AIM);
+        Nms.syncInventory(player);
+        player.setCooldown(ItemFactory.RELOAD_GROUP, state.adsTicks);
+        plugin.fov().show(player, 1.0);
+        player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
+        plugin.fov().aimed(player);
+    }
+
+    /**
+     * One tick of aiming: the view narrows with the sights' progress (eased in and out), and once
+     * they are up the gun takes the aimed mark (its cooldown is a shot's kick again) and a scope
+     * shows its picture.
+     */
+    private void raise(Player player, GunState state, long now) {
+        if (state.adsStart < 0) {
+            return;
+        }
+        double target = fovFor(player, state);
+        if (state.adsUp) {
+            return;
+        }
+        double t = Math.max(0, Math.min(1, (now - state.adsStart) / (double) Math.max(1, state.adsTicks)));
+        if (t < 1) {
+            double eased = t * t * (3 - 2 * t);
+            plugin.fov().show(player, 1 + (target - 1) * eased);
+            return;
+        }
+        state.adsUp = true;
+        plugin.fov().show(player, target);
+        setMark(player, state, ItemFactory.MARK_AIMED);
+        if (state.optic != null && state.optic.magnified()) {
+            plugin.hud().scopeOverlay(player, state.optic.overlay());
+        }
+    }
+
+    /**
+     * Ends aiming. {@code linger}: right mouse was let go (not a switch, reload, sprint or menu), so a
+     * scope keeps its picture and the aimed mark for weapons.ads.scope-out-ticks while the client's
+     * view widens back.
+     */
+    private void endAds(Player player, boolean linger) {
+        if (!isAiming(player)) {
+            return;
+        }
+        ads.put(player.getUniqueId(), false);
+        plugin.health().forceSpeedUpdate(player);
+        plugin.fov().show(player, 1.0);
+        GunState state = state(player);
+        boolean scope = state != null && state.adsUp && state.optic != null && state.optic.magnified();
+        int out = Math.max(0, plugin.getConfig().getInt("weapons.ads.scope-out-ticks", 2));
+        if (state != null) {
+            if (!state.adsUp) {
+                // The frames of the sights coming up are still running: stop them before the mark goes,
+                // or the hip model would read what is left of them as a shot's kick.
+                player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+            }
+            state.adsStart = -1;
+            state.adsUp = false;
+        }
+        if (scope && linger && out > 0) {
+            scopeOut.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + out);
+            return;
+        }
+        lowerScope(player);
+    }
+
+    /** Takes a scope's picture down and the gun's aiming mark off. */
+    private void lowerScope(Player player) {
+        scopeOut.remove(player.getUniqueId());
+        plugin.hud().scopeOverlay(player, null);
+        GunState state = state(player);
+        if (state != null) {
+            setMark(player, state, wantedMark(player, state));
         }
     }
 
@@ -1405,7 +1575,9 @@ public final class WeaponService implements Listener {
     /** Shows the zoom again after the player declared another field of view or FOV Effects (/cv fov). */
     public void refreshZoom(Player player) {
         GunState state = state(player);
-        plugin.fov().show(player, isAiming(player) && state != null ? fovFor(player, state) : 1.0);
+        if (!isAiming(player) || state == null || state.adsUp) {
+            plugin.fov().show(player, isAiming(player) && state != null ? fovFor(player, state) : 1.0);
+        }
     }
 
     /** Explains, at most once a second, why a trigger pull did nothing. */
@@ -1496,7 +1668,7 @@ public final class WeaponService implements Listener {
         if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
             return;
         }
-        adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
+        holdAim(player, Bukkit.getCurrentTick());
         setAds(player, true);
     }
 
@@ -1648,6 +1820,7 @@ public final class WeaponService implements Listener {
         stowed.values().removeIf(kept -> kept.owner().equals(id));
         ads.remove(event.getPlayer().getUniqueId());
         adsUntil.remove(event.getPlayer().getUniqueId());
+        scopeOut.remove(event.getPlayer().getUniqueId());
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());

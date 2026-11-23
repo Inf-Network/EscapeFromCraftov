@@ -72,7 +72,8 @@ def generated(texture, parent='minecraft:item/generated'):
 
 
 ATT_SLOTS = ['muzzle', 'grip', 'tactical', 'mag']   # custom_model_data strings 1..4 (Attachments.java)
-BODY_LEAVES = ('item/gun/', 'item/gun_opt/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_opt_ads/', 'item/gun_aimed/')
+BODY_LEAVES = ('item/gun/', 'item/gun_opt/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_opt_ads/', 'item/gun_aimed/',
+               'item/gun_adsin/')
 
 
 def attachments_for(spec, item_defs):
@@ -175,17 +176,19 @@ def build_items(item_defs):
             kicks = models.kick_frames(gun_spec.get('rpm', 600))
             strength = models.kick_strength(gun_spec.get('recoil', 1.0))
 
-            # Pose trees picked on the client from held keys (no packet, no delay): right mouse aims down
-            # sights, sprinting carries the gun low and canted, strafing leans it. Scoped guns hide the gun
-            # while aiming, so they keep plain ADS. Shots are not a key: the server starts the gun's
+            # Pose trees. Picked on the client from held keys (no packet, no delay): sprinting carries the
+            # gun low and canted, strafing leans it. Shots are not a key: the server starts the gun's
             # cooldown on every shot it really fires (WeaponService.shoot), and the gun kicks back and
             # flashes while the client counts it down (models.kick_frames), so a held trigger that fires
             # nothing (between bolt-action shots, a semi-auto held down, outside the range) shows nothing.
-            # The stack's damage says what else the gun is doing (ItemFactory.setHandMark): 1 while it comes
-            # up after a switch (it neither aims nor kicks), 2 while it reloads (the same cooldown then runs
-            # the reload frames). Damage is the one component the client swaps in without lowering and
-            # raising the gun again.
-            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames):
+            # Nor is aiming: the stack's damage says what the gun is doing (ItemFactory.setHandMark), and
+            # the sights are up only when the server says so, so the pose, the zoom and the spread always
+            # agree. 1 while it comes up after a switch (it neither aims nor kicks), 2 while it reloads
+            # (the same cooldown then runs the reload frames), 3 while the sights come up (the cooldown,
+            # as long as the gun's ads time, runs the frames of the gun rising to the eye), 4 aimed (the
+            # cooldown is a shot's kick again; a scope shows its mask instead of the gun). Damage is the
+            # one component the client swaps in without lowering and raising the gun again.
+            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames, rise_display=None):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
                             'on_true': on, 'on_false': off}
@@ -225,7 +228,20 @@ def build_items(item_defs):
                 else:
                     ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
                     ads_tree = kicked('ads', ads, ads_display, strafe(model_ref(ads), ap))
-                normal = key('key.use', ads_tree, hip_tree)
+                # The sights coming up: the gun eases from the hip pose to the aimed one (a scoped gun to
+                # its eyepiece, where its mask takes over) as the server's ads cooldown counts down.
+                rise = rise_display or ads_display
+                rise_entries = []
+                for k, (threshold, progress) in enumerate(models.ads_rise_frames()):
+                    path = 'gun_adsin/%s/%d' % (name, k)
+                    write_json(os.path.join(CV, 'models', 'item', path + '.json'), {'parent': hip, 'display': {
+                        'firstperson_righthand': models.lerp_display(hip_display['firstperson_righthand'],
+                                                                     rise['firstperson_righthand'], progress),
+                        'firstperson_lefthand': models.lerp_display(hip_display['firstperson_lefthand'],
+                                                                    rise['firstperson_lefthand'], progress)}})
+                    rise_entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+                rise_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': rise_entries,
+                             'fallback': ads_tree}
                 # While the reload cooldown runs, the client steps through the reload frames itself.
                 entries = [{'threshold': threshold, 'model': {
                     'type': 'minecraft:composite', 'models': [model_ref(n) for n in reload_frames[k]]}}
@@ -233,11 +249,13 @@ def build_items(item_defs):
                 reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
                                'fallback': hip_rest}
                 return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
-                        'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree}],
-                        'fallback': normal}
+                        'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree},
+                                    {'threshold': 2.5, 'model': rise_tree}, {'threshold': 3.5, 'model': ads_tree}],
+                        'fallback': hip_tree}
             in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
                                models.gun_model(item_id)['display'], models.gun_ads_model(item_id, scoped)['display'],
-                               [frames[k] for k in range(len(frames))])
+                               [frames[k] for k in range(len(frames))],
+                               models.gun_rise_display(item_id) if scoped else None)
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.
             write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
@@ -262,7 +280,7 @@ def build_items(item_defs):
                 cases.append({'when': oid, 'model': gun_tree(
                     combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
                     models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display'],
-                    [frames[k] + [optic_frames[k]] for k in range(len(frames))])})
+                    [frames[k] + [optic_frames[k]] for k in range(len(frames))], models.optic_rise_display(item_id, oid))})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}

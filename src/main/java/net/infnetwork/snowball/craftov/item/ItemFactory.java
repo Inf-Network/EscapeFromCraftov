@@ -59,8 +59,9 @@ public final class ItemFactory {
      * model string (the flash follows the shots the server fires, see {@link #setHandMark}), and gun
      * lore with stat bars (GunStats) in place of the damage and rate line.
      * 13: optic lore gives the true power (the red dot reads 1.5x, the old 0.74 field of view).
+     * 14: max_damage 4 for the aiming marks (the sights are the server's, see {@link #setHandMark}).
      */
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -69,10 +70,15 @@ public final class ItemFactory {
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
     public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
-    /** Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading. */
+    /**
+     * Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading, the sights
+     * coming up, aimed.
+     */
     public static final int MARK_NONE = 0;
     public static final int MARK_DRAW = 1;
     public static final int MARK_RELOAD = 2;
+    public static final int MARK_AIM = 3;
+    public static final int MARK_AIMED = 4;
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
@@ -271,10 +277,10 @@ public final class ItemFactory {
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
             stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
                     .type(SwingAnimation.Animation.NONE).duration(1).build());
-            // Room for the hand marks (damage 1 and 2, see setHandMark). Unbreakable, so it is never worn
+            // Room for the hand marks (damage 1 to 4, see setHandMark). Unbreakable, so it is never worn
             // down, shows no durability bar and no tooltip line; a damageable item may not stack.
             stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
-            stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_RELOAD);
+            stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_AIMED);
             stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
@@ -567,16 +573,19 @@ public final class ItemFactory {
 
     /**
      * Tells the gun's item model what the gun is doing besides being held: {@link #MARK_DRAW} while it
-     * comes up after a switch (the model ignores right mouse and the shot cooldown, so the client shows
-     * neither the aimed pose, on a scoped gun no gun at all, nor a kick while the server allows
-     * neither), {@link #MARK_RELOAD} while it reloads (the gun's cooldown then runs the reload frames
-     * instead of a shot's kick). The mark is the stack's damage, against max_damage 2, because damage
-     * is the only component the vanilla 1.21.11 client swaps in on a held item without lowering and
-     * raising it again (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun.
+     * comes up after a switch (the model ignores the shot cooldown, so the client shows no kick while
+     * the server allows no shot), {@link #MARK_RELOAD} while it reloads (the gun's cooldown then runs
+     * the reload frames instead of a shot's kick), {@link #MARK_AIM} while the sights come up (the
+     * cooldown runs those frames) and {@link #MARK_AIMED} once they are up (aimed pose, or a scope's
+     * mask; the cooldown is a shot's kick again). Right mouse itself changes nothing on the client:
+     * the sights show when the server aims, so the view, the spread and the pose always agree. The
+     * mark is the stack's damage, against max_damage 4, because damage is the only component the
+     * vanilla 1.21.11 client swaps in on a held item without lowering and raising it again
+     * (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun.
      */
     public static void setHandMark(ItemStack stack, int mark) {
         if (mark > MARK_NONE) {
-            stack.setData(DataComponentTypes.DAMAGE, Math.min(MARK_RELOAD, mark));
+            stack.setData(DataComponentTypes.DAMAGE, Math.min(MARK_AIMED, mark));
         } else if (stack.hasData(DataComponentTypes.DAMAGE)) {
             stack.resetData(DataComponentTypes.DAMAGE);
         }

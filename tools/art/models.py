@@ -475,6 +475,48 @@ def gun_ads_model(gid, scoped=False):
     return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': fp_r, 'firstperson_lefthand': fp_l}}
 
 
+# The sights coming up (WeaponService.startAds): the server runs the gun's cooldown for its ads time with
+# the aiming mark on, and the item model steps through these frames while the client counts it down,
+# eased in and out like the zoom the server sends alongside.
+ADS_RISE_FRAMES = 6
+
+
+def ads_ease(t):
+    return t * t * (3 - 2 * t)
+
+
+def ads_rise_frames(n=ADS_RISE_FRAMES):
+    """(cooldown threshold, progress 0..1) per frame, the first first. The cooldown runs from 1 down
+    to 0; below the last threshold (once it has run out) the model is the aimed one."""
+    return [(max(1e-4, round(1 - (k + 1) / n, 5)), round(ads_ease((k + 0.5) / n), 4)) for k in range(n)]
+
+
+def lerp_display(a, b, t):
+    """A display transform t of the way from a to b (angles, offset and scale each straight across)."""
+    out = {}
+    for key, default in (('rotation', [0, 0, 0]), ('translation', [0, 0, 0]), ('scale', [1, 1, 1])):
+        va, vb = a.get(key, default), b.get(key, default)
+        out[key] = [round(x + (y - x) * t, 3) for x, y in zip(va, vb)]
+    return out
+
+
+def gun_rise_display(gid):
+    """Where a gun with a built-in scope rises to before its mask takes over: the top of the scope
+    under the crosshair, as iron sights would be."""
+    r, l = first_person(gid, gun_elements(gid), True)
+    return {'firstperson_righthand': r, 'firstperson_lefthand': l}
+
+
+def optic_rise_display(gid, oid):
+    """Where a gun with this optic rises to: a 1x sight's aimed pose, a scope's eyepiece on the crosshair."""
+    gun = gun_elements(gid)
+    placed, sight_y = placed_optic(gid, oid)
+    if sight_y is None:
+        sight_y = (min(e['from'][1] for e in placed) + max(e['to'][1] for e in placed)) / 2
+    r, l = first_person(gid, gun, True, sight_y=sight_y)
+    return {'firstperson_righthand': r, 'firstperson_lefthand': l}
+
+
 def gun_part_model(gid, part):
     """One moving part of the gun (body, mag or pump) with the gun's textures and display."""
     return {'parent': 'craftov:item/gun/' + gid, 'elements': gun_parts(gid)[part]}

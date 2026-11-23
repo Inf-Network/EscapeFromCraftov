@@ -392,8 +392,7 @@ public final class TrainingService {
                     : plugin.health().hasInjury(player, Injury.LIGHT_BLEED) || plugin.health().hasInjury(player, Injury.HEAVY_BLEED)
                     ? "先止血：选中绷带，按住 <white><key:key.use></white> 直到用完"
                     : "再固定骨折：选中夹板，按住 <white><key:key.use></white> 直到用完";
-            case LEVER -> session.leverMissed ? "倒计时结束时你不在撤离点，它又关了：再右键一次电闸，然后站进绿色撤离点"
-                    : "到撤离区右键电闸";
+            case LEVER -> session.leverMissed ? "再右键一次电闸，然后站在绿色撤离点里等倒计时结束" : "到撤离区右键电闸";
             case EXTRACT -> "站进绿色撤离点，倒计时结束就撤离";
         };
     }
@@ -446,6 +445,14 @@ public final class TrainingService {
                 session.leverMissed = session.lever;
                 session.lever = pulled;
                 session.hinted = null;
+                if (session.leverMissed) {
+                    // Said at once, as what became of the countdown: a hint would wait behind the
+                    // extract's reminder, which comes due as the countdown ends. The lever's own hint
+                    // follows on the usual beat.
+                    Notify.info(player, "<accent>倒计时结束时你不在撤离点 <muted>· 撤离点又关了：再拉一次电闸");
+                    session.hinted = Lesson.LEVER;
+                    session.hintAt = now + 20L * 10;
+                }
             }
             Lesson lesson = session.current();
             if (lesson != null && (lesson != session.hinted || now >= session.hintAt)) {

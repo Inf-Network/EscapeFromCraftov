@@ -333,7 +333,7 @@ async function course () {
   const barsAt = bot.bars.length
   const again = await waitFor(async () => (await objectiveOf(name)).includes('再拉一次电闸'), 15000, 500)
   check('a countdown missed outside the extract points back to the lever', again, await objectiveOf(name))
-  check('and the hint says to pull it again', bot.bars.slice(barsAt).some(b => b.text.includes('再右键一次电闸')),
+  check('and the action bar says so at once', await waitFor(() => bot.bars.slice(barsAt).some(b => b.text.includes('再拉一次电闸')), 1500),
     bot.bars.slice(barsAt).map(b => b.text))
   await sleep(1500) // the lever springs back a second after its countdown
   if (lever) await bot.activateBlock(bot.blockAt(LEVER))

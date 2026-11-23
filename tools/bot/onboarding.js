@@ -5,12 +5,16 @@
 //   objective  the HUD objective (`cv hud`) says to open the terminal; once the terminal is open it
 //              points at the range rack with a distance and the compass; the terminal's guide
 //              button (slot 46) reads 1/5 and the range button shines as the next step.
+//   dialog     a new name gets the briefing (show_dialog) a few seconds after joining; the bot clicks
+//              its "跳过指引" button (custom_click_action with the button's own id and payload), is
+//              told so in chat, has no objective line, and gets no briefing when it joins again.
+//              `/cv guide start` turns the objective back on.
 //   skip       the bot opens the terminal, skips the range and the gunsmith, and deploys straight to
 //              锈港: in the raid the objective is the extraction, no action bar names a lobby step
 //              during a minute in the raid, and after it extracts the profile has tutorialDone and the
 //              money went up by tutorial.reward.
 //
-//   PORT=25565 RCON_PORT=25575 node onboarding.js [deploy objective skip]
+//   PORT=25565 RCON_PORT=25575 node onboarding.js [deploy objective dialog skip]
 //
 // The server runs without test.enabled (the proving ground must be hidden) and with a short
 // match.wait-seconds. Exit code: failed checks.
@@ -29,7 +33,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const rcon = c => rconRaw(c, RCON).then(r => r.replace(/§./g, ''))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['deploy', 'objective', 'skip']
+const scenarios = wanted.length ? wanted : ['deploy', 'objective', 'dialog', 'skip']
 const failures = []
 function check (name, ok, detail) {
   if (!ok) failures.push(name)
@@ -142,6 +146,75 @@ async function objective () {
   bot.quit()
 }
 
+/** Every {label, action} button in a dialog's NBT (prismarine-nbt simplified), wherever it sits. */
+function buttons (node, out = []) {
+  if (!node || typeof node !== 'object') return out
+  if (node.label !== undefined && node.action !== undefined) out.push(node)
+  for (const value of Object.values(node)) buttons(value, out)
+  return out
+}
+
+function varint (n) {
+  const out = []
+  do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; out.push(b) } while (n)
+  return Buffer.from(out)
+}
+
+/**
+ * The serverbound custom_click_action packet (0x41 in 1.21.11) answering a Paper callback button:
+ * the action's id, then its payload, {id: <the callback's UUID as an int array>}, as a
+ * length-prefixed network tag. Written raw: minecraft-data leaves out that length prefix.
+ */
+function customClick (id, uuidInts) {
+  const name = Buffer.from(id, 'utf8')
+  const ints = Buffer.alloc(4 * uuidInts.length)
+  uuidInts.forEach((v, i) => ints.writeInt32BE(v, 4 * i))
+  const count = Buffer.alloc(4)
+  count.writeInt32BE(uuidInts.length)
+  const tag = Buffer.concat([Buffer.from([0x0a, 0x0b, 0x00, 0x02]), Buffer.from('id'), count, ints, Buffer.from([0x00])])
+  return Buffer.concat([varint(0x41), varint(name.length), name, varint(tag.length), tag])
+}
+
+function simple (nbt) {
+  try { return require('prismarine-nbt').simplify(nbt) } catch (e) { return nbt }
+}
+
+async function dialog () {
+  let bot = await join('ObB')
+  const name = bot.username
+  await waitFor(() => bot.dialogs.length > 0, 8000)
+  check('a new player gets the briefing', bot.dialogs.length > 0)
+  if (!bot.dialogs.length) { bot.quit(); return }
+  const packet = bot.dialogs[0].packet
+  const data = simple(packet.dialog && (packet.dialog.data || packet.dialog))
+  const all = buttons(data)
+  const skipButton = all.find(b => JSON.stringify(b.label).includes('跳过指引'))
+  check('the briefing has a skip button', !!skipButton, all.map(b => JSON.stringify(b.label).slice(0, 60)))
+  if (!skipButton) { bot.quit(); return }
+  // Paper's callback buttons are "dynamic/custom" actions: the client sends their id with the
+  // "additions" compound (the callback's UUID as an int array) as the payload.
+  const action = skipButton.action
+  log(name, 'clicking', JSON.stringify(action))
+  const from = bot.chatLines.length
+  bot._client.writeRaw(customClick(action.id, (action.additions || {}).id || []))
+  const told = await waitFor(() => bot.chatLines.slice(from).some(l => l.includes('已跳过新手指引')), 5000)
+  check('skipping is answered in chat', told, bot.chatLines.slice(from))
+  await sleep(800)
+  check('no objective line after skipping', (await objectiveOf(name)) === '')
+  bot.quit()
+  await sleep(2500)
+  bot = await join('ObB', name)
+  await sleep(6000)
+  check('the briefing does not open again', bot.dialogs.length === 0, bot.dialogs.length)
+  const p = profile(name) || {}
+  check('the profile says briefed and muted', p.briefed === true && p.guideMuted === true, { briefed: p.briefed, muted: p.guideMuted })
+  bot.chat('/cv guide start')
+  await sleep(1200)
+  const o = await objectiveOf(name)
+  check('/cv guide start brings the objective back', o.includes('目标'), o)
+  bot.quit()
+}
+
 async function skip () {
   const bot = await join('ObS')
   const name = bot.username
@@ -181,7 +254,7 @@ async function skip () {
 }
 
 ;(async () => {
-  const runs = { deploy, objective, skip }
+  const runs = { deploy, objective, dialog, skip }
   for (const s of scenarios) {
     log('scenario', s)
     try {

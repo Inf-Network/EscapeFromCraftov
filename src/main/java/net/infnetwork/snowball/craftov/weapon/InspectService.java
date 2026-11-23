@@ -30,17 +30,31 @@ import java.util.UUID;
  * model while that counts down (tools/art/knife_inspect.py), as it does for the gun reload; nobody
  * else sees it.
  *
+ * <p>The rule (#104): with a knife in hand, F inspects, unless the player sprints, is downed,
+ * revives or spectates, and then the action bar says why. F during an inspect starts it over. F
+ * during a swing waits for the swing to finish and starts the inspect then.
+ *
  * <p>Swinging (a cut, Q, a click on a block), switching slot, sprinting, being downed or reviving
  * ends it at once by clearing the cooldown. It never touches the knife's swing interval, so a cut
  * during an inspect lands as usual.
  */
 public final class InspectService implements Listener {
 
+    /** Ticks the arm swings on the client after a cut, Q or a click (vanilla, no haste or fatigue). */
+    private static final int SWING_TICKS = 6;
+    /** A press waits this long at most for the swings to stop (a player cutting on and on). */
+    private static final int SWING_WAIT = 12;
+
     private final CraftovPlugin plugin;
     /** Players inspecting a knife: the tick it ends, the hotbar slot and the knife it started with. */
     private final Map<UUID, Inspect> active = new HashMap<>();
+    /** F pressed during a swing: the tick, the hotbar slot and the knife, until the swing is over. */
+    private final Map<UUID, Inspect> waiting = new HashMap<>();
+    /** The tick of each player's last swing of the main hand. */
+    private final Map<UUID, Long> swung = new HashMap<>();
 
-    private record Inspect(long end, int slot, String item) {
+    /** An inspect, or a press waiting for a swing: {@code at} is the end, or the tick F was read. */
+    private record Inspect(long at, int slot, String item) {
     }
 
     public InspectService(CraftovPlugin plugin) {
@@ -50,7 +64,11 @@ public final class InspectService implements Listener {
 
     private boolean inspecting(Player player) {
         Inspect inspect = active.get(player.getUniqueId());
-        return inspect != null && Bukkit.getCurrentTick() < inspect.end;
+        return inspect != null && Bukkit.getCurrentTick() < inspect.at;
+    }
+
+    private boolean swinging(Player player) {
+        return Bukkit.getCurrentTick() - swung.getOrDefault(player.getUniqueId(), -1000L) < SWING_TICKS;
     }
 
     /**
@@ -58,7 +76,16 @@ public final class InspectService implements Listener {
      * over; {@code sprinting} is whether the player still sprinted at the end of that tick.
      */
     public void press(Player player, ItemDef knife, boolean sprinting) {
-        start(player, knife, sprinting);
+        waiting.remove(player.getUniqueId());
+        if (swinging(player) && refusal(player, sprinting) == null) {
+            // Started now, the inspect would play over the swing (or, F and a click in one client
+            // tick, the click would not end it): it starts as the swing ends instead (tick).
+            waiting.put(player.getUniqueId(), new Inspect(Bukkit.getCurrentTick(),
+                    player.getInventory().getHeldItemSlot(), knife.id()));
+            debug(player, "F ->", "waiting for the swing");
+            return;
+        }
+        start(player, knife, sprinting, "");
     }
 
     /**
@@ -67,18 +94,22 @@ public final class InspectService implements Listener {
      * downed, reviving or spectating player cannot inspect, and the action bar says so: a press
      * that does nothing without a word looks like a key that only works some of the time.
      */
-    private void start(Player player, ItemDef def, boolean sprinting) {
+    private void start(Player player, ItemDef def, boolean sprinting, String note) {
         String why = refusal(player, sprinting);
         if (why != null) {
-            debug(player, "F ->", "refused: " + why);
-            Notify.hint(player, why);
+            refuse(player, why);
             return;
         }
-        debug(player, "F ->", inspecting(player) ? "restarted" : "started");
+        debug(player, "F ->", (inspecting(player) ? "restarted" : "started") + note);
         int ticks = Math.max(1, plugin.getConfig().getInt("combat.melee.inspect-ticks", 50));
         active.put(player.getUniqueId(), new Inspect(Bukkit.getCurrentTick() + ticks,
                 player.getInventory().getHeldItemSlot(), def.id()));
         player.setCooldown(ItemFactory.INSPECT_GROUP, ticks);
+    }
+
+    private void refuse(Player player, String why) {
+        debug(player, "F ->", "refused: " + why);
+        Notify.hint(player, why);
     }
 
     /** Ends a running inspect at once: the client snaps back to the knife's normal pose. */
@@ -109,16 +140,33 @@ public final class InspectService implements Listener {
     }
 
     /**
-     * Catches what has no event of its own: the knife moved out of the hand in the inventory, the
-     * player downed, reviving a squadmate, or put into spectator.
+     * Starts the presses whose swing is over, then catches what has no event of its own: the knife
+     * moved out of the hand in the inventory, the player downed, reviving a squadmate, or put into
+     * spectator.
      */
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        for (Iterator<Map.Entry<UUID, Inspect>> it = waiting.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<UUID, Inspect> entry = it.next();
+            Inspect press = entry.getValue();
+            Player player = Bukkit.getPlayer(entry.getKey());
+            ItemDef def = player == null ? null : knife(player);
+            if (player == null || def == null || !def.id().equals(press.item)
+                    || player.getInventory().getHeldItemSlot() != press.slot) {
+                it.remove();
+            } else if (!swinging(player)) {
+                it.remove();
+                start(player, def, player.isSprinting(), " after the swing");
+            } else if (now - press.at >= SWING_WAIT) {
+                it.remove();
+                refuse(player, "出刀中无法检视");
+            }
+        }
         for (Iterator<Map.Entry<UUID, Inspect>> it = active.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, Inspect> entry = it.next();
             Inspect inspect = entry.getValue();
             Player player = Bukkit.getPlayer(entry.getKey());
-            if (player == null || now >= inspect.end) {
+            if (player == null || now >= inspect.at) {
                 it.remove();
                 continue;
             }
@@ -136,6 +184,7 @@ public final class InspectService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onSwing(PlayerArmSwingEvent event) {
         if (event.getHand() == EquipmentSlot.HAND) {
+            swung.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
             debug(event.getPlayer(), "swing", "");
             stop(event.getPlayer(), "swing");
         }
@@ -145,6 +194,7 @@ public final class InspectService implements Listener {
     public void onHeld(PlayerItemHeldEvent event) {
         debug(event.getPlayer(), "slot", event.getPreviousSlot() + " -> " + event.getNewSlot());
         stop(event.getPlayer(), "slot switch");
+        waiting.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -170,6 +220,9 @@ public final class InspectService implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        active.remove(event.getPlayer().getUniqueId());
+        UUID id = event.getPlayer().getUniqueId();
+        active.remove(id);
+        waiting.remove(id);
+        swung.remove(id);
     }
 }

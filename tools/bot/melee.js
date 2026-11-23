@@ -194,10 +194,13 @@ const commandSlot = i => i >= 36 ? `hotbar.${i - 36}` : `inventory.${i - 9}`
 
 /** Gives `bot` a fresh piece of armour and moves it onto `slot` (chest or head). */
 async function wear (bot, id, slot) {
+  const worn = () => pdc(bot.inventory.slots[slot === 'chest' ? 6 : 5], 'id') === id
   await rcon(`item replace entity ${bot.username} armor.${slot} with minecraft:air`)
   await rcon(`cv give ${bot.username} ${id}`)
   let i = -1
-  await waitFor(() => (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  // Armour handed out goes straight onto an empty armour slot (CarryService.giveOrWear, #126).
+  await waitFor(() => worn() || (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  if (worn()) return true
   if (i < 0) return false
   await rcon(`item replace entity ${bot.username} armor.${slot} from entity ${bot.username} ${commandSlot(i)}`)
   await rcon(`item replace entity ${bot.username} ${commandSlot(i)} with minecraft:air`)

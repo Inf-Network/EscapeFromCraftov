@@ -74,8 +74,191 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:model",
-   "model": "craftov:item/adrenaline"
+   "type": "minecraft:condition",
+   "property": "minecraft:using_item",
+   "on_true": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:use_duration",
+    "scale": 0.033333,
+    "entries": [
+     {
+      "threshold": 0.0,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/0"
+      }
+     },
+     {
+      "threshold": 0.01667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/1"
+      }
+     },
+     {
+      "threshold": 0.05,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/2"
+      }
+     },
+     {
+      "threshold": 0.08333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/3"
+      }
+     },
+     {
+      "threshold": 0.11667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/4"
+      }
+     },
+     {
+      "threshold": 0.15,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/5"
+      }
+     },
+     {
+      "threshold": 0.18333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/6"
+      }
+     },
+     {
+      "threshold": 0.21667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/7"
+      }
+     },
+     {
+      "threshold": 0.25,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/8"
+      }
+     },
+     {
+      "threshold": 0.28333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/9"
+      }
+     },
+     {
+      "threshold": 0.31667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/10"
+      }
+     },
+     {
+      "threshold": 0.45,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/11"
+      }
+     },
+     {
+      "threshold": 0.55,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/12"
+      }
+     },
+     {
+      "threshold": 0.61667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/13"
+      }
+     },
+     {
+      "threshold": 0.65,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/14"
+      }
+     },
+     {
+      "threshold": 0.68333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/15"
+      }
+     },
+     {
+      "threshold": 0.71667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/16"
+      }
+     },
+     {
+      "threshold": 0.75,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/17"
+      }
+     },
+     {
+      "threshold": 0.78333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/18"
+      }
+     },
+     {
+      "threshold": 0.81667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/19"
+      }
+     },
+     {
+      "threshold": 0.85,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/20"
+      }
+     },
+     {
+      "threshold": 0.88333,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/21"
+      }
+     },
+     {
+      "threshold": 0.91667,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/22"
+      }
+     },
+     {
+      "threshold": 0.95,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/adrenaline/23"
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:model",
+     "model": "craftov:item/adrenaline"
+    }
+   },
+   "on_false": {
+    "type": "minecraft:model",
+    "model": "craftov:item/adrenaline"
+   }
   }
  },
  "oversized_in_gui": true

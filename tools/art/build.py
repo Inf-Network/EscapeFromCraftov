@@ -21,6 +21,7 @@ import hudart  # noqa: E402
 import icons  # noqa: E402
 import knife_inspect  # noqa: E402
 import knife_skins  # noqa: E402
+import med_use  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
@@ -381,6 +382,8 @@ def build_items(item_defs):
             build_gun(item_id, spec, item_defs)
         elif item_id in knife_inspect.KEYS:
             write_knife_item(item_id, item_id, item_id, held)
+        elif item_id in med_use.ITEMS:
+            write_med_item(item_id, spec, held)
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
@@ -404,6 +407,26 @@ def write_knife_item(name, frames_name, knife, held):
         'cases': [{'when': ['gui'], 'model': gui_case(name)}],
         'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
                      'entries': entries, 'fallback': model_ref(held)}}, 'oversized_in_gui': True})
+
+
+def write_med_item(item_id, spec, held):
+    """The item definition of a medical item (#41): its icon in menus, otherwise `held`, and while it
+    is being used the frames of its motion (med_use.py), picked by how far through its use time
+    (items.yml med.use) the holder is, as the vanilla bow picks its pull."""
+    seconds = spec['med']['use']
+    entries = []
+    for k, (threshold, fp, tp) in enumerate(med_use.frames(item_id, seconds)):
+        path = 'med_use/%s/%d' % (item_id, k)
+        write_json(os.path.join(CV, 'models', 'item', path + '.json'), med_use.frame_model(held, fp, tp))
+        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+    write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
+        'type': 'minecraft:select', 'property': 'minecraft:display_context',
+        'cases': [{'when': ['gui'], 'model': gui_case(item_id)}],
+        'fallback': {'type': 'minecraft:condition', 'property': 'minecraft:using_item',
+                     'on_true': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:use_duration',
+                                 'scale': round(1.0 / max(1, round(seconds * 20)), 6),
+                                 'entries': entries, 'fallback': model_ref(held)},
+                     'on_false': model_ref(held)}}, 'oversized_in_gui': True})
 
 
 def load_knife_skins():

@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/revive_kit",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -0.0,
+    -71.812,
+    176.641
+   ],
+   "translation": [
+    -4.142,
+    3.977,
+    -0.273
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -180.0,
+    71.812,
+    3.359
+   ],
+   "translation": [
+    -4.142,
+    3.977,
+    -0.273
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -88.95,
+    0.0,
+    44.475
+   ],
+   "translation": [
+    -0.489,
+    3.988,
+    2.03
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    91.05,
+    -0.0,
+    135.525
+   ],
+   "translation": [
+    -0.489,
+    3.988,
+    2.03
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

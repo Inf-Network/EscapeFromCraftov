@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/medkit_s",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.362,
+    -85.828,
+    25.0
+   ],
+   "translation": [
+    0.832,
+    3.17,
+    1.011
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -179.638,
+    85.828,
+    155.0
+   ],
+   "translation": [
+    0.832,
+    3.17,
+    1.011
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -5.799,
+    0.0,
+    10.729
+   ],
+   "translation": [
+    0.0,
+    3.112,
+    1.089
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    174.201,
+    -0.0,
+    169.271
+   ],
+   "translation": [
+    0.0,
+    3.112,
+    1.089
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

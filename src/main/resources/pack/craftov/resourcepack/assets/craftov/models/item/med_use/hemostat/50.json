@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/hemostat",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -1.961,
+    -80.194,
+    56.38
+   ],
+   "translation": [
+    0.247,
+    2.851,
+    0.872
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    178.039,
+    80.194,
+    123.62
+   ],
+   "translation": [
+    0.247,
+    2.851,
+    0.872
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -17.651,
+    0.0,
+    66.683
+   ],
+   "translation": [
+    0.0,
+    3.258,
+    0.84
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    162.349,
+    -0.0,
+    113.317
+   ],
+   "translation": [
+    0.0,
+    3.258,
+    0.84
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

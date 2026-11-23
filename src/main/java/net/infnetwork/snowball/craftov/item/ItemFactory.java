@@ -75,8 +75,9 @@ public final class ItemFactory {
      * mark (the item model shows the gun low, as the draw starts).
      * 20: helmets, vests, rigs and backpacks are put on with craftov:gear.equip, not leather (#41).
      * 21: medical items use silently (craftov:misc.silence); their cues come from HealthService (#41).
+     * 22: medical items use with no vanilla pose (eat for the painkillers); their models move (#41).
      */
-    public static final int VERSION = 21;
+    public static final int VERSION = 22;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -338,11 +339,14 @@ public final class ItemFactory {
                     .interactVibrations(false)
                     .build());
         } else if (med != null) {
+            // Mostly none: the item model moves the item through its use by itself (tools/art/med_use.py,
+            // using_item and use_duration). Vanilla's poses made a bandage brush sand and an injector a
+            // raised trident; the painkillers keep eat, which brings the bottle to the mouth.
             ItemUseAnimation animation;
             try {
                 animation = ItemUseAnimation.valueOf(med.animation().toUpperCase(java.util.Locale.ROOT));
             } catch (IllegalArgumentException ex) {
-                animation = ItemUseAnimation.BRUSH;
+                animation = ItemUseAnimation.NONE;
             }
             // Silent: vanilla plays a consumable's sound every 4 ticks from a fifth of the use on, the
             // same sample all through. HealthService plays the item's own cues instead.

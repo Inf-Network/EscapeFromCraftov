@@ -59,9 +59,11 @@ public final class Profile {
     public String seasonId = "";
     public long seasonXp;
     public Set<Integer> seasonClaimed = new LinkedHashSet<>();
-    /** New-player guide progress (TutorialService). */
-    public int tutorialStep;
+    /** New-player guide (TutorialService): the steps done, one bit per step in any order, and whether it is over. */
+    public int tutorialMask;
     public boolean tutorialDone;
+    /** The old guide's step counter (the first n steps done), turned into {@link #tutorialMask} on load. */
+    public int tutorialStep;
     /** Money other players have put on this player's head (BountyService). */
     public long bounty;
     /**

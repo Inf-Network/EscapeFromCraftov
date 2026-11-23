@@ -87,7 +87,12 @@ public final class EditorService implements Listener {
         final World world;
         /** {@link #world} is the working copy of a published map, not the map's own template. */
         final boolean copy;
-        /** Where the editor stood when the session started: they go back there when it leaves the copy. */
+        /**
+         * The session took the editor into {@link #world} from another world (the lobby, or another
+         * build world): leaving it takes them back, as from a copy.
+         */
+        final boolean moved;
+        /** Where the editor stood when the session started: they go back there when it leaves the world it moved them to. */
         final Location origin;
         final Map<Integer, ItemRecord> inventory;
         final GameMode mode;
@@ -95,10 +100,11 @@ public final class EditorService implements Listener {
         final List<TextDisplay> labels = new ArrayList<>();
         @Nullable Location corner;
 
-        Session(MapDraft draft, World world, boolean copy, Location origin, Map<Integer, ItemRecord> inventory, GameMode mode) {
+        Session(MapDraft draft, World world, boolean copy, boolean moved, Location origin, Map<Integer, ItemRecord> inventory, GameMode mode) {
             this.draft = draft;
             this.world = world;
             this.copy = copy;
+            this.moved = moved;
             this.origin = origin;
             this.inventory = inventory;
             this.mode = mode;
@@ -247,7 +253,7 @@ public final class EditorService implements Listener {
         }
         plugin.match().cancelQueue(player.getUniqueId(), "开始编辑地图");
         plugin.weapons().reset(player);
-        Session session = new Session(draft, world, copy, origin, plugin.carry().snapshot(player), player.getGameMode());
+        Session session = new Session(draft, world, copy, !here.equals(world), origin, plugin.carry().snapshot(player), player.getGameMode());
         sessions.put(player.getUniqueId(), session);
         player.getInventory().clear();
         player.setGameMode(GameMode.CREATIVE);
@@ -426,12 +432,14 @@ public final class EditorService implements Listener {
 
     /**
      * Ends the session: back to the inventory and game mode the editor had, labels gone, and out of
-     * the working copy (or, when {@code leaveWorld}, out of whatever world it edited).
+     * the edited world when the session brought them there (a working copy, or a map's world opened
+     * from the lobby) or, when {@code leaveWorld}, whatever world it was. Someone who started in the
+     * map's own world stays there.
      */
     private void close(Player player, Session session, boolean leaveWorld) {
         sessions.remove(player.getUniqueId());
         clearLabels(session);
-        boolean leaving = (session.copy || leaveWorld) && player.getWorld().equals(session.world);
+        boolean leaving = (session.copy || session.moved || leaveWorld) && player.getWorld().equals(session.world);
         Location origin = session.origin;
         boolean otherWorld = origin.isWorldLoaded() && !plugin.lobby().isLobby(origin.getWorld()) && !origin.getWorld().equals(session.world);
         player.getInventory().clear();

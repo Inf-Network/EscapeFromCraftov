@@ -31,7 +31,8 @@ import palette  # noqa: E402
 import pixelfont  # noqa: E402
 import screens  # noqa: E402
 import ui  # noqa: E402
-from px import gradient_bg, rgb  # noqa: E402
+import px  # noqa: E402
+from px import rgb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 RES = os.path.join(ROOT, 'src', 'main', 'resources')
@@ -67,7 +68,33 @@ def model_ref(model):
 
 def gui_select(gui_model, other_model):
     return {'model': {'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                      'cases': [{'when': ['gui'], 'model': model_ref(gui_model)}], 'fallback': model_ref(other_model)}}
+                      'cases': [{'when': ['gui'], 'model': gui_model}], 'fallback': model_ref(other_model)},
+            'oversized_in_gui': True}
+
+
+# GUI item models cover the whole 18x18 slot (#10): their textures are px.TILE (36) wide with the 32 px
+# icon in the middle, and the model is scaled up so the icon keeps its 16 GUI px and the tile reaches the
+# well's edges. The client clips a GUI item to 16x16 unless its definition says oversized_in_gui.
+GUI_DISPLAY = {'gui': {'scale': [px.TILE_SCALE] * 3}}
+# Badges sit a little nearer the eye than the item under them, so the two never fight for depth.
+BADGE_DISPLAY = {'gui': {'scale': [px.TILE_SCALE] * 3, 'translation': [0, 0, 2]}}
+BADGE_VALUE, BADGE_PLUS = 6, 7   # custom_model_data strings the stash sets on its display copies (StashMenu)
+
+
+def gui_tile_model(texture, display=None):
+    return {'parent': 'minecraft:item/generated', 'textures': {'layer0': texture}, 'display': display or GUI_DISPLAY}
+
+
+def gui_case(item_id):
+    """An item's look in a slot: its tile and icon, and the stash's corner badges over them."""
+    return {'type': 'minecraft:composite', 'models': [
+        model_ref('craftov:item/gui/' + item_id),
+        {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': BADGE_VALUE,
+         'cases': [{'when': 'v%d' % k, 'model': model_ref('craftov:item/badge/value_%d' % k)} for k in range(1, 5)],
+         'fallback': {'type': 'minecraft:empty'}},
+        {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': BADGE_PLUS,
+         'cases': [{'when': 'plus', 'model': model_ref('craftov:item/badge/plus')}],
+         'fallback': {'type': 'minecraft:empty'}}]}
 
 
 def generated(texture, parent='minecraft:item/generated'):
@@ -136,7 +163,7 @@ def wrap_attachments(node, gid, atts):
 def build_items(item_defs):
     for item_id, spec in item_defs.items():
         rarity = spec.get('rarity', 'WHITE')
-        bg = gradient_bg((32, 32), rgb(RARITY_COLORS[rarity]))
+        bg = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
         if item_id in models.GUNS:
             icon = models.gun_icon(item_id)
             write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), models.gun_model(item_id))
@@ -174,9 +201,9 @@ def build_items(item_defs):
             write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id, parent))
         save(icon, os.path.join(CV, 'textures', 'item', item_id + '.png'))
         composite = bg.copy()
-        composite.alpha_composite(icon)
+        composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
-        write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), generated('craftov:item/gui/' + item_id))
+        write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), gui_tile_model('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
             gun_spec = spec.get('gun') or {}
             kicks = models.kick_frames(gun_spec.get('rpm', 600))
@@ -308,8 +335,8 @@ def build_items(item_defs):
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump({'model': {
                     'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                    'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}},
-                    f, separators=(',', ':'))
+                    'cases': [{'when': ['gui'], 'model': gui_case(item_id)}], 'fallback': in_hand},
+                    'oversized_in_gui': True}, f, separators=(',', ':'))
         elif item_id in knife_inspect.KEYS:
             # F with the knife in hand runs its craftov:inspect cooldown (InspectService), and the client
             # steps through the inspect frames while it counts down, as for the gun reload.
@@ -320,11 +347,11 @@ def build_items(item_defs):
                 entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
             write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
                 'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}],
+                'cases': [{'when': ['gui'], 'model': gui_case(item_id)}],
                 'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
-                             'entries': entries, 'fallback': model_ref(held)}}})
+                             'entries': entries, 'fallback': model_ref(held)}}, 'oversized_in_gui': True})
         else:
-            write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
+            write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
     save(models.palette_texture(models.BOX_PALETTE), os.path.join(CV, 'textures', 'item', 'box_palette.png'))

@@ -119,11 +119,17 @@ public final class MenuService {
     }
 
     public void openCatalog(Player player) {
-        if (plugin.canUseCatalog(player)) {
-            new CatalogMenu(plugin, player).open();
-        } else {
+        if (!plugin.canUseCatalog(player)) {
             Notify.error(player, "测试军械库只在测试模式下开放。");
+            return;
         }
+        // It hands out self-revive injectors and has a full-heal button: a downed player who could
+        // open it would stand up without anyone's help (the terminal and /cv items both lead here).
+        if (plugin.downed().isDowned(player)) {
+            refuse(player, "倒地时无法使用测试军械库");
+            return;
+        }
+        new CatalogMenu(plugin, player).open();
     }
 
     public void openGunsmith(Player player) {

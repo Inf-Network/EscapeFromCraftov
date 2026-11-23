@@ -88,7 +88,9 @@ final class TerminalMenu extends Menu {
                 : UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {
-            button(26, UiItems.button("craftov:ui/icon_catalog", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）")),
+            // Locked too: it hands out self-revive injectors and a full heal.
+            button(26, down ? UiItems.button(UiItems.lockedModel("craftov:ui/icon_catalog"), "<dim><b>测试军械库", List.of("<danger>倒地时无法使用"))
+                    : UiItems.button("craftov:ui/icon_catalog", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）")),
                     e -> plugin.menus().openCatalog(viewer));
         }
         button(22, UiItems.button("craftov:ui/icon_cancel", confirmSurrender ? "<danger><b>再次点击确认放弃" : "<danger>放弃行动",

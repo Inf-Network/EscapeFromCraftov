@@ -97,10 +97,10 @@ def run(s):
                 mate.orbit(30, distance=2.6)
                 s.shot('stance-revived')
                 mate.send(f'slot {s.hotbar_slot("smoke", mate.name)}')
-                s.wait(0.6)
-                mate.send('hold on')
-                s.wait(0.6)
                 mate.orbit(40, distance=2.6)
+                s.wait(0.3)
+                mate.send('hold on')  # the smoke's fuse is 1.5 s from here
+                s.wait(0.5)
                 s.shot('stance-throw')
                 s.rcon(f'execute as {mate.name} at @s run tp @s ~ ~ ~ 180 -35')
                 mate.send('hold off')

@@ -4,12 +4,17 @@
 //   1. draft: A starts a new map in a fresh build world and disconnects; maps/<id>.yml is saved with
 //      enabled: false, B's deploy menu does not list it and "/cv queue" refuses it;
 //   2. publish refused: back in the editor (it takes A to the map's own world), "/cv editor publish"
-//      lists the missing always-open extract, spawn groups and containers;
+//      lists the missing always-open extract, spawn groups and containers; "exit" takes A back to
+//      the lobby in adventure mode, and "start" back to the map's world;
 //   3. lever ids: levers switch_1 and switch_2 each get a lever extract; a click in another world
 //      places nothing; removing switch_1 unbinds its extract (said in chat, gone from the saved file);
-//      the next lever is switch_3, not a second switch_2, and picks the orphaned extract up;
-//   4. a hand-written map whose lever extract names switch_9, with two levers sharing an id, gets
-//      both warnings in the server log on /cv reload;
+//      the next lever is switch_3, not a second switch_2, and picks the orphaned extract up; clicking
+//      that lever again adds no switch; clicking a locked iron door again (its top half, another
+//      key) changes its key and leaves one door;
+//   4. a hand-written map whose lever extract names switch_9, with two levers sharing an id and two
+//      switches on one block, gets the warnings in the server log on /cv reload, and publishing it
+//      is refused naming the hidden switch; a hand-written live map (no enabled key) that fails the
+//      publish checks is named in the log, and the built-in maps are not;
 //   5. publish and raid: with 4 spawn groups, an always-open extract and 5 containers the map
 //      publishes, A is back in the lobby, B's deploy menu lists it, and B's solo raid on it lands on a
 //      spawn point and extracts at the always-open extract;
@@ -239,6 +244,14 @@ async function main () {
   check('... naming the missing always-open extract, spawn groups and containers',
     reasons.includes('常驻撤离点') && reasons.includes('出生点只有 0 组') && reasons.includes('物资箱只有 0 个'), reasons)
   check('... and the map stays a draft', yml(mapFile(id)).enabled === false)
+  // The session took A from the lobby to the map's world: leaving it takes A back.
+  r = await say(A, '/cv editor exit', /已退出编辑模式|没有保存/, 8000)
+  check('"/cv editor exit" there takes the editor back to the lobby',
+    !!r.hit && r.hit.includes('已退出') && await waitFor(() => inLobby(A), 8000), [r.lines, A.worldName])
+  check('... in adventure mode', await waitFor(() => A.game.gameMode === 'adventure', 3000), A.game.gameMode)
+  r = await say(A, `/cv editor start ${id}`, /开始编辑地图/)
+  check('... and "start" takes them back to the map\'s world', !!r.hit && await waitFor(() => A.worldName === id, 8000), [r.lines, A.worldName])
+  await sleep(1500)
 
   // ---- 3. lever ids and bindings
   const p = A.entity.position.floored()
@@ -294,18 +307,38 @@ async function main () {
   const third = A.chatLog.slice(from).find(l => l.includes('已设置电闸')) || ''
   check('the next lever is switch_3 (not a second switch_2)', third.includes('switch_3'), A.chatLog.slice(from))
   check('... and picks up the unbound extract', third.includes('绑定撤离点') && third.includes('撤离点 1'), third)
+  from = A.chatLog.length
+  await click(A, LOCK, at(0, 0, 3))
+  check('clicking switch_3\'s lever again says it is switch_3 already', A.chatLog.slice(from).some(l => l.includes('已经是电闸 switch_3')),
+    A.chatLog.slice(from))
+  await inWorld(id, `setblock ${p.x} ${p.y} ${p.z - 3} minecraft:iron_door[half=lower]`)
+  await inWorld(id, `setblock ${p.x} ${p.y + 1} ${p.z - 3} minecraft:iron_door[half=upper]`)
+  await sleep(500)
+  from = A.chatLog.length
+  await click(A, LOCK, at(0, 0, -3))
+  await cycle(A, LOCK, 1)
+  await click(A, LOCK, at(0, 1, -3))
+  const doorLines = A.chatLog.slice(from)
+  check('a door clicked again (top half, next key) has its key changed',
+    doorLines.some(l => l.includes('已设置门禁')) && doorLines.some(l => l.includes('已把这扇门改为需要钥匙')), doorLines)
   await say(A, '/cv editor save', /草稿已保存/)
   saved = yml(mapFile(id))
-  check('saved: extract_1 -> switch_3, extract_2 -> switch_2, levers switch_2 and switch_3',
+  check('saved: extract_1 -> switch_3, extract_2 -> switch_2, levers switch_2 and switch_3 (no second marker on switch_3)',
     sw(ex(1)) === 'switch_3' && sw(ex(2)) === 'switch_2' &&
     JSON.stringify((saved.switches || []).map(s => s.id).sort()) === '["switch_2","switch_3"]', [saved.extracts, saved.switches])
+  check('... and one door', (saved.doors || []).length === 1, saved.doors)
 
   // ---- 4. warnings for dangling lever extracts and duplicate ids
   const warnId = `t_wn_${run}`
   fs.writeFileSync(mapFile(warnId), [
     `id: ${warnId}`, 'name: 警告测试', `template: ${id}`, 'enabled: false',
     'extracts:', '- {id: gate, type: SWITCH, switch: switch_9, x: 0, y: 65, z: 0}',
-    'switches:', '- {id: dup, x: 1, y: 65, z: 1}', '- {id: dup, x: 2, y: 65, z: 2}', ''].join('\n'))
+    '- {id: gate2, type: SWITCH, switch: top_a, x: 4, y: 65, z: 4}',
+    'switches:', '- {id: dup, x: 1, y: 65, z: 1}', '- {id: dup, x: 2, y: 65, z: 2}',
+    '- {id: top_a, x: 5.5, y: 65, z: 5.5}', '- {id: top_b, x: 5.2, y: 65.4, z: 5.9}', ''].join('\n'))
+  const liveId = `t_lv_${run}`
+  fs.writeFileSync(mapFile(liveId), [`id: ${liveId}`, 'name: 旧地图', `template: craftov_tpl_${liveId}`,
+    'containers:', '- {type: crate, x: 0, y: 65, z: 0}', ''].join('\n'))
   const beforeReload = fs.statSync(LOG).size
   await rcon('cv reload')
   await sleep(1000)
@@ -313,7 +346,21 @@ async function main () {
   check('/cv reload warns about the lever extract that needs switch_9', reloadLog.includes(`lever extract gate needs switch switch_9`),
     reloadLog.split('\n').filter(l => l.includes(warnId)))
   check('... and about the two levers sharing an id', reloadLog.includes('more than one switch has the id dup'))
+  check('... and about top_a hidden under top_b on one block', reloadLog.includes('switch top_a is on the same block as top_b'))
+  check('... and about the lever extract that needs the hidden top_a',
+    reloadLog.includes('lever extract gate2 needs switch top_a, which another switch on its block hides'))
+  const liveLines = reloadLog.split('\n').filter(l => l.includes('is live but'))
+  check('the hand-written live map that fails the publish checks is named, with the reasons',
+    liveLines.some(l => l.includes(`(${liveId})`) && l.includes('常驻撤离点') && l.includes('enabled: false')), liveLines)
+  check('... and neither built-in map is', !liveLines.some(l => /\((rustport|proving)\)/.test(l)), liveLines)
+  r = await say(A, `/cv editor publish ${warnId}`, /还不能发布|已发布/)
+  await sleep(800)
+  const hiddenReasons = A.chatLog.slice(-12).join('\n')
+  check('publishing the hand-written map is refused, naming top_a hidden under top_b',
+    !!r.hit && r.hit.includes('还不能发布') && hiddenReasons.includes('电闸 top_a 和 top_b 在同一个拉杆上') && hiddenReasons.includes('top_a 拉不到'),
+    hiddenReasons)
   fs.rmSync(mapFile(warnId), { force: true })
+  fs.rmSync(mapFile(liveId), { force: true })
   await rcon('cv reload')
 
   // ---- 5. a complete map publishes and plays

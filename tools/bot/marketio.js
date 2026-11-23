@@ -25,6 +25,14 @@
 //      - enough happened: at least MIN_TRADES confirmed purchases and as many listings in the
 //        round, and the bots were still getting trades confirmed in the last 2 s before the stop.
 //
+// The last SLOW_ROUNDS rounds run on a slow disk: the server starts with
+// -Dcraftov.test.write-delay-ms=SLOW_MS (through JAVA_TOOL_OPTIONS), so every data file write
+// waits that long and the profile writer falls behind the trading. The shutdown then gives up
+// waiting for it after 10 seconds ("did not finish in 10 seconds" must be logged) and writes the
+// final saves while older copies are still queued: the race of #62. Those rounds must pass every
+// check above all the same; a queued copy landing on a final save shows up as a market.json that
+// is not the one the final save logged, or as guns and money lost or counted twice.
+//
 // The script STOPS and STARTS the server in SERVER_DIR and rewrites its market.json and config.yml
 // while it is down (both are put back at the end, and the round's accounts are deleted unless
 // KEEP=1), so only point it at a throwaway test server. It may be running or not at the start; it
@@ -32,8 +40,8 @@
 //
 // node marketio.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
 //                         RCON_PASS=craftov-local ROUNDS=3 BOTS=6 OFFLINE=20 LISTINGS=600 STASH=40
-//                         STOP_MIN=20 STOP_MAX=40 MIN_TRADES=40 MEMORY=3G KEEP=0
-//                         LOG=/tmp/marketio.log
+//                         STOP_MIN=20 STOP_MAX=40 MIN_TRADES=40 SLOW_ROUNDS=1 SLOW_MS=150
+//                         MEMORY=3G KEEP=0 LOG=/tmp/marketio.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
 const mineflayer = require('mineflayer')
 const fs = require('fs')
@@ -57,6 +65,8 @@ const STASH = Number(process.env.STASH || 40)
 const STOP_MIN = Number(process.env.STOP_MIN || 20)
 const STOP_MAX = Math.max(STOP_MIN, Number(process.env.STOP_MAX || 40))
 const MIN_TRADES = Number(process.env.MIN_TRADES || 40)
+const SLOW_ROUNDS = Math.min(ROUNDS, Number(process.env.SLOW_ROUNDS ?? 1))
+const SLOW_MS = Number(process.env.SLOW_MS || 150)
 const KEEP = process.env.KEEP === '1'
 const BOT_MONEY = 50_000_000
 const GUNS = ['p18', 'sv9', 'v57', 'k47', 'm4c', 'scr', 'kl7', 'r12', 'dm14', 'd50']
@@ -114,11 +124,16 @@ async function stop () {
   log('server stopped')
 }
 
-/** Starts the server and waits for "Done (" in its console output. */
-async function start () {
+/**
+ * Starts the server and waits for "Done (" in its console output; with `writeDelay`, every data
+ * file write on it waits that many milliseconds (a slow disk, see AtomicFiles).
+ */
+async function start (writeDelay = 0) {
   if (serverPid()) throw new Error('server already running')
   const fd = fs.openSync(CONSOLE, 'w')
-  spawn('bash', ['start.sh'], { cwd: SERVER_DIR, detached: true, stdio: ['ignore', fd, fd], env: { ...process.env, MEMORY: process.env.MEMORY || '3G' } }).unref()
+  const env = { ...process.env, MEMORY: process.env.MEMORY || '3G' }
+  if (writeDelay > 0) env.JAVA_TOOL_OPTIONS = `${env.JAVA_TOOL_OPTIONS || ''} -Dcraftov.test.write-delay-ms=${writeDelay}`.trim()
+  spawn('bash', ['start.sh'], { cwd: SERVER_DIR, detached: true, stdio: ['ignore', fd, fd], env }).unref()
   fs.closeSync(fd)
   const end = Date.now() + 240000
   while (Date.now() < end) {
@@ -330,9 +345,11 @@ async function round (i) {
   const bots = Array.from({ length: BOTS }, (_, k) => `Mio${r.tag}b${k}`.slice(0, 16))
   const sellers = Array.from({ length: OFFLINE }, (_, k) => `Mio${r.tag}s${k}`.slice(0, 16))
   const accounts = [...bots, ...sellers]
-  log(`round ${i + 1}/${ROUNDS}: ${BOTS} bots, ${OFFLINE} offline sellers, ${LISTINGS} listings`)
+  const slow = i >= ROUNDS - SLOW_ROUNDS
+  log(`round ${i + 1}/${ROUNDS}: ${BOTS} bots, ${OFFLINE} offline sellers, ${LISTINGS} listings` +
+    (slow ? `, every write ${SLOW_MS} ms late` : ''))
   const start0 = seed(r, bots, sellers)
-  await start()
+  await start(slow ? SLOW_MS : 0)
 
   const stats = { bought: 0, listed: 0, cancelled: 0, last: 0 }
   const state = { stopping: false }
@@ -378,7 +395,13 @@ async function round (i) {
   const shutdownLines = text.split('\n').filter(l => /Shutdown step|Could not save|Error occurred while disabling Craftov/.test(l))
   check(`round ${i + 1}: the shutdown logged no failed step or save`, shutdownLines.length === 0, shutdownLines.slice(0, 3).join(' | '))
   const late = text.split('\n').filter(l => l.includes('did not finish in 10 seconds'))
-  if (late.length) log('note: the shutdown gave up waiting for queued writes:', late[0])
+  if (slow) {
+    check(`round ${i + 1}: the server ran with the write delay`, text.includes('Test hook on: every data file write waits'))
+    check(`round ${i + 1}: the shutdown gave up waiting for queued writes (the #62 race)`, late.length > 0,
+      late.length ? '' : 'the writer caught up within 10 s: raise SLOW_MS or STOP_MIN')
+  } else if (late.length) {
+    log('note: the shutdown gave up waiting for queued writes:', late[0])
+  }
 
   const where = {}
   for (const l of listings) uidsIn([l.item], where, 'listing ' + l.id)

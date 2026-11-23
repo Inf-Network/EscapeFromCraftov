@@ -122,6 +122,11 @@ public final class CraftovPlugin extends JavaPlugin {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
         net.infnetwork.snowball.craftov.util.Notify.start(this);
+        long writeDelay = net.infnetwork.snowball.craftov.util.AtomicFiles.testDelayMs();
+        if (writeDelay > 0) {
+            getLogger().warning("Test hook on: every data file write waits " + writeDelay
+                    + " ms (-Dcraftov.test.write-delay-ms). Never start a live server with it.");
+        }
         saveDefaultConfig();
         if (ConfigMigration.migrate(getDataFolder(), getResource("config.yml"), getLogger())) {
             reloadConfig();

@@ -328,6 +328,9 @@ public final class CraftovCommand implements TabExecutor {
                     Text.send(sender, "<white>" + raid.id + " <muted>" + raid.map.name() + " " + raid.tier.name() + " " + raid.state
                             + " · 剩余 " + Text.duration(raid.remainingSeconds()) + " · 玩家 " + raid.activeCount() + " · AI " + plugin.ai().count(raid));
                 }
+                // For checking that nothing piles up over a long uptime (issue #45).
+                Text.send(sender, "<muted>正在复制地图 " + plugin.worlds().copies() + " 份 · 击中记录 lastHits "
+                        + plugin.damage().trackedHits() + " 条 · 在线 " + Bukkit.getOnlinePlayers().size() + " 人");
             }
             case "event" -> {
                 // /cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [raid id]: start a raid event now.

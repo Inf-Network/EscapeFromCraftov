@@ -1159,6 +1159,14 @@ def build_trigger_capture():
     soldiers (soldiers.py), so their groans are muted and they hurt, die and walk like people.
     """
     save(Image.new('RGBA', (16, 16), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'block', 'sculk_vein.png'))
+    # The ceiling that keeps a downed player crawling on a slab (DownedService.HALF_CEILING): a top purpur
+    # slab sent to that player alone, drawn as nothing. Purpur is in no Craftov map.
+    write_json(os.path.join(CV, 'models', 'block', 'empty.json'),
+               {'textures': {'particle': 'minecraft:block/purpur_block'}, 'elements': []})
+    write_json(os.path.join(MC, 'blockstates', 'purpur_slab.json'), {'variants': {
+        'type=bottom': {'model': 'minecraft:block/purpur_slab'},
+        'type=double': {'model': 'minecraft:block/purpur_block'},
+        'type=top': {'model': 'craftov:block/empty'}}})
     silence = {'replace': True, 'sounds': [{'name': 'craftov:misc/silence', 'volume': 0.01}]}
     hurt = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.9} for i in (1, 2, 3)]}
     death = {'replace': True, 'sounds': [{'name': 'minecraft:damage/hit%d' % i, 'pitch': 0.75} for i in (1, 2, 3)]}

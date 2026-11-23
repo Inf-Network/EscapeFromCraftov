@@ -63,15 +63,17 @@ public final class TrainingService {
 
     /** The course's lessons in order; the first one not done is the objective. */
     public enum Lesson {
-        LOOT("搜索物资箱", "搜箱拿齐物资"),
-        AIM("开镜打靶", "开镜打靶"),
-        RELOAD("换弹", "换一次弹匣"),
-        HEAL("处理伤势", "止血并固定骨折"),
-        LEVER("拉下电闸", "拉下电闸"),
-        EXTRACT("撤离", "站进撤离点");
+        LOOT("搜索物资箱", "搜箱拿齐物资", "icon_stash"),
+        AIM("开镜打靶", "开镜打靶", "icon_deploy"),
+        RELOAD("换弹", "换一次弹匣", "icon_ammo"),
+        HEAL("处理伤势", "止血并固定骨折", "tab_medical"),
+        LEVER("拉下电闸", "拉下电闸", "icon_start"),
+        EXTRACT("撤离", "站进撤离点", "waypoint");
 
         /** The settlement's checklist line. */
         public final String title;
+        /** The settlement's icon for it (craftov:ui/...). */
+        public final String icon;
         /**
          * The HUD objective line: plain text. In a raid it sits on the 132 px panel under the squad
          * rows, after "目标 " and before " · 99m" or " · 到了" (HudData#objective): with a target
@@ -80,9 +82,10 @@ public final class TrainingService {
          */
         public final String objective;
 
-        Lesson(String title, String objective) {
+        Lesson(String title, String objective, String icon) {
             this.title = title;
             this.objective = objective;
+            this.icon = icon;
         }
     }
 
@@ -283,16 +286,15 @@ public final class TrainingService {
 
     /**
      * The raid is over for the player ({@code extracted}: through the extract), or they left: the
-     * session ends. Returns the settlement's checklist, one line per lesson.
+     * session ends. Returns the settlement's checklist: whether each lesson was done, in order.
      */
-    List<String> finish(Player player, boolean extracted) {
+    List<Boolean> finish(Player player, boolean extracted) {
         Session session = sessions.remove(player.getUniqueId());
-        List<String> lines = new ArrayList<>();
+        List<Boolean> done = new ArrayList<>();
         for (Lesson lesson : Lesson.values()) {
-            boolean done = lesson == Lesson.EXTRACT ? extracted : session != null && (extracted || session.done(lesson));
-            lines.add(done ? "<ok>✔ <muted>" + lesson.title : "<dim>○ " + lesson.title);
+            done.add(lesson == Lesson.EXTRACT ? extracted : session != null && (extracted || session.done(lesson)));
         }
-        return lines;
+        return done;
     }
 
     /**

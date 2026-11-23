@@ -1033,7 +1033,8 @@ public final class RaidManager implements Listener {
         }
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 true, report.outcome, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
-                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, List.of(), rp.shots, rp.stillShots, false);
+                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, List.of(), rp.shots, rp.stillShots, false,
+                List.of());
         // Black curtain over the trip home, so the world loading never shows.
         UiFont.blackout(player, 6, 16, 10);
         if (handed > 0) {
@@ -1062,7 +1063,7 @@ public final class RaidManager implements Listener {
         rp.state = done ? RaidPlayer.State.EXTRACTED : RaidPlayer.State.LEFT;
         rp.extracting = null;
         int seconds = (int) Math.max(0, (Bukkit.getCurrentTick() - rp.startTick) / 20);
-        List<String> lessons = plugin.training().finish(player, done);
+        List<Boolean> lessons = plugin.training().finish(player, done);
         byPlayer.remove(uuid);
         plugin.match().leaveTeam(player);
         player.closeInventory();
@@ -1257,7 +1258,8 @@ public final class RaidManager implements Listener {
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 false, reason, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
                 recordsValue(rp.secure), -lost, SettlementMenu.top(plugin, drop, 10), List.of(),
-                hit == null || hit.attacker() == null ? null : hit.attackerName(), damageLog(hit, hits), rp.shots, rp.stillShots, false);
+                hit == null || hit.attacker() == null ? null : hit.attackerName(), damageLog(hit, hits), rp.shots, rp.stillShots, false,
+                List.of());
         // The kill replay (if there is a killer to follow) plays first, then the report and spectating.
         plugin.replays().afterDeath(player, raid, hit, () -> {
             Player p = Bukkit.getPlayer(uuid);

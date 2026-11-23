@@ -450,7 +450,8 @@ public final class CraftovCommand implements TabExecutor {
                 }
             }
             case "lobby" -> {
-                if (sender instanceof Player p) {
+                // From inside a raid it is void for them, before the lobby puts anything on them.
+                if (sender instanceof Player p && !plugin.raids().evacuate(p)) {
                     plugin.lobby().enterLobby(p);
                 }
             }

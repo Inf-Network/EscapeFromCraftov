@@ -336,6 +336,8 @@ public final class RaidManager implements Listener {
                 }
                 return;
             }
+            launch.landed = true;
+            launch.folder = folder;
             List<List<Player>> going = launch.takers();
             finish(launch);
             if (folder == null) {
@@ -348,16 +350,46 @@ public final class RaidManager implements Listener {
                 return;
             }
             World world = plugin.worlds().loadRaidWorld(folder, map);
+            launch.world = world;
             if (world == null) {
                 going.forEach(squad -> squad.forEach(p -> Text.send(p, "<danger>创建行动地图失败，请联系管理员。")));
                 return;
             }
             open(map, tier, world, going, launch.ranked);
         }).exceptionally(ex -> {
-            finish(launch);
             plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not start a raid on " + map.id(), ex);
+            abort(launch);
             return null;
         });
+    }
+
+    /**
+     * A launch whose start threw once its copy was in: its players hear that it failed (they heard
+     * "match found" and would otherwise wait for nothing), and the copied folder, or the world
+     * loaded from it, is removed. Nothing was taken from anyone. A world a raid has been made for
+     * already is that raid's to end.
+     */
+    private void abort(Launch launch) {
+        finish(launch);
+        if (!launch.landed) {
+            // It threw before taking the copy: called off and told already, or the server stops.
+            return;
+        }
+        World world = launch.world;
+        String folder = launch.folder;
+        if (world != null && byWorld.containsKey(world)) {
+            return;
+        }
+        if (world != null) {
+            plugin.worlds().disposeRaidWorld(world);
+        } else if (folder != null) {
+            plugin.worlds().discardRaidCopy(folder);
+        }
+        for (Player player : launch.online()) {
+            if (raidOf(player) == null) {
+                Text.send(player, "<danger>未能出发：创建行动地图失败，请联系管理员。<muted>装备和块币都没有动，可以重新匹配。");
+            }
+        }
     }
 
     /** Whether this player was matched into a raid whose map is still being copied ({@link #start}). */
@@ -391,6 +423,13 @@ public final class RaidManager implements Listener {
         final Set<UUID> ranked;
         org.bukkit.scheduler.@Nullable BukkitTask timeout;
         boolean over;
+        /**
+         * Whether the copy came back while the launch still waited for it; then the folder it made
+         * (null when it failed) and the world loaded from it, which {@link RaidManager#abort} removes.
+         */
+        boolean landed;
+        @Nullable String folder;
+        @Nullable World world;
 
         Launch(MapDef map, Tier tier, List<List<UUID>> squads, Set<UUID> ranked) {
             this.map = map;

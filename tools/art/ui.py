@@ -287,6 +287,36 @@ def attachment_tab():
 UI['tab_attachment'] = attachment_tab
 
 
+def locked(fn):
+    """A button that is there but cannot be used right now (a downed player's terminal: TerminalMenu)
+    keeps its own pictogram, faded to grey under a red padlock, so it still says which button it is.
+    The plain 'locked' picture is for slots that hold nothing yet."""
+    def make():
+        base = fn().convert('RGBA')
+        px = base.load()
+        for y in range(base.height):
+            for x in range(base.width):
+                r, g, b, a = px[x, y]
+                lum = (r * 299 + g * 587 + b * 114) / 1000
+                px[x, y] = tuple(int((lum * 0.8 + ch * 0.2) * 0.62) for ch in (r, g, b)) + (a,)
+        c = Canvas()
+        c.img.alpha_composite(base)
+        # Dark backing first so the padlock reads on any picture, then the shackle and the body.
+        c.line([(20, 23), (20, 18), (22, 15), (27, 15), (29, 18), (29, 23)], D, 4)
+        c.rect(16, 20, 31, 31, D)
+        c.line([(20, 23), (20, 18), (22, 16), (27, 16), (29, 18), (29, 23)], W, 2)
+        c.box(17, 21, 30, 30, R)
+        c.rect(23, 24, 24, 27, D)
+        return c.img
+    return make
+
+
+# Every button a downed player's terminal greys out (TerminalMenu: the secure container, the
+# gunsmith, the test armory and each operator's skill) has its locked picture: <key>_locked.
+for _key in ('icon_secure', 'icon_gunsmith', 'icon_catalog', 'op_vanguard', 'op_medic', 'op_recon', 'op_engineer'):
+    UI[_key + '_locked'] = locked(UI[_key])
+
+
 # Scope reticles are drawn for the default 70 degree field of view at each scope's power (OpticSpec):
 # the overlay is stretched over the whole window, so a 16:9 window shows the marks at their true
 # angles (a 16:10 one about a tenth narrower across). Only at 70 degrees: at another declared field

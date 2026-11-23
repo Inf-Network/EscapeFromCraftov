@@ -346,7 +346,9 @@ public final class Ballistics {
      * Muzzle smoke and sparks where the muzzle is, for everyone within 32 blocks. {@code shooterSees}
      * false leaves the shooter out: a player firing on a sprint runs into their own smoke within a few
      * ticks, and up against the camera it covers the middle of the screen in big blocky puffs (the
-     * gun's own flash in the item model still shows).
+     * gun's own flash in the item model still shows). Sent unforced, as World.spawnParticle sends
+     * them: a builder forces by default, which would override each viewer's particle setting and widen
+     * the reach to 512 blocks; unforced, the server also keeps them to 32 blocks of each receiver.
      */
     public static void muzzle(LivingEntity shooter, Vector dir, boolean shooterSees) {
         Location tip = muzzlePoint(shooter, dir);
@@ -354,8 +356,9 @@ public final class Ballistics {
         if (!shooterSees) {
             receivers.remove(shooter);
         }
-        Particle.SMOKE.builder().location(tip).count(2).offset(0.02, 0.02, 0.02).extra(0.01).receivers(receivers).spawn();
-        Particle.DUST.builder().location(tip).count(2).offset(0.03, 0.03, 0.03).extra(0)
+        Particle.SMOKE.builder().location(tip).count(2).offset(0.02, 0.02, 0.02).extra(0.01).force(false)
+                .receivers(receivers).spawn();
+        Particle.DUST.builder().location(tip).count(2).offset(0.03, 0.03, 0.03).extra(0).force(false)
                 .data(new Particle.DustOptions(Color.fromRGB(255, 200, 90), 0.8f)).receivers(receivers).spawn();
     }
 }

@@ -126,14 +126,15 @@ public final class GunStats {
 
     /**
      * What the gun's handling (操控速度, with its sight and parts) comes to: how long the sights take to
-     * come up, the gun after a switch, and the sights after a sprint (see {@link Handling}).
+     * come up, the gun after a switch, and the gun after a sprint, both the sights and a true hip shot
+     * (see {@link Handling}).
      */
     public static String handlingLine(GunSpec gun) {
         var config = net.infnetwork.snowball.craftov.CraftovPlugin.get().getConfig();
         double handling = gun.handling();
         return "<muted>操控速度 <white>" + Handling.label(handling) + " <muted>· 开镜 <white>" + Handling.seconds(Handling.adsTicks(config, handling))
                 + " <muted>· 拔枪 <white>" + Handling.seconds(Handling.drawTicks(config, handling))
-                + " <muted>· 冲刺后开镜 <white>+" + Handling.seconds(Handling.sprintOutTicks(config, handling));
+                + " <muted>· 冲刺后举枪 <white>+" + Handling.seconds(Handling.sprintOutTicks(config, handling));
     }
 
     private static String line(Stat stat, double baseFill, double nowFill, double base, double now) {

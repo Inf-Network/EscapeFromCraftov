@@ -279,12 +279,13 @@ weapons:
   #               it is up. Switching away and back never skips the bolt or pump cycle. The draw
   #               animation is baked into the resource pack once per action; any time plays the same
   #               motion faster or slower.
-  #   sprint-out  after a sprint ends, before the sights can come up (the gun coming up from the sprint
-  #               carry). Guns fire from the hip on a sprint (run-and-gun, with the wider cone of
-  #               spread.sprint), but right mouse ends a sprint, no sprint starts while it is held, and
-  #               held through these ticks it aims as soon as they are over. The sprint key pressed
-  #               while aiming wins back: the sights drop and the sprint starts, and right mouse held on
-  #               aims again once that sprint is over.
+  #   sprint-out  after a sprint ends, the gun coming up from the sprint carry: the sights can come up
+  #               once it is over, and a hip shot's sprint cone (spread.sprint) fades back to the
+  #               walking one over it. Guns fire from the hip on a sprint (run-and-gun, with that wider
+  #               cone), but right mouse ends a sprint, no sprint starts while it is held, and held
+  #               through these ticks it aims as soon as they are over. The sprint key pressed while
+  #               aiming wins back: the sights drop and the sprint starts, and right mouse held on aims
+  #               again once that sprint is over.
   #   sway        degrees aimed shots go off the crosshair the moment the sights are up, in a slow figure
   #               of eight (period-ticks around), shrinking to `rest` of that as the sights are held up
   #               (about two thirds of the way in settle-ticks). Only the bullets sway, never the view.
@@ -372,9 +373,9 @@ weapons:
     sneak: 0.7
     airborne: 2.5
     # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
-    # gun's action in items.yml. Sprinting is the client's sprint, or running at more
-    # than 1.2x walking pace on the ground, as the server measures it. Aiming ends a sprint, so this
-    # never applies to aimed shots.
+    # gun's action in items.yml. Sprinting is the client's sprint, or running at more than 1.2x walking
+    # pace on the ground, as the server measures it. Once the sprint ends it fades back to 1 over the
+    # gun's weapons.handling.sprint-out time. Aiming ends a sprint, so this never applies to aimed shots.
     sprint:
       pistol: 1.4
       pistol_heavy: 1.5

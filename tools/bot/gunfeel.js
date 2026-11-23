@@ -584,7 +584,7 @@ async function lore () {
   const handlingLine = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).map(runs => runs.map(r => r.text).join(''))
     .find(text => text.startsWith('操控速度 '))
   check('lore: the 操控速度 line gives the K47\'s handling and its ads, draw and sprint-out times',
-    !!handlingLine && /操控速度 62 · 开镜 0\.25s · 拔枪 0\.50s · 冲刺后开镜 \+0\.20s/.test(handlingLine), handlingLine || 'no line')
+    !!handlingLine && /操控速度 62 · 开镜 0\.25s · 拔枪 0\.50s · 冲刺后举枪 \+0\.20s/.test(handlingLine), handlingLine || 'no line')
   // A gun with a better number never has a shorter bar.
   const wrong = []
   for (const stat of STATS) {

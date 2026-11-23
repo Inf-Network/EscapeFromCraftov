@@ -1014,10 +1014,10 @@ public final class WeaponService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b sway=%.4f",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b sway=%.4f carry=%.2f",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), MotionTracker.grounded(player),
                     eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player),
-                    swaySize(state, Bukkit.getCurrentTick())));
+                    swaySize(state, Bukkit.getCurrentTick()), sprintCarry(player, state)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -1086,7 +1086,9 @@ public final class WeaponService implements Listener {
      * degrees, half of it while aiming) in proportion to how close the player is to their full walking
      * pace past a small dead zone (see {@link #moveCost}): a pistol barely minds, a sniper rifle cannot
      * hit a thing on the move, and stopping before the shot puts it back. Hip fire on a sprint
-     * (run-and-gun) is that cone, at full pace, times the gun's sprint multiplier (see {@link #sprintSpread}).
+     * (run-and-gun) is that cone, at full pace, times the gun's sprint multiplier (see {@link #sprintSpread}),
+     * and straight out of one the multiplier wears off as the gun comes up from the sprint carry (see
+     * {@link #sprintCarry}): quickly on a gun with much handling, slowly on one with little.
      */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
@@ -1106,8 +1108,11 @@ public final class WeaponService implements Listener {
             spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
         spread += gun.moveSpread() * moveCost(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
-        if (!aiming && sprinting(player)) {
-            spread *= sprintSpread(gun);
+        if (!aiming) {
+            double carry = sprintCarry(player, state);
+            if (carry > 0) {
+                spread *= 1 + (sprintSpread(gun) - 1) * carry;
+            }
         }
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
@@ -1165,6 +1170,26 @@ public final class WeaponService implements Listener {
             default -> 1.6; // ak, ar
         };
         return Math.max(0, plugin.getConfig().getDouble("weapons.spread.sprint." + gun.action(), fallback));
+    }
+
+    /**
+     * How much of the sprint's wider hip cone is still on the gun, 0 to 1: all of it on a sprint, then
+     * falling to none in a straight line over the gun's sprint-out time once it ends (its handling, see
+     * {@link Handling#sprintOutTicks}), the same time the sights wait (see {@link #sightsUp}). So how
+     * soon a gun fires true after a sprint is its handling too: an SV9 in 0.15 s, an AWR in 0.35 s
+     * (by default).
+     */
+    private double sprintCarry(Player player, GunState state) {
+        if (sprinting(player)) {
+            return 1;
+        }
+        int out = Handling.sprintOutTicks(plugin.getConfig(), state.gun.handling());
+        if (out <= 0) {
+            return 0;
+        }
+        long last = Math.max(lastSprint.getOrDefault(player.getUniqueId(), -100L), lastRun.getOrDefault(player.getUniqueId(), -100L));
+        long since = Bukkit.getCurrentTick() - last;
+        return Math.max(0, Math.min(1, 1 - since / (double) out));
     }
 
     /** Cone half-angle (degrees) the player's held gun would fire with right now, or -1 without one. */

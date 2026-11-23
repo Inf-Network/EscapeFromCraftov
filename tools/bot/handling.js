@@ -19,14 +19,20 @@
 //           vanilla client does), and the sights come up the gun's sprint-out ticks after the sprint
 //           ended (from the stop the bot sent to the aiming mark, within -1..+2 ticks), the quick
 //           guns sooner.
+//   carry   SV9 and AWR: sprinting down the range, the sprint and the run stopped (as the vanilla
+//           client does when let go), then a hip shot 100 ms later and one a second after that
+//           (debug: true: how much of the sprint cone is still on the gun is in the shot's log line).
+//           The first: the AWR (sprint-out 7 ticks) still carries part of it, more than the SV9 (3
+//           ticks) by a fifth at least, and fires wider than its later shot; the later shot carries
+//           none.
 //   sway    AWR and SV9 aimed (debug: true: the size of the sway is in the shot's log line): a shot
 //           from the hip has none; the AWR's first aimed shot, on the tick its sights are up, sways
 //           by its full size (handling 16: 0.084 degrees), one 2.5 s later by about the rest share
 //           (0.3) of it; the SV9's is under a fifth of the AWR's.
 //
-//   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node handling.js [ads|draw|sprint|sway ...]
+//   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node handling.js [ads|draw|sprint|carry|sway ...]
 //
-// Server config: debug: true for exact ads ticks and for sway (read from the log), the defaults
+// Server config: debug: true for exact ads ticks and for carry and sway (read from the log), the defaults
 // (weapons.handling, weapons.ads.timeout-ticks 5). Without a handling key in items.yml (a server
 // that kept an older copy) the bot only reports what it measured. The real client's timing, from
 // the press to a settled zoom, is tools/shots/shots.py run adstime. Exit code: number of failed
@@ -44,7 +50,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['ads', 'draw', 'sprint', 'sway']
+const scenarios = wanted.length ? wanted : ['ads', 'draw', 'sprint', 'carry', 'sway']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -414,6 +420,56 @@ function click () {
 const swaysSince = from => [...logSince(from).matchAll(new RegExp(`\\[debug\\] ${name} shot .*? aim=(true|false) .*? sway=([0-9.]+)`, 'g'))]
   .map(m => ({ aim: m[1] === 'true', sway: Number(m[2]) }))
 
+/** This bot's shots logged since `from` (bytes): their spread and how much sprint cone they carried. */
+const carriesSince = from => [...logSince(from).matchAll(new RegExp(`\\[debug\\] ${name} shot spread=([0-9.]+) .*? carry=([0-9.]+)`, 'g'))]
+  .map(m => ({ spread: Number(m[1]), carry: Number(m[2]) }))
+
+async function carry () {
+  if (!worldName.includes('craftov_range')) await enterRange()
+  const first = {}
+  for (const gun of ['sv9', 'awr']) {
+    await kit([[gun, null]])
+    hold(gun)
+    await sleep(1400)
+    await home()
+    await sleep(600)
+    keys({ forward: true, sprint: true })
+    bot.setControlState('forward', true)
+    bot.setControlState('sprint', true)
+    command('start_sprinting')
+    await sleep(900)
+    bot.setControlState('sprint', false)
+    bot.setControlState('forward', false)
+    command('stop_sprinting')
+    keys({})
+    await sleep(100)
+    let from = logSize()
+    click()
+    await sleep(gun === 'awr' ? 1700 : 1000) // the bolt
+    const early = carriesSince(from)
+    from = logSize()
+    click()
+    await sleep(400)
+    const late = carriesSince(from)
+    log(gun, 'out of a sprint:', JSON.stringify(early), 'a second later:', JSON.stringify(late))
+    if (!early.length || !late.length) {
+      check(`carry: ${gun} fires out of a sprint`, false, 'no shot in the log (debug: true?)')
+      continue
+    }
+    first[gun] = early[0]
+    check(`carry: ${gun} a second after the sprint carries none of its cone`, late[0].carry === 0, String(late[0].carry))
+    if (gun === 'awr') {
+      check('carry: the AWR 100 ms out of a sprint still carries part of the sprint cone', early[0].carry > 0.2 && early[0].carry < 1,
+        String(early[0].carry))
+      check('carry: and fires wider than a second later', early[0].spread > late[0].spread * 1.1, `${early[0].spread} vs ${late[0].spread}`)
+    }
+  }
+  if (first.sv9 && first.awr) {
+    check('carry: the SV9 sheds the sprint cone sooner than the AWR', first.sv9.carry <= first.awr.carry - 0.2,
+      `sv9 ${first.sv9.carry}, awr ${first.awr.carry}`)
+  }
+}
+
 async function sway () {
   if (!worldName.includes('craftov_range')) await enterRange()
   await home()
@@ -460,7 +516,7 @@ async function sway () {
 }
 
 // ---------------------------------------------------------------- run
-const RUN = { ads, draw, sprint, sway }
+const RUN = { ads, draw, sprint, carry, sway }
 bot.once('spawn', async () => {
   await sleep(3000)
   try {

@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/k47__optic_holo",
+ "parent": "craftov:item/gun/k47",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -2.412,
-    2.681,
-    0.147
+    2.46,
+    -0.13
    ],
    "scale": [
     0.524,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -2.412,
-    2.681,
-    0.147
+    2.46,
+    -0.13
    ],
    "scale": [
     0.524,

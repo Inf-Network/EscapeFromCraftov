@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/m4c_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    132.682,
+    85.207,
+    -128.227
+   ],
+   "translation": [
+    -1.613,
+    2.252,
+    -1.328
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -47.318,
+    -85.207,
+    -51.773
+   ],
+   "translation": [
+    -1.613,
+    2.252,
+    -1.328
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

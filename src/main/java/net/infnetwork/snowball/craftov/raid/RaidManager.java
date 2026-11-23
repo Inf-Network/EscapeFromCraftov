@@ -66,7 +66,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,14 +77,6 @@ import java.util.function.Supplier;
 
 /** Owns every running raid: deployment, extraction, death, disconnects and settlement. */
 public final class RaidManager implements Listener {
-
-    private static final Set<Material> BLOCKED_INTERACT = EnumSet.of(Material.CHEST, Material.TRAPPED_CHEST, Material.BARREL,
-            Material.FURNACE, Material.BLAST_FURNACE, Material.SMOKER, Material.CRAFTING_TABLE, Material.ANVIL,
-            Material.CHIPPED_ANVIL, Material.DAMAGED_ANVIL, Material.ENCHANTING_TABLE, Material.BREWING_STAND,
-            Material.LOOM, Material.CARTOGRAPHY_TABLE, Material.SMITHING_TABLE, Material.STONECUTTER, Material.GRINDSTONE,
-            Material.LECTERN, Material.HOPPER, Material.DROPPER, Material.DISPENSER, Material.ENDER_CHEST, Material.BEACON,
-            Material.CRAFTER, Material.DECORATED_POT, Material.JUKEBOX, Material.NOTE_BLOCK, Material.CAULDRON,
-            Material.FLOWER_POT, Material.CHISELED_BOOKSHELF, Material.RESPAWN_ANCHOR, Material.BELL);
 
     private final CraftovPlugin plugin;
     private final Map<String, Raid> raids = new HashMap<>();
@@ -2039,18 +2030,23 @@ public final class RaidManager implements Listener {
         if (type == null) {
             return;
         }
+        // A knife that left its melee slot as it was (on the cursor, say) would still wear its owner's skin.
+        List<ItemStack> plain = new ArrayList<>(items.size());
+        for (ItemStack stack : items) {
+            plain.add(plugin.skins().undress(stack));
+        }
         Location ground = at.clone();
         ground.setPitch(0);
         // A fully loaded player carries up to 38 stacks (7 pockets, 9 rig cells, 18 backpack cells
         // and 4 worn pieces), and the cursor can add one more: more than the 4-row bag holds, and worn
         // armour comes last in slot order. The body grows to fit, up to a double chest.
-        int rows = Math.min(6, Math.max(type.rows(), (items.size() + 8) / 9));
+        int rows = Math.min(6, Math.max(type.rows(), (plain.size() + 8) / 9));
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
                 1f, 1.4, 0.6, rows, 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
                 ground, 0, title);
-        List<ItemStack> left = container.fill(items, false);
+        List<ItemStack> left = container.fill(plain, false);
         if (!left.isEmpty()) {
-            plugin.getLogger().warning(title + " holds " + items.size() + " items, " + left.size()
+            plugin.getLogger().warning(title + " holds " + plain.size() + " items, " + left.size()
                     + " more than fit in a body; they are dropped beside it");
             for (ItemStack stack : left) {
                 raid.world.dropItemNaturally(ground, stack);
@@ -3228,8 +3224,7 @@ public final class RaidManager implements Listener {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }
-        if (BLOCKED_INTERACT.contains(block.getType()) || block.getType().name().endsWith("_BED")
-                || block.getType().name().endsWith("SHULKER_BOX")) {
+        if (net.infnetwork.snowball.craftov.security.VanillaGuardService.locked(block)) {
             event.setCancelled(true);
             return;
         }

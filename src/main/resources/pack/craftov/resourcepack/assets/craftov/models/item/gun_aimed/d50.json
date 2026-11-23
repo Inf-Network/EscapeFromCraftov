@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/d50",
+ "parent": "craftov:item/gun_low/d50",
  "display": {
   "thirdperson_righthand": {
    "rotation": [

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/karambit_redtide",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    29.731,
+    -1.367,
+    -90.697
+   ],
+   "translation": [
+    -1.241,
+    1.546,
+    -10.614
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -150.269,
+    1.367,
+    -89.303
+   ],
+   "translation": [
+    -1.241,
+    1.546,
+    -10.614
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

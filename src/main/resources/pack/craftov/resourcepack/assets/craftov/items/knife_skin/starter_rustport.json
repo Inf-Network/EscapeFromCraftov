@@ -1,0 +1,377 @@
+{
+ "model": {
+  "type": "minecraft:select",
+  "property": "minecraft:display_context",
+  "cases": [
+   {
+    "when": [
+     "gui"
+    ],
+    "model": {
+     "type": "minecraft:model",
+     "model": "craftov:item/gui/knife_skin/starter_rustport"
+    }
+   }
+  ],
+  "fallback": {
+   "type": "minecraft:range_dispatch",
+   "property": "minecraft:cooldown",
+   "entries": [
+    {
+     "threshold": 0.99,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/0"
+     }
+    },
+    {
+     "threshold": 0.97,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/1"
+     }
+    },
+    {
+     "threshold": 0.95,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/2"
+     }
+    },
+    {
+     "threshold": 0.93,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/3"
+     }
+    },
+    {
+     "threshold": 0.91,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/4"
+     }
+    },
+    {
+     "threshold": 0.89,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/5"
+     }
+    },
+    {
+     "threshold": 0.87,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/6"
+     }
+    },
+    {
+     "threshold": 0.85,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/7"
+     }
+    },
+    {
+     "threshold": 0.83,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/8"
+     }
+    },
+    {
+     "threshold": 0.81,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/9"
+     }
+    },
+    {
+     "threshold": 0.79,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/10"
+     }
+    },
+    {
+     "threshold": 0.77,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/11"
+     }
+    },
+    {
+     "threshold": 0.75,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/12"
+     }
+    },
+    {
+     "threshold": 0.73,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/13"
+     }
+    },
+    {
+     "threshold": 0.71,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/14"
+     }
+    },
+    {
+     "threshold": 0.69,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/15"
+     }
+    },
+    {
+     "threshold": 0.67,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/16"
+     }
+    },
+    {
+     "threshold": 0.65,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/17"
+     }
+    },
+    {
+     "threshold": 0.63,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/18"
+     }
+    },
+    {
+     "threshold": 0.61,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/19"
+     }
+    },
+    {
+     "threshold": 0.59,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/20"
+     }
+    },
+    {
+     "threshold": 0.57,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/21"
+     }
+    },
+    {
+     "threshold": 0.55,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/22"
+     }
+    },
+    {
+     "threshold": 0.53,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/23"
+     }
+    },
+    {
+     "threshold": 0.51,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/24"
+     }
+    },
+    {
+     "threshold": 0.49,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/25"
+     }
+    },
+    {
+     "threshold": 0.47,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/26"
+     }
+    },
+    {
+     "threshold": 0.45,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/27"
+     }
+    },
+    {
+     "threshold": 0.43,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/28"
+     }
+    },
+    {
+     "threshold": 0.41,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/29"
+     }
+    },
+    {
+     "threshold": 0.39,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/30"
+     }
+    },
+    {
+     "threshold": 0.37,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/31"
+     }
+    },
+    {
+     "threshold": 0.35,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/32"
+     }
+    },
+    {
+     "threshold": 0.33,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/33"
+     }
+    },
+    {
+     "threshold": 0.31,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/34"
+     }
+    },
+    {
+     "threshold": 0.29,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/35"
+     }
+    },
+    {
+     "threshold": 0.27,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/36"
+     }
+    },
+    {
+     "threshold": 0.25,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/37"
+     }
+    },
+    {
+     "threshold": 0.23,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/38"
+     }
+    },
+    {
+     "threshold": 0.21,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/39"
+     }
+    },
+    {
+     "threshold": 0.19,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/40"
+     }
+    },
+    {
+     "threshold": 0.17,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/41"
+     }
+    },
+    {
+     "threshold": 0.15,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/42"
+     }
+    },
+    {
+     "threshold": 0.13,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/43"
+     }
+    },
+    {
+     "threshold": 0.11,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/44"
+     }
+    },
+    {
+     "threshold": 0.09,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/45"
+     }
+    },
+    {
+     "threshold": 0.07,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/46"
+     }
+    },
+    {
+     "threshold": 0.05,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/47"
+     }
+    },
+    {
+     "threshold": 0.03,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/48"
+     }
+    },
+    {
+     "threshold": 0.01,
+     "model": {
+      "type": "minecraft:model",
+      "model": "craftov:item/knife_inspect/starter_rustport/49"
+     }
+    }
+   ],
+   "fallback": {
+    "type": "minecraft:model",
+    "model": "craftov:item/knife_skin/starter_rustport"
+   }
+  }
+ }
+}

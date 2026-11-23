@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/scr_body",
+ "parent": "craftov:item/gun_mid/scr_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    99.824,
-    73.713,
-    -89.741
+    95.767,
+    59.425,
+    -82.129
    ],
    "translation": [
-    -3.022,
-    3.577,
-    1.009
+    -3.855,
+    3.555,
+    -1.37
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -80.176,
-    -73.713,
-    -90.259
+    -84.233,
+    -59.425,
+    -97.871
    ],
    "translation": [
-    -3.022,
-    3.577,
-    1.009
+    -3.855,
+    3.555,
+    -1.37
    ],
    "scale": [
     0.51,

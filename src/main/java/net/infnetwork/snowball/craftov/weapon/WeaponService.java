@@ -7,6 +7,7 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
+import net.infnetwork.snowball.craftov.security.VanillaGuardService;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
@@ -22,6 +23,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -501,7 +503,25 @@ public final class WeaponService implements Listener {
         // draw time (weapons.draw-ticks 0) from ever aiming, or show it reloading: whatever mark the
         // stack carries is replaced whenever the gun is bound.
         state.drawPending = state.drawing();
-        ItemFactory.setHandMark(held, state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE);
+        if (state.drawing()) {
+            // The draw frames run on the gun's cooldown, as long as the draw, under the draw mark. The
+            // holster mark (the draw's first frame) reads no cooldown, so the cooldown goes out while
+            // the stack still carries it and the draw mark after: whether the client takes the
+            // packets in one frame or two, it shows the gun low and then coming up. The draw mark
+            // first would show the draw's rest pose for any frame before the cooldown, the gun
+            // popping up and dropping back. A gun that arrives with another mark (one that left the
+            // inventory mid-reload) would read the cooldown as a shot's kick or a reload: it is put
+            // to the holster mark first.
+            if (ItemFactory.handMark(held) != ItemFactory.MARK_HOLSTER) {
+                ItemFactory.setHolstered(held);
+                Nms.syncInventory(player);
+            }
+            player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.readyAt - now));
+            ItemFactory.setHandMark(held, ItemFactory.MARK_DRAW);
+            Nms.syncInventory(player);
+        } else {
+            ItemFactory.setHandMark(held, ItemFactory.MARK_NONE);
+        }
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
@@ -600,11 +620,48 @@ public final class WeaponService implements Listener {
         }
         // The cooldown belongs to every gun: the next one must not show this one's kick, reload or
         // sights coming up.
-        if (state.reloading() || now - state.lastShotTick < state.gun.kickTicks() || state.adsStart >= 0 && !state.adsUp) {
+        if (state.reloading() || state.drawing() || now - state.lastShotTick < state.gun.kickTicks()
+                || state.adsStart >= 0 && !state.adsUp) {
             player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
         }
-        setMark(player, state, ItemFactory.MARK_NONE);
+        // Put away: the next switch to it shows it low at once (ItemFactory.MARK_HOLSTER). A gun that
+        // left the hand by leaving the inventory (shift-clicked into a box, picked up on the cursor) is
+        // marked where it went, or it would keep the mark it had in the hand and come up from rest,
+        // then snap down, for whoever draws it next. A gun on the ground is marked as it lands
+        // (onItemSpawn).
+        ItemStack stack = stackOf(player, state);
+        if (stack == null) {
+            stack = outsideStackOf(player, state.uid);
+        }
+        if (stack != null && ItemFactory.handMark(stack) != ItemFactory.MARK_HOLSTER) {
+            ItemFactory.setHolstered(stack);
+        }
         return state;
+    }
+
+    /** The live stack of a gun just out of the player's inventory: on their cursor or in the container they have open. */
+    private static @Nullable ItemStack outsideStackOf(Player player, String uid) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (uid.equals(ItemFactory.uid(cursor))) {
+            return cursor;
+        }
+        for (ItemStack candidate : player.getOpenInventory().getTopInventory().getContents()) {
+            if (uid.equals(ItemFactory.uid(candidate))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Every gun on the ground is put away, however it got there (see {@link #stow}). */
+    @EventHandler(ignoreCancelled = true)
+    public void onItemSpawn(ItemSpawnEvent event) {
+        ItemStack stack = event.getEntity().getItemStack();
+        ItemDef def = plugin.items().defOf(stack);
+        if (def != null && def.isGun() && ItemFactory.handMark(stack) != ItemFactory.MARK_HOLSTER) {
+            ItemFactory.setHolstered(stack);
+            event.getEntity().setItemStack(stack);
+        }
     }
 
     /** The hand mark the gun's state calls for: reloading, coming up, aiming, aimed, or none. */
@@ -636,6 +693,11 @@ public final class WeaponService implements Listener {
     /** The gun is up: its model may aim and kick again, and right mouse held through the draw aims. */
     private void drawn(Player player, GunState state, long now) {
         state.drawPending = false;
+        if (!state.reloading()) {
+            // The draw frames end at rest anyway; a last tick of their cooldown, late by a network hitch,
+            // must not be read by the model at rest as a shot's kick and flash.
+            player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
+        }
         setMark(player, state, wantedMark(player, state));
         aimIfAsked(player, state, now);
         if (plugin.getConfig().getBoolean("debug", false)) {
@@ -1930,7 +1992,7 @@ public final class WeaponService implements Listener {
     public void onEntityUse(PlayerInteractEntityEvent event) {
         long now = Bukkit.getCurrentTick();
         lastEntityUse.put(event.getPlayer().getUniqueId(), now);
-        if (event.isCancelled()) {
+        if (VanillaGuardService.taken(event)) {
             handledUse.put(event.getPlayer().getUniqueId(), now);
         }
     }
@@ -1978,7 +2040,7 @@ public final class WeaponService implements Listener {
         if (fromInventoryScreen) {
             if (state != null && state.uid.equals(ItemFactory.uid(dropped))) {
                 plugin.items().setAmmo(dropped, state.ammo, state.ammoType);
-                ItemFactory.setDrawing(dropped, false);
+                ItemFactory.setHolstered(dropped);
                 event.getItemDrop().setItemStack(dropped);
                 stow(player);
             }

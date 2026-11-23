@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/kl7__optic_8x",
+ "parent": "craftov:item/gun/kl7",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -4.119,
-    3.164,
-    -2.456
+    2.982,
+    -2.628
    ],
    "scale": [
     0.544,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -4.119,
-    3.164,
-    -2.456
+    2.982,
+    -2.628
    ],
    "scale": [
     0.544,

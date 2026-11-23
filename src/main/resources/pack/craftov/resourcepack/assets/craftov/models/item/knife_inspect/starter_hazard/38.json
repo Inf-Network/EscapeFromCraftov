@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/starter_hazard",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0.378,
+    -19.642,
+    92.874
+   ],
+   "translation": [
+    -4.877,
+    6.454,
+    -6.098
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -179.622,
+    19.642,
+    87.126
+   ],
+   "translation": [
+    -4.877,
+    6.454,
+    -6.098
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

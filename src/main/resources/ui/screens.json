@@ -83,5 +83,25 @@
   "char": "",
   "advance": 177,
   "left": 0
+ },
+ "skins_knife_starter": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_tactical": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_machete": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_karambit": {
+  "char": "",
+  "advance": 177,
+  "left": 0
  }
 }

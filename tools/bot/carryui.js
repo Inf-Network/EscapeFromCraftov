@@ -52,9 +52,10 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rcon = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const t0 = Date.now()
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -62,7 +63,7 @@ const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)
 const cmd = c => rcon(c, RCON).then(r => r.replace(/§./g, ''))
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'cursor', 'stash', 'trader', 'preset', 'secure', 'loot']
-const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
+const DATA = env.DATA
 const failures = []
 function check (name, ok, detail) {
   if (!ok) failures.push(name)

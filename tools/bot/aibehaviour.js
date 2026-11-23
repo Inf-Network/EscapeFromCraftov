@@ -48,9 +48,10 @@
 //             sidesteps but never off the field for 8 s.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const MAP = 'proving'
 // A flat stone field high above the proving ground (inside its bounds), lit by the sky.
 const FIELD = { x1: 20, x2: 100, z1: 16, z2: 88, y: 120 }

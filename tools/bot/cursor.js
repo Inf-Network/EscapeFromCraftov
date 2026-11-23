@@ -47,10 +47,11 @@ const path = require('path')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const SERVER_REAL = fs.realpathSync(SERVER_DIR)
 const DATA = path.join(SERVER_DIR, 'plugins', 'Craftov')
 const scenario = process.argv[2] || 'all'

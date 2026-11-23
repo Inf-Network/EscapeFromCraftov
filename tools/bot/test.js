@@ -1,6 +1,7 @@
 // End-to-end smoke test for Craftov: join, menus, range, raid, loot, extract, death.
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
+const env = require('./env')
 
 const name = process.argv[2] || 'Tester1'
 const scenario = process.argv[3] || 'full'
@@ -8,7 +9,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
 
 // Answer resource pack offers in both configuration and play state: accepted -> downloaded -> loaded.
 bot._client.on('add_resource_pack', (packet) => {

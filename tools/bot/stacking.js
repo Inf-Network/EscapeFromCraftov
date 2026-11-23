@@ -20,9 +20,10 @@
 // every check passed, 1 otherwise.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const EXTRACT = process.env.EXTRACT || '106.5 65 8.5' // the proving ground's permanent extraction
 const AMMO = 'ammo_556_m855'
 const name = 'Stk' + Math.floor(10000 + Math.random() * 90000)

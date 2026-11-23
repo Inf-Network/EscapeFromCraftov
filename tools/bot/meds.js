@@ -2,6 +2,7 @@
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const rcon = require('./rcon')
+const env = require('./env')
 const out = '/tmp/meds.log'
 fs.writeFileSync(out, '')
 const t0 = Date.now()
@@ -9,7 +10,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => fs.appendFileSync(out, `[${((Date.now() - t0) / 1000).toFixed(1)}s] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') + '\n')
 const plain = (j) => { const m = JSON.stringify(j).match(/"text":\{"type":"string","value":"([^"]*)"/g); return m ? m.map(x => x.split('"value":"')[1].slice(0, -1)).join('') : '' }
 const name = 'Eco' + (Date.now() % 10000)
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
 bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 bot.on('messagestr', m => { if (m.trim()) log('CHAT', m) })
 bot.on('actionBar', m => { const s = m.toString(); if (s.trim()) log('BAR', s) })

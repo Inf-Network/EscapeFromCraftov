@@ -54,12 +54,13 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = cmd => rconRaw(cmd, RCON)
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
-const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
+const LOG = env.LOG
+const DATA = env.DATA
 const logSize = () => fs.statSync(LOG).size
 /** Server log lines written since byte offset `from`. */
 function logSince (from) {

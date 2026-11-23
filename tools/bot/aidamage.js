@@ -31,9 +31,10 @@
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const MAP = process.env.MAP || 'proving'
 // The proving ground's soldier post (a guard group of two) and a spot in front of it.
 const POST = process.env.POST || '47.5 65 30.5'

@@ -45,10 +45,11 @@ const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 const Vec3 = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const MAPS = path.join(SERVER_DIR, 'plugins/Craftov/maps')
 const LOG = path.join(SERVER_DIR, 'logs/latest.log')
 const t0 = Date.now()

@@ -19,9 +19,10 @@
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = (cmd) => rconRaw(cmd, RCON)
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))

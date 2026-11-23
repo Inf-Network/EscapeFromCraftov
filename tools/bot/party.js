@@ -40,10 +40,11 @@ const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const LOG = path.join(SERVER_DIR, 'logs/latest.log')
 const RECONNECT = Number(process.env.RECONNECT || 120)
 const WAIT = Number(process.env.WAIT || 5)

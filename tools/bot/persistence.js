@@ -42,14 +42,15 @@ const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
 const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
   console.error('SERVER_DIR must point at the server run folder (with start.sh)')
   process.exit(2)
 }
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const RESTARTS = Number(process.env.RESTARTS || 10)
 const ALL = ['corrupt', 'escort-mia', 'lost-edit', 'stop-mid-raid', 'hot-reload', 'market-expire', 'market-corrupt', 'map', 'escort-crash',
   'backup', 'backup-keep']

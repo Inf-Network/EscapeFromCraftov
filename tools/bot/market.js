@@ -22,6 +22,7 @@ const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 function flatText (n) {
   if (n == null) return ''
   if (typeof n === 'string') return n
@@ -32,8 +33,8 @@ function flatText (n) {
   return flatText(n.text) + flatText(n.extra)
 }
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const SERVER_DIR = process.env.SERVER_DIR || ''
 const SALES = Number(process.env.SALES || 8)
 const WAIT_MIN = Number(process.env.WAIT_MIN || 25)

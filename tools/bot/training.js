@@ -32,10 +32,11 @@ const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const RUN = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const RUN = env.SERVER_DIR
 const PLAYERS = path.join(RUN, 'plugins/Craftov/data/players')
 const t0 = Date.now()
 const tag = String(Math.floor(Math.random() * 9000) + 1000)

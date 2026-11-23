@@ -32,10 +32,11 @@ const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const CONFIG = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
 const CE_CONFIG = path.join(SERVER_DIR, 'plugins/CraftEngine/config.yml')
 const MAPS = path.join(SERVER_DIR, 'plugins/Craftov/maps')

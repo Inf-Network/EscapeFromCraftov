@@ -51,10 +51,11 @@ const path = require('path')
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const PORT = env.PORT
+const RCON = env.RCON
+const LOG = env.LOG
 const CONFIG = process.env.CRAFTOV_CONFIG || path.join(path.dirname(LOG), '../plugins/Craftov/config.yml')
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))

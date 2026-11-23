@@ -5,10 +5,11 @@ const rcon = require('./rcon')
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const fs = require('fs'); fs.writeFileSync('/tmp/squad.log', ''); const log = (who, ...a) => { const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who} ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '); fs.appendFileSync('/tmp/squad.log', line + '\n') }
+const env = require('./env')
 const text = (j) => { try { return typeof j === 'string' ? j : JSON.stringify(j).match(/"text":\{"type":"string","value":"([^"]*)"/g)?.map(x => x.split('"value":"')[1].slice(0, -1)).join('') || '' } catch (e) { return '' } }
 
 function make (name) {
-  const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+  const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.worldChanges = 0
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) log(name, 'CHAT', m) })

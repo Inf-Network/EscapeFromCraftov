@@ -2,13 +2,14 @@
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const rcon = require('./rcon')
+const env = require('./env')
 const out = '/tmp/escort.log'
 fs.writeFileSync(out, '')
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => fs.appendFileSync(out, `[${((Date.now() - t0) / 1000).toFixed(1)}s] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') + '\n')
 function make (name) {
-  const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+  const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) log(name, 'CHAT', m) })
   return new Promise(resolve => bot.once('spawn', () => resolve(bot)))

@@ -34,11 +34,12 @@ const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const EXTRACT = process.env.EXTRACT || '106.5 65 8.5' // the proving ground's permanent extraction
-const PLAYERS = process.env.PLAYERS || path.join(__dirname, '../../server/run/plugins/Craftov/data/players')
+const PLAYERS = process.env.PLAYERS || path.join(env.DATA, 'data', 'players')
 const RAID_SECONDS = Number(process.env.RAID_SECONDS || 60)
 const args = process.argv.slice(2)
 const want = s => args.length === 0 || args.includes(s)

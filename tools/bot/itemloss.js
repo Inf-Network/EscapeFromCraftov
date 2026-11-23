@@ -22,10 +22,11 @@ const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
+const PORT = env.PORT
+const RCON = env.RCON
+const DATA = env.DATA
 const scenario = process.argv[2] || 'reload'
 const variant = process.argv[3] || 'end'
 const tag = String(Math.floor(Math.random() * 9000) + 1000)

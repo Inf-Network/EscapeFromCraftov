@@ -50,10 +50,11 @@ const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const RUN = process.env.CRAFTOV_RUN || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const RUN = env.SERVER_DIR
 const CONFIG = path.join(RUN, 'plugins/Craftov/config.yml')
 const PLAYERS = path.join(RUN, 'plugins/Craftov/data/players')
 const rcon = cmd => rconRaw(cmd, RCON)

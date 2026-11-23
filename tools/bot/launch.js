@@ -35,10 +35,11 @@ const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const MC_PORT = Number(process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const MC_PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const LOG = path.join(SERVER_DIR, 'logs', 'latest.log')
 const CONFIG = path.join(SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
 const PAD_DIR = path.join(SERVER_DIR, 'craftov_tpl_proving', 'pad')

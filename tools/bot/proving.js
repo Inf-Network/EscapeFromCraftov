@@ -1,6 +1,7 @@
 // Proving-ground smoke test: LAN pack URL, item catalog, solo raid on the test map, armory, locked door, extracts.
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
+const env = require('./env')
 
 const host = process.argv[2] || '127.0.0.1'
 const t0 = Date.now()
@@ -8,7 +9,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 
 function make (name) {
-  const bot = mineflayer.createBot({ host, port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+  const bot = mineflayer.createBot({ host, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.worldChanges = 0
   bot._client.on('add_resource_pack', (p) => {
     log(name, 'pack url', String(p.url).slice(0, 60))

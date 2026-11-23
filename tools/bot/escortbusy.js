@@ -20,9 +20,10 @@
 // match.wait-seconds. Exit code: failed checks.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const t0 = Date.now()
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))

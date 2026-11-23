@@ -12,10 +12,11 @@
 // Exits 0 when every check passes, 1 otherwise.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON_PORT = Number(process.env.RCON_PORT || 25575)
-const RCON_PASSWORD = process.env.RCON_PASSWORD || 'craftov-local'
+const PORT = env.PORT
+const RCON_PORT = env.RCON_PORT
+const RCON_PASSWORD = env.RCON_PASSWORD
 const RAID = !process.argv.includes('--no-raid')
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const name = 'Rng' + Math.floor(10000 + Math.random() * 90000)

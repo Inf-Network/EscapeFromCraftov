@@ -12,9 +12,10 @@
 //   quit
 const readline = require('readline')
 const mineflayer = require('mineflayer')
+const env = require('./env')
 
 const name = process.argv[2] || 'Puppet' + Math.floor(Math.random() * 9000)
-const port = Number(process.env.PORT || 25565)
+const port = env.PORT
 const bot = mineflayer.createBot({ host: '127.0.0.1', port, username: name, version: '1.21.11', auth: 'offline' })
 
 bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })

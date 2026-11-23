@@ -2,8 +2,9 @@
 // for the reload time (the client animates the reload from it), and switching away must clear it.
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
+const env = require('./env')
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'Loader', version: '1.21.11', auth: 'offline' })
+const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: 'Loader', version: '1.21.11', auth: 'offline' })
 bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 const t0 = Date.now()
 bot._client.on('set_cooldown', (p) => console.log((Date.now() - t0) + 'ms cooldown', JSON.stringify(p)))

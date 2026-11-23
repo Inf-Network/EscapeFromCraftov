@@ -265,9 +265,11 @@ def build_gun(item_id, spec, item_defs):
         return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
                 'fallback': entries[0]['model']}
 
-    # Reloading: one frame a tick at most of the gun's reload time, each a composite of its moving parts.
+    # Reloading: one frame a tick at most of the cooldown the client counts for the gun's reload, each a
+    # composite of its moving parts.
     reload_entries = []
-    for k, (threshold, parts) in enumerate(models.reload_timeline(item_id, gun_spec.get('reload', 48))):
+    reload_ticks = models.reload_cooldown(gun_spec.get('reload', 48))
+    for k, (threshold, parts) in enumerate(models.reload_timeline(item_id, reload_ticks)):
         members = []
         for part, (parent, right) in parts.items():
             members.append(leaf('gun_reload/%s/%s_%d' % (item_id, part, k), models.frame_model(parent, right)))

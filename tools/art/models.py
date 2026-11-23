@@ -555,10 +555,18 @@ def shell_model():
             'elements': [element(b) for b in boxes]}
 
 
+def reload_cooldown(reload_ticks):
+    """Ticks the client counts the reload frames over, for a reload of `reload_ticks` (items.yml): the
+    server starts the cooldown a tick after the reload began (WeaponService.showReload), once the stack
+    carries the reload mark, so it runs one tick short. An empty magazine (x1.2), a fracture or an
+    attachment stretch it and every frame still shows; the operator's sprint (x0.7) skips some."""
+    return max(1, int(reload_ticks) - 1)
+
+
 def reload_timeline(gid, ticks):
     """[(cooldown threshold, {part: (model, right-hand display)})] for the reload, one frame at most per tick
-    of the gun's reload time (reload.timeline). The mounted optic is not a part: it rides on the body's
-    frame as an attachment."""
+    of a cooldown of `ticks` (reload.timeline, reload_cooldown). The mounted optic is not a part: it rides
+    on the body's frame as an attachment."""
     base = gun_model(gid)['display']['firstperson_righthand']
     out = []
     for threshold, frame in reload.timeline(gid, base, ticks, lift=4.0 if gid in PISTOLS else 0.0):
@@ -646,13 +654,35 @@ def draw_pose(p):
 
 def draw_frames(gid, ticks):
     """[(cooldown threshold, right, left)]: frame k shows during tick k of the draw (frame 0 is the
-    holster pose); once the cooldown runs out the gun is at rest."""
+    holster pose); once the cooldown runs out the gun is at rest.
+
+    On tick t of a cooldown of `ticks` the client reads exactly (ticks - t) / ticks and shows the entry
+    with the largest threshold at or under it, so each threshold sits halfway between two ticks' values:
+    a threshold on a tick's value would leave the side it falls on to float rounding, and frames would
+    be skipped or shown twice (cooldown_frames checks this)."""
     base = gun_model(gid)['display']
     out = []
     for k in range(ticks):
         pose = draw_pose(k / ticks)
-        out.append((max(1e-4, round(1 - (k + 1) / ticks, 5)), posed(base['firstperson_righthand'], **pose),
+        out.append((round(1 - (k + 0.5) / ticks, 5), posed(base['firstperson_righthand'], **pose),
                     posed(base['firstperson_lefthand'], left=True, **pose)))
+    return out
+
+
+def cooldown_frames(thresholds, ticks):
+    """The entry (index into `thresholds`, None for the fallback) the client shows on each tick of a
+    cooldown of `ticks` ticks, worked out as it does: ItemCooldowns.getCooldownPercent in float at
+    partial tick 0, then the range dispatch's largest threshold at or under that, in float too."""
+    import numpy as np
+    order = sorted(range(len(thresholds)), key=lambda i: np.float32(thresholds[i]))
+    out = []
+    for t in range(ticks):
+        value = np.float32(ticks - t) / np.float32(ticks)
+        shown = None
+        for i in order:
+            if np.float32(thresholds[i]) <= value:
+                shown = i
+        out.append(shown)
     return out
 
 

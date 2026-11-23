@@ -3,8 +3,9 @@
 While reloading, the server puts the gun's cooldown group on cooldown for exactly the reload time.
 The client then counts the cooldown down by itself, and the item definition picks a frame with a
 `minecraft:cooldown` range dispatch. The client reads the cooldown once a tick (partial tick 0), so
-there is at most one frame per tick: timeline() samples the motion once per tick of the gun's
-reload (items.yml) and keeps a frame only where the pose moved MIN_TURN degrees or MIN_MOVE
+there is at most one frame per tick: timeline() samples the motion once per tick of the cooldown
+the client counts (the gun's reload in items.yml less the tick before the server starts it, see
+models.reload_cooldown) and keeps a frame only where the pose moved MIN_TURN degrees or MIN_MOVE
 pixels since the last one kept, so a quick pistol reload and a 5.5 s machine gun reload both run at
 up to 20 frames a second without baking still frames. Each frame is a composite of the gun body, its
 magazine (or a shotgun's pump and a shell) and any mounted optic, each a tiny model that only
@@ -212,9 +213,12 @@ def change(a, b):
 
 
 def timeline(gid, base, ticks, lift=0.0):
-    """[(cooldown threshold, frame)] for a reload of `ticks` ticks: one sample a tick, a frame kept where
+    """[(cooldown threshold, frame)] for a cooldown of `ticks` ticks: one sample a tick, a frame kept where
     the pose has moved MIN_TURN degrees or MIN_MOVE pixels since the last kept one, each kept frame held
-    until the next. Thresholds fall from just under 1 to 1e-4 (the last frame holds to the end)."""
+    until the next. The client reads (ticks - t) / ticks on tick t; a frame held up to tick `end` gets
+    the threshold halfway between that tick's value and the one before, so float rounding never decides
+    which frame a tick shows (models.cooldown_frames replays it). The last threshold is 0.5 / ticks: the
+    last frame holds to the end."""
     ticks = max(1, int(ticks))
     samples = [frame_at(gid, base, (k + 0.5) / ticks, lift) for k in range(ticks)]
     keep = [0]
@@ -225,5 +229,5 @@ def timeline(gid, base, ticks, lift=0.0):
     out = []
     for i, k in enumerate(keep):
         end = keep[i + 1] if i + 1 < len(keep) else ticks
-        out.append((max(1e-4, round(1 - end / ticks, 5)), samples[k]))
+        out.append((round(1 - (end - 0.5) / ticks, 5), samples[k]))
     return out

@@ -116,7 +116,8 @@ def _coplanar(elements):
 
 def _timed_frames(gid):
     """[(kind, range dispatch entries, ticks)] of the gun's reload and draw frames, from its item
-    definition (the first-person tree's damage 2 and 1 branches) and items.yml."""
+    definition (the first-person tree's damage 2 and 1 branches), with the cooldown the server sends
+    for each: the draw time, and the reload in items.yml less the tick before showReload starts it."""
     import yaml
     import models
     with open(os.path.join(ROOT, 'items', gid + '.json'), encoding='utf-8') as f:
@@ -137,7 +138,7 @@ def _timed_frames(gid):
                 yield from find(v)
     for marks in find(definition):
         by = {round(e['threshold'] + 0.5): e['model'] for e in marks['entries']}
-        out.append(('reload', by[2]['entries'], gun['reload']))
+        out.append(('reload', by[2]['entries'], models.reload_cooldown(gun['reload'])))
         out.append(('draw', by[1]['entries'], models.draw_ticks(gun.get('action'))))
     return out
 
@@ -161,13 +162,23 @@ def lint(gid):
                 problems.append('%s: %s has an element outside -16..32' % (gid, ref))
                 break
     # The reload and draw frames: at most one a tick (the client reads the cooldown once a tick), their
-    # cooldown thresholds falling, as the range dispatch needs.
+    # cooldown thresholds falling, and, replaying the client's float sampling of the cooldown the server
+    # sends, every frame shown: the draw's frame t on tick t, the reload's each for a tick or more.
+    import models
     for kind, entries, ticks in _timed_frames(gid):
         thresholds = [e['threshold'] for e in entries]
         if len(entries) > ticks:
             problems.append('%s: %d %s frames for %d ticks' % (gid, len(entries), kind, ticks))
         if any(a <= b for a, b in zip(thresholds, thresholds[1:])):
             problems.append('%s: %s frame thresholds do not fall' % (gid, kind))
+        shown = models.cooldown_frames(thresholds, ticks)
+        missed = sorted(set(range(len(entries))) - set(shown))
+        if missed:
+            problems.append('%s: %s frames %s never show over a %d-tick cooldown' % (gid, kind, missed, ticks))
+        if None in shown:
+            problems.append('%s: the %s falls back to rest before its cooldown ends' % (gid, kind))
+        if kind == 'draw' and shown != list(range(ticks)):
+            problems.append('%s: draw ticks show frames %s, not one each in turn' % (gid, shown))
     if not meshprim.has_spec(gid):
         return problems
     for level in ('fine', 'mid', 'low'):

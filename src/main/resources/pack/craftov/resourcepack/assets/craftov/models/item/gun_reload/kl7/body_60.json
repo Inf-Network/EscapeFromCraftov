@@ -3,9 +3,9 @@
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    179.537,
+    179.529,
     86.008,
-    -176.524
+    -176.515
    ],
    "translation": [
     -1.204,
@@ -20,9 +20,9 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -0.463,
+    -0.471,
     -86.008,
-    -3.476
+    -3.485
    ],
    "translation": [
     -1.204,

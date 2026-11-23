@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -132,12 +133,24 @@ final class MotionTracker {
      * Moving on foot over ground that gives normal grip: what can be compared with walking pace.
      * Ice and riding carry a player faster than their legs, and the air has its own pace.
      */
-    @SuppressWarnings("deprecation")
     private static boolean groundRun(Player player) {
-        if (!player.isOnGround() || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
+        if (!grounded(player) || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
             return false;
         }
         return !player.getLocation().subtract(0, 0.2, 0).getBlock().getType().name().contains("ICE");
+    }
+
+    /**
+     * Standing on something, by the server's own collision check under the feet. The client's on-ground
+     * flag will not do: the vanilla client answers every camera turn the server sends (each recoil
+     * kick) with a rotation packet that says it is off the ground, so a player firing full auto on
+     * flat ground read as jumping on every other round; and a modified client could claim the ground
+     * in mid-air.
+     */
+    static boolean grounded(Player player) {
+        BoundingBox body = player.getBoundingBox();
+        return player.getWorld().hasCollisionsIn(new BoundingBox(body.getMinX(), body.getMinY() - 0.06, body.getMinZ(),
+                body.getMaxX(), body.getMinY(), body.getMaxZ()));
     }
 
     /**

@@ -786,7 +786,7 @@ public final class WeaponService implements Listener {
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
             plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b",
-                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
+                    player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), MotionTracker.grounded(player),
                     eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
@@ -862,7 +862,7 @@ public final class WeaponService implements Listener {
         if (player.isSneaking()) {
             spread *= config.getDouble("weapons.spread.sneak", 0.7);
         }
-        if (!player.isOnGround()) {
+        if (!MotionTracker.grounded(player)) {
             spread *= config.getDouble("weapons.spread.airborne", 2.5);
         }
         if (state.fireMode() != FireMode.BOLT) {

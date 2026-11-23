@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_hand/knife_tactical_glove",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    6.858,
+    -23.906,
+    103.113
+   ],
+   "translation": [
+    -6.799,
+    7.848,
+    -7.531
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -173.142,
+    23.906,
+    76.887
+   ],
+   "translation": [
+    -6.799,
+    7.848,
+    -7.531
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
+ }
+}

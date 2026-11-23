@@ -28,6 +28,7 @@ import sounds  # noqa: E402
 import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
 import gunsamples  # noqa: E402
+import hands  # noqa: E402
 import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
@@ -174,17 +175,31 @@ def build_gun(item_id, spec, item_defs):
     gun_spec = spec.get('gun') or {}
     scoped = bool(gun_spec.get('scope'))
     fine = models.gun_model(item_id)
-    write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), fine)
+    # The gloved hands ride in the first-person bodies (models.hand_elements): the right fist on the
+    # grip and the left hand on the handguard in the fine model (rest, poses, kicks, sights) and the mid
+    # one (draw frames), the right fist alone in the reload's body part, whose frames put the left
+    # hand on the magazine (models.reload_hand). The low model, which everyone else sees, has none.
+    write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), models.with_hands(fine, models.hand_elements(item_id)))
     skin = models.gun_skin_image(item_id)
     if skin is not None:
         save(skin, os.path.join(CV, 'textures', 'item', 'gun', item_id + '_skin.png'))
     held = 'craftov:item/gun/' + item_id
+    # Aimed, the eye is down on the stock right over the grip: a long gun's right fist would fill the
+    # view (and is below the screen anyway), so the sights coming up and the aimed poses use a body with
+    # the left hand alone. A pistol, held out at arm's length, keeps both fists.
+    aim_held = held
+    if item_id not in models.PISTOLS:
+        aim_held = 'craftov:item/gun_aimhands/' + item_id
+        write_json(os.path.join(CV, 'models', 'item', 'gun_aimhands', item_id + '.json'),
+                   models.with_hands(fine, models.fore_hand(item_id)))
     if models.has_lods(item_id):
         write_json(os.path.join(CV, 'models', 'item', 'gun_low', item_id + '.json'), models.gun_low_model(item_id))
-        write_json(os.path.join(CV, 'models', 'item', 'gun_mid', item_id + '.json'), models.gun_mid_model(item_id))
+        write_json(os.path.join(CV, 'models', 'item', 'gun_mid', item_id + '.json'),
+                   models.with_hands(models.gun_mid_model(item_id), models.hand_elements(item_id)))
         for part in models.voxel_gun(item_id)['mid']:
+            mid = models.gun_mid_model(item_id, part)
             write_json(os.path.join(CV, 'models', 'item', 'gun_mid', '%s_%s.json' % (item_id, part)),
-                       models.gun_mid_model(item_id, part))
+                       models.with_hands(mid, models.grip_hand(item_id)) if part == 'body' else mid)
     else:
         for part in models.gun_parts(item_id):
             write_json(os.path.join(CV, 'models', 'item', 'gun_part', item_id + '_' + part + '.json'),
@@ -249,7 +264,7 @@ def build_gun(item_id, spec, item_defs):
             return model_ref('craftov:item/scope_mask/' + oid)
         name = item_id if oid is None else item_id + '__' + oid
         display = models.ads_display(item_id, oid)
-        ads = leaf('gun_ads/' + name, {'parent': held, 'display': display})
+        ads = leaf('gun_ads/' + name, {'parent': aim_held, 'display': display})
         ads_ref = 'craftov:item/gun_ads/' + name
         ap = {n: pose('ads', name, ads_ref, display, n, sp) for n, sp in models.ADS_POSES.items()}
         return kicked('ads', name, ads_ref, display, strafe(ads, ap))
@@ -266,7 +281,7 @@ def build_gun(item_id, spec, item_defs):
             target = models.optic_rise_display(item_id, oid)
         entries = []
         for k, (threshold, progress) in enumerate(models.ads_rise_frames()):
-            ref = leaf('gun_adsin/%s/%d' % (name, k), {'parent': held, 'display': {
+            ref = leaf('gun_adsin/%s/%d' % (name, k), {'parent': aim_held, 'display': {
                 side: models.lerp_display(hip_display[side], target[side], progress)
                 for side in ('firstperson_righthand', 'firstperson_lefthand')}})
             entries.append({'threshold': threshold, 'model': ref})
@@ -277,10 +292,12 @@ def build_gun(item_id, spec, item_defs):
     # composite of its moving parts.
     reload_entries = []
     reload_ticks = models.reload_cooldown(gun_spec.get('reload', 48))
-    for k, (threshold, parts) in enumerate(models.reload_timeline(item_id, reload_ticks)):
+    for k, (threshold, parts, hand) in enumerate(models.reload_timeline(item_id, reload_ticks)):
         members = []
         for part, (parent, right) in parts.items():
             members.append(leaf('gun_reload/%s/%s_%d' % (item_id, part, k), models.frame_model(parent, right)))
+        if hand is not None:
+            members.append(leaf('gun_reload/%s/hand_%d' % (item_id, k), models.reload_hand_model(*hand)))
         reload_entries.append({'threshold': threshold, 'model': {'type': 'minecraft:composite', 'models': members}})
     reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': reload_entries,
                    'fallback': hip_rest}
@@ -357,8 +374,10 @@ def build_items(item_defs):
             icon = icons.render(item_id)
             held = 'craftov:item/' + item_id
             # Melee weapons are held like a sword; everything else like a flat item.
-            parent = 'minecraft:item/handheld' if spec.get('category') == 'MELEE' else 'minecraft:item/generated'
-            write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id, parent))
+            if spec.get('category') == 'MELEE':
+                write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), knife_model('craftov:item/' + item_id))
+            else:
+                write_json(os.path.join(CV, 'models', 'item', item_id + '.json'), generated('craftov:item/' + item_id))
         save(icon, os.path.join(CV, 'textures', 'item', item_id + '.png'))
         composite = bg.copy()
         composite.alpha_composite(icon)
@@ -371,8 +390,18 @@ def build_items(item_defs):
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
+    save(hands.texture(), os.path.join(CV, 'textures', 'item', 'hands.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
     save(models.palette_texture(models.BOX_PALETTE), os.path.join(CV, 'textures', 'item', 'box_palette.png'))
+
+
+def knife_model(texture):
+    """A knife's sprite held like a sword (minecraft:item/handheld), at rest in first person as
+    knife_inspect.BASE has it: up enough for the gloved fist to show."""
+    model = generated(texture, 'minecraft:item/handheld')
+    model['display'] = {'firstperson_righthand': knife_inspect.BASE,
+                        'firstperson_lefthand': models.reload.mirrored(knife_inspect.BASE)}
+    return model
 
 
 def write_knife_item(name, frames_name, knife, held):
@@ -381,16 +410,34 @@ def write_knife_item(name, frames_name, knife, held):
     craftov:inspect cooldown (InspectService), and the client steps through the knife's inspect frames
     (knife_inspect/<frames_name>/<k>, each `held` in that frame's pose) while it counts down, as for the
     gun reload."""
+    # In first person the gloved fist holds it, and a sleeve runs back from it (models.knife_hand_frames):
+    # one fist and one sleeve model per knife, and per inspect frame a child of each with that frame's
+    # displays, drawn with the frame.
+    glove, sleeve = 'knife_hand/%s_glove' % knife, 'knife_hand/sleeve'
+    write_json(os.path.join(CV, 'models', 'item', glove + '.json'), models.knife_glove_model(knife))
+    write_json(os.path.join(CV, 'models', 'item', sleeve + '.json'), models.knife_sleeve_model())
+    hand_frames = models.knife_hand_frames(knife)
+
+    def gloved(ref, k):
+        fist, arm = hand_frames[k]
+        refs = []
+        for part, parent, display in (('glove', glove, fist), ('sleeve', sleeve, arm)):
+            path = 'knife_hand/%s/%s_%d' % (frames_name, part, k)
+            write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model('craftov:item/' + parent, display))
+            refs.append(model_ref('craftov:item/' + path))
+        return {'type': 'minecraft:composite', 'models': [model_ref(ref)] + refs}
     entries = []
     for k, (right, threshold) in enumerate(zip(knife_inspect.frames(knife), knife_inspect.thresholds())):
         path = 'knife_inspect/%s/%d' % (frames_name, k)
         write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
-        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+        entries.append({'threshold': threshold, 'model': gloved('craftov:item/' + path, k + 1)})
     write_json(os.path.join(CV, 'items', name + '.json'), {'model': {
         'type': 'minecraft:select', 'property': 'minecraft:display_context',
-        'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + name)}],
-        'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
-                     'entries': entries, 'fallback': model_ref(held)}}})
+        'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + name)},
+                  {'when': ['firstperson_righthand', 'firstperson_lefthand'],
+                   'model': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
+                             'entries': entries, 'fallback': gloved(held, 0)}}],
+        'fallback': model_ref(held)}})
 
 
 def load_knife_skins():
@@ -417,7 +464,7 @@ def build_knife_skins(item_defs):
         icon = knife_skins.render(sid)
         save(icon, os.path.join(CV, 'textures', 'item', name + '.png'))
         write_json(os.path.join(CV, 'models', 'item', name + '.json'),
-                   generated('craftov:item/' + name, 'minecraft:item/handheld'))
+                   knife_model('craftov:item/' + name))
         composite = gradient_bg((32, 32), rgb(RARITY_COLORS[item_defs[knife].get('rarity', 'WHITE')]))
         composite.alpha_composite(icon)
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', name + '.png'))

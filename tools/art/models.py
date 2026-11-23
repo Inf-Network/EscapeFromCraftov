@@ -5,6 +5,7 @@ import os
 from PIL import Image, ImageDraw
 
 import gunvox
+import hands
 import meshprim
 import reload
 from px import Canvas, rgb, shade
@@ -672,19 +673,67 @@ def reload_cooldown(reload_ticks):
 
 
 def reload_timeline(gid, ticks):
-    """[(cooldown threshold, {part: (model, right-hand display)})] for the reload, one frame at most per tick
-    of a cooldown of `ticks` (reload.timeline, reload_cooldown). The mounted optic is not a part: it rides
-    on the body's frame as an attachment."""
+    """[(cooldown threshold, {part: (model, right-hand display)}, left hand)] for the reload, one frame at
+    most per tick of a cooldown of `ticks` (reload.timeline, reload_cooldown). The mounted optic is not a
+    part: it rides on the body's frame as an attachment. The left hand is (elements, right-hand display)
+    or None while it is out of view (reload_hand); the right hand rides on the body."""
     base = gun_model(gid)['display']['firstperson_righthand']
     out = []
-    for threshold, frame in reload.timeline(gid, base, ticks, lift=4.0 if gid in PISTOLS else 0.0):
+    for threshold, frame, progress in reload.timeline(gid, base, ticks, lift=4.0 if gid in PISTOLS else 0.0):
         parts = {}
         for part, right in frame.items():
             if part == 'optic':
                 continue
             parts[part] = ('craftov:item/gun_part/shell' if part == 'shell' else part_ref(gid, part), right)
-        out.append((threshold, parts))
+        out.append((threshold, parts, reload_hand(gid, frame, progress)))
     return out
+
+
+def _shifted(elements, d):
+    """Elements moved by d (model units), rotation origins too."""
+    out = []
+    for e in elements:
+        moved = dict(e)
+        moved['from'] = [round(a + b, 3) for a, b in zip(e['from'], d)]
+        moved['to'] = [round(a + b, 3) for a, b in zip(e['to'], d)]
+        if 'rotation' in e:
+            moved['rotation'] = dict(e['rotation'], origin=[round(a + b, 3) for a, b in zip(e['rotation']['origin'], d)])
+        out.append(moved)
+    return out
+
+
+def _centre(elements):
+    """Middle of the first element (a hand's back or palm), as the point a hand is moved by."""
+    e = elements[0]
+    return [(a + b) / 2 for a, b in zip(e['from'], e['to'])]
+
+
+def reload_hand(gid, frame, progress):
+    """The left hand in one reload frame (reload.hand_at): (elements, right-hand display), or None while
+    it is out of view with the magazine. On the magazine it rides on the magazine's own frame, built
+    round the magazine at rest, so it slides out and back in with it; between the handguard and the
+    magazine it moves on the body's frame, the handguard's hand for the first half of the way and the
+    magazine's for the second."""
+    where = reload.hand_at(gid, progress)
+    hidden = reload.HIDDEN
+    if where[0] == 'pump':
+        return fore_hand(gid), frame['pump']
+    if where[0] == 'shell':
+        shell = reload.SHELL[0]
+        x = (shell[0][0] + shell[1][0]) / 2
+        y = shell[0][1]
+        return hands.cup((x, y, 8.0), 0.5, LEFT_ARM, length=2.2, thumb=False), frame['shell'] if frame['shell'] is not hidden else frame['body']
+    if where[0] == 'fore':
+        return fore_hand(gid), frame['body']
+    if where[0] == 'mag':
+        mag = frame.get('mag', hidden)
+        return (None if mag is hidden else (mag_hand(gid), mag))
+    t, travel = where[1], where[2]
+    fore, mag = fore_hand(gid), mag_hand(gid, travel)
+    delta = [b - a for a, b in zip(_centre(fore), _centre(mag))]
+    if t < 0.5:
+        return _shifted(fore, [v * t for v in delta]), frame['body']
+    return _shifted(mag, [v * (t - 1) for v in delta]), frame['body']
 
 
 def frame_model(parent, right):
@@ -695,6 +744,159 @@ def gun_ai_model(gid):
     """Variant for zombie soldiers, whose arms are raised about 80 degrees (the low model)."""
     tp_r, tp_l = third_person(gid, 80)
     return {'parent': low_ref(gid), 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
+
+
+# ---------------------------------------------------------------- first-person hands (hands.py)
+# Where the sleeves run, in the gun's model space (barrel +X into the screen, +Y up, +Z right): back
+# towards the camera, down and out to their side, so they leave the screen at its bottom corners.
+RIGHT_ARM = (-0.6, -0.8, 0.5)
+LEFT_ARM = (-0.45, -0.9, -0.6)
+PISTOL_RIGHT_ARM = (-1.0, -0.42, 0.34)
+PISTOL_LEFT_ARM = (-1.0, -0.5, -0.5)
+
+
+def _near_width(elements, x, y, reach=0.8, default=0.55):
+    """Half the gun's width (z) around side-view point (x, y): what a hand closes round there."""
+    half = 0.0
+    for e in elements:
+        (x0, y0, z0), (x1, y1, z1) = e['from'], e['to']
+        if x0 - reach <= x <= x1 + reach and y0 - reach <= y <= y1 + reach:
+            half = max(half, abs(z0 - 8), abs(z1 - 8))
+    return min(1.2, max(0.35, half)) if half else default
+
+
+def _grip(gid):
+    grip = hands_spec(gid).get('grip')
+    return tuple(grip[:3]) if grip else tuple(grip_point(gid)[:2]) + (75.0,)
+
+
+def grip_hand(gid, elements=None):
+    """The right fist and sleeve round the pistol grip (hands.grip)."""
+    els = elements or gun_elements(gid)
+    x, y, angle = _grip(gid)
+    arm = PISTOL_RIGHT_ARM if gid in PISTOLS else RIGHT_ARM
+    return hands.fist((x, y, 8.0), angle, 0.85, _near_width(els, x, y), 1, arm)
+
+
+def fore_hand(gid, elements=None):
+    """The left hand: under the handguard (hands.fore), round a vertical foregrip, or round the right
+    fist on a pistol."""
+    els = elements or gun_elements(gid)
+    spec = hands_spec(gid)
+    fore = spec.get('fore')
+    if fore is None:
+        x, y, angle = _grip(gid)
+        w = _near_width(els, x, y)
+        a = math.radians(angle)
+        # The support fist closes round the right one, a little lower and further forward.
+        origin = (x + 0.35 * math.sin(a) - 0.5 * math.cos(a), y - 0.5 * math.sin(a) - 0.35 * math.cos(a), 8.0)
+        return hands.fist(origin, angle, 0.85 + 0.5, w + 0.95, -1, PISTOL_LEFT_ARM)
+    if spec.get('fore_grip') == 'vertical':
+        return hands.fist((fore[0], fore[1], 8.0), 90.0, 0.55, _near_width(els, fore[0], fore[1]), -1, LEFT_ARM)
+    return hands.cup((fore[0], fore[1], 8.0), _near_width(els, fore[0], fore[1] + 0.6), LEFT_ARM)
+
+
+def mag_hand(gid, travel=0.0):
+    """The left hand closed round the magazine's lower end, slid `travel` units out along mag_axis
+    (model space of the gun at rest), for the reload."""
+    mag = gun_parts(gid).get('mag') or []
+    if not mag:
+        return fore_hand(gid)
+    ax, ay = meshprim.mag_axis(gid) if meshprim.has_spec(gid) else gunvox.mag_axis(gid)
+    x0 = min(e['from'][0] for e in mag)
+    x1 = max(e['to'][0] for e in mag)
+    y0 = min(e['from'][1] for e in mag)
+    y1 = max(e['to'][1] for e in mag)
+    # A third of the way up the magazine, along its axis (which points out of the well).
+    cx = (x0 + x1) / 2 + ax * (y1 - y0) * 0.18 + ax * travel
+    cy = y0 + (y1 - y0) * 0.3 + ay * travel
+    axis = math.degrees(math.atan2(-ay, -ax))
+    half_depth = max(0.5, min(1.4, (x1 - x0) * 0.32))
+    return hands.fist((cx, cy, 8.0), axis, half_depth, _near_width(mag, cx, cy, 0.4, 0.5), -1, LEFT_ARM)
+
+
+def hand_elements(gid):
+    """Both hands of a gun at rest: the right fist on the grip and the left hand on the handguard."""
+    els = gun_elements(gid)
+    return grip_hand(gid, els) + fore_hand(gid, els)
+
+
+def with_hands(model, elements):
+    """A gun model (the fine or mid body, or the mid body's reload part) holding `elements` too: every pose,
+    sight, kick, draw and reload frame below it in the item definition carries them, being a model that
+    only changes the display of one of these."""
+    out = dict(model)
+    out['elements'] = list(model['elements']) + list(elements)
+    out['textures'] = dict(model.get('textures', {}), h=hands.TEXTURE)
+    return out
+
+
+# A knife's sleeve, in view space (right, up, towards the camera): the fist is low on the right and the
+# forearm runs back out of the bottom right corner. It keeps that way through the inspect (the wrist
+# turns, the forearm does not), from wherever the fist is.
+KNIFE_ARM_VIEW = (0.5, -0.55, 0.75)
+
+
+def _knife_fist(knife):
+    """(centre, handle angle) of the fist on a knife, in the flat knife's model space (the 32 x 32 sprite on
+    16 x 16 units, its handle bottom left, knife_inspect.GRIP): a little down the handle from the grip
+    point, round the pommel half."""
+    import knife_inspect
+    (gx, gy), (tx, ty) = knife_inspect.GRIP[knife]
+    grip = (gx / 2.0, 16 - gy / 2.0)
+    tip = (tx / 2.0, 16 - ty / 2.0)
+    axis = math.degrees(math.atan2(tip[1] - grip[1], tip[0] - grip[0]))
+    a = math.radians(axis)
+    return (grip[0] - 0.6 * math.cos(a), grip[1] - 0.6 * math.sin(a), 8.0), axis
+
+
+def knife_glove_model(knife):
+    """The gloved fist round a knife's handle, posed as the knife is at rest in first person; each inspect
+    frame is a child of it with the fist's displays for that frame (knife_hand_frames)."""
+    import knife_inspect
+    centre, axis = _knife_fist(knife)
+    right = knife_inspect.BASE
+    return {'textures': {'h': hands.TEXTURE, 'particle': hands.TEXTURE}, 'elements': hands.fist(centre, axis, 0.75, 0.5, 1),
+            'display': {'firstperson_righthand': right, 'firstperson_lefthand': reload.mirrored(right)}}
+
+
+def knife_sleeve_model():
+    """A sleeve from (8, 8, 8) along +X, placed per frame by its display (knife_hand_frames)."""
+    return {'textures': {'h': hands.TEXTURE, 'particle': hands.TEXTURE},
+            'elements': hands.sleeve((8.0, 8.0, 8.0), (1.0, 0.0, 0.0))}
+
+
+def knife_hand_frames(knife):
+    """[(fist display, sleeve display)] at rest and then per inspect frame. The fist follows the knife
+    through the inspect but for its spin and twist (the fingers and the wrist turn the knife; the hand
+    stays), and the sleeve runs from the fist's wrist along KNIFE_ARM_VIEW whatever the fist does."""
+    import knife_inspect
+    import numpy as np
+    centre, axis = _knife_fist(knife)
+    wrist = hands.fist_wrist(centre, axis, 0.75, 0.5, 1)
+    d = np.array(KNIFE_ARM_VIEW, float)
+    d /= np.linalg.norm(d)
+    side = np.cross(d, [0.0, 1.0, 0.0])
+    sleeve_r = hands.frame(d, np.cross(side / np.linalg.norm(side), d))
+    rotation = reload.to_euler(sleeve_r.tolist())
+    rest = [0.0] * 8
+    values = [rest] + [knife_inspect.sample(knife_inspect.KEYS[knife], (k + 1) / knife_inspect.FRAMES)
+                       for k in range(knife_inspect.FRAMES)]
+    out = []
+    for v in values:
+        fist = knife_inspect.pose(knife, [v[0], v[1], v[2], 0.0, 0.0, v[5], v[6], v[7]])
+        r = np.array(reload.euler_matrix(fist['rotation']))
+        s = fist['scale'][0]
+        at = np.array(fist['translation']) / 16 + r @ (s * (wrist / 16 - 0.5))
+        sleeve = {'rotation': rotation, 'translation': [round(float(x) * 16, 3) for x in at], 'scale': fist['scale']}
+        out.append((fist, sleeve))
+    return out
+
+
+def reload_hand_model(elements, right):
+    """The left hand of one reload frame, posed as the frame's part it holds."""
+    return {'textures': {'h': hands.TEXTURE, 'particle': hands.TEXTURE}, 'elements': elements,
+            'display': {'firstperson_righthand': right, 'firstperson_lefthand': reload.mirrored(right)}}
 
 
 # ---------------------------------------------------------------- levels of detail

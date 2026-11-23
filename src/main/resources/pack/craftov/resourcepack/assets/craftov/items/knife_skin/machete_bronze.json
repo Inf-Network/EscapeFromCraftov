@@ -11,367 +11,1040 @@
      "type": "minecraft:model",
      "model": "craftov:item/gui/knife_skin/machete_bronze"
     }
+   },
+   {
+    "when": [
+     "firstperson_righthand",
+     "firstperson_lefthand"
+    ],
+    "model": {
+     "type": "minecraft:range_dispatch",
+     "property": "minecraft:cooldown",
+     "entries": [
+      {
+       "threshold": 0.99,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/0"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_1"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_1"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.97,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/1"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_2"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_2"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.95,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/2"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_3"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_3"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.93,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/3"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_4"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_4"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.91,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/4"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_5"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_5"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.89,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/5"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_6"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_6"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.87,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/6"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_7"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_7"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.85,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/7"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_8"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_8"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.83,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/8"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_9"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_9"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.81,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/9"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_10"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_10"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.79,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/10"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_11"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_11"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.77,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/11"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_12"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_12"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.75,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/12"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_13"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_13"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.73,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/13"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_14"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_14"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.71,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/14"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_15"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_15"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.69,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/15"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_16"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_16"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.67,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/16"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_17"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_17"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.65,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/17"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_18"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_18"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.63,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/18"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_19"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_19"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.61,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/19"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_20"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_20"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.59,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/20"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_21"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_21"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.57,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/21"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_22"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_22"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.55,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/22"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_23"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_23"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.53,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/23"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_24"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_24"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.51,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/24"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_25"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_25"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.49,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/25"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_26"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_26"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.47,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/26"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_27"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_27"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.45,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/27"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_28"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_28"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.43,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/28"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_29"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_29"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.41,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/29"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_30"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_30"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.39,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/30"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_31"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_31"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.37,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/31"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_32"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_32"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.35,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/32"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_33"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_33"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.33,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/33"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_34"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_34"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.31,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/34"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_35"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_35"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.29,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/35"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_36"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_36"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.27,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/36"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_37"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_37"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.25,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/37"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_38"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_38"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.23,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/38"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_39"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_39"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.21,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/39"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_40"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_40"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.19,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/40"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_41"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_41"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.17,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/41"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_42"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_42"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.15,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/42"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_43"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_43"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.13,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/43"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_44"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_44"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.11,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/44"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_45"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_45"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.09,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/45"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_46"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_46"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.07,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/46"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_47"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.05,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_48"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_48"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.03,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/48"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_49"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_49"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.01,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/machete_bronze/49"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/glove_50"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/machete_bronze/sleeve_50"
+         }
+        ]
+       }
+      }
+     ],
+     "fallback": {
+      "type": "minecraft:composite",
+      "models": [
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_skin/machete_bronze"
+       },
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_hand/machete_bronze/glove_0"
+       },
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_hand/machete_bronze/sleeve_0"
+       }
+      ]
+     }
+    }
    }
   ],
   "fallback": {
-   "type": "minecraft:range_dispatch",
-   "property": "minecraft:cooldown",
-   "entries": [
-    {
-     "threshold": 0.99,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/0"
-     }
-    },
-    {
-     "threshold": 0.97,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/1"
-     }
-    },
-    {
-     "threshold": 0.95,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/2"
-     }
-    },
-    {
-     "threshold": 0.93,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/3"
-     }
-    },
-    {
-     "threshold": 0.91,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/4"
-     }
-    },
-    {
-     "threshold": 0.89,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/5"
-     }
-    },
-    {
-     "threshold": 0.87,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/6"
-     }
-    },
-    {
-     "threshold": 0.85,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/7"
-     }
-    },
-    {
-     "threshold": 0.83,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/8"
-     }
-    },
-    {
-     "threshold": 0.81,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/9"
-     }
-    },
-    {
-     "threshold": 0.79,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/10"
-     }
-    },
-    {
-     "threshold": 0.77,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/11"
-     }
-    },
-    {
-     "threshold": 0.75,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/12"
-     }
-    },
-    {
-     "threshold": 0.73,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/13"
-     }
-    },
-    {
-     "threshold": 0.71,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/14"
-     }
-    },
-    {
-     "threshold": 0.69,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/15"
-     }
-    },
-    {
-     "threshold": 0.67,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/16"
-     }
-    },
-    {
-     "threshold": 0.65,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/17"
-     }
-    },
-    {
-     "threshold": 0.63,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/18"
-     }
-    },
-    {
-     "threshold": 0.61,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/19"
-     }
-    },
-    {
-     "threshold": 0.59,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/20"
-     }
-    },
-    {
-     "threshold": 0.57,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/21"
-     }
-    },
-    {
-     "threshold": 0.55,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/22"
-     }
-    },
-    {
-     "threshold": 0.53,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/23"
-     }
-    },
-    {
-     "threshold": 0.51,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/24"
-     }
-    },
-    {
-     "threshold": 0.49,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/25"
-     }
-    },
-    {
-     "threshold": 0.47,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/26"
-     }
-    },
-    {
-     "threshold": 0.45,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/27"
-     }
-    },
-    {
-     "threshold": 0.43,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/28"
-     }
-    },
-    {
-     "threshold": 0.41,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/29"
-     }
-    },
-    {
-     "threshold": 0.39,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/30"
-     }
-    },
-    {
-     "threshold": 0.37,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/31"
-     }
-    },
-    {
-     "threshold": 0.35,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/32"
-     }
-    },
-    {
-     "threshold": 0.33,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/33"
-     }
-    },
-    {
-     "threshold": 0.31,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/34"
-     }
-    },
-    {
-     "threshold": 0.29,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/35"
-     }
-    },
-    {
-     "threshold": 0.27,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/36"
-     }
-    },
-    {
-     "threshold": 0.25,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/37"
-     }
-    },
-    {
-     "threshold": 0.23,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/38"
-     }
-    },
-    {
-     "threshold": 0.21,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/39"
-     }
-    },
-    {
-     "threshold": 0.19,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/40"
-     }
-    },
-    {
-     "threshold": 0.17,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/41"
-     }
-    },
-    {
-     "threshold": 0.15,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/42"
-     }
-    },
-    {
-     "threshold": 0.13,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/43"
-     }
-    },
-    {
-     "threshold": 0.11,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/44"
-     }
-    },
-    {
-     "threshold": 0.09,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/45"
-     }
-    },
-    {
-     "threshold": 0.07,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/46"
-     }
-    },
-    {
-     "threshold": 0.05,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/47"
-     }
-    },
-    {
-     "threshold": 0.03,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/48"
-     }
-    },
-    {
-     "threshold": 0.01,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/machete_bronze/49"
-     }
-    }
-   ],
-   "fallback": {
-    "type": "minecraft:model",
-    "model": "craftov:item/knife_skin/machete_bronze"
-   }
+   "type": "minecraft:model",
+   "model": "craftov:item/knife_skin/machete_bronze"
   }
  }
 }

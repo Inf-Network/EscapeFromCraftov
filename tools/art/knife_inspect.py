@@ -30,8 +30,11 @@ import reload
 
 FRAMES = 50  # = combat.melee.inspect-ticks (2.5 s); the motion scales with that setting
 
-# Vanilla minecraft:item/handheld, which knives use.
-BASE = {'rotation': [0, -90, 25], 'translation': [1.13, 3.2, 1.13], 'scale': [0.68, 0.68, 0.68]}
+# The knife at rest in first person: vanilla minecraft:item/handheld's pose (rotation [0, -90, 25],
+# translation [1.13, 3.2, 1.13], scale 0.68) brought up, in and a little smaller, so the gloved fist on
+# the handle shows at the bottom of the screen (hands.py) instead of the handle being below it. The
+# knife models carry it (build.py knife_model) and every inspect frame is posed from it.
+BASE = {'rotation': [0, -90, 32], 'translation': [-0.8, 5.0, -0.8], 'scale': [0.62, 0.62, 0.62]}
 
 # Grip and tip in texture pixels of the 32x32 icon (icons.py draws every knife handle bottom left).
 GRIP = {

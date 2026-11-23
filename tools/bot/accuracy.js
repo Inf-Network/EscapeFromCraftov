@@ -30,6 +30,14 @@
 //            second spray 0.3 s after a pulled-down one, turned 8 degrees up or 9 down to another
 //            target, recovers toward its own crosshair and not past it. The bullets' own climb starts at 0, stays within 3 degrees, lifts the rounds of a
 //            client that ignores the camera kick, and is gone a moment after the spray.
+//   aimed    the kick with the sights up (issue #118): M4C full auto, 10 rounds from the hip and aimed
+//            through the red dot, the 4x and the 8x without touching the mouse. Per round the view
+//            climbs (the pitch the server logs at each shot) about the M4C's ads-recoil (0.45) of the
+//            hip climb through the red dot (between 0.3 and 0.6 of it), and as many degrees through
+//            the 4x and the 8x (each 0.8-1.25 of the red dot's: a scope does not soften the kick);
+//            every aimed shot is logged as aimed. One AWR shot through its 8x kicks the view 1.5 to
+//            2.5 degrees (its ads-recoil 0.4 of 5), and with the sights still up and the mouse left
+//            alone, 1.5 s later the view has come back 75-95% of the way (its recoil-return, 0.85).
 //   impact   (not in the default run) where rounds land on a wall 30 and 100 m away with the camera
 //            held exactly on the crosshair: an M4C magazine aimed and from the hip, and DM14 shots as
 //            fast as it cycles. Semi-auto rounds must not be lifted; automatic ones only a little,
@@ -62,7 +70,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const name = 'Acc' + Math.floor(10000 + Math.random() * 90000)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'stance', 'recoil']
+const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'stance', 'recoil', 'aimed']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -171,10 +179,10 @@ async function enterRange () {
  * Gives the gun, holds it and fills its magazine. Guns go to the two weapon slots only (hotbar 0 and
  * 1, then a backpack: CarryService.route), so both are emptied first for a third gun to land.
  */
-async function arm (id) {
+async function arm (id, optic = null) {
   for (const slot of [0, 1]) await rcon(`item replace entity ${name} hotbar.${slot} with minecraft:air`)
   await sleep(200)
-  await rcon(`cv give ${name} ${id}`)
+  await rcon(`cv give ${name} ${id}` + (optic ? ` 1 ${optic}` : ''))
   await sleep(800)
   const slot = hotbar(id)
   if (slot < 0) throw new Error(id + ' did not reach the hotbar')
@@ -726,6 +734,73 @@ async function recoil (spot) {
   check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0, single.map(l => l.climb).join(','))
 }
 
+/**
+ * 10 M4C rounds on full auto from a level crosshair, aimed through `optic` (null: from the hip), the
+ * mouse left alone. Returns the climb per round the server saw (its logged pitch, first to tenth
+ * round, over nine kicks) and whether every round was logged as aimed.
+ */
+async function aimedSpray (spot, optic) {
+  await arm('m4c', optic === 'hip' ? null : optic)
+  await home(spot)
+  await lookPitch(0)
+  await sleep(400)
+  const stopAim = optic === 'hip' ? null : aimWhile()
+  await sleep(1300) // the sights up (0.35 s at most for the M4C) and settled
+  const shot = await fire(10, 0, 1200)
+  if (stopAim) stopAim()
+  await sleep(600)
+  const lines = shot.lines.slice(0, 10)
+  const perRound = lines.length === 10 ? (lines[0].pitch - lines[9].pitch) / 9 : NaN
+  return { perRound, aimed: lines.length > 0 && lines.every(l => l.aim) }
+}
+
+async function aimed (spot) {
+  const hip = await aimedSpray(spot, 'hip')
+  const sights = {}
+  for (const optic of ['optic_reddot', 'optic_4x', 'optic_8x']) sights[optic] = await aimedSpray(spot, optic)
+  const climbs = ['hip', 'optic_reddot', 'optic_4x', 'optic_8x'].map(o => `${o} ${(o === 'hip' ? hip : sights[o]).perRound.toFixed(3)}`).join(', ')
+  log('aimed: climb per round (degrees):', climbs)
+  check('aimed: the hip spray climbed', hip.perRound > 0.3 && !hip.aimed, hip.perRound.toFixed(3))
+  for (const [optic, s] of Object.entries(sights)) check(`aimed: every ${optic} round was aimed`, s.aimed)
+  const dot = sights.optic_reddot.perRound / hip.perRound
+  check('aimed: through the red dot the view climbs the M4C\'s ads-recoil of the hip climb (0.3-0.6)', dot >= 0.3 && dot <= 0.6, dot.toFixed(2))
+  // A scope only shows each degree larger: the gun kicks as many degrees through it.
+  for (const optic of ['optic_4x', 'optic_8x']) {
+    const same = sights[optic].perRound / sights.optic_reddot.perRound
+    check(`aimed: through the ${optic} as many degrees as through the red dot (0.8-1.25 of it)`, same >= 0.8 && same <= 1.25, same.toFixed(2))
+  }
+
+  // One AWR shot through its built-in 8x: the view kicks its ads-recoil (0.4) of 5 degrees, and
+  // once it has drifted back, with the sights still up, 85% of that is given back (recoil-return).
+  await arm('awr')
+  await home(spot)
+  await lookPitch(0)
+  await sleep(400)
+  const stopAim = aimWhile()
+  await sleep(1500)
+  const start = pitchDeg()
+  const from = logSize()
+  let peak = start
+  bot.swingArm()
+  const began = Date.now()
+  while (Date.now() - began < 500) {
+    await sleep(25)
+    peak = Math.min(peak, pitchDeg())
+  }
+  await sleep(1000)
+  const settled = pitchDeg()
+  stopAim()
+  const awr = shotLines(from)
+  const kick = start - peak
+  const back = kick > 0 ? (settled - peak) / kick : NaN
+  log(`aimed: AWR pitch ${start.toFixed(2)} -> highest ${peak.toFixed(2)} -> 1.5 s after the shot ${settled.toFixed(2)}`)
+  check('aimed: one AWR shot through its 8x kicks the view 1.5-2.5 degrees', awr.length === 1 && awr[0].aim && kick >= 1.5 && kick <= 2.5,
+    `${awr.length} shot(s), aimed ${awr.length && awr[0].aim}, kick ${kick.toFixed(2)}`)
+  check('aimed: 1.5 s after it the view has come back 75-95% of the kick (recoil-return 0.85)', back >= 0.75 && back <= 0.95,
+    `${(100 * back).toFixed(0)}%, ${(start - settled).toFixed(2)} degrees still above`)
+  await sleep(1500)
+}
+
 // ---------------------------------------------------------------- impact
 const IMPACT = new RegExp(`\\[debug\\] ${name} impact eye=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) hit=(?:(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+)|none)`)
 /** Impacts logged since `from`, each with the climb of the shot it belongs to. */
@@ -929,6 +1004,7 @@ async function ai () {
     else if (scenario === 'sprint') await sprint(spot)
     else if (scenario === 'stance') await stance(spot)
     else if (scenario === 'recoil') await recoil(spot)
+    else if (scenario === 'aimed') await aimed(spot)
     else if (scenario === 'impact') await impact(spot)
     else if (scenario === 'ai') await ai()
     else log('unknown scenario', scenario)

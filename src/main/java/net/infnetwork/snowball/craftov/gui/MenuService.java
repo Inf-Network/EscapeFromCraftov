@@ -48,8 +48,9 @@ public final class MenuService {
             return;
         }
         if (lobbyOnly(player)) {
-            new MainMenu(plugin, player).open();
+            // First, so the menu's guide checklist and the shine on the next step's button count it.
             plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.TERMINAL);
+            new MainMenu(plugin, player).open();
         }
     }
 

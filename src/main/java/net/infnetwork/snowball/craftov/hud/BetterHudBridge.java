@@ -16,13 +16,17 @@ import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.raid.ExtractPoint;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-/** Feeds Craftov state into BetterHud placeholders, popups and the compass. */
+/**
+ * Feeds Craftov state into BetterHud placeholders, popups and the compass: in a raid the compass
+ * marks the extracts, in the lobby and on the range the station the new-player guide points at.
+ */
 public final class BetterHudBridge implements BetterHudHook {
 
     private final CraftovPlugin plugin;
@@ -107,6 +111,10 @@ public final class BetterHudBridge implements BetterHudHook {
         bool(pm, "craftov_has_alert", s -> !s.extra().alert().isEmpty());
         string(pm, "craftov_prompt", s -> s.extra().prompt());
         bool(pm, "craftov_has_prompt", s -> !s.extra().prompt().isEmpty());
+        string(pm, "craftov_objective", s -> s.extra().objective());
+        bool(pm, "craftov_has_objective", s -> !s.extra().objective().isEmpty());
+        // In a raid the compass shows the extracts; outside one only while the guide points somewhere.
+        bool(pm, "craftov_compass", s -> s.inRaid() || s.extra().pointer());
         string(pm, "craftov_streak", HudSnapshot::streak);
         bool(pm, "craftov_has_streak", s -> !s.streak().isEmpty());
         number(pm, "craftov_crosshair", HudSnapshot::crosshair);
@@ -153,7 +161,18 @@ public final class BetterHudBridge implements BetterHudHook {
             return out;
         }
         Raid raid = plugin.raids().raidOf(player);
-        if (raid == null || !plugin.raids().isInRaid(player) || !player.getWorld().equals(raid.world)) {
+        if (raid == null) {
+            // The lobby and the range: the station the new-player guide sends the player to.
+            var objective = plugin.tutorial().objective(player);
+            Location target = objective == null ? null : objective.target();
+            if (target != null && target.getWorld() == player.getWorld()) {
+                out.add(new PointedLocation(PointedLocationSource.INTERNAL, "craftov_objective", "objective",
+                        new LocationWrapper(new WorldWrapper(target.getWorld().getName()), target.getX(), target.getY(),
+                                target.getZ(), 0f, 0f)));
+            }
+            return out;
+        }
+        if (!plugin.raids().isInRaid(player) || !player.getWorld().equals(raid.world)) {
             return out;
         }
         for (ExtractPoint point : raid.extracts) {

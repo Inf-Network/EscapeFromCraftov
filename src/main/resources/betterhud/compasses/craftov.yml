@@ -28,6 +28,8 @@ craftov_compass:
         name: craftov/compass/extract_open.png
       extract_closed:
         name: craftov/compass/extract_closed.png
+      objective:
+        name: craftov/compass/objective.png
   scale: 1.0
   scale-equation: 1 - t/30
   length: 20
@@ -41,6 +43,6 @@ craftov_compass:
   apply-opacity: true
   conditions:
     '1':
-      first: craftov_in_raid
+      first: craftov_compass
       second: 'true'
       operation: ==

@@ -69,6 +69,10 @@ public final class LobbyService implements Listener {
             {"rank", "排行榜", "排位赛积分", "craftov:ui/icon_rank"},
     };
 
+    /** The range weapon rack's spot on the hangar's firing line (and on every range plot, shifted). */
+    static final double RACK_X = 9.5;
+    static final double RACK_Z = -4.4;
+
     private final CraftovPlugin plugin;
     private @Nullable World world;
     private @Nullable TextDisplay leaderboard;
@@ -174,7 +178,7 @@ public final class LobbyService implements Listener {
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "rank_board");
         });
         // Weapon rack at the back of the firing line: loaner guns and optics for the range.
-        Location rack = new Location(world, 9.5, LobbyBuilder.Y + 1, -4.4);
+        Location rack = new Location(world, RACK_X, LobbyBuilder.Y + 1, RACK_Z);
         world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
             d.setItemStack(UiItems.button("craftov:ui/tab_weapon", "靶场武器架", List.of(), "station"));
             d.setBillboard(Display.Billboard.VERTICAL);
@@ -219,6 +223,25 @@ public final class LobbyService implements Listener {
                     });
         }
         refreshLeaderboard();
+    }
+
+    /**
+     * Where a station stands, at floor level ("range_rack" for the range entrance), or null for one
+     * the hangar does not have. The new-player guide points here.
+     */
+    public @Nullable Location station(String id) {
+        if (world == null) {
+            return null;
+        }
+        if ("range_rack".equals(id)) {
+            return new Location(world, RACK_X, LobbyBuilder.Y + 1, RACK_Z);
+        }
+        for (int i = 0; i < STATIONS.length && i < STATIONS_XZ.length; i++) {
+            if (STATIONS[i][0].equals(id)) {
+                return new Location(world, STATIONS_XZ[i][0] + 0.5, LobbyBuilder.Y + 1, STATIONS_XZ[i][1] + 0.5);
+            }
+        }
+        return null;
     }
 
     private void refreshLeaderboard() {

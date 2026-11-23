@@ -13,7 +13,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
@@ -31,13 +30,14 @@ import java.util.UUID;
  * model while that counts down (tools/art/knife_inspect.py), as it does for the gun reload; nobody
  * else sees it.
  *
- * <p>The rule (#104): with a knife in hand, F inspects, unless the player sprints, is downed,
- * revives or spectates, and then the action bar says why. F during an inspect starts it over. F
- * during a swing waits for the swing to finish and starts the inspect then.
+ * <p>The rule (#104, #116): with a knife in hand, F inspects, unless the player is downed, revives
+ * or spectates, and then the action bar says why. A sprint is no reason: F inspects on the run, the
+ * sprint goes on through the inspect, and starting to sprint does not end one. F during an inspect
+ * starts it over. F during a swing waits for the swing to finish and starts the inspect then.
  *
- * <p>Swinging (a cut, Q, a click on a block), switching slot, sprinting, being downed or reviving
- * ends it at once by clearing the cooldown. It never touches the knife's swing interval, so a cut
- * during an inspect lands as usual.
+ * <p>Swinging (a cut, Q, a click on a block), switching slot, being downed or reviving ends it at
+ * once by clearing the cooldown. It never touches the knife's swing interval, so a cut during an
+ * inspect lands as usual.
  */
 public final class InspectService implements Listener {
 
@@ -71,13 +71,10 @@ public final class InspectService implements Listener {
         return Bukkit.getCurrentTick() - swung.getOrDefault(player.getUniqueId(), -1000L) < SWING_TICKS;
     }
 
-    /**
-     * F with this knife in hand and without Shift, read by SwapKeyService once the client's tick is
-     * over; {@code sprinting} is whether the player still sprinted at the end of that tick.
-     */
-    public void press(Player player, ItemDef knife, boolean sprinting) {
+    /** F with this knife in hand and without Shift, read by SwapKeyService once the client's tick is over. */
+    public void press(Player player, ItemDef knife) {
         waiting.remove(player.getUniqueId());
-        if (swinging(player) && refusal(player, sprinting) == null) {
+        if (swinging(player) && refusal(player) == null) {
             // Started now, the inspect would play over the swing (or, F and a click in one client
             // tick, the click would not end it): it starts as the swing ends instead (tick).
             waiting.put(player.getUniqueId(), new Inspect(Bukkit.getCurrentTick(),
@@ -85,7 +82,7 @@ public final class InspectService implements Listener {
             debug(player, "F ->", "waiting for the swing");
             return;
         }
-        start(player, knife, sprinting, "");
+        start(player, knife, "");
     }
 
     /**
@@ -99,19 +96,19 @@ public final class InspectService implements Listener {
             return "手上没有刀";
         }
         waiting.remove(player.getUniqueId());
-        String why = refusal(player, player.isSprinting());
-        start(player, def, player.isSprinting(), " (skin preview)");
+        String why = refusal(player);
+        start(player, def, " (skin preview)");
         return why;
     }
 
     /**
      * Starts an inspect of the knife in hand, or starts a running one over: the last moments of an
-     * inspect look like the knife at rest, and a press there used to do nothing. A sprinting,
-     * downed, reviving or spectating player cannot inspect, and the action bar says so: a press
-     * that does nothing without a word looks like a key that only works some of the time.
+     * inspect look like the knife at rest, and a press there used to do nothing. A downed,
+     * reviving or spectating player cannot inspect, and the action bar says so: a press that does
+     * nothing without a word looks like a key that only works some of the time.
      */
-    private void start(Player player, ItemDef def, boolean sprinting, String note) {
-        String why = refusal(player, sprinting);
+    private void start(Player player, ItemDef def, String note) {
+        String why = refusal(player);
         if (why != null) {
             refuse(player, why);
             return;
@@ -123,9 +120,18 @@ public final class InspectService implements Listener {
         player.setCooldown(ItemFactory.INSPECT_GROUP, ticks);
     }
 
+    /**
+     * Says why F did not inspect. The bleed-out bar of a downed player and the revive bar of a
+     * reviver hold the action bar and would swallow the hint, so the reason goes on that bar too.
+     */
     private void refuse(Player player, String why) {
         debug(player, "F ->", "refused: " + why);
         Notify.hint(player, why);
+        if (plugin.downed().isDowned(player)) {
+            plugin.downed().refused(player, why);
+        } else if (plugin.downed().isReviving(player)) {
+            plugin.downed().refusedWhileReviving(player, why);
+        }
     }
 
     /** Ends a running inspect at once: the client snaps back to the knife's normal pose. */
@@ -141,11 +147,11 @@ public final class InspectService implements Listener {
         return def != null && def.isMelee() ? def : null;
     }
 
-    /** Why the player cannot inspect now (the action bar line), or null when nothing stops it. */
-    private @Nullable String refusal(Player player, boolean sprinting) {
-        if (sprinting) {
-            return "冲刺中无法检视";
-        }
+    /**
+     * Why the player cannot inspect now (the action bar line), or null when nothing stops it. A
+     * sprint is not a reason (#116): the inspect is only a pose of the knife in first person.
+     */
+    private @Nullable String refusal(Player player) {
         if (plugin.downed().isDowned(player)) {
             return "倒地时无法检视";
         }
@@ -174,7 +180,7 @@ public final class InspectService implements Listener {
                 it.remove();
             } else if (!swinging(player)) {
                 it.remove();
-                start(player, def, player.isSprinting(), " after the swing");
+                start(player, def, " after the swing");
             } else if (now - press.at >= swingWait) {
                 it.remove();
                 refuse(player, "出刀中无法检视");
@@ -190,9 +196,9 @@ public final class InspectService implements Listener {
             }
             ItemDef def = knife(player);
             if (def == null || !def.id().equals(inspect.item) || player.getInventory().getHeldItemSlot() != inspect.slot
-                    || refusal(player, player.isSprinting()) != null) {
+                    || refusal(player) != null) {
                 it.remove();
-                debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "sprinting, downed or reviving");
+                debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "downed, reviving or spectating");
                 player.setCooldown(ItemFactory.INSPECT_GROUP, 0);
             }
         }
@@ -220,21 +226,10 @@ public final class InspectService implements Listener {
         waiting.remove(event.getPlayer().getUniqueId());
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onSprint(PlayerToggleSprintEvent event) {
-        if (concerns(event.getPlayer(), null)) {
-            debug(event.getPlayer(), "sprint", String.valueOf(event.isSprinting()));
-        }
-        if (event.isSprinting()) {
-            stop(event.getPlayer(), "sprint");
-        }
-    }
-
     /**
-     * Whether a swing, slot switch or sprint is worth a debug line: with debug on, and only for a
-     * knife in hand (or in {@code switchedTo}, the slot switched to), an inspect running or a press
-     * waiting. The gun trigger swings the arm every tick it is held, and a line each would bury the
-     * rest.
+     * Whether a swing or slot switch is worth a debug line: with debug on, and only for a knife in
+     * hand (or in {@code switchedTo}, the slot switched to), an inspect running or a press waiting.
+     * The gun trigger swings the arm every tick it is held, and a line each would bury the rest.
      */
     private boolean concerns(Player player, @Nullable ItemStack switchedTo) {
         if (!plugin.getConfig().getBoolean("debug", false)) {

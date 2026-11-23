@@ -1,4 +1,4 @@
-"""Knife inspect (F) pressed the way real play presses it (issue #104). No arg.
+"""Knife inspect (F) pressed the way real play presses it (issues #104 and #116). No arg.
 
 tools/bot/inspect.js sends one packet at a time; a real client sends what one of its ticks did in
 the order that tick does it: F first, the Shift and W let go (and so a sprint ended) after it, and a
@@ -24,10 +24,11 @@ with no delay between the keys, so both land in one client tick:
   14 a swing into it and F, same instant    28 walking, F again 0.5 s later
 
 The client keeps sprinting as long as W is held, also with Ctrl let go (10). The rule: with a knife
-in hand, F inspects unless the player sprints (7 and 10: refused, and the action bar says why) or
-holds Shift (20: the operator skill); F during an inspect starts it over, and F during a swing
-starts it once the swing is over. Logs one PASS/FAIL line per press and the debug lines it was
-judged on: `[inspect-keys] PASS #08 W let go after a sprint + F, same instant -> started`.
+in hand, F inspects unless the player holds Shift (20: the operator skill), on a sprint too (7 and
+10: until #116 they were refused with 冲刺中无法检视); F during an inspect starts it over, and F
+during a swing starts it once the swing is over. Logs one PASS/FAIL line per press and the debug
+lines it was judged on: `[inspect-keys] PASS #08 W let go after a sprint + F, same instant ->
+started`. (tools/shots/scenes/inspectsprint.py takes frames of an inspect on a sprint.)
 
 Shots: inspect-keys-NN (0.6 s after each press: the knife held up in front of the camera, or for a
 refused press the knife at rest and the reason on the action bar) and inspect-keys-sheet (all of
@@ -200,7 +201,7 @@ def _presses(s, r):
 
     _home(s)
     _sprint(s)
-    p = r.f('sprinting (Ctrl+W held)', expect='冲刺')
+    p = r.f('sprinting (Ctrl+W held)')
     r.shot(p)
     r.settle(p)
 
@@ -222,7 +223,7 @@ def _presses(s, r):
     _sprint(s)
     s.xdo('keyup', 'Control_L')
     s.wait(0.3)
-    p = r.f('Ctrl let go, W still held (still sprinting)', expect='冲刺')
+    p = r.f('Ctrl let go, W still held (still sprinting)')
     r.shot(p)
     r.settle(p)
 

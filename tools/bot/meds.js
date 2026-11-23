@@ -1,55 +1,96 @@
-// Economy & item systems: trader, stash, market listing, secure container, meds, grenade, skill.
-const mineflayer = require('mineflayer')
-const fs = require('fs')
-const rcon = require('./rcon')
-const env = require('./env')
-const out = '/tmp/meds.log'
-fs.writeFileSync(out, '')
-const t0 = Date.now()
-const sleep = ms => new Promise(r => setTimeout(r, ms))
-const log = (...a) => fs.appendFileSync(out, `[${((Date.now() - t0) / 1000).toFixed(1)}s] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') + '\n')
-const plain = (j) => { const m = JSON.stringify(j).match(/"text":\{"type":"string","value":"([^"]*)"/g); return m ? m.map(x => x.split('"value":"')[1].slice(0, -1)).join('') : '' }
-const name = 'Eco' + (Date.now() % 10000)
-const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
-bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
-bot.on('messagestr', m => { if (m.trim()) log('CHAT', m) })
-bot.on('actionBar', m => { const s = m.toString(); if (s.trim()) log('BAR', s) })
-bot.on('soundEffectHeard', s => { if (/throw|med|skill|ui\.(buy|sell)/.test(String(s))) log('SOUND', s) })
+// What a raider reaches for in a fight, with one bot (a fresh account) solo on the proving ground:
+//
+//   medkit   down 45 HP (RCON damage), right mouse held on the starter medkit for 3.5 s: health goes
+//            back up, and the action bar says what it healed and what is left (+N HP, 剩余治疗量).
+//   frag     a frag given, right mouse pressed and let go facing the ground ahead: it leaves the hand
+//            (none carried) and goes off (craftov:throw.explode) within 5 s.
+//   skill    sneak + F (the operator skill, as the client sends it: Shift down, then the swap-hands
+//            key): the action bar names the skill (技能 · …), and a second try at once says it is
+//            cooling down (技能冷却中).
+//   out      it extracts through the always-open extract.
+//
+//   node meds.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js)
+//
+// Server config: the defaults; a short match.wait-seconds keeps it quick. The bot is made op (the
+// proving ground is a test map) and deopped when done; soldiers are killed so they do not shoot it.
+// Prints PASS / FAIL per check; the exit code is the number of failures (2+ when it broke).
+const c = require('./common')
 
-function id (item) { const s = JSON.stringify(item && item.components || ''); const m = s.match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : (item ? item.name : null) }
-function inv () { const o = []; for (let i = 9; i <= 44; i++) { const it = bot.inventory.slots[i]; if (it && id(it) !== 'ui/locked') o.push(i + ':' + id(it) + 'x' + it.count) } return o.join(' ') }
-async function openWith (fn) { return new Promise(res => { const t = setTimeout(() => res(null), 4000); bot.once('windowOpen', w => { clearTimeout(t); res(w) }); fn() }) }
-const top = (w) => { const o = []; for (let i = 0; i < w.inventoryStart; i++) if (w.slots[i]) o.push(i + ':' + id(w.slots[i])); return o.join(' ') }
-async function money () { const r = await rcon(`cv money ${name} 0`); return r.replace(/§./g, '') }
 
-bot.once('spawn', async () => {
-  try {
-    await sleep(2500)
-    await rcon('op ' + name)
-    log('money', await money())
-    // Raid: meds, grenade, skill.
-    bot.chat('/cv queue rustport NORMAL SOLO')
-    for (let i = 0; i < 120; i++) { await sleep(500); if (bot.game.gameMode === 'adventure' && Date.now() - t0 > 40000 && bot.entity.position.distanceTo({ x: 0.5, y: 65, z: 12.5 }) > 5) break }
-    log('in raid at', bot.entity.position.toString())
-    await sleep(3500)
-    await rcon(`damage ${name} 45 minecraft:generic`)
-    await sleep(500)
-    log('hp after damage', bot.health)
-    const med = bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 43 && s && id(s) === 'medkit_s')
-    log('medkit slot', med)
-    if (med >= 0) { bot.setQuickBarSlot(med - 36); await sleep(300); bot.activateItem(); await sleep(3500); bot.deactivateItem(); await sleep(500) }
-    log('hp after medkit', bot.health)
-    await rcon(`cv give ${name} frag`)
-    await sleep(500)
-    const frag = bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 43 && s && id(s) === 'frag')
-    if (frag >= 0) { bot.setQuickBarSlot(frag - 36); await sleep(300); await bot.look(0, -0.3, true); bot.activateItem(); await sleep(200); bot.deactivateItem() }
-    await sleep(4500)
-    w = await openWith(() => bot.chat('/cv'))
-    if (w) { log('terminal', top(w)); await bot.clickWindow(16, 0, 0); await sleep(800) }
-    log('money end', await money())
-    await rcon(`cv end`)
-  } catch (e) { log('ERROR', e.stack) }
-  await sleep(1000)
-  bot.quit()
-  setTimeout(() => process.exit(0), 500)
-})
+async function main () {
+  const name = 'Med' + c.tag
+  const bot = await c.make(name)
+  await c.rcon(`op ${name}`)
+  bot.chat('/cv queue proving NORMAL SOLO')
+  const landed = await c.waitFor(() => c.inRaid(bot), 120000)
+  c.check('the bot lands on the proving ground', landed, bot.worldName)
+  if (!landed) return c.finish(2)
+  await c.sleep(4000) // insertion protection
+  await c.clearSoldiers()
+  // Somewhere open and flat.
+  await c.clearArea(bot)
+
+  // medkit
+  await c.rcon(`damage ${name} 45 minecraft:generic`)
+  await c.sleep(800)
+  const hurt = bot.health
+  const med = c.hotbar(bot, 'medkit_s')
+  const mark = bot.msgs.length
+  if (med >= 0) {
+    bot.setQuickBarSlot(med)
+    await c.sleep(500)
+    bot.activateItem()
+    await c.sleep(3500)
+    bot.deactivateItem()
+    await c.sleep(800)
+  }
+  await c.clearSoldiers()
+  c.check('medkit: the starter medkit heals', med >= 0 && bot.health > hurt, { slot: med, health: `${hurt} -> ${bot.health}` })
+  const bar = bot.msgs.slice(mark).find(m => m.includes('剩余治疗量'))
+  c.check('medkit: the action bar says what it healed and what is left', !!bar && /\+\d+ HP/.test(bar), bar || bot.msgs.slice(mark))
+
+  // frag
+  await c.rcon(`cv give ${name} frag`)
+  await c.waitFor(() => c.hotbar(bot, 'frag') >= 0, 3000)
+  const frag = c.hotbar(bot, 'frag')
+  const from = bot.sounds.length
+  if (frag >= 0) {
+    bot.setQuickBarSlot(frag)
+    await c.sleep(500)
+    await bot.look(0, -0.3, true)
+    bot.activateItem()
+    await c.sleep(200)
+    bot.deactivateItem()
+    await c.sleep(300)
+    await c.tp(bot, '45.5 65 70.5') // out of the blast
+  }
+  const blast = await c.waitFor(() => bot.sounds.slice(from).some(s => s.key === 'craftov:throw.explode'), 6000)
+  c.check('frag: thrown, it leaves the hand', frag >= 0 && c.carried(bot, 'frag') === 0, { slot: frag })
+  c.check('frag: and goes off', blast, bot.sounds.slice(from).map(s => s.key).join(', '))
+
+  // skill: Shift down, then F in the same moment.
+  const skill = async () => {
+    const mark = bot.msgs.length
+    bot.setControlState('sneak', true)
+    await c.sleep(250)
+    c.dig(bot, 6)
+    await c.sleep(250)
+    bot.setControlState('sneak', false)
+    await c.sleep(600)
+    return bot.msgs.slice(mark)
+  }
+  bot.setQuickBarSlot(0)
+  await c.sleep(500)
+  let said = await skill()
+  c.check('skill: sneak + F uses the operator skill', said.some(m => m.includes('技能 ·')), said)
+  said = await skill()
+  c.check('skill: right after, it is cooling down', said.some(m => m.includes('技能冷却中')), said)
+
+  // out
+  await c.clearSoldiers()
+  c.check('out: the bot extracts', await c.extract(bot))
+  await c.rcon(`deop ${name}`)
+  return c.finish()
+}
+
+main().catch(c.crashed)

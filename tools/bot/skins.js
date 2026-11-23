@@ -11,7 +11,9 @@
 //      the secure container; a tactical dagger wearing 黑曜, put into the stash and listed on the
 //      market, is listed as the plain dagger; meanwhile the starter knife given in its place wears
 //      锈港 again (each kind of knife keeps its own skin);
-//   4. the dagger wears 黑曜 in a raid on the proving ground and, after dying there, in the lobby;
+//   4. the dagger wears 黑曜 in a raid on the proving ground; clicked into the gallery crate there it
+//      is the plain dagger in the crate (no skin model or name), and taken back out it wears 黑曜
+//      again; after dying in the raid it still wears 黑曜 in the lobby;
 //   5. after logging out and back in it still wears 黑曜, and the profile file (with SERVER_DIR)
 //      holds the choice and no record anywhere (stash, loadout, secure container, mailbox, market)
 //      carries a skin;
@@ -19,6 +21,9 @@
 //      another slot held closes the menu, selects the melee slot, shows craftov:knife_skin/
 //      karambit_starchart on the dagger and starts the inspect (craftov:inspect cooldown); once the
 //      inspect is over the dagger wears 黑曜 again and the menu opens again on the karambit's tab;
+//      F tapped every half second during a preview (赤潮) starts the inspect over each time, yet the
+//      preview still ends after one inspect (黑曜 back within about 3 s) and the menu stays shut; a
+//      preview cut short by a slot switch ends at once and the menu stays shut;
 //   7. with SERVER_DIR, skins.own-all and skins.shop-open are switched in config.yml (put back at the
 //      end, then /cv reload): with own-all off the dagger falls back to its own look and the cards
 //      say 未拥有; a click on 黑曜 says 点券商店暂未开放 and changes nothing; with the shop open and
@@ -140,6 +145,8 @@ function melee (bot) {
 }
 const meleeSlotIn = w => w.inventoryStart + 29
 const click = async (bot, slot, button = 0, wait = 500) => { await bot.clickWindow(slot, button, 0); await sleep(wait) }
+/** F: the swap-hands key, which inspects the knife in hand. */
+const pressF = bot => bot._client.write('block_dig', { status: 6, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
 const closeAll = async bot => { if (bot.currentWindow) bot.closeWindow(bot.currentWindow); await sleep(400) }
 
 /**
@@ -175,6 +182,16 @@ async function give (bot, id) {
   await rcon(`cv give ${bot.username} ${id}`)
   await waitFor(() => cid(melee(bot)) === id, 5000)
   await sleep(400)
+}
+
+/** Opens the first crate of the proving ground's container gallery (6.5 65 64.5): random loot, room to spare. */
+async function openCrate (bot) {
+  await rcon(`execute as ${bot.username} at @s run tp @s 6.5 65 65.9 180 20`)
+  await sleep(1200)
+  const target = bot.nearestEntity(e => e.name === 'interaction')
+  if (!target) return null
+  await bot.lookAt(target.position.offset(0, 0.3, 0), true)
+  return openWith(bot, () => bot.activateEntity(target))
 }
 
 async function deploy (bot) {
@@ -316,6 +333,26 @@ async function scenario (name, botRef) {
   if (!await deploy(bot)) throw new Error('the bot never reached the proving ground')
   await waitFor(() => model(melee(bot)) === SKIN('tactical_obsidian'), 3000)
   check('in the raid the dagger wears 黑曜', model(melee(bot)) === SKIN('tactical_obsidian'), model(melee(bot)))
+  // A crate copies the stack as it is: the dagger must go in without the skin, and come back out with it.
+  w = await openCrate(bot)
+  if (!w) throw new Error('the gallery crate on the proving ground did not open')
+  await sleep(1000)
+  w = bot.currentWindow || w
+  const topDaggers = win => win.slots.slice(0, win.inventoryStart).map((s, i) => cid(s) === 'knife_tactical' ? i : -1).filter(i => i >= 0)
+  const daggersBefore = topDaggers(w)
+  await click(bot, meleeSlotIn(w), 0, 800)
+  w = bot.currentWindow || w
+  const putAt = topDaggers(w).find(i => !daggersBefore.includes(i))
+  const inCrate = putAt === undefined ? null : w.slots[putAt]
+  check('the dagger clicked into a crate lies there as the plain dagger (its own model and name)',
+    !!inCrate && model(inCrate) === 'craftov:knife_tactical' && !skinned(inCrate) && !title(inCrate).includes('黑曜'),
+    inCrate ? [model(inCrate), title(inCrate)] : '(not in the crate)')
+  if (putAt !== undefined) await click(bot, putAt, 0, 800)
+  check('no stack but the melee knife shows a skin while the crate is open', strays(bot).length === 0, strays(bot))
+  await closeAll(bot)
+  await waitFor(() => cid(melee(bot)) === 'knife_tactical' && model(melee(bot)) === SKIN('tactical_obsidian'), 3000)
+  check('taken back out of the crate, the dagger wears 黑曜 again', cid(melee(bot)) === 'knife_tactical'
+    && model(melee(bot)) === SKIN('tactical_obsidian'), [cid(melee(bot)), model(melee(bot))])
   const from = bot.chatLog.length
   await rcon(`damage ${name} 1000 minecraft:generic`)
   await waitChat(bot, /损失|击败干员 \d+ · 击败敌兵/, 60000, from)
@@ -362,6 +399,30 @@ async function scenario (name, botRef) {
   check('after the inspect the menu opens again on the karambit tab', bot.opened.length > openedBefore && back.title.includes('爪刀'), back.title)
   await waitFor(() => model(melee(bot)) === SKIN('tactical_obsidian'), 2000)
   check('and the dagger wears 黑曜 again', model(melee(bot)) === SKIN('tactical_obsidian'), model(melee(bot)))
+  await closeAll(bot)
+  // F tapped during a preview starts the inspect over, but not the preview: one inspect (2.5 s) and
+  // the skin is gone, so tapping cannot keep a look (perhaps one not owned) on the knife.
+  w = await openSkins(bot)
+  await click(bot, TAB.knife_karambit)
+  const openedTap = bot.opened.length
+  await bot.clickWindow(CARD[3], 1, 0) // right click: preview 赤潮
+  await waitFor(() => model(melee(bot)) === SKIN('karambit_redtide'), 2000)
+  const tapStart = Date.now()
+  const tapInspects = bot.inspects.length
+  let shownFor = -1
+  while (Date.now() - tapStart < 5000) {
+    if (Date.now() - tapStart > 300) pressF(bot)
+    for (let i = 0; i < 5; i++) {
+      await sleep(100)
+      if (model(melee(bot)) === SKIN('karambit_redtide')) shownFor = Date.now() - tapStart
+    }
+  }
+  const restarts = bot.inspects.slice(tapInspects).filter(i => i.ticks > 0).length
+  check('F every half second during a preview starts the inspect over each time', restarts >= 6, restarts)
+  check('yet the preview ends after one inspect: 赤潮 gone within about 3 s, 黑曜 back',
+    shownFor >= 0 && shownFor < 3200 && model(melee(bot)) === SKIN('tactical_obsidian'), [shownFor, model(melee(bot))])
+  await sleep(1500)
+  check('and the menu does not come back after tapping F', bot.opened.length === openedTap, bot.opened.slice(openedTap))
   await closeAll(bot)
   // A preview cut short by switching slot: no menu afterwards, the look comes back at once.
   w = await openSkins(bot)

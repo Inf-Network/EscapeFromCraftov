@@ -99,6 +99,10 @@ async function count (selector) {
 }
 
 async function arm (bot) {
+  // Guns go to the two weapon slots only (hotbar 0 and 1, then a backpack: CarryService.route), and
+  // a fresh raider has its starting guns there.
+  for (const slot of [0, 1]) await rcon(`item replace entity ${bot.username} hotbar.${slot} with minecraft:air`)
+  await sleep(200)
   await rcon(`cv give ${bot.username} m4c`)
   await rcon(`cv give ${bot.username} ammo_556_m855 120`)
   await sleep(800)

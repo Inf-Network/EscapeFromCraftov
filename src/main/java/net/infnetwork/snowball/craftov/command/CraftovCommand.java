@@ -20,9 +20,9 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod", "guide", "training", "fov");
+            "leave", "help", "mod", "guide", "training", "fov", "skins");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "feed", "marketaudit", "ai", "lagcomp", "luck");
+            "feed", "marketaudit", "ai", "lagcomp", "luck", "points");
 
     private final CraftovPlugin plugin;
 
@@ -116,6 +116,9 @@ public final class CraftovCommand implements TabExecutor {
                 }
             }
             case "fov" -> fov(player, args);
+            case "skins" -> {
+                if (player != null) plugin.menus().openSkins(player, null);
+            }
             case "queue" -> {
                 // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
                 if (player == null) {
@@ -229,7 +232,7 @@ public final class CraftovCommand implements TabExecutor {
     private void help(CommandSender sender) {
         Text.send(sender, "<text>Craftov 指令");
         sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
-        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
+        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure | skins"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配  <muted>/cv guide <muted>新手简报（start | skip 开启或关闭指引）"));
         sender.sendMessage(Text.mm("<muted>/cv training <muted>训练行动（单人，不计战绩，装备原样归还）"));
@@ -239,7 +242,8 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] [瞄准镜] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"));
+                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"
+                    + " · points <玩家> [数量]"));
         }
     }
 
@@ -520,6 +524,7 @@ public final class CraftovCommand implements TabExecutor {
                         : "<danger>命中延迟补偿已关闭，<muted>/cv reload 后恢复配置文件里的设置。");
             }
             case "luck" -> luck(sender, args);
+            case "points" -> points(sender, args);
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -578,6 +583,42 @@ public final class CraftovCommand implements TabExecutor {
         for (String line : plugin.luck().describe(profile)) {
             sender.sendMessage(Text.mm(line));
         }
+    }
+
+    /**
+     * /cv points &lt;player&gt; [amount]: shows a player's 点券 (online or not), or sets it. Goes
+     * through the PointsBank like everything else, so once the server's global currency is plugged
+     * in this reads and sets that balance instead of the placeholder.
+     */
+    private void points(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            Text.send(sender, "<muted>用法：/cv points <玩家> [数量]（不写数量时查看）");
+            return;
+        }
+        Player online = Bukkit.getPlayerExact(args[1]);
+        java.util.UUID uuid = online != null ? online.getUniqueId() : plugin.profiles().findByName(args[1]);
+        if (uuid == null) {
+            Text.send(sender, "<danger>没有叫 " + Text.escape(args[1]) + " 的玩家。");
+            return;
+        }
+        String name = online != null ? online.getName() : args[1];
+        var bank = plugin.points();
+        if (args.length > 2) {
+            Long amount = parseLong(args[2]);
+            if (amount == null || amount < 0) {
+                Text.send(sender, "<danger>数量要是不小于 0 的整数。");
+                return;
+            }
+            String error = bank.set(uuid, amount);
+            if (error != null) {
+                Text.send(sender, "<danger>" + Text.escape(error));
+                return;
+            }
+            plugin.getLogger().info(sender.getName() + " set the points of " + name + " (" + uuid + ") to " + amount);
+        }
+        long balance = bank.balance(uuid);
+        Text.send(sender, balance < 0 ? "<danger>读不出 " + Text.escape(name) + " 的点券余额。"
+                : "<text>" + Text.escape(name) + " <muted>点券 <info>" + Text.money(balance));
     }
 
     /**
@@ -667,7 +708,7 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money")
-                || args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin"))) {
+                || (args[0].equalsIgnoreCase("luck") || args[0].equalsIgnoreCase("points")) && sender.hasPermission("craftov.admin"))) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin")) {
             out.addAll(List.of("quota", "pity", "boost", "reset"));

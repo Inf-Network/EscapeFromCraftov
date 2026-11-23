@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import hudart  # noqa: E402
 import icons  # noqa: E402
 import knife_inspect  # noqa: E402
+import knife_skins  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
@@ -351,23 +352,62 @@ def build_items(item_defs):
         if item_id in models.GUNS:
             build_gun(item_id, spec, item_defs)
         elif item_id in knife_inspect.KEYS:
-            # F with the knife in hand runs its craftov:inspect cooldown (InspectService), and the client
-            # steps through the inspect frames while it counts down, as for the gun reload.
-            entries = []
-            for k, (right, threshold) in enumerate(zip(knife_inspect.frames(item_id), knife_inspect.thresholds())):
-                path = 'knife_inspect/%s/%d' % (item_id, k)
-                write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
-                entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
-            write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
-                'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}],
-                'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
-                             'entries': entries, 'fallback': model_ref(held)}}})
+            write_knife_item(item_id, item_id, item_id, held)
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select('craftov:item/gui/' + item_id, held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
     save(models.palette_texture(models.BOX_PALETTE), os.path.join(CV, 'textures', 'item', 'box_palette.png'))
+
+
+def write_knife_item(name, frames_name, knife, held):
+    """The item definition craftov:<name> of a knife, or of a skin of one (#106): its icon in menus
+    (craftov:item/gui/<name>), otherwise `held`, held like a sword. F with the knife in hand runs its
+    craftov:inspect cooldown (InspectService), and the client steps through the knife's inspect frames
+    (knife_inspect/<frames_name>/<k>, each `held` in that frame's pose) while it counts down, as for the
+    gun reload."""
+    entries = []
+    for k, (right, threshold) in enumerate(zip(knife_inspect.frames(knife), knife_inspect.thresholds())):
+        path = 'knife_inspect/%s/%d' % (frames_name, k)
+        write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
+        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+    write_json(os.path.join(CV, 'items', name + '.json'), {'model': {
+        'type': 'minecraft:select', 'property': 'minecraft:display_context',
+        'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + name)}],
+        'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
+                     'entries': entries, 'fallback': model_ref(held)}}})
+
+
+def load_knife_skins():
+    """skins.yml (the plugin's catalogue of knife skins), checked against the art in knife_skins.py."""
+    with open(os.path.join(RES, 'skins.yml'), encoding='utf-8') as f:
+        catalogue = yaml.safe_load(f)['skins']
+    missing = sorted(set(catalogue) - set(knife_skins.SKINS))
+    unused = sorted(set(knife_skins.SKINS) - set(catalogue))
+    assert not missing, 'skins.yml lists skins that knife_skins.py does not draw: %s' % missing
+    assert not unused, 'knife_skins.py draws skins that skins.yml does not list: %s' % unused
+    for sid, spec in catalogue.items():
+        assert spec['knife'] == knife_skins.knife_of(sid), '%s: skins.yml says %s, knife_skins.py draws %s' % (
+            sid, spec['knife'], knife_skins.knife_of(sid))
+    return catalogue
+
+
+def build_knife_skins(item_defs):
+    """Knife skins (#106). SkinService puts the item model craftov:knife_skin/<id> on the knife in the
+    melee slot: a definition shaped like the knife's own, with the skin's sprite held, in menus (on the
+    knife's rarity background) and in every inspect frame."""
+    for sid, spec in load_knife_skins().items():
+        knife = spec['knife']
+        name = 'knife_skin/' + sid
+        icon = knife_skins.render(sid)
+        save(icon, os.path.join(CV, 'textures', 'item', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', name + '.json'),
+                   generated('craftov:item/' + name, 'minecraft:item/handheld'))
+        composite = gradient_bg((32, 32), rgb(RARITY_COLORS[item_defs[knife].get('rarity', 'WHITE')]))
+        composite.alpha_composite(icon)
+        save(composite, os.path.join(CV, 'textures', 'item', 'gui', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'gui', name + '.json'), generated('craftov:item/gui/' + name))
+        write_knife_item(name, sid, knife, 'craftov:item/' + name)
 
 
 def build_containers():
@@ -586,7 +626,10 @@ def build_screens():
     providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
                       'chars': rows})
     meta = {}
-    for i, (sid, make) in enumerate(screens.SCREENS.items()):
+    # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
+    # older keep theirs.
+    all_screens = {**screens.SCREENS, **screens.skin_screens(load_knife_skins())}
+    for i, (sid, make) in enumerate(all_screens.items()):
         img, left, top = make()
         cp = chr(SCREEN_BASE + i)
         save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))
@@ -1135,6 +1178,7 @@ def main():
         shutil.rmtree(PACK)
     build_pack_meta()
     build_items(item_defs)
+    build_knife_skins(item_defs)
     build_containers()
     build_fx()
     build_ui()

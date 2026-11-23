@@ -119,6 +119,13 @@ public final class MenuService {
         }
     }
 
+    /** 外观: knife skins (#106), on the tab of {@code knife} (null: the knife in the melee slot). */
+    public void openSkins(Player player, @org.jspecify.annotations.Nullable String knife) {
+        if (lobbyOnly(player)) {
+            new SkinMenu(plugin, player, knife).open();
+        }
+    }
+
     public void openCatalog(Player player) {
         if (!plugin.canUseCatalog(player)) {
             Notify.error(player, "测试军械库只在测试模式下开放。");

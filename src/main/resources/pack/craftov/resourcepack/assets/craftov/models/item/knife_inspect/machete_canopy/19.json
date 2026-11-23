@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/machete_canopy",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    11.267,
+    -5.654,
+    126.544
+   ],
+   "translation": [
+    -4.63,
+    4.286,
+    -6.139
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -168.733,
+    5.654,
+    53.456
+   ],
+   "translation": [
+    -4.63,
+    4.286,
+    -6.139
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

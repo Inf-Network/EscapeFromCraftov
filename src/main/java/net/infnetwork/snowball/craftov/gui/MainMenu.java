@@ -19,9 +19,9 @@ import java.util.List;
  * Operations is the big deploy button (six slots, one action) with daily tasks and the range;
  * preparation holds the stash, trader, market, secure container, presets, gunsmith, repair and free
  * kit; progress the operator, hideout, collection, season pass and rankings; social the squad,
- * escort hall and bounty board. The bottom bar keeps help, the profile and close in fixed places,
- * and while the new-player guide runs, its checklist next to help; the button for the guide's next
- * step shines.
+ * escort hall, bounty board and appearance (knife skins). The bottom bar keeps help, the profile and
+ * close in fixed places, and while the new-player guide runs, its checklist next to help; the
+ * button for the guide's next step shines.
  */
 final class MainMenu extends Menu {
 
@@ -108,6 +108,8 @@ final class MainMenu extends Menu {
                 });
         button(25, UiItems.button("craftov:ui/icon_bounty", "<text><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
                 "<muted>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
+        button(26, UiItems.button("craftov:ui/icon_skins", "<text><b>外观", List.of("<muted>刀具皮肤：只改变外观，不是物品",
+                "<muted>预览检视动作 · 点券 <info>" + pointsLine())), e -> plugin.menus().openSkins(viewer, null));
         // Bottom bar: help, the guide, profile, close. The keys are the player's own bindings.
         button(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
                 "<white><key:key.attack> <muted>开火（按住连发）",
@@ -124,6 +126,7 @@ final class MainMenu extends Menu {
         });
         set(49, UiItems.button("craftov:ui/icon_profile", "<text><b>" + Text.escape(viewer.getName()),
                 List.of("<muted>块币 <accent>◈ " + Text.money(p.money),
+                        "<muted>点券 <info>" + pointsLine(),
                         "<muted>等级 <white>Lv." + p.level + " <muted>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",
                         "<muted>排位 " + plugin.ranks().tierName(p.rankPoints) + " <muted>" + p.rankPoints + " 分",
                         "<muted>当前战备值 <white>◈ " + Text.money(value),
@@ -131,6 +134,12 @@ final class MainMenu extends Menu {
                                 + " <muted>· 击败干员 <white>" + p.stat("kills"))));
         guide(p, next);
         closeButton(53);
+    }
+
+    /** The viewer's 点券 balance (the server's premium currency, #106), or a dash when it cannot be read. */
+    private String pointsLine() {
+        long points = plugin.points().balance(viewer.getUniqueId());
+        return points < 0 ? "—" : Text.money(points);
     }
 
     private static final String NEXT = "<accent>▶ 新手指引的下一步";

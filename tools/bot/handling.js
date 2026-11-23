@@ -32,11 +32,13 @@
 //
 //   PORT=25565 RCON_PORT=25575 [SERVER_DIR=...] node handling.js [ads|draw|sprint|carry|sway ...]
 //
-// Server config: debug: true for exact ads ticks and for carry and sway (read from the log), the defaults
-// (weapons.handling, weapons.ads.timeout-ticks 5). Without a handling key in items.yml (a server
-// that kept an older copy) the bot only reports what it measured. The real client's timing, from
-// the press to a settled zoom, is tools/shots/shots.py run adstime. Exit code: number of failed
-// checks (2+ also when a scenario could not be set up).
+// Server config (tools/bot/suite.js sets it for its run): debug true for exact ads ticks and for
+// carry and sway (read from the log), the defaults (weapons.handling, weapons.ads.timeout-ticks 5).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// Without a handling key in items.yml (a server that kept an older copy) the bot only reports what it
+// measured. The real client's timing, from the press to a settled zoom, is tools/shots/shots.py run
+// adstime. Exit code: number of failed checks (2+ also when a scenario could not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')

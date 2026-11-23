@@ -31,9 +31,13 @@
 //
 //   PORT=25565 RCON_PORT=25575 [RCON_PASSWORD=craftov-local] [SERVER_DIR=../../server/run] node feedback.js [scenario ...]
 //
-// Server config: test.enabled true (the proving ground is a test map; the bots are also made op),
-// match.wait-seconds short (5) so the three solo queues land in one match. The bots leave the raid
-// by disconnecting. Exit code: number of failed checks (2+ also when a scenario could not be set up).
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the proving ground is a
+// test map; the bots are also made op), match.wait-seconds short (3) so the three solo queues, sent
+// together, land in one match.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// The bots leave the raid by disconnecting. Exit code: number of failed checks (2+ also when a
+// scenario could not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const { Vec3 } = require('vec3')

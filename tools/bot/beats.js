@@ -24,11 +24,14 @@
 //
 //   PORT=25565 RCON_PORT=25575 [RCON_PASSWORD=craftov-local] node beats.js [scenario ...]
 //
-// Server config: test.enabled true (the proving ground is a test map, and the heal button of the test
-// armory; the bots are also made op), match.wait-seconds short (5). Soldiers are killed so they keep
-// out of it. The bots leave the raid by disconnecting (A and M through the limited extract when
-// `full` runs). Exit code: number of failed checks (2+ also
-// when the setup failed).
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the proving ground is a
+// test map, and the heal button of the test armory; the bots are also made op), match.wait-seconds
+// short (3), the default raid.extract-ring-range (48) and downed.revive-seconds (5).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// Soldiers are killed so they keep out of it. The bots leave the raid by disconnecting (A and M
+// through the limited extract when `full` runs). Exit code: number of failed checks (2+ also when
+// the setup failed).
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')

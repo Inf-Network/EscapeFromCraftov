@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/k47__optic_reddot",
+ "parent": "craftov:item/gun/k47",
  "display": {
   "firstperson_righthand": {
    "rotation": [

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/v57_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    98.298,
+    70.189,
+    -87.171
+   ],
+   "translation": [
+    -3.288,
+    3.326,
+    0.318
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -81.702,
+    -70.189,
+    -92.829
+   ],
+   "translation": [
+    -3.288,
+    3.326,
+    0.318
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

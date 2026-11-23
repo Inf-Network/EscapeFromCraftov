@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/m4c__optic_4x",
+ "parent": "craftov:item/gun/m4c",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,7 +9,7 @@
    ],
    "translation": [
     -4.119,
-    3.383,
+    3.409,
     -1.775
    ],
    "scale": [
@@ -26,7 +26,7 @@
    ],
    "translation": [
     -4.119,
-    3.383,
+    3.409,
     -1.775
    ],
    "scale": [

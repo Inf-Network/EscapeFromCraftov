@@ -1,15 +1,15 @@
 {
- "parent": "craftov:item/gun_part/k47_body",
+ "parent": "craftov:item/gun_mid/k47_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    99.734,
-    63.98,
-    -80.985
+    95.461,
+    59.664,
+    -82.072
    ],
    "translation": [
-    -3.892,
-    4.143,
+    -3.831,
+    3.201,
     -1.27
    ],
    "scale": [
@@ -20,13 +20,13 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -80.266,
-    -63.98,
-    -99.015
+    -84.539,
+    -59.664,
+    -97.928
    ],
    "translation": [
-    -3.892,
-    4.143,
+    -3.831,
+    3.201,
     -1.27
    ],
    "scale": [

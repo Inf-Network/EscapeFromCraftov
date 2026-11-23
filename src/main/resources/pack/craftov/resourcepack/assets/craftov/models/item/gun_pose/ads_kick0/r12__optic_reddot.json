@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt_ads/r12__optic_reddot",
+ "parent": "craftov:item/gun_ads/r12__optic_reddot",
  "display": {
   "firstperson_righthand": {
    "rotation": [

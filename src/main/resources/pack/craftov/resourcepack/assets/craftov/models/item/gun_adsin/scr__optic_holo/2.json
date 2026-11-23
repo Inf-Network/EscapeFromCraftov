@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/scr__optic_holo",
+ "parent": "craftov:item/gun/scr",
  "display": {
   "firstperson_righthand": {
    "rotation": [

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/scr_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    99.077,
+    76.105,
+    -90.127
+   ],
+   "translation": [
+    -2.788,
+    3.463,
+    -0.542
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -80.923,
+    -76.105,
+    -89.873
+   ],
+   "translation": [
+    -2.788,
+    3.463,
+    -0.542
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

@@ -555,26 +555,20 @@ def shell_model():
             'elements': [element(b) for b in boxes]}
 
 
-def _frames(gid):
+def reload_timeline(gid, ticks):
+    """[(cooldown threshold, {part: (model, right-hand display)})] for the reload, one frame at most per tick
+    of the gun's reload time (reload.timeline). The mounted optic is not a part: it rides on the body's
+    frame as an attachment."""
     base = gun_model(gid)['display']['firstperson_righthand']
-    return reload.frames(gid, base, lift=4.0 if gid in PISTOLS else 0.0)
-
-
-def reload_frames(gid):
-    """[(frame index, part, model parent, display)] for the reload animation of one gun (optics separate)."""
     out = []
-    for k, frame in enumerate(_frames(gid)):
+    for threshold, frame in reload.timeline(gid, base, ticks, lift=4.0 if gid in PISTOLS else 0.0):
+        parts = {}
         for part, right in frame.items():
             if part == 'optic':
                 continue
-            parent = 'craftov:item/gun_part/shell' if part == 'shell' else 'craftov:item/gun_part/%s_%s' % (gid, part)
-            out.append((k, part, parent, right))
+            parts[part] = ('craftov:item/gun_part/shell' if part == 'shell' else part_ref(gid, part), right)
+        out.append((threshold, parts))
     return out
-
-
-def reload_frames_optic(gid):
-    """Right-hand display of a mounted optic per reload frame (it moves with the body)."""
-    return [frame['optic'] for frame in _frames(gid)]
 
 
 def frame_model(parent, right):
@@ -582,9 +576,107 @@ def frame_model(parent, right):
 
 
 def gun_ai_model(gid):
-    """Variant for zombie soldiers, whose arms are raised about 80 degrees."""
+    """Variant for zombie soldiers, whose arms are raised about 80 degrees (the low model)."""
     tp_r, tp_l = third_person(gid, 80)
-    return {'parent': 'craftov:item/gun/' + gid, 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
+    return {'parent': low_ref(gid), 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
+
+
+# ---------------------------------------------------------------- levels of detail
+# Guns built by meshprim.py come in three levels (see there): the fine model (gun/<id>) for first
+# person at rest, aiming and kicking; the mid model (gun_mid/<id>, per part gun_mid/<id>_<part>) for
+# the reload and draw frames, which bake a copy each; the low model (gun_low/<id>) for third person,
+# the ground, item frames and the AI. Voxel guns use their one model for all three.
+
+def has_lods(gid):
+    return meshprim.has_spec(gid)
+
+
+def gun_low_model(gid):
+    data = voxel_gun(gid)
+    texture = gun_texture(gid)
+    return {'textures': {'p': texture, 'particle': texture},
+            'elements': [e for part in data['low'].values() for e in part], 'display': gun_model(gid)['display']}
+
+
+def gun_mid_model(gid, part=None):
+    """The mid model, whole or one moving part, with the fine model's textures and displays."""
+    parts = voxel_gun(gid)['mid']
+    elements = parts.get(part, []) if part else [e for p in parts.values() for e in p]
+    return {'parent': 'craftov:item/gun/' + gid, 'elements': elements}
+
+
+def low_ref(gid):
+    return 'craftov:item/gun_low/' + gid if has_lods(gid) else 'craftov:item/gun/' + gid
+
+
+def mid_ref(gid):
+    return 'craftov:item/gun_mid/' + gid if has_lods(gid) else 'craftov:item/gun/' + gid
+
+
+def part_ref(gid, part):
+    return 'craftov:item/gun_mid/%s_%s' % (gid, part) if has_lods(gid) else 'craftov:item/gun_part/%s_%s' % (gid, part)
+
+
+# ---------------------------------------------------------------- drawing the gun
+# The gun coming up after a switch (WeaponService.bind): the server marks it drawing and runs its
+# cooldown for the draw time, and the item model steps through these frames as the client counts it
+# down, one a tick. A gun out of the hand carries the holster mark, which shows the first frame, so
+# a switch shows the gun low at once, before the server has answered. The draw times are
+# weapons.draw-ticks' defaults; a server that changes them plays the same motion faster or slower.
+DRAW_TICKS = {'pistol': 6, 'pistol_heavy': 6, 'smg': 10, 'pdw': 10, 'pump': 14, 'lmg': 18, 'bolt': 18}
+# Where the draw starts: muzzle down and canted, swung in from the right, below the hip pose.
+HOLSTER = dict(pitch=-32.0, roll=35.0, yaw=-12.0, drop=2.5, back=1.0)
+DRAW_OVERSHOOT = 1.2      # easeOutBack: the muzzle comes up about 3 degrees past level, then settles
+
+
+def draw_ticks(action):
+    return DRAW_TICKS.get(action, 12)
+
+
+def draw_pose(p):
+    """The pose at progress p (0 holstered, 1 up) as posed() takes it."""
+    ease = 1 - (1 - p) ** 3
+    c1 = DRAW_OVERSHOOT
+    back = 1 + (c1 + 1) * (p - 1) ** 3 + c1 * (p - 1) ** 2
+    h = HOLSTER
+    return dict(view=(round(h['pitch'] * (1 - back), 3), round(h['yaw'] * (1 - ease), 3), 0),
+                roll=round(h['roll'] * (1 - ease), 3),
+                shift=(0, round(-h['drop'] * (1 - ease), 3), round(h['back'] * (1 - ease), 3)))
+
+
+def draw_frames(gid, ticks):
+    """[(cooldown threshold, right, left)]: frame k shows during tick k of the draw (frame 0 is the
+    holster pose); once the cooldown runs out the gun is at rest."""
+    base = gun_model(gid)['display']
+    out = []
+    for k in range(ticks):
+        pose = draw_pose(k / ticks)
+        out.append((max(1e-4, round(1 - (k + 1) / ticks, 5)), posed(base['firstperson_righthand'], **pose),
+                    posed(base['firstperson_lefthand'], left=True, **pose)))
+    return out
+
+
+# ---------------------------------------------------------------- optics as attachments
+
+def ads_display(gid, oid=None):
+    """First-person displays with the sights up: iron sights (oid None), a 1x sight's window close to the
+    eye; None for a magnified optic, whose mask shows instead of the gun."""
+    if oid is None:
+        return gun_ads_model(gid)['display']
+    if optic_data(oid)[2] is None:
+        return None
+    return {k: v for k, v in gun_with_optic(gid, oid, True)['display'].items() if k.startswith('firstperson')}
+
+
+def optic_attachment_model(parent, gid, oid):
+    """The mounted optic drawn in a gun model's pose (the parent supplies the displays): its housing and,
+    for a 1x sight, the glowing reticle just behind the glass."""
+    placed, _ = placed_optic(gid, oid)
+    model = {'parent': parent, 'textures': {'o': optic_texture(oid)}, 'elements': placed}
+    if oid in RETICLE:
+        model['textures']['r'] = reticle_texture(oid)
+        model['elements'] = placed + [reticle_element(gid, oid)]
+    return model
 
 
 def gun_icon(gid):
@@ -810,9 +902,12 @@ def optic_data(oid):
     if oid in procedural:
         build, sight = procedural[oid]
         return _textured(build(), '#o'), palette_texture(OPTIC_PALETTE), sight
-    if not os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
+    if meshprim.has_spec(oid):
+        data = meshprim.build(oid, '#o')
+    elif os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
+        data = gunvox.build(oid, '#o')
+    else:
         return None
-    data = gunvox.build(oid, '#o')
     els = data['parts']['body']
     x0 = min(e['from'][0] for e in els); x1 = max(e['to'][0] for e in els)
     y0 = min(e['from'][1] for e in els)
@@ -958,13 +1053,6 @@ def gun_with_optic(gid, oid, ads):
     return model
 
 
-def optic_on_gun_model(gid, oid):
-    """Just the mounted optic, posed like the gun; drawn alongside the moving gun parts while reloading."""
-    placed, _ = placed_optic(gid, oid)
-    return {'textures': {'o': optic_texture(oid), 'particle': optic_texture(oid)}, 'elements': placed,
-            'display': gun_model(gid)['display']}
-
-
 def optic_item_model(oid):
     """The optic as a loose item (held or on the ground)."""
     optic, _, _ = optic_data(oid)
@@ -1024,6 +1112,10 @@ def scope_mask_model(oid):
 
 
 def optic_icon(oid):
+    if meshprim.has_spec(oid):
+        import gunpaint
+        data = meshprim.build(oid)
+        return side_icon(gunpaint.side_image(data['parts']['body'], data['texture'], 4), tilt=0)
     if os.path.exists(os.path.join(gunvox.VOXGUNS, oid + '.json')):
         return side_icon(gunvox.side_image(oid, 4), tilt=0)
     procedural = {'optic_reddot': _reddot, 'optic_holo': _holo, 'optic_3x': _prism3x}[oid]()

@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/d50__optic_reddot",
+ "parent": "craftov:item/gun/d50",
  "display": {
   "firstperson_righthand": {
    "rotation": [

@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/p18_body",
+ "parent": "craftov:item/gun_mid/p18_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    99.824,
-    73.713,
-    -89.741
+    99.024,
+    62.744,
+    -81.251
    ],
    "translation": [
-    -3.022,
-    5.839,
-    1.059
+    -3.9,
+    8.271,
+    -0.29
    ],
    "scale": [
     0.612,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -80.176,
-    -73.713,
-    -90.259
+    -80.976,
+    -62.744,
+    -98.749
    ],
    "translation": [
-    -3.022,
-    5.839,
-    1.059
+    -3.9,
+    8.271,
+    -0.29
    ],
    "scale": [
     0.612,

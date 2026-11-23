@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/kl7__optic_reddot",
+ "parent": "craftov:item/gun/kl7",
  "display": {
   "firstperson_righthand": {
    "rotation": [

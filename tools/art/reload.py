@@ -1,8 +1,12 @@
 """First-person reload animation baked into item model frames.
 
 While reloading, the server puts the gun's cooldown group on cooldown for exactly the reload time.
-The client then counts the cooldown down by itself every frame, and the item definition picks a
-frame with a `minecraft:cooldown` range dispatch. Each frame is a composite of the gun body, its
+The client then counts the cooldown down by itself, and the item definition picks a frame with a
+`minecraft:cooldown` range dispatch. The client reads the cooldown once a tick (partial tick 0), so
+there is at most one frame per tick: timeline() samples the motion once per tick of the gun's
+reload (items.yml) and keeps a frame only where the pose moved MIN_TURN degrees or MIN_MOVE
+pixels since the last one kept, so a quick pistol reload and a 5.5 s machine gun reload both run at
+up to 20 frames a second without baking still frames. Each frame is a composite of the gun body, its
 magazine (or a shotgun's pump and a shell) and any mounted optic, each a tiny model that only
 overrides its first-person display transform. Moving the magazine is therefore just a different
 translation along the magazine's own axis, so the whole animation costs no packets at all.
@@ -15,7 +19,8 @@ import math
 import gunvox
 import meshprim
 
-FRAMES = 24
+MIN_TURN = 1.5     # degrees a part must turn, or
+MIN_MOVE = 0.3     # pixels (1/16 block) it must move, for a tick to get its own frame
 HIDE_BEYOND = 20.0  # magazine travel (model units) past which it is out of view and hidden
 
 # (progress, roll, pitch, yaw, dx, dy, dz, magazine travel, ease into this key)
@@ -165,31 +170,57 @@ def style(gid):
     return 'mag' if 'mag' in spec else 'tilt'
 
 
-def frames(gid, base, lift=0.0):
-    """Per frame: {part name: right-hand display}. Parts: body, mag / pump / shell, optic.
+def frame_at(gid, base, p, lift=0.0):
+    """{part name: right-hand display} at progress p of the reload. Parts: body, mag / pump / shell, optic.
 
     `lift` raises the gun while it is canted, for pistols whose grip sits below the screen at the hip."""
     kind = style(gid)
     ax, ay = meshprim.mag_axis(gid) if meshprim.has_spec(gid) else gunvox.mag_axis(gid)
+    if kind == 'pump':
+        roll, pitch, yaw, dx, dy, dz, shell, pump = sample(PUMP_KEYS, p)
+        view, offset = (roll, pitch, yaw), (dx, dy, dz)
+        frame = {'body': posed(base, view, offset), 'pump': posed(base, view, offset, (-pump, 0, 0))}
+        frame['shell'] = HIDDEN if shell is None else posed(base, view, offset, (0, -shell, 0))
+    else:
+        roll, pitch, yaw, dx, dy, dz, travel = sample(MAG_KEYS, p)
+        view, offset = (roll, pitch, yaw), (dx, dy + lift * min(1.0, abs(roll) / 30.0), dz)
+        frame = {'body': posed(base, view, offset)}
+        if kind == 'mag':
+            frame['mag'] = HIDDEN if travel > HIDE_BEYOND else posed(base, view, offset, (ax * travel, ay * travel, 0))
+    frame['optic'] = frame['body']
+    return frame
+
+
+def change(a, b):
+    """(degrees, pixels): how far any part moved between two frames (a part shown in one and hidden in the
+    other counts as a full move)."""
+    turn = move = 0.0
+    for part in a:
+        ra, rb = a[part], b.get(part, HIDDEN)
+        if (ra is HIDDEN) != (rb is HIDDEN):
+            return 180.0, 99.0
+        if ra is HIDDEN:
+            continue
+        for x, y in zip(ra['rotation'], rb['rotation']):
+            turn = max(turn, abs((x - y + 180) % 360 - 180))
+        for x, y in zip(ra['translation'], rb['translation']):
+            move = max(move, abs(x - y))
+    return turn, move
+
+
+def timeline(gid, base, ticks, lift=0.0):
+    """[(cooldown threshold, frame)] for a reload of `ticks` ticks: one sample a tick, a frame kept where
+    the pose has moved MIN_TURN degrees or MIN_MOVE pixels since the last kept one, each kept frame held
+    until the next. Thresholds fall from just under 1 to 1e-4 (the last frame holds to the end)."""
+    ticks = max(1, int(ticks))
+    samples = [frame_at(gid, base, (k + 0.5) / ticks, lift) for k in range(ticks)]
+    keep = [0]
+    for k in range(1, ticks):
+        turn, move = change(samples[keep[-1]], samples[k])
+        if turn >= MIN_TURN or move >= MIN_MOVE:
+            keep.append(k)
     out = []
-    for k in range(FRAMES):
-        p = (k + 0.5) / FRAMES
-        if kind == 'pump':
-            roll, pitch, yaw, dx, dy, dz, shell, pump = sample(PUMP_KEYS, p)
-            view, offset = (roll, pitch, yaw), (dx, dy, dz)
-            frame = {'body': posed(base, view, offset), 'pump': posed(base, view, offset, (-pump, 0, 0))}
-            frame['shell'] = HIDDEN if shell is None else posed(base, view, offset, (0, -shell, 0))
-        else:
-            roll, pitch, yaw, dx, dy, dz, travel = sample(MAG_KEYS, p)
-            view, offset = (roll, pitch, yaw), (dx, dy + lift * min(1.0, abs(roll) / 30.0), dz)
-            frame = {'body': posed(base, view, offset)}
-            if kind == 'mag':
-                frame['mag'] = HIDDEN if travel > HIDE_BEYOND else posed(base, view, offset, (ax * travel, ay * travel, 0))
-        frame['optic'] = frame['body']
-        out.append(frame)
+    for i, k in enumerate(keep):
+        end = keep[i + 1] if i + 1 < len(keep) else ticks
+        out.append((max(1e-4, round(1 - end / ticks, 5)), samples[k]))
     return out
-
-
-def thresholds():
-    """Cooldown runs from 1 down to 0 as the reload progresses; frame k covers progress [k/N, (k+1)/N)."""
-    return [max(1e-4, round(1 - (k + 1) / FRAMES, 5)) for k in range(FRAMES)]

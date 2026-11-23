@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/r12_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    99.255,
+    71.745,
+    -90.0
+   ],
+   "translation": [
+    -2.626,
+    4.236,
+    -1.432
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -80.745,
+    -71.745,
+    -90.0
+   ],
+   "translation": [
+    -2.626,
+    4.236,
+    -1.432
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

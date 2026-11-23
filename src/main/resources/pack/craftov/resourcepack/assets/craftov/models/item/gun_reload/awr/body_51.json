@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/awr_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    111.018,
+    82.478,
+    -105.069
+   ],
+   "translation": [
+    -2.019,
+    3.521,
+    -2.938
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -68.982,
+    -82.478,
+    -74.931
+   ],
+   "translation": [
+    -2.019,
+    3.521,
+    -2.938
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

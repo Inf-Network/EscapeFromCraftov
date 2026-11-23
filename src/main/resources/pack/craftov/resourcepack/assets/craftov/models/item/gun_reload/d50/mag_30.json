@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_part/d50_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    152.076,
+    85.957,
+    -148.3
+   ],
+   "translation": [
+    -1.422,
+    3.205,
+    -0.922
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -27.924,
+    -85.957,
+    -31.7
+   ],
+   "translation": [
+    -1.422,
+    3.205,
+    -0.922
+   ],
+   "scale": [
+    0.612,
+    0.612,
+    0.612
+   ]
+  }
+ }
+}

@@ -399,7 +399,10 @@ def lod(gid, level):
         return prims
     if level == 'mid':
         return [p for p in prims if not (p.detail and p.volume() < MID_DETAIL)]
-    keep = sorted((p for p in prims if not p.detail), key=lambda p: -p.half[0] * p.half[1])[:LOW_ELEMENTS]
+    # Seen from afar a round part is its two square strips (the 45 degree ones would stretch into fins
+    # once widened), and details are left out.
+    keep = sorted((p for p in prims if not p.detail and abs(p.rot[0]) < 1e-6),
+                  key=lambda p: -p.half[0] * p.half[1])[:LOW_ELEMENTS]
     out = []
     for p in keep:
         q = p.copy()

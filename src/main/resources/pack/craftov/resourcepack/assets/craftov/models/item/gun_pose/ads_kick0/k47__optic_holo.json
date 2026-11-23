@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt_ads/k47__optic_holo",
+ "parent": "craftov:item/gun_ads/k47__optic_holo",
  "display": {
   "firstperson_righthand": {
    "rotation": [

@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/m4c",
+ "parent": "craftov:item/gun_low/m4c",
  "display": {
   "thirdperson_righthand": {
    "rotation": [

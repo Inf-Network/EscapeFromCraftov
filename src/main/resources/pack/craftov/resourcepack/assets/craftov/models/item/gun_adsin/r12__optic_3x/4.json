@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/r12__optic_3x",
+ "parent": "craftov:item/gun/r12",
  "display": {
   "firstperson_righthand": {
    "rotation": [

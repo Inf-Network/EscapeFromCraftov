@@ -341,7 +341,7 @@ public final class LuckService {
         luck.deployed = deployed;
         rp.luck.boosted = luck.boostRaids > 0;
         if (rp.luck.boosted && notifyBoost()) {
-            Text.send(player, "<accent>补偿局：<muted>本局你搜出金色和红色物品的概率提高（含本局还剩 "
+            plugin.raids().brief(player, "<accent>补偿局：<muted>本局你搜出金色和红色物品的概率提高（含本局还剩 "
                     + luck.boostRaids + " 局）。");
         }
     }

@@ -1,12 +1,17 @@
 // New-player guide (issue #43): steps count in any order, the reward is paid however they came,
 // and the action-bar reminder stays out of raids. Headless bots with fresh random names:
 //
-//   order   (Gd#####) a new player opens the terminal (1/6), skips the range and deploys straight
-//           away: the deploy points out the extract (6/6) in chat; 60 s in the raid bring no
-//           action-bar reminder (the lobby before brought one); after extracting the lobby still
-//           points out the range (2/6) and opening the terminal again does not close the guide; the
-//           range (then the FOV Effects check, 3/6), /cv fov ok (then the gunsmith, 4/6) and an
-//           attachment fitted at the gunsmith finish it: "新手指引完成" and ◈20,000 more.
+//   order   (Gd#####) a new player is pointed to the terminal (1/6); opening it ticks it off on
+//           the action bar and names the range (#7: a chat line would sit behind the terminal);
+//           the bot skips the range and deploys straight away: the landing briefing points out the
+//           extract (6/6) in chat; 60 s in the raid bring no action-bar reminder (the lobby before
+//           brought one); after extracting the lobby still points out the range (2/6) and opening
+//           the terminal again does not close the guide; entering the range ticks it off on the
+//           action bar (no second chat line under the range's own) and names the FOV Effects
+//           check, as does the HUD's objective line on the range (it used to say to leave), and
+//           the lobby then points it out in chat with its button (3/6); /cv fov ok ticks
+//           that off and names the gunsmith, and an attachment fitted at the gunsmith finishes it:
+//           "新手指引完成" and ◈20,000 more.
 //   legacy  profiles written before the bot joins, in the old format. The old build lost the guide
 //           of a new player who extracted early; it is open again with the deploy and the extract
 //           counted: closed at counter 1 (points out the range, 2/6), left open and silent at
@@ -42,6 +47,8 @@ const t0 = Date.now()
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const rcon = cmd => rconRaw(cmd, RCON).then(r => r.replace(/§./g, ''))
+/** The HUD's objective line for a player, as /cv hud reports it. */
+const objectiveOf = async name => ((await rcon(`cv hud ${name}`)).match(/objective=([^|]*)/) || [, ''])[1].trim()
 const money = s => { const m = String(s).match(/◈ ?([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : NaN }
 
 const failures = []
@@ -146,9 +153,11 @@ async function order () {
     check('order: the lobby repeats the hint on the action bar', lobbyBar)
 
     let from = bot.chatLog.length
+    let barsFrom = bot.bars.length
     check('order: the terminal opens', await openTerminal(bot))
-    const second = await waitChat(bot, /新手指引 2\/6/, 5000, from)
-    check('order: opening it points out the range next (2/6)', !!second, second)
+    // On the action bar (#7): a chat line would sit behind the terminal's window.
+    const second = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 打开战术终端.*下一步：进入靶场/.test(b.text)), 5000)
+    check('order: opening it ticks it off and names the range next', second, bot.bars.slice(barsFrom).map(b => b.text))
 
     // Straight into a raid, the range skipped.
     from = bot.chatLog.length
@@ -187,18 +196,27 @@ async function order () {
     await sleep(1500)
     const rack = bot.nearestEntity(e => e.name === 'interaction')
     if (rack) bot.activateEntity(rack)
-    const third = await waitChat(bot, /新手指引 3\/6/, 8000, from)
-    check('order: entering the range counts and points out the FOV Effects check (3/6)', !!third, guideLines(bot, from))
-    check('order: with a button that confirms it', !!third && third.includes('[已是 100%]'), third)
+    barsFrom = bot.bars.length
+    const third = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 进入靶场.*下一步：检查 FOV 特效/.test(b.text)), 8000)
+    check('order: entering the range ticks it off and names the FOV Effects check next', third, bot.bars.slice(barsFrom).map(b => b.text))
+    // The range has its own line in chat; the guide's goes on the action bar (#7: two lines at once before).
+    check('order: and adds no guide line to the range\'s own in chat', guideLines(bot, from).length === 0, guideLines(bot, from))
+    // The objective line agrees: the FOV Effects check is done anywhere, so it does not send them out.
+    const rangeGoal = await objectiveOf(name)
+    check('order: on the range the objective line is the FOV Effects check, not the way out',
+      rangeGoal.includes('FOV') && !rangeGoal.includes('离开'), rangeGoal)
+    from = bot.chatLog.length
     bot.chat('/cv lobby')
     await waitFor(() => inLobby(bot), 10000)
-    await sleep(3000)
+    const fovLine = await waitChat(bot, /新手指引 3\/6/, 6000, from)
+    check('order: back in the lobby it points out the FOV Effects check (3/6)', !!fovLine, guideLines(bot, from))
+    check('order: with a button that confirms it', !!fovLine && fovLine.includes('[已是 100%]'), fovLine)
 
     // The FOV Effects check: confirmed with /cv fov ok (what the chat button runs).
-    from = bot.chatLog.length
+    barsFrom = bot.bars.length
     bot.chat('/cv fov ok')
-    const fourth = await waitChat(bot, /新手指引 4\/6/, 5000, from)
-    check('order: confirming FOV Effects counts and points out the gunsmith (4/6)', !!fourth, guideLines(bot, from))
+    const fourth = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 检查 FOV 特效.*下一步：装一个配件/.test(b.text)), 5000)
+    check('order: confirming FOV Effects ticks it off and names the gunsmith next', fourth, bot.bars.slice(barsFrom).map(b => b.text))
 
     // The gunsmith: a red dot on an M4C.
     await rcon(`clear ${name}`)

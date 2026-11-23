@@ -54,6 +54,11 @@ public final class Raid {
     /** Luck hand-outs carried out or waiting for a refund (LuckService). */
     public final net.infnetwork.snowball.craftov.luck.RaidLuck luck = new net.infnetwork.snowball.craftov.luck.RaidLuck();
 
+    /** A training raid (TrainingService): one player, nothing at stake, undone whichever way it ends. */
+    public boolean training() {
+        return map.training();
+    }
+
     public Raid(String id, MapDef map, Tier tier, World world) {
         this.id = id;
         this.key = id + "-" + Long.toString(System.currentTimeMillis(), 36);

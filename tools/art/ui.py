@@ -86,6 +86,9 @@ UI = {
                                            c.poly([(6, 23), (7, 18), (14, 18), (15, 23)], W), c.rect(17, 11, 24, 12, G), c.rect(17, 15, 22, 16, G))),
     'icon_cancel_small': lambda: icon(lambda c: c.line([(10, 10), (21, 21)], R, 3)),
     'arrow_left': lambda: icon(lambda c: c.poly([(20, 7), (10, 16), (20, 25)], W)),
+    # The new-player guide's floating arrow over a lobby station (no plate: it glows in its own shape).
+    'waypoint': lambda: icon(lambda c: (c.box(12, 2, 19, 14, Y), c.poly([(4, 13), (27, 13), (16, 28)], Y),
+                                       c.poly([(8, 15), (23, 15), (16, 24)], shade(Y, 1.2))), False),
     'arrow_right': lambda: icon(lambda c: c.poly([(12, 7), (22, 16), (12, 25)], W)),
     'collection_unknown': lambda: icon(lambda c: (c.line([(12, 11), (13, 8), (19, 8), (20, 11), (20, 13), (16, 16), (16, 20)], G, 2),
                                                  c.rect(15, 23, 17, 25, G)), True),

@@ -101,6 +101,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private AiService ai;
     private LobbyService lobby;
     private net.infnetwork.snowball.craftov.lobby.RangeService range;
+    private net.infnetwork.snowball.craftov.raid.TrainingService training;
     private MatchService match;
     private TraderService traders;
     private MarketService market;
@@ -183,6 +184,7 @@ public final class CraftovPlugin extends JavaPlugin {
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
         range = new net.infnetwork.snowball.craftov.lobby.RangeService(this);
+        training = new net.infnetwork.snowball.craftov.raid.TrainingService(this);
         match = new MatchService(this);
         traders = new TraderService(this);
         market = new MarketService(this);
@@ -411,11 +413,11 @@ public final class CraftovPlugin extends JavaPlugin {
 
     /**
      * Whether the player may see and queue for this map. Only published maps (not an editor draft)
-     * are open, and test maps (the proving ground, whose armory hands out one of everything) need
-     * the same access as the catalog.
+     * are open, test maps (the proving ground, whose armory hands out one of everything) need the
+     * same access as the catalog, and the training ground is never queued (TrainingService starts it).
      */
     public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
-        return map.enabled() && (!map.test() || canUseCatalog(player));
+        return map.enabled() && !map.training() && (!map.test() || canUseCatalog(player));
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
@@ -425,6 +427,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }
     public net.infnetwork.snowball.craftov.lobby.RangeService range() { return range; }
+    public net.infnetwork.snowball.craftov.raid.TrainingService training() { return training; }
     public MatchService match() { return match; }
     public TraderService traders() { return traders; }
     public MarketService market() { return market; }

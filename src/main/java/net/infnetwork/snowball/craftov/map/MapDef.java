@@ -57,6 +57,14 @@ public record MapDef(
     public record SwitchDef(String id, String name, Pos pos, int activeSeconds) {
     }
 
+    /**
+     * The training ground: never listed or queued, only entered alone as a training raid
+     * (TrainingService). It is a test map as well, so nothing else that skips test maps counts it.
+     */
+    public boolean training() {
+        return id.equals(net.infnetwork.snowball.craftov.map.gen.TrainingGroundGenerator.ID);
+    }
+
     public boolean inside(double x, double z) {
         return x >= minX && x <= maxX && z >= minZ && z <= maxZ;
     }

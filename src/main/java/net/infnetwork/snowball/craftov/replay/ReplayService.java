@@ -493,7 +493,7 @@ public final class ReplayService implements Listener {
         }
         playback.lastShotTick = Math.max(playback.lastShotTick, now);
         if ((long) playback.recorded % 20 == 0) {
-            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white>Shift</white> 跳过");
+            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white><key:key.sneak></white> 跳过");
         }
     }
 

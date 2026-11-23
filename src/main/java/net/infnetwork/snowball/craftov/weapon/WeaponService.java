@@ -482,8 +482,9 @@ public final class WeaponService implements Listener {
         if (tips < 3) {
             controlTips.put(player.getUniqueId(), tips + 1);
             // A hint, not a result: it must not push aside the answer to whatever put the gun in hand.
-            Notify.hint(player, "<white>左键<muted> 开火  <white>右键<muted> 瞄准  <white>Q<muted> 换弹  "
-                    + "<white>潜行+Q<muted> 换弹种  <white>F<muted> 射击模式");
+            // The player's own key bindings, not the defaults.
+            Notify.hint(player, "<white><key:key.attack><muted> 开火  <white><key:key.use><muted> 瞄准  <white><key:key.drop><muted> 换弹  "
+                    + "<white><key:key.sneak>+<key:key.drop><muted> 换弹种  <white><key:key.swapOffhand><muted> 射击模式");
         }
         return state;
     }
@@ -1361,7 +1362,7 @@ public final class WeaponService implements Listener {
             type = state.ammoType != null && types.contains(state.ammoType) ? state.ammoType : bestType(types);
         }
         if (type.equals(state.ammoType) && state.ammo >= gun.magazine()) {
-            Notify.hint(player, "弹匣已满  <muted>(潜行+Q 切换弹种)");
+            Notify.hint(player, "弹匣已满  <muted>(<key:key.sneak>+<key:key.drop> 切换弹种)");
             return;
         }
         setAds(player, false);
@@ -1409,6 +1410,7 @@ public final class WeaponService implements Listener {
     /** Closing sound of a finished reload: the bolt or pump is worked only if the magazine had run dry. */
     private void reloadDone(Player player, GunState state) {
         GunSpec gun = state.gun;
+        plugin.training().onReload(player);
         if (!state.reloadEmpty) {
             return;
         }

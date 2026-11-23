@@ -426,8 +426,9 @@ public final class CraftovCommand implements TabExecutor {
                     case "world" -> plugin.editor().createWorld(p, args[2]);
                     case "start" -> plugin.editor().start(p, args[2]);
                     case "save" -> plugin.editor().save(p);
-                    case "exit" -> plugin.editor().exit(p, true);
-                    case "discard" -> plugin.editor().exit(p, false);
+                    case "publish" -> plugin.editor().publish(p, args.length > 2 ? args[2] : null);
+                    case "exit" -> plugin.editor().exit(p);
+                    case "discard" -> plugin.editor().discard(p, args.length > 2 && args[2].equalsIgnoreCase("confirm"));
                     case "info" -> plugin.editor().info(p);
                     // "set camera" takes no value: it uses where the editor is looking from.
                     case "set" -> plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT),
@@ -435,9 +436,10 @@ public final class CraftovCommand implements TabExecutor {
                     default -> {
                         Text.send(p, "<text>地图编辑器");
                         p.sendMessage(Text.mm("<muted>/cv editor world <世界名> <muted>创建/前往一个空的建图世界"));
-                        p.sendMessage(Text.mm("<muted>/cv editor start <地图ID> <muted>在当前世界开始标点（领取工具）"));
+                        p.sendMessage(Text.mm("<muted>/cv editor start <地图ID> <muted>新地图在当前世界开始标点；已发布的地图在编辑副本里改"));
                         p.sendMessage(Text.mm("<muted>/cv editor set name|description|minutes|time|test|camera <值>"));
-                        p.sendMessage(Text.mm("<muted>/cv editor info · save · exit · discard"));
+                        p.sendMessage(Text.mm("<muted>/cv editor info · save · exit · discard <muted>保存只写草稿"));
+                        p.sendMessage(Text.mm("<muted>/cv editor publish [地图ID] <muted>发布草稿，之后才会出现在「开始行动」里"));
                     }
                 }
             }
@@ -487,6 +489,7 @@ public final class CraftovCommand implements TabExecutor {
                 plugin.loot().load(new java.io.File(plugin.getDataFolder(), "loot.yml"));
                 plugin.maps().load();
                 plugin.maps().warnCloseSpawns();
+                plugin.maps().warnLiveProblems(Math.max(1, plugin.getConfig().getInt("match.max-squads", 4)));
                 plugin.loadTiers();
                 if (itemError == null) {
                     Text.send(sender, "<ok>已重新加载配置、物品、掉落与地图。");
@@ -638,9 +641,12 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
             out.addAll(plugin.registry().ids());
         } else if (args.length == 2 && args[0].equalsIgnoreCase("editor")) {
-            out.addAll(List.of("world", "start", "set", "info", "save", "exit", "discard"));
-        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("start")) {
+            out.addAll(List.of("world", "start", "set", "info", "save", "publish", "exit", "discard"));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor")
+                && (args[1].equalsIgnoreCase("start") || args[1].equalsIgnoreCase("publish"))) {
             plugin.maps().all().forEach(m -> out.add(m.id()));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("discard")) {
+            out.add("confirm");
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
             out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("lagcomp")) {

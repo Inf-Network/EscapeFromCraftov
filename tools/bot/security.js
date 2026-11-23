@@ -9,8 +9,9 @@
 //      refused, "/cv editor save" then has no session, and neither plugins/Craftov/config.yml nor
 //      CraftEngine's config.yml is touched; with a real session "set minutes abc" prints its usage
 //      and "set camera" works without a value; a map file whose id does not fit the new rule
-//      (upper case and a dash, as older versions allowed) still opens in the editor and saves to
-//      its own file, and once it is gone the same id is refused for a new map;
+//      (upper case and a dash, as older versions allowed) still opens in the editor and saves its
+//      draft under its own id (maps/drafts/, the live file untouched), and once it is gone the
+//      same id is refused for a new map;
 //   4. a non-op player's "/squad invite <other>", the other's "/squad accept", then "/party" and
 //      "/craftov:party" list a squad of two, and tab completion of "/squad " offers
 //      invite / accept / leave / kick / list;
@@ -99,7 +100,7 @@ async function say (bot, text, re, ms = 5000) {
 const mtime = file => { try { return fs.statSync(file).mtimeMs } catch (e) { return null } }
 /** The server log from a byte offset (a size taken earlier: the log has Chinese text, so not a string index). */
 const logSince = offset => fs.readFileSync(LOG).subarray(offset).toString('utf8')
-const listMaps = () => { try { return fs.readdirSync(MAPS).sort().join(',') } catch (e) { return '' } }
+const listMaps = () => { try { return fs.readdirSync(MAPS).filter(f => f.endsWith('.yml')).sort().join(',') } catch (e) { return '' } }
 
 async function main () {
   if (!fs.existsSync(CONFIG) || !fs.existsSync(LOG)) {
@@ -167,19 +168,28 @@ async function main () {
   // A map saved before ids were checked: it must stay editable, and save over its own file.
   const legacyId = `Sec-Legacy-${run}`
   const legacyFile = path.join(MAPS, legacyId + '.yml')
+  const legacyDraft = path.join(MAPS, 'drafts', legacyId + '.yml')
   const withLegacy = [...mapsBefore.split(',').filter(Boolean), legacyId + '.yml'].sort().join(',')
-  fs.writeFileSync(legacyFile, `id: ${legacyId}\nname: 旧地图\ntemplate: sectest_world\ntest: true\n`)
+  const legacyText = `id: ${legacyId}\nname: 旧地图\ntemplate: sectest_world\ntest: true\n`
+  fs.writeFileSync(legacyFile, legacyText)
   try {
     await rcon('cv reload')
     r = await say(A, `/cv editor start ${legacyId}`, /开始编辑地图|ID只能包含/)
     check(`an existing map with the id ${legacyId} opens in the editor`, !!r.hit && r.hit.includes(`(${legacyId})`), r.lines)
-    r = await say(A, '/cv editor save', /地图已保存|保存失败/)
-    const saved = fs.readFileSync(legacyFile, 'utf8')
-    check('... and saves over its own file', !!r.hit && r.hit.includes('地图已保存') && saved.includes('raid-minutes') &&
-      listMaps() === withLegacy, [r.lines, listMaps()])
-    await say(A, '/cv editor discard', /已退出编辑模式/)
+    // A file without "enabled" counts as published: the save is a draft beside it, under the same id.
+    r = await say(A, '/cv editor save', /草稿已保存|保存失败/)
+    const draft = fs.existsSync(legacyDraft) ? fs.readFileSync(legacyDraft, 'utf8') : ''
+    check('... and saves its draft under its own id', !!r.hit && r.hit.includes('草稿已保存') && draft.includes('raid-minutes') &&
+      draft.includes(`id: ${legacyId}`) && listMaps() === withLegacy, [r.lines, listMaps()])
+    check('... leaving the live file as it was', fs.readFileSync(legacyFile, 'utf8') === legacyText)
+    // Discarding a saved draft of a published map throws away its working copy too: it asks first.
+    r = await say(A, '/cv editor discard', /确认放弃|已退出编辑模式/)
+    check('"/cv editor discard" with a saved draft asks for a confirm', !!r.hit && r.hit.includes('确认放弃'), r.lines)
+    r = await say(A, '/cv editor discard confirm', /已放弃/)
+    check('... and "discard confirm" deletes the draft', !!r.hit && !fs.existsSync(legacyDraft), r.lines)
   } finally {
     fs.rmSync(legacyFile, { force: true })
+    fs.rmSync(legacyDraft, { force: true })
     await rcon('cv reload')
   }
   r = await say(A, `/cv editor start ${legacyId}`, /开始编辑地图|ID只能包含/)

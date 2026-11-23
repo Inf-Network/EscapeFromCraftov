@@ -20,7 +20,8 @@ import java.util.UUID;
 /**
  * Deploy screen: map, difficulty, solo or squad, ranked, fill and insurance, then queue. Test maps are
  * listed only for players who may enter them, and are never picked for anyone else, not even from the
- * choice remembered from their last deploy.
+ * choice remembered from their last deploy. Unpublished editor drafts are not listed at all; a map
+ * whose template is being edited in place is listed as under maintenance and cannot be queued for.
  */
 final class DeployMenu extends Menu {
 
@@ -93,8 +94,13 @@ final class DeployMenu extends Menu {
             if (def.test()) {
                 mapLore.add("<accent>测试图 · 只对测试模式和管理员开放");
             }
+            boolean maintenance = plugin.editor().underMaintenance(def);
+            if (maintenance) {
+                mapLore.add("<danger>维护中 · 地图正在编辑，暂时不能匹配");
+            }
             mapLore.add(selected ? "<ok>已选择" : "<muted>点击选择");
-            button(slot++, UiItems.button("craftov:ui/icon_map", (selected ? "<accent>▶ " : "<white>") + "<b>" + Text.escape(def.name()), mapLore),
+            button(slot++, UiItems.button("craftov:ui/icon_map", (selected ? "<accent>▶ " : "<white>") + "<b>" + Text.escape(def.name())
+                            + (maintenance ? " <danger>[维护中]" : ""), mapLore),
                     e -> {
                         map = def.id();
                         redraw();

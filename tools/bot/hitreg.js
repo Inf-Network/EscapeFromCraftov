@@ -49,7 +49,8 @@
 //
 // Server config (tools/bot/suite.js sets it for its run): debug true (hits are read from the log),
 // test.enabled true (the bots queue for the proving ground, a test map), ai.count-multiplier 1.25
-// (the tower sniper every raid), match.wait-seconds 3.
+// (the tower sniper every raid), ai.operator-chance [0, 0, 0] and events.per-raid 0 (no rival squad
+// or event walks into the lines of fire), match.wait-seconds 3.
 // Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
@@ -362,12 +363,17 @@ function tracker (bot, id) {
   }
 }
 
-/** Switches the held M4C to single shots: the action bar names the mode after each press. */
+/**
+ * Switches the held M4C to single shots (AUTO -> BURST -> SEMI): the action bar names the mode after
+ * each press. It shows one result line per 1.5 s (util/Notify), so a press waits for its own line
+ * before the next: pressed sooner, the next one could skip past SEMI before its line came.
+ */
 async function semi (bot = shooter) {
   for (let i = 0; i < 3; i++) {
     const n = bot.bars.length
     swapKey(bot)
-    await sleep(500)
+    const end = Date.now() + 2500
+    while (Date.now() < end && !bot.bars.slice(n).some(b => b.includes('射击模式'))) await sleep(100)
     if (bot.bars.slice(n).some(b => b.includes('单发'))) return
   }
   throw new Error('the M4C did not switch to single shots')
@@ -971,6 +977,9 @@ async function lag () {
 ;(async () => {
   await intoRaid()
   const keep = keepAlive()
+  // The shooter too: a stray soldier, operator or event of the raid could otherwise end the run
+  // half way (its empty inventory then fails every scenario after).
+  const keepShooter = keepAlive(SHOOTER)
   for (const scenario of scenarios) {
     log('---', scenario)
     try {
@@ -989,6 +998,7 @@ async function lag () {
     }
   }
   keep()
+  keepShooter()
   await setAi(null).catch(e => log('could not put config.yml back:', e.message))
   for (const id of ourRaids) await rcon('cv end ' + id).catch(() => {})
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

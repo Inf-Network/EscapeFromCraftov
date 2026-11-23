@@ -3028,7 +3028,13 @@ public final class RaidManager implements Listener {
                 block.setBlockData(powerable, false);
             }
             raid.world.playSound(block.getLocation(), "craftov:world.switch", SoundCategory.BLOCKS, 3f, 1f);
-            announce(raid, "<accent>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
+            if (raid.training()) {
+                // Alone on the course: the puller's own action bar is enough, and the objective line
+                // already says to stand in the extract.
+                Notify.ok(player, Text.escape(sw.name()) + "已拉下 <muted>· " + countdown + " 秒后撤离，站进绿色撤离点");
+            } else {
+                announce(raid, "<accent>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
+            }
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (block.getBlockData() instanceof Powerable powerable) {
                     powerable.setPowered(false);

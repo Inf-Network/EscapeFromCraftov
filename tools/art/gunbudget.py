@@ -139,7 +139,7 @@ def _timed_frames(gid):
     for marks in find(definition):
         by = {round(e['threshold'] + 0.5): e['model'] for e in marks['entries']}
         out.append(('reload', by[2]['entries'], models.reload_cooldown(gun['reload'])))
-        out.append(('draw', by[1]['entries'], models.draw_ticks(gun.get('action'))))
+        out.append(('draw', by[1]['entries'], models.draw_ticks(gun)))
     return out
 
 

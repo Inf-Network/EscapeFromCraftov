@@ -5,10 +5,14 @@
 #   valuables fit one or two, bulky ones (statues, machines, cases) three to six.
 # secure-stack: how many of a stacking item share those cells (default 30 for ammo, otherwise the
 #   stack size): 60 rounds of ammo take two cells.
+# handling (guns): 操控速度, 0-100. How fast the sights come up, the gun comes up after a switch and
+#   the sights after a sprint, and how far aimed shots sway while the gun settles (config.yml
+#   weapons.handling turns it into times). A sight or a part with a handling adds it to the gun's
+#   (negative: slower). A built-in scope (DM14, AWR) is counted in the gun's own.
 # Revision of this file. The server copies it from the jar only when it is missing, so raise this
 # whenever a change must reach servers that already have the file (prices, weights, new items):
 # a server whose copy has a lower revision warns at start-up and on /cv reload.
-revision: 8
+revision: 9
 items:
   # ------------------------------------------------------------------ handguns
   p18:
@@ -19,7 +23,7 @@ items:
     value: 4500
     lore: "可靠的 9mm 副武器，弹匣容量大。"
     gun: { caliber: "9x19", slot: SECONDARY, mag: 17, rpm: 450, modes: [SEMI], damage: 22, range: 25, max-range: 90,
-           hip-spread: 2.2, ads-spread: 0.6, move: 1.5, recoil: 1.2, recoil-h: 0.5, recoil-return: 0.8, reload: 34, ads-class: pistol, volume: 3.5, move-speed: 1.0, action: pistol}
+           hip-spread: 2.2, ads-spread: 0.6, move: 1.5, recoil: 1.2, recoil-h: 0.5, recoil-return: 0.8, reload: 34, ads-class: pistol, volume: 3.5, move-speed: 1.0, action: pistol, handling: 90}
   d50:
     weight: 1.4
     name: "D50 战术手枪"
@@ -28,7 +32,7 @@ items:
     value: 18000
     lore: ".50AE 大口径手枪，一枪就让人清醒。"
     gun: { caliber: ".50AE", slot: SECONDARY, mag: 7, rpm: 200, modes: [SEMI], damage: 50, range: 30, max-range: 100,
-           hip-spread: 2.8, ads-spread: 0.7, move: 2.0, recoil: 4.2, recoil-h: 1.2, recoil-return: 0.7, reload: 40, ads-class: pistol, volume: 4.5, move-speed: 1.0, action: pistol_heavy}
+           hip-spread: 2.8, ads-spread: 0.7, move: 2.0, recoil: 4.2, recoil-h: 1.2, recoil-return: 0.7, reload: 40, ads-class: pistol, volume: 4.5, move-speed: 1.0, action: pistol_heavy, handling: 82}
   # ------------------------------------------------------------------ SMGs
   sv9:
     weight: 2.6
@@ -38,7 +42,7 @@ items:
     value: 14000
     lore: "射速极高的 9mm 冲锋枪，近距离压制利器。"
     gun: { caliber: "9x19", slot: PRIMARY, mag: 30, rpm: 900, modes: [AUTO, SEMI], damage: 21, range: 22, max-range: 90,
-           hip-spread: 2.4, ads-spread: 0.7, move: 2.0, recoil: 0.52, recoil-h: 0.45, recoil-return: 0.8, reload: 44, ads-class: smg, volume: 3.5, move-speed: 0.95, action: smg}
+           hip-spread: 2.4, ads-spread: 0.7, move: 2.0, recoil: 0.52, recoil-h: 0.45, recoil-return: 0.8, reload: 44, ads-class: smg, volume: 3.5, move-speed: 0.95, action: smg, handling: 88}
   v57:
     weight: 2.9
     name: "V57 个人防卫武器"
@@ -47,7 +51,7 @@ items:
     value: 42000
     lore: "50 发大弹匣与 5.7mm 穿甲弹的组合。"
     gun: { caliber: "5.7x28", slot: PRIMARY, mag: 50, rpm: 900, modes: [AUTO, SEMI], damage: 22, range: 28, max-range: 100,
-           hip-spread: 2.2, ads-spread: 0.55, move: 2.0, recoil: 0.44, recoil-h: 0.4, recoil-return: 0.8, reload: 56, ads-class: smg, volume: 3.5, move-speed: 0.95, action: pdw}
+           hip-spread: 2.2, ads-spread: 0.55, move: 2.0, recoil: 0.44, recoil-h: 0.4, recoil-return: 0.8, reload: 56, ads-class: smg, volume: 3.5, move-speed: 0.95, action: pdw, handling: 82}
   # ------------------------------------------------------------------ rifles
   k47:
     weight: 3.8
@@ -57,7 +61,7 @@ items:
     value: 22000
     lore: "7.62mm 突击步枪，威力足，后坐力也足。"
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 30, rpm: 600, modes: [AUTO, SEMI], damage: 36, range: 45, max-range: 150,
-           hip-spread: 3.0, ads-spread: 0.45, move: 3.5, recoil: 1.24, recoil-h: 0.8, recoil-return: 0.65, reload: 52, ads-class: rifle, volume: 5.0, move-speed: 0.9, action: ak}
+           hip-spread: 3.0, ads-spread: 0.45, move: 3.5, recoil: 1.24, recoil-h: 0.8, recoil-return: 0.65, reload: 52, ads-class: rifle, volume: 5.0, move-speed: 0.9, action: ak, handling: 62}
   m4c:
     weight: 3.4
     name: "M4C 卡宾枪"
@@ -66,7 +70,7 @@ items:
     value: 34000
     lore: "操控性出色的 5.56mm 卡宾枪，支持三连发。"
     gun: { caliber: "5.56x45", slot: PRIMARY, mag: 30, rpm: 800, modes: [AUTO, BURST, SEMI], damage: 30, range: 50, max-range: 150,
-           hip-spread: 2.6, ads-spread: 0.35, move: 3.0, recoil: 0.8, recoil-h: 0.5, recoil-return: 0.75, reload: 48, ads-class: rifle, volume: 5.0, move-speed: 0.92, action: ar}
+           hip-spread: 2.6, ads-spread: 0.35, move: 3.0, recoil: 0.8, recoil-h: 0.5, recoil-return: 0.75, reload: 48, ads-class: rifle, volume: 5.0, move-speed: 0.92, action: ar, handling: 66}
   scr:
     weight: 3.6
     name: "SCR 战斗步枪"
@@ -75,7 +79,7 @@ items:
     value: 48000
     lore: "7.62x51 战斗步枪，中远距离一锤定音。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 20, rpm: 600, modes: [AUTO, SEMI], damage: 44, range: 60, max-range: 170,
-           hip-spread: 3.2, ads-spread: 0.35, move: 4.0, recoil: 1.6, recoil-h: 0.9, recoil-return: 0.6, reload: 56, ads-class: dmr, volume: 5.5, move-speed: 0.88, action: dmr}
+           hip-spread: 3.2, ads-spread: 0.35, move: 4.0, recoil: 1.6, recoil-h: 0.9, recoil-return: 0.6, reload: 56, ads-class: dmr, volume: 5.5, move-speed: 0.88, action: dmr, handling: 50}
   kl7:
     weight: 6.5
     name: "KL7 轻机枪"
@@ -84,7 +88,7 @@ items:
     value: 40000
     lore: "75 发弹鼓，持续火力压制。很重。"
     gun: { caliber: "7.62x39", slot: PRIMARY, mag: 75, rpm: 600, modes: [AUTO], damage: 37, range: 45, max-range: 150,
-           hip-spread: 4.0, ads-spread: 0.6, move: 5.0, recoil: 1.04, recoil-h: 0.9, recoil-return: 0.55, reload: 110, ads-class: lmg, volume: 5.5, move-speed: 0.8, action: lmg}
+           hip-spread: 4.0, ads-spread: 0.6, move: 5.0, recoil: 1.04, recoil-h: 0.9, recoil-return: 0.55, reload: 110, ads-class: lmg, volume: 5.5, move-speed: 0.8, action: lmg, handling: 38}
   r12:
     weight: 3.4
     name: "R12 泵动霰弹枪"
@@ -93,7 +97,7 @@ items:
     value: 12000
     lore: "近距离一枪 8 颗弹丸，室内战王者。"
     gun: { caliber: "12ga", slot: PRIMARY, mag: 6, rpm: 70, modes: [PUMP], damage: 14, pellets: 8, range: 10, max-range: 40,
-           hip-spread: 4.5, ads-spread: 3.2, move: 1.5, recoil: 4.0, recoil-h: 1.2, recoil-return: 0.7, reload: 70, ads-class: shotgun, head: 1.6, volume: 5.0, move-speed: 0.92, action: pump}
+           hip-spread: 4.5, ads-spread: 3.2, move: 1.5, recoil: 4.0, recoil-h: 1.2, recoil-return: 0.7, reload: 70, ads-class: shotgun, head: 1.6, volume: 5.0, move-speed: 0.92, action: pump, handling: 60}
   dm14:
     weight: 4.6
     name: "DM14 射手步枪"
@@ -102,7 +106,7 @@ items:
     value: 56000
     lore: "半自动精确射手步枪，自带 4 倍镜。"
     gun: { caliber: "7.62x51", slot: PRIMARY, mag: 10, rpm: 280, modes: [SEMI], damage: 58, range: 90, max-range: 200,
-           hip-spread: 3.6, ads-spread: 0.12, move: 6.0, recoil: 2.6, recoil-h: 0.8, recoil-return: 0.75, reload: 58, ads-class: dmr, mount: none, scope: optic_4x, head: 2.2, volume: 6.0, move-speed: 0.88, action: dmr}
+           hip-spread: 3.6, ads-spread: 0.12, move: 6.0, recoil: 2.6, recoil-h: 0.8, recoil-return: 0.75, reload: 58, ads-class: dmr, mount: none, scope: optic_4x, head: 2.2, volume: 6.0, move-speed: 0.88, action: dmr, handling: 42}
   awr:
     weight: 6.8
     name: "AWR 栓动狙击步枪"
@@ -111,7 +115,7 @@ items:
     value: 120000
     lore: ".338 栓动狙击步枪，爆头即撤离。"
     gun: { caliber: ".338", slot: PRIMARY, mag: 5, rpm: 42, modes: [BOLT], damage: 115, range: 120, max-range: 240,
-           hip-spread: 5.0, ads-spread: 0.03, move: 6.0, recoil: 5.0, recoil-h: 1.0, recoil-return: 0.7, reload: 80, ads-class: bolt, mount: none, scope: optic_8x, head: 2.6, volume: 7.0, move-speed: 0.85, action: bolt}
+           hip-spread: 5.0, ads-spread: 0.03, move: 6.0, recoil: 5.0, recoil-h: 1.0, recoil-return: 0.7, reload: 80, ads-class: bolt, mount: none, scope: optic_8x, head: 2.6, volume: 7.0, move-speed: 0.85, action: bolt, handling: 16}
 
   # ------------------------------------------------------------------ ammo (value per round)
   ammo_9_fmj:   { name: "9x19 FMJ", category: AMMO, rarity: WHITE, value: 6, ammo: { caliber: "9x19", pen: 1, damage: 1.0, armor-damage: 0.8 } }
@@ -181,20 +185,22 @@ items:
   # ------------------------------------------------------------------ attachments: optics
   # magnification: true power while aiming (things look this many times as big), the same at whatever
   # field of view the player plays at; iron sights magnify by the gun's ads-class (config.yml
-  # weapons.ads.iron). overlay: scope picture for magnified optics.
-  optic_reddot: { name: "红点瞄准镜", category: ATTACHMENT, rarity: GREEN, value: 6000, weight: 0.3, lore: "1.5 倍。开镜时红点正对准星，步枪、冲锋枪、霰弹枪和手枪都能装。", optic: { magnification: 1.5, mount: [rifle, pistol] } }
-  optic_holo:   { name: "全息瞄准镜", category: ATTACHMENT, rarity: BLUE, value: 11000, weight: 0.4, lore: "1.5 倍圆环分划，近中距离快速瞄准。", optic: { magnification: 1.5, mount: [rifle] } }
-  optic_3x:     { name: "3倍棱镜瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 18000, weight: 0.5, lore: "3 倍照明箭头分划，中距离。", optic: { magnification: 3, overlay: scope_3x, mount: [rifle] } }
-  optic_4x:     { name: "4倍瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 26000, weight: 0.6, lore: "4 倍粗细十字分划。", optic: { magnification: 4, overlay: scope_4x, mount: [rifle] } }
-  optic_8x:     { name: "8倍狙击镜", category: ATTACHMENT, rarity: GOLD, value: 42000, weight: 0.8, lore: "8 倍密位点分划，远距离狙击。", optic: { magnification: 8, overlay: scope_8x, mount: [rifle] } }
+  # weapons.ads.iron). overlay: scope picture for magnified optics. handling: added to the gun's when
+  # fitted (the stronger the sight, the slower it comes up).
+  optic_reddot: { name: "红点瞄准镜", category: ATTACHMENT, rarity: GREEN, value: 6000, weight: 0.3, lore: "1.5 倍。开镜时红点正对准星，步枪、冲锋枪、霰弹枪和手枪都能装。", optic: { magnification: 1.5, mount: [rifle, pistol], handling: 0 } }
+  optic_holo:   { name: "全息瞄准镜", category: ATTACHMENT, rarity: BLUE, value: 11000, weight: 0.4, lore: "1.5 倍圆环分划，近中距离快速瞄准。", optic: { magnification: 1.5, mount: [rifle], handling: -2 } }
+  optic_3x:     { name: "3倍棱镜瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 18000, weight: 0.5, lore: "3 倍照明箭头分划，中距离。", optic: { magnification: 3, overlay: scope_3x, mount: [rifle], handling: -10 } }
+  optic_4x:     { name: "4倍瞄准镜", category: ATTACHMENT, rarity: PURPLE, value: 26000, weight: 0.6, lore: "4 倍粗细十字分划。", optic: { magnification: 4, overlay: scope_4x, mount: [rifle], handling: -12 } }
+  optic_8x:     { name: "8倍狙击镜", category: ATTACHMENT, rarity: GOLD, value: 42000, weight: 0.8, lore: "8 倍密位点分划，远距离狙击。", optic: { magnification: 8, overlay: scope_8x, mount: [rifle], handling: -24 } }
 
   # ------------------------------------------------------------------ attachments: muzzle, grip, tactical, magazine
-  # Fitted at the gunsmith bench. Multipliers apply to the gun's own values (1 = unchanged).
-  att_suppressor:  { name: "消音器", category: ATTACHMENT, rarity: BLUE, value: 22000, weight: 0.45, lore: "枪声变小、传得近，没有枪口焰，敌兵要离得很近才听得到。后坐略降。", attach: { slot: muzzle, mount: [rifle, pistol], suppressed: true, recoil: 0.92, ads-spread: 1.05 } }
-  att_compensator: { name: "枪口补偿器", category: ATTACHMENT, rarity: GREEN, value: 12000, weight: 0.2, lore: "把火药气体导向上方和两侧，压住枪口上跳。", attach: { slot: muzzle, mount: [rifle], recoil: 0.75, recoil-h: 0.88 } }
-  att_vgrip:       { name: "垂直握把", category: ATTACHMENT, rarity: GREEN, value: 9000, weight: 0.15, lore: "前握更稳，左右晃动明显减小，腰射更集中。", attach: { slot: grip, mount: [rifle, shotgun], recoil: 0.92, recoil-h: 0.7, hip-spread: 0.88 } }
+  # Fitted at the gunsmith bench. Multipliers apply to the gun's own values (1 = unchanged); handling is
+  # added to the gun's (points out of 100).
+  att_suppressor:  { name: "消音器", category: ATTACHMENT, rarity: BLUE, value: 22000, weight: 0.45, lore: "枪声变小、传得近，没有枪口焰，敌兵要离得很近才听得到。后坐略降。", attach: { slot: muzzle, mount: [rifle, pistol], suppressed: true, recoil: 0.92, ads-spread: 1.05, handling: -5 } }
+  att_compensator: { name: "枪口补偿器", category: ATTACHMENT, rarity: GREEN, value: 12000, weight: 0.2, lore: "把火药气体导向上方和两侧，压住枪口上跳。", attach: { slot: muzzle, mount: [rifle], recoil: 0.75, recoil-h: 0.88, handling: -2 } }
+  att_vgrip:       { name: "垂直握把", category: ATTACHMENT, rarity: GREEN, value: 9000, weight: 0.15, lore: "前握更稳，左右晃动明显减小，腰射更集中。", attach: { slot: grip, mount: [rifle, shotgun], recoil: 0.92, recoil-h: 0.7, hip-spread: 0.88, handling: 5 } }
   att_taclight:    { name: "战术手电", category: ATTACHMENT, rarity: BLUE, value: 15000, weight: 0.2, lore: "鼠标中键切换：关 → 常亮 → 爆闪。爆闪让正对着灯的玩家白屏、敌兵短暂失准，也会暴露你自己。", attach: { slot: tactical, mount: [rifle, pistol, shotgun], light: strobe, hip-spread: 0.96 } }
-  att_extmag:      { name: "扩容弹匣", category: ATTACHMENT, rarity: PURPLE, value: 16000, weight: 0.35, lore: "弹匣容量 +50%，换弹慢一些。", attach: { slot: mag, mount: [rifle, pistol], magazine: 1.5, reload: 1.15, move-speed: 0.98 } }
+  att_extmag:      { name: "扩容弹匣", category: ATTACHMENT, rarity: PURPLE, value: 16000, weight: 0.35, lore: "弹匣容量 +50%，换弹慢一些。", attach: { slot: mag, mount: [rifle, pistol], magazine: 1.5, reload: 1.15, move-speed: 0.98, handling: -6 } }
 
   # ------------------------------------------------------------------ valuables: white
   screws:      { name: "螺丝钉盒", category: VALUABLE, rarity: WHITE, value: 300, stack: 5 }

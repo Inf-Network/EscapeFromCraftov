@@ -15,12 +15,14 @@ import java.util.List;
  * @param recoilH     max horizontal kick per shot in degrees
  * @param recoilReturn share (0..1) of a spray's camera kick that drifts back once the gun stops firing
  * @param reloadTicks reload duration
- * @param adsClass    how the gun handles aimed (see {@link #ADS_CLASSES}): how long its sights take to
- *                    come up, how much aiming slows the player, what its iron sights magnify
+ * @param adsClass    how the gun handles aimed (see {@link #ADS_CLASSES}): how much aiming slows the
+ *                    player and what its iron sights magnify
  * @param soundVolume how loud the report is (3.5 pistol .. 7 sniper): how far it carries and how loud
  *                    the shooter hears it (weapons.audio.shooter-volume)
  * @param audio       sound set id under craftov:gun.<audio>.* (see tools/art/gunsamples.py)
  * @param action      mechanical action family for reload, dry-fire and casing sounds
+ * @param handling    操控速度, 0 to 100 (see {@link Handling}): how quickly the sights come up, the gun
+ *                    comes up after a switch and the sights after a sprint, and how far aimed shots sway
  */
 public record GunSpec(
         String caliber,
@@ -46,7 +48,8 @@ public record GunSpec(
         String mount,
         @org.jspecify.annotations.Nullable String scope,
         String audio,
-        String action
+        String action,
+        double handling
 ) {
     /** The ads-class values items.yml may give; unknown ones count as "rifle". */
     public static final java.util.List<String> ADS_CLASSES = java.util.List.of("pistol", "smg", "rifle", "shotgun", "dmr", "lmg", "bolt");
@@ -101,6 +104,12 @@ public record GunSpec(
     /** The same gun with {@code damage} per pellet, for a round that lost some of its punch on the way. */
     public GunSpec withDamage(double damage) {
         return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, moveSpread, recoil, recoilH,
-                recoilReturn, reloadTicks, adsClass, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action);
+                recoilReturn, reloadTicks, adsClass, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action, handling);
+    }
+
+    /** The same gun with {@code handling}, for a fitted part that changes it (see {@link Attachments}). */
+    public GunSpec withHandling(double handling) {
+        return new GunSpec(caliber, slot, magazine, rpm, modes, damage, range, maxRange, hipSpread, adsSpread, moveSpread, recoil, recoilH,
+                recoilReturn, reloadTicks, adsClass, pellets, headMultiplier, soundVolume, moveSpeed, mount, scope, audio, action, handling);
     }
 }

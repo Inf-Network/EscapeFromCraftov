@@ -685,8 +685,23 @@ def reload_timeline(gid, ticks):
             if part == 'optic':
                 continue
             parts[part] = ('craftov:item/gun_part/shell' if part == 'shell' else part_ref(gid, part), right)
-        out.append((threshold, parts, reload_hand(gid, frame, progress)))
+        out.append((threshold, parts, reload_hand(gid, frame, progress, base)))
     return out
+
+
+def _arm_for(display, base, arm=None):
+    """The direction (gun model space) a left sleeve runs in for a part shown with `display`: the one
+    that points the way the sleeve does at rest (`arm` under the hip pose `base`) on the screen. A
+    sleeve fixed in the gun's own space turns with it, and with the gun canted for a reload (a pump
+    gun rolls it by 38 degrees) it ran across the screen and ended in mid-air."""
+    arm = arm or LEFT_ARM
+    if display is reload.HIDDEN:
+        return arm
+    rest = reload.euler_matrix(base['rotation'])
+    now = reload.euler_matrix(display['rotation'])
+    view = reload._apply(rest, list(arm))
+    # The inverse of a rotation is its transpose.
+    return tuple(sum(now[k][i] * view[k] for k in range(3)) for i in range(3))
 
 
 def _shifted(elements, d):
@@ -708,28 +723,32 @@ def _centre(elements):
     return [(a + b) / 2 for a, b in zip(e['from'], e['to'])]
 
 
-def reload_hand(gid, frame, progress):
+def reload_hand(gid, frame, progress, base):
     """The left hand in one reload frame (reload.hand_at): (elements, right-hand display), or None while
     it is out of view with the magazine. On the magazine it rides on the magazine's own frame, built
     round the magazine at rest, so it slides out and back in with it; between the handguard and the
     magazine it moves on the body's frame, the handguard's hand for the first half of the way and the
-    magazine's for the second."""
+    magazine's for the second. Whatever the gun does, the sleeve runs off the bottom of the screen the
+    way it does at rest (`base`, the hip pose; _arm_for)."""
     where = reload.hand_at(gid, progress)
     hidden = reload.HIDDEN
+    pistol = gid in PISTOLS and hands_spec(gid).get('fore') is None
+    rest_arm = PISTOL_LEFT_ARM if pistol else LEFT_ARM
     if where[0] == 'pump':
-        return fore_hand(gid), frame['pump']
+        return fore_hand(gid, arm=_arm_for(frame['pump'], base, rest_arm)), frame['pump']
     if where[0] == 'shell':
         shell = reload.SHELL[0]
         x = (shell[0][0] + shell[1][0]) / 2
         y = shell[0][1]
-        return hands.cup((x, y, 8.0), 0.5, LEFT_ARM, length=2.2, thumb=False), frame['shell'] if frame['shell'] is not hidden else frame['body']
+        on = frame['shell'] if frame['shell'] is not hidden else frame['body']
+        return hands.cup((x, y, 8.0), 0.5, _arm_for(on, base), length=2.2, thumb=False), on
     if where[0] == 'fore':
-        return fore_hand(gid), frame['body']
+        return fore_hand(gid, arm=_arm_for(frame['body'], base, rest_arm)), frame['body']
     if where[0] == 'mag':
         mag = frame.get('mag', hidden)
-        return (None if mag is hidden else (mag_hand(gid), mag))
+        return (None if mag is hidden else (mag_hand(gid, arm=_arm_for(mag, base)), mag))
     t, travel = where[1], where[2]
-    fore, mag = fore_hand(gid), mag_hand(gid, travel)
+    fore, mag = fore_hand(gid, arm=_arm_for(frame['body'], base, rest_arm)), mag_hand(gid, travel, arm=_arm_for(frame['body'], base))
     delta = [b - a for a, b in zip(_centre(fore), _centre(mag))]
     if t < 0.5:
         return _shifted(fore, [v * t for v in delta]), frame['body']
@@ -778,9 +797,9 @@ def grip_hand(gid, elements=None):
     return hands.fist((x, y, 8.0), angle, 0.85, _near_width(els, x, y), 1, arm)
 
 
-def fore_hand(gid, elements=None):
+def fore_hand(gid, elements=None, arm=None):
     """The left hand: under the handguard (hands.fore), round a vertical foregrip, or round the right
-    fist on a pistol."""
+    fist on a pistol. `arm`: the way its sleeve runs, if not the usual one (a reload frame)."""
     els = elements or gun_elements(gid)
     spec = hands_spec(gid)
     fore = spec.get('fore')
@@ -790,18 +809,18 @@ def fore_hand(gid, elements=None):
         a = math.radians(angle)
         # The support fist closes round the right one, a little lower and further forward.
         origin = (x + 0.35 * math.sin(a) - 0.5 * math.cos(a), y - 0.5 * math.sin(a) - 0.35 * math.cos(a), 8.0)
-        return hands.fist(origin, angle, 0.85 + 0.5, w + 0.95, -1, PISTOL_LEFT_ARM)
+        return hands.fist(origin, angle, 0.85 + 0.5, w + 0.95, -1, arm or PISTOL_LEFT_ARM)
     if spec.get('fore_grip') == 'vertical':
-        return hands.fist((fore[0], fore[1], 8.0), 90.0, 0.55, _near_width(els, fore[0], fore[1]), -1, LEFT_ARM)
-    return hands.cup((fore[0], fore[1], 8.0), _near_width(els, fore[0], fore[1] + 0.6), LEFT_ARM)
+        return hands.fist((fore[0], fore[1], 8.0), 90.0, 0.55, _near_width(els, fore[0], fore[1]), -1, arm or LEFT_ARM)
+    return hands.cup((fore[0], fore[1], 8.0), _near_width(els, fore[0], fore[1] + 0.6), arm or LEFT_ARM)
 
 
-def mag_hand(gid, travel=0.0):
+def mag_hand(gid, travel=0.0, arm=None):
     """The left hand closed round the magazine's lower end, slid `travel` units out along mag_axis
-    (model space of the gun at rest), for the reload."""
+    (model space of the gun at rest), for the reload; `arm` as for fore_hand."""
     mag = gun_parts(gid).get('mag') or []
     if not mag:
-        return fore_hand(gid)
+        return fore_hand(gid, arm=arm)
     ax, ay = meshprim.mag_axis(gid) if meshprim.has_spec(gid) else gunvox.mag_axis(gid)
     x0 = min(e['from'][0] for e in mag)
     x1 = max(e['to'][0] for e in mag)
@@ -812,7 +831,7 @@ def mag_hand(gid, travel=0.0):
     cy = y0 + (y1 - y0) * 0.3 + ay * travel
     axis = math.degrees(math.atan2(-ay, -ax))
     half_depth = max(0.5, min(1.4, (x1 - x0) * 0.32))
-    return hands.fist((cx, cy, 8.0), axis, half_depth, _near_width(mag, cx, cy, 0.4, 0.5), -1, LEFT_ARM)
+    return hands.fist((cx, cy, 8.0), axis, half_depth, _near_width(mag, cx, cy, 0.4, 0.5), -1, arm or LEFT_ARM)
 
 
 def hand_elements(gid):

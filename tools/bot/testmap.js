@@ -20,8 +20,9 @@
 //           rounds; on an armory gun it loads armory rounds and gives its old rounds back as armory
 //           rounds, never as the bot's own.
 //   armory  test mode on: armory items carry the test mark, and after extracting with collectibles,
-//           valuables, a gun and an armory backpack: money, stash and collected unchanged, profit ~0,
-//           no test item left, the bot's own item packed in the armory backpack handed back.
+//           valuables, a gun and an armory backpack: money (less rewards it was told about, such as an
+//           extract contract), stash and collected unchanged, profit ~0, no test item left, the bot's
+//           own item packed in the armory backpack handed back.
 //   parts   test mode on: the armory weapons case holds every attachment, marked; an armory sight
 //           is refused on the bot's own gun, fits the armory gun, and comes off as an armory part.
 //   keys    test mode on: with its own key and an armory copy for the same door, opening the door
@@ -90,6 +91,15 @@ function make (reuse) {
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 const inLobby = bot => bot.worldName === 'craftov_lobby'
 const saw = (bot, text) => bot.chatLog.some(m => m.includes(text))
+/** Money the bot was told it was paid in chat since line `from`: daily contracts, level-ups and bonuses. */
+function announcedSince (bot, from) {
+  let sum = 0
+  for (const m of bot.chatLog.slice(from)) {
+    const r = m.match(/\[每日任务完成\].*\+◈([\d,]+)/) || m.match(/奖励 ◈([\d,]+)/)
+    if (r) sum += Number(r[1].replace(/,/g, ''))
+  }
+  return sum
+}
 
 async function waitFor (pred, ms) {
   const end = Date.now() + ms
@@ -434,10 +444,14 @@ const scenarios = {
     notes.carriedTest = a.inventory.slots.filter(isTest).length
 
     // Extract at the always-open point.
+    const chatFrom = a.chatLog.length
     await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 8.5`)
     if (!await waitFor(() => inLobby(a), 30000)) return [false, { error: 'did not extract', notes, chat: a.chatLog.slice(-3) }]
     await sleep(4000)
     const after = profile(a)
+    // Extracting can finish a daily contract (成功撤离, +◈7,000) or bring a level-up: money the bot is
+    // told about, which has nothing to do with the armory. Without it the balance must be unchanged.
+    const rewards = announcedSince(a, chatFrom)
     const report = after.reports && after.reports[0]
     const left = a.inventory.slots.filter(isTest).length
     const stashSame = JSON.stringify(after.stash) === JSON.stringify(before.stash)
@@ -445,6 +459,7 @@ const scenarios = {
     const result = {
       ...notes,
       money: [before.money, after.money],
+      rewards,
       stashSame,
       collected: [before.collected.length, after.collected.length],
       extractedValue: report && report.extractedValue,
@@ -453,7 +468,7 @@ const scenarios = {
       handedBack
     }
     const ok = notes.armoryPackMarked && notes.armoryPackWorn && notes.collectiblesMarked && notes.valuablesMarked && notes.weaponsMarked &&
-      notes.bandageInArmoryPack && notes.carriedTest > 0 && after.money === before.money && stashSame &&
+      notes.bandageInArmoryPack && notes.carriedTest > 0 && after.money - rewards === before.money && stashSame &&
       after.collected.length === before.collected.length && report && report.extractedValue < 1000 &&
       left === 0 && result.notice && handedBack
     return [ok, result]

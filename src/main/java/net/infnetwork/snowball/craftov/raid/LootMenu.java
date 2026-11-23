@@ -571,6 +571,7 @@ public final class LootMenu extends Menu {
             redraw();
             return;
         }
+        int moved;
         if (click == ClickType.SHIFT_LEFT || click == ClickType.SHIFT_RIGHT) {
             int target = container.firstEmpty();
             if (target < 0) {
@@ -578,19 +579,21 @@ public final class LootMenu extends Menu {
                 return;
             }
             container.set(target, stack);
-            records.remove(index);
+            moved = stack.getAmount();
         } else {
             ItemStack left = carry.give(viewer, stack, false, true);
-            int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
+            moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
             if (moved <= 0) {
                 refuse("身上没有放它的位置");
                 return;
             }
-            ItemRecord record = records.get(index);
-            record.amount -= moved;
-            if (record.amount <= 0) {
-                records.remove(index);
-            }
+        }
+        // Only what was moved leaves the record: one above the stack size (older builds, or a stack
+        // size items.yml lowered since) builds a single stack and keeps the rest.
+        ItemRecord record = records.get(index);
+        record.amount -= moved;
+        if (record.amount <= 0) {
+            records.remove(index);
         }
         carry.secureChanged(viewer);
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.6f, 1f);

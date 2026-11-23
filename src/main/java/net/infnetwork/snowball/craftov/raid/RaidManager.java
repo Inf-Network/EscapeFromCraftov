@@ -1510,6 +1510,8 @@ public final class RaidManager implements Listener {
         }
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
+        // A flashbang's white-out (and blindness) must not hang over the death camera and the replay.
+        plugin.hud().clearCameraEffects(player);
         rp.state = RaidPlayer.State.DEAD;
         Location at = player.getLocation();
         // Body with everything the player carried but the melee weapon, which is kept.

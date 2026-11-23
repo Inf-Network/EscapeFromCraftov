@@ -296,7 +296,7 @@ def scope_overlay(style='4x', w=1920, h=1080):
     dark ring around it is the item model drawn with the hand. The lines and posts run on to the
     picture's edges: the overlay is stretched to the window but the ring keeps its size by the height,
     so on a window narrower than 16:9 a post ending at the ring's radius would stop short of it, while
-    the near-black ink over the black ring does not show.
+    the ink, as black as the ring, does not show over it.
 
     3x: illuminated chevron over hash marks every 5 mil. 4x: duplex crosshair, thin within 40 mil of the
     centre. 8x: thin crosshair with mil-dots every 5 mil out to 20, thick posts from 30.
@@ -306,7 +306,7 @@ def scope_overlay(style='4x', w=1920, h=1080):
     mil = scope_px_per_mil(style, h)
     r = int(h * SCOPE_HOLE[style])
     cx, cy = w // 2, h // 2
-    ink = (12, 12, 12, 255)
+    ink = (0, 0, 0, 255)
     red = (235, 60, 40, 255)
     if style == '3x':
         gap = int(round(4 * mil))

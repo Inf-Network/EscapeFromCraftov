@@ -483,6 +483,570 @@
    }
   ]
  },
+ "step.stone.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.stone.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.stone.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.wood.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.wood.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.wood.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.metal.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.metal.run": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.metal.land": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.gravel.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.gravel.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.gravel.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.grass.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.grass.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.grass.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.sand.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.sand.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.sand.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.snow.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.snow.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.snow.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.cloth.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.cloth.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.cloth.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 0.7
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {

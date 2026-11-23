@@ -169,6 +169,23 @@ stamina:
   overload-penalty-per-kg: 0.025
   max-penalty: 0.5
 
+footsteps:
+  # Other players' vanilla steps (quiet, a few blocks) are replaced by the server's own, by the ground
+  # underfoot: one every stride blocks walked on the ground, heard out to walk-range blocks walking and
+  # sprint-range sprinting (louder the nearer), and a landing from land-min-fall blocks or more out
+  # to land-range. A wall in between cuts the range to wall-share of it. Sneaking makes none
+  # (sneak-range), and in a raid the sneaking speed is sneak-speed of the walk (vanilla 0.3). The
+  # soldiers hear by the same ranges.
+  enabled: true
+  stride: 1.6
+  walk-range: 16
+  sprint-range: 32
+  sneak-range: 0
+  land-range: 24
+  land-min-fall: 1.5
+  wall-share: 0.5
+  sneak-speed: 0.45
+
 combat:
   friendly-fire: false
   # Floating damage numbers over whoever you hit. Off by default: an extraction shooter tells you a

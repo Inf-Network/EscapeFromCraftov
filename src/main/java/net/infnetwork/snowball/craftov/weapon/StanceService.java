@@ -344,6 +344,13 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
         };
     }
 
+    /** Other players' vanilla footsteps, which FootstepService replaces with its own. */
+    @Override
+    public boolean dropsSound(String key, String source) {
+        var footsteps = plugin.footsteps();
+        return footsteps != null && footsteps.replaces(key, source);
+    }
+
     @Override
     public byte livingFlags(int entityId, byte real) {
         Stance stance = stances.get(entityId);

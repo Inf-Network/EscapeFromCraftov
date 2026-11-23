@@ -710,6 +710,15 @@ def build_vanilla_hud():
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_progress.png'))
 
 
+# Footsteps (FootstepService): the server plays craftov:step.<surface>.<kind> to each listener at its own
+# loudness, so these only name the client's own step recordings (nothing is added to the pack). A run is
+# the same steps a little heavier, a landing the same at a low pitch.
+STEP_FILES = {'stone': ('step/stone', 6), 'wood': ('step/wood', 6), 'metal': ('block/iron/step', 4),
+              'gravel': ('step/gravel', 4), 'grass': ('step/grass', 6), 'sand': ('step/sand', 5),
+              'snow': ('step/snow', 4), 'cloth': ('step/cloth', 4)}
+STEP_KINDS = {'walk': 1.0, 'run': 0.88, 'land': 0.7}
+
+
 def build_sounds():
     entries = {}
     for path, fn in sounds.SOUNDS.items():
@@ -719,6 +728,10 @@ def build_sounds():
         if path in ('throw/explode',):
             entry['sounds'][0]['attenuation_distance'] = 32
         entries[key] = entry
+    for surface, (stem, count) in STEP_FILES.items():
+        for kind, pitch in STEP_KINDS.items():
+            entries['step.%s.%s' % (surface, kind)] = {'sounds': [
+                {'name': 'minecraft:%s%d' % (stem, i), 'pitch': pitch} for i in range(1, count + 1)]}
     # Bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its variants;
     # the client picks one at random per play.
     for key, variants, attenuation in gunaudio.catalogue():

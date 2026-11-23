@@ -123,6 +123,11 @@ const ABORT = 1
 const swing = () => bot._client.write('arm_animation', { hand: 0 })
 const useItem = () => bot._client.write('use_item', { hand: 0, sequence: sequence++, rotation: { x: conv.toNotchianYaw(bot.entity.yaw), y: conv.toNotchianPitch(bot.entity.pitch) } })
 const hold = id => bot.setQuickBarSlot(hotbar(id) - 36)
+/** Gives a gun onto the hotbar: only keys 1 and 2 take guns (a third goes to the backpack), so both are emptied first. */
+async function giveGun (id) {
+  for (const key of [0, 1]) await rcon(`item replace entity ${name} hotbar.${key} with minecraft:air`)
+  await rcon(`cv give ${name} ${id}`)
+}
 
 function logSince (from) {
   const fd = fs.openSync(LOG, 'r')
@@ -193,7 +198,7 @@ async function enterRange () {
 
 /** Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) await giveGun(id)
   await sleep(800)
   if (hotbar(id) < 0) throw new Error(id + ' did not reach the hotbar')
   hold(id)
@@ -275,7 +280,7 @@ async function kick (spot) {
 async function lobby () {
   await rcon(`execute as ${name} at @s run tp @s 0.5 65 6.5 0 30`)
   await sleep(1500)
-  if (hotbar('k47') < 0) await rcon(`cv give ${name} k47`)
+  if (hotbar('k47') < 0) await giveGun('k47')
   await sleep(800)
   hold('k47')
   await sleep(1000)
@@ -567,21 +572,25 @@ function barsOf (item) {
 async function lore () {
   await rcon(`execute as ${name} at @s run tp @s 0.5 65 6.5 0 0`)
   await sleep(1000)
-  for (const gun of GUNS) if (!bot.inventory.slots.some(s => s && itemId(s) === gun)) await rcon(`cv give ${name} ${gun}`)
-  await sleep(1500)
-  const bars = {}
+  // One at a time: the hotbar takes two guns and the backpack only a few more.
+  const items = {}
   for (const gun of GUNS) {
-    const item = bot.inventory.slots.find(s => s && itemId(s) === gun)
-    bars[gun] = barsOf(item)
+    await giveGun(gun)
+    await sleep(700)
+    items[gun] = hotbar(gun) >= 0 ? bot.inventory.slots[hotbar(gun)] : null
   }
+  await giveGun('k47') // for the gunsmith below
+  await sleep(800)
+  const bars = {}
+  for (const gun of GUNS) bars[gun] = barsOf(items[gun])
   log('K47 bars', Object.values(bars.k47).map(b => b.text))
   log('lit segments (' + GUNS.join('/') + ')', STATS.map(s => s + ' ' + GUNS.map(g => bars[g][s] ? bars[g][s].filled : '-').join('/')))
   const complete = GUNS.filter(g => STATS.every(s => bars[g][s] && bars[g][s].total === 10))
   check('lore: every gun has the eight ten-segment stat bars', complete.length === GUNS.length,
     GUNS.filter(g => !complete.includes(g)).map(g => g + ': ' + Object.keys(bars[g]).join(',')).join(' | '))
-  const hint = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).some(runs => runs.map(r => r.text).join('').includes('条越长越好'))
+  const hint = loreLines(items.k47).some(runs => runs.map(r => r.text).join('').includes('条越长越好'))
   check('lore: a line under the bars says how to read them', hint)
-  const handlingLine = loreLines(bot.inventory.slots.find(s => s && itemId(s) === 'k47')).map(runs => runs.map(r => r.text).join(''))
+  const handlingLine = loreLines(items.k47).map(runs => runs.map(r => r.text).join(''))
     .find(text => text.startsWith('操控速度 '))
   check('lore: the 操控速度 line gives the K47\'s handling and its ads, draw and sprint-out times',
     !!handlingLine && /操控速度 62 · 开镜 0\.25s · 拔枪 0\.50s · 冲刺后举枪 \+0\.20s/.test(handlingLine), handlingLine || 'no line')
@@ -677,7 +686,7 @@ async function feed () {
       await rcon(`${at} tp @e[tag=gf_s2,limit=1] 47.5 65 92.5 180 0`)
       await rcon(`execute as ${victimName} at @s run tp @s 45.5 65 96.5 180 0`)
       await rcon(`execute as ${name} at @s run tp @s 45.5 65 86.5 0 0`)
-      await rcon(`cv give ${name} k47`)
+      await giveGun('k47')
       await sleep(1000)
       hold('k47')
       await sleep(1500)

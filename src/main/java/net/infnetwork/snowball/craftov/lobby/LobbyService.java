@@ -632,6 +632,18 @@ public final class LobbyService implements Listener {
         plugin.menus().openStation(event.getPlayer(), station);
     }
 
+    /**
+     * Targets never catch fire. The training ground is open to the sky, and its bare-headed zombie
+     * targets stood in flames in daylight although they are told not to burn (the range's targets
+     * are indoors and wear helmets).
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onTargetCombust(org.bukkit.event.entity.EntityCombustEvent event) {
+        if (isTarget(event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onTargetHit(EntityDamageEvent event) {
         if (event.getEntity() instanceof LivingEntity living && isTarget(living)) {

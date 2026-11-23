@@ -109,7 +109,12 @@ public final class MarketService implements Listener {
     private final OrderedFile disk;
     private Data data = new Data();
     private boolean dirty;
-    private boolean closed;
+    /**
+     * True until {@link #start} has read market.json (or found none), and for good when it could
+     * not be read. Until then {@link #data} is a blank market: should the plugin fail to enable
+     * before the market started, the shutdown must not write that over everyone's listings.
+     */
+    private boolean closed = true;
 
     public MarketService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -128,13 +133,14 @@ public final class MarketService implements Listener {
                 data = loaded;
             } catch (IOException | RuntimeException ex) {
                 // Starting over with empty data would hand nobody their listed items back and
-                // write the empty data over the file on shutdown: keep the market shut instead.
-                closed = true;
+                // write the empty data over the file on shutdown: keep the market shut instead
+                // (closed stays true).
                 plugin.getLogger().severe("==== Market data " + file.getFileName() + " could not be read (" + ex.getMessage()
                         + "). The market is closed and the file will not be written; repair it and restart the server. ====");
                 return;
             }
         }
+        closed = false;
         if (data.listings == null) data.listings = new ArrayList<>();
         if (data.reference == null) data.reference = new HashMap<>();
         if (data.history == null) data.history = new HashMap<>();
@@ -172,7 +178,10 @@ public final class MarketService implements Listener {
         save();
     }
 
-    /** True when market.json could not be read on start: no trading, and the file is left alone. */
+    /**
+     * True when market.json could not be read on start (or the market has not started yet): no
+     * trading, and the file is left alone.
+     */
     public boolean closed() {
         return closed;
     }

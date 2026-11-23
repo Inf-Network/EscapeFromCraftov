@@ -7,14 +7,15 @@
 //   2. facing that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
 //      slot and the ringing sound, and no nausea. Blindness only comes with the fully white screen (so
 //      F5 cannot clear it) and must be lifted before the first translucent fade step. The bot wears a
-//      helmet that is swapped while it is white: the overlay must be back within half a second of the
-//      head slot sync that replaces it on the client;
+//      helmet that is swapped while it is white: while the screen is flashed, every update of the
+//      head slot either carries the overlay (the server dresses its own syncs of the slot) or is
+//      followed by one within half a second;
 //   3. switches to strobe (two pick-block packets), waits for a soldier within strobe range to shoot
 //      it, steps in to about 4.5 blocks and holds the beam on that soldier for 8 s: the soldier must
 //      still hit the bot at least once and move over a block (from that close it backs off unless
 //      frozen).
 //
-//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node strobe.js
+//   node strobe.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js)
 // Exit code 0 when every check passes, 1 when one fails, 2 when the scenario could not be set up.
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
@@ -137,9 +138,14 @@ function openSpotNear (bot, soldier) {
   bot._client.on('entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) effects.push({ id: p.effectId, at: Date.now() }) })
   const removedEffects = []
   bot._client.on('remove_entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) removedEffects.push({ id: p.effectId, at: Date.now() }) })
-  // The server syncing our real head slot (player inventory, slot 5) replaces any overlay helmet.
+  // Every update of our own head slot, by whatever packet, with the overlay it carries (null for the
+  // real helmet). The server dresses its own syncs of the slot with the overlay (Nms.SelfView), and
+  // one that went out bare (the real helmet back on the client) is covered again by a resend.
   const headSyncs = []
-  bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) headSyncs.push({ at: Date.now() }) })
+  const overlayOf = item => { const m = JSON.stringify(item || {}).match(/misc\/([a-z0-9_]+)/); return m ? m[1] : null }
+  bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.item) }) })
+  bot._client.on('set_player_inventory', p => { if (p.slotId === 39) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.contents) }) })
+  bot._client.on('window_items', p => { if (p.windowId === 0 && p.items.length > 5) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.items[5]) }) })
   const sounds = []
   bot.on('soundEffectHeard', (sound, pos) => sounds.push({ sound: String(sound), pos, at: Date.now() }))
   await new Promise(resolve => bot.once('spawn', resolve))
@@ -240,14 +246,22 @@ function openSpotNear (bot, soldier) {
     blindOff[blindOff.length - 1].at >= blindOn[blindOn.length - 1].at && blindOff[blindOff.length - 1].at <= firstFade.at
   checks.flashOverlay = mine.some(o => o.overlay && o.overlay.startsWith('flash'))
   checks.ringing = sounds.slice(soundsBefore).some(s => s.sound.includes('status.tinnitus'))
+  // While the screen is flashed (up to the last flash overlay sent), no head-slot update may leave
+  // the real helmet showing for half a second: each bare one is followed by an overlay within 0.5 s.
   const syncs = headSyncs.filter(h => h.at >= swapAt)
+  const all = syncs.concat(mine.filter(o => o.at >= swapAt)).sort((a, b) => a.at - b.at)
+  const flashed = all.filter(u => (u.overlay || '').startsWith('flash'))
+  const lastFlash = flashed[flashed.length - 1]
+  const bare = all.filter(u => !(u.overlay || '').startsWith('flash') && lastFlash && u.at < lastFlash.at)
+  const uncovered = bare.filter(b => !flashed.some(u => u.at >= b.at && u.at - b.at < 500))
   const lastSync = syncs[syncs.length - 1]
-  const back = lastSync && mine.find(o => o.at >= lastSync.at && o.overlay && o.overlay.startsWith('flash'))
-  checks.overlayBackAfterHelmetSync = !!back && back.at - lastSync.at < 500
+  const back = lastSync && all.find(o => o.at >= lastSync.at && (o.overlay || '').startsWith('flash'))
+  checks.overlayBackAfterHelmetSync = syncs.length > 0 && !!lastFlash && uncovered.length === 0
   log('our overlays', [...new Set(mine.map(o => o.overlay))], 'sent', mine.length, 'effects', added.map(e => e.id),
     'blindness on/off ms after the blast', blindOn.map(e => e.at - swapAt), blindOff.map(e => e.at - swapAt),
     'first fade step', firstFade ? firstFade.at - swapAt : null,
-    'head syncs', syncs.map(h => h.at - swapAt), 'overlay back', back ? back.at - swapAt : null)
+    'head syncs', syncs.map(h => `${h.at - swapAt}:${h.overlay}`), 'overlay back', back ? back.at - swapAt : null,
+    'bare for over 0.5 s', uncovered.map(u => u.at - swapAt))
   await rcon(`item replace entity ${name} armor.head with minecraft:air`)
 
   // ---------------------------------------------------------------- 3. strobe on a soldier
@@ -255,11 +269,13 @@ function openSpotNear (bot, soldier) {
   await sleep(1500)
   bot.setQuickBarSlot(heldSlot(bot, 'm4c') - 36)
   await sleep(1200)
+  const barsFrom = bars.length
   pick(bot)
   await sleep(400)
   pick(bot)
-  await sleep(400)
-  checks.strobeOn = bars.some(b => b.includes('爆闪'))
+  // The action bar shows one result line per 1.5 s (util/Notify): the second mode waits its turn.
+  await waitFor(() => bars.slice(barsFrom).some(b => b.includes('爆闪')), 3500)
+  checks.strobeOn = bars.slice(barsFrom).some(b => b.includes('爆闪'))
   // Light the first soldier within strobe range that shoots us: it is engaged and has a clear line.
   let target = null
   const waitFrom = hits.length

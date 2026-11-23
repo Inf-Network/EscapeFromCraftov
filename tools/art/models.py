@@ -493,6 +493,17 @@ def gun_ads_model(gid, scoped=False):
     return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': fp_r, 'firstperson_lefthand': fp_l}}
 
 
+def iron_eye(gid):
+    """(model point of the eye, model units per block) with the iron sights up: the camera's position in
+    the gun's own space, undoing the aimed display (rotation [0, 90, 0], so the barrel +X runs into the
+    screen and +Z to the right) through the client's arm offset (0.56, -0.52, -0.72) and -0.5 centring.
+    The screen centre, where shots go, is the ray from it along +X."""
+    right = gun_ads_model(gid)['display']['firstperson_righthand']
+    tx, ty, tz = right['translation']
+    s = right['scale'][0]
+    return (8 + (tz - 11.52) / s, 8 + (8.32 - ty) / s, 8 - (8.96 + tx) / s), 16 / s
+
+
 # The sights coming up (WeaponService.startAds): the server runs the gun's cooldown for its ads time with
 # the aiming mark on, and the item model steps through these frames while the client counts it down,
 # eased in and out like the zoom the server sends alongside.

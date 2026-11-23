@@ -143,12 +143,58 @@ def _timed_frames(gid):
     return out
 
 
+# Iron sights, seen from the eye as aimed: rays this many degrees over the aim point (and to either side)
+# must meet nothing, and the ray UNDER_AIM degrees under it must meet the front sight first.
+OVER_AIM = [(up, side) for up in (0.05, 0.25, 0.5) for side in (-0.25, 0.0, 0.25)]
+UNDER_AIM = 0.15
+
+
+def _describe(p):
+    c = p.corners()
+    return '%s (x %.2f-%.2f, top %.2f)' % ('mesh piece %d' % p.piece if p.piece >= 0 else 'a hand-placed part',
+                                          c[:, 0].min(), c[:, 0].max(), c[:, 1].max())
+
+
+def iron_sight(gid):
+    """Problems with a gun's iron sight picture (models.iron_eye against the fine model): something standing
+    over the aim point (a safety, a slide serration) hides what the shot goes to, and a front sight that is
+    not what the aim point rests on (hidden behind the rear sight, or under a sight line drawn elsewhere)
+    gives the player nothing to line up."""
+    import math
+    import meshprim
+    import models
+    sight = meshprim.sight_y(gid)
+    if sight is None or not meshprim.spec(gid).get('eye'):
+        return []
+    eye, per_block = models.iron_eye(gid)
+    near = 0.05 * per_block                                   # the client's near plane: 0.05 blocks
+    prims = meshprim.lod(gid, 'fine')
+    out = []
+    over = set()
+    for up, side in OVER_AIM:
+        hit = meshprim.first_hit(prims, eye, (1, math.tan(math.radians(up)), math.tan(math.radians(side))), near)
+        if hit and hit[1] not in over:
+            over.add(hit[1])
+            out.append('%s: %s stands over the aim point (%.2f degrees up)' % (gid, _describe(prims[hit[1]]), up))
+    hit = meshprim.first_hit(prims, eye, (1, -math.tan(math.radians(UNDER_AIM)), 0), near)
+    rear = meshprim.spec(gid)['eye'][0]
+    if hit is None:
+        out.append('%s: nothing under the aim point: no front sight' % gid)
+    else:
+        p = prims[hit[1]]
+        top = p.corners()[:, 1].max()
+        if eye[0] + hit[0] < rear + 2 or abs(top - sight) > 0.03:
+            out.append('%s: under the aim point is %s, not the front sight topping out at sight_y %.2f'
+                       % (gid, _describe(p), sight))
+    return out
+
+
 def lint(gid):
     """Problems with one gun's models: references that do not resolve, coordinates outside -16..32, and
     for a fitted gun (meshprim.py) each level of detail over its budget, the outline off the mesh (IoU
-    under 0.85), the seen faces under MIN_DENSITY texels a unit, coplanar overlapping faces, and texture
-    statistics: each finish's mean brightness in its range and creases at least 15% darker than open
-    faces."""
+    under 0.85), the seen faces under MIN_DENSITY texels a unit, coplanar overlapping faces, texture
+    statistics (each finish's mean brightness in its range and creases at least 15% darker than open
+    faces) and the iron sight picture (iron_sight)."""
     import meshprim
     import gunpaint
     problems = []
@@ -206,6 +252,7 @@ def lint(gid):
         problems.append('%s: %d seen faces under %d texels a unit' % (gid, thin, MIN_DENSITY))
     for a, b, face, area in _coplanar(fine):
         problems.append('%s: elements %d and %d share a %s plane over %.3f unit^2' % (gid, a, b, face, area))
+    problems += iron_sight(gid)
     for mat, st in data['texture'].info.get('stats', {}).items():
         lo, hi = gunpaint.target_lum(mat)
         if st['texels'] > 500 and not lo <= st['lum'] <= hi:

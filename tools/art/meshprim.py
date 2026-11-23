@@ -500,6 +500,32 @@ def rail(gid):
 
 # ---------------------------------------------------------------- geometry queries
 
+def first_hit(prims, origin, direction, near=0.0):
+    """(distance along the ray, index) of the first box a ray from `origin` meets past `near` (in units of
+    `direction`), or None: the slab test in each box's own axes."""
+    origin, direction = np.asarray(origin, float), np.asarray(direction, float)
+    best = None
+    for k, p in enumerate(prims):
+        m = p.matrix()
+        o = (origin - p.centre) @ m
+        d = direction @ m
+        enter, leave = -math.inf, math.inf
+        for axis in range(3):
+            if abs(d[axis]) < 1e-12:
+                if abs(o[axis]) > p.half[axis]:
+                    break
+                continue
+            a = (-p.half[axis] - o[axis]) / d[axis]
+            b = (p.half[axis] - o[axis]) / d[axis]
+            enter, leave = max(enter, min(a, b)), min(leave, max(a, b))
+        else:
+            if enter <= leave and leave > near:
+                t = max(enter, near)
+                if best is None or t < best[0]:
+                    best = (t, k)
+    return best
+
+
 def inside_any(points, prims, skip=None, eps=1e-3):
     """Which points (N x 3) lie inside any of the boxes (within eps), skipping one of them."""
     out = np.zeros(len(points), dtype=bool)

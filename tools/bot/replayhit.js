@@ -123,8 +123,9 @@ const soundsSince = (bot, from) => bot.sounds.slice(from).map(s => s.id)
 async function raids () {
   return [...(await rcon('cv raids')).matchAll(/\b(R\d+)\b/g)].map(m => m[1])
 }
-async function count (selector) {
-  const out = await rcon(`execute if entity ${selector}`)
+/** How many entities `selector` finds; `where` is an execute clause to run it from (in a world). */
+async function count (selector, where = '') {
+  const out = await rcon(`execute ${where ? where + ' ' : ''}if entity ${selector}`)
   const m = out.match(/count: (\d+)/i)
   return m ? Number(m[1]) : 0
 }
@@ -202,11 +203,15 @@ async function replay () {
   if (!replayed) return done([a, b, c])
   await sleep(400)
 
-  // Every mannequin is tagged; the stand-ins as "replay".
-  log('BukkitValues', await rcon('execute as @e[type=minecraft:mannequin] run data get entity @s BukkitValues'))
-  const total = await count('@e[type=minecraft:mannequin]')
-  const standIns = await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"replay"}}]')
-  const corpses = await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
+  // Every mannequin in the raid is tagged; the stand-ins as "replay". Only this raid's world counts:
+  // another raid on the server (one a script's bots quit) has mannequins of its own, such as a
+  // disconnected player's stand-in, which is there to be shot and so has no role.
+  const here = `in minecraft:${world}`
+  const mannequins = '@e[type=minecraft:mannequin,distance=0..'
+  log('BukkitValues', await rcon(`execute ${here} as ${mannequins}] run data get entity @s BukkitValues`))
+  const total = await count(`${mannequins}]`, here)
+  const standIns = await count(`${mannequins},nbt={BukkitValues:{"craftov:role":"replay"}}]`, here)
+  const corpses = await count(`${mannequins},nbt={BukkitValues:{"craftov:role":"container"}}]`, here)
   check('the replay spawned stand-ins tagged craftov:role "replay"', standIns >= 3, `${standIns} stand-ins`)
   check('every mannequin carries craftov:role', total > 0 && total === standIns + corpses, `${total} mannequins, ${standIns} replay, ${corpses} container`)
   // The corpse is spawned for everyone at the death; the stand-ins come 1.5 s later, with the title.
@@ -236,13 +241,13 @@ async function replay () {
   log('C heard (A)', atA.join(' '), 'A health', before, '->', a.health)
   check('shooting A hurts A', a.health < before, `${before} -> ${a.health}`)
   check('shooting A gives hit feedback', atA.some(s => s.startsWith('craftov:hit.')))
-  const still = await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
+  const still = await count(`${mannequins}]`, here) - await count(`${mannequins},nbt={BukkitValues:{"craftov:role":"container"}}]`, here)
   check('the replay was still playing during the shots', still >= 3, `${still} stand-ins left`)
 
   // How the stand-ins were posed for B. A's shooting can sit in the last half second of the
   // six-second clip (a quick kill), which plays last and in slow motion, so read the poses once
   // the replay is over and the stand-ins are gone.
-  const standing = async () => await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
+  const standing = async () => await count(`${mannequins}]`, here) - await count(`${mannequins},nbt={BukkitValues:{"craftov:role":"container"}}]`, here)
   const over = await waitFor(async () => (await standing()) === 0, 12000, 500)
   log('replay over before the pose checks', over)
   const paper = b.registry.itemsByName.paper.id

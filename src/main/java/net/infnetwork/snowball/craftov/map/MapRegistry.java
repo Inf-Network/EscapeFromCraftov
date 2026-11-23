@@ -69,15 +69,21 @@ public final class MapRegistry {
     }
 
     /**
-     * Logs lever extracts that can never open and ids used twice. A lever extract whose switch is
-     * missing tells players to pull a lever that does not exist; two levers sharing an id open each
-     * other's extracts, since a raid keys pulled levers by id.
+     * Logs lever extracts that can never open, switches hidden under another on the same block, and
+     * ids used twice. A lever extract whose switch is missing tells players to pull a lever that does
+     * not exist; two levers sharing an id open each other's extracts, since a raid keys pulled levers
+     * by id.
      */
     private void warnReferences(MapDef def) {
         String map = def.name() + " (" + def.id() + ")";
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> hidden = hiddenSwitches(def);
+        hidden.forEach((sw, shown) -> logger.warning("Map " + map + ": switch " + sw.id() + " is on the same block as " + shown.id()
+                + " (" + blockKey(sw.pos()) + "), and raids only find " + shown.id()));
+        Set<String> hiddenIds = new LinkedHashSet<>(hidden.keySet().stream().map(MapDef.SwitchDef::id).toList());
         for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
-            logger.warning("Map " + map + ": lever extract " + extract.id() + (extract.switchId().isEmpty()
-                    ? " is bound to no switch" : " needs switch " + extract.switchId() + ", which the map does not have")
+            logger.warning("Map " + map + ": lever extract " + extract.id() + (extract.switchId().isEmpty() ? " is bound to no switch"
+                    : hiddenIds.contains(extract.switchId()) ? " needs switch " + extract.switchId() + ", which another switch on its block hides"
+                    : " needs switch " + extract.switchId() + ", which the map does not have")
                     + ", so it never opens (raids show it as unavailable)");
         }
         for (String id : duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList())) {
@@ -91,13 +97,48 @@ public final class MapRegistry {
         }
     }
 
-    /** Lever extracts bound to no switch, or to one the map does not have: they never open. */
+    /**
+     * Lever extracts bound to no switch, to one the map does not have, or to one hidden under
+     * another switch on the same block (see {@link #hiddenSwitches}): they never open.
+     */
     public static List<MapDef.ExtractDef> unboundSwitchExtracts(MapDef def) {
-        Set<String> switches = new LinkedHashSet<>();
-        def.switches().forEach(s -> switches.add(s.id()));
+        Set<String> reachable = new LinkedHashSet<>(switchOnBlock(def).values().stream().map(MapDef.SwitchDef::id).toList());
         return def.extracts().stream()
-                .filter(e -> e.type() == ExtractType.SWITCH && !switches.contains(e.switchId()))
+                .filter(e -> e.type() == ExtractType.SWITCH && !reachable.contains(e.switchId()))
                 .toList();
+    }
+
+    /**
+     * Switches a raid never finds: a raid keys levers by block, and of two switches on one block
+     * only the later one in the file is pulled. Each hidden switch maps to the one hiding it.
+     */
+    public static Map<MapDef.SwitchDef, MapDef.SwitchDef> hiddenSwitches(MapDef def) {
+        Map<String, MapDef.SwitchDef> top = switchOnBlock(def);
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> out = new LinkedHashMap<>();
+        for (MapDef.SwitchDef sw : def.switches()) {
+            MapDef.SwitchDef shown = top.get(blockKey(sw.pos()));
+            // Two markers with one id on one block hide nothing (the id is reported as used twice).
+            if (shown != sw && !shown.id().equals(sw.id())) {
+                out.put(sw, shown);
+            }
+        }
+        return out;
+    }
+
+    /** The switch a raid finds on each block, as RaidManager fills Raid.switchBlocks: the last one wins. */
+    private static Map<String, MapDef.SwitchDef> switchOnBlock(MapDef def) {
+        Map<String, MapDef.SwitchDef> top = new LinkedHashMap<>();
+        def.switches().forEach(sw -> top.put(blockKey(sw.pos()), sw));
+        return top;
+    }
+
+    /** Whether a marker at {@code pos} is on the block at x, y, z (the block a raid looks it up by). */
+    public static boolean sameBlock(Pos pos, int x, int y, int z) {
+        return (int) Math.floor(pos.x()) == x && (int) Math.floor(pos.y()) == y && (int) Math.floor(pos.z()) == z;
+    }
+
+    private static String blockKey(Pos pos) {
+        return (int) Math.floor(pos.x()) + "," + (int) Math.floor(pos.y()) + "," + (int) Math.floor(pos.z());
     }
 
     /** Ids that appear more than once, each once, in order of first appearance. */
@@ -261,9 +302,14 @@ public final class MapRegistry {
         if (def.containers().size() < MIN_CONTAINERS) {
             out.add("物资箱只有 " + def.containers().size() + " 个，至少要 " + MIN_CONTAINERS + " 个");
         }
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> hidden = hiddenSwitches(def);
+        hidden.forEach((sw, shown) -> out.add("电闸 " + sw.id() + " 和 " + shown.id() + " 在同一个拉杆上，对局里只有 " + shown.id()
+                + " 拉得动（用删除工具删掉多余的那个）"));
+        Set<String> hiddenIds = new LinkedHashSet<>(hidden.keySet().stream().map(MapDef.SwitchDef::id).toList());
         for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
-            out.add("需拉闸撤离点 " + extract.name() + (extract.switchId().isEmpty()
-                    ? " 没有绑定电闸" : " 绑定的电闸 " + extract.switchId() + " 不存在"));
+            out.add("需拉闸撤离点 " + extract.name() + (extract.switchId().isEmpty() ? " 没有绑定电闸"
+                    : hiddenIds.contains(extract.switchId()) ? " 绑定的电闸 " + extract.switchId() + " 拉不到"
+                    : " 绑定的电闸 " + extract.switchId() + " 不存在"));
         }
         duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList()).forEach(id -> out.add("撤离点编号 " + id + " 重复"));
         duplicates(def.switches().stream().map(MapDef.SwitchDef::id).toList()).forEach(id -> out.add("电闸编号 " + id + " 重复"));

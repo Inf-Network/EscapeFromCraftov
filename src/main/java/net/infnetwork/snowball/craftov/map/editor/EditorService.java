@@ -794,15 +794,31 @@ public final class EditorService implements Listener {
                         return;
                     }
                     ItemDef key = keys.get(o % keys.size());
+                    // A raid keys doors by block: clicking a door again changes its key instead of
+                    // stacking a second lock under the first.
+                    boolean relocked = d.doors.removeIf(door -> MapRegistry.sameBlock(door.pos(), lower.getX(), lower.getY(), lower.getZ()));
                     d.doors.add(new MapDef.DoorDef(key.lockId(), new Pos(lower.getX() + 0.5, lower.getY(), lower.getZ() + 0.5, 0)));
-                    Text.send(player, "<ok>已设置门禁，需要钥匙：" + key.coloredName());
+                    Text.send(player, (relocked ? "<ok>已把这扇门改为需要钥匙：" : "<ok>已设置门禁，需要钥匙：") + key.coloredName());
                 } else if (type == Material.LEVER || type.name().endsWith("_BUTTON")) {
-                    // Past the highest number in use, not the count: after a removal the count names
-                    // a lever that still exists, and two levers with one id open each other's extracts.
-                    int n = nextNumber("switch_", d.switches.stream().map(MapDef.SwitchDef::id).toList());
-                    String id = "switch_" + n;
-                    d.switches.add(new MapDef.SwitchDef(id, "电闸 " + n,
-                            new Pos(block.getX() + 0.5, block.getY(), block.getZ() + 0.5, 0), 300));
+                    MapDef.SwitchDef already = null;
+                    for (MapDef.SwitchDef sw : d.switches) {
+                        if (MapRegistry.sameBlock(sw.pos(), block.getX(), block.getY(), block.getZ())) {
+                            already = sw; // the last one: the one a raid would find on this block
+                        }
+                    }
+                    String id;
+                    if (already != null) {
+                        // A second marker here would hide this one in raids (they key levers by
+                        // block), and the extracts bound to the hidden one could never open.
+                        id = already.id();
+                    } else {
+                        // Past the highest number in use, not the count: after a removal the count names
+                        // a lever that still exists, and two levers with one id open each other's extracts.
+                        int n = nextNumber("switch_", d.switches.stream().map(MapDef.SwitchDef::id).toList());
+                        id = "switch_" + n;
+                        d.switches.add(new MapDef.SwitchDef(id, "电闸 " + n,
+                                new Pos(block.getX() + 0.5, block.getY(), block.getZ() + 0.5, 0), 300));
+                    }
                     // Every lever extract still waiting for a switch is bound to this one.
                     List<String> bound = new ArrayList<>();
                     for (int i = 0; i < d.extracts.size(); i++) {
@@ -812,7 +828,7 @@ public final class EditorService implements Listener {
                             bound.add(e.name());
                         }
                     }
-                    Text.send(player, "<ok>已设置电闸 " + id + (bound.isEmpty() ? ""
+                    Text.send(player, (already != null ? "<muted>这个拉杆已经是电闸 " : "<ok>已设置电闸 ") + id + (bound.isEmpty() ? ""
                             : "<muted>，绑定撤离点：<white>" + Text.escape(String.join("、", bound))));
                 } else {
                     Text.send(player, "<danger>请点击铁门、拉杆或按钮。");

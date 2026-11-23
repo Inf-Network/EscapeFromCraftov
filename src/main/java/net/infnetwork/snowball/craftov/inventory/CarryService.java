@@ -405,6 +405,24 @@ public final class CarryService {
      * free, so a container just put into its slot opens its cells as {@link #refreshLocks} would.
      */
     public boolean simulateGive(@Nullable ItemStack[] cells, ItemStack stack) {
+        return simulate(cells, stack, false);
+    }
+
+    /**
+     * Dry run of {@link #giveOrWear}: like {@link #simulateGive}, but a helmet, vest, rig or backpack
+     * whose slot is empty in {@code cells} is put on there first, which also opens a container's cells
+     * for the stacks after it.
+     */
+    public boolean simulateGiveOrWear(@Nullable ItemStack[] cells, ItemStack stack) {
+        return simulate(cells, stack, true);
+    }
+
+    private boolean simulate(@Nullable ItemStack[] cells, ItemStack stack, boolean wear) {
+        int wornSlot = wear ? wearSlot(stack) : -1;
+        if (wornSlot >= 0 && (cells[wornSlot] == null || cells[wornSlot].isEmpty())) {
+            cells[wornSlot] = stack.clone();
+            return true;
+        }
         ItemStack remaining = stack.clone();
         if (ItemFactory.hasContents(remaining)) {
             return false;

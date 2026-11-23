@@ -85,11 +85,12 @@ public final class TraderService {
             stacks.add(plugin.items().create(def, n));
             remaining -= n;
         }
-        // Each stack that does not fit on the player takes a stash cell of its own.
+        // Each stack that does not fit on the player takes a stash cell of its own. Gear whose slot is
+        // free goes on, as giveOrWear below puts it.
         @Nullable ItemStack[] cells = plugin.carry().copyCells(player);
         int needStash = 0;
         for (ItemStack stack : stacks) {
-            if (!plugin.carry().simulateGive(cells, stack)) {
+            if (!plugin.carry().simulateGiveOrWear(cells, stack)) {
                 needStash++;
             }
         }

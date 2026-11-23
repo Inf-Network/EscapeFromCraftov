@@ -314,6 +314,7 @@ public final class RaidManager implements Listener {
                 player.showTitle(Title.title(Text.mm("<accent>匹配成功"), Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
                         Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
                 player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
+                launch.showStatus(player);
             }
             roster.add(members);
         }
@@ -421,6 +422,8 @@ public final class RaidManager implements Listener {
         final Tier tier;
         final List<List<UUID>> squads;
         final Set<UUID> ranked;
+        /** When "match found" came, for the wait shown in {@link #showStatus}. */
+        final long since = System.currentTimeMillis();
         org.bukkit.scheduler.@Nullable BukkitTask timeout;
         boolean over;
         /**
@@ -436,6 +439,17 @@ public final class RaidManager implements Listener {
             this.tier = tier;
             this.squads = squads;
             this.ranked = ranked;
+        }
+
+        /**
+         * The action bar line while the map is copied, refreshed every second ({@link RaidManager#tickSecond}):
+         * the queue's own line stopped at launch, and the "match found" title lasts only 4.5 s, so a
+         * slow copy would otherwise leave the player in the lobby with nothing saying they are on
+         * their way. It takes the queue's key, so it replaces that line at once.
+         */
+        void showStatus(Player player) {
+            Notify.status(player, "queue", "<accent>匹配成功 <white>正在部署 " + Text.escape(map.name())
+                    + " <muted>· 地图准备中 " + Text.duration((System.currentTimeMillis() - since) / 1000));
         }
 
         List<Player> online() {
@@ -959,6 +973,12 @@ public final class RaidManager implements Listener {
     }
 
     private void tickSecond() {
+        for (Map.Entry<UUID, Launch> entry : launching.entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null) {
+                entry.getValue().showStatus(player);
+            }
+        }
         long now = Bukkit.getCurrentTick();
         for (Raid raid : new ArrayList<>(raids.values())) {
             if (raid.state == Raid.State.ENDING && now >= raid.endTick) {

@@ -139,6 +139,12 @@ public final class TrainingService {
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Session> sessions = new HashMap<>();
+    /**
+     * When each player last started a course (server tick). Every start copies and loads a world on
+     * the main thread, and giving up ends the course at once: without a wait between starts one
+     * player could keep the server loading worlds.
+     */
+    private final Map<UUID, Long> lastStart = new HashMap<>();
 
     public TrainingService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -181,6 +187,13 @@ public final class TrainingService {
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return "请先回到大厅";
         }
+        long now = Bukkit.getCurrentTick();
+        Long last = lastStart.get(player.getUniqueId());
+        long wait = last == null ? 0 : last + 20L * plugin.getConfig().getInt("training.cooldown-seconds", 30) - now;
+        if (wait > 0) {
+            return "训练场正在重置，" + (wait + 19) / 20 + " 秒后再开始";
+        }
+        lastStart.put(player.getUniqueId(), now);
         plugin.match().cancelQueue(player.getUniqueId(), "开始训练行动");
         player.closeInventory();
         plugin.raids().start(map, TIER, List.of(List.of(player)), Set.of());

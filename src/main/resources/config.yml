@@ -556,6 +556,8 @@ training:
   enabled: true
   # (s) the lever's countdown on the course, much shorter than extract.switch-countdown-seconds.
   switch-countdown-seconds: 10
+  # (s) between two courses started by one player: each start copies and loads a world.
+  cooldown-seconds: 30
 
 season:
   # Changing the id starts a new season (everyone's pass progress resets).

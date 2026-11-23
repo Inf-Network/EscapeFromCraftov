@@ -24,10 +24,25 @@ public final class AtomicFiles {
     /** Every temp file ends in this; loaders and backups skip such names. */
     public static final String TEMP_SUFFIX = ".tmp";
 
+    /**
+     * Test hook, off unless the JVM is started with {@code -Dcraftov.test.write-delay-ms=N}: every
+     * write first waits this long, a slow disk. tools/bot/marketio.js uses it to back the profile
+     * writer up past the 10 s the shutdown waits for it, the case where an older queued copy could
+     * land on the final save.
+     */
+    private static final long TEST_DELAY_MS = Math.max(0, Long.getLong("craftov.test.write-delay-ms", 0L));
+
     private AtomicFiles() {
     }
 
     public static void write(Path target, String content) throws IOException {
+        if (TEST_DELAY_MS > 0) {
+            try {
+                Thread.sleep(TEST_DELAY_MS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+        }
         Path dir = target.toAbsolutePath().getParent();
         Files.createDirectories(dir);
         Path tmp = dir.resolve(target.getFileName() + "." + Long.toHexString(ThreadLocalRandom.current().nextLong()) + TEMP_SUFFIX);
@@ -48,6 +63,11 @@ public final class AtomicFiles {
         } finally {
             Files.deleteIfExists(tmp);
         }
+    }
+
+    /** The test write delay in milliseconds, 0 when it is off (always, outside tests). */
+    public static long testDelayMs() {
+        return TEST_DELAY_MS;
     }
 
     /** Whether {@code fileName} is a temp file left by {@link #write}. */

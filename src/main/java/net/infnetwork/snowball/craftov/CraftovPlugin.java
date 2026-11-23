@@ -125,6 +125,11 @@ public final class CraftovPlugin extends JavaPlugin {
         instance = this;
         net.infnetwork.snowball.craftov.util.Nms.init(getLogger());
         net.infnetwork.snowball.craftov.util.Notify.start(this);
+        long writeDelay = net.infnetwork.snowball.craftov.util.AtomicFiles.testDelayMs();
+        if (writeDelay > 0) {
+            getLogger().warning("Test hook on: every data file write waits " + writeDelay
+                    + " ms (-Dcraftov.test.write-delay-ms). Never start a live server with it.");
+        }
         saveDefaultConfig();
         if (ConfigMigration.migrate(getDataFolder(), getResource("config.yml"), getLogger())) {
             reloadConfig();
@@ -137,7 +142,7 @@ public final class CraftovPlugin extends JavaPlugin {
                     + " copy (or merge the changes and set revision: " + old.bundled() + "), then /cv reload.");
         }
         loadTiers();
-        registry = new ItemRegistry(getLogger());
+        registry = new ItemRegistry(getLogger(), ItemRegistry.sizes(getResource("items.yml")));
         if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
             // Running without an item table would empty every loadout it captures: stay off until
             // the file is fixed instead.
@@ -261,7 +266,8 @@ public final class CraftovPlugin extends JavaPlugin {
             });
         }
         // Offline edits made while sending everyone home and queued market saves (both go through
-        // the profile writer) finish landing before the final saves, so none lands on top of them.
+        // the profile writer) finish landing before the final saves. Should that wait time out, the
+        // final saves are still the newest copies: an older one that comes up later is dropped.
         step("queued profile writes", profiles, () -> profiles.awaitWrites());
         step("market", market, () -> market.saveSync());
         step("profiles", profiles, () -> profiles.shutdown());

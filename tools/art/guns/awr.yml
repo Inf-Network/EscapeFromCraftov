@@ -1,0 +1,24 @@
+# AWR: a .338 bolt-action sniper rifle in an OD green stock with a fixed 8x scope. Built by
+# tools/art/meshprim.py from Quaternius' SniperRifle_3 (no magazine in the mesh: one is added under
+# the action); the keys are described in k47.yml.
+source: SniperRifle_3
+length: 37.0
+paint: {Green: od, Black: steel, DarkMetal: steel, Glass: glass, Grey: steel}
+pieces:
+  - {piece: 0}                                                # stock (see boxes)
+  - {piece: 1, round: 8}                                      # scope
+  - {piece: 2, round: 8, width: 0.66}                         # barrel
+  - {piece: 3}                                                # bolt handle
+  - {piece: 4, width: 0.62}                                   # rail
+  - {piece: 5, width: 0.18, detail: true}                     # trigger
+  - {piece: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], width: 0.62, detail: true}   # rail slots
+boxes:
+  - {at: [5.2, 7.9], piece: 0, width: 1.3}                    # action bedding
+  - {at: [11.4, 8.1], piece: 0, width: 1.4}                   # forend
+parts:
+  - {from: [2.6, 5.7, 7.52], to: [4.8, 7.3, 8.48], part: mag, mat: steel}
+  - {from: [2.5, 5.55, 7.46], to: [4.9, 5.75, 8.54], part: mag, mat: polymer}
+  - {from: [10.17, 9.25, 7.35], to: [10.24, 11.0, 8.65], mat: glass, round: 8}
+  - {from: [-0.31, 9.35, 7.4], to: [-0.24, 10.9, 8.6], mat: glass, round: 8}
+  - {from: [26.3, 8.48, 7.56], to: [27.6, 9.42, 8.44], round: 8}               # muzzle brake
+mag_axis: [0.0, -1.0]

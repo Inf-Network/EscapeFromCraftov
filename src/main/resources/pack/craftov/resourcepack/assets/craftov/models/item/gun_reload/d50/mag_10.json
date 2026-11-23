@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_part/d50_mag",
+ "parent": "craftov:item/gun_mid/d50_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [

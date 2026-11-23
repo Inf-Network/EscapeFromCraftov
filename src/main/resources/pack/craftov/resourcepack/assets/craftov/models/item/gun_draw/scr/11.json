@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/scr",
+ "parent": "craftov:item/gun_mid/scr",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -1.2,
-    2.57,
-    -0.74
+    2.3,
+    -1.77
    ],
    "scale": [
     0.51,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -1.2,
-    2.57,
-    -0.74
+    2.3,
+    -1.77
    ],
    "scale": [
     0.51,

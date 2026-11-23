@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_part/scr_mag",
+ "parent": "craftov:item/gun_mid/scr_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -8,9 +8,9 @@
     -82.272
    ],
    "translation": [
-    -6.63,
-    -0.373,
-    -1.513
+    -6.628,
+    -0.791,
+    -1.106
    ],
    "scale": [
     0.51,
@@ -25,9 +25,9 @@
     -97.728
    ],
    "translation": [
-    -6.63,
-    -0.373,
-    -1.513
+    -6.628,
+    -0.791,
+    -1.106
    ],
    "scale": [
     0.51,

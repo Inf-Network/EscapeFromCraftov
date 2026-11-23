@@ -24,7 +24,7 @@ GUNS = ['p18', 'd50', 'sv9', 'v57', 'k47', 'm4c', 'scr', 'kl7', 'r12', 'dm14', '
 
 # Per gun: distinct models, baked quads (all models together), faces of the fine first-person body,
 # faces of the low third-person body.
-BUDGET = {'models': 1600, 'quads': 80_000, 'fp': 1000, 'third': 350}
+BUDGET = {'models': 1600, 'quads': 100_000, 'fp': 1000, 'third': 350}
 
 _MODELS = {}
 

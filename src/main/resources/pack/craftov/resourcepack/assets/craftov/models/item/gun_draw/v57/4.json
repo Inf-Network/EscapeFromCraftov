@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/v57",
+ "parent": "craftov:item/gun_mid/v57",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -1.2,
-    1.69,
-    -0.59
+    1.78,
+    -0.79
    ],
    "scale": [
     0.561,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -1.2,
-    1.69,
-    -0.59
+    1.78,
+    -0.79
    ],
    "scale": [
     0.561,

@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/d50",
+ "parent": "craftov:item/gun_mid/d50",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -1.2,
-    0.32,
-    0.05
+    0.27,
+    -0.13
    ],
    "scale": [
     0.612,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -1.2,
-    0.32,
-    0.05
+    0.27,
+    -0.13
    ],
    "scale": [
     0.612,

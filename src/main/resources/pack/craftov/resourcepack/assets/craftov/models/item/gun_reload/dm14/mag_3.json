@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_part/dm14_mag",
+ "parent": "craftov:item/gun_mid/dm14_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -2.312,
-    3.356,
-    -2.371
+    3.406,
+    -2.421
    ],
    "scale": [
     0.51,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -2.312,
-    3.356,
-    -2.371
+    3.406,
+    -2.421
    ],
    "scale": [
     0.51,

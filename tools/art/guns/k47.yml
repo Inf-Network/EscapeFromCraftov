@@ -43,11 +43,11 @@ parts:
   - {from: [10.1, 13.05, 7.55], to: [10.4, 13.32, 7.86], detail: true}
   - {from: [10.1, 13.05, 8.14], to: [10.4, 13.32, 8.45], detail: true}
   # Front sight: the base round the barrel, the post, and the hood's two ears.
-  - {from: [21.0, 10.5, 7.6], to: [22.1, 11.55, 8.4]}
-  - {from: [21.15, 11.55, 7.66], to: [22.0, 12.0, 8.34]}
-  - {from: [21.5, 12.0, 7.93], to: [21.66, 13.05, 8.07], detail: true}
-  - {from: [21.25, 12.0, 7.58], to: [21.95, 13.2, 7.68], detail: true}
-  - {from: [21.25, 12.0, 8.32], to: [21.95, 13.2, 8.42], detail: true}
+  - {from: [22.0, 10.5, 7.6], to: [23.1, 11.55, 8.4]}
+  - {from: [22.15, 11.55, 7.66], to: [23.0, 12.0, 8.34]}
+  - {from: [22.5, 12.0, 7.93], to: [22.66, 13.05, 8.07], detail: true}
+  - {from: [22.25, 12.0, 7.58], to: [22.95, 13.2, 7.68], detail: true}
+  - {from: [22.25, 12.0, 8.32], to: [22.95, 13.2, 8.42], detail: true}
   # Slant compensator.
   - {from: [23.3, 10.62, 7.64], to: [24.7, 11.34, 8.36], round: 8}
   # Right side: charging handle, selector lever, the bolt carrier in the ejection port.

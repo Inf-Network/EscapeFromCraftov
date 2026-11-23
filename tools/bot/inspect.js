@@ -279,8 +279,10 @@ async function killSoldiers (bot) {
     await sleep(800)
   }
 
-  // A gun next to the knife, for the fire mode.
+  // A gun next to the knife, for the fire mode. Keys 1-2 are the only cells a gun goes to (#10) and
+  // the kit's rifle and pistol hold them: key 1 makes room.
   await settle(a)
+  await rcon(`item replace entity ${a.username} hotbar.0 with minecraft:air`)
   await rcon(`cv give ${a.username} m4c`)
   let gunSlot = -1
   await waitFor(() => (gunSlot = a.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && pdc(s, 'id') === 'm4c')) >= 0, 5000)

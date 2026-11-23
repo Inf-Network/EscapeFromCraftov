@@ -9,8 +9,9 @@
 //   insured - auto insurance on, a loaded m4c and armour; holds the m4c. The deploy must insure
 //             both ("已为 2 件装备投保"), the deployment record on disk must hold the m4c, and once
 //             it dies the insurance claim must send both back to the mailbox.
-//   carrier - holds a gold bar and extracts at once: the start value counts the bar, so the
-//             report's net profit is 0 rather than the bar's ◈68,000, and the bar comes home once.
+//   carrier - holds a gold bar (from its pack_1) and extracts at once: the start value counts the
+//             bar, so the report's net profit is 0 rather than the bar's ◈68,000, and the bar comes
+//             home once.
 // stop: the server is stopped over RCON while
 //   lobby   - in the lobby holds its gold bar: afterwards it is in the loadout, once.
 //   full    - in the lobby holds its server drive, and the backpack cell it came from has been
@@ -232,10 +233,12 @@ async function deployOne () {
     p.claims = []
     p.loadout = { 0: loaded('m4c', 'ammo_556_m855'), 38: rec('armor_3', { dura: 80 }) }
   })
+  // The gold bar in pack_1: valuables go in the backpack only (#10), so without one the bar
+  // would come home in the mailbox.
   await prepare(names.carrier, p => {
     p.autoInsure = false
     p.mailbox = []
-    p.loadout = { 0: rec('gold_bar') }
+    p.loadout = { [PACK]: rec('pack_1'), 18: rec('gold_bar') }
   })
   const insured = await make(names.insured)
   const carrier = await make(names.carrier)

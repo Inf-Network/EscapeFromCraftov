@@ -39,6 +39,11 @@
 // holder covers what the fix changed at a stop, a raider's cursor going back on them, or down at
 // their feet, before the raid is voided and its insured gear paid out.
 // Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist. stop stops the server and
+// starts it again with start.sh.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

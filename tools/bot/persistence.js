@@ -36,6 +36,10 @@
 //                            RCON_PASS=craftov-local STEPS=(comma list, default all) RESTARTS=10
 //                            MEMORY=3G LOG=/tmp/persistence.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
+//
+// Server config (tools/bot/suite.js sets it for its run): the script edits what it needs itself
+// while the server is down and puts it back (see above).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

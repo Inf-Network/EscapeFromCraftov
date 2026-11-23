@@ -35,6 +35,11 @@
 //             before it lands. Void for D as for E, offline: the loadout it went in with, fees
 //             back, the raid taken off stats.raids, and a 行动作废 letter with no compensation (it
 //             used to keep the raid in the stats).
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 5 (WAIT=5), raid.reconnect-seconds 10 (with
+// RECONNECT=10).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

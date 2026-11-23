@@ -30,6 +30,10 @@
 // "正在部署 试验场 · 地图准备中" and counts up while it waits; /cv raids counts that copy (1), still
 // after the bot has left, and 0 once it is done.
 // Each scenario prints PASS or FAIL; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

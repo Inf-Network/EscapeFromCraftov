@@ -28,6 +28,10 @@
 //   players   B, from another squad, puts three pistol rounds into A (no helmet or vest): about
 //             1.0 as well, as it always was, and each hit is the pistol's 22 times the body
 //             part's multiplier.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')

@@ -46,6 +46,10 @@
 // match.wait-seconds of a few seconds. The bots are made op for the test armory (full health between
 // cuts) and deopped when done. Exit code 0 when every check passes, 1 when one fails, 2 when the
 // scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')

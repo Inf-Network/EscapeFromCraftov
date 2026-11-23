@@ -47,6 +47,10 @@
 //           waits, up to 4 min).
 //
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3; the script
+// switches test.enabled per scenario itself (and puts it back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

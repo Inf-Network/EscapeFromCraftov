@@ -21,6 +21,10 @@
 // The bot has a fresh random name and is made op (the proving ground is a test map); it is deopped
 // when done. Raids launch after match.wait-seconds (30 by default), so a run takes one to three
 // minutes. Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3 (the default 30
+// works, slowly); the bot is made op for the proving ground.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')

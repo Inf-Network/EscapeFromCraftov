@@ -10,6 +10,11 @@
 // map, so test mode must be on too:  test: { enabled: true }
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the
 // number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 6 (with MATCH_WAIT=6), match.max-squads 4,
+// rank.min-level 1.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

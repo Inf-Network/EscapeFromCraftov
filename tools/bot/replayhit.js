@@ -29,6 +29,10 @@
 //   match: { wait-seconds: 6 }   cinematic: { enabled: false }   events: { per-raid: 0 }
 //   ai: { count-multiplier: 0, operator-chance: [0, 0, 0] }
 // (soldiers near the bay are removed anyway). The exit code is the number of failed checks.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 6, cinematic.enabled
+// false, events.per-raid 0, ai.count-multiplier 0, ai.operator-chance [0, 0, 0].
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')

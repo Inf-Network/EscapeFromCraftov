@@ -10,6 +10,10 @@
 // and return-minutes to 0 in its config.yml while they run (insurance.js). Bots use random names, so
 // they start as new accounts (starter loadout, ◈150,000). Prints PASS/FAIL lines and exits 1 on any
 // failure.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

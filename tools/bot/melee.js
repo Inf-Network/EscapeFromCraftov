@@ -40,6 +40,10 @@
 // they are deopped when done. A match launches after match.wait-seconds
 // (30 by default) and the boss appears 60 s into the raid. Exit code 0 when every check passes,
 // 1 when one fails, 2 when the scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3 (the default 30
+// works, slowly); the bots are made op.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

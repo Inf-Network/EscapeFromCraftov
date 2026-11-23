@@ -32,6 +32,10 @@
 // Needs `debug: true` in the server's plugins/Craftov/config.yml (shots and draws are read from the
 // log) and the default weapons.draw-ticks. Exit code: number of failed checks (2+ also when a
 // scenario could not be set up).
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (shots and draws are read
+// from the log), the default weapons.draw-ticks.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

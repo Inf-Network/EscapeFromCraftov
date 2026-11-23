@@ -43,6 +43,10 @@
 // box fence door) to run only those; the setup is the same. Needs test.enabled true (the proving ground) and a short match.wait-seconds; the
 // bots are made op for /cv queue and /cv items and deopped when done. Exit code 0 when every check
 // passes, 1 when one fails, 2 when the scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3; the bots are made op for /cv items.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')

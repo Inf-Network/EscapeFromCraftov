@@ -36,6 +36,11 @@
 //             fire as it ends; the post's soldiers are turned to face A, since soldiers only see
 //             what is ahead of them, and a hit is not required: a soldier that has only just taken
 //             aim misses by up to 1.5 m)
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2, raid.reconnect-seconds 30 (with
+// RECONNECT=30), raid.combat-logout-seconds 15 (the default).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

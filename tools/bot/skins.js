@@ -35,6 +35,11 @@
 // Needs test mode on (the proving ground is a test map) and, to keep it short, match.wait-seconds of a
 // few seconds. The bot has a fresh random name, is made op for the proving ground and deopped when done.
 // Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3; with SERVER_DIR the script switches
+// skins.own-all and skins.shop-open itself.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

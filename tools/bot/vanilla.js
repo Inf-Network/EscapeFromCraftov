@@ -32,6 +32,10 @@
 // profiles, and its plugins/Craftov/config.yml is edited for the run (match.wait-seconds 2,
 // cinematic.enabled false; put back at the end, then /cv reload). Bots use fresh random names and
 // are made op (the proving ground is test-only). Exits 0 when every check passed.
+//
+// Server config (tools/bot/suite.js sets it for its run): no whitelist; the script sets
+// match.wait-seconds 2 and cinematic.enabled false itself (and puts them back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

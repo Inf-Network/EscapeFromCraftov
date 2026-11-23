@@ -29,6 +29,11 @@
 // writes profile files into PLAYERS (default ../../server/run/plugins/Craftov/data/players), so it
 // must run on the same machine as the server. Bots are made op for the test map and deopped when
 // done. Prints PASS / FAIL per check; exit code 0 when every check passed, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3, cinematic.enabled
+// false, ai.count-multiplier 0, ai.operator-chance [0, 0, 0], events.per-raid 0, tutorial.enabled
+// true (the default), no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

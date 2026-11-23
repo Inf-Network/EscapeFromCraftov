@@ -48,6 +48,10 @@
 // soldiers are killed now and then so they do not join in. A match launches after
 // match.wait-seconds (30 by default). Exit code 0 when every check passes, 1 when one fails, 2 when
 // the scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (the draw check reads the
+// log), match.wait-seconds 3; the bots are made op.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const nbt = require('prismarine-nbt')
 const crypto = require('crypto')

@@ -14,6 +14,11 @@
 // Profiles are read from PLAYERS (default ../../server/run/plugins/Craftov/data/players).
 // Each scenario prints PASS, FAIL or SKIP with what was seen; the exit code is the
 // number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2, match.join-window-seconds -1,
+// raid.reconnect-seconds 30 (with RECONNECT=30), tiers.NORMAL.entry-fee 1000.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

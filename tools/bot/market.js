@@ -18,6 +18,10 @@
 // node market.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(unset)
 //                         SALES=8 WAIT_MIN=25 LOG=/tmp/market.log
 // Exit code 0 when every check passed. Bots use fresh random names, so they start with the starter kit.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3; with SERVER_DIR
+// the script switches the market keys itself (see above) and puts them back.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

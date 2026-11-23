@@ -16,6 +16,11 @@
 // Env: PORT / RCON_PORT / RCON_PASS of the local test server (default 25565 / 25575 / craftov-local),
 // CRAFTOV_DATA = its plugins/Craftov folder (default ../../server/run/plugins/Craftov). Profiles are
 // prepared by editing the player's JSON while the bot is offline, then checked the same way.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3. insure stop, offline and two leave the
+// server stopped (tools/bot/suite.js starts it again).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

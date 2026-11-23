@@ -14,6 +14,10 @@
 //   CHECKS=lobby-q,raid-dupe node carry.js          # a subset
 //
 // Prints one PASS / FAIL line per check and exits with the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
 const env = require('./env')

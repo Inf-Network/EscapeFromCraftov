@@ -46,6 +46,11 @@
 // scenarios that need none kill those too), cover on the lines of fire is cleared, glass broken and walls
 // built: the bots' raid is ended at the end. Leaves lag compensation switched on (/cv lagcomp on). Exit
 // code: number of failed checks (2+ also when the bots could not be set up).
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (hits are read from the log),
+// test.enabled true (the bots queue for the proving ground, a test map), ai.count-multiplier 1.25
+// (the tower sniper every raid), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

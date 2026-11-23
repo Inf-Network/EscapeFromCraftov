@@ -10,6 +10,10 @@
 //
 //   PORT=25565 RCON_PORT=25575 node range.js [--no-raid]
 // Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map) (the raid part is on the proving ground), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')

@@ -14,6 +14,10 @@
 // One bot lands, knifes KILLS (3) soldiers (frozen, at 1 health, put in front of it) and cuts one
 // more without killing it, waits 65 seconds under resistance, then leaves through the extract.
 // Prints PASS or FAIL per check; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

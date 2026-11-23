@@ -26,6 +26,11 @@
 // gets an operator squad. 'course' and 'quit' run by default; 'solo' takes 80 s. Reads profiles from
 // SERVER_DIR/plugins/Craftov/data/players (default ../../server/run), so it runs on the server's
 // machine. Prints PASS / FAIL per check; the exit code is the number of failed checks.
+//
+// Server config (tools/bot/suite.js sets it for its run): training.enabled and tutorial.enabled
+// (the defaults), no whitelist; solo proves something only with ai.operator-chance [1.0, 1.0,
+// 1.0].
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

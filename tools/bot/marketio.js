@@ -43,6 +43,10 @@
 //                         STOP_MIN=20 STOP_MAX=40 MIN_TRADES=40 SLOW_ROUNDS=1 SLOW_MS=150
 //                         MEMORY=3G KEEP=0 LOG=/tmp/marketio.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
+//
+// Server config (tools/bot/suite.js sets it for its run): the script rewrites config.yml itself
+// while the server is down and puts it back (see above).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

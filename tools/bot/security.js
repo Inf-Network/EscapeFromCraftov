@@ -28,6 +28,10 @@
 // Needs an offline-mode server (setup.sh --local) without a whitelist, or with these random bot
 // names allowed, and security.admin-guard left at "auto". The operator bot is deopped when done.
 // Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): security.admin-guard auto (the default),
+// no whitelist; the script switches security.admin-addresses itself and puts it back.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

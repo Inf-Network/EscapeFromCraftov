@@ -38,6 +38,10 @@
 // match.wait-seconds between 5 and 30 (5 keeps it quick). It publishes rustport twice, ending with
 // the markers and blocks it had, and leaves craftov_tpl_rustport.prev and rustport.yml.prev behind.
 // Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 5 (5 to 30),
+// match.max-squads 4 (the default), no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')

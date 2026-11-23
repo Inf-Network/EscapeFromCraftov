@@ -47,6 +47,10 @@
 // editing its JSON while the bot is offline (CRAFTOV_DATA = the server's plugins/Craftov folder,
 // default ../../server/run/plugins/Craftov). Prints PASS/FAIL lines and exits with the number of
 // failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

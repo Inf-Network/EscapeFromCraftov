@@ -11,6 +11,9 @@
 //   PORT=25565 RCON_PORT=25575 SERVER_DIR=../../server/run node mail.js
 //
 // The server must be running. Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): the defaults.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const fs = require('fs')

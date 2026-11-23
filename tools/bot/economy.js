@@ -24,6 +24,11 @@
 // raids quick, market.virtual-daily-cap 1. In `all` the market listings wait while the other
 // scenarios run. Bots use fresh random names and are made op (the proving ground is test-only).
 // Exits 0 when every check passed.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map); the script sets match.wait-seconds 2, cinematic.enabled false
+// and market.virtual-daily-cap 1 itself (and puts them back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')

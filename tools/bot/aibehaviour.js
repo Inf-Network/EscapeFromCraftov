@@ -46,6 +46,10 @@
 //   edge      On the field, A (resistance, so the shots do not down it) stands 5 blocks from a
 //             guard posted next to the field's west edge, A on the inside: the guard backs off and
 //             sidesteps but never off the field for 8 s.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')

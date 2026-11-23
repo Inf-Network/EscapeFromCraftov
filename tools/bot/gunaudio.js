@@ -29,6 +29,10 @@
 //
 // Needs test.enabled (the proving ground) and a short match.wait-seconds; the bots are made op and
 // deopped at the end. Exit code: number of failed checks (2+ also when the setup failed).
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

@@ -31,6 +31,10 @@
 //           still leaves for the lobby
 //
 // DEBUG=1 prints every entity spawn and camera packet.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2, tiers.NORMAL.entry-fee 1000.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

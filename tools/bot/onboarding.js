@@ -21,6 +21,10 @@
 //
 // The server runs without test.enabled (the proving ground must be hidden) and with a short
 // match.wait-seconds. Exit code: failed checks.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled false (the proving ground
+// must be hidden), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')

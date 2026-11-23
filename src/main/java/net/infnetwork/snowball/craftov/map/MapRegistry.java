@@ -26,16 +26,22 @@ import java.util.logging.Logger;
 /**
  * Loads and saves maps/*.yml. A file that does not parse is reported and left alone (see
  * {@link #broken()}), never replaced by a default.
+ *
+ * <p>Drafts: a map the editor has made but nobody has published is an ordinary file with
+ * {@code enabled: false}, loaded but kept out of matchmaking. Changes to a published map are saved
+ * apart, in maps/drafts/&lt;id&gt;.yml, so the live file is only replaced when they are published.
  */
 public final class MapRegistry {
 
     private final File dir;
+    private final File drafts;
     private final Logger logger;
     private final Map<String, MapDef> maps = new LinkedHashMap<>();
     private final Set<String> broken = new LinkedHashSet<>();
 
     public MapRegistry(File dir, Logger logger) {
         this.dir = dir;
+        this.drafts = new File(dir, "drafts");
         this.logger = logger;
     }
 
@@ -54,11 +60,97 @@ public final class MapRegistry {
                 yaml.load(file);
                 MapDef def = read(yaml);
                 maps.put(def.id(), def);
+                warnReferences(def);
             } catch (IOException | InvalidConfigurationException | RuntimeException ex) {
                 reportBroken(file, ex);
             }
         }
         logger.info("Loaded " + maps.size() + " raid maps");
+    }
+
+    /**
+     * Logs lever extracts that can never open, switches hidden under another on the same block, and
+     * ids used twice. A lever extract whose switch is missing tells players to pull a lever that does
+     * not exist; two levers sharing an id open each other's extracts, since a raid keys pulled levers
+     * by id.
+     */
+    private void warnReferences(MapDef def) {
+        String map = def.name() + " (" + def.id() + ")";
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> hidden = hiddenSwitches(def);
+        hidden.forEach((sw, shown) -> logger.warning("Map " + map + ": switch " + sw.id() + " is on the same block as " + shown.id()
+                + " (" + blockKey(sw.pos()) + "), and raids only find " + shown.id()));
+        Set<String> hiddenIds = new LinkedHashSet<>(hidden.keySet().stream().map(MapDef.SwitchDef::id).toList());
+        for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
+            logger.warning("Map " + map + ": lever extract " + extract.id() + (extract.switchId().isEmpty() ? " is bound to no switch"
+                    : hiddenIds.contains(extract.switchId()) ? " needs switch " + extract.switchId() + ", which another switch on its block hides"
+                    : " needs switch " + extract.switchId() + ", which the map does not have")
+                    + ", so it never opens (raids show it as unavailable)");
+        }
+        for (String id : duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one extract has the id " + id);
+        }
+        for (String id : duplicates(def.switches().stream().map(MapDef.SwitchDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one switch has the id " + id + " (pulling one opens the extracts of all)");
+        }
+        for (String id : duplicates(def.bosses().stream().map(MapDef.BossDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one boss has the id " + id);
+        }
+    }
+
+    /**
+     * Lever extracts bound to no switch, to one the map does not have, or to one hidden under
+     * another switch on the same block (see {@link #hiddenSwitches}): they never open.
+     */
+    public static List<MapDef.ExtractDef> unboundSwitchExtracts(MapDef def) {
+        Set<String> reachable = new LinkedHashSet<>(switchOnBlock(def).values().stream().map(MapDef.SwitchDef::id).toList());
+        return def.extracts().stream()
+                .filter(e -> e.type() == ExtractType.SWITCH && !reachable.contains(e.switchId()))
+                .toList();
+    }
+
+    /**
+     * Switches a raid never finds: a raid keys levers by block, and of two switches on one block
+     * only the later one in the file is pulled. Each hidden switch maps to the one hiding it.
+     */
+    public static Map<MapDef.SwitchDef, MapDef.SwitchDef> hiddenSwitches(MapDef def) {
+        Map<String, MapDef.SwitchDef> top = switchOnBlock(def);
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> out = new LinkedHashMap<>();
+        for (MapDef.SwitchDef sw : def.switches()) {
+            MapDef.SwitchDef shown = top.get(blockKey(sw.pos()));
+            // Two markers with one id on one block hide nothing (the id is reported as used twice).
+            if (shown != sw && !shown.id().equals(sw.id())) {
+                out.put(sw, shown);
+            }
+        }
+        return out;
+    }
+
+    /** The switch a raid finds on each block, as RaidManager fills Raid.switchBlocks: the last one wins. */
+    private static Map<String, MapDef.SwitchDef> switchOnBlock(MapDef def) {
+        Map<String, MapDef.SwitchDef> top = new LinkedHashMap<>();
+        def.switches().forEach(sw -> top.put(blockKey(sw.pos()), sw));
+        return top;
+    }
+
+    /** Whether a marker at {@code pos} is on the block at x, y, z (the block a raid looks it up by). */
+    public static boolean sameBlock(Pos pos, int x, int y, int z) {
+        return (int) Math.floor(pos.x()) == x && (int) Math.floor(pos.y()) == y && (int) Math.floor(pos.z()) == z;
+    }
+
+    private static String blockKey(Pos pos) {
+        return (int) Math.floor(pos.x()) + "," + (int) Math.floor(pos.y()) + "," + (int) Math.floor(pos.z());
+    }
+
+    /** Ids that appear more than once, each once, in order of first appearance. */
+    public static Set<String> duplicates(List<String> ids) {
+        Set<String> seen = new LinkedHashSet<>();
+        Set<String> twice = new LinkedHashSet<>();
+        for (String id : ids) {
+            if (!seen.add(id)) {
+                twice.add(id);
+            }
+        }
+        return twice;
     }
 
     /**
@@ -104,15 +196,126 @@ public final class MapRegistry {
      * plugins/Craftov/config.yml) is refused with an IllegalArgumentException.
      */
     public File file(String id) {
-        Path base = dir.toPath().toAbsolutePath().normalize();
-        Path file = base.resolve(id + ".yml").normalize(); // InvalidPathException is an IllegalArgumentException too
+        return inside(dir, id + ".yml");
+    }
+
+    /** maps/drafts/&lt;id&gt;.yml: unpublished changes to a published map. Ids are checked as in {@link #file}. */
+    public File draftFile(String id) {
+        return inside(drafts, id + ".yml");
+    }
+
+    private static File inside(File folder, String name) {
+        Path base = folder.toPath().toAbsolutePath().normalize();
+        Path file = base.resolve(name).normalize(); // InvalidPathException is an IllegalArgumentException too
         if (!base.equals(file.getParent())) {
-            throw new IllegalArgumentException("map id \"" + id + "\" would write outside " + base);
+            throw new IllegalArgumentException("map file \"" + name + "\" would be written outside " + base);
         }
         return file.toFile();
     }
 
+    // ------------------------------------------------------------------ drafts
+
+    /** The saved draft of a published map, or null if there is none. Throws if the file does not parse. */
+    public @Nullable MapDef loadDraft(String id) throws IOException {
+        File file;
+        try {
+            file = draftFile(id);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.load(file);
+            return read(yaml).withEnabled(false);
+        } catch (InvalidConfigurationException | RuntimeException ex) {
+            throw new IOException("maps/drafts/" + file.getName() + ": " + String.valueOf(ex.getMessage()).strip().replace('\n', ' '), ex);
+        }
+    }
+
+    public boolean hasDraft(String id) {
+        try {
+            return draftFile(id).isFile();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    /** Saves changes to a published map without touching the live file or what matchmaking uses. */
+    public void saveDraft(MapDef def) throws IOException {
+        File target;
+        try {
+            target = draftFile(def.id());
+        } catch (IllegalArgumentException ex) {
+            throw new IOException(ex.getMessage(), ex);
+        }
+        drafts.mkdirs();
+        write(def.withEnabled(false), target);
+    }
+
+    public void deleteDraft(String id) {
+        try {
+            Files.deleteIfExists(draftFile(id).toPath());
+        } catch (IOException | IllegalArgumentException ex) {
+            logger.warning("Could not delete the draft of map " + id + ": " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Keeps the live file as maps/&lt;id&gt;.yml.prev before a publish replaces it (one generation:
+     * enough to go back by hand when a publish was a mistake).
+     */
+    public void keepPrevious(String id) {
+        try {
+            File live = file(id);
+            if (live.isFile()) {
+                Files.copy(live.toPath(), new File(dir, live.getName() + ".prev").toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException | IllegalArgumentException ex) {
+            logger.warning("Could not keep a copy of maps/" + id + ".yml: " + ex.getMessage());
+        }
+    }
+
     // ------------------------------------------------------------------ checks
+
+    /** Fewest loot containers a published map has. */
+    public static final int MIN_CONTAINERS = 5;
+
+    /**
+     * Why this map may not be published, in Chinese for the editor; empty when it may. A published
+     * map has to work for a full raid: an exit that is always there, a spawn group for each squad a
+     * raid takes ({@code squads}, match.max-squads), something to loot, and lever extracts that can
+     * open. Without spawns every squad lands on one block at the world spawn; without an exit the
+     * whole raid goes missing when time runs out.
+     */
+    public static List<String> publishProblems(MapDef def, int squads) {
+        List<String> out = new ArrayList<>();
+        if (def.extracts().stream().noneMatch(e -> e.type() == ExtractType.ALWAYS && e.chance() >= 1.0)) {
+            out.add("没有每局都开放的常驻撤离点（类型“常驻撤离”、出现概率 1）");
+        }
+        long groups = def.spawns().stream().map(MapDef.SpawnDef::group).distinct().count();
+        if (groups < squads) {
+            out.add("出生点只有 " + groups + " 组，至少要 " + squads + " 组（每支小队一组，match.max-squads）");
+        }
+        if (def.containers().size() < MIN_CONTAINERS) {
+            out.add("物资箱只有 " + def.containers().size() + " 个，至少要 " + MIN_CONTAINERS + " 个");
+        }
+        Map<MapDef.SwitchDef, MapDef.SwitchDef> hidden = hiddenSwitches(def);
+        hidden.forEach((sw, shown) -> out.add("电闸 " + sw.id() + " 和 " + shown.id() + " 在同一个拉杆上，对局里只有 " + shown.id()
+                + " 拉得动（用删除工具删掉多余的那个）"));
+        Set<String> hiddenIds = new LinkedHashSet<>(hidden.keySet().stream().map(MapDef.SwitchDef::id).toList());
+        for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
+            out.add("需拉闸撤离点 " + extract.name() + (extract.switchId().isEmpty() ? " 没有绑定电闸"
+                    : hiddenIds.contains(extract.switchId()) ? " 绑定的电闸 " + extract.switchId() + " 拉不到"
+                    : " 绑定的电闸 " + extract.switchId() + " 不存在"));
+        }
+        duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList()).forEach(id -> out.add("撤离点编号 " + id + " 重复"));
+        duplicates(def.switches().stream().map(MapDef.SwitchDef::id).toList()).forEach(id -> out.add("电闸编号 " + id + " 重复"));
+        duplicates(def.bosses().stream().map(MapDef.BossDef::id).toList()).forEach(id -> out.add("首领编号 " + id + " 重复"));
+        return out;
+    }
 
     /** Soldier and boss posts closer than this (flat) to a player spawn point are reported. */
     public static final double SPAWN_CLEARANCE = 30;
@@ -145,6 +348,27 @@ public final class MapRegistry {
             }
         });
         return out;
+    }
+
+    /**
+     * Logs the live maps that {@link #publishProblems} would refuse today: files from before drafts
+     * existed have no {@code enabled} key and count as published however unfinished they are (a
+     * map with no spawns lands every squad on the world spawn; one without an always-open exit
+     * loses everybody when time runs out). They stay live, so the admin is told which to fix in the
+     * editor or set to {@code enabled: false}.
+     */
+    public void warnLiveProblems(int squads) {
+        for (MapDef def : maps.values()) {
+            if (!def.enabled()) {
+                continue;
+            }
+            List<String> problems = publishProblems(def, squads);
+            if (!problems.isEmpty()) {
+                logger.warning("Map " + def.name() + " (" + def.id() + ") is live but would not pass /cv editor publish: "
+                        + String.join("; ", problems) + ". Fix it with /cv editor start " + def.id()
+                        + ", or set enabled: false in maps/" + def.id() + ".yml to take it out of matchmaking");
+            }
+        }
     }
 
     /** Logs every map's {@link #closeSpawns}. */
@@ -196,7 +420,9 @@ public final class MapRegistry {
                 bounds == null ? 10000 : bounds.getDouble("max-z"),
                 y.getString("time", "day"),
                 // Proving ground files written before the flag existed have no key: still a test map.
-                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)));
+                y.getBoolean("test", id.equals(ProvingGroundGenerator.ID)),
+                // Maps saved before drafts existed were all live.
+                y.getBoolean("enabled", true));
     }
 
     private static <T> List<T> list(YamlConfiguration y, String key, Function<Map<?, ?>, T> mapper) {
@@ -222,6 +448,7 @@ public final class MapRegistry {
 
     // ------------------------------------------------------------------ writing
 
+    /** Writes maps/&lt;id&gt;.yml and puts the map in the registry as it is (published or not). */
     public void save(MapDef def) throws IOException {
         File target;
         try {
@@ -229,6 +456,12 @@ public final class MapRegistry {
         } catch (IllegalArgumentException ex) {
             throw new IOException(ex.getMessage(), ex);
         }
+        dir.mkdirs();
+        write(def, target);
+        maps.put(def.id(), def);
+    }
+
+    private static void write(MapDef def, File target) throws IOException {
         YamlConfiguration y = new YamlConfiguration();
         y.set("id", def.id());
         y.set("name", def.name());
@@ -237,6 +470,7 @@ public final class MapRegistry {
         y.set("raid-minutes", def.raidSeconds() / 60);
         y.set("time", def.timeOfDay());
         y.set("test", def.test());
+        y.set("enabled", def.enabled());
         y.set("camera", def.camera().write());
         Map<String, Object> bounds = new LinkedHashMap<>();
         bounds.put("min-x", def.minX());
@@ -303,8 +537,6 @@ public final class MapRegistry {
             m.put("active", s.activeSeconds());
             return m;
         }).toList());
-        dir.mkdirs();
         y.save(target);
-        maps.put(def.id(), def);
     }
 }

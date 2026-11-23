@@ -243,6 +243,15 @@ public final class MatchService {
             Text.send(player, "<danger>地图或难度不存在。");
             return false;
         }
+        if (!map.enabled()) {
+            // A draft from the map editor: until it is published it may have no exit or spawns.
+            Text.send(player, "<danger>" + Text.escape(map.name()) + " 还没有发布，不能匹配。");
+            return false;
+        }
+        if (plugin.editor().underMaintenance(map)) {
+            Text.send(player, "<danger>" + Text.escape(map.name()) + " 正在维护（地图编辑中），暂时不能匹配。");
+            return false;
+        }
         for (UUID uuid : members) {
             Player member = Bukkit.getPlayer(uuid);
             if (member == null) {
@@ -338,9 +347,16 @@ public final class MatchService {
             QueueEntry first = pool.get(0);
             MapDef map = plugin.maps().get(first.map());
             Tier tier = plugin.tier(first.tier());
-            if (map == null || tier == null) {
+            if (map == null || tier == null || !map.enabled()) {
                 for (QueueEntry entry : pool) {
                     cancelQueue(entry.members().get(0), "地图或难度已不存在");
+                }
+                continue;
+            }
+            if (plugin.editor().underMaintenance(map)) {
+                // Its template is being edited in place: a raid would copy it half done.
+                for (QueueEntry entry : pool) {
+                    cancelQueue(entry.members().get(0), Text.escape(map.name()) + " 进入维护");
                 }
                 continue;
             }

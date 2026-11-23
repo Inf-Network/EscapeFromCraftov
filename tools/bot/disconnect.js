@@ -457,18 +457,21 @@ const scenarios = {
     await sleep(250)
     cooldowns = 0
     A2._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }) // Q
-    await sleep(400)
     const checkedAt = (Date.now() - back) / 1000
+    // A full magazine's hint is a hint like the protection's, so it waits for that one's time on
+    // the action bar (Notify.HOLD, 1.5 s) before it shows: wait for it past the protection.
+    const full = () => A2.chatLog.slice(mark).some(l => l.includes('弹匣已满'))
+    await waitFor(() => cooldowns > 0 || full(), 2500)
     const said = A2.chatLog.slice(mark)
     const problems = []
-    if (checkedAt > 1.9) problems.push(`checks took until ${checkedAt.toFixed(1)} s, past the protection`)
+    if (checkedAt > 1.9) problems.push(`Q went in at ${checkedAt.toFixed(1)} s, past the protection`)
     if (!said.some(l => l.includes('保护时间内不能开火'))) problems.push('the trigger gave no protection hint')
-    const reloaded = cooldowns > 0 || said.some(l => l.includes('弹匣已满'))
+    const reloaded = cooldowns > 0 || full()
     if (!reloaded) problems.push('Q did not reach the reload')
     if (process.env.DEBUG) console.log(said)
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no shot inside the protection, but reload works'} | checked ${checkedAt.toFixed(1)} s after rejoining, reload ${cooldowns > 0 ? 'started' : 'refused: magazine full'}`]
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no shot inside the protection, but reload works'} | Q ${checkedAt.toFixed(1)} s after rejoining, reload ${cooldowns > 0 ? 'started' : full() ? 'refused: magazine full' : 'not heard of'}`]
   },
 
   async timeout () {

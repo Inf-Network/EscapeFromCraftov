@@ -1169,6 +1169,7 @@ public final class RaidManager implements Listener {
             rp.state = RaidPlayer.State.LEFT;
             byPlayer.remove(rp.uuid, raid);
             plugin.escorts().voided(rp);
+            plugin.match().droppedOut(rp.uuid);
             return;
         }
         plugin.profiles().get(player).money += rp.fees;
@@ -1831,6 +1832,7 @@ public final class RaidManager implements Listener {
         leftWith(raid, rp, keptThroughDeath(rp, melee, unknown));
         plugin.escorts().settle(raid, rp, false);
         byPlayer.remove(rp.uuid);
+        plugin.match().droppedOut(rp.uuid);
     }
 
     // ------------------------------------------------------------------ stand-ins

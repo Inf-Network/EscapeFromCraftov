@@ -164,6 +164,18 @@ public final class MatchService {
         }
     }
 
+    /**
+     * A member who dropped out of a raid is out of it for good (the reconnect window or the raid ran
+     * out, or their stand-in was killed) and still offline: they leave the party now, as they would
+     * have on logging off in the lobby. Until then they are kept for a rejoin, and a squad whose
+     * leader it was could not queue at all, nor kick them.
+     */
+    public void droppedOut(UUID uuid) {
+        if (Bukkit.getPlayer(uuid) == null) {
+            leave(uuid, true);
+        }
+    }
+
     public void kick(Player leader, String name) {
         Party party = partyOf(leader.getUniqueId());
         if (party == null || !party.leader.equals(leader.getUniqueId())) {

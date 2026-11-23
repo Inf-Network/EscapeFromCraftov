@@ -71,11 +71,11 @@ def run(s):
     s.wait(1.5)
     spot = (30.5, G + 1, 5.5)
     for i, (x, z) in enumerate(TARGETS):
-        yaw, pitch = angles(spot, (x + 0.5, G + 1.4, z + 0.5))
-        for attempt in range(4):
+        yaw, pitch = angles(spot, (x + 0.5, G + 1.2, z + 0.5))
+        for attempt in range(8):
             if hits(s) > i:
                 break
-            if attempt == 2:
+            if attempt in (2, 5):
                 s.key('q')  # the magazine holds 8: reload and go on
                 s.wait(3.5)
             tp(s, *spot, yaw, pitch)

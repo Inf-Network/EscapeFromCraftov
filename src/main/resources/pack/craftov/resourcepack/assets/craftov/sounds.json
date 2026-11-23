@@ -490,6 +490,13 @@
    }
   ]
  },
+ "med.wrap": {
+  "sounds": [
+   {
+    "name": "craftov:med/wrap"
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {

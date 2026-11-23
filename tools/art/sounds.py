@@ -263,6 +263,13 @@ add('gear/equip', lambda: norm(mixdown(
     (click(3800, 0.02, 0.9), 0.43), (metal((2900, 4300), 0.03, 0.12) * 0.5, 0.43),
     (click(2400, 0.02, 0.6), 0.47), length=int(SR * 0.6))) * 0.7)
 
+# Gauze wound round a limb: two soft passes of cloth, crinkling as it tightens. A bandage, a
+# dressing and a medkit play it while in use, and a squadmate reviving someone once a second.
+add('med/wrap', lambda: norm(mixdown(
+    (env(crackle(0.3, 500, 1200, 6000, ramp=(0.5, 1.5)), 0.08, 0.1) * 0.5, 0),
+    (swish(0.3, 500, 3200) * 0.8, 0),
+    (env(crackle(0.26, 650, 1200, 6000, ramp=(0.6, 1.6)), 0.06, 0.09) * 0.45, 0.28),
+    (swish(0.28, 600, 3500) * 0.7, 0.28), length=int(SR * 0.6))) * 0.6)
 
 def write_ogg(data, path):
     import oggenc

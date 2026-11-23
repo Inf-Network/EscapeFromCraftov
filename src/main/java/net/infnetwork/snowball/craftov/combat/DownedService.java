@@ -468,7 +468,7 @@ public final class DownedService implements Listener {
         reviver.swingMainHand();
         patient.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, at, 3, 0.35, 0.15, 0.35, 0);
         if (Bukkit.getCurrentTick() % 20 < 5) {
-            patient.getWorld().playSound(at, "minecraft:item.armor.equip_leather", SoundCategory.PLAYERS, 0.6f, 1.2f);
+            patient.getWorld().playSound(at, "craftov:med.wrap", SoundCategory.PLAYERS, 0.7f, 1f);
         }
     }
 

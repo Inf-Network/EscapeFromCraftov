@@ -586,7 +586,10 @@ def build_screens():
     providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
                       'chars': rows})
     meta = {}
-    for i, (sid, make) in enumerate(screens.SCREENS.items()):
+    # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
+    # older keep theirs.
+    all_screens = {**screens.SCREENS, **screens.skin_screens(load_knife_skins())}
+    for i, (sid, make) in enumerate(all_screens.items()):
         img, left, top = make()
         cp = chr(SCREEN_BASE + i)
         save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))

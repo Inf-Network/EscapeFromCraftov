@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod", "fov");
+            "leave", "help", "mod", "fov", "skins");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "feed", "marketaudit", "ai", "lagcomp", "luck", "points");
 
@@ -87,6 +87,9 @@ public final class CraftovCommand implements TabExecutor {
                 if (player != null) plugin.menus().openGunsmith(player);
             }
             case "fov" -> fov(player, args);
+            case "skins" -> {
+                if (player != null) plugin.menus().openSkins(player, null);
+            }
             case "queue" -> {
                 // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
                 if (player == null) {
@@ -200,7 +203,7 @@ public final class CraftovCommand implements TabExecutor {
     private void help(CommandSender sender) {
         Text.send(sender, "<text>Craftov 指令");
         sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
-        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
+        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure | skins"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配"));
         sender.sendMessage(Text.mm("<muted>/cv fov <视野> [FOV特效%] <muted>告诉服务器你的视野设置（瞄准镜倍率按它换算）"));

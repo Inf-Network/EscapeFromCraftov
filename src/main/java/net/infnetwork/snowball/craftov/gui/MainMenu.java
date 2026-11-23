@@ -12,7 +12,8 @@ import java.util.List;
  * Operations is the big deploy button (six slots, one action) with daily tasks and the range;
  * preparation holds the stash, trader, market, secure container, presets, gunsmith, repair and free
  * kit; progress the operator, hideout, collection, season pass and rankings; social the squad,
- * escort hall and bounty board. The bottom bar keeps help, the profile and close in fixed places.
+ * escort hall, bounty board and appearance (knife skins). The bottom bar keeps help, the profile and
+ * close in fixed places.
  */
 final class MainMenu extends Menu {
 
@@ -90,6 +91,8 @@ final class MainMenu extends Menu {
                 });
         button(25, UiItems.button("craftov:ui/icon_bounty", "<text><b>悬赏榜", List.of("<muted>给其他玩家的人头挂上赏金",
                 "<muted>在行动中击杀被悬赏者领取全部赏金")), e -> new BountyMenu(plugin, viewer).open());
+        button(26, UiItems.button("craftov:ui/icon_skins", "<text><b>外观", List.of("<muted>刀具皮肤：只改变外观，不是物品",
+                "<muted>预览检视动作 · 点券 <info>" + pointsLine())), e -> plugin.menus().openSkins(viewer, null));
         // Bottom bar: help, profile, close.
         set(45, UiItems.button("craftov:ui/icon_help", "<text><b>操作说明", List.of(
                 "<white>左键 <muted>开火（按住连发）",

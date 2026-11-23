@@ -1,11 +1,17 @@
-// Runs every bot script against the local test server, one after another, and says which ones fail
-// and which ones flake (pass in one round and fail in another).
+// Runs every bot script against the local test server and says which ones fail and which ones
+// flake (pass in one round and fail in another).
 //
 //   node suite.js                       every script once
 //   node suite.js --repeat 3            three rounds of every script
 //   node suite.js --only fire,escort    only these (a name, or a name:variant from the list below)
 //   node suite.js --skip luck,market    all but these
 //   node suite.js --list                the scripts, their arguments and the config each one gets
+//   node suite.js --repeat 3 --shards 28011:28021,28111:28121,28211:28221
+//                                       the same on four servers at once (this one and three copies)
+//   node suite.js --repeat 3 --out DIR --resume [--redo hitreg@2,economy@*]
+//                                       keep the results DIR/summary.json has and run only the rest
+//                                       (--redo drops those first; they stay listed under "redone")
+//   --dry-run                           print which runs would go to which server, and stop there
 //
 // env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js), as every script takes them.
 //
@@ -14,11 +20,30 @@
 // at the end the file is put back as it was found. The server must be a throwaway local one: several
 // scripts stop, start and kill it (they say so), and when one leaves it down the suite starts it again
 // (server.js). Each run's output goes to OUT/<round>/<name>.log (OUT defaults to tools/bot/out/suite-
-// <date>), and summary.json there holds every result. A script passes when it exits with 0.
+// <date>), and summary.json there holds every result (exit code, time, checks, the server's port and
+// a hash of the script, so a table that mixes versions of a script says so). A script passes when it
+// exits with 0. market, marketio and persistence write their detail log (LOG) next to it.
+//
+// Shards: --shards takes more servers as [dir=]port:rcon-port, comma-separated. One without dir is a
+// copy of SERVER_DIR at SERVER_DIR-shard-<port>, made when it is missing (SERVER_DIR's server is
+// stopped for the copy, so the worlds are consistent; its shard starts it again) with server-port and
+// rcon.port changed in its server.properties; a port another server listens on is refused. The
+// pending (round, script) runs are grouped by script, so every round of a script runs on one server,
+// in round order, and the groups go longest first (by the times OUT/summary.json already holds, two
+// minutes for a script it has none for) to whichever server has the least work so far. Each server
+// gets a child suite (this file with --jobs) with its own env, config.yml handling, OUT/shard-<port>
+// folder and summary.json; the parent prints their lines prefixed with the port and merges their
+// results into OUT/summary.json. At the end the copies made by this run are stopped and deleted
+// (--keep-shards keeps them); SERVER_DIR's server is left running. The scripts share nothing else
+// across servers (bot names are random, every file they write is under their SERVER_DIR or OUT), so
+// they need no exclusive run. Each server takes about 3.5 GB of memory.
+//
 // Exit code: the number of scripts that failed in any round.
 const fs = require('fs')
 const path = require('path')
-const { spawn } = require('child_process')
+const crypto = require('crypto')
+const readline = require('readline')
+const { spawn, spawnSync } = require('child_process')
 const env = require('./env')
 const config = require('./config')
 const server = require('./server')
@@ -58,7 +83,7 @@ const SCRIPTS = [
   { name: 'guide', config: QUIET },
   { name: 'gunaudio' },
   { name: 'gunfeel', config: { debug: true } },
-  { name: 'hitreg', config: { debug: true, 'ai.count-multiplier': 1.25 }, minutes: 40 },
+  { name: 'hitreg', config: { debug: true, 'ai.count-multiplier': 1.25, 'ai.operator-chance': [0, 0, 0], 'events.per-raid': 0 }, minutes: 40 },
   { name: 'hits' },
   { name: 'inspect' },
   ...['reload', 'unknown', 'raid', 'cursorpack', 'missing', 'preset', 'season'].map(s => ({ name: 'itemloss:' + s, file: 'itemloss.js', args: [s] })),
@@ -106,14 +131,18 @@ const only = opt('--only', '').split(',').filter(Boolean)
 const skip = opt('--skip', '').split(',').filter(Boolean)
 const matches = (entry, names) => names.some(n => entry.name === n || entry.name.split(':')[0] === n)
 const chosen = SCRIPTS.filter(e => (!only.length || matches(e, only)) && !matches(e, skip))
+const byName = Object.fromEntries(SCRIPTS.map(e => [e.name, e]))
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16)
 const OUT = path.resolve(opt('--out', path.join(__dirname, 'out', 'suite-' + stamp)))
+const JOBS = opt('--jobs', '')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const clock = () => new Date().toTimeString().slice(0, 8)
 const log = (...a) => console.log(`[${clock()}]`, ...a)
 const yaml = v => typeof v === 'string' ? v : JSON.stringify(v).replace(/,/g, ', ')
+const logName = name => name.replace(/:/g, '-')
+const shaOf = entry => crypto.createHash('sha1').update(fs.readFileSync(path.join(__dirname, entry.file || entry.name + '.js'))).digest('hex').slice(0, 10)
 
 if (argv.includes('--list')) {
   for (const e of SCRIPTS) {
@@ -124,11 +153,16 @@ if (argv.includes('--list')) {
   process.exit(0)
 }
 
-// ------------------------------------------------------------------ server
+// ------------------------------------------------------------------ one server (env.js's)
 
 /** Makes sure the server answers RCON: waits for one that is starting, starts one that is not there. */
 async function ensureUp () {
   if (await rcon('list').then(() => true, () => false)) return true
+  const mine = server.pids()
+  if (mine !== null && mine.length === 0 && (await server.portOpen(env.PORT) || await server.portOpen(env.RCON_PORT))) {
+    log(`port ${env.PORT} or ${env.RCON_PORT} is taken by a server that is not ${env.SERVER_DIR}: not starting one`)
+    return false
+  }
   if (await server.running()) {
     log('waiting for the server to answer')
     if (await server.up(0, 180000)) return true
@@ -164,6 +198,9 @@ function runOne (entry, file) {
         RCON_PORT: String(env.RCON_PORT),
         RCON_PASSWORD: env.RCON_PASSWORD,
         SERVER_DIR: env.SERVER_DIR,
+        // The detail log of market, marketio and persistence: next to the run's own, not in /tmp,
+        // where two servers running the same script would write over each other.
+        LOG: file.replace(/\.log$/, '.detail.log'),
         ...Object.fromEntries(Object.entries(entry.env || {}).map(([k, v]) => [k, String(v)]))
       }
     })
@@ -191,59 +228,237 @@ function runOne (entry, file) {
   })
 }
 
-// ------------------------------------------------------------------ main
-
-;(async () => {
-  fs.mkdirSync(OUT, { recursive: true })
-  log(`${chosen.length} scripts x ${ROUNDS} round(s) on port ${env.PORT} (RCON ${env.RCON_PORT}), server ${env.SERVER_DIR}; output in ${OUT}`)
-  if (!await ensureUp()) { log('the server did not come up'); process.exit(100) }
+/**
+ * Runs the jobs ({ round, name }) one after another on env.js's server, output under `out`; results
+ * carry their log path relative to `rel` (the folder the merged summary.json lives in).
+ */
+async function runJobs (jobs, out, rel) {
+  fs.mkdirSync(out, { recursive: true })
+  const results = []
+  if (!await ensureUp()) {
+    log('the server did not come up')
+    return jobs.map(j => ({ round: j.round, name: j.name, code: 'no server', seconds: 0, passes: 0, fails: ['the server did not come up'], port: env.PORT }))
+  }
   found = fs.readFileSync(config.FILE, 'utf8')
-  const results = [] // { round, name, code, seconds, passes, fails }
-  const save = () => fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify({ port: env.PORT, rounds: ROUNDS, results }, null, 2))
+  const save = () => fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ port: env.PORT, server: env.SERVER_DIR, results }, null, 2))
   let stopping = false
   process.on('SIGINT', () => { stopping = true; log('stopping after this script (Ctrl-C again to quit at once)'); process.once('SIGINT', () => process.exit(130)) })
   try {
-    for (let round = 1; round <= ROUNDS && !stopping; round++) {
-      fs.mkdirSync(path.join(OUT, String(round)), { recursive: true })
-      for (const entry of chosen) {
-        if (stopping) break
-        if (!await ensureUp()) {
-          results.push({ round, name: entry.name, code: 'no server', seconds: 0, passes: 0, fails: ['the server did not come up'] })
-          continue
-        }
-        await configure(entry)
-        const file = path.join(OUT, String(round), entry.name.replace(/:/g, '-') + '.log')
-        log(`round ${round}: ${entry.name} ...`)
-        const r = await runOne(entry, file)
-        results.push({ round, name: entry.name, ...r })
-        save()
-        log(`round ${round}: ${entry.name} ${r.code === 0 ? 'PASS' : 'FAIL (' + r.code + ')'} in ${r.seconds}s, ${r.passes} checks passed${r.fails.length ? ', failed: ' + r.fails.slice(0, 3).join(' | ') : ''}`)
-        await sleep(3000)
+    for (const job of jobs) {
+      if (stopping) break
+      const entry = byName[job.name]
+      const base = { round: job.round, name: job.name, port: env.PORT, sha: shaOf(entry) }
+      if (!await ensureUp()) {
+        results.push({ ...base, code: 'no server', seconds: 0, passes: 0, fails: ['the server did not come up'] })
+        continue
       }
+      await configure(entry)
+      const file = path.join(out, String(job.round), logName(job.name) + '.log')
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      log(`round ${job.round}: ${job.name} ...`)
+      const r = await runOne(entry, file)
+      results.push({ ...base, ...r, log: path.relative(rel, file) })
+      save()
+      log(`round ${job.round}: ${job.name} ${r.code === 0 ? 'PASS' : 'FAIL (' + r.code + ')'} in ${r.seconds}s, ${r.passes} checks passed${r.fails.length ? ', failed: ' + r.fails.slice(0, 3).join(' | ') : ''}`)
+      await sleep(3000)
     }
   } finally {
     fs.writeFileSync(config.FILE, found)
     await Promise.race([rcon('cv reload'), sleep(10000)]).catch(() => {})
     save()
   }
+  return results
+}
 
-  // Summary: per script, the outcome of every round.
-  const names = [...new Set(results.map(r => r.name))]
+// ------------------------------------------------------------------ shards
+
+/** --shards: [dir=]port:rcon entries, each { dir, port, rconPort, copy } (copy: made from SERVER_DIR). */
+function parseShards () {
+  return opt('--shards', '').split(',').filter(Boolean).map(spec => {
+    const m = spec.match(/^(?:(.+)=)?(\d+):(\d+)$/)
+    if (!m) throw new Error('--shards takes [dir=]port:rcon-port entries, not ' + spec)
+    const port = Number(m[2])
+    return { dir: path.resolve(m[1] || `${env.SERVER_DIR}-shard-${port}`), port, rconPort: Number(m[3]), copy: !m[1] }
+  })
+}
+
+/** Sets key=value lines in a server.properties file. */
+function setProperties (file, values) {
+  let text = fs.readFileSync(file, 'utf8')
+  for (const [k, v] of Object.entries(values)) {
+    const re = new RegExp(`^${k.replace(/\./g, '\\.')}=.*$`, 'm')
+    text = re.test(text) ? text.replace(re, `${k}=${v}`) : text.replace(/\n*$/, '\n') + `${k}=${v}\n`
+  }
+  fs.writeFileSync(file, text)
+}
+
+/** Makes the shard copies that are missing; returns the ones this run made. */
+async function prepareShards (shards) {
+  const main = server.at()
+  const made = []
+  for (const s of shards) {
+    const at = server.at(s)
+    if (s.dir === path.resolve(env.SERVER_DIR) || s.port === env.PORT || s.rconPort === env.RCON_PORT) throw new Error(`shard ${s.port} is SERVER_DIR's own server`)
+    if ((at.pids() || []).length === 0 && (await server.portOpen(s.port) || await server.portOpen(s.rconPort))) {
+      throw new Error(`port ${s.port} or ${s.rconPort} is taken by a server that is not ${s.dir}`)
+    }
+    if (fs.existsSync(s.dir)) continue
+    if (!s.copy) throw new Error('no server at ' + s.dir)
+    if (await main.running()) {
+      log(`stopping ${env.SERVER_DIR} to copy it`)
+      if (!await main.stop({ log })) throw new Error('the server did not stop')
+    }
+    log(`copying ${env.SERVER_DIR} to ${s.dir}`)
+    const cp = spawnSync('cp', ['-a', env.SERVER_DIR, s.dir], { stdio: 'inherit' })
+    if (cp.status !== 0) throw new Error('cp failed')
+    setProperties(path.join(s.dir, 'server.properties'), { 'server-port': s.port, 'rcon.port': s.rconPort, 'query.port': s.port, 'server-ip': '127.0.0.1' })
+    made.push(s)
+  }
+  return made
+}
+
+/** Groups the pending runs by script and deals them out longest first; returns one job list per target. */
+function plan (pending, kept, targets) {
+  const seconds = name => {
+    const times = kept.filter(r => r.name === name && typeof r.seconds === 'number' && r.seconds > 0).map(r => r.seconds)
+    return times.length ? times.reduce((a, b) => a + b, 0) / times.length : 120
+  }
+  const groups = Object.values(pending.reduce((g, job) => { (g[job.name] = g[job.name] || []).push(job); return g }, {}))
+    .map(jobs => ({ jobs: jobs.sort((a, b) => a.round - b.round), cost: seconds(jobs[0].name) * jobs.length }))
+    .sort((a, b) => b.cost - a.cost)
+  const load = targets.map(() => 0)
+  const lists = targets.map(() => [])
+  for (const g of groups) {
+    const i = load.indexOf(Math.min(...load))
+    load[i] += g.cost
+    lists[i].push(...g.jobs)
+  }
+  // On each server, the earlier rounds first; within a round, longest first (as dealt).
+  return lists.map((jobs, i) => ({ jobs: jobs.map((j, n) => ({ ...j, n })).sort((a, b) => a.round - b.round || a.n - b.n), minutes: Math.round(load[i] / 60) }))
+}
+
+/** Runs a child suite on one target; resolves its results. */
+function runShard (target, jobs, folder) {
+  return new Promise(resolve => {
+    fs.mkdirSync(folder, { recursive: true })
+    const file = path.join(folder, 'jobs.json')
+    fs.writeFileSync(file, JSON.stringify(jobs, null, 2))
+    const child = spawn(process.execPath, [__filename, '--jobs', file, '--out', folder, '--rel', OUT], {
+      cwd: __dirname,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PORT: String(target.port), RCON_PORT: String(target.rconPort), SERVER_DIR: target.dir, CRAFTOV_RUN: '', CRAFTOV_DATA: '', SERVER_LOG: '' }
+    })
+    const prefix = line => console.log(`{${target.port}} ${line}`)
+    readline.createInterface({ input: child.stdout }).on('line', prefix)
+    readline.createInterface({ input: child.stderr }).on('line', prefix)
+    child.on('exit', () => {
+      let results = []
+      try { results = JSON.parse(fs.readFileSync(path.join(folder, 'summary.json'), 'utf8')).results } catch { }
+      for (const job of jobs) {
+        if (!results.some(r => r.round === job.round && r.name === job.name)) {
+          results.push({ round: job.round, name: job.name, port: target.port, code: 'not run', seconds: 0, passes: 0, fails: ['the shard stopped before it'] })
+        }
+      }
+      resolve(results)
+    })
+  })
+}
+
+// ------------------------------------------------------------------ main
+
+function table (results) {
+  const names = [...new Set(results.map(r => r.name))].sort((a, b) => SCRIPTS.findIndex(e => e.name === a) - SCRIPTS.findIndex(e => e.name === b))
+  const rounds = Math.max(1, ...results.map(r => r.round))
   const failed = []
   const flaky = []
-  console.log('\nscript                  ' + Array.from({ length: ROUNDS }, (_, i) => `round ${i + 1}`.padEnd(16)).join('') + 'time')
+  const mixed = []
+  console.log('\nscript                  ' + Array.from({ length: rounds }, (_, i) => `round ${i + 1}`.padEnd(16)).join('') + 'time')
   for (const name of names) {
-    const rs = results.filter(r => r.name === name)
-    const ok = rs.map(r => r.code === 0)
+    const rs = Array.from({ length: rounds }, (_, i) => results.find(r => r.name === name && r.round === i + 1))
+    const ok = rs.filter(Boolean).map(r => r.code === 0)
     if (ok.some(x => !x)) failed.push(name)
     if (ok.some(x => x) && ok.some(x => !x)) flaky.push(name)
-    const cells = rs.map(r => (r.code === 0 ? 'pass' : `FAIL(${r.code})`).padEnd(16)).join('')
-    console.log(name.padEnd(24) + cells + rs.map(r => r.seconds + 's').join(' / '))
+    // Results from before the suite recorded hashes have none: only recorded ones are compared.
+    const shas = new Set(rs.filter(r => r && r.sha).map(r => r.sha))
+    if (shas.size > 1) mixed.push(name)
+    const cells = rs.map(r => (!r ? '-' : r.code === 0 ? 'pass' : `FAIL(${r.code})`).padEnd(16)).join('')
+    console.log((name + (shas.size > 1 ? ' *' : '')).padEnd(24) + cells + rs.filter(Boolean).map(r => r.seconds + 's').join(' / '))
   }
-  console.log(`\n${names.length - failed.length}/${names.length} passed every round in ${((Date.now() - t0) / 60000).toFixed(0)} min`)
+  console.log(`\n${names.length - failed.length}/${names.length} passed every round`)
   if (flaky.length) console.log('flaky (passed and failed): ' + flaky.join(', '))
   const always = failed.filter(n => !flaky.includes(n))
   if (always.length) console.log('failed every round: ' + always.join(', '))
+  if (mixed.length) console.log('* ran in more than one version of the script: ' + mixed.join(', '))
   console.log('logs: ' + OUT)
-  process.exit(failed.length)
+  return failed.length
+}
+
+;(async () => {
+  // A child suite: run the jobs it was given on env.js's server.
+  if (JOBS) {
+    const jobs = JSON.parse(fs.readFileSync(JOBS, 'utf8'))
+    log(`${jobs.length} runs on port ${env.PORT} (RCON ${env.RCON_PORT}), server ${env.SERVER_DIR}`)
+    const results = await runJobs(jobs, OUT, path.resolve(opt('--rel', OUT)))
+    process.exit(results.filter(r => r.code !== 0).length)
+  }
+
+  fs.mkdirSync(OUT, { recursive: true })
+  const summaryFile = path.join(OUT, 'summary.json')
+  let kept = []
+  const redone = []
+  if (argv.includes('--resume') && fs.existsSync(summaryFile)) {
+    const old = JSON.parse(fs.readFileSync(summaryFile, 'utf8'))
+    kept = (old.results || []).map(r => ({ log: `${r.round}/${logName(r.name)}.log`, ...r }))
+    redone.push(...(old.redone || []))
+    for (const spec of opt('--redo', '').split(',').filter(Boolean)) {
+      const [name, round] = spec.split('@')
+      const drop = r => r.name === name && (round === '*' || r.round === Number(round))
+      redone.push(...kept.filter(drop).map(r => ({ ...r, redoneAt: new Date().toISOString() })))
+      kept = kept.filter(r => !drop(r))
+    }
+  }
+  const pending = []
+  for (let round = 1; round <= ROUNDS; round++) {
+    for (const entry of chosen) if (!kept.some(r => r.round === round && r.name === entry.name)) pending.push({ round, name: entry.name })
+  }
+  const save = results => fs.writeFileSync(summaryFile, JSON.stringify({ port: env.PORT, rounds: ROUNDS, results, redone }, null, 2))
+  const shards = parseShards()
+  log(`${pending.length} runs (${chosen.length} scripts x ${ROUNDS} round(s), ${kept.length} kept) on ${1 + shards.length} server(s); output in ${OUT}`)
+  if (argv.includes('--dry-run')) {
+    // What would run where, and nothing else.
+    const targets = [{ port: env.PORT }].concat(shards)
+    plan(pending, kept, targets).forEach((l, i) => log(`server ${targets[i].port}: ${l.jobs.length} runs, about ${l.minutes} min: ${l.jobs.map(j => `${j.name}@${j.round}`).join(' ')}`))
+    process.exit(0)
+  }
+
+  let results
+  if (!shards.length) {
+    // One server: in this process, round by round, as listed.
+    const fresh = await runJobs(pending, OUT, OUT)
+    results = kept.concat(fresh)
+    save(results)
+  } else {
+    let made = []
+    try {
+      made = await prepareShards(shards)
+      const targets = [{ dir: env.SERVER_DIR, port: env.PORT, rconPort: env.RCON_PORT }].concat(shards)
+      const lists = plan(pending, kept, targets)
+      lists.forEach((l, i) => log(`server ${targets[i].port}: ${l.jobs.length} runs, about ${l.minutes} min: ${[...new Set(l.jobs.map(j => j.name))].join(' ')}`))
+      let stopping = false
+      process.on('SIGINT', () => { if (!stopping) { stopping = true; log('every shard stops after its current script') } })
+      const fresh = await Promise.all(targets.map((t, i) => runShard(t, lists[i].jobs, path.join(OUT, `shard-${t.port}`))))
+      results = kept.concat(...fresh)
+      save(results)
+    } finally {
+      if (!argv.includes('--keep-shards')) {
+        for (const s of made) {
+          const at = server.at(s)
+          if (await at.running()) { log(`stopping the shard on ${s.port}`); await at.stop({ log }) }
+          if ((at.pids() || []).length === 0) { fs.rmSync(s.dir, { recursive: true, force: true }); log('deleted ' + s.dir) }
+        }
+      }
+    }
+  }
+  log(`done in ${((Date.now() - t0) / 60000).toFixed(0)} min`)
+  process.exit(table(results))
 })()

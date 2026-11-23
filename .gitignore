@@ -11,8 +11,9 @@ build/
 .project
 .settings/
 
-# Local test server (created by server/setup.sh)
+# Local test server (created by server/setup.sh) and the bot suite's copies of it (--shards)
 server/run/
+server/run-shard-*/
 server/cache/
 
 # Python caches from asset generation

@@ -395,13 +395,18 @@ public final class HealthService implements Listener {
         player.setHealth(Math.min(MAX_HP, player.getHealth() + amount));
     }
 
+    /** In a raid, an untreated broken leg, no stamina or an overloaded pack leave no sprint in the player. */
+    public boolean sprintBlocked(Player player) {
+        return plugin.raids().isInRaid(player)
+                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player));
+    }
+
     /**
-     * Sprinting is impossible with an untreated broken leg, no stamina or an overloaded pack (food
-     * at 6 disables it: the vanilla client has no other switch for it).
+     * Sprinting is impossible when {@link #sprintBlocked}, and while aiming down the sights (food at 6
+     * disables it: the vanilla client has no other switch for it).
      */
     public void updateFood(Player player) {
-        boolean noSprint = plugin.raids().isInRaid(player)
-                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player));
+        boolean noSprint = sprintBlocked(player) || plugin.weapons().stopsSprint(player);
         int food = noSprint ? 6 : 20;
         if (player.getFoodLevel() != food) {
             player.setFoodLevel(food);

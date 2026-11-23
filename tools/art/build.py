@@ -227,7 +227,11 @@ def build_items(item_defs):
 
                 hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
                 hip_idle = strafe(model_ref(hip), hp)
-                hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                # Left mouse held on a sprint fires from the hip (run-and-gun): the gun comes up out of
+                # the sprint carry while the trigger is down, so a spray kicks and flashes from one pose
+                # instead of dropping back to the carry between rounds.
+                sprint = key('key.attack', hip_idle, hp['sprint'])
+                hip_rest = key('key.forward', key('key.sprint', sprint, hip_idle), hip_idle)
                 hip_tree = kicked('hip', hip, hip_display, hip_rest)
                 if mask:
                     # A scope: its round mask in first person, the gun (hidden in first person) for the rest.

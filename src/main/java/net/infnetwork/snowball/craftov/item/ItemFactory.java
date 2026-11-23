@@ -63,8 +63,9 @@ public final class ItemFactory {
      * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
      * 14: stackables show one unit's weight and price, so stacks of different sizes merge (#43, which
      * used 13).
+     * 15: grenades carry the throw cooldown group (#42).
      */
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -73,6 +74,12 @@ public final class ItemFactory {
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
     public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
+    /**
+     * Cooldown group of every grenade; ThrowableService runs it after a throw. Without a group of
+     * their own grenades share minecraft:paper with every other Craftov item but guns and knives, and
+     * the cooldown would lock meds, keys and ammo too.
+     */
+    public static final Key THROW_GROUP = Key.key("craftov", "throw");
     /** Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading. */
     public static final int MARK_NONE = 0;
     public static final int MARK_DRAW = 1;
@@ -292,6 +299,9 @@ public final class ItemFactory {
             // Knives have no use action either: only F (InspectService) sets this cooldown, and the
             // client plays the inspect frames of the item model while it counts down.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(INSPECT_GROUP).build());
+        } else if (def.throwable() != null) {
+            // Only the server sets this cooldown, after a throw; the client shades grenades alone meanwhile.
+            stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(THROW_GROUP).build());
         } else if (med != null) {
             ItemUseAnimation animation;
             try {

@@ -47,7 +47,7 @@ public final class ThrowableService implements Listener {
         if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())) {
             return;
         }
-        if (player.hasCooldown(event.getItem())) {
+        if (player.getCooldown(ItemFactory.THROW_GROUP) > 0) {
             return;
         }
         plugin.raids().onAttack(player);
@@ -58,7 +58,7 @@ public final class ThrowableService implements Listener {
         if (!ItemFactory.isTest(thrownStack)) {
             plugin.raids().usedUp(player, def.id(), 1);
         }
-        player.setCooldown(thrownStack, 20);
+        player.setCooldown(ItemFactory.THROW_GROUP, 20);
         Vector velocity = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
         Item item = player.getWorld().dropItem(player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(0.4)), thrownStack, i -> {
             i.setPickupDelay(Integer.MAX_VALUE);

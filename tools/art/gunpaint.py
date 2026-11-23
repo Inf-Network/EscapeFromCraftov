@@ -48,6 +48,7 @@ MATERIALS = {
     'brass': ('#9C7A38', '#B8944A', 'metal'),
     'glass': ('#1B2A38', '#2A4258', 'glass'),
     'red': ('#B02A22', '#C8382C', 'gloss'),
+    'dot': ('#C9C7BE', '#E4E2D8', 'gloss'),     # a sight's white dot
 }
 EDGE = {'metal': 1.55, 'anodised': 1.45, 'polymer': 1.3, 'laminate': 1.22, 'wood': 1.22, 'gloss': 1.35, 'glass': 1.5}
 

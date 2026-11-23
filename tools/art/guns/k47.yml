@@ -37,11 +37,12 @@ pieces:
   - {piece: 13, round: 8, width: 0.8}                         # barrel band
 parts:
   # Rear sight: a block on the trunnion, the leaf, and two ears around the notch. The sight line
-  # stands 0.7 units (20 mm) over the receiver cover, as on an AKM.
+  # stands 0.7 units (20 mm) over the receiver cover, as on an AKM: the ear tops and the front post's
+  # tip are on it, so the aimed eye sees the post standing in the notch.
   - {from: [9.6, 11.95, 7.5], to: [11.0, 12.65, 8.5]}
-  - {from: [10.0, 12.65, 7.55], to: [10.5, 13.05, 8.45]}
-  - {from: [10.1, 13.05, 7.55], to: [10.4, 13.32, 7.86], detail: true}
-  - {from: [10.1, 13.05, 8.14], to: [10.4, 13.32, 8.45], detail: true}
+  - {from: [10.0, 12.65, 7.55], to: [10.5, 12.78, 8.45]}
+  - {from: [10.1, 12.78, 7.55], to: [10.4, 13.05, 7.86], detail: true}
+  - {from: [10.1, 12.78, 8.14], to: [10.4, 13.05, 8.45], detail: true}
   # Front sight: the base round the barrel, the post, and the hood's two ears.
   - {from: [22.0, 10.5, 7.6], to: [23.1, 11.55, 8.4]}
   - {from: [22.15, 11.55, 7.66], to: [23.0, 12.0, 8.34]}

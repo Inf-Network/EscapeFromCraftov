@@ -20,11 +20,12 @@ pieces:
   - {piece: 12, width: 1.28}                                  # receiver
   - {piece: 13, round: 8, width: 0.85}                        # barrel band
 parts:
-  # Rear sight: block, leaf, and the ears round the notch, 0.75 over the receiver cover.
+  # Rear sight: block, leaf, and the ears round the notch, their tops 0.75 over the receiver cover and
+  # level with the front post's tip.
   - {from: [9.7, 12.2, 7.5], to: [11.19, 12.95, 8.5]}
-  - {from: [10.13, 12.95, 7.55], to: [10.66, 13.38, 8.45]}
-  - {from: [10.24, 13.38, 7.55], to: [10.55, 13.66, 7.86], detail: true}
-  - {from: [10.24, 13.38, 8.14], to: [10.55, 13.66, 8.45], detail: true}
+  - {from: [10.13, 12.95, 7.55], to: [10.66, 13.1, 8.45]}
+  - {from: [10.24, 13.1, 7.55], to: [10.55, 13.38, 7.86], detail: true}
+  - {from: [10.24, 13.1, 8.14], to: [10.55, 13.38, 8.45], detail: true}
   # Front sight: base, the post and the hood's ears.
   - {from: [22.95, 10.66, 7.6], to: [24.12, 11.78, 8.4]}
   - {from: [23.11, 11.78, 7.66], to: [24.01, 12.26, 8.34]}

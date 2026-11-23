@@ -17,7 +17,11 @@ pieces:
   - {piece: 9, round: 8, width: 0.76}                         # magazine tube
   - {piece: 10, width: 1.2}                                   # receiver front ring
   - {piece: 11, skip: true}                                   # front bead: rebuilt below
+boxes:
+  - {at: [1.225, 10.44], piece: 7, skip: true}                # the safety's button: lowered below
 parts:
+  # The tang safety's button, below the sight line (standing over it, it covered the aim point).
+  - {centre: [1.225, 10.2, 8.0], size: [0.24, 0.2, 0.3], detail: true}
   - {from: [21.1, 10.21, 7.9], to: [21.32, 10.43, 8.1], mat: brass}
   - {from: [1.7, 10.2, 7.76], to: [7.3, 10.32, 8.24], detail: true}       # rib on the receiver
   - {from: [24.0, 9.37, 7.71], to: [24.12, 10.07, 8.29], mat: bare, detail: true}   # muzzle crown

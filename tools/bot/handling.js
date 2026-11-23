@@ -42,10 +42,11 @@ const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
 const fs = require('fs')
 const path = require('path')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
@@ -186,7 +187,7 @@ const GUNS = ['p18', 'd50', 'sv9', 'v57', 'm4c', 'k47', 'r12', 'scr', 'kl7', 'dm
 /** The handling a gun has with `optic` mounted (a built-in scope is counted in the gun's own). */
 const handlingOf = (gun, optic) => H.guns[gun] == null ? null : H.guns[gun] + (optic ? (H.parts[optic] || 0) : 0)
 
-const LOG = path.join(SERVER_DIR, 'logs/latest.log')
+const LOG = env.LOG
 const logSize = () => { try { return fs.statSync(LOG).size } catch (e) { return 0 } }
 /** The server log written since `from` (bytes). */
 function logSince (from) {

@@ -287,10 +287,10 @@ const scenarios = {
     if (!near.has('警戒') && !near.has('交战')) problems.push(`walking 6 blocks off a guard behind a wall: not heard (${[...near].join(',')})`)
     notes.push(`wall at 12: ${[...far].join(',')}; at 6: ${[...near].join(',')}`)
     await inWorld(A, `fill 50 ${top} 44 70 ${top + 2} 44 minecraft:air`)
-    if (process.env.SERVER_DIR) {
+    if (env.SERVER_DIR_SET) {
       // Players back on vanilla steps: the soldiers still hear by the footstep ranges.
       const fs = require('fs')
-      const file = require('path').join(process.env.SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
+      const file = require('path').join(env.DATA, 'config.yml')
       const before = fs.readFileSync(file, 'utf8')
       const off = before.replace(/^(footsteps:\n(?:[ \t]+#.*\n)*[ \t]+enabled: )true$/m, '$1false')
       if (off === before) {

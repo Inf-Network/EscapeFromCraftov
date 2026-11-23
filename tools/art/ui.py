@@ -216,6 +216,41 @@ def scope_overlay(style='4x', w=1920, h=1080):
     return img
 
 
+# The range's calibration target (RangeService): CALIBRATION_SIZE blocks square, set CALIBRATION_DISTANCE
+# blocks down the range at eye height. Its ring is 40 mil across the radius, where the 4x reticle's thin
+# centre ends and its posts begin (scope_overlay): with the zoom right (4x at a 70 degree field of view
+# and FOV Effects at 100%, or as declared with /cv fov), the posts just touch the ring. Ticks every 5 mil
+# match the 3x hash marks and the 8x mil-dots.
+CALIBRATION_SIZE = 5.0
+CALIBRATION_DISTANCE = 50.0
+
+
+def calibration_target(px=512):
+    img = Image.new('RGBA', (px, px), (226, 222, 210, 255))
+    d = ImageDraw.Draw(img)
+    per_block = px / CALIBRATION_SIZE
+    mil = CALIBRATION_DISTANCE * 0.001 * per_block  # pixels per milliradian at that distance
+    c = px / 2
+    ink = (20, 20, 22, 255)
+    d.rectangle([0, 0, px - 1, px - 1], outline=(90, 90, 92, 255), width=6)
+    r = 40 * mil
+    for w in range(5):
+        d.ellipse([c - r + w, c - r + w, c + r - w, c + r - w], outline=ink)
+    r2 = 20 * mil
+    for w in range(2):
+        d.ellipse([c - r2 + w, c - r2 + w, c + r2 - w, c + r2 - w], outline=(120, 120, 120, 255))
+    d.line([(c - r, c), (c + r, c)], fill=ink, width=2)
+    d.line([(c, c - r), (c, c + r)], fill=ink, width=2)
+    for i in range(1, 9):
+        off = i * 5 * mil
+        half = 7 if i % 2 == 0 else 4
+        for sx in (-1, 1):
+            d.line([(c + sx * off, c - half), (c + sx * off, c + half)], fill=ink, width=2)
+            d.line([(c - half, c + sx * off), (c + half, c + sx * off)], fill=ink, width=2)
+    d.ellipse([c - 5, c - 5, c + 5, c + 5], fill=(220, 40, 30, 255))
+    return img
+
+
 def search_spinner(frames=12):
     """Animated search indicator: a dot chasing round a ring, with a fading trail and a lens in the middle."""
     out = []

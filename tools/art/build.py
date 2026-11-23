@@ -459,6 +459,13 @@ def build_fx():
                      'particle': 'craftov:item/fx/drone_body'},
         'elements': drone})
     write_json(os.path.join(CV, 'items', 'fx', 'drone.json'), {'model': model_ref('craftov:item/fx/drone')})
+    # The range's 50 m calibration target (RangeService): one face at z=8, seen from +Z, scaled by the display.
+    save(ui.calibration_target(), os.path.join(CV, 'textures', 'item', 'fx', 'calibration.png'))
+    write_json(os.path.join(CV, 'models', 'item', 'fx', 'calibration.json'), {
+        'textures': {'t': 'craftov:item/fx/calibration', 'particle': 'craftov:item/fx/calibration'},
+        'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False,
+                      'faces': {'south': {'uv': [0, 0, 16, 16], 'texture': '#t'}, 'north': {'uv': [16, 0, 0, 16], 'texture': '#t'}}}]})
+    write_json(os.path.join(CV, 'items', 'fx', 'calibration.json'), {'model': model_ref('craftov:item/fx/calibration')})
     # Decals are item displays lying flat on the wall (ImpactFx.java): one face at z=8, seen from +Z.
     for name, metal in (('hole', False), ('hole_metal', True)):
         save(bullet_hole(metal, 3 if metal else 5), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))

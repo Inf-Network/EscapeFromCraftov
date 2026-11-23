@@ -483,6 +483,13 @@
    }
   ]
  },
+ "gear.equip": {
+  "sounds": [
+   {
+    "name": "craftov:gear/equip"
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {

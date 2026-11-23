@@ -73,8 +73,9 @@ public final class ItemFactory {
      * 18: the weight line says how many secure-container cells the item takes (#37).
      * 19: gun models (#4, which used 16): guns carry max_damage 5 and, out of the hand, the holster
      * mark (the item model shows the gun low, as the draw starts).
+     * 20: helmets, vests, rigs and backpacks are put on with craftov:gear.equip, not leather (#41).
      */
-    public static final int VERSION = 19;
+    public static final int VERSION = 20;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -417,7 +418,7 @@ public final class ItemFactory {
                 .swappable(swappable)
                 .damageOnHurt(false)
                 .dispensable(false)
-                .equipSound(Key.key("minecraft", "item.armor.equip_leather"));
+                .equipSound(Key.key("craftov", "gear.equip"));
         if (def.equipmentAsset() != null) {
             builder.assetId(Key.key(def.equipmentAsset()));
         }

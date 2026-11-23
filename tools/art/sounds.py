@@ -1,5 +1,7 @@
 """Synthesised sound effects (all original). Mono 44.1 kHz Ogg Vorbis, encoded by oggenc.py."""
 import os
+import zlib
+
 import numpy as np
 from scipy import signal
 
@@ -222,6 +224,44 @@ def kill_chime(n):
 # Added after the rest so the shared noise generator gives every older sound the same samples.
 for _n in range(1, 7):
     SOUNDS['kill/%d' % _n] = (lambda n=_n: kill_chime(n))
+
+
+# ---------------------------------------------------------------- gear and the body (#41)
+
+def add(name, make):
+    """Adds a sound that draws from a noise generator of its own, seeded by its name, so adding or
+    retuning one of these never changes the samples of another sound."""
+    def build():
+        global rng
+        shared, rng = rng, np.random.default_rng(zlib.crc32(name.encode()))
+        try:
+            return make()
+        finally:
+            rng = shared
+    SOUNDS[name] = build
+
+
+def crackle(sec, rate, lo, hi, decay=0.0015, ramp=None):
+    """Dense tiny clicks (fabric, velcro, paper): `rate` impulses a second, each a short band-passed
+    burst; `ramp` (start, end) scales the rate across the sound."""
+    n = int(SR * sec)
+    out = np.zeros(n)
+    tt = np.arange(n) / SR
+    density = rate * (np.interp(tt, [0, sec], ramp) if ramp else 1.0) / SR
+    hits = np.nonzero(rng.uniform(0, 1, n) < density)[0]
+    out[hits] = rng.uniform(0.3, 1.0, len(hits)) * rng.choice([-1, 1], len(hits))
+    kernel = np.exp(-np.arange(int(SR * decay * 6)) / (SR * decay))
+    return bp(np.convolve(out, kernel)[:n], lo, hi)
+
+
+# Putting on a helmet or a vest: fabric dragged over the shoulders, a strap pulled through and a
+# buckle snapping shut.
+add('gear/equip', lambda: norm(mixdown(
+    (env(crackle(0.42, 900, 900, 7000, ramp=(0.6, 1.4)), 0.06, 0.16) * 0.7, 0),
+    (env(bp(noise(0.42), 300, 2500), 0.08, 0.14) * 0.5, 0),
+    (env(crackle(0.12, 2600, 1500, 8000), 0.01, 0.05) * 0.6, 0.3),
+    (click(3800, 0.02, 0.9), 0.43), (metal((2900, 4300), 0.03, 0.12) * 0.5, 0.43),
+    (click(2400, 0.02, 0.6), 0.47), length=int(SR * 0.6))) * 0.7)
 
 
 def write_ogg(data, path):

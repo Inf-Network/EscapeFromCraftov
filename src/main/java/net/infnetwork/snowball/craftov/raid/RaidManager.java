@@ -3381,7 +3381,7 @@ public final class RaidManager implements Listener {
                         Item dropped = player.getWorld().dropItem(player.getLocation(), old);
                         dropped.setPickupDelay(40);
                     }
-                    player.playSound(player.getLocation(), "minecraft:item.armor.equip_leather", 1f, 1f);
+                    player.playSound(player.getLocation(), "craftov:gear.equip", 1f, 1f);
                 } else {
                     Notify.hint(player, "潜行拾取可直接替换当前的" + def.category().displayName());
                 }

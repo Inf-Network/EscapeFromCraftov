@@ -637,6 +637,9 @@ public final class ProfileService implements Listener {
         if (p.presets == null) p.presets = new ArrayList<>();
         if (p.reports == null) p.reports = new ArrayList<>();
         if (p.ips == null) p.ips = new ArrayList<>();
+        if (p.skins == null) p.skins = new java.util.LinkedHashSet<>();
+        if (p.knifeSkins == null) p.knifeSkins = new HashMap<>();
+        p.knifeSkins.values().removeIf(java.util.Objects::isNull);
         if (p.unlockedOperators == null || p.unlockedOperators.isEmpty()) {
             p.unlockedOperators = new java.util.LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
         }

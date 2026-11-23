@@ -112,6 +112,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.hud.KillFeedService killFeed;
     private MenuService menus;
     private net.infnetwork.snowball.craftov.economy.PointsBank profilePoints;
+    private net.infnetwork.snowball.craftov.cosmetic.SkinService skins;
     private net.infnetwork.snowball.craftov.map.editor.EditorService editor;
     private BetterHudHook betterHud = BetterHudHook.NONE;
     private final Map<String, Tier> tiers = new LinkedHashMap<>();
@@ -171,6 +172,7 @@ public final class CraftovPlugin extends JavaPlugin {
         fov = new net.infnetwork.snowball.craftov.weapon.FovService(this);
         triggers = new TriggerService(this);
         inspect = new InspectService(this);
+        skins = new net.infnetwork.snowball.craftov.cosmetic.SkinService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
         replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
@@ -204,7 +206,7 @@ public final class CraftovPlugin extends JavaPlugin {
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
-                inspect, new SwapKeyService(this), market, profiles, killFeed, fov);
+                inspect, new SwapKeyService(this), market, profiles, killFeed, fov, skins);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -423,6 +425,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public WeaponService weapons() { return weapons; }
     public net.infnetwork.snowball.craftov.weapon.FovService fov() { return fov; }
     public InspectService inspect() { return inspect; }
+    public net.infnetwork.snowball.craftov.cosmetic.SkinService skins() { return skins; }
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }

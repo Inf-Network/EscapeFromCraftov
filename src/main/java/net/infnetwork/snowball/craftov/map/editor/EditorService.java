@@ -138,7 +138,7 @@ public final class EditorService implements Listener {
             existing = plugin.maps().get(id);
         }
         if (existing == null && !NAME.matcher(id).matches()) {
-            Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
+            Text.send(player, "<danger>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         World world = player.getWorld();
@@ -239,7 +239,7 @@ public final class EditorService implements Listener {
                 try {
                     minutes = Integer.parseInt(value.trim());
                 } catch (IllegalArgumentException ex) {
-                    Text.send(player, "<#9AA0A6>用法：/cv editor set minutes <分钟数>（至少 5）");
+                    Text.send(player, "<muted>用法：/cv editor set minutes <分钟数>（至少 5）");
                     return;
                 }
                 session.draft.raidMinutes = Math.max(5, minutes);

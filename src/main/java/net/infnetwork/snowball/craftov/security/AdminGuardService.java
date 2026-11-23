@@ -135,9 +135,9 @@ public final class AdminGuardService implements Listener {
         String shown = address.getHostAddress();
         plugin.getLogger().warning("Refused the login of operator " + event.getName() + " (" + event.getUniqueId() + ") from " + shown
                 + ": while nobody checks names (online-mode=false), operators may only log in from security.admin-addresses.");
-        event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Text.mm("<#FF4D4D>这个账号是管理员账号，只能从服务器所在的局域网登录。"
-                + "\n\n<#9AA0A6>服务器没有开启正版验证，任何人都能用这个名字进服。"
-                + "\n<#9AA0A6>如果这就是你，请服主把你的地址 <white>" + Text.escape(shown) + "</white> 加进 Craftov 配置的 security.admin-addresses。"));
+        event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, Text.mm("<danger>这个账号是管理员账号，只能从服务器所在的局域网登录。"
+                + "\n\n<muted>服务器没有开启正版验证，任何人都能用这个名字进服。"
+                + "\n<muted>如果这就是你，请服主把你的地址 <white>" + Text.escape(shown) + "</white> 加进 Craftov 配置的 security.admin-addresses。"));
     }
 
     /** An address block: the first {@code prefix} bits of {@code network}. */

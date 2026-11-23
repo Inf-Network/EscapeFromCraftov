@@ -93,7 +93,7 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 RaidMode mode = args.length >= 4 ? mode(args[3]) : RaidMode.SOLO;
                 if (args.length < 3 || mode == null) {
-                    Text.send(player, "<#9AA0A6>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
+                    Text.send(player, "<muted>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
                     return true;
                 }
                 plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
@@ -169,7 +169,7 @@ public final class CraftovCommand implements TabExecutor {
     private void admin(CommandSender sender, String sub, String[] args) {
         switch (sub) {
             case "give" -> {
-                String usage = "<#9AA0A6>用法：/cv give <玩家> <物品ID> [数量]";
+                String usage = "<muted>用法：/cv give <玩家> <物品ID> [数量]";
                 int amount = args.length > 3 ? positiveInt(args[3]) : 1;
                 if (args.length < 3 || amount <= 0) {
                     Text.send(sender, usage);
@@ -219,23 +219,23 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 java.util.List<String> lines = plugin.killFeed().allLines(target);
                 if (lines.isEmpty()) {
-                    sender.sendMessage(Text.mm("<#9AA0A6>（击杀栏是空的）"));
+                    sender.sendMessage(Text.mm("<muted>（击杀栏是空的）"));
                 }
                 for (String line : lines) {
                     sender.sendMessage(Text.mm(line));
                 }
-                sender.sendMessage(Text.mm("<#9AA0A6>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
+                sender.sendMessage(Text.mm("<muted>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
             }
             case "money" -> {
                 // /cv money <player> <amount>: adds the amount (negative takes money away).
                 Long delta = args.length < 3 ? null : parseLong(args[2]);
                 if (delta == null) {
-                    Text.send(sender, "<#9AA0A6>用法：/cv money <玩家> <数量>（负数为扣除）");
+                    Text.send(sender, "<muted>用法：/cv money <玩家> <数量>（负数为扣除）");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
                 if (target == null) {
-                    Text.send(sender, "<#FF8A80>玩家不在线。");
+                    Text.send(sender, "<danger>玩家不在线。");
                     return;
                 }
                 Profile profile = plugin.profiles().get(target);
@@ -243,7 +243,7 @@ public final class CraftovCommand implements TabExecutor {
                 try {
                     balance = Math.addExact(profile.money, delta);
                 } catch (ArithmeticException ex) {
-                    Text.send(sender, "<#FF8A80>数额过大。");
+                    Text.send(sender, "<danger>数额过大。");
                     return;
                 }
                 profile.money = balance;
@@ -470,21 +470,21 @@ public final class CraftovCommand implements TabExecutor {
         Player online = Bukkit.getPlayerExact(args[1]);
         java.util.UUID uuid = online != null ? online.getUniqueId() : plugin.profiles().findByName(args[1]);
         if (uuid == null) {
-            Text.send(sender, "<#FF8A80>没有叫 " + Text.escape(args[1]) + " 的玩家。");
+            Text.send(sender, "<danger>没有叫 " + Text.escape(args[1]) + " 的玩家。");
             return;
         }
         if (args.length > 2) {
             String error = plugin.luck().adjust(uuid, args[2].toLowerCase(Locale.ROOT),
                     java.util.Arrays.copyOfRange(args, 3, args.length), sender.getName());
             if (error != null) {
-                Text.send(sender, "<#FF8A80>" + Text.escape(error));
+                Text.send(sender, "<danger>" + Text.escape(error));
                 return;
             }
-            Text.send(sender, "<#5BD16B>已修改。");
+            Text.send(sender, "<ok>已修改。");
         }
         Profile profile = plugin.profiles().peek(uuid);
         if (profile == null) {
-            Text.send(sender, "<#FF8A80>读不出这个玩家的档案。");
+            Text.send(sender, "<danger>读不出这个玩家的档案。");
             return;
         }
         for (String line : plugin.luck().describe(profile)) {

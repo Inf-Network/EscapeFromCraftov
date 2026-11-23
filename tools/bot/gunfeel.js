@@ -554,9 +554,10 @@ function barsOf (item) {
       const n = (r.text.match(/▍/g) || []).length
       total += n
       const c = String(r.color || '').toUpperCase()
-      if (c === '#5BD16B') gain += n
-      if (c === '#FF4D4D') loss += n
-      if (c !== '#3A3F47' && c !== '#FF4D4D') filled += n
+      // The palette's ok, danger and line colours (gui/Style).
+      if (c === '#7FD1AE') gain += n
+      if (c === '#E5484D') loss += n
+      if (c !== '#2C333D' && c !== '#E5484D') filled += n
     }
     const tail = text.slice(text.lastIndexOf('▍') + 1).trim()
     const nums = (tail.match(/[\d.]+/g) || []).map(Number)

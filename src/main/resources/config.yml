@@ -115,6 +115,10 @@ raid:
   # Whoever is still on the entry camera this long after deployment (s) is put down on their insertion
   # point at once. The camera itself takes about 7 s; values below 10 count as 10.
   deploy-timeout-seconds: 20
+  # After "match found" the map's template folder is copied off the main thread while the squads wait in
+  # the lobby (they cannot queue again meanwhile; whoever leaves the server drops out). A copy that has
+  # not finished after this many seconds calls the launch off: everyone is told and can queue again.
+  map-copy-timeout-seconds: 60
   # A raid the server stops in (or crashes in) is void for everyone still in it, flying in, downed or
   # disconnected included: back to the gear and secure container they went in with, entry fee and
   # insurance premium refunded, and nothing gained in it counts. Each of them also gets a letter in the
@@ -259,6 +263,9 @@ combat:
     # baked into the resource pack as 50 frames over the inspect (tools/art/knife_inspect.py): a
     # different length plays the same motion faster or slower.
     inspect-ticks: 50
+    # F during a cut waits for the swing to end and inspects then. A player who keeps cutting gets
+    # 出刀中无法检视 on the action bar once a press has waited this many ticks (6 at least, one swing).
+    inspect-swing-wait-ticks: 12
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
@@ -388,6 +395,28 @@ weapons:
     muffled-dry: 0.2
     # Each shot's level varies at random by up to this many dB either way.
     level-jitter-db: 1.0
+
+throwables:
+  frag:
+    # Shrapnel flies at the head, the torso and the legs, each line a third of the grenade's damage
+    # (items.yml), falling off with distance and stopped by any block. Where it lands it goes through
+    # the helmet (head) or vest (chest, stomach) like a round of this penetration (the ammo's `pen`
+    # in items.yml; combat.armor.damage-taken), and wears it by its damage x armor-damage x
+    # combat.armor.wear-*. The legs and a bare head or torso take it in full (the torso and legs at
+    # combat.zone-multipliers, the head without a head bonus). At 2 penetration a class 6 helmet or
+    # vest at full strength lets 15% of it through, class 3 40% and class 2 60%.
+    penetration: 2
+    armor-damage: 1.5
+  bounce:
+    # Share of its speed into a face that a grenade keeps when it bounces off it: walls and ceilings,
+    # and the floor (a landing too soft to leave the ground again settles). It falls and slows in
+    # the air as a dropped item does, scrapes off some speed along whatever it hits and rolls to a
+    # stop on the ground.
+    wall: 0.35
+    floor: 0.25
+  # While the pin is out (right mouse held), dots that only the thrower sees trace where the grenade
+  # would fly if let go now, bounces included, and a red dot marks where it would go off.
+  preview: true
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

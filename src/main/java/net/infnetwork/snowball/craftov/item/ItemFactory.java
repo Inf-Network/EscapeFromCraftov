@@ -67,8 +67,11 @@ public final class ItemFactory {
      * reads 1.5x, not the old 0.74 field of view), max_damage 4 for the aiming marks (the sights are
      * the server's, see {@link #setHandMark}), and guns always carry a damage component (0 without a
      * mark).
+     * 17: grenades carry the throw cooldown group, and a long use so they can be held to cook (#42).
+     * The grenade line used 16 to stay clear of the ads line's 15; it landed second, so it goes one
+     * past both, or stacks already rebuilt at 15 or 16 would keep missing one side's changes.
      */
-    public static final int VERSION = 15;
+    public static final int VERSION = 17;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -77,6 +80,12 @@ public final class ItemFactory {
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
     public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
+    /**
+     * Cooldown group of every grenade; ThrowableService runs it after a throw. Without a group of
+     * their own grenades share minecraft:paper with every other Craftov item but guns and knives, and
+     * the cooldown would lock meds, keys and ammo too.
+     */
+    public static final Key THROW_GROUP = Key.key("craftov", "throw");
     /**
      * Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading, the sights
      * coming up, aimed.
@@ -302,6 +311,25 @@ public final class ItemFactory {
             // Knives have no use action either: only F (InspectService) sets this cooldown, and the
             // client plays the inspect frames of the item model while it counts down.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(INSPECT_GROUP).build());
+        } else if (def.throwable() != null) {
+            // Only the server sets this cooldown, after a throw; the client shades grenades alone meanwhile.
+            stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(THROW_GROUP).build());
+            // Holding right mouse "uses" the grenade, which is how the server learns when the button
+            // comes up again (ThrowableService cooks it meanwhile). The use never finishes: a grenade
+            // goes off long before ten minutes, and the eating sound only starts after a fifth of
+            // the use. No use pose (the trident's turns the flat sprite into a slab across the top
+            // of the screen), and walking and sprinting stay as they are.
+            stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
+                    .consumeSeconds(600f)
+                    .animation(ItemUseAnimation.NONE)
+                    .sound(Key.key("craftov", "throw.pin"))
+                    .hasConsumeParticles(false)
+                    .build());
+            stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()
+                    .canSprint(true)
+                    .speedMultiplier(1.0f)
+                    .interactVibrations(false)
+                    .build());
         } else if (med != null) {
             ItemUseAnimation animation;
             try {

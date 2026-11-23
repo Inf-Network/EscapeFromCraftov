@@ -9,6 +9,7 @@ import org.bukkit.Difficulty;
 import org.bukkit.GameRule;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
+import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.Plugin;
 import org.jspecify.annotations.Nullable;
 
@@ -20,9 +21,12 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -41,6 +45,8 @@ public final class WorldService {
     private final Plugin plugin;
     private final MapRegistry maps;
     private final AtomicInteger counter = new AtomicInteger();
+    /** Templates with raid copies under way on scheduler threads, and how many. Server thread only. */
+    private final Map<String, Integer> copying = new HashMap<>();
 
     public WorldService(Plugin plugin, MapRegistry maps) {
         this.plugin = plugin;
@@ -220,10 +226,14 @@ public final class WorldService {
      * Publishes a working copy: the copy's folder becomes the template's, and the template's
      * becomes &lt;template&gt;.prev (the one before that is deleted), so a publish can be undone
      * by hand. Both worlds are unloaded first (the copy saved, the template not: nothing may have
-     * changed it), so players must have been moved out. Runs on the main thread, as raids copy the
-     * template, so no raid can see the folder half replaced. Returns null when done, or why not.
+     * changed it), so players must have been moved out. Refused while a raid's copy of the
+     * template is under way ({@link #copyRaidTemplate}), so no raid can see the folder half
+     * replaced. Returns null when done, or why not.
      */
     public @Nullable String replaceTemplate(String template, String copy) {
+        if (copying(template)) {
+            return "有对局正在复制这张图的模板，几秒后再试";
+        }
         if (!unload(copy, true)) {
             return "编辑副本卸载失败（里面还有人？）";
         }
@@ -257,30 +267,110 @@ public final class WorldService {
         return null;
     }
 
-    /** Copies a template world and loads it for one raid. Returns null on failure. */
-    public @Nullable World createRaidWorld(MapDef map) {
-        File container = Bukkit.getWorldContainer();
-        File source = new File(container, map.template());
-        if (!source.exists()) {
+    /**
+     * First half of a raid's world: copies the map's template to a new raid folder. The copy runs
+     * on a scheduler thread, since copying on the server thread held up every running raid while
+     * it lasted (issue #45). The future completes on the server thread with the folder's name, or
+     * with null when the copy failed (logged). A template that is loaded (open in the editor) is
+     * saved and copied right here instead, as before: its chunks could be written to disk while a
+     * copy on another thread reads them.
+     *
+     * <p>While a copy of a template is under way, {@link #replaceTemplate} refuses to swap that
+     * template's folder. If the plugin is disabled before the copy ends, the future never
+     * completes and the folder is deleted ({@link #cleanupStale} removes what is left on the next
+     * start).
+     */
+    public CompletableFuture<@Nullable String> copyRaidTemplate(MapDef map) {
+        CompletableFuture<@Nullable String> result = new CompletableFuture<>();
+        String template = map.template();
+        Path container = Bukkit.getWorldContainer().toPath();
+        Path source = container.resolve(template);
+        if (!Files.isDirectory(source)) {
             plugin.getLogger().severe("Template world missing: " + source);
-            return null;
+            result.complete(null);
+            return result;
         }
-        World loadedTemplate = Bukkit.getWorld(map.template());
+        String name = RAID_PREFIX + System.currentTimeMillis() % 100000 + "_" + counter.incrementAndGet();
+        Path target = container.resolve(name);
+        World loadedTemplate = Bukkit.getWorld(template);
         if (loadedTemplate != null) {
             // Flushed before the folder is copied: save() alone only queues chunks for the IO
             // thread, which may still be writing region files while they are read.
             loadedTemplate.save(true);
+            result.complete(copyTemplate(template, source, target) ? name : null);
+            return result;
         }
-        String name = RAID_PREFIX + System.currentTimeMillis() % 100000 + "_" + counter.incrementAndGet();
-        File target = new File(container, name);
+        copying.merge(template, 1, Integer::sum);
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean copied = false;
+            try {
+                copied = copyTemplate(template, source, target);
+            } finally {
+                // Even when the copy died of something copyTemplate does not catch (an Error): the
+                // count must drop, or the map could not be published again until a restart, and
+                // the launch must hear of it rather than wait out its timeout. Its half-copied
+                // folder goes too (copyTemplate removes it itself for what it catches).
+                if (!copied) {
+                    deleteQuietly(target);
+                }
+                @Nullable String folder = copied ? name : null;
+                try {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        copying.computeIfPresent(template, (key, count) -> count > 1 ? count - 1 : null);
+                        result.complete(folder);
+                    });
+                } catch (IllegalPluginAccessException ex) {
+                    // Disabled meanwhile: nobody is waiting for this world any more.
+                    deleteQuietly(target);
+                }
+            }
+        });
+        return result;
+    }
+
+    /** Whether a raid's copy of this template is under way on a scheduler thread. */
+    public boolean copying(String template) {
+        return copying.containsKey(template);
+    }
+
+    /**
+     * Raid copies of templates under way on scheduler threads, for /cv raids: what makes
+     * {@link #replaceTemplate} refuse, counted even when nobody waits for the copy any more (its
+     * launch timed out, or everyone in it left).
+     */
+    public int copies() {
+        return copying.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    /** Copies a template folder for a raid, logging how long it took. A failed copy is removed. */
+    private boolean copyTemplate(String template, Path source, Path target) {
+        long start = System.nanoTime();
         try {
-            copy(source.toPath(), target.toPath());
-        } catch (IOException ex) {
-            plugin.getLogger().severe("Could not copy template " + map.template() + ": " + ex.getMessage());
-            return null;
+            long bytes = copy(source, target);
+            plugin.getLogger().info("Copied template " + template + " to " + target.getFileName() + " (" + megabytes(bytes)
+                    + ") in " + millis(System.nanoTime() - start));
+            return true;
+        } catch (IOException | RuntimeException ex) {
+            // RuntimeException too: a file system provider may throw an UncheckedIOException, or a
+            // SecurityException, while the tree is walked.
+            plugin.getLogger().severe("Could not copy template " + template + ": " + ex);
+            deleteQuietly(target);
+            return false;
         }
+    }
+
+    /**
+     * Second half of a raid's world, on the server thread (Bukkit allows nothing else): loads a
+     * folder {@link #copyRaidTemplate} made. Returns null on failure, with the folder deleted.
+     */
+    public @Nullable World loadRaidWorld(String name, MapDef map) {
+        long start = System.nanoTime();
         World world = creator(name).createWorld();
+        // The part of a raid's start that still holds up every running raid.
+        plugin.getLogger().info("Loaded raid world " + name + " in " + millis(System.nanoTime() - start));
         if (world == null) {
+            plugin.getLogger().severe("Could not load raid world " + name);
+            discardRaidCopy(name);
             return null;
         }
         applyRules(world, true);
@@ -291,6 +381,16 @@ public final class WorldService {
             default -> 12300;
         });
         return world;
+    }
+
+    /** Deletes a raid folder that was copied but will not be loaded (its launch was called off). */
+    public void discardRaidCopy(String name) {
+        Path folder = Bukkit.getWorldContainer().toPath().resolve(name);
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> deleteQuietly(folder));
+        } else {
+            deleteQuietly(folder);
+        }
     }
 
     public void disposeRaidWorld(World world) {
@@ -323,7 +423,9 @@ public final class WorldService {
         }
     }
 
-    private static void copy(Path from, Path to) throws IOException {
+    /** Copies a world folder (without its lock and uid). Returns the bytes copied. */
+    private static long copy(Path from, Path to) throws IOException {
+        long[] bytes = {0};
         Files.walkFileTree(from, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -335,10 +437,20 @@ public final class WorldService {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (!SKIP.contains(file.getFileName().toString())) {
                     Files.copy(file, to.resolve(from.relativize(file)), StandardCopyOption.REPLACE_EXISTING);
+                    bytes[0] += attrs.size();
                 }
                 return FileVisitResult.CONTINUE;
             }
         });
+        return bytes[0];
+    }
+
+    private static String millis(long nanos) {
+        return nanos / 1_000_000 + " ms";
+    }
+
+    private static String megabytes(long bytes) {
+        return String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0);
     }
 
     private void deleteQuietly(Path root) {

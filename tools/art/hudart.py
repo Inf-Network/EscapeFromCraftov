@@ -56,9 +56,8 @@ CROSSHAIR_EDGE = (0, 0, 0, 150)
 
 def crosshair(gap, arm=CROSSHAIR_ARM):
     """Four arms `gap` pixels out from a centre dot, each `arm` long, all one pixel wide with a dark
-    outline so they read on sky, snow and grey concrete alike. The vanilla crosshair under it is a
-    single dot too (vanilla_crosshair), which this dot covers: drawn by inverting what is behind it,
-    the vanilla one vanishes on mid-grey."""
+    outline so they read on sky, snow and grey concrete alike. The vanilla crosshair is cleared
+    (vanilla_crosshair): this is the only one."""
     n = CROSSHAIR_SIZE
     c = n // 2
     img = Image.new('RGBA', (n, n), (0, 0, 0, 0))
@@ -89,12 +88,11 @@ def dot_crosshair():
 
 
 def vanilla_crosshair():
-    """The vanilla crosshair sprite (15x15, drawn centred and inverting what is behind it): one dot in
-    the middle, exactly where the shot goes. It is all there is while aiming, where the sights are the
-    aim point and an outlined dot would cover a red dot's reticle, and if BetterHud is missing."""
-    img = Image.new('RGBA', (15, 15), (0, 0, 0, 0))
-    img.putpixel((7, 7), (255, 255, 255, 255))
-    return img
+    """The vanilla crosshair sprite (15x15), cleared: the client draws it over the camera overlay and
+    the held item, where even a single inverted dot covered a red dot's 4-pixel reticle. Craftov's
+    crosshair is a HUD of its own (craftov_crosshair), drawn at the hip and hidden while aiming, when
+    the sights are the aim point."""
+    return Image.new('RGBA', (15, 15), (0, 0, 0, 0))
 
 
 def knock_marker(color, size=19, ring=2, inner=3, outer=5):

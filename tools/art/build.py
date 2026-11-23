@@ -159,6 +159,9 @@ def build_items(item_defs):
             icon = models.optic_icon(item_id)
             held = 'craftov:item/optic/' + item_id
             save(models.optic_skin_image(item_id), os.path.join(CV, 'textures', 'item', 'optic', item_id + '_skin.png'))
+            if item_id in models.RETICLE:
+                kind = models.RETICLE[item_id]['kind']
+                save(models.reticle_image(kind), os.path.join(CV, 'textures', 'item', 'optic', 'reticle_' + kind + '.png'))
             write_json(os.path.join(CV, 'models', 'item', 'optic', item_id + '.json'), models.optic_item_model(item_id))
         else:
             icon = icons.render(item_id)
@@ -499,7 +502,7 @@ def build_skins():
 
 
 def build_vanilla_hud():
-    """Hide vanilla hearts, hunger, armor, air and XP, and cut the crosshair to a dot: Craftov draws its own HUD."""
+    """Hide vanilla hearts, hunger, armor, air, XP and the crosshair: Craftov draws its own HUD."""
     blank9 = Image.new('RGBA', (9, 9), (0, 0, 0, 0))
     names = ['food_empty', 'food_half', 'food_full', 'food_empty_hunger', 'food_half_hunger', 'food_full_hunger',
              'armor_empty', 'armor_half', 'armor_full', 'air', 'air_empty', 'air_bursting']
@@ -517,7 +520,7 @@ def build_vanilla_hud():
         save(blank9, os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'heart', n + '.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_background.png'))
     # The crosshair is BetterHud's (craftov_crosshair: an outlined dot whose arms open with the spread,
-    # hidden while aiming); the vanilla one is just a dot in the middle, under it.
+    # hidden while aiming, when the sights are the aim point); the vanilla one is cleared.
     save(hudart.vanilla_crosshair(), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'crosshair.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_progress.png'))
 

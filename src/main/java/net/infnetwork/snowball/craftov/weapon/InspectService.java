@@ -56,13 +56,16 @@ public final class InspectService implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onKey(PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
+        ItemDef def = knife(player);
         if (player.isSneaking()) {
+            debug(player, "F ->", "ignored: sneaking (operator skill)");
             return;
         }
-        ItemDef def = knife(player);
         if (def != null) {
             event.setCancelled(true);
             start(player, def);
+        } else {
+            debug(player, "F ->", "ignored: no knife");
         }
     }
 
@@ -72,8 +75,11 @@ public final class InspectService implements Listener {
      */
     private void start(Player player, ItemDef def) {
         if (inspecting(player) || !free(player)) {
+            debug(player, "F ->", inspecting(player) ? "ignored: already inspecting"
+                    : player.isSprinting() ? "refused: sprinting" : "refused: downed, reviving or spectating");
             return;
         }
+        debug(player, "F ->", "started");
         int ticks = Math.max(1, plugin.getConfig().getInt("combat.melee.inspect-ticks", 50));
         active.put(player.getUniqueId(), new Inspect(Bukkit.getCurrentTick() + ticks,
                 player.getInventory().getHeldItemSlot(), def.id()));
@@ -81,8 +87,9 @@ public final class InspectService implements Listener {
     }
 
     /** Ends a running inspect at once: the client snaps back to the knife's normal pose. */
-    private void stop(Player player) {
+    private void stop(Player player, String why) {
         if (active.remove(player.getUniqueId()) != null) {
+            debug(player, "stop", why);
             player.setCooldown(ItemFactory.INSPECT_GROUP, 0);
         }
     }
@@ -115,6 +122,7 @@ public final class InspectService implements Listener {
             if (def == null || !def.id().equals(inspect.item) || player.getInventory().getHeldItemSlot() != inspect.slot
                     || !free(player)) {
                 it.remove();
+                debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "not free");
                 player.setCooldown(ItemFactory.INSPECT_GROUP, 0);
             }
         }
@@ -124,19 +132,35 @@ public final class InspectService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onSwing(PlayerArmSwingEvent event) {
         if (event.getHand() == EquipmentSlot.HAND) {
-            stop(event.getPlayer());
+            debug(event.getPlayer(), "swing", "");
+            stop(event.getPlayer(), "swing");
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onHeld(PlayerItemHeldEvent event) {
-        stop(event.getPlayer());
+        debug(event.getPlayer(), "slot", event.getPreviousSlot() + " -> " + event.getNewSlot());
+        stop(event.getPlayer(), "slot switch");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSprint(PlayerToggleSprintEvent event) {
+        debug(event.getPlayer(), "sprint", String.valueOf(event.isSprinting()));
         if (event.isSprinting()) {
-            stop(event.getPlayer());
+            stop(event.getPlayer(), "sprint");
+        }
+    }
+
+    /**
+     * With {@code debug: true}, one line for each F with a knife and what came of it, and for each
+     * event that can end an inspect: what tools/shots/scenes/inspectkeys.py reads to tell why a
+     * press did nothing.
+     */
+    private void debug(Player player, String what, String detail) {
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] inspect %s %s %s tick=%d slot=%d sprint=%b sneak=%b",
+                    player.getName(), what, detail, Bukkit.getCurrentTick(), player.getInventory().getHeldItemSlot(),
+                    player.isSprinting(), player.isSneaking()));
         }
     }
 

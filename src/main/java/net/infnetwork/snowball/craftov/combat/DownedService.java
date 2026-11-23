@@ -75,6 +75,12 @@ public final class DownedService implements Listener {
     }
 
     private static final BlockData BARRIER = Material.BARRIER.createBlockData();
+    /**
+     * An invisible ceiling over the upper half of a block: the pack draws a top purpur slab as nothing
+     * (tools/art/build.py). Purpur is in no Craftov map, and CraftEngine keeps petrified oak slabs for
+     * its own blocks.
+     */
+    private static final BlockData HALF_CEILING = Bukkit.createBlockData("minecraft:purpur_slab[type=top,waterlogged=false]");
     private final CraftovPlugin plugin;
     private final Map<UUID, Downed> downed = new HashMap<>();
     /** reviver -> (downed player, tick of last right-click). */
@@ -101,6 +107,12 @@ public final class DownedService implements Listener {
     private static final int REFUSAL_TICKS = 40;
     /** How long a refusal stays on the revive bar. */
     private static final int BUSY_REFUSAL_TICKS = 20;
+    /**
+     * Runs of {@link #tick} (every 5 ticks) so far. The heartbeat and the bandage sound come round
+     * on every fourth, once a second, counted here rather than read off the server tick, whose
+     * phase against this timer depends on when the plugin was enabled.
+     */
+    private long runs;
 
     public DownedService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -169,6 +181,9 @@ public final class DownedService implements Listener {
     }
 
     public void down(Raid raid, RaidPlayer rp, Player player, DamageService.@Nullable LastHit cause) {
+        // Off the slide's seat before the crawl: the crawl's pose and its block over the head go by
+        // where the player stands.
+        plugin.slides().stop(player);
         rp.downs++;
         rp.state = RaidPlayer.State.DOWNED;
         boolean first = rp.downs == 1;
@@ -229,6 +244,7 @@ public final class DownedService implements Listener {
             rp.state = RaidPlayer.State.ALIVE;
         }
         uncrawl(player, state);
+        getUp(player);
         // Getting up, the gun has to come up again: without this the state bound while downed had
         // finished its draw long ago, so a revived player could fire on the tick they stood.
         plugin.weapons().reset(player);
@@ -302,6 +318,7 @@ public final class DownedService implements Listener {
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        boolean second = runs++ % 4 == 0;
         refusals.keySet().retainAll(downed.keySet());
         refusals.values().removeIf(refusal -> now - refusal.getValue() >= REFUSAL_TICKS);
         busyRefusals.values().removeIf(refusal -> now - refusal.getValue() >= BUSY_REFUSAL_TICKS);
@@ -336,7 +353,7 @@ public final class DownedService implements Listener {
                     interrupt(state, at);
                 }
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
-                reviveEffects(reviver, player);
+                reviveEffects(reviver, player, second);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
                 String note = now - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
                 // What either of them just tried and could not do goes on their own revive bar,
@@ -360,7 +377,7 @@ public final class DownedService implements Listener {
             state.reviver = null;
             state.reviveTicks = 0;
             state.pool -= 0.25;
-            if (Bukkit.getCurrentTick() % 20 < 5) {
+            if (second) {
                 player.getWorld().spawnParticle(Particle.BLOCK, player.getLocation().add(0, 0.2, 0), 4, 0.3, 0.05, 0.3,
                         Material.REDSTONE_BLOCK.createBlockData());
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
@@ -407,11 +424,12 @@ public final class DownedService implements Listener {
 
     /**
      * A reviver who takes damage loses the progress they made. Their own wounds bleeding does not
-     * count: a medic who is bleeding could never finish otherwise.
+     * count (a medic who is bleeding could never finish otherwise): bleeding is no damage event, it
+     * comes straight off their health (RaidManager.loseHealth).
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onReviverHurt(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0 || plugin.health().isBleeding()) {
+        if (!(event.getEntity() instanceof Player hurt) || event.getFinalDamage() <= 0) {
             return;
         }
         UUID id = hurt.getUniqueId();
@@ -459,16 +477,19 @@ public final class DownedService implements Listener {
         return false;
     }
 
-    /** The reviver kneels over the downed player and works on them; everyone nearby sees it. */
-    private void reviveEffects(Player reviver, Player patient) {
+    /**
+     * The reviver kneels over the downed player and dresses the wound: others see them crouched with
+     * a bandage worked back and forth in hand (StanceService's revive stance) and hear the bandage
+     * being wrapped once a second (on {@code second}).
+     */
+    private void reviveEffects(Player reviver, Player patient, boolean second) {
         if (reviver.getPose() != Pose.SNEAKING) {
             reviver.setPose(Pose.SNEAKING, true);
         }
-        Location at = patient.getLocation().add(0, 0.4, 0);
-        reviver.swingMainHand();
-        patient.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, at, 3, 0.35, 0.15, 0.35, 0);
-        if (Bukkit.getCurrentTick() % 20 < 5) {
-            patient.getWorld().playSound(at, "minecraft:item.armor.equip_leather", SoundCategory.PLAYERS, 0.6f, 1.2f);
+        if (second) {
+            Location at = patient.getLocation().add(0, 0.4, 0);
+            patient.getWorld().playSound(at, "craftov:med.wrap", SoundCategory.PLAYERS, 0.7f,
+                    0.95f + java.util.concurrent.ThreadLocalRandom.current().nextFloat() * 0.1f);
         }
     }
 
@@ -535,6 +556,9 @@ public final class DownedService implements Listener {
      * the range alone reached through a wall or up a flight of stairs.
      */
     private @Nullable String reviveBlocker(Player reviver, Player downedPlayer) {
+        if (plugin.slides().isSliding(reviver)) {
+            return "滑铲中无法救援";
+        }
         Location from = reviver.getLocation();
         Location to = downedPlayer.getLocation();
         double range = plugin.getConfig().getDouble("downed.revive-range", 2.2);
@@ -566,20 +590,49 @@ public final class DownedService implements Listener {
         return false;
     }
 
-    /** Forces the crawling pose by placing a client-side barrier above the player's head. */
+    /**
+     * A revived player comes up through a crouch: everyone else sees them kneel for
+     * downed.get-up-ticks before they stand, instead of springing upright on the spot. (Their own
+     * client stands at once; it decides its own pose.)
+     */
+    private void getUp(Player player) {
+        int ticks = plugin.getConfig().getInt("downed.get-up-ticks", 12);
+        if (ticks <= 0 || !player.isOnline()) {
+            return;
+        }
+        player.setPose(Pose.SNEAKING, true);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline() && !isDowned(player) && !isReviving(player) && player.hasFixedPose()
+                    && player.getPose() == Pose.SNEAKING) {
+                player.setPose(Pose.STANDING, false);
+            }
+        }, ticks);
+    }
+
+    /**
+     * Forces the crawling pose on the player's own client with a client-side block over their head: one
+     * that leaves room for the crawl (0.6 high) but not for a crouch (1.5). A full barrier block does
+     * that unless the feet are between 0.4 and 0.5 into a block (on a slab, say), where the block above
+     * the head is out of the crouch's reach and the one below it in the crawl's: there an invisible top
+     * slab ({@link #HALF_CEILING}) fills the upper half of the block above the feet's block instead.
+     * Without it the player crouched rather than crawled there.
+     */
     private void crawl(Player player, Downed state) {
-        // Server-side pose so other players see the crawl; the fake barrier keeps the own client down.
+        // Server-side pose so other players see the crawl; the fake block keeps the own client down.
         if (player.getPose() != Pose.SWIMMING || !player.hasFixedPose()) {
             player.setPose(Pose.SWIMMING, true);
         }
-        Location head = player.getLocation().add(0, 1.5, 0);
-        Block block = head.getBlock();
+        Location feet = player.getLocation();
+        double into = feet.getY() - Math.floor(feet.getY());
+        boolean slab = into > 0.4 + 1e-6 && into <= 0.5 + 1e-6;
+        Block block = feet.clone().add(0, slab ? 1.0 : 1.5, 0).getBlock();
+        BlockData shown = slab ? HALF_CEILING : BARRIER;
         if (state.fakeBlock != null && !state.fakeBlock.getBlock().equals(block)) {
             player.sendBlockChange(state.fakeBlock, state.fakeBlock.getBlock().getBlockData());
             state.fakeBlock = null;
         }
         if (block.getType().isAir()) {
-            player.sendBlockChange(block.getLocation(), BARRIER);
+            player.sendBlockChange(block.getLocation(), shown);
             state.fakeBlock = block.getLocation();
         }
     }

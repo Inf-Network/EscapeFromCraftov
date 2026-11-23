@@ -33,7 +33,8 @@ import java.util.UUID;
  * <p>The rule (#104, #116): with a knife in hand, F inspects, unless the player is downed, revives
  * or spectates, and then the action bar says why. A sprint is no reason: F inspects on the run, the
  * sprint goes on through the inspect, and starting to sprint does not end one. F during an inspect
- * starts it over. F during a swing waits for the swing to finish and starts the inspect then.
+ * starts it over. F during a swing waits for the swing to finish (a knife's stab, as long as its
+ * swing_animation says) and starts the inspect then.
  *
  * <p>Swinging (a cut, Q, a click on a block), switching slot, being downed or reviving ends it at
  * once by clearing the cooldown. It never touches the knife's swing interval, so a cut during an
@@ -41,16 +42,16 @@ import java.util.UUID;
  */
 public final class InspectService implements Listener {
 
-    /** Ticks the arm swings on the client after a cut, Q or a click (vanilla, no haste or fatigue). */
-    private static final int SWING_TICKS = 6;
-
     private final CraftovPlugin plugin;
     /** Players inspecting a knife: the tick it ends, the hotbar slot and the knife it started with. */
     private final Map<UUID, Inspect> active = new HashMap<>();
     /** F pressed during a swing: the tick, the hotbar slot and the knife, until the swing is over. */
     private final Map<UUID, Inspect> waiting = new HashMap<>();
-    /** The tick of each player's last swing of the main hand. */
-    private final Map<UUID, Long> swung = new HashMap<>();
+    /**
+     * The tick each player's last swing of the main hand ends on their client: a knife stabs for its
+     * own swing_animation's length (ItemFactory.swingTicks), up to 8 ticks, not vanilla's 6.
+     */
+    private final Map<UUID, Long> swingEnds = new HashMap<>();
 
     /** An inspect, or a press waiting for a swing: {@code at} is the end, or the tick F was read. */
     private record Inspect(long at, int slot, String item) {
@@ -68,7 +69,7 @@ public final class InspectService implements Listener {
     }
 
     private boolean swinging(Player player) {
-        return Bukkit.getCurrentTick() - swung.getOrDefault(player.getUniqueId(), -1000L) < SWING_TICKS;
+        return Bukkit.getCurrentTick() < swingEnds.getOrDefault(player.getUniqueId(), -1000L);
     }
 
     /** F with this knife in hand and without Shift, read by SwapKeyService once the client's tick is over. */
@@ -169,7 +170,7 @@ public final class InspectService implements Listener {
     private void tick() {
         long now = Bukkit.getCurrentTick();
         // A press waits this long at most for the swings to stop (a player cutting on and on).
-        int swingWait = Math.max(SWING_TICKS, plugin.getConfig().getInt("combat.melee.inspect-swing-wait-ticks", 12));
+        int swingWait = plugin.getConfig().getInt("combat.melee.inspect-swing-wait-ticks", 12);
         for (Iterator<Map.Entry<UUID, Inspect>> it = waiting.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<UUID, Inspect> entry = it.next();
             Inspect press = entry.getValue();
@@ -181,7 +182,7 @@ public final class InspectService implements Listener {
             } else if (!swinging(player)) {
                 it.remove();
                 start(player, def, " after the swing");
-            } else if (now - press.at >= swingWait) {
+            } else if (now - press.at >= Math.max(swingWait, ItemFactory.swingTicks(player.getInventory().getItemInMainHand()))) {
                 it.remove();
                 refuse(player, "出刀中无法检视");
             }
@@ -208,7 +209,8 @@ public final class InspectService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onSwing(PlayerArmSwingEvent event) {
         if (event.getHand() == EquipmentSlot.HAND) {
-            swung.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
+            swingEnds.put(event.getPlayer().getUniqueId(),
+                    (long) Bukkit.getCurrentTick() + ItemFactory.swingTicks(event.getPlayer().getInventory().getItemInMainHand()));
             if (concerns(event.getPlayer(), null)) {
                 debug(event.getPlayer(), "swing", "");
             }
@@ -261,6 +263,6 @@ public final class InspectService implements Listener {
         UUID id = event.getPlayer().getUniqueId();
         active.remove(id);
         waiting.remove(id);
-        swung.remove(id);
+        swingEnds.remove(id);
     }
 }

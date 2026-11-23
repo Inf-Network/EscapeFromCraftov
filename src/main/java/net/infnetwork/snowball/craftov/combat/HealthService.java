@@ -68,8 +68,8 @@ public final class HealthService implements Listener {
     private static final List<BodyPart> FRACTURE_ORDER = List.of(BodyPart.LEFT_LEG, BodyPart.RIGHT_LEG,
             BodyPart.RIGHT_ARM, BodyPart.LEFT_ARM);
 
-    /** A medical item being applied right now. */
-    public record MedUse(ItemDef def, long startTick, long endTick) {
+    /** A medical item being applied right now, and how many of its cues have played. */
+    public record MedUse(ItemDef def, long startTick, long endTick, int cuesPlayed) {
         public double progress(long now) {
             return Math.min(1.0, (now - startTick) / (double) Math.max(1, endTick - startTick));
         }
@@ -92,8 +92,12 @@ public final class HealthService implements Listener {
     private final Map<UUID, Double> lastJump = new HashMap<>();
     private final Map<UUID, MedUse> medUse = new HashMap<>();
     private final Map<UUID, WorldBorder> vignettes = new HashMap<>();
-    /** True while a wound's bleeding is being dealt, so listeners can tell it from a hit. */
-    private boolean bleeding;
+    /**
+     * Runs of {@link #tickLowHealth} so far: the heartbeat's beat. The server tick will not do, as
+     * the timer never runs on a multiple of 10 (the scheduler counts from -1 while the plugin
+     * enables), and a test for one silenced the heartbeat altogether.
+     */
+    private long lowHealthRuns;
 
     public HealthService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -464,12 +468,12 @@ public final class HealthService implements Listener {
             }
             Bleed bleed = bleed(map, bleedSources.get(player.getUniqueId()));
             if (bleed != null) {
+                // Not a hit: no hurt sound for everyone around, no hurt flash, only a quiet drip
+                // for the one bleeding (the HUD's body shows where).
                 plugin.damage().recordBleed(player, "失血", bleed.worst(), bleed.sources());
-                bleeding = true;
-                try {
-                    plugin.damage().deal(player, null, bleed.amount());
-                } finally {
-                    bleeding = false;
+                plugin.raids().loseHealth(player, bleed.amount());
+                if (!plugin.downed().isDowned(player) && plugin.raids().isInRaid(player)) {
+                    player.playSound(player.getLocation(), "craftov:status.bleed", SoundCategory.PLAYERS, 0.4f, 1f);
                 }
                 bleedDrops(player);
             }
@@ -489,11 +493,6 @@ public final class HealthService implements Listener {
                 }
             }
         }
-    }
-
-    /** True during the damage event of a wound bleeding, not a hit. */
-    public boolean isBleeding() {
-        return bleeding;
     }
 
     private void tickSpeed() {
@@ -558,15 +557,18 @@ public final class HealthService implements Listener {
         return Math.max(0.2, factor);
     }
 
-    /** Red vignette and heartbeat below 35 HP. */
+    /**
+     * Red vignette and heartbeat below 35 HP. Runs every 10 ticks: the heart beats on every run
+     * below 18 HP (twice a second) and on every other run from 18 to 35 (once a second).
+     */
     private void tickLowHealth() {
-        long tick = Bukkit.getCurrentTick();
+        boolean everyOther = lowHealthRuns++ % 2 == 0;
         for (Player player : Bukkit.getOnlinePlayers()) {
             boolean active = plugin.raids().isInRaid(player) && !player.isDead() && !plugin.downed().isDowned(player);
             double hp = player.getHealth();
             double intensity = active && hp < 35 ? Math.min(0.85, 0.25 + (35 - hp) / 35.0 * 0.6) : 0;
             setVignette(player, intensity);
-            if (intensity > 0 && tick % (hp < 18 ? 10 : 20) == 0) {
+            if (intensity > 0 && (hp < 18 || everyOther)) {
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.9f, 1f);
             }
         }
@@ -640,9 +642,24 @@ public final class HealthService implements Listener {
         long now = Bukkit.getCurrentTick();
         MedUse current = medUse.get(player.getUniqueId());
         if (current == null || !current.def().id().equals(def.id())) {
-            medUse.put(player.getUniqueId(), new MedUse(def, now, now + useTicks(event.getItem(), med)));
-            player.getWorld().playSound(player.getLocation(), "craftov:" + med.sound(), SoundCategory.PLAYERS, 0.8f, 1f);
+            medUse.put(player.getUniqueId(), cues(player, new MedUse(def, now, now + useTicks(event.getItem(), med), 0), now));
         }
+    }
+
+    /**
+     * Plays the cues of a use that are due by {@code now} and not played yet (items.yml med.cues: a
+     * wrapper torn open as it starts, gauze wound on, a strap pulled tight), for everyone nearby and
+     * following the player; returns the use with them counted.
+     */
+    private static MedUse cues(Player player, MedUse use, long now) {
+        List<MedSpec.Cue> cues = use.def().med().cues();
+        double progress = use.progress(now);
+        int played = use.cuesPlayed();
+        while (played < cues.size() && cues.get(played).at() <= progress + 1e-6) {
+            player.getWorld().playSound(player, "craftov:" + cues.get(played).sound(), SoundCategory.PLAYERS, 0.8f, 1f);
+            played++;
+        }
+        return played == use.cuesPlayed() ? use : new MedUse(use.def(), use.startTick(), use.endTick(), played);
     }
 
     /**
@@ -656,10 +673,17 @@ public final class HealthService implements Listener {
     }
 
     private void tickMedUse() {
+        long now = Bukkit.getCurrentTick();
         medUse.entrySet().removeIf(e -> {
             Player player = Bukkit.getPlayer(e.getKey());
-            return player == null || (!player.hasActiveItem() && Bukkit.getCurrentTick() - e.getValue().startTick() > 4);
+            return player == null || (!player.hasActiveItem() && now - e.getValue().startTick() > 4);
         });
+        for (Map.Entry<UUID, MedUse> e : medUse.entrySet()) {
+            Player player = Bukkit.getPlayer(e.getKey());
+            if (player != null && player.hasActiveItem()) {
+                e.setValue(cues(player, e.getValue(), now));
+            }
+        }
     }
 
     @EventHandler

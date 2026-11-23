@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/surgery",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -20.937,
+    -20.881,
+    27.403
+   ],
+   "translation": [
+    -3.588,
+    2.942,
+    -0.87
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    159.063,
+    20.881,
+    152.597
+   ],
+   "translation": [
+    -3.588,
+    2.942,
+    -0.87
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -57.309,
+    -0.069,
+    -174.742
+   ],
+   "translation": [
+    -3.016,
+    7.322,
+    6.725
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    122.691,
+    0.069,
+    -5.258
+   ],
+   "translation": [
+    -3.016,
+    7.322,
+    6.725
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

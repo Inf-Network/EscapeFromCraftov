@@ -7,6 +7,7 @@
     python3 tools/art/fpview.py k47 kick sheet.png                  # one shot's kick frames (kick-ads: aimed)
     python3 tools/art/fpview.py knife_karambit inspect sheet.png    # contact sheet of a knife inspect
     python3 tools/art/fpview.py karambit_gilded inspect sheet.png   # the same in a skin (knife_skins.py)
+    python3 tools/art/fpview.py bandage meduse sheet.png            # a medical item in use (med_use.py)
 """
 import json
 import math
@@ -304,7 +305,10 @@ def reload_sheet(gid, out, optic=None, cols=6, step=2):
     for k in range(0, count, step):
         posed = []
         for part in parts:
-            model = load_model(os.path.join(folder, '%s_%d.json' % (part, k)))
+            path = os.path.join(folder, '%s_%d.json' % (part, k))
+            if not os.path.exists(path):  # the left hand, out of view with the magazine
+                continue
+            model = load_model(path)
             posed.append((model, model['display']['firstperson_righthand']))
         tmp = '/tmp/_fp_frame.png'
         render_many(posed, tmp, '%s frame %d' % (gid, k))
@@ -372,6 +376,28 @@ def inspect_sheet(knife, out, cols=5, step=5):
     print(out)
 
 
+def meduse_sheet(item_id, out, cols=5, count=15):
+    """Contact sheet of a medical item's first-person frames while in use (med_use.py), at even
+    steps through its use: the frame its item definition picks at that share of the use time."""
+    with open(os.path.join(ROOT, 'items', item_id + '.json'), encoding='utf-8') as f:
+        dispatch = json.load(f)['model']['fallback']['on_true']
+    tiles = []
+    for i in range(count):
+        share = i / (count - 1)
+        picked = [e for e in dispatch['entries'] if e['threshold'] <= share][-1]
+        model = load_model(os.path.join(ROOT, 'models', picked['model']['model'].split(':', 1)[-1] + '.json'))
+        tmp = '/tmp/_fp_frame.png'
+        render(model, model['display']['firstperson_righthand'], tmp,
+               '%s %.0f%% (%s)' % (item_id, share * 100, picked['model']['model'].rsplit('/', 1)[-1]))
+        tiles.append(Image.open(tmp).resize((W // 2, H // 2)))
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new('RGB', (cols * W // 2, rows * H // 2))
+    for i, t in enumerate(tiles):
+        sheet.paste(t, ((i % cols) * W // 2, (i // cols) * H // 2))
+    sheet.save(out)
+    print(out)
+
+
 def main():
     gid = sys.argv[1] if len(sys.argv) > 1 else 'k47'
     which = sys.argv[2] if len(sys.argv) > 2 else 'firstperson_righthand'
@@ -384,6 +410,9 @@ def main():
         return
     if which == 'inspect':
         inspect_sheet(gid, out)
+        return
+    if which == 'meduse':
+        meduse_sheet(gid, out)
         return
     folder = 'gun_ads' if which == 'ads' else 'gun'
     path = os.path.join(ROOT, 'models', 'item', folder, gid + '.json')

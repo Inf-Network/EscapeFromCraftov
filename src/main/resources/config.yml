@@ -3,7 +3,7 @@
 # Goes up with every plugin update that changes a default. On start-up a server copy with a lower
 # number gets each such key moved to the new default if it still holds an old one; a value someone
 # changed stays, and so do the comments. The log lists what changed. Leave it to the plugin.
-config-revision: 1
+config-revision: 2
 
 # New players receive this once. Loadout keys are inventory slots:
 # 0-7 hotbar, 9-17 chest rig cells, 18-35 backpack cells, 36 backpack, 37 rig, 38 body armor, 39 helmet.
@@ -119,6 +119,9 @@ raid:
   # the lobby (they cannot queue again meanwhile; whoever leaves the server drops out). A copy that has
   # not finished after this many seconds calls the launch off: everyone is told and can queue again.
   map-copy-timeout-seconds: 60
+  # Every extract has a ring of dust on the ground at its radius; only players within this many blocks
+  # of it are sent the ring (the beam over it goes to the whole map).
+  extract-ring-range: 48
   # A raid the server stops in (or crashes in) is void for everyone still in it, flying in, downed or
   # disconnected included: back to the gear and secure container they went in with, entry fee and
   # insurance premium refunded, and nothing gained in it counts. Each of them also gets a letter in the
@@ -143,6 +146,8 @@ downed:
   # them, or while they carry a self-revive injector: solo, or the last of the squad standing, they
   # then bleed out as usual and can use it. Without either, the hit kills.
   max-downs: 2
+  # Ticks a revived player is seen kneeling before standing up (0: up at once).
+  get-up-ticks: 12
 
 medical:
   # Healing pool a medkit or surgery kit (items.yml med.pool) uses up per wound it treats; what is
@@ -151,13 +156,16 @@ medical:
 
 stamina:
   # Stamina runs from 0 to 100. Sprinting drains sprint-drain a tick and a jump costs jump-cost,
-  # both times the load factor below; after 0.75 s without either it comes back at regen a tick
-  # (regen-sneaking while sneaking). At 0 sprinting stops until it is back at 30. With these
-  # numbers a full bar lasts about 17 s of sprinting and takes about 13 s to refill.
+  # both times the load factor below (a slide drains its own, see slide.stamina-multiplier); after
+  # regen-delay-ticks (0.75 s) without either it comes back at regen a tick (regen-sneaking while
+  # sneaking). At 0 sprinting stops until it is back at recover-at. With these numbers a full bar
+  # lasts about 17 s of sprinting and takes about 13 s to refill.
   sprint-drain: 0.3
   jump-cost: 5
   regen: 0.4
   regen-sneaking: 0.5
+  regen-delay-ticks: 15
+  recover-at: 30
   # Load (kg, items.yml weight). Above comfort-kg every kilogram slows by penalty-per-kg and drains
   # stamina 1/30 faster. Above overload-kg sprinting is impossible and every further kilogram slows
   # by overload-penalty-per-kg. The slowdown never goes past max-penalty.
@@ -166,6 +174,70 @@ stamina:
   penalty-per-kg: 0.01
   overload-penalty-per-kg: 0.025
   max-penalty: 0.5
+
+slide:
+  # Sprinting forward, tap sneak twice: the second press within double-tap-ms of the first, the
+  # first let go within first-hold-ms, and sprinting at the first press or within sprint-grace-ms
+  # before it (the client may end the sprint as sneak goes down). The player sits on an invisible
+  # seat the server moves: eyes 1.02 above the ground, 1.2 m of hitbox showing, legs stretched out
+  # ahead (leg-hitbox: rounds that hit them count as a leg). Holding sneak, sneaking along or a
+  # double tap while walking never slides. Only in a raid and on the private range. Times are when
+  # the packets reach the server, so a jittery connection moves them by a few tens of ms.
+  enabled: true
+  double-tap-ms: 300
+  first-hold-ms: 200
+  sprint-grace-ms: 150
+  # Blocks a tick the player must have been moving at lately (walking is 0.216, sprinting 0.28).
+  min-speed: 0.2
+  # Stamina needed to start, and spent on starting; while sliding it drains stamina-multiplier
+  # times stamina.sprint-drain a tick (times the load factor), about 10 for a slide under 25 kg.
+  min-stamina: 15
+  start-cost: 0
+  stamina-multiplier: 2.0
+  # Ticks after a slide before the next one, which also needs sprint-ticks of sprinting since:
+  # sliding is never faster than running.
+  cooldown-ticks: 30
+  sprint-ticks: 10
+  # Speed (blocks a tick): the pace the player's movement speed sprints at (0.28, more with a speed
+  # boost), at least min-start-speed, times boost, at most max-speed (0.40 from a plain sprint);
+  # then times friction every tick on the flat (friction-downhill going down a step,
+  # friction-uphill going up one) until it is under stop-speed or max-ticks have passed: about 4
+  # blocks in 17 ticks on the flat. steer-degrees a tick while A or D is held.
+  boost: 1.4
+  min-start-speed: 0.286
+  max-speed: 0.45
+  friction: 0.93
+  friction-downhill: 0.965
+  friction-uphill: 0.85
+  stop-speed: 0.12
+  max-ticks: 20
+  steer-degrees: 1.5
+  # Steps up to step-up blocks are slid up and drops up to max-drop followed down; a deeper drop
+  # ends the slide and the player falls on with its speed. A wall, a closed door or a ceiling too
+  # low to crouch under (under 1.5 over the ground) stops it at once.
+  step-up: 0.5
+  max-drop: 1.0
+  leg-hitbox: true
+
+footsteps:
+  # Other players' vanilla steps (quiet, a few blocks) are replaced by the server's own, by the ground
+  # underfoot: one every stride blocks covered (a jump's too, the step landing with the feet), heard
+  # out to walk-range blocks walking and sprint-range sprinting (louder the nearer), and a landing
+  # from land-min-fall blocks or more out to land-range. A wall in between cuts the range to
+  # wall-share of it. Sneaking makes none (sneak-range), and in a raid the sneaking speed is
+  # sneak-speed of the walk (vanilla 0.3). A slide is heard out to slide-range, sneak key or not.
+  # The soldiers hear by the same ranges and walls. enabled: false gives players vanilla's steps
+  # back; the soldiers still hear by these ranges.
+  enabled: true
+  stride: 1.6
+  walk-range: 16
+  sprint-range: 32
+  sneak-range: 0
+  slide-range: 24
+  land-range: 24
+  land-min-fall: 1.5
+  wall-share: 0.5
+  sneak-speed: 0.45
 
 combat:
   friendly-fire: false
@@ -222,6 +294,10 @@ combat:
     # shots are never rewound.
     enabled: true
     extra-ms: 200
+    # A sliding player is rewound by ping + slide-extra-ms instead: others' clients are sent only the
+    # seat the slider sits on, every tick (a player every 2), and ease into it over 2 ticks, so they
+    # draw a slider about 50 ms closer behind the server than anyone running.
+    slide-extra-ms: 150
     max-ms: 300
   # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
   # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take
@@ -264,32 +340,48 @@ combat:
     # different length plays the same motion faster or slower.
     inspect-ticks: 50
     # F during a cut waits for the swing to end and inspects then. A player who keeps cutting gets
-    # 出刀中无法检视 on the action bar once a press has waited this many ticks (6 at least, one swing).
+    # 出刀中无法检视 on the action bar once a press has waited this many ticks (one stab at least: 8
+    # ticks for most knives, 6 for the karambit).
     inspect-swing-wait-ticks: 12
 
 weapons:
-  # Guns fire from the hip on a sprint (run-and-gun, with the wider cone of spread.sprint), but the
-  # sights only come up this many ticks after a sprint ends (the gun coming up from the sprint
-  # carry). Right mouse ends a sprint, and no sprint starts while it is held; held through these
-  # ticks, it aims as soon as they are over. The sprint key pressed while aiming wins back: the
-  # sights drop and the sprint starts, and right mouse held on aims again once that sprint is over.
-  sprint-recovery-ticks: 5
-  # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
-  # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
-  # held fires as soon as the gun is up. Switching away and back never skips the bolt or pump cycle.
-  # The draw animation is baked into the resource pack at these defaults, one frame a tick; another
-  # value plays the same motion faster or slower.
-  draw-ticks:
-    pistol: 6
-    pistol_heavy: 6
-    smg: 10
-    pdw: 10
-    ak: 12
-    ar: 12
-    dmr: 12
-    pump: 14
-    lmg: 18
-    bolt: 18
+  # 操控速度: every gun has a handling (items.yml `handling`, 0-100; a fitted sight takes some off, a
+  # grip adds a little, see the parts in items.yml), and these times run in a straight line from
+  # `slow` at handling 0 to `quick` at 100, in seconds, rounded to whole ticks (0.05 s):
+  #   ads         the sights coming up once the server takes the aim (SV9 0.15 s, M4C and K47 0.25,
+  #               SCR 0.3, KL7 0.35, AWR 0.45); the view, the spread and the recoil follow that progress,
+  #               and the shots are aimed only once the sights are up.
+  #   draw        the gun coming up once it is in the hand (switched to, or after a revive). Until then
+  #               it neither fires nor aims; a trigger pulled meanwhile and still held fires as soon as
+  #               it is up. Switching away and back never skips the bolt or pump cycle. The draw
+  #               animation is baked into the resource pack once per action; any time plays the same
+  #               motion faster or slower.
+  #   sprint-out  after a sprint ends, the gun coming up from the sprint carry: the sights can come up
+  #               once it is over, and a hip shot's sprint cone (spread.sprint) fades back to the
+  #               walking one over it. Guns fire from the hip on a sprint (run-and-gun, with that wider
+  #               cone), but right mouse ends a sprint, no sprint starts while it is held, and held
+  #               through these ticks it aims as soon as they are over. The sprint key pressed while
+  #               aiming wins back: the sights drop and the sprint starts, and right mouse held on aims
+  #               again once that sprint is over.
+  #   sway        degrees aimed shots go off the crosshair the moment the sights are up, in a slow figure
+  #               of eight (period-ticks around), shrinking to `rest` of that as the sights are held up
+  #               (about two thirds of the way in settle-ticks). Only the bullets sway, never the view.
+  handling:
+    ads:
+      slow: 0.5
+      quick: 0.1
+    draw:
+      slow: 0.85
+      quick: 0.25
+    sprint-out:
+      slow: 0.4
+      quick: 0.1
+    sway:
+      slow: 0.1
+      quick: 0.0
+      rest: 0.3
+      settle-ticks: 12
+      period-ticks: 50
   ads:
     # True power of iron sights while aiming, by the gun's ads-class in items.yml (pistol, smg, rifle,
     # shotgun, dmr, lmg, bolt; optics carry their own magnification in items.yml).
@@ -297,24 +389,10 @@ weapons:
       pistol: 1.1
       shotgun: 1.1
       default: 1.25
-    # Ticks the sights take to come up once the server takes the aim, by ads-class, plus optic-ticks
-    # for the optic's strength (reflex = red dot and holo, low = 3-4x, high = 6x and up). The view,
-    # the spread and the recoil follow that progress: the shots are aimed only once the sights are up.
-    ticks:
-      pistol: 4
-      smg: 5
-      rifle: 6
-      shotgun: 6
-      dmr: 8
-      lmg: 8
-      bolt: 9
-    optic-ticks:
-      iron: 0
-      reflex: 1
-      low: 2
-      high: 3
+    # How long the sights take to come up is the gun's handling (weapons.handling.ads above).
     # Aiming slows the player to this share of their speed, by ads-class, times optic-speed for the
-    # optic (on the range too). The aimed cone is the gun's ads-spread times optic-spread.
+    # optic (on the range too; reflex = red dot and holo, low = 3-4x, high = 6x and up). The aimed
+    # cone is the gun's ads-spread times optic-spread.
     speed:
       pistol: 0.85
       smg: 0.8
@@ -368,13 +446,16 @@ weapons:
     # and the walking pace the player may go at now), the walking part counts this much: the measured
     # speed takes a tick or two to catch up with a stop. 1.0 counts it in full.
     stop: 0.5
-    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
+    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping), and
+    # while sliding (from the hip, and aimed: slide-ads; sneaking does not count while sliding).
     sneak: 0.7
     airborne: 2.5
+    slide: 1.6
+    slide-ads: 1.3
     # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
-    # gun's action in items.yml (as draw-ticks). Sprinting is the client's sprint, or running at more
-    # than 1.2x walking pace on the ground, as the server measures it. Aiming ends a sprint, so this
-    # never applies to aimed shots.
+    # gun's action in items.yml. Sprinting is the client's sprint, or running at more than 1.2x walking
+    # pace on the ground, as the server measures it. Once the sprint ends it fades back to 1 over the
+    # gun's weapons.handling.sprint-out time. Aiming ends a sprint, so this never applies to aimed shots.
     sprint:
       pistol: 1.4
       pistol_heavy: 1.5
@@ -387,11 +468,17 @@ weapons:
       lmg: 1.8
       bolt: 2.0
   recoil:
-    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming, while sneaking
-    # and when fired from the hip on a sprint.
-    ads: 0.6
+    # Camera kick per shot is the gun's recoil (items.yml, degrees up; recoil-h at most sideways)
+    # times these while sneaking and when fired from the hip on a sprint.
     sneak: 0.8
     sprint: 1.15
+    # With the sights up a shot kicks this share of the gun's recoil up and of its recoil-h sideways
+    # (the side-to-side jitter is what cannot be pulled against, so it shrinks most); in between
+    # while the sights come up. These are for a gun neither the server's items.yml nor the jar's
+    # gives an ads-recoil / ads-recoil-h for (an added gun): every bundled gun gives both, and an
+    # older items.yml without them takes the jar's.
+    ads: 0.5
+    ads-h: 0.35
     # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.
     first-tick-share: 0.6
     # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
@@ -406,8 +493,9 @@ weapons:
     # In full-auto and burst fire this share of every kick lifts only the bullets, not the camera. The
     # camera kick is a packet the client could ignore; this part cannot be. Each round lifts them less
     # the higher they already are: muzzle-soft is the climb (degrees) at which a round's lift has
-    # halved, so an M4C spray aimed down the sights is about 0.6 degrees above the crosshair at round 10
-    # and 1.4 at round 30, still creeping up. muzzle-max is a hard ceiling no magazine reaches.
+    # halved, so an M4C spray aimed through a red dot is about 0.45 degrees above the crosshair at
+    # round 10 and 1.0 at round 30, still creeping up. muzzle-max is a hard ceiling no magazine
+    # reaches.
     # It comes back to the crosshair over muzzle-return-ticks once the camera starts drifting back.
     # Single shots (semi, bolt, pump) are not lifted.
     muzzle-share: 0.2

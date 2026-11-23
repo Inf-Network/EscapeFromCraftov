@@ -483,6 +483,570 @@
    }
   ]
  },
+ "step.stone.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.stone.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.stone.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/stone1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/stone6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.wood.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.wood.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.wood.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/wood1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/wood6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.metal.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.metal.run": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.metal.land": {
+  "sounds": [
+   {
+    "name": "minecraft:block/iron/step1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:block/iron/step4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.gravel.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.gravel.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.gravel.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/gravel1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/gravel4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.grass.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.grass.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.grass.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/grass1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass5",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/grass6",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.sand.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.sand.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.sand.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/sand1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand4",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/sand5",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.snow.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.snow.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.snow.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/snow1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/snow4",
+    "pitch": 0.7
+   }
+  ]
+ },
+ "step.cloth.walk": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 1.0
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 1.0
+   }
+  ]
+ },
+ "step.cloth.run": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 0.88
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 0.88
+   }
+  ]
+ },
+ "step.cloth.land": {
+  "sounds": [
+   {
+    "name": "minecraft:step/cloth1",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth2",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth3",
+    "pitch": 0.7
+   },
+   {
+    "name": "minecraft:step/cloth4",
+    "pitch": 0.7
+   }
+  ]
+ },
  "bullet.crack": {
   "sounds": [
    {
@@ -739,6 +1303,14 @@
    }
   ]
  },
+ "gun.foley.ar.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ar_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.ak.magout": {
   "sounds": [
    {
@@ -767,6 +1339,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/ak_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.ak.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/ak_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -803,6 +1383,14 @@
    }
   ]
  },
+ "gun.foley.dmr.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/dmr_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.lmg.magout": {
   "sounds": [
    {
@@ -831,6 +1419,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/lmg_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.lmg.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/lmg_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -867,6 +1463,14 @@
    }
   ]
  },
+ "gun.foley.smg.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/smg_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pdw.magout": {
   "sounds": [
    {
@@ -895,6 +1499,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/pdw_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pdw.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pdw_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -931,6 +1543,14 @@
    }
   ]
  },
+ "gun.foley.pistol.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pistol_heavy.magout": {
   "sounds": [
    {
@@ -963,6 +1583,14 @@
    }
   ]
  },
+ "gun.foley.pistol_heavy.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pistol_heavy_draw_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
  "gun.foley.pump.pump": {
   "sounds": [
    {
@@ -983,6 +1611,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/pump_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.pump.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/pump_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -1023,6 +1659,14 @@
   "sounds": [
    {
     "name": "craftov:gun/foley/bolt_dry_0",
+    "attenuation_distance": 12
+   }
+  ]
+ },
+ "gun.foley.bolt.draw": {
+  "sounds": [
+   {
+    "name": "craftov:gun/foley/bolt_draw_0",
     "attenuation_distance": 12
    }
   ]
@@ -3259,6 +3903,132 @@
     "name": "craftov:gun/tail/sniper_in_muff_1",
     "attenuation_distance": 16,
     "preload": true
+   }
+  ]
+ },
+ "gear.equip": {
+  "sounds": [
+   {
+    "name": "craftov:gear/equip"
+   }
+  ]
+ },
+ "med.wrap": {
+  "sounds": [
+   {
+    "name": "craftov:med/wrap"
+   }
+  ]
+ },
+ "status.bleed": {
+  "sounds": [
+   {
+    "name": "craftov:status/bleed"
+   }
+  ]
+ },
+ "voice.hurt1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt1"
+   }
+  ]
+ },
+ "voice.hurt2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt2"
+   }
+  ]
+ },
+ "voice.hurt3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt3"
+   }
+  ]
+ },
+ "voice.hurt4": {
+  "sounds": [
+   {
+    "name": "craftov:voice/hurt4"
+   }
+  ]
+ },
+ "voice.death1": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death1"
+   }
+  ]
+ },
+ "voice.death2": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death2"
+   }
+  ]
+ },
+ "voice.death3": {
+  "sounds": [
+   {
+    "name": "craftov:voice/death3"
+   }
+  ]
+ },
+ "med.tear": {
+  "sounds": [
+   {
+    "name": "craftov:med/tear"
+   }
+  ]
+ },
+ "med.strap": {
+  "sounds": [
+   {
+    "name": "craftov:med/strap"
+   }
+  ]
+ },
+ "med.cap": {
+  "sounds": [
+   {
+    "name": "craftov:med/cap"
+   }
+  ]
+ },
+ "med.rummage": {
+  "sounds": [
+   {
+    "name": "craftov:med/rummage"
+   }
+  ]
+ },
+ "med.snip": {
+  "sounds": [
+   {
+    "name": "craftov:med/snip"
+   }
+  ]
+ },
+ "med.swallow": {
+  "sounds": [
+   {
+    "name": "craftov:med/swallow"
+   }
+  ]
+ },
+ "med.gasp": {
+  "sounds": [
+   {
+    "name": "craftov:med/gasp"
+   }
+  ]
+ },
+ "move.slide": {
+  "sounds": [
+   {
+    "name": "craftov:move/slide"
    }
   ]
  }

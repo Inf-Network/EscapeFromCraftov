@@ -29,9 +29,12 @@ import java.util.logging.Logger;
  *   so the walking speed in the player's own abilities packets sets the field of view without
  *   touching how fast they move: the movement speed itself at the hip, so nothing that slows them
  *   changes the view, and a (negative) value that zooms while aiming (see {@link SelfView}). The
- *   same handler keeps a screen overlay's client-only helmet on their head.</li>
- *   <li>Held-gun stance: other players' equipment packets carry a gun as a charged crossbow so
- *   their client draws the two-handed aiming pose (see {@code StanceService}).</li>
+ *   same handler keeps a screen overlay's client-only helmet on their head, and keeps health lost
+ *   to bleeding from their client, which would take it for a hit (see {@link #quietHealthLoss}).</li>
+ *   <li>Stances: what a player is told about others' hands, their main-hand item and whether they
+ *   are using it (the living-entity flags), is rewritten so their client draws the pose a stance
+ *   calls for, a gun carried low or shouldered, say (see {@code StanceService}). The same handler
+ *   keeps sounds the rewriter refuses (other players' vanilla footsteps) from the listener.</li>
  * </ul>
  */
 public final class Nms {
@@ -84,6 +87,21 @@ public final class Nms {
     private static @Nullable Method asNmsCopy;
     private static @Nullable Class<?> pickBlockClass;
     private static @Nullable Class<?> pickEntityClass;
+    private static @Nullable Class<?> entityDataClass;
+    private static @Nullable Method entityDataId;
+    private static @Nullable Method entityDataValues;
+    private static @Nullable Constructor<?> entityDataCtor;
+    private static @Nullable Method dataValueId;
+    private static @Nullable Method dataValueValue;
+    private static @Nullable Method dataValueCreate;
+    private static @Nullable Object livingFlags;
+    private static int livingFlagsId = -1;
+    private static boolean dataReady;
+    private static @Nullable Class<?> soundClass;
+    private static @Nullable Method soundHolder;
+    private static @Nullable Method soundSource;
+    private static @Nullable Method holderValue;
+    private static @Nullable Method soundLocation;
     /** Set on the main thread, read on Netty threads. */
     private static volatile org.bukkit.plugin.@Nullable Plugin pickPlugin;
     private static volatile java.util.function.@Nullable Consumer<Player> pickHandler;
@@ -102,17 +120,43 @@ public final class Nms {
         void swung();
     }
 
-    /** Decides what other players see in an entity's main hand. Called on Netty threads. */
+    /**
+     * Decides what other players see of an entity's hands, and which of the sounds about it they hear.
+     * Called on Netty threads. Nothing a player is sent about themselves goes through it.
+     */
     public interface ViewRewriter {
-        /** True while the entity holds a gun up: its arm-swing animations are not sent to others. */
+        /** True while the entity's arm-swing animations are not sent to others (a gun in its hands). */
         boolean raised(int entityId);
 
-        /** The main-hand item to show instead, or null to show the real one. */
+        /** The main-hand item to show instead (an empty stack for empty hands), or null to show the real one. */
         org.bukkit.inventory.@Nullable ItemStack mainHand(int entityId, org.bukkit.inventory.ItemStack real);
 
         /** True if this player's middle click (pick block/entity) should be taken over: they hold a gun. */
         default boolean takesPick(int entityId) {
             return false;
+        }
+
+        /**
+         * The living-entity flags to show others for this entity (bit 1: using the item in hand, bit 2:
+         * the one in the off hand), given the real ones. Only asked about entities the rewriter poses.
+         */
+        default byte livingFlags(int entityId, byte real) {
+            return real;
+        }
+
+        /** True to keep a sound from this listener: {@code key} is its event, {@code source} its category. */
+        default boolean dropsSound(String key, String source) {
+            return false;
+        }
+    }
+
+    /**
+     * The entity data packets {@link #sendLivingFlags} builds carry their values in one of these, so
+     * the view handler, which rewrites every other living-flags update, lets them through as they are.
+     */
+    private static final class OwnValues extends java.util.ArrayList<Object> {
+        OwnValues(int size) {
+            super(size);
         }
     }
 
@@ -192,6 +236,34 @@ public final class Nms {
             viewReady = ready;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Held-gun stance unavailable (" + ex + "); others see guns held like items.");
+        }
+        try {
+            entityDataClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket");
+            entityDataId = entityDataClass.getMethod("id");
+            entityDataValues = entityDataClass.getMethod("packedItems");
+            entityDataCtor = entityDataClass.getConstructor(int.class, java.util.List.class);
+            Class<?> dataValue = Class.forName("net.minecraft.network.syncher.SynchedEntityData$DataValue");
+            dataValueId = dataValue.getMethod("id");
+            dataValueValue = dataValue.getMethod("value");
+            Class<?> accessor = Class.forName("net.minecraft.network.syncher.EntityDataAccessor");
+            dataValueCreate = dataValue.getMethod("create", accessor, Object.class);
+            Field flags = Class.forName("net.minecraft.world.entity.LivingEntity").getDeclaredField("DATA_LIVING_ENTITY_FLAGS");
+            flags.setAccessible(true);
+            livingFlags = flags.get(null);
+            livingFlagsId = (int) accessor.getMethod("id").invoke(livingFlags);
+            dataReady = viewReady;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Entity data hooks unavailable (" + ex + "); others see a gun held low as a one-handed carry.");
+        }
+        try {
+            soundClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSoundPacket");
+            soundHolder = soundClass.getMethod("getSound");
+            soundSource = soundClass.getMethod("getSource");
+            holderValue = Class.forName("net.minecraft.core.Holder").getMethod("value");
+            soundLocation = Class.forName("net.minecraft.sounds.SoundEvent").getMethod("location");
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            soundClass = null;
+            logger.warning("Sound packets unreadable (" + ex + "); other players' vanilla footsteps are heard as well.");
         }
         initSelf(logger);
     }
@@ -439,22 +511,94 @@ public final class Nms {
         if (equipmentClass.isInstance(msg)) {
             return rewriteEquipment(msg, self, rewriter);
         }
+        if (dataReady && entityDataClass.isInstance(msg)) {
+            return rewriteData(msg, self, rewriter);
+        }
         if (animateClass.isInstance(msg)) {
             int id = (int) animateId.invoke(msg);
             // Action 0 is a main-hand swing; while it plays the client drops the crossbow-hold pose.
             return id != self && (int) animateAction.invoke(msg) == 0 && rewriter.raised(id) ? null : msg;
         }
+        if (soundClass != null && soundClass.isInstance(msg)) {
+            return dropped(msg, rewriter) ? null : msg;
+        }
         if (bundleClass.isInstance(msg)) {
             java.util.List<Object> parts = new java.util.ArrayList<>();
             boolean changed = false;
             for (Object part : (Iterable<?>) bundleSubPackets.invoke(msg)) {
-                Object replaced = equipmentClass.isInstance(part) ? rewriteEquipment(part, self, rewriter) : part;
+                Object replaced = equipmentClass.isInstance(part) ? rewriteEquipment(part, self, rewriter)
+                        : dataReady && entityDataClass.isInstance(part) ? rewriteData(part, self, rewriter) : part;
                 changed |= replaced != part;
                 parts.add(replaced);
             }
             return changed ? bundleCtor.newInstance(parts) : msg;
         }
         return msg;
+    }
+
+    /** True if the rewriter keeps this sound from the listener (another player's vanilla footstep, say). */
+    private static boolean dropped(Object packet, ViewRewriter rewriter) throws ReflectiveOperationException {
+        Object event = holderValue.invoke(soundHolder.invoke(packet));
+        return rewriter.dropsSound(String.valueOf(soundLocation.invoke(event)), ((Enum<?>) soundSource.invoke(packet)).name());
+    }
+
+    /**
+     * Another entity's data with the living flags as the rewriter shows them. The packets
+     * {@link #sendLivingFlags} builds itself pass as they are, and so does everything about the
+     * player's own entity: their own client must never think they are using their gun, or it would
+     * stop sending the trigger's dig packets.
+     */
+    private static Object rewriteData(Object packet, int self, ViewRewriter rewriter) throws ReflectiveOperationException {
+        int id = (int) entityDataId.invoke(packet);
+        java.util.List<?> values = (java.util.List<?>) entityDataValues.invoke(packet);
+        if (id == self || values instanceof OwnValues) {
+            return packet;
+        }
+        java.util.List<Object> out = null;
+        for (int i = 0; i < values.size(); i++) {
+            Object value = values.get(i);
+            if ((int) dataValueId.invoke(value) != livingFlagsId || !(dataValueValue.invoke(value) instanceof Byte real)) {
+                continue;
+            }
+            byte shown = rewriter.livingFlags(id, real);
+            if (shown == real) {
+                continue;
+            }
+            if (out == null) {
+                out = new java.util.ArrayList<>(values);
+            }
+            out.set(i, dataValueCreate.invoke(null, livingFlags, shown));
+        }
+        return out == null ? packet : entityDataCtor.newInstance(id, out);
+    }
+
+    /** True when the living flags of other entities can be rewritten and sent (see {@link #sendLivingFlags}). */
+    public static boolean dataReady() {
+        return dataReady;
+    }
+
+    /**
+     * Sends the viewer the entity's living flags, each value in turn in one bundle (the client takes
+     * them in order within a tick), as they are: the view handler does not rewrite these. Going from
+     * not using to using an item restarts the client's count of how long it has been used, which is
+     * what holds a crossbow-charge pose at its start.
+     */
+    public static void sendLivingFlags(Player viewer, int entityId, byte... sequence) {
+        if (!dataReady || sequence.length == 0) {
+            return;
+        }
+        try {
+            java.util.List<Object> parts = new java.util.ArrayList<>(sequence.length);
+            for (byte flags : sequence) {
+                OwnValues values = new OwnValues(1);
+                values.add(dataValueCreate.invoke(null, livingFlags, flags));
+                parts.add(entityDataCtor.newInstance(entityId, values));
+            }
+            Object packet = parts.size() == 1 ? parts.get(0) : bundleCtor.newInstance(parts);
+            sendPacket.invoke(connection(viewer), packet);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // the stance is cosmetic
+        }
     }
 
     private static Object rewriteEquipment(Object packet, int self, ViewRewriter rewriter) throws ReflectiveOperationException {
@@ -470,8 +614,9 @@ public final class Nms {
                 continue;
             }
             org.bukkit.inventory.ItemStack real = (org.bukkit.inventory.ItemStack) asBukkitCopy.invoke(null, pairSecond.invoke(pair));
-            org.bukkit.inventory.ItemStack shown = real.isEmpty() ? null : rewriter.mainHand(id, real);
-            if (shown == null) {
+            // Empty hands are asked about too: a stance can put something in them (a reviver's bandage).
+            org.bukkit.inventory.ItemStack shown = rewriter.mainHand(id, real);
+            if (shown == null || shown.isEmpty() && real.isEmpty()) {
                 continue;
             }
             if (out == null) {
@@ -509,6 +654,18 @@ public final class Nms {
          * null for what is really there (always nothing). Client-only: the inventory screen's info cells.
          */
         volatile Object @Nullable [] crafting;
+        /**
+         * When the server last took health off this player without a hit (see {@link #quietHealthLoss}),
+         * in {@link System#nanoTime}, or {@link #NO_QUIET_LOSS}. Taken by the first health update that
+         * hides a loss.
+         */
+        final java.util.concurrent.atomic.AtomicLong quietLoss = new java.util.concurrent.atomic.AtomicLong(NO_QUIET_LOSS);
+
+        /** Whether a loss marked quiet is still waiting for its health update, and takes the mark if so. */
+        boolean takeQuietLoss() {
+            long at = quietLoss.getAndSet(NO_QUIET_LOSS);
+            return at != NO_QUIET_LOSS && System.nanoTime() - at < QUIET_LOSS_NANOS;
+        }
 
         /**
          * The walking speed to send: the client's multiplier is lerp(slider, 1, (move / walk + 1) / 2),
@@ -564,6 +721,22 @@ public final class Nms {
     private static @Nullable Constructor<?> setContentCtor;
     /** The helmet slot of the player's own inventory menu (container 0). */
     private static final int HEAD_SLOT = 5;
+    private static final long NO_QUIET_LOSS = Long.MIN_VALUE;
+    /**
+     * How long a quiet loss waits for the health update that carries it. That update goes out within
+     * the tick; the margin covers a slow one, and the mark never hides an unrelated loss much later.
+     */
+    private static final long QUIET_LOSS_NANOS = 1_000_000_000L;
+    private static boolean healthReady;
+    private static @Nullable Class<?> healthPacketClass;
+    private static @Nullable Method healthValue;
+    private static @Nullable Method healthFood;
+    private static @Nullable Method healthSaturation;
+    private static @Nullable Constructor<?> healthCtor;
+    private static @Nullable Class<?> damageEventClass;
+    private static @Nullable Method damageEventEntity;
+    private static @Nullable Class<?> hurtAnimationClass;
+    private static @Nullable Method hurtAnimationEntity;
 
     private static void initSelf(Logger logger) {
         try {
@@ -605,6 +778,35 @@ public final class Nms {
             selfReady = ready && viewReady;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Own-view hooks unavailable (" + ex + "); aiming does not zoom and scopes show no picture.");
+        }
+        try {
+            String game = "net.minecraft.network.protocol.game.";
+            healthPacketClass = Class.forName(game + "ClientboundSetHealthPacket");
+            healthValue = healthPacketClass.getMethod("getHealth");
+            healthFood = healthPacketClass.getMethod("getFood");
+            healthSaturation = healthPacketClass.getMethod("getSaturation");
+            healthCtor = healthPacketClass.getConstructor(float.class, int.class, float.class);
+            damageEventClass = Class.forName(game + "ClientboundDamageEventPacket");
+            damageEventEntity = damageEventClass.getMethod("entityId");
+            hurtAnimationClass = Class.forName(game + "ClientboundHurtAnimationPacket");
+            hurtAnimationEntity = hurtAnimationClass.getMethod("id");
+            healthReady = true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Quiet health loss unavailable (" + ex + "); bleeding tilts the bleeder's own view as a hit does.");
+        }
+    }
+
+    /**
+     * The health this player is about to lose comes without a hit (a wound bleeding), so their own
+     * client is not to show it: the vanilla client takes any drop of its health as being hurt, and
+     * tilts the camera (and, in third person, flashes the player's own model red) just as a hit does.
+     * Call it right before taking the health off. The client is then left believing the health it
+     * had: nothing shows the client's own health (the resource pack hides vanilla's hearts; the HUD
+     * reads the server's), and the next hit or death sets it right again (see {@link SelfHandler}).
+     */
+    public static void quietHealthLoss(SelfView view) {
+        if (selfReady && healthReady) {
+            view.quietLoss.set(System.nanoTime());
         }
     }
 
@@ -736,11 +938,18 @@ public final class Nms {
      * change the speed, and a gamemode change or respawn resends abilities), and while a screen
      * overlay is up every update of their head slot carries it (a headshot that damages the helmet, a
      * helmet swap or an inventory resync would otherwise take a scope picture away until the next aim).
+     * A loss of health marked quiet ({@link #quietHealthLoss}) is kept from their health updates.
      */
     private static final class SelfHandler extends ChannelDuplexHandler {
         private final Player player;
         private final int self;
         private final SelfView view;
+        // Only touched on the channel's event loop, as every write is.
+        /** The health in the last health update the server sent, and the one the client was given (NaN: none yet). */
+        private float sentHealth = Float.NaN;
+        private float shownHealth = Float.NaN;
+        /** The client was sent a damage event or hurt animation of the player since the last health update. */
+        private boolean hurt;
 
         SelfHandler(Player player, SelfView view) {
             this.player = player;
@@ -774,7 +983,50 @@ public final class Nms {
         private boolean concerns(Object msg) {
             return attributesPacketClass.isInstance(msg) || abilitiesPacketClass.isInstance(msg)
                     || view.helmet != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg) || equipmentClass.isInstance(msg))
-                    || view.crafting != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg));
+                    || view.crafting != null && (setSlotClass.isInstance(msg) || setContentClass.isInstance(msg))
+                    || healthReady && (healthPacketClass.isInstance(msg) || damageEventClass.isInstance(msg) || hurtAnimationClass.isInstance(msg));
+        }
+
+        /** Notes a damage event or hurt animation of the player themselves: a hit, which shows its loss. */
+        private void noteHurt(Object part) throws ReflectiveOperationException {
+            if (!healthReady) {
+                return;
+            }
+            if (damageEventClass.isInstance(part) && (int) damageEventEntity.invoke(part) == self
+                    || hurtAnimationClass.isInstance(part) && (int) hurtAnimationEntity.invoke(part) == self) {
+                hurt = true;
+            }
+        }
+
+        /**
+         * The health update as the player's own client is to get it. A loss marked quiet is left out,
+         * unless a hit reached the client since the last update (the hit tilts the view anyway, and the
+         * client then learns the true health). The client keeps the health it believes until the
+         * server's is higher again, or a loss that is not quiet, a hit or death comes: so gains never
+         * show it a drop either, even when a heal leaves the health below the one it was left with.
+         * Food and saturation always pass as they are: they decide whether the client lets the player
+         * sprint.
+         */
+        private Object withHealth(Object packet) throws ReflectiveOperationException {
+            float health = (float) healthValue.invoke(packet);
+            float sent = sentHealth;
+            float shown = shownHealth;
+            boolean hit = hurt;
+            sentHealth = health;
+            hurt = false;
+            if (Float.isNaN(sent) || health <= 0) {
+                shownHealth = health;
+                return packet;
+            }
+            float show;
+            if (health < sent) {
+                show = !hit && view.takeQuietLoss() ? shown : health;
+            } else {
+                show = Math.max(health, shown);
+            }
+            shownHealth = show;
+            return show == health ? packet
+                    : healthCtor.newInstance(show, (int) healthFood.invoke(packet), (float) healthSaturation.invoke(packet));
         }
 
         /** Copies {@code in} to {@code out} rewritten; true if anything changed. */
@@ -784,7 +1036,10 @@ public final class Nms {
             boolean abilitiesSent = false;
             for (Object part : in) {
                 Object replaced = part;
-                if (attributesPacketClass.isInstance(part) && (int) attributesEntity.invoke(part) == self) {
+                noteHurt(part);
+                if (healthReady && healthPacketClass.isInstance(part)) {
+                    replaced = withHealth(part);
+                } else if (attributesPacketClass.isInstance(part) && (int) attributesEntity.invoke(part) == self) {
                     Double move = walkSpeed(part);
                     if (move != null) {
                         view.move = move;

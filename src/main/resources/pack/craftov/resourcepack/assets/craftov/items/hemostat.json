@@ -74,8 +74,401 @@
    }
   ],
   "fallback": {
-   "type": "minecraft:model",
-   "model": "craftov:item/hemostat"
+   "type": "minecraft:condition",
+   "property": "minecraft:using_item",
+   "on_true": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:use_duration",
+    "scale": 0.016667,
+    "entries": [
+     {
+      "threshold": 0.0,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/0"
+      }
+     },
+     {
+      "threshold": 0.00833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/1"
+      }
+     },
+     {
+      "threshold": 0.025,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/2"
+      }
+     },
+     {
+      "threshold": 0.04167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/3"
+      }
+     },
+     {
+      "threshold": 0.05833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/4"
+      }
+     },
+     {
+      "threshold": 0.075,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/5"
+      }
+     },
+     {
+      "threshold": 0.09167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/6"
+      }
+     },
+     {
+      "threshold": 0.10833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/7"
+      }
+     },
+     {
+      "threshold": 0.125,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/8"
+      }
+     },
+     {
+      "threshold": 0.14167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/9"
+      }
+     },
+     {
+      "threshold": 0.15833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/10"
+      }
+     },
+     {
+      "threshold": 0.175,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/11"
+      }
+     },
+     {
+      "threshold": 0.19167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/12"
+      }
+     },
+     {
+      "threshold": 0.20833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/13"
+      }
+     },
+     {
+      "threshold": 0.25833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/14"
+      }
+     },
+     {
+      "threshold": 0.275,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/15"
+      }
+     },
+     {
+      "threshold": 0.29167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/16"
+      }
+     },
+     {
+      "threshold": 0.325,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/17"
+      }
+     },
+     {
+      "threshold": 0.35833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/18"
+      }
+     },
+     {
+      "threshold": 0.375,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/19"
+      }
+     },
+     {
+      "threshold": 0.39167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/20"
+      }
+     },
+     {
+      "threshold": 0.40833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/21"
+      }
+     },
+     {
+      "threshold": 0.425,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/22"
+      }
+     },
+     {
+      "threshold": 0.44167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/23"
+      }
+     },
+     {
+      "threshold": 0.45833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/24"
+      }
+     },
+     {
+      "threshold": 0.475,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/25"
+      }
+     },
+     {
+      "threshold": 0.49167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/26"
+      }
+     },
+     {
+      "threshold": 0.50833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/27"
+      }
+     },
+     {
+      "threshold": 0.525,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/28"
+      }
+     },
+     {
+      "threshold": 0.54167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/29"
+      }
+     },
+     {
+      "threshold": 0.55833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/30"
+      }
+     },
+     {
+      "threshold": 0.575,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/31"
+      }
+     },
+     {
+      "threshold": 0.59167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/32"
+      }
+     },
+     {
+      "threshold": 0.60833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/33"
+      }
+     },
+     {
+      "threshold": 0.625,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/34"
+      }
+     },
+     {
+      "threshold": 0.64167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/35"
+      }
+     },
+     {
+      "threshold": 0.65833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/36"
+      }
+     },
+     {
+      "threshold": 0.69167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/37"
+      }
+     },
+     {
+      "threshold": 0.70833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/38"
+      }
+     },
+     {
+      "threshold": 0.725,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/39"
+      }
+     },
+     {
+      "threshold": 0.74167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/40"
+      }
+     },
+     {
+      "threshold": 0.75833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/41"
+      }
+     },
+     {
+      "threshold": 0.79167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/42"
+      }
+     },
+     {
+      "threshold": 0.80833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/43"
+      }
+     },
+     {
+      "threshold": 0.825,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/44"
+      }
+     },
+     {
+      "threshold": 0.84167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/45"
+      }
+     },
+     {
+      "threshold": 0.85833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/46"
+      }
+     },
+     {
+      "threshold": 0.875,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/47"
+      }
+     },
+     {
+      "threshold": 0.89167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/48"
+      }
+     },
+     {
+      "threshold": 0.90833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/49"
+      }
+     },
+     {
+      "threshold": 0.925,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/50"
+      }
+     },
+     {
+      "threshold": 0.94167,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/51"
+      }
+     },
+     {
+      "threshold": 0.95833,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/52"
+      }
+     },
+     {
+      "threshold": 0.975,
+      "model": {
+       "type": "minecraft:model",
+       "model": "craftov:item/med_use/hemostat/53"
+      }
+     }
+    ],
+    "fallback": {
+     "type": "minecraft:model",
+     "model": "craftov:item/hemostat"
+    }
+   },
+   "on_false": {
+    "type": "minecraft:model",
+    "model": "craftov:item/hemostat"
+   }
   }
  },
  "oversized_in_gui": true

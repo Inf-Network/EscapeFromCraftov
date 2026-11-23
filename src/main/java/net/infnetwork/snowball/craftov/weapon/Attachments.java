@@ -56,8 +56,9 @@ public final class Attachments {
         if (parts.isEmpty()) {
             return gun;
         }
-        double recoil = 1, recoilH = 1, hip = 1, ads = 1, reload = 1, move = 1, mag = 1;
+        double recoil = 1, recoilH = 1, hip = 1, ads = 1, reload = 1, move = 1, mag = 1, handling = 0;
         for (AttachSpec part : parts.values()) {
+            handling += part.handling();
             recoil *= part.recoil();
             recoilH *= part.recoilH();
             hip *= part.hipSpread();
@@ -69,7 +70,16 @@ public final class Attachments {
         return new GunSpec(gun.caliber(), gun.slot(), (int) Math.ceil(gun.magazine() * mag), gun.rpm(), gun.modes(), gun.damage(),
                 gun.range(), gun.maxRange(), gun.hipSpread() * hip, gun.adsSpread() * ads, gun.moveSpread(), gun.recoil() * recoil,
                 gun.recoilH() * recoilH, gun.recoilReturn(), (int) Math.round(gun.reloadTicks() * reload), gun.adsClass(), gun.pellets(), gun.headMultiplier(),
-                gun.soundVolume(), gun.moveSpeed() * move, gun.mount(), gun.scope(), gun.audio(), gun.action());
+                gun.soundVolume(), gun.moveSpeed() * move, gun.mount(), gun.scope(), gun.audio(), gun.action(),
+                gun.handling() + handling, gun.adsRecoil(), gun.adsRecoilH());
+    }
+
+    /**
+     * The gun with a sight fitted to its rail: the sight's handling on top (a built-in scope is already
+     * in the gun's own, so pass none for it).
+     */
+    public static GunSpec withOptic(GunSpec gun, @Nullable OpticSpec optic) {
+        return optic == null || optic.handling() == 0 ? gun : gun.withHandling(gun.handling() + optic.handling());
     }
 
     public static boolean suppressed(Map<String, AttachSpec> parts) {
@@ -91,6 +101,7 @@ public final class Attachments {
         effect(out, "换弹时间", part.reload(), true);
         effect(out, "移动速度", part.moveSpeed(), false);
         effect(out, "弹匣容量", part.magazine(), false);
+        points(out, part.handling());
         if (part.suppressed()) {
             out.append(out.isEmpty() ? "" : " ").append("<ok>消音");
         }
@@ -98,6 +109,15 @@ public final class Attachments {
             out.append(out.isEmpty() ? "" : " ").append("<ok>").append("strobe".equals(part.light()) ? "照明 / 爆闪" : "照明");
         }
         return out.toString();
+    }
+
+    /** "操控速度 +4" (green) or "-6" (red), for a part or a sight that changes the gun's handling. */
+    public static void points(StringBuilder out, double handling) {
+        long points = Math.round(handling);
+        if (points != 0) {
+            out.append(out.isEmpty() ? "" : " ").append(points > 0 ? "<ok>" : "<danger>").append("操控速度 ")
+                    .append(points > 0 ? "+" : "").append(points);
+        }
     }
 
     private static void effect(StringBuilder out, String name, double mult, boolean lowerIsBetter) {

@@ -58,12 +58,16 @@ public final class AiService implements Listener {
     private static final long HOLD_TICKS = 20L * 4;
     /** Blocks of smoke along a sight line that hide what is behind it. */
     private static final double SMOKE_OPAQUE = 1.5;
+    /** Ticks between two thoughts of every soldier ({@link #tick}). */
+    private static final long THINK_TICKS = 2;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
     private final AiDoors doors;
     /** Smoke clouds soldiers cannot see through, in every raid world. */
     private final List<Smoke> smokes = new ArrayList<>();
+    /** Runs of {@link #tick} so far, for what a soldier only does every so often ({@link #every}). */
+    private long thinks;
 
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
@@ -153,7 +157,7 @@ public final class AiService implements Listener {
     public AiService(CraftovPlugin plugin) {
         this.plugin = plugin;
         this.doors = new AiDoors(plugin);
-        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, 2L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 7L, THINK_TICKS);
     }
 
     public @Nullable String nameOf(Entity entity) {
@@ -715,12 +719,10 @@ public final class AiService implements Listener {
 
     // ------------------------------------------------------------------ brain
 
-    /**
-     * Every soldier thinks every 2 ticks, from whatever tick the plugin started on, so a check that
-     * should come round every N ticks tests {@code now % N < 2}: {@code == 0} may never be true.
-     */
+    /** Every soldier thinks every {@link #THINK_TICKS} ticks. */
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        thinks++;
         List<UUID> dead = new ArrayList<>();
         for (Bot bot : bots.values()) {
             Zombie mob = bot.mob;
@@ -736,6 +738,15 @@ public final class AiService implements Listener {
         dead.forEach(bots::remove);
         doors.tick(now);
         smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
+    }
+
+    /**
+     * Whether this round of thoughts is one of those every {@code ticks} ticks. Counted in runs of
+     * {@link #tick}: the server tick's phase against this timer depends on when the plugin was
+     * enabled, so a test of {@code now % ticks == 0} may never come true.
+     */
+    private boolean every(long ticks) {
+        return thinks % (ticks / THINK_TICKS) == 0;
     }
 
     private void think(Bot bot, long now) {
@@ -767,7 +778,7 @@ public final class AiService implements Listener {
             }
             double preferred = "sniper".equals(bot.kind) ? 999 : "shield".equals(bot.kind) ? 7 : bot.gun.gun().range() * 0.8;
             if (distance > preferred && !"sniper".equals(bot.kind)) {
-                if (!mob.getPathfinder().hasPath() || now % 10 < 2) {
+                if (!mob.getPathfinder().hasPath() || every(10)) {
                     go(bot, target.getLocation(), 1.0, now);
                 }
             } else if (distance < 6 && !"sniper".equals(bot.kind) && !"shield".equals(bot.kind)) {
@@ -783,7 +794,7 @@ public final class AiService implements Listener {
                         mob.getPathfinder().moveTo(back, 1.0);
                     }
                 }
-            } else if (now % 40 < 2 && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
+            } else if (every(40) && !"sniper".equals(bot.kind) && now >= bot.nextMoveTick && ThreadLocalRandom.current().nextBoolean()) {
                 sidestep(bot, target, now);
             } else if (distance <= preferred && now >= bot.nextMoveTick) {
                 // It holds its ground to shoot, but lets a sidestep under way finish: stopping here
@@ -805,7 +816,7 @@ public final class AiService implements Listener {
             return;
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
-            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || now % 20 < 2 && !heading(mob, bot.lastSeen))) {
+            if (!"sniper".equals(bot.kind) && (!mob.getPathfinder().hasPath() || every(20) && !heading(mob, bot.lastSeen))) {
                 go(bot, bot.lastSeen, 0.9, now);
             }
             return;
@@ -932,7 +943,7 @@ public final class AiService implements Listener {
             if (id.equals(bot.threatFrom) && now < bot.threatUntil) {
                 range *= 1.5; // it knows which way to look for whoever just shot it
             }
-            double d2 = from.distanceSquared(player.getLocation());
+            double d2 = from.distanceSquared(plugin.slides().feet(player));
             if (d2 > range * range) {
                 bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
@@ -941,10 +952,10 @@ public final class AiService implements Listener {
             // bot.target lets go 2 s after it lost sight; whoever it fought stays in mind for 10 s.
             boolean recent = id.equals(bot.lastFought) && now - bot.lastSeenTick < 20L * 10;
             boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
-            // Hearing: sprinting carries 24 blocks and plain walking 10; sneaking (silent in vanilla too) makes no noise.
-            boolean moving = moving(player);
-            double heard = player.isSneaking() || !moving ? 0 : player.isSprinting() ? 24 : 10;
-            boolean noisy = d < heard;
+            // Hearing: footsteps carry as far for a soldier as for a player (FootstepService: walking 16
+            // blocks, sprinting 32, half that through a wall, the silent walk nothing).
+            boolean moving = moving(player) || plugin.slides().isSliding(player);
+            boolean noisy = moving && plugin.footsteps().heardAt(player, mob.getEyeLocation());
             double view = view(facing, from, player.getLocation(), alerted);
             if (noisy) {
                 view = Math.max(view, 0.8); // it turns towards the footsteps
@@ -959,8 +970,9 @@ public final class AiService implements Listener {
                 aware = 1;
             } else if (seen > 0 && view > 0) {
                 double closeness = Math.pow(1 - d / range, 1.5) * (d < 6 && view >= 1 ? 3 : 1);
-                double stance = player.isSneaking() ? 0.5 : 1.0;
-                double motion = !moving ? 0.7 : player.isSprinting() ? 1.5 : 1.0;
+                boolean sliding = plugin.slides().isSliding(player);
+                double stance = player.isSneaking() && !sliding ? 0.5 : 1.0;
+                double motion = !moving ? 0.7 : player.isSprinting() || sliding ? 1.5 : 1.0;
                 double light = 0.3 + 0.7 * player.getEyeLocation().getBlock().getLightLevel() / 15.0;
                 aware = Math.min(1, aware + 0.1 * rate * closeness * stance * motion * light * view * seen * (alerted ? 1.5 : 1));
             } else {
@@ -1038,7 +1050,7 @@ public final class AiService implements Listener {
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         int pen = ammo == null ? 1 : ammo.penetration();
         Ballistics ballistics = plugin.weapons().ballistics();
-        Vector feet = player.getLocation().toVector();
+        Vector feet = plugin.slides().feet(player).toVector();
         double[] heights = aimHeights(player);
         double[] seen = new double[heights.length];
         boolean[] open = new boolean[heights.length];
@@ -1082,8 +1094,14 @@ public final class AiService implements Listener {
         return total;
     }
 
-    /** Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling. */
-    private static double[] aimHeights(Player player) {
+    /**
+     * Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling; above
+     * the ground for a player sliding (sat low, the head 0.7 to 1.2 up: SlideService).
+     */
+    private double[] aimHeights(Player player) {
+        if (plugin.slides().isSliding(player)) {
+            return new double[]{1.0, 0.45, 0.2};
+        }
         double h = player.getHeight();
         return new double[]{h - 0.2, h * 0.55, h * 0.33};
     }
@@ -1234,9 +1252,9 @@ public final class AiService implements Listener {
      * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
      * none of them. {@code look} is the last look at the target; without one the chest.
      */
-    private static @Nullable Vector aimPoint(Player target, @Nullable Look look) {
+    private @Nullable Vector aimPoint(Player target, @Nullable Look look) {
         double[] heights = aimHeights(target);
-        Vector feet = target.getLocation().toVector();
+        Vector feet = plugin.slides().feet(target).toVector();
         if (look == null) {
             return feet.add(new Vector(0, heights[1], 0));
         }
@@ -1293,7 +1311,8 @@ public final class AiService implements Listener {
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
                 gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.moveSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.adsClass(),
-                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
+                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action(),
+                gun.handling(), gun.adsRecoil(), gun.adsRecoilH());
     }
 
     // ------------------------------------------------------------------ events

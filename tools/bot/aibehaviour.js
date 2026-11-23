@@ -2,7 +2,7 @@
 //
 //   node aibehaviour.js                every scenario
 //   node aibehaviour.js doors sight    only these (doors sight range operator smoke boss fence nade
-//                                      wake doorbody edge)
+//                                      wake doorbody edge hear)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
@@ -43,6 +43,12 @@
 //             asleep. One pistol shot into the sky wakes all of them within 2 s, long before 60 s.
 //   doorbody  As doors, then the guard is moved back into the doorway and killed there: its body
 //             lies in the doorway, and the door still swings shut within 8 s.
+//   hear      On the field, A walks (W held) 12 blocks behind a patrol (within walk-range 16, where it cannot
+//             see A): the patrol notices A (awareness, or a fight) within 8 s. Then a guard with a
+//             three-high wall between it and A: A walking 12 blocks off it (past 16 x wall-share
+//             0.5) leaves it at rest for 5 s, 6 blocks off puts it on the alert (警戒) within 5 s.
+//             With SERVER_DIR (the server's folder) it also turns footsteps.enabled off (cv reload)
+//             and checks the patrol still hears A walking behind it, then puts the file back.
 //   edge      On the field, A (resistance, so the shots do not down it) stands 5 blocks from a
 //             guard posted next to the field's west edge, A on the inside: the guard backs off and
 //             sidesteps but never off the field for 8 s.
@@ -213,7 +219,102 @@ function earShots (bot) {
   return ear
 }
 
+/**
+ * Holds W down as far as the server can tell. Soldiers hear a player who is moving by the keys they
+ * press (Player#getCurrentInput), and mineflayer only ever reports Shift in its player_input.
+ */
+function walkKey (bot, down) {
+  bot._client.write('player_input', { inputs: { forward: down } })
+}
+
+/**
+ * Keeps A walking (forward held, not crouched) {@code dist} blocks behind the soldier as it turns,
+ * facing across it, for up to {@code ms}; returns the seconds until it noticed A (any awareness of
+ * A, or a fight with A), or null.
+ */
+async function walkBehind (bot, uuid, dist, ms) {
+  walkKey(bot, true)
+  const start = Date.now()
+  let noticed = null
+  while (Date.now() - start < ms) {
+    const s = await soldier(uuid)
+    if (!s) break
+    if ((s.aware[bot.username] || 0) > 0 || s.state === '交战' && s.target === bot.username) { noticed = (Date.now() - start) / 1000; break }
+    const p = ahead(s, -dist)
+    await inWorld(bot, `tp ${bot.username} ${p.x.toFixed(2)} ${FIELD.y + 1} ${p.z.toFixed(2)} ${(s.yaw + 90).toFixed(1)} 0`)
+    await sleep(250)
+  }
+  walkKey(bot, false)
+  return noticed
+}
+
 const scenarios = {
+  async hear () {
+    const A = await land()
+    await clearSoldiers(A)
+    await field(A)
+    const top = FIELD.y + 1
+    const problems = []
+    const notes = []
+    let patrol = await post(A, 'patrol', 60.5, top, 52.5)
+    const open = await walkBehind(A, patrol.uuid, 12, 8000)
+    if (open === null) problems.push('walking 12 blocks behind a patrol: never noticed in 8 s')
+    notes.push(`behind the patrol: ${open === null ? '-' : 'noticed after ' + open.toFixed(1) + ' s'}`)
+    // A wall between a guard and A: through it the steps carry half as far.
+    await clearSoldiers(A)
+    await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
+    await sleep(1500)
+    await inWorld(A, `fill 50 ${top} 44 70 ${top + 2} 44 minecraft:stone_bricks`)
+    const guard = await post(A, 'guard', 60.5, top, 40.5)
+    const pace = async (z, ms) => {
+      const states = new Set()
+      const end = Date.now() + ms
+      let k = 0
+      walkKey(A, true)
+      while (Date.now() < end) {
+        await inWorld(A, `tp ${A.username} ${(58.5 + (k++ % 2) * 4).toFixed(1)} ${top} ${z} 90 0`)
+        const s = await soldier(guard.uuid)
+        if (s) states.add(s.state)
+        if (states.has('警戒') || states.has('交战')) break
+        await sleep(250)
+      }
+      walkKey(A, false)
+      return states
+    }
+    const far = await pace(52.5, 5000)
+    if (far.has('警戒') || far.has('交战')) problems.push(`walking 12 blocks off a guard behind a wall: it heard A (${[...far].join(',')})`)
+    const near = await pace(46.5, 5000)
+    if (!near.has('警戒') && !near.has('交战')) problems.push(`walking 6 blocks off a guard behind a wall: not heard (${[...near].join(',')})`)
+    notes.push(`wall at 12: ${[...far].join(',')}; at 6: ${[...near].join(',')}`)
+    await inWorld(A, `fill 50 ${top} 44 70 ${top + 2} 44 minecraft:air`)
+    if (process.env.SERVER_DIR) {
+      // Players back on vanilla steps: the soldiers still hear by the footstep ranges.
+      const fs = require('fs')
+      const file = require('path').join(process.env.SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
+      const before = fs.readFileSync(file, 'utf8')
+      const off = before.replace(/^(footsteps:\n(?:[ \t]+#.*\n)*[ \t]+enabled: )true$/m, '$1false')
+      if (off === before) {
+        problems.push('footsteps.enabled: true not found in the server config')
+      } else {
+        try {
+          fs.writeFileSync(file, off)
+          await rcon('cv reload')
+          await clearSoldiers(A)
+          await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
+          await sleep(1500)
+          patrol = await post(A, 'patrol', 60.5, top, 52.5)
+          const vanilla = await walkBehind(A, patrol.uuid, 12, 8000)
+          if (vanilla === null) problems.push('footsteps.enabled false: the patrol no longer hears A walking 12 blocks behind it')
+          notes.push(`footsteps off: ${vanilla === null ? '-' : 'noticed after ' + vanilla.toFixed(1) + ' s'}`)
+        } finally {
+          fs.writeFileSync(file, before)
+          await rcon('cv reload')
+        }
+      }
+    }
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'heard walking behind in the open, through a wall only up close'} | ${notes.join('; ')}`]
+  },
+
   async doors () {
     const A = await land()
     await clearSoldiers(A)

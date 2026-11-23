@@ -20,18 +20,22 @@
 //            repository's server/run; restored after) and /cv reload: the K47's iron sights, its 4x
 //            and the AWR's 8x show their target for a slider declared at 50 and 25%, and the
 //            declaration is in the server log.
-//   resume   The AWR (8x, 12 ticks up): up, then the use packets stop until the server lowers the
+//   resume   The AWR (8x, 9 ticks up): up, then the use packets stop until the server lowers the
 //            sights, and right mouse comes straight back (a late packet): no new rise (no aiming
-//            mark), the zoom and the scope picture are back at once. Back only after 8 ticks: a new
-//            rise from the hip. One use packet only (the server lowers the sights half way up), then
-//            back: the rise goes on from half way, up in about 6 ticks rather than 12, its frames'
-//            cooldown again after the aiming mark.
-//   time     K47 iron sights, P18, AWR: the view narrows over the gun's ads time and not at once
-//            (half way in, it is between hip and aimed); the hand mark on the held stack says
-//            aiming (3) once the server takes the aim, aimed (4) when the sights are up, none once
-//            let go, and the cooldown that runs the frames comes after the aiming mark (with them
-//            together the client's old stack would read it as a shot's kick and flash); with no use
-//            packet the server never starts aiming.
+//            mark), the zoom (the first view sent is the scope's zoom, or steered past it) and the
+//            scope picture are back at once. Back only after 8 ticks: a new rise from the hip. One
+//            use packet only (the server lowers the sights part way up), then back: the rise goes on
+//            from there, up in 1 to 6 ticks rather than 9, its frames' cooldown again after the
+//            aiming mark.
+//   time     K47 iron sights, P18, AWR (5, 3 and 9 ticks by their handling): the view the vanilla
+//            client shows (worked out from the views sent: it goes half way to the last one each
+//            tick) narrows over the gun's ads time and not at once (half way through the n - 1 ticks
+//            it shows an n-tick rise in, it is between hip and aimed), and is at the sight's zoom
+//            (95% of it) by the tick after the sights are up;
+//            the hand mark on the held stack says aiming (3) once the server takes the aim, aimed
+//            (4) when the sights are up, none once let go, and the cooldown that runs the frames
+//            comes after the aiming mark (with them together the client's old stack would read it
+//            as a shot's kick and flash); with no use packet the server never starts aiming.
 //   mode     Aiming with the 4x, the gamemode changed by RCON to creative and back: the zoom holds.
 //   helmet   Aiming with the 4x while wearing a helmet, the helmet replaced by RCON (as a headshot
 //            that wears it does): every head-slot update the bot gets from then on (its inventory
@@ -352,15 +356,17 @@ async function resume () {
   if (!await lowered()) throw new Error('the server never lowered the sights')
   const back = Date.now()
   stop = press()
+  // The server steers the view back past the client's easing: the first view it sends is the
+  // scope's zoom or past it (never one on the way, which would be a new rise).
   let zoomBack = -1
   while (Date.now() - back < 600) {
-    if (zoomBack < 0 && Math.abs(shown() - want) < 0.005) zoomBack = Date.now() - back
+    if (zoomBack < 0 && shown() <= want + 0.005) zoomBack = Date.now() - back
     await sleep(5)
   }
   const seq = marksOf(stopAt)
   const headsSince = heads.slice(headsAt)
   check('resume: back at once, no new rise (no aiming mark), aimed mark held', !seq.includes(3) && heldMark() === 4, `marks ${seq.join(',') || 'none'}, now ${heldMark()}`)
-  check('resume: the 8x zoom is back within 2 ticks', zoomBack >= 0 && zoomBack <= 150, `${zoomBack} ms`)
+  check('resume: the 8x zoom is asked for at once', zoomBack >= 0 && zoomBack <= 60, `${zoomBack} ms`)
   check('resume: the scope picture is on the head slot', heads.length > 0 && heads[heads.length - 1].overlay,
     headsSince.map(h => h.overlay ? 'scope' : 'plain').join(',') || 'never taken down')
   await stop()
@@ -399,7 +405,7 @@ async function resume () {
   }
   await stop()
   const half = marksOf(halfAt)
-  check('resume: half way up and back, the rise goes on: up in 4-9 ticks rather than 12', upAfter >= 150 && upAfter <= 450,
+  check('resume: part way up and back, the rise goes on: up in 1-6 ticks rather than 9', upAfter >= 30 && upAfter <= 330,
     `${upAfter} ms, marks ${half.join(',')}`)
   const got = order.slice(orderAt)
   const rise = got.findIndex(e => /^c[1-9]/.test(e))
@@ -410,22 +416,49 @@ async function resume () {
 
 /** The views the bot was shown since `from` (ms), with the time since then. */
 const shownSince = from => history.filter(h => h.at >= from).map(h => ({ ms: h.at - from, m: shown(1, h) }))
+/**
+ * What the vanilla client shows from the views sent since `from`: from the first one on, each 50 ms
+ * tick it goes half the way to the last one it has (GameRenderer.tickFov). { ms, m } a tick.
+ */
+function clientSince (from, ticks = 30) {
+  const sent = shownSince(from)
+  if (!sent.length) return []
+  const out = []
+  let m = 1
+  for (let k = 0; k < ticks; k++) {
+    const at = sent[0].ms + 50 * k
+    const last = sent.filter(v => v.ms <= at + 1).pop()
+    m += (last.m - m) * 0.5
+    out.push({ ms: at, m })
+  }
+  return out
+}
+/** How much of the zoom from the hip to `want` the view `m` shows, in magnification (0 hip, 1 there). */
+const zoomed = (m, want) => Math.log(power(m)) / Math.log(power(want))
 
 async function time () {
   if (!worldName.includes('craftov_range')) await enterRange()
   await declare(70, 100)
-  for (const [gun, optic, ticks] of [['k47', null, 6], ['p18', null, 4], ['awr', null, 12]]) {
+  for (const [gun, optic, ticks, sight] of [['k47', null, 5, 1.25], ['p18', null, 3, 1.1], ['awr', null, 9, 8]]) {
     await arm(gun, optic)
     const slot = hotbar(gun)
     const from = Date.now()
     const markFrom = marks.length
     const orderFrom = order.length
     await aimFor(ticks * 50 + 600)
-    const seen = shownSince(from)
-    const full = seen.length ? seen[seen.length - 1].m : 1
-    const middle = seen.filter(v => v.ms > ticks * 25 - 60 && v.ms < ticks * 25 + 60).map(v => v.m)
-    check(`time: ${gun} narrows over its ${ticks}-tick ads time, not at once`, seen.length >= Math.min(3, ticks - 1) && middle.some(m => m < 0.999 && m > full + 0.003),
-      seen.map(v => v.ms + 'ms:' + v.m.toFixed(3)).join(' '))
+    const want = target(sight)
+    const client = clientSince(from)
+    const up = marks.slice(markFrom).find(m => m.slot === slot && m.damage === 4)
+    // The server takes the aim between two ticks and steers the view from the next one, so the client
+    // shows a rise of n ticks in n - 1 steps (one sent between ticks would never be shown on its own):
+    // the one half way through them must be part way.
+    const middle = client.filter(v => v.ms === client[0].ms + 50 * Math.floor((ticks - 2) / 2))
+    check(`time: ${gun} narrows over its ${ticks}-tick ads time, not at once`,
+      middle.length > 0 && middle.every(v => zoomed(v.m, want) > 0.1 && zoomed(v.m, want) < 0.97),
+      client.slice(0, ticks + 2).map(v => v.ms + 'ms:' + (zoomed(v.m, want) * 100).toFixed(0) + '%').join(' '))
+    const there = up ? client.find(v => v.ms >= up.at - from) : null
+    check(`time: ${gun} and the client shows the sight's zoom by the tick after the sights are up`,
+      !!there && zoomed(there.m, want) >= 0.95, there ? `${(zoomed(there.m, want) * 100).toFixed(1)}% at ${there.ms} ms` : 'never up')
     await sleep(600)
     const seq = marks.slice(markFrom).filter(m => m.slot === slot).map(m => m.damage)
     check(`time: ${gun} hand mark goes aiming (3), aimed (4), then none`, seq.join(',') === '3,4,0', seq.join(','))

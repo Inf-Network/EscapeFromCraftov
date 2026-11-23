@@ -34,3 +34,4 @@ sight_y: 12.43
 eye: [6.1, 0.14]
 rail: [12.5, 11.9]
 mag_axis: [-0.27, -0.96]
+hands: {grip: [8.1, 6.55, 68.2], fore: [18.35, 7.9], fore_grip: vertical}

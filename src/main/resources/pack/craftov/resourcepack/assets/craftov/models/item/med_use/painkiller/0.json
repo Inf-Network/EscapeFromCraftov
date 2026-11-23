@@ -1,0 +1,73 @@
+{
+ "parent": "craftov:item/painkiller",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -36.407,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    1.374,
+    3.689,
+    1.13
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -36.407,
+    90.0,
+    -0.0
+   ],
+   "translation": [
+    1.374,
+    3.689,
+    1.13
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "thirdperson_righthand": {
+   "rotation": [
+    -27.778,
+    0.0,
+    54.61
+   ],
+   "translation": [
+    -0.02,
+    3.154,
+    1.268
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    152.222,
+    -0.0,
+    125.39
+   ],
+   "translation": [
+    -0.02,
+    3.154,
+    1.268
+   ],
+   "scale": [
+    0.55,
+    0.55,
+    0.55
+   ]
+  }
+ }
+}

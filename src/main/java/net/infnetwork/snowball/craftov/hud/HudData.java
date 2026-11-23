@@ -265,7 +265,7 @@ public final class HudData {
         ExtractPoint best = null;
         double bestD = Double.MAX_VALUE;
         for (ExtractPoint point : raid.extracts) {
-            if (!point.available || !plugin.raids().extractOpenByTime(raid, point)) {
+            if (plugin.raids().extractShut(raid, point) || !plugin.raids().extractOpenByTime(raid, point)) {
                 continue;
             }
             double d = point.center.distanceSquared(p.getLocation());

@@ -11,6 +11,9 @@
 //            - C fires at bare floor: no craftov:hit.*, no flesh or armour impact, the floor is hit;
 //            - C fires at A: A loses health and C hears the hit.
 //          B must still see the replay: the stand-ins are spawned for B and B's camera follows one.
+//          The stand-ins are posed as the players were seen (#3, StanceService.pose): C's, standing
+//          with its M4C, is sent the gun carried low (with a use) and in use; A's, firing at B, the
+//          gun shouldered (a charged crossbow) and then not in use.
 // targets  Bullets stop only on combatants, so check that the rest still do: a training dummy on
 //          the private range, an enemy operator squad (summoned with /cv event operators) and a
 //          recon drone (/cv event drone) on the proving ground each give the shooter a hit.
@@ -77,6 +80,29 @@ function make (tag) {
     if (p.type === TEXT_DISPLAY) bot.texts.push(Date.now())
   })
   bot._client.on('camera', p => bot.cameras.push(p.cameraId))
+  // What this bot is told about other entities' main hands and living flags (bit 1: using it).
+  bot.hands = []
+  bot.flags = []
+  bot._client.on('entity_equipment', p => {
+    for (const e of p.equipments || []) if (e.slot === 0) bot.hands.push({ at: Date.now(), entityId: p.entityId, item: e.item })
+  })
+  bot._client.on('entity_metadata', p => {
+    const m = (p.metadata || []).find(x => x.key === 8 && typeof x.value === 'number')
+    if (m) bot.flags.push({ at: Date.now(), entityId: p.entityId, value: m.value })
+  })
+  // Recoil kicks the view with a relative rotation, which mineflayer applies as absolute: every other
+  // round of A's spray at the downed B went out level (pitch about 0, not B's 6) and drifted south,
+  // missing B for a whole magazine or downing C instead. Apply it as relative, as melee.js does;
+  // mineflayer adds its own listener a tick after createBot, so this one goes on at login, after it.
+  bot.once('login', () => {
+    let before = null
+    bot._client.prependListener('player_rotation', () => { before = bot.entity && [bot.entity.yaw, bot.entity.pitch] })
+    bot._client.on('player_rotation', p => {
+      if (!before || !(p.relativeYaw || p.relativePitch)) return
+      if (p.relativeYaw) bot.entity.yaw = before[0] - p.yaw * Math.PI / 180
+      if (p.relativePitch) bot.entity.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, before[1] - p.pitch * Math.PI / 180))
+    })
+  })
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), text: strip(JSON.stringify(t)) }))
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLog.push(m); log(tag, 'CHAT', m) } })
   bot.on('kicked', r => log(tag, 'KICKED', JSON.stringify(r)))
@@ -104,10 +130,10 @@ async function count (selector) {
 }
 
 async function arm (bot) {
-  // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
-  if (!bot.inventory.slots.some((s, i) => i >= 36 && i <= 44 && s && id(s) === 'm4c')) {
-    await rcon(`item replace entity ${bot.username} hotbar.0 with minecraft:air`)
-  }
+  // Guns go to the two weapon slots only (hotbar 0 and 1, then a backpack: CarryService.route), and
+  // a fresh raider has its starting guns there.
+  for (const slot of [0, 1]) await rcon(`item replace entity ${bot.username} hotbar.${slot} with minecraft:air`)
+  await sleep(200)
   await rcon(`cv give ${bot.username} m4c`)
   await rcon(`cv give ${bot.username} ammo_556_m855 120`)
   await sleep(800)
@@ -149,10 +175,12 @@ async function replay () {
   await sleep(3500) // spawn protection
   await clear(world)
   check('A and C hold an M4C', (await arm(a)) && (await arm(c)))
-  // Spawn bay 1: A faces B from 12 blocks west, C stands 5 blocks south of B.
+  // Spawn bay 1: A faces B from 12 blocks west, C stands 4 blocks north of B. A's misses drift
+  // south with the recoil (rounds landed up to 10 blocks south of B on the bay's east wall), and
+  // with C to the south they downed C, after which B bled out without a killer and no replay.
   await rcon(`execute as ${a.username} at @s run tp @s 10.5 65 90.5 -90 0`)
   await rcon(`execute as ${b.username} at @s run tp @s 22.5 65 90.5 90 0`)
-  await rcon(`execute as ${c.username} at @s run tp @s 22.5 65 95.5 90 0`)
+  await rcon(`execute as ${c.username} at @s run tp @s 22.5 65 86.5 90 0`)
   // Stand still for longer than the six-second replay window, so the stand-ins of A and C stand
   // exactly where A and C stand for the whole replay.
   await sleep(8500)
@@ -197,15 +225,44 @@ async function replay () {
   check('shooting the floor makes no body impact', !floor.some(s => /impact\.(flesh|armor|helmet)/.test(s)))
   check('the floor is hit', floor.some(s => s.startsWith('craftov:impact.') && !/impact\.(flesh|armor|helmet|ricochet)/.test(s)))
 
-  // C fires at A.
+  // C fires at A, from 13 blocks with the hip-fire cone (2.6 degrees, about the width of A), so a
+  // burst can miss: up to three bursts, each aimed afresh, until a round lands.
   const before = a.health
-  const atA = await fire(c, a.entity.position.offset(0, 1.2, 0), 2)
-  await sleep(300)
+  const atA = []
+  for (let burst = 0; burst < 3 && a.health >= before; burst++) {
+    atA.push(...(await fire(c, a.entity.position.offset(0, 1.2, 0), 2)))
+    await sleep(300)
+  }
   log('C heard (A)', atA.join(' '), 'A health', before, '->', a.health)
   check('shooting A hurts A', a.health < before, `${before} -> ${a.health}`)
   check('shooting A gives hit feedback', atA.some(s => s.startsWith('craftov:hit.')))
   const still = await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
   check('the replay was still playing during the shots', still >= 3, `${still} stand-ins left`)
+
+  // How the stand-ins were posed for B. A's shooting can sit in the last half second of the
+  // six-second clip (a quick kill), which plays last and in slow motion, so read the poses once
+  // the replay is over and the stand-ins are gone.
+  const standing = async () => await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
+  const over = await waitFor(async () => (await standing()) === 0, 12000, 500)
+  log('replay over before the pose checks', over)
+  const paper = b.registry.itemsByName.paper.id
+  const crossbow = b.registry.itemsByName.crossbow.id
+  const handsOf = id => b.hands.filter(h => h.entityId === id)
+  const flagsOf = id => b.flags.filter(f => f.entityId === id)
+  const shown = since(b).map(id => ({
+    id,
+    hands: handsOf(id).map(h => h.item.itemId === paper ? (JSON.stringify(h.item).includes('consumable') ? 'low' : 'paper')
+      : h.item.itemId === crossbow ? (JSON.stringify(h.item).includes('charged_projectiles') ? 'up' : 'crossbow') : String(h.item.itemId || 'empty')),
+    flags: flagsOf(id).map(f => f.value & 1)
+  }))
+  log('stand-ins as B saw them', shown)
+  const low = shown.filter(x => x.hands.includes('low') && x.flags.includes(1))
+  check('a stand-in of someone standing with a gun is sent it carried low, in use (C)', low.length >= 1, JSON.stringify(shown))
+  const up = since(b).filter(id => {
+    const raised = handsOf(id).find(h => h.item.itemId === crossbow && JSON.stringify(h.item).includes('charged_projectiles'))
+    return raised && flagsOf(id).some(f => f.at >= raised.at && (f.value & 1) === 0)
+  })
+  check('the shooter\'s stand-in is sent the gun shouldered and not in use (A firing at B)', up.length >= 1, JSON.stringify(shown))
   await done([a, b, c])
 }
 

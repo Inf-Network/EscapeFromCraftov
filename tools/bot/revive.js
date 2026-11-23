@@ -1,6 +1,8 @@
 // Knock-downs, revives and the self-revive injector (issue #28), with bots on the proving ground.
 //
-// squad: two bots in a party (TRIO), P is knocked down with RCON and M tries to revive it:
+// squad: two bots in a party (TRIO), P is knocked down with RCON and M tries to revive it (downed, P
+// has vanilla's sneaking speed 0.3, which the client scales the crawl by, while M standing has the
+// silent walk's 0.45; revived, P has 0.45 again):
 //   1. M on the far side of a one-block wall, 2 blocks away, crouches and right-clicks P for 8 s
 //      (raw interact packets, as a modified client could send through the wall): P stays down;
 //   2. M on a ledge 1.5 blocks up right next to P right-clicks it for 8 s: P stays down;
@@ -230,6 +232,13 @@ async function enterRaid (list) {
 
 // ------------------------------------------------------------------ squad
 
+/** The player's sneaking-speed attribute as the server has it, or null. */
+async function sneakSpeed (bot) {
+  const m = (await rcon(`attribute ${bot.username} minecraft:sneaking_speed get`)).match(/(-?[\d.]+)\s*$/)
+  return m ? Number(m[1]) : null
+}
+const close = (a, b) => a !== null && Math.abs(a - b) < 1e-6
+
 async function squad () {
   const P = await make(`rv${run}p`)
   const M = await make(`rv${run}m`)
@@ -257,6 +266,11 @@ async function squad () {
     return 2
   }
   const pEntity = () => M.players[P.username] && M.players[P.username].entity
+  await sleep(300)
+  const downedSneak = await sneakSpeed(P)
+  const standingSneak = await sneakSpeed(M)
+  check('downed, P keeps vanilla\'s sneaking speed for the crawl (0.3); M, standing, has the silent walk\'s 0.45',
+    close(downedSneak, 0.3) && close(standingSneak, 0.45), { downed: downedSneak, standing: standingSneak })
 
   // 1. Through a one-block wall, crouching and clicking.
   await rcon(`execute at ${M.username} run fill 43 65 93 48 67 93 minecraft:stone`)
@@ -331,6 +345,8 @@ async function squad () {
   const beforeRevive = logSize()
   await waitFor(async () => { await holdOn(M, pEntity(), 300); return titled(P, '已被救起') }, 9000)
   check('M holding on next to P revives it', titled(P, '已被救起') && inRaid(P), P.titles.slice(-2))
+  const upSneak = await sneakSpeed(P)
+  check('revived, P has the silent walk\'s sneaking speed again (0.45)', close(upSneak, 0.45), upSneak)
   // Revived, the pistol comes up again: one new draw of 6 ticks, and it is up on its ready tick.
   await sleep(800)
   const lines = logSince(beforeRevive)

@@ -245,7 +245,9 @@ def silhouette(kind):
     return img
 
 
-LANG = {'container.inventory': '', 'container.crafting': ''}
+# mount.onboard: vanilla's "Press Shift to Dismount" over the hotbar whenever the player is seated,
+# which a slide is (SlideService sits the player on an invisible seat) and where Shift does nothing.
+LANG = {'container.inventory': '', 'container.crafting': '', 'mount.onboard': ''}
 
 
 # ---------------------------------------------------------------- designed screens

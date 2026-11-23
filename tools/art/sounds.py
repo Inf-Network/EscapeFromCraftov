@@ -1,5 +1,7 @@
 """Synthesised sound effects (all original). Mono 44.1 kHz Ogg Vorbis, encoded by oggenc.py."""
 import os
+import zlib
+
 import numpy as np
 from scipy import signal
 
@@ -182,6 +184,9 @@ SOUNDS = {
                                       (click(1200, 0.06), 0.7))) * 0.7,
     'med/kit': lambda: norm(mixdown(*[(click(1400 + 90 * i, 0.012, 0.6), 0.018 * i) for i in range(22)],
                                    (swish(0.4, 400, 3000) * 0.6, 0.45))) * 0.7,
+    # Only a medical stack built before ItemFactory.VERSION 21 still names it (until it is rebuilt):
+    # medical items use silently now and play their cues (see the end). Kept here, in its place, so
+    # the shared noise generator gives every sound after it the same samples.
     'med/loop': lambda: norm(swish(0.3, 500, 3000)) * 0.35,
     'misc/silence': lambda: np.zeros(int(SR * 0.05), dtype=np.float32),
     'med/finish': lambda: norm(mixdown((swish(0.2, 500, 3000), 0), (tone(988, 0.3, 0.09), 0.15))) * 0.7,
@@ -222,6 +227,250 @@ def kill_chime(n):
 # Added after the rest so the shared noise generator gives every older sound the same samples.
 for _n in range(1, 7):
     SOUNDS['kill/%d' % _n] = (lambda n=_n: kill_chime(n))
+
+
+# ---------------------------------------------------------------- gear and the body (#41)
+
+def add(name, make):
+    """Adds a sound that draws from a noise generator of its own, seeded by its name, so adding or
+    retuning one of these never changes the samples of another sound."""
+    def build():
+        global rng
+        shared, rng = rng, np.random.default_rng(zlib.crc32(name.encode()))
+        try:
+            return make()
+        finally:
+            rng = shared
+    SOUNDS[name] = build
+
+
+def crackle(sec, rate, lo, hi, decay=0.0015, ramp=None):
+    """Dense tiny clicks (fabric, velcro, paper): `rate` impulses a second, each a short band-passed
+    burst; `ramp` (start, end) scales the rate across the sound."""
+    n = int(SR * sec)
+    out = np.zeros(n)
+    tt = np.arange(n) / SR
+    density = rate * (np.interp(tt, [0, sec], ramp) if ramp else 1.0) / SR
+    hits = np.nonzero(rng.uniform(0, 1, n) < density)[0]
+    out[hits] = rng.uniform(0.3, 1.0, len(hits)) * rng.choice([-1, 1], len(hits))
+    kernel = np.exp(-np.arange(int(SR * decay * 6)) / (SR * decay))
+    return bp(np.convolve(out, kernel)[:n], lo, hi)
+
+
+# Putting on a helmet or a vest: fabric dragged over the shoulders, a strap pulled through and a
+# buckle snapping shut.
+add('gear/equip', lambda: norm(mixdown(
+    (env(crackle(0.42, 900, 900, 7000, ramp=(0.6, 1.4)), 0.06, 0.16) * 0.7, 0),
+    (env(bp(noise(0.42), 300, 2500), 0.08, 0.14) * 0.5, 0),
+    (env(crackle(0.12, 2600, 1500, 8000), 0.01, 0.05) * 0.6, 0.3),
+    (click(3800, 0.02, 0.9), 0.43), (metal((2900, 4300), 0.03, 0.12) * 0.5, 0.43),
+    (click(2400, 0.02, 0.6), 0.47), length=int(SR * 0.6))) * 0.7)
+
+# Gauze wound round a limb: two soft passes of cloth, crinkling as it tightens. A bandage, a
+# dressing and a medkit play it while in use, and a squadmate reviving someone once a second.
+add('med/wrap', lambda: norm(mixdown(
+    (env(crackle(0.3, 500, 1200, 6000, ramp=(0.5, 1.5)), 0.08, 0.1) * 0.5, 0),
+    (swish(0.3, 500, 3200) * 0.8, 0),
+    (env(crackle(0.26, 650, 1200, 6000, ramp=(0.6, 1.6)), 0.06, 0.09) * 0.45, 0.28),
+    (swish(0.28, 600, 3500) * 0.7, 0.28), length=int(SR * 0.6))) * 0.6)
+# A soft drip and a dull throb, heard only by the one bleeding, every time a wound bleeds (1.5 s).
+add('status/bleed', lambda: norm(mixdown(
+    (env(sine(lambda tt: 1100 * np.exp(-tt * 18) + 380, 0.12), 0.002, 0.03), 0),
+    (env(sine(lambda tt: 900 * np.exp(-tt * 18) + 330, 0.1), 0.002, 0.025) * 0.5, 0.21),
+    (env(sine(52, 0.25), 0.01, 0.07) * 0.8, 0.02), length=int(SR * 0.35))) * 0.5)
+
+
+# ---------------------------------------------------------------- voices (#41)
+# Players, soldiers and stand-ins hurt and die with these (the vanilla player, generic and zombie
+# hurt / death events point at them, build.py). A source-filter voice: glottal pulses at a pitch
+# that jumps up with the pain and falls away, with a little jitter, shimmer and breath, through a
+# cascade of five formant resonators that glide between vowels; a strained, pressed voice (short
+# open phase) and creak as it dies down.
+
+def curve(points, sec):
+    """A per-sample curve through (time, value) points, straight between them."""
+    xs, ys = zip(*points)
+    return np.interp(t(sec), xs, ys)
+
+
+def drift(sec, rate, depth):
+    """1 +- depth, wandering at about `rate` Hz (jitter, shimmer)."""
+    n = lp(rng.standard_normal(int(SR * sec) + 2000), rate)[2000:]
+    return 1 + depth * n / (np.max(np.abs(n)) or 1)
+
+
+def glottis(f0, sec, open_q=0.5, jitter=0.02):
+    """Glottal flow derivative (Rosenberg pulses) along the pitch curve f0, and the flow itself."""
+    f = f0 * drift(sec, 25, jitter)
+    phase = np.cumsum(f / SR) % 1.0
+    tp, tn = open_q * 0.7, open_q * 0.3
+    flow = np.where(phase < tp, 0.5 * (1 - np.cos(np.pi * phase / tp)),
+                    np.where(phase < tp + tn, np.cos(0.5 * np.pi * (phase - tp) / tn), 0.0))
+    return np.diff(flow, prepend=0.0) * SR / 400.0, flow
+
+
+def resonate(x, freq, bw):
+    """Klatt's digital resonator, its frequency and bandwidth per sample (unity gain at 0 Hz)."""
+    c = -np.exp(-2 * np.pi * bw / SR)
+    b = 2 * np.exp(-np.pi * bw / SR) * np.cos(2 * np.pi * freq / SR)
+    a = 1 - b - c
+    y = np.zeros(len(x))
+    y1 = y2 = 0.0
+    for i in range(len(x)):
+        y0 = a[i] * x[i] + b[i] * y1 + c[i] * y2
+        y[i] = y0
+        y2, y1 = y1, y0
+    return y
+
+
+# Formants (Hz) of the vowels the voices move through, an adult man's.
+VOWELS = {'a': (730, 1090, 2440), 'uh': (640, 1190, 2390), 'eh': (530, 1840, 2480), 'er': (490, 1350, 1690),
+          'o': (570, 840, 2410), 'u': (330, 900, 2240), 'm': (280, 1000, 2200)}
+
+
+def voice(sec, pitch, vowels, loud, breath=0.12, open_q=0.45, jitter=0.03, shimmer=0.12, creak=None):
+    """One utterance: `pitch`, `loud` (0..1) and `vowels` are (time, value) points; `creak` (start,
+    depth) lets the pitch break into irregular low pulses (vocal fry) from that time on."""
+    f0 = curve(pitch, sec)
+    if creak:
+        start, depth = creak
+        fry = np.clip((t(sec) - start) / 0.08, 0, 1) * depth
+        f0 = f0 * (1 - 0.45 * fry) * drift(sec, 60, 0.25 * depth)
+    src, flow = glottis(f0, sec, open_q, jitter)
+    src = src * drift(sec, 35, shimmer)
+    # A strained voice is brighter than the smooth pulse alone: lift the highs (+6 dB an octave
+    # from about 1 kHz), which puts the third formant some 25 dB under the first, as in speech.
+    src = src - 0.85 * np.concatenate(([0.0], src[:-1]))
+    # Breath: turbulence at the glottis, stronger while it is open, shaped by the same tract.
+    asp = hp(noise(sec), 700) * (0.35 + 0.65 * flow) * breath
+    x = src + asp
+    bands = [[], [], []]
+    for when, name in vowels:
+        for k in range(3):
+            bands[k].append((when, VOWELS[name][k]))
+    widths = (90, 110, 130)
+    for k in range(3):
+        x = resonate(x, curve(bands[k], sec), np.full(len(x), widths[k]))
+    x = resonate(x, np.full(len(x), 3300.0), np.full(len(x), 220.0))
+    x = resonate(x, np.full(len(x), 3750.0), np.full(len(x), 280.0))
+    return x * curve(loud, sec)
+
+
+def breath_out(sec, vowel='uh', gain=0.4):
+    """A short breath through the open mouth, with no voice."""
+    x = hp(noise(sec), 400)
+    for k, w in zip(range(3), (200, 250, 300)):
+        f = VOWELS[vowel][k]
+        x = resonate(x, np.full(len(x), float(f)), np.full(len(x), float(w)))
+    return env(x, 0.03, sec / 2.5) * gain
+
+
+def cry(*parts, length):
+    """Parts placed in time, a touch of room, peak at 0.9."""
+    x = mixdown(*parts, length=int(SR * length))
+    return norm(lp(x + reverb(x, 0.12) * 0.15, 7000))
+
+
+# Hurt: four short cries a hit draws out, each a different vowel and pitch, so a burst of hits does
+# not repeat one sample.
+add('voice/hurt1', lambda: cry((voice(0.26, [(0, 175), (0.04, 215), (0.26, 140)], [(0, 'uh'), (0.26, 'uh')],
+                                      [(0, 0), (0.015, 1), (0.12, 0.7), (0.26, 0)], creak=(0.17, 0.6)), 0.01),
+                               (breath_out(0.12) * 0.5, 0), length=0.32))
+add('voice/hurt2', lambda: cry((voice(0.3, [(0, 190), (0.05, 235), (0.3, 150)], [(0, 'a'), (0.18, 'a'), (0.3, 'uh')],
+                                      [(0, 0), (0.02, 1), (0.16, 0.75), (0.3, 0)], breath=0.2, jitter=0.05,
+                                      creak=(0.2, 0.7)), 0.0), length=0.36))
+add('voice/hurt3', lambda: cry((voice(0.24, [(0, 160), (0.04, 190), (0.24, 125)], [(0, 'uh'), (0.12, 'er'), (0.24, 'm')],
+                                      [(0, 0), (0.012, 1), (0.1, 0.8), (0.24, 0)], open_q=0.4), 0.02),
+                               (breath_out(0.1, 'uh') * 0.6, 0), length=0.3))
+add('voice/hurt4', lambda: cry((breath_out(0.08, 'a') * 0.7, 0),
+                               (voice(0.22, [(0, 205), (0.03, 245), (0.22, 165)], [(0, 'eh'), (0.1, 'uh'), (0.22, 'uh')],
+                                      [(0, 0), (0.01, 1), (0.1, 0.6), (0.22, 0)], breath=0.18, creak=(0.15, 0.5)), 0.05),
+                               length=0.3))
+# Death: a long cry that falls and breaks, then the last breath going out.
+add('voice/death1', lambda: cry((voice(0.75, [(0, 200), (0.08, 240), (0.4, 170), (0.75, 95)],
+                                       [(0, 'a'), (0.35, 'a'), (0.75, 'uh')],
+                                       [(0, 0), (0.03, 1), (0.3, 0.85), (0.6, 0.4), (0.75, 0)], breath=0.16,
+                                       jitter=0.04, creak=(0.45, 0.9)), 0.0),
+                                (breath_out(0.5, 'uh') * 0.5, 0.72), length=1.3))
+add('voice/death2', lambda: cry((voice(0.9, [(0, 150), (0.1, 175), (0.5, 120), (0.9, 80)],
+                                       [(0, 'uh'), (0.4, 'o'), (0.9, 'u')],
+                                       [(0, 0), (0.06, 0.9), (0.4, 0.8), (0.75, 0.3), (0.9, 0)], breath=0.2,
+                                       open_q=0.55, creak=(0.35, 1.0)), 0.0),
+                                (breath_out(0.6, 'o') * 0.4, 0.85), length=1.5))
+add('voice/death3', lambda: cry((voice(0.3, [(0, 210), (0.04, 250), (0.3, 170)], [(0, 'a'), (0.3, 'uh')],
+                                       [(0, 0), (0.015, 1), (0.2, 0.7), (0.3, 0)], breath=0.2, creak=(0.2, 0.6)), 0.0),
+                                (voice(0.45, [(0, 130), (0.45, 85)], [(0, 'uh'), (0.45, 'm')],
+                                       [(0, 0), (0.05, 0.45), (0.3, 0.25), (0.45, 0)], breath=0.3, open_q=0.6,
+                                       creak=(0.05, 1.0)), 0.36),
+                                (breath_out(0.45, 'uh') * 0.35, 0.8), length=1.3))
+
+
+# ---------------------------------------------------------------- medical cues (#41)
+# A medical item in use plays its cues at set points of its use time (items.yml med.cues,
+# HealthService), instead of one 0.3 s swish every 4 ticks all through.
+
+def inhale(sec, vowel='a', gain=0.6):
+    """A sharp breath in through the open mouth, swelling to a catch at the end."""
+    x = hp(noise(sec), 500)
+    for k, w in zip(range(3), (180, 220, 280)):
+        x = resonate(x, np.full(len(x), float(VOWELS[vowel][k])), np.full(len(x), float(w)))
+    return x * curve([(0, 0), (sec * 0.8, 1), (sec, 0)], sec) * gain
+
+
+# Tearing a dressing's wrapper or a strip of tape off the roll.
+add('med/tear', lambda: norm(mixdown(
+    (env(crackle(0.3, 2400, 1500, 9000, ramp=(0.4, 1.6)), 0.03, 0.12), 0),
+    (env(bp(noise(0.3), 2500, 7000), 0.02, 0.08) * 0.3, 0), length=int(SR * 0.4))) * 0.6)
+# A splint's hook-and-loop strap ripped open and pressed shut.
+add('med/strap', lambda: norm(mixdown(
+    (env(crackle(0.32, 3200, 900, 8000, decay=0.001, ramp=(1.5, 0.6)), 0.01, 0.14) * (0.8 + 0.2 * np.sin(2 * np.pi * 38 * t(0.32))), 0),
+    (env(lp(noise(0.06), 900), 0.002, 0.02) * 0.6, 0.4), length=int(SR * 0.5))) * 0.65)
+# The cap pulled off an injector.
+add('med/cap', lambda: norm(mixdown((click(1800, 0.03), 0), (env(sine(lambda tt: 260 - tt * 900, 0.06), 0.001, 0.015) * 0.6, 0),
+                                    (click(3600, 0.015, 0.5), 0.04), length=int(SR * 0.15))) * 0.6)
+# Rummaging through a medical kit: packets and tools knocking about.
+add('med/rummage', lambda: norm(mixdown(
+    (env(crackle(0.55, 400, 800, 5000), 0.1, 0.25) * 0.6, 0),
+    *[(click(1300 + 700 * (i % 3), 0.03, 0.7), 0.07 + 0.11 * i + 0.02 * (i % 2)) for i in range(5)],
+    length=int(SR * 0.65))) * 0.55)
+# Surgical scissors cutting twice.
+add('med/snip', lambda: norm(mixdown(*[part for at in (0, 0.17) for part in (
+    (env(bp(noise(0.05), 3000, 9000), 0.004, 0.012), at), (metal((4200, 6100), 0.03, 0.08) * 0.25, at + 0.01))],
+    length=int(SR * 0.32))) * 0.55)
+# Swallowing the pills.
+add('med/swallow', lambda: norm(mixdown(
+    (env(sine(lambda tt: 190 - tt * 900, 0.08), 0.004, 0.025), 0),
+    (env(resonate(bp(noise(0.12), 200, 1500), np.full(int(SR * 0.12), 330.0), np.full(int(SR * 0.12), 120.0)), 0.01, 0.03) * 0.8, 0.01),
+    (click(900, 0.03, 0.5), 0.16), length=int(SR * 0.3))) * 0.6)
+# Coming round from the self-revive shot: a sharp gasp for air.
+add('med/gasp', lambda: norm(mixdown((inhale(0.38, 'a'), 0), (breath_out(0.35, 'uh') * 0.5, 0.45), length=int(SR * 0.85))) * 0.8)
+
+
+
+# ---------------------------------------------------------------- moving (#9)
+
+def slide_scrape():
+    """A slide (SlideService): a body and its gear dropping onto the ground and dragged along it for
+    about 0.8 s, loudest as it lands and dying away as the slide slows, with grit crackling under it."""
+    sec = 0.85
+    n = int(SR * sec)
+    tt = t(sec)
+    # The drag: cloth and gear over stone, a band of noise whose loudness wobbles with the steps of
+    # the surface going by, fading as the speed does.
+    drag = bp(noise(sec), 220, 2400) * (0.78 + 0.22 * np.sin(2 * np.pi * 11 * tt + 1.3))
+    drag *= np.clip(tt / 0.03, 0, 1) * np.exp(-tt / 0.38)
+    # Grit: sparse clicks of gravel and dust, thinning out with the drag.
+    grit = (rng.uniform(0, 1, n) < 0.006) * rng.uniform(-1, 1, n) * np.exp(-tt / 0.5)
+    grit = hp(grit, 1800) * 2.5
+    # The drop onto the ground: a dull thud and a short swish of the clothes.
+    thud = env(lp(noise(0.12), 170), 0.002, 0.035) * 1.1
+    cloth = env(bp(noise(0.2), 900, 5200), 0.01, 0.05) * 0.45
+    x = mixdown((drag, 0), (grit, 0.01), (thud, 0), (cloth, 0), length=n)
+    # Squeezed, so the drag carries as far as a footstep rather than only the thud.
+    return norm(np.tanh(2.5 * norm(x, 1.0)), 0.85)
+
+
+add('move/slide', slide_scrape)
 
 
 def write_ogg(data, path):

@@ -40,6 +40,18 @@ import java.util.function.Predicate;
  * finds them 165 to 185 ms behind the server with no network delay. Blocks are not rewound,
  * so a target that has just stepped behind cover can still be hit for up to max-ms. Soldiers shoot at
  * the present (their aim is computed on the server).
+ *
+ * <p>A sliding player (SlideService) sits low with the legs stretched out ahead, outside the box: the
+ * legs are a box of their own along the ground ({@link SlideService.Legs}), recorded and rewound with
+ * the body, and a round that meets them first is a leg hit. Others are sent only the seat, every tick
+ * (a player every 2), and their clients ease into each update over 2 ticks (the seat's teleport
+ * duration), so they draw a slider closer behind the server than anyone running: tools/bot/slide.js
+ * (cross) finds the seat drawn about 100 ms behind, and its rounds at a slider crossing the view hit
+ * with any rewind from about 85 to 205 ms (with no network delay). A sliding target is therefore
+ * rewound by {@code ping + combat.lag-compensation.slide-extra-ms} (150 by default) instead, also just
+ * after the slide while that rewind still lands in it. Its box is recorded on the seat
+ * (SlideService#hitbox), which this tick's updates send, not where the rider is until the world tick
+ * moves it there: a tick behind, which made a rewind look 50 ms further back than it meant to.
  */
 public final class HitboxHistory {
 
@@ -67,6 +79,18 @@ public final class HitboxHistory {
     }
 
     /**
+     * How far back a player's shots look, in milliseconds: {@code millis} at everyone, {@code slideMillis}
+     * at a sliding player (see the class comment). {@link #NONE} for soldiers and with compensation off.
+     */
+    public record Rewind(int millis, int slideMillis) {
+        public static final Rewind NONE = new Rewind(0, 0);
+
+        int longest() {
+            return Math.max(millis, slideMillis);
+        }
+    }
+
+    /**
      * A round meeting an entity's box as the shooter saw it.
      *
      * @param point     where the round met the (rewound) box: where the shooter saw it land
@@ -75,12 +99,21 @@ public final class HitboxHistory {
      * @param eyeHeight how high above its feet the entity's eyes were then, which sets the head line
      * @param body      the same spot on the entity's box as it stands now, where the wound shows
      * @param distance  from the start of the ray to {@code point}
+     * @param part      the body part when the box does not tell it: a sliding player's legs (else null)
+     * @param rewind    how far back the entity was looked for, in milliseconds
      */
-    public record Hit(LivingEntity entity, Vector point, BoundingBox box, double eyeHeight, Vector body, double distance) {
+    public record Hit(LivingEntity entity, Vector point, BoundingBox box, double eyeHeight, Vector body, double distance,
+                      @Nullable BodyPart part, int rewind) {
     }
 
-    /** An entity's box and eye height at one moment. */
-    private record Pose(BoundingBox box, double eyeHeight) {
+    /** An entity's box, eye height, (sliding) legs and whether it slid, at one moment. */
+    private record Pose(BoundingBox box, double eyeHeight, SlideService.@Nullable Legs legs, boolean sliding) {
+    }
+
+    /** {@code entity}'s pose now, a sliding player's on the seat (SlideService#hitbox). */
+    private Pose pose(LivingEntity entity) {
+        BoundingBox seated = plugin.slides().hitbox(entity);
+        return new Pose(seated != null ? seated : entity.getBoundingBox(), entity.getEyeHeight(), plugin.slides().legs(entity), seated != null);
     }
 
     private void record() {
@@ -91,8 +124,7 @@ public final class HitboxHistory {
                 if (entity instanceof ArmorStand || entity.isDead()) {
                     continue;
                 }
-                tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track())
-                        .add(raid.world, entity.getBoundingBox(), entity.getEyeHeight(), now, tick);
+                tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track()).add(raid.world, pose(entity), now, tick);
             }
         }
         if (tick % 20 == 0) {
@@ -101,50 +133,74 @@ public final class HitboxHistory {
     }
 
     /**
-     * How far back {@code shooter}'s shots look: {@code ping + extra-ms}, at most {@code max-ms} (and at
-     * most {@link #LONGEST_MS}), in milliseconds. 0 for soldiers and with compensation off.
+     * How far back {@code shooter}'s shots look: {@code ping + extra-ms} (at a sliding player
+     * {@code ping + slide-extra-ms}), at most {@code max-ms} (and at most {@link #LONGEST_MS}).
+     * {@link Rewind#NONE} for soldiers and with compensation off.
      */
-    public int rewindMillis(LivingEntity shooter) {
+    public Rewind rewind(LivingEntity shooter) {
         if (!(shooter instanceof Player player) || !plugin.getConfig().getBoolean("combat.lag-compensation.enabled", true)) {
-            return 0;
+            return Rewind.NONE;
         }
         int max = Math.max(0, Math.min(LONGEST_MS, plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300)));
         int extra = plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200);
-        return Math.max(0, Math.min(max, player.getPing() + extra));
+        int slideExtra = plugin.getConfig().getInt("combat.lag-compensation.slide-extra-ms", 150);
+        int ping = player.getPing();
+        return new Rewind(Math.max(0, Math.min(max, ping + extra)), Math.max(0, Math.min(max, ping + slideExtra)));
     }
 
     /**
      * The nearest entity passing {@code filter} that a ray from {@code from} along {@code dir} meets
-     * within {@code maxDistance}, each tested by its box {@code rewindMillis} ago (now when 0).
+     * within {@code maxDistance}, each tested by its box as far back as {@code rewind} says (now when 0).
      */
-    public @Nullable Hit trace(World world, Vector from, Vector dir, double maxDistance, Predicate<Entity> filter, int rewindMillis) {
+    public @Nullable Hit trace(World world, Vector from, Vector dir, double maxDistance, Predicate<Entity> filter, Rewind rewind) {
         if (maxDistance <= 0) {
             return null;
         }
         Vector direction = dir.clone().normalize();
-        long rewind = rewindMillis * 1_000_000L;
         long now = System.nanoTime();
         BoundingBox span = BoundingBox.of(from, from).expandDirectional(direction.clone().multiply(maxDistance));
-        if (rewind > 0) {
+        if (rewind.longest() > 0) {
             // Whoever the shooter saw on the line may have moved off it since: look as far around it as
             // anyone can run in the rewind.
-            span.expand(1.0 + REACH_PER_SECOND * rewindMillis / 1000.0);
+            span.expand(1.0 + REACH_PER_SECOND * rewind.longest() / 1000.0);
+        } else {
+            // A sliding body's legs reach ahead of its box (SlideService.LEGS_TO).
+            span.expand(SlideService.LEGS_TO);
         }
         Hit best = null;
         for (Entity entity : world.getNearbyEntities(span, filter)) {
             if (!(entity instanceof LivingEntity living)) {
                 continue;
             }
-            Pose live = new Pose(living.getBoundingBox(), living.getEyeHeight());
-            Pose seen = rewind > 0 ? poseAt(living, live, now - rewind, now) : live;
-            RayTraceResult result = seen.box().rayTrace(from, direction, maxDistance);
-            if (result == null) {
-                continue;
+            Pose live = pose(living);
+            Pose seen = live;
+            int back = 0;
+            if (rewind.longest() > 0) {
+                // A slider as its seat is drawn (see the class comment): while it slides, and after it
+                // as long as the shorter rewind still lands in the slide.
+                Pose slid = poseAt(living, live, now - rewind.slideMillis() * 1_000_000L, now);
+                boolean slider = live.sliding() || slid.sliding();
+                back = slider ? rewind.slideMillis() : rewind.millis();
+                seen = slider ? slid : poseAt(living, live, now - back * 1_000_000L, now);
             }
-            Vector point = result.getHitPosition();
-            double distance = from.distance(point);
-            if (best == null || distance < best.distance()) {
-                best = new Hit(living, point, seen.box(), seen.eyeHeight(), carry(point, seen.box(), live.box()), distance);
+            RayTraceResult result = seen.box().rayTrace(from, direction, maxDistance);
+            if (result != null) {
+                Vector point = result.getHitPosition();
+                double distance = from.distance(point);
+                if (best == null || distance < best.distance()) {
+                    best = new Hit(living, point, seen.box(), seen.eyeHeight(), carry(point, seen.box(), live.box()), distance, null, back);
+                }
+            }
+            if (seen.legs() != null) {
+                double along = seen.legs().trace(from, direction, maxDistance);
+                if (along >= 0 && (best == null || along < best.distance())) {
+                    Vector point = from.clone().add(direction.clone().multiply(along));
+                    // The wound shows on the legs where they are now (or on the body, the slide over).
+                    SlideService.Legs now2 = live.legs();
+                    Vector body = now2 == null ? carry(point, seen.box(), live.box())
+                            : point.clone().add(new Vector(now2.x() - seen.legs().x(), now2.y() - seen.legs().y(), now2.z() - seen.legs().z()));
+                    best = new Hit(living, point, seen.box(), seen.eyeHeight(), body, along, seen.legs().part(point), back);
+                }
             }
         }
         return best;
@@ -183,10 +239,17 @@ public final class HitboxHistory {
             return target - olderAt < newerAt - target ? olderPose : newerPose;
         }
         double f = (double) (target - olderAt) / (newerAt - olderAt);
+        // Legs only while sliding: blended when both ends have them, else those of the nearer end.
+        SlideService.Legs legs;
+        if (olderPose.legs() != null && newerPose.legs() != null) {
+            legs = olderPose.legs().lerp(newerPose.legs(), f);
+        } else {
+            legs = f < 0.5 ? olderPose.legs() : newerPose.legs();
+        }
         return new Pose(new BoundingBox(
                 lerp(older.getMinX(), newer.getMinX(), f), lerp(older.getMinY(), newer.getMinY(), f), lerp(older.getMinZ(), newer.getMinZ(), f),
                 lerp(older.getMaxX(), newer.getMaxX(), f), lerp(older.getMaxY(), newer.getMaxY(), f), lerp(older.getMaxZ(), newer.getMaxZ(), f)),
-                lerp(olderPose.eyeHeight(), newerPose.eyeHeight(), f));
+                lerp(olderPose.eyeHeight(), newerPose.eyeHeight(), f), legs, f < 0.5 ? olderPose.sliding() : newerPose.sliding());
     }
 
     private static double lerp(double a, double b, double f) {
@@ -211,23 +274,26 @@ public final class HitboxHistory {
         return toMin + share * (toMax - toMin);
     }
 
-    /** One entity's recent boxes and eye heights, newest at {@code head}. */
+    /** One entity's recent boxes, eye heights, legs and slides, newest at {@code head}. */
     private static final class Track {
         private final long[] at = new long[SAMPLES];
         private final double[] boxes = new double[SAMPLES * 6];
         private final double[] eyes = new double[SAMPLES];
+        private final SlideService.@Nullable Legs[] legs = new SlideService.Legs[SAMPLES];
+        private final boolean[] sliding = new boolean[SAMPLES];
         private int head;
         private int count;
         private int lastTick;
         private @Nullable UUID world;
 
-        void add(World in, BoundingBox box, double eyeHeight, long now, int tick) {
+        void add(World in, Pose pose, long now, int tick) {
             if (!in.getUID().equals(world)) {
                 world = in.getUID();
                 count = 0;
             }
             head = (head + 1) % SAMPLES;
             at[head] = now;
+            BoundingBox box = pose.box();
             int o = head * 6;
             boxes[o] = box.getMinX();
             boxes[o + 1] = box.getMinY();
@@ -235,7 +301,9 @@ public final class HitboxHistory {
             boxes[o + 3] = box.getMaxX();
             boxes[o + 4] = box.getMaxY();
             boxes[o + 5] = box.getMaxZ();
-            eyes[head] = eyeHeight;
+            eyes[head] = pose.eyeHeight();
+            legs[head] = pose.legs();
+            sliding[head] = pose.sliding();
             count = Math.min(SAMPLES, count + 1);
             lastTick = tick;
         }
@@ -252,7 +320,7 @@ public final class HitboxHistory {
         Pose pose(int back) {
             int i = index(back);
             int o = i * 6;
-            return new Pose(new BoundingBox(boxes[o], boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5]), eyes[i]);
+            return new Pose(new BoundingBox(boxes[o], boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5]), eyes[i], legs[i], sliding[i]);
         }
     }
 }

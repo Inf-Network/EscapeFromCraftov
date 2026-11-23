@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_hand/knife_starter_glove",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    36.638,
+    -67.625,
+    75.825
+   ],
+   "translation": [
+    -2.315,
+    5.993,
+    -2.333
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -143.362,
+    67.625,
+    104.175
+   ],
+   "translation": [
+    -2.315,
+    5.993,
+    -2.333
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
+ }
+}

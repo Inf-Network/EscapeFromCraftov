@@ -10,6 +10,7 @@ import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.infnetwork.snowball.craftov.weapon.GunSpec;
+import net.infnetwork.snowball.craftov.weapon.StanceService;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
@@ -66,7 +67,7 @@ public final class ReplayService implements Listener {
     private static final Color TRACER = Color.fromRGB(255, 206, 128);
 
     /** One actor at one moment. */
-    private record Sample(UUID id, double x, double y, double z, float yaw, float pitch, Pose pose, boolean raised,
+    private record Sample(UUID id, double x, double y, double z, float yaw, float pitch, Pose pose, StanceService.Stance stance,
                           @Nullable ItemStack hand) {
     }
 
@@ -149,16 +150,17 @@ public final class ReplayService implements Listener {
                     continue;
                 }
                 boolean downed = plugin.downed().isDowned(player);
-                Pose pose = downed || player.isSwimming() ? Pose.SWIMMING : player.isSneaking() ? Pose.SNEAKING : Pose.STANDING;
+                // A slide plays back crouched on the ground it slid over (the body itself sat 0.6 into it).
+                boolean sliding = plugin.slides().isSliding(player);
+                Pose pose = downed || player.isSwimming() ? Pose.SWIMMING : sliding || player.isSneaking() ? Pose.SNEAKING : Pose.STANDING;
                 ItemStack hand = hand(track, player.getUniqueId(), player.getInventory().getItemInMainHand());
-                boolean raised = hand != null && plugin.stance().takesPick(player.getEntityId()) && !plugin.stance().sprintCarry(player) && !downed;
-                samples.put(player.getUniqueId(), sample(player, pose, raised, hand));
+                samples.put(player.getUniqueId(), sample(player, plugin.slides().feet(player), pose, plugin.stance().recorded(player), hand));
                 look(track, player, now, () -> new Look(player.getName(), ResolvableProfile.resolvableProfile(player.getPlayerProfile()),
                         false, copy(player.getInventory().getHelmet()), copy(player.getInventory().getChestplate())));
             }
             for (Zombie mob : plugin.ai().mobsIn(raid)) {
                 ItemStack hand = hand(track, mob.getUniqueId(), mob.getEquipment().getItemInMainHand());
-                samples.put(mob.getUniqueId(), sample(mob, Pose.STANDING, true, hand));
+                samples.put(mob.getUniqueId(), sample(mob, mob.getLocation(), Pose.STANDING, plugin.stance().recorded(mob), hand));
                 EntityEquipment eq = mob.getEquipment();
                 look(track, mob, now, () -> new Look(DamageService.displayName(mob), null, mob instanceof Husk,
                         copy(eq.getHelmet()), copy(eq.getChestplate())));
@@ -174,9 +176,8 @@ public final class ReplayService implements Listener {
         tracks.keySet().retainAll(live);
     }
 
-    private static Sample sample(LivingEntity entity, Pose pose, boolean raised, @Nullable ItemStack hand) {
-        Location at = entity.getLocation();
-        return new Sample(entity.getUniqueId(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch(), pose, raised, hand);
+    private static Sample sample(LivingEntity entity, Location at, Pose pose, StanceService.Stance stance, @Nullable ItemStack hand) {
+        return new Sample(entity.getUniqueId(), at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch(), pose, stance, hand);
     }
 
     /** The held item, cloned only when it changes so frames share one copy. */
@@ -440,11 +441,14 @@ public final class ReplayService implements Listener {
         if (mannequin.getPose() != sample.pose()) {
             mannequin.setPose(sample.pose(), true);
         }
-        ItemStack hand = sample.hand() == null ? null : sample.raised() ? plugin.stance().raisedCopy(sample.hand()) : sample.hand();
+        // The stand-in holds what the player held; the stance service shows the viewer the pose they
+        // were seen in (the low carry, the gun shouldered, a reload, crawling with empty hands).
+        ItemStack hand = sample.hand();
         ItemStack current = mannequin.getEquipment().getItemInMainHand();
         if (hand == null ? !current.isEmpty() : !hand.isSimilar(current)) {
             mannequin.getEquipment().setItemInMainHand(hand);
         }
+        plugin.stance().pose(mannequin, sample.stance(), sample.pose() == Pose.SNEAKING);
     }
 
     private void apply(Mannequin mannequin, Sample sample, @Nullable Sample next) {
@@ -536,6 +540,7 @@ public final class ReplayService implements Listener {
             marker.remove();
         }
         for (Mannequin mannequin : playback.standIns.values()) {
+            plugin.stance().release(mannequin);
             mannequin.remove();
         }
         for (Entity entity : playback.hidden) {

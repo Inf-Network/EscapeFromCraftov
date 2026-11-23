@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/dm14",
+ "parent": "craftov:item/gun_aimhands/dm14",
  "display": {
   "firstperson_righthand": {
    "rotation": [

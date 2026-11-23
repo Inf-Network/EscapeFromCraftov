@@ -395,10 +395,13 @@ public final class DamageService implements Listener {
         double newDura = Math.max(0, dura - loss);
         ItemStack updated = armorStack.clone();
         plugin.items().setDura(updated, newDura);
+        // Silently: the worn copy changed (durability and lore), and vanilla plays the armour's
+        // equip sound to everyone around for any change of a worn piece, ten times a second under
+        // full-auto fire.
         if (head) {
-            equipment.setHelmet(updated);
+            equipment.setHelmet(updated, true);
         } else {
-            equipment.setChestplate(updated);
+            equipment.setChestplate(updated, true);
         }
         if (newDura <= 0 && victim instanceof Player p) {
             p.playSound(p.getLocation(), Sound.ITEM_SHIELD_BREAK, SoundCategory.PLAYERS, 1f, 0.8f);

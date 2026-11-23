@@ -25,6 +25,12 @@
 //            where A slides straight at it, an M4C on single shots, aimed, lag compensation off:
 //            a round aimed 1.0 above the ground hits A's head, 0.4 the torso, 0.15 (into the legs
 //            stretched out ahead of the body box) a leg
+//   cross    A slides across B's view 6 blocks away, with lag compensation on and then off; B aims
+//            down the sights at A's torso where a vanilla client draws it (seatView: A sits on the
+//            seat, whose updates come every tick and are eased into over its 2-tick teleport
+//            duration) and fires an M4C round about 150 and 400 ms into each slide. On must hit at
+//            least 75%, and clearly more often than off. Logs how far behind the server the seat
+//            was drawn and the rewind the server used.
 //   keys     mid-slide, A's Q reloads (not the ammo switch), F switches the fire mode (not the
 //            operator skill) and a left click fires a round
 //   hear     B 20 blocks from A hears A's slide (craftov:move.slide) though A holds sneak; 30
@@ -41,8 +47,8 @@
 //
 //   PORT=25565 RCON_PORT=25575 SERVER_LOG=../../server/run/logs/latest.log node slide.js [scenario ...]
 //
-// Before each slide B shoots at (zones) and before body, A is put back to full health with no wounds
-// (/cv injure A clear): a round in the legs can break one, and then A cannot sprint or slide.
+// Before each slide B shoots at (zones, cross) and before body, A is put back to full health with no
+// wounds (/cv injure A clear): a round in the legs can break one, and then A cannot sprint or slide.
 //
 // Needs `debug: true` (impacts and slides are read from the log), test mode (`test.enabled: true`, so
 // the bots may queue for the proving ground) and `match.wait-seconds` short (3) in the server's
@@ -60,8 +66,8 @@ const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
-// rejoin before zones (being shot puts A in a fight, and quitting in one is death), body last.
-const ALL = ['detect', 'box', 'boost', 'jump', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'body']
+// rejoin before zones and cross (being shot puts A in a fight, and quitting in one is death), body last.
+const ALL = ['detect', 'box', 'boost', 'jump', 'stamina', 'refuse', 'keys', 'hear', 'wall', 'low', 'rejoin', 'zones', 'cross', 'body']
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ALL
 const tag = String(Math.floor(10000 + Math.random() * 90000))
@@ -635,7 +641,7 @@ function aimWhile (bot) {
 function impacts (who, from) {
   const re = new RegExp(`\\[debug\\] ${who} impact eye=\\S+ hit=(\\S+) through=(\\d+)(?: keep=([0-9.]+) target=(\\S+) part=(\\S+) damage=([0-9.]+))? rewind=(\\d+)ms`)
   return logSince(from).map(l => l.match(re)).filter(Boolean)
-    .map(m => ({ hit: m[1], target: m[4] || '-', part: m[5] || '-', damage: m[6] ? Number(m[6]) : 0 }))
+    .map(m => ({ hit: m[1], target: m[4] || '-', part: m[5] || '-', damage: m[6] ? Number(m[6]) : 0, rewind: Number(m[7]) }))
 }
 
 /**
@@ -696,6 +702,138 @@ async function zones () {
     results[0.4].every(r => onA(r) && ['chest', 'stomach', 'left_arm', 'right_arm'].includes(r.part)), parts(results[0.4]))
   check('zones: 0.15 m over the ground, into the legs stretched out ahead, is a leg',
     results[0.15].every(r => onA(r) && ['left_leg', 'right_leg'].includes(r.part)), parts(results[0.15]))
+}
+
+/**
+ * Where a vanilla client draws seat `id` (and so the player sat on it) for `bot`: each update eased
+ * into over the seat's 2-tick teleport duration, a frame drawn between the last two client ticks.
+ */
+function seatView (bot, id) {
+  const raw = () => { const e = bot.seen.get(id); return { x: e.x, y: e.y, z: e.z } }
+  const start = raw()
+  const v = { prev: { ...start }, pos: { ...start }, target: { ...start }, steps: 0, tickAt: Date.now(), updatedAt: Date.now() }
+  const names = ['rel_entity_move', 'entity_move_look', 'sync_entity_position', 'entity_teleport']
+  // Registered after watchEntities' listeners, so bot.seen already has the new position.
+  const onPacket = packet => {
+    if (packet.entityId !== id || !bot.seen.get(id)) return
+    v.target = raw()
+    v.steps = 2
+    v.updatedAt = Date.now()
+  }
+  for (const n of names) bot._client.on(n, onPacket)
+  const timer = setInterval(() => {
+    v.prev = { ...v.pos }
+    if (v.steps > 0) {
+      for (const k of ['x', 'y', 'z']) v.pos[k] += (v.target[k] - v.pos[k]) / v.steps
+      v.steps--
+    }
+    v.tickAt = Date.now()
+  }, 50)
+  return {
+    at () {
+      const f = Math.max(0, Math.min(1, (Date.now() - v.tickAt) / 50))
+      return { x: v.prev.x + (v.pos.x - v.prev.x) * f, y: v.prev.y + (v.pos.y - v.prev.y) * f, z: v.prev.z + (v.pos.z - v.prev.z) * f }
+    },
+    /** How far behind the server the drawn seat is, in ms, from its last 150 ms of updates (as hitreg.js). */
+    lag () {
+      const path = bot.seen.get(id).path
+      const now = Date.now()
+      const old = path.find(p => p.at >= now - 150)
+      const last = path[path.length - 1]
+      if (!old || !last || last.at - old.at < 50) return null
+      const vx = (last.x - old.x) / (last.at - old.at) * 1000
+      const vz = (last.z - old.z) / (last.at - old.at) * 1000
+      const speed = Math.hypot(vx, vz)
+      if (speed < 1) return null
+      const d = this.at()
+      return (((last.x - d.x) * vx + (last.z - d.z) * vz) / speed) / speed * 1000 + (now - v.updatedAt)
+    },
+    stop () {
+      clearInterval(timer)
+      for (const n of names) bot._client.removeListener(n, onPacket)
+    }
+  }
+}
+
+async function cross () {
+  await arm(B, 'm4c', 'ammo_556_m855')
+  await rcon(`cv give ${B_NAME} ammo_556_m855 60`)
+  await semi(B)
+  // B 6 blocks to the side of the runway's middle line, facing it; A slides past from left to right.
+  await tp(B_NAME, RX + 7.5, GROUND, RZ + 6.5, 180, 0)
+  let stopAim = aimWhile(B)
+  await sleep(1200)
+  const series = async (label, slides) => {
+    // A full magazine for each series (30 rounds, two a slide).
+    stopAim()
+    dropKey(B)
+    await sleep(4000)
+    stopAim = aimWhile(B)
+    const rounds = []
+    const lags = []
+    for (let i = 0; i < slides; i++) {
+      await sleep(1800)
+      await rcon(`cv slide ${A_NAME} stamina 100`)
+      await healA()
+      await toStart()
+      const { ride } = await sprintAndSlide({ ms: 700 })
+      // B may get the seat a moment after A is told it sits on it.
+      for (let wait = 0; ride && !B.seen.get(ride.vehicle) && wait < 300; wait += 10) await sleep(10)
+      if (!ride || !B.seen.get(ride.vehicle)) {
+        log(`cross ${label}: slide ${i + 1} not seen (${ride ? 'B has no seat' : 'A not seated within 400 ms: ' + ((await slideInfo(A_NAME)).refused || '-')})`)
+        await slideEnded()
+        halt(A)
+        continue
+      }
+      const view = seatView(B, ride.vehicle)
+      const from = logSize()
+      let fired = 0
+      for (const wait of [150, 250]) {
+        await sleep(wait)
+        const behind = view.lag()
+        if (behind !== null) lags.push(behind)
+        const drawn = view.at()
+        // The torso: 0.12 to 0.7 over the ground the seat is on.
+        lookAt(B, { x: drawn.x, y: drawn.y + 0.45, z: drawn.z })
+        B.swingArm()
+        fired++
+      }
+      await sleep(600)
+      view.stop()
+      const got = impacts(B_NAME, from)
+      if (got.length !== fired) log(`cross ${label}: ${fired} fired, ${got.length} logged`)
+      rounds.push(...got)
+      await slideEnded()
+      halt(A)
+    }
+    const hits = rounds.filter(r => r.target === A_NAME)
+    log(`cross ${label}: ${hits.length} of ${rounds.length} rounds hit (${hits.map(r => r.part).join(' ')}), rewind ${[...new Set(rounds.map(r => r.rewind))].join('/')} ms, seat drawn ${median(lags)} ms behind`)
+    return { rounds: rounds.length, hits: hits.length }
+  }
+  let on, off
+  try {
+    await rcon('cv lagcomp on')
+    on = await series('compensated', 10)
+    await rcon('cv lagcomp off')
+    off = await series('not compensated', 8)
+  } finally {
+    stopAim()
+    await rcon('cv lagcomp on')
+    await tp(B_NAME, RX + 20.5, GROUND, RZ + 4.5, -90, 0)
+  }
+  const rate = r => r.rounds ? r.hits / r.rounds : 0
+  const pct = r => `${(rate(r) * 100).toFixed(0)}% of ${r.rounds}`
+  check('cross: at least 15 rounds at A sliding across with compensation on, 10 with it off', on.rounds >= 15 && off.rounds >= 10,
+    `${on.rounds} / ${off.rounds}`)
+  check('cross: aiming where a vanilla client draws a slider crossing the view hits it with compensation on', rate(on) >= 0.75, pct(on))
+  check('cross: and clearly more often than without', rate(on) >= rate(off) + 0.25, `${pct(on)} vs ${pct(off)}`)
+}
+
+/** The middle value of `list`, rounded (or '-' if empty). */
+function median (list) {
+  if (!list.length) return '-'
+  const sorted = [...list].sort((a, b) => a - b)
+  return Math.round(sorted[Math.floor(sorted.length / 2)])
 }
 
 async function keysScenario () {
@@ -920,6 +1058,7 @@ async function body () {
       else if (scenario === 'low') await low()
       else if (scenario === 'rejoin') await rejoin()
       else if (scenario === 'zones') await zones()
+      else if (scenario === 'cross') await cross()
       else if (scenario === 'body') await body()
       else log('unknown scenario', scenario)
     } catch (e) {

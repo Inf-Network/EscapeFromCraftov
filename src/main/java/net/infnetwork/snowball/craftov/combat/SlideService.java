@@ -277,14 +277,33 @@ public final class SlideService implements Listener {
         return at;
     }
 
-    /** The legs of a sliding player, stretched out ahead of the body; null while not sliding. */
-    public @Nullable Legs legs(LivingEntity entity) {
+    /**
+     * The box of a sliding player where everyone is sent it this tick: on the seat; null while not
+     * sliding. The seat is moved at the start of a tick and the world tick only puts the rider on it
+     * later, so until then the rider's own box is a tick behind what the others' clients are sent and
+     * draw (others are never sent a rider's own position, only the seat's).
+     */
+    public @Nullable BoundingBox hitbox(LivingEntity entity) {
         Slide slide = slides.get(entity.getUniqueId());
-        if (slide == null || !config().getBoolean("slide.leg-hitbox", true)) {
+        if (slide == null || !slide.seat.isValid() || slide.seat.getWorld() != entity.getWorld()) {
             return null;
         }
         Location at = entity.getLocation();
-        return new Legs(at.getX(), at.getY() + RIDE_DROP, at.getZ(), slide.dirX(), slide.dirZ());
+        Location seat = slide.seat.getLocation();
+        return entity.getBoundingBox().shift(seat.getX() - at.getX(), seat.getY() - RIDE_DROP - at.getY(), seat.getZ() - at.getZ());
+    }
+
+    /**
+     * The legs of a sliding player, stretched out ahead of the body on the seat's ground (as
+     * {@link #hitbox}); null while not sliding.
+     */
+    public @Nullable Legs legs(LivingEntity entity) {
+        Slide slide = slides.get(entity.getUniqueId());
+        if (slide == null || !config().getBoolean("slide.leg-hitbox", true) || !slide.seat.isValid()) {
+            return null;
+        }
+        Location seat = slide.seat.getLocation();
+        return new Legs(seat.getX(), seat.getY(), seat.getZ(), slide.dirX(), slide.dirZ());
     }
 
     public @Nullable Summary last(Player player) {

@@ -291,6 +291,10 @@ combat:
     # shots are never rewound.
     enabled: true
     extra-ms: 200
+    # A sliding player is rewound by ping + slide-extra-ms instead: others' clients are sent only the
+    # seat the slider sits on, every tick (a player every 2), and ease into it over 2 ticks, so they
+    # draw a slider about 50 ms closer behind the server than anyone running.
+    slide-extra-ms: 150
     max-ms: 300
   # Bullet and knife damage multiplier by where it lands (head hits use the weapon's own head
   # multiplier: 2.0 for a gun and 1.0 for a knife unless items.yml says otherwise; knives take

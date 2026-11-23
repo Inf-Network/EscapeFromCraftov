@@ -7,11 +7,13 @@ import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.Nullable;
 
 /**
  * First steps for a new player: open the terminal, try a gun on the range, fit an attachment at the
- * gunsmith, deploy, and extract. Each step is pointed out until done; finishing pays a starter bonus.
- * Steps only count in order, and the guide stays quiet once a player has extracted before.
+ * gunsmith, deploy, and extract. Steps count in any order; the first one still open is pointed out
+ * until done, and finishing all five pays a starter bonus. A player who had extracted before the
+ * guide existed never sees it.
  */
 public final class TutorialService {
 
@@ -27,7 +29,13 @@ public final class TutorialService {
         Step(String hint) {
             this.hint = hint;
         }
+
+        int bit() {
+            return 1 << ordinal();
+        }
     }
+
+    private static final int ALL = (1 << Step.values().length) - 1;
 
     private final CraftovPlugin plugin;
 
@@ -36,50 +44,133 @@ public final class TutorialService {
         Bukkit.getScheduler().runTaskTimer(plugin, this::remind, 20L * 30, 20L * 45);
     }
 
-    private boolean active(Profile profile) {
-        return !profile.tutorialDone && plugin.getConfig().getBoolean("tutorial.enabled", true);
+    /**
+     * When the guide was released (75f7382b, 2026-11-11T13:17:51Z). A player whose first raid came
+     * later began with the guide.
+     */
+    private static final long GUIDE_RELEASED = 1_794_403_071_000L;
+
+    /**
+     * Turns the old step counter of a saved profile into the set of finished steps: a counter at
+     * {@code n} had the first {@code n} steps done. The old build also lost the guide for a new player
+     * who extracted before reaching the extract step: their next step took them for a veteran and
+     * closed it without the reward, and until then it stayed open but silent. Such a guide is opened
+     * again with the deploy and the extract that broke it counted. Two kinds of profile show it:
+     * <ul>
+     *   <li>a counter at 1 to 4 and an extract: the old counter only moved while the player had no
+     *       extract, so the extract came after the guide had begun;</li>
+     *   <li>no counter, an extract, and every raid on record after the guide's release: a new player
+     *       who deployed from the lobby station or {@code /cv deploy}, which skip the terminal step.
+     *       The old builds kept a player's last 20 raid reports, so with fewer the first raid is among
+     *       them, and a veteran's first raid came before the guide.</li>
+     * </ul>
+     * Called on load. A reopened guide has steps on record, so it never matches twice.
+     */
+    public static void migrate(Profile profile) {
+        int steps = Math.clamp(profile.tutorialStep, 0, Step.values().length);
+        profile.tutorialMask |= (1 << steps) - 1;
+        profile.tutorialStep = 0;
+        if (steps < Step.values().length && profile.stat("extracts") > 0
+                && (steps > 0 || profile.tutorialMask == 0 && beganWithGuide(profile))) {
+            profile.tutorialDone = false;
+            profile.tutorialMask |= Step.DEPLOY.bit() | Step.EXTRACT.bit();
+        }
     }
 
-    /** Marks a step done if it is the current one, then shows the next. */
+    private static boolean beganWithGuide(Profile profile) {
+        if (profile.reports.isEmpty() || profile.reports.size() >= 20) {
+            return false;
+        }
+        for (Profile.RaidReport report : profile.reports) {
+            if (report == null || report.time < GUIDE_RELEASED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether the guide still runs for this player. Someone who has extracted without a single step
+     * on record extracted before the guide existed (every extract counts as a step before it counts
+     * as an extract), so the guide closes for them, once and without a reward.
+     */
+    private boolean active(Player player, Profile profile) {
+        if (profile.tutorialDone || !plugin.getConfig().getBoolean("tutorial.enabled", true)) {
+            return false;
+        }
+        if (profile.tutorialMask == 0 && profile.stat("extracts") > 0) {
+            profile.tutorialDone = true; // a veteran: nothing to teach
+            plugin.profiles().markDirty(player.getUniqueId());
+            return false;
+        }
+        return true;
+    }
+
+    /** Marks a step done, whatever order it comes in, then pays out or points out the next one. */
     public void done(Player player, Step step) {
         Profile profile = plugin.profiles().get(player);
-        if (!active(profile)) {
+        if (!active(player, profile) || (profile.tutorialMask & step.bit()) != 0) {
             return;
         }
-        if (profile.stat("extracts") > 0) {
-            profile.tutorialDone = true; // a veteran: nothing to teach
-            return;
-        }
-        if (profile.tutorialStep != step.ordinal()) {
-            return;
-        }
-        profile.tutorialStep++;
+        profile.tutorialMask |= step.bit();
         player.playSound(player.getLocation(), "craftov:ui.queue", SoundCategory.MASTER, 0.7f, 1.3f);
-        if (profile.tutorialStep >= Step.values().length) {
+        if ((profile.tutorialMask & ALL) == ALL) {
             profile.tutorialDone = true;
             long bonus = plugin.getConfig().getLong("tutorial.reward", 20_000);
             profile.money += bonus;
             Text.send(player, "<ok><b>新手指引完成！</b> <accent>奖励 ◈" + Text.money(bonus) + " <muted>· 之后可以试试每日任务和藏身处。");
-        } else {
+        } else if (step != Step.EXTRACT) {
+            // After an extract the lobby, a moment later, points out what is left (LobbyService#enterLobby).
             show(player, profile);
         }
         plugin.profiles().markDirty(player.getUniqueId());
     }
 
     public void show(Player player, Profile profile) {
-        if (!active(profile) || profile.tutorialStep >= Step.values().length) {
-            return;
+        Step step = next(player, profile);
+        if (step != null) {
+            Text.send(player, line(step));
         }
-        Step step = Step.values()[profile.tutorialStep];
-        Text.send(player, "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint);
     }
 
+    /**
+     * The step to point out: the first one still open, except that inside a raid it is the extract
+     * while that is open, the one thing that can be done there.
+     */
+    private @Nullable Step next(Player player, Profile profile) {
+        if (!active(player, profile)) {
+            return null;
+        }
+        if (plugin.raids().raidOf(player) != null && (profile.tutorialMask & Step.EXTRACT.bit()) == 0) {
+            return Step.EXTRACT;
+        }
+        for (Step step : Step.values()) {
+            if ((profile.tutorialMask & step.bit()) == 0) {
+                return step;
+            }
+        }
+        return null;
+    }
+
+    private static String line(Step step) {
+        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint;
+    }
+
+    /**
+     * Repeats the hint on the action bar now and then, outside raids only. In a raid it would cover
+     * the short messages that matter there (a kill, an injury, a med used), and the deploy already
+     * pointed out the extract in chat; someone dead and watching a squadmate is still in the raid's
+     * world. The matchmaking queue keeps the action bar for its countdown.
+     */
     private void remind() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            Profile profile = plugin.profiles().get(player);
-            if (active(profile) && profile.tutorialStep < Step.values().length && profile.stat("extracts") == 0) {
-                Step step = Step.values()[profile.tutorialStep];
-                Notify.info(player, "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + step.hint);
+            if (plugin.raids().raidOf(player) != null || plugin.raids().raidIn(player.getWorld()) != null
+                    || plugin.match().queued(player.getUniqueId()) != null) {
+                continue;
+            }
+            Step step = next(player, plugin.profiles().get(player));
+            if (step != null) {
+                Notify.info(player, line(step));
             }
         }
     }

@@ -33,10 +33,12 @@
 //      first: the inspect starts in between and the second cut lands too (the inspect does not hold
 //      up the knife);
 //   8. with a squadmate (a third bot) knocked down: holding right click on it ends a running inspect,
-//      and F while reviving does not inspect, with 救援中无法检视 on the revive bar; then, carrying a
-//      self-revive injector, the first bot is knocked down itself: that ends a running inspect, and F
-//      while downed does not inspect, with 倒地时无法检视 on the bleed-out bar (the hint alone was
-//      swallowed by those bars).
+//      and F while reviving does not inspect, with 救援中无法检视 on the revive bar; so does F while
+//      holding right click on it from too far away, with the reason on the 离得太远 line; the downed
+//      bot's F while it is being revived does not inspect, with 倒地时无法检视 on its 正在救援你 bar;
+//      then, carrying a self-revive injector, the first bot is knocked down itself: that ends a
+//      running inspect, and F while downed does not inspect, with 倒地时无法检视 on the bleed-out bar
+//      (the hint alone was swallowed by those bars).
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node inspect.js [--no-raid]
 //
@@ -479,6 +481,7 @@ async function killSoldiers (bot) {
   await tp(b, 49.5, 65, 86.5, 0, 0)
   await tp(c, 45.5, 65, 94.5, 180, 0)
   await tp(a, 45.5, 65, 92.8, 0, 50)
+  if (!await holdKnife(c, 'knife_karambit')) return finish(2) // for F while it is being revived
   await sleep(800)
   await rcon(`damage ${c.username} 500 minecraft:generic`)
   if (!await waitFor(() => c.titles.some(t => t.includes('第一次倒地')), 3000)) {
@@ -505,6 +508,33 @@ async function killSoldiers (bot) {
       !got.some(p => p.ticks > 0) && bars.some(t => t.includes('救援中无法检视') && t.includes('正在救援')), { got, bars })
   }
   await sleep(1500) // let go of C long enough to stop reviving
+  {
+    // Too far to work on C (downed.revive-range 2.2), close enough to click it: the revive cannot
+    // start, and that line holds the action bar instead of the revive bar.
+    await tp(a, 45.5, 65, 91.8, 0, 25)
+    await sleep(600)
+    const hold = holdOn(a, mate(), 1500)
+    await sleep(400)
+    const from = Date.now()
+    const got = await inspectsDuring(a, async () => { pressF(a); await hold }, 0)
+    const bars = barsSince(a, from).filter(t => t.includes('无法检视'))
+    check('F while holding right click on a downed squadmate out of reach does not inspect, and the 离得太远 line says 救援中无法检视',
+      !got.some(p => p.ticks > 0) && bars.some(t => t.includes('救援中无法检视') && t.includes('离得太远')), { got, bars })
+    await tp(a, 45.5, 65, 92.8, 0, 50)
+    await sleep(1500)
+  }
+  {
+    // C presses F while A works on it: C's action bar is the 正在救援你 bar.
+    const hold = holdOn(a, mate(), 1500)
+    await sleep(400)
+    const from = Date.now()
+    const got = await inspectsDuring(c, async () => { pressF(c); await hold }, 0)
+    const bars = barsSince(c, from).filter(t => t.includes('无法检视'))
+    check('F while downed and being revived does not inspect, and the 正在救援你 bar says 倒地时无法检视',
+      !got.some(p => p.ticks > 0) && bars.some(t => t.includes('倒地时无法检视') && t.includes('正在救援你')),
+      { got, bars, held: pdc(c.heldItem, 'id') })
+    await sleep(1500)
+  }
   await rcon(`cv give ${a.username} revive_kit`) // knocked down rather than killed with no mate up
   await sleep(500)
   if (pdc(a.heldItem, 'id') !== 'knife_karambit') {

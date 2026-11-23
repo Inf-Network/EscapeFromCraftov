@@ -507,6 +507,9 @@ async function soldierlag () {
     for (const give of ['m4c', 'ammo_556_m855 60']) await rcon(`cv give ${TARGET} ${give}`)
     await sleep(800)
   }
+  // The target's shots draw the patrol: two rounds a pull on full auto, up to five pulls a pass and
+  // six passes, more than one magazine. Spare rounds, and a reload before every pass (below).
+  await rcon(`cv give ${TARGET} ammo_556_m855 120`)
   await arm('m4c', target)
   const W = { x: 26.5, z: 15.5 }
   const E = { x: 50.5, z: 15.5 }
@@ -603,6 +606,7 @@ async function soldierlag () {
       // and put it back at the east end.
       if (i > 0 || label !== 'compensated') {
         reloadKey(shooter)
+        reloadKey(target)
         await sleep(11000)
         await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
         await sleep(2500)

@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
@@ -185,30 +186,55 @@ public final class InspectService implements Listener {
     public void onSwing(PlayerArmSwingEvent event) {
         if (event.getHand() == EquipmentSlot.HAND) {
             swung.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
-            debug(event.getPlayer(), "swing", "");
+            if (concerns(event.getPlayer(), null)) {
+                debug(event.getPlayer(), "swing", "");
+            }
             stop(event.getPlayer(), "swing");
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onHeld(PlayerItemHeldEvent event) {
-        debug(event.getPlayer(), "slot", event.getPreviousSlot() + " -> " + event.getNewSlot());
+        Player player = event.getPlayer();
+        if (concerns(player, player.getInventory().getItem(event.getNewSlot()))) {
+            debug(player, "slot", event.getPreviousSlot() + " -> " + event.getNewSlot());
+        }
         stop(event.getPlayer(), "slot switch");
         waiting.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSprint(PlayerToggleSprintEvent event) {
-        debug(event.getPlayer(), "sprint", String.valueOf(event.isSprinting()));
+        if (concerns(event.getPlayer(), null)) {
+            debug(event.getPlayer(), "sprint", String.valueOf(event.isSprinting()));
+        }
         if (event.isSprinting()) {
             stop(event.getPlayer(), "sprint");
         }
     }
 
     /**
+     * Whether a swing, slot switch or sprint is worth a debug line: with debug on, and only for a
+     * knife in hand (or in {@code switchedTo}, the slot switched to), an inspect running or a press
+     * waiting. The gun trigger swings the arm every tick it is held, and a line each would bury the
+     * rest.
+     */
+    private boolean concerns(Player player, @Nullable ItemStack switchedTo) {
+        if (!plugin.getConfig().getBoolean("debug", false)) {
+            return false;
+        }
+        UUID id = player.getUniqueId();
+        if (active.containsKey(id) || waiting.containsKey(id) || knife(player) != null) {
+            return true;
+        }
+        ItemDef to = switchedTo == null ? null : plugin.items().defOf(switchedTo);
+        return to != null && to.isMelee();
+    }
+
+    /**
      * With {@code debug: true}, one line for each F with a knife and what came of it, and for each
-     * event that can end an inspect: what tools/shots/scenes/inspectkeys.py reads to tell why a
-     * press did nothing.
+     * event that can end an inspect of a knife: what tools/shots/scenes/inspectkeys.py reads to tell
+     * why a press did nothing.
      */
     private void debug(Player player, String what, String detail) {
         if (plugin.getConfig().getBoolean("debug", false)) {

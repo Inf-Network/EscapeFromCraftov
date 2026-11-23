@@ -1779,8 +1779,15 @@ public final class WeaponService implements Listener {
      * packets may reach it in the same tick: two ticks apart, the stack is always in first.
      */
     private static final int ADS_FRAMES_DELAY = 2;
-    /** Share of that cooldown, at its end, that holds the last frame (tools/art/models.py ADS_RISE_TAIL). */
-    private static final double ADS_FRAMES_TAIL = 0.25;
+    /**
+     * Ticks that cooldown runs past the rest of the ads time, holding the last frame (its last share,
+     * tools/art/models.py ADS_RISE_TAIL) until the aimed mark is in. The real client swaps that mark in
+     * two ticks after the frames end rather than one (frame grabs, issue #117): a cooldown that ran out
+     * sooner left the aiming mark with nothing to read, which is the gun at the hip, for a frame or two
+     * between the sights coming up and the aimed pose. Any longer and the aimed model would read what is
+     * left of it as a shot's kick.
+     */
+    private static final int ADS_FRAMES_HOLD = 2;
 
     /**
      * One tick of aiming. While the sights come up the view narrows with their progress: a tick ahead
@@ -1809,11 +1816,14 @@ public final class WeaponService implements Listener {
             return;
         }
         if (!state.adsFrames && now >= state.adsMarkAt + ADS_FRAMES_DELAY) {
-            // The frames take the rest of the ads time; the cooldown runs a quarter longer, its last
-            // quarter holding the final frame, so the aimed mark that ends them can come a little late.
+            // The frames take the rest of the ads time; the cooldown runs on past it holding the final
+            // frame until the aimed mark is in (see ADS_FRAMES_HOLD). None for sights up this very tick
+            // (an ads time of 2 ticks or less): the aimed mark would read it as a shot's kick and flash.
             state.adsFrames = true;
-            int frames = (int) Math.max(1, state.adsStart + state.adsTicks - now);
-            player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.ceil(frames / (1 - ADS_FRAMES_TAIL)));
+            long frames = state.adsStart + state.adsTicks - now;
+            if (frames > 0) {
+                player.setCooldown(ItemFactory.RELOAD_GROUP, (int) frames + ADS_FRAMES_HOLD);
+            }
         }
         long done = now - state.adsStart;
         if (done < state.adsTicks) {

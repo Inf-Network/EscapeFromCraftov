@@ -514,8 +514,10 @@ def ads_ease(t):
     return t * t * (3 - 2 * t)
 
 
-# The last ADS_RISE_TAIL of that cooldown holds the final frame (WeaponService.ADS_FRAMES_TAIL): the
-# server's aimed mark, which ends the frames, may come a tick late without the gun dropping back.
+# The last ADS_RISE_TAIL of that cooldown holds the final frame: the server runs it two ticks past the
+# rest of the ads time (WeaponService.ADS_FRAMES_HOLD), until the client has swapped the aimed mark in,
+# so the gun never drops back to the hip in between. A rise of 4 to 6 frames lands on its own tick;
+# a shorter one (the quickest guns) a tick late, a longer one a tick early.
 ADS_RISE_TAIL = 0.25
 
 

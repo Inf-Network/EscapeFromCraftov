@@ -134,18 +134,21 @@ public final class FovService implements Listener {
     }
 
     /**
-     * How far past a sight's zoom (a share of its multiplier, about as much more magnification) the
-     * view may go for a tick when a packet comes a tick late (see {@link #steer}): too little to see.
+     * How far past a sight's zoom the view is ever asked to go (a share of its multiplier, about as much
+     * more magnification), see {@link #steer}.
      */
-    private static final double SLIP = 0.02;
+    private static final double PAST = 0.06;
 
     /**
      * Has the client's view at {@code at} once it takes this tick's packet, on the way to {@code target}
      * (the sight's own zoom): it asks for twice as far as {@code at} is from where the view is now, so
      * that half the way lands on it. Asking past the target is how the last of the way is covered in a
-     * tick instead of five, but a client that takes one packet twice (the next came a tick late) goes
-     * on past it: so it asks past the target by at most a third of what is left, plus enough that such
-     * a client overshoots by {@link #SLIP} at most, and never further than lands on it in one go.
+     * tick instead of five, but a client that takes one packet again and again (the next ones came
+     * late: a server or network hitch) goes on toward what it asked for. So the ask never goes further
+     * past the target than {@link #PAST} of it, nor further than lands on it in one go: whatever the
+     * hitch, the view goes at most about that much past the sight's power (an 8x shows 8.5x for the
+     * moment) before the next packets bring it back. (Bounded instead by how far a client that took
+     * the packet just once more would go, a hitch of 100 ms could zoom an 8x past 9x, issue #117.)
      */
     public void steer(Player player, double at, double target) {
         steer(player, at, target, Bukkit.getCurrentTick());
@@ -158,8 +161,7 @@ public final class FovService implements Listener {
     public void steer(Player player, double at, double target, long tick) {
         double from = eased(player).before(tick);
         double left = Math.abs(from - target);
-        // Taken twice, asking x past the target from `left` away ends (3x - left) / 4 past it.
-        double past = Math.min(left, (left + 4 * SLIP * target) / 3);
+        double past = Math.min(left, PAST * target);
         double ask = 2 * at - from;
         if (target < from) {
             ask = Math.min(from, Math.max(ask, target - past));

@@ -233,6 +233,7 @@ const DAY = 86400000
 async function legacyJoin (name, fields, during) {
   const file = writeProfile(name, fields)
   const bot = await spawnBot(name)
+  let left = Infinity
   try {
     await rcon('op ' + name)
     await waitChat(bot, /新手指引/, 6000)
@@ -241,14 +242,21 @@ async function legacyJoin (name, fields, during) {
     await during(bot)
   } finally {
     await rcon('deop ' + name).catch(() => {})
+    left = Date.now()
     bot.quit()
   }
-  let saved = null
-  await waitFor(() => {
-    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (e) { saved = null }
-    return saved && saved.tutorialStep === 0 && saved.tutorialMask !== undefined
-  }, 10000)
+  // The server may already have saved the profile while the bot was on (in the new format, but from
+  // before the terminal was opened), so only a file written after the bot left counts.
+  const read = () => {
+    try {
+      if (fs.statSync(file).mtimeMs < left) return null
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8'))
+      return saved.tutorialStep === 0 && saved.tutorialMask !== undefined ? saved : null
+    } catch (e) { return null }
+  }
+  await waitFor(() => read() !== null, 10000)
   await sleep(1000)
+  const saved = read()
   return saved && { done: saved.tutorialDone, mask: saved.tutorialMask, money: saved.money }
 }
 

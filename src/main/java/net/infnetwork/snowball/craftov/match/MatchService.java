@@ -259,6 +259,11 @@ public final class MatchService {
                         + Text.escape(nameOf(uuid)) + " 移出小队。");
                 return false;
             }
+            if (plugin.raids().launching(uuid)) {
+                // Matched a moment ago and waiting for the map: already on their way to a raid.
+                Text.send(player, "<danger>" + Text.escape(member.getName()) + " 已经匹配成功，正在部署，不能再次匹配。");
+                return false;
+            }
             if (!plugin.lobby().isLobby(member.getWorld()) || plugin.raids().raidOf(member) != null) {
                 Text.send(player, "<danger>小队成员 " + Text.escape(member.getName()) + " 不在大厅。");
                 return false;
@@ -485,8 +490,11 @@ public final class MatchService {
         }
     }
 
-    /** Why this player may not deploy now, or null. */
-    private @Nullable String unfit(Player player, MapDef map, Tier tier) {
+    /**
+     * Why this player may not deploy now, or null: checked at launch, and again by the raid once
+     * its map has been copied ({@link net.infnetwork.snowball.craftov.raid.RaidManager#start}).
+     */
+    public @Nullable String unfit(Player player, MapDef map, Tier tier) {
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return "不在大厅";
         }

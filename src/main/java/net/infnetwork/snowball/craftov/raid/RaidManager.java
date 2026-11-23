@@ -714,6 +714,11 @@ public final class RaidManager implements Listener {
         plugin.killFeed().clear(player);
         plugin.stamina().refill(player);
         plugin.lobby().stripRangeItems(player);
+        // The screen closes before anything is recorded, and closing it puts whatever is held on the
+        // cursor back on the player (CarryService#settleCursor): the loadout, the deployment record,
+        // the insurance and the start value below all count it, and nothing in an open window is
+        // left to change after them.
+        player.closeInventory();
         plugin.lobby().captureLoadout(player);
         Profile profile = plugin.profiles().get(player);
         // A training raid costs nothing (its tier has no fee) and insures nothing: the gear brought
@@ -752,7 +757,6 @@ public final class RaidManager implements Listener {
         rp.escortContract = training ? null : plugin.escorts().contractFor(player.getUniqueId());
         rp.escorting = rp.escortContract != null && !plugin.escorts().isClient(rp.escortContract, player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
-        player.closeInventory();
         plugin.health().setupPlayer(player, true);
         if (training) {
             // Last, once the real gear is on record: the course's own kit in its place.

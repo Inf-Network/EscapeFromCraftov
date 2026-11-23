@@ -360,8 +360,9 @@ public final class CarryService {
      * container goes back on when its slot is free, anything else goes into a free cell, and what
      * has no room is spilled (mailed outside a raid, dropped at the player's feet in one). Players
      * in creative or spectator mode are left alone ({@link #manages}). Used on closing the
-     * inventory and on logging off (CarryListener), and for everyone when the server stops, which
-     * removes the players only once the plugin is disabled, so neither of those runs then.
+     * inventory, which a deploy does before it records anything, and on logging off (CarryListener),
+     * and for everyone when the server stops, which removes the players only once the plugin is
+     * disabled, so neither of those runs then.
      */
     public void settleCursor(Player player) {
         if (manages(player)) {

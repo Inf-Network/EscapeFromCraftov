@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.map.editor;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -103,7 +104,7 @@ public final class EditorService implements Listener {
 
     public void createWorld(Player player, String name) {
         if (!NAME.matcher(name).matches()) {
-            Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线，长度 3–32。");
+            Text.send(player, "<danger>世界名只能包含小写字母、数字和下划线，长度 3–32。");
             return;
         }
         World world = Bukkit.getWorld(name);
@@ -111,7 +112,7 @@ public final class EditorService implements Listener {
             world = WorldService.creator(name).createWorld();
         }
         if (world == null) {
-            Text.send(player, "<#FF8A80>无法创建或加载世界。");
+            Text.send(player, "<danger>无法创建或加载世界。");
             return;
         }
         WorldService.applyRules(world, false);
@@ -121,12 +122,12 @@ public final class EditorService implements Listener {
         }
         player.setGameMode(GameMode.CREATIVE);
         player.teleport(spawn.add(0.5, 0, 0.5));
-        Text.send(player, "<#5BD16B>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
+        Text.send(player, "<ok>已进入建图世界 <white>" + name + "</white>。建好后用 <white>/cv editor start <地图ID></white> 开始标点。");
     }
 
     public void start(Player player, String typed) {
         if (editing(player)) {
-            Text.send(player, "<#FF8A80>你已经在编辑中，先 /cv editor exit。");
+            Text.send(player, "<danger>你已经在编辑中，先 /cv editor exit。");
             return;
         }
         String id = typed.toLowerCase(Locale.ROOT);
@@ -137,18 +138,18 @@ public final class EditorService implements Listener {
             existing = plugin.maps().get(id);
         }
         if (existing == null && !NAME.matcher(id).matches()) {
-            Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
+            Text.send(player, "<danger>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
         World world = player.getWorld();
         if (plugin.lobby().isLobby(world) || plugin.raids().isRaidWorld(world)) {
-            Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
+            Text.send(player, "<danger>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
             return;
         }
         MapDraft draft;
         if (existing != null) {
             if (!existing.template().equals(world.getName())) {
-                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
+                Text.send(player, "<danger>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
                 return;
             }
             draft = MapDraft.of(existing);
@@ -165,15 +166,15 @@ public final class EditorService implements Listener {
         player.setGameMode(GameMode.CREATIVE);
         giveTools(player, session);
         refreshLabels(player, session);
-        Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
-        Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
-        Text.send(player, "<#9AA0A6>完成后用“保存”工具或 <white>/cv editor save</white>；<white>/cv editor set name|minutes|time <值></white> 修改属性。");
+        Text.send(player, "<ok>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
+        Text.send(player, "<muted>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
+        Text.send(player, "<muted>完成后用“保存”工具或 <white>/cv editor save</white>；<white>/cv editor set name|minutes|time <值></white> 修改属性。");
     }
 
     public void exit(Player player, boolean save) {
         Session session = sessions.remove(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         if (save) {
@@ -183,13 +184,13 @@ public final class EditorService implements Listener {
         player.getInventory().clear();
         plugin.carry().apply(player, session.inventory, UiItems.lobbyMenu());
         player.setGameMode(session.mode);
-        Text.send(player, "<#9AA0A6>已退出编辑模式。");
+        Text.send(player, "<muted>已退出编辑模式。");
     }
 
     public void save(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         save(player, session);
@@ -208,7 +209,7 @@ public final class EditorService implements Listener {
             }
             net.infnetwork.snowball.craftov.map.MapDef def = d.build();
             plugin.maps().save(def);
-            Text.send(player, "<#5BD16B>地图已保存：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 "
+            Text.send(player, "<ok>地图已保存：出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 "
                     + d.containers.size() + " · 敌兵点 " + d.ai.size() + " · 首领 " + d.bosses.size());
             for (var close : net.infnetwork.snowball.craftov.map.MapRegistry.closeSpawns(def)) {
                 problems.add(String.format(java.util.Locale.ROOT, "%s点 (%.0f, %.0f, %.0f) 离第 %d 组出生点只有 %.0f 格（建议 %d 格以上）",
@@ -216,17 +217,17 @@ public final class EditorService implements Listener {
                         close.group(), close.distance(), (int) net.infnetwork.snowball.craftov.map.MapRegistry.SPAWN_CLEARANCE));
             }
             if (!problems.isEmpty()) {
-                Text.send(player, "<#FFC23D>提示：" + String.join("、", problems) + "（地图仍可保存，但不建议开放）");
+                Text.send(player, "<accent>提示：" + String.join("、", problems) + "（地图仍可保存，但不建议开放）");
             }
         } catch (IOException ex) {
-            Text.send(player, "<#FF8A80>保存失败：" + Text.escape(ex.getMessage()));
+            Text.send(player, "<danger>保存失败：" + Text.escape(ex.getMessage()));
         }
     }
 
     public void set(Player player, String key, String value) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         // Every key but camera needs a value: without one, the list of keys below.
@@ -238,7 +239,7 @@ public final class EditorService implements Listener {
                 try {
                     minutes = Integer.parseInt(value.trim());
                 } catch (IllegalArgumentException ex) {
-                    Text.send(player, "<#9AA0A6>用法：/cv editor set minutes <分钟数>（至少 5）");
+                    Text.send(player, "<muted>用法：/cv editor set minutes <分钟数>（至少 5）");
                     return;
                 }
                 session.draft.raidMinutes = Math.max(5, minutes);
@@ -247,23 +248,23 @@ public final class EditorService implements Listener {
             case "test" -> session.draft.test = Boolean.parseBoolean(value);
             case "camera" -> session.draft.camera = Pos.of(player.getEyeLocation());
             default -> {
-                Text.send(player, "<#FF8A80>可设置：name / description / minutes / time(day|dusk|night|dawn) / test(true|false) / camera");
+                Text.send(player, "<danger>可设置：name / description / minutes / time(day|dusk|night|dawn) / test(true|false) / camera");
                 return;
             }
         }
-        Text.send(player, "<#5BD16B>已设置 " + key + " = " + Text.escape(value));
+        Text.send(player, "<ok>已设置 " + key + " = " + Text.escape(value));
     }
 
     public void info(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
-            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            Text.send(player, "<muted>你不在编辑模式。");
             return;
         }
         MapDraft d = session.draft;
-        Text.send(player, "<white>" + Text.escape(d.name) + " <#8A8F98>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time
-                + (d.test ? " · <#FFB74D>测试图" : ""));
-        Text.send(player, "<#9AA0A6>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
+        Text.send(player, "<white>" + Text.escape(d.name) + " <muted>(" + d.id + ") 世界 " + d.template + " · " + d.raidMinutes + " 分钟 · " + d.time
+                + (d.test ? " · <accent>测试图" : ""));
+        Text.send(player, "<muted>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
                 + " · 敌兵 " + d.ai.size() + " · 首领 " + d.bosses.size() + " · 门禁 " + d.doors.size() + " · 电闸 " + d.switches.size());
     }
 
@@ -278,8 +279,8 @@ public final class EditorService implements Listener {
 
     private ItemStack toolItem(Session session, Tool tool) {
         String option = optionLabel(session, tool);
-        return UiItems.button(tool.icon, "<#F2C94C>" + tool.label + (option.isEmpty() ? "" : " <#9AA0A6>[" + option + "]"),
-                List.of("<#9AA0A6>右键方块：" + switch (tool) {
+        return UiItems.button(tool.icon, "<accent>" + tool.label + (option.isEmpty() ? "" : " <muted>[" + option + "]"),
+                List.of("<muted>右键方块：" + switch (tool) {
                     case SPAWN -> "放置出生点（同组为同一小队的出生位置）";
                     case EXTRACT -> "放置撤离点";
                     case CONTAINER -> "放置物资箱（朝向跟随视角）";
@@ -289,7 +290,7 @@ public final class EditorService implements Listener {
                     case REMOVE -> "删除 3 格内最近的标记";
                     case SCAN -> "把附近 64 格内的箱子/木桶等转换为物资箱";
                     case SAVE -> "保存地图（潜行右键方块：依次设置边界两个角）";
-                }, "<#9AA0A6>潜行+右键空气：切换选项"), "editor_" + tool.name());
+                }, "<muted>潜行+右键空气：切换选项"), "editor_" + tool.name());
     }
 
     private String optionLabel(Session session, Tool tool) {
@@ -338,7 +339,7 @@ public final class EditorService implements Listener {
         if (player.isSneaking() && action == Action.RIGHT_CLICK_AIR) {
             session.option.merge(tool, 1, Integer::sum);
             player.getInventory().setItemInMainHand(toolItem(session, tool));
-            player.sendActionBar(Text.mm("<#F2C94C>" + tool.label + " · " + optionLabel(session, tool)));
+            Notify.info(player, "<accent>" + tool.label + " · " + optionLabel(session, tool));
             return;
         }
         if (action != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) {
@@ -362,7 +363,7 @@ public final class EditorService implements Listener {
                         type == ExtractType.PAID ? 10_000 : 0, type == ExtractType.TIMED ? 600 : 0, 0,
                         type == ExtractType.SWITCH ? sw : "", type == ExtractType.LIMITED ? 4 : 0, 1.0));
                 if (type == ExtractType.SWITCH && sw.isEmpty()) {
-                    Text.send(player, "<#FFC23D>这是“需拉闸”撤离点，请用门禁/电闸工具点击一个拉杆来绑定。");
+                    Text.send(player, "<accent>这是“需拉闸”撤离点，请用门禁/电闸工具点击一个拉杆来绑定。");
                 }
             }
             case CONTAINER -> {
@@ -383,7 +384,7 @@ public final class EditorService implements Listener {
                     }
                     ItemDef key = keys.get(o % keys.size());
                     d.doors.add(new MapDef.DoorDef(key.lockId(), new Pos(lower.getX() + 0.5, lower.getY(), lower.getZ() + 0.5, 0)));
-                    Text.send(player, "<#5BD16B>已设置门禁，需要钥匙：" + key.coloredName());
+                    Text.send(player, "<ok>已设置门禁，需要钥匙：" + key.coloredName());
                 } else if (type == Material.LEVER || type.name().endsWith("_BUTTON")) {
                     String id = "switch_" + (d.switches.size() + 1);
                     d.switches.add(new MapDef.SwitchDef(id, "电闸 " + (d.switches.size() + 1),
@@ -396,34 +397,34 @@ public final class EditorService implements Listener {
                                     e.opensAt(), e.closesAt(), id, e.capacity(), e.chance()));
                         }
                     }
-                    Text.send(player, "<#5BD16B>已设置电闸 " + id);
+                    Text.send(player, "<ok>已设置电闸 " + id);
                 } else {
-                    Text.send(player, "<#FF8A80>请点击铁门、拉杆或按钮。");
+                    Text.send(player, "<danger>请点击铁门、拉杆或按钮。");
                     return;
                 }
             }
             case REMOVE -> {
                 if (!removeNear(d, block.getLocation().add(0.5, 1, 0.5))) {
-                    player.sendActionBar(Text.mm("<#FF8A80>附近 3 格内没有标记"));
+                    Notify.error(player, "附近 3 格内没有标记");
                     return;
                 }
             }
             case SCAN -> {
                 int n = scan(d, player.getLocation(), 64);
-                Text.send(player, "<#5BD16B>已把 " + n + " 个箱子/木桶转换为物资箱。");
+                Text.send(player, "<ok>已把 " + n + " 个箱子/木桶转换为物资箱。");
             }
             case SAVE -> {
                 if (player.isSneaking()) {
                     if (session.corner == null) {
                         session.corner = block.getLocation();
-                        Text.send(player, "<#9AA0A6>已记录边界第一角，再点击另一角。");
+                        Text.send(player, "<muted>已记录边界第一角，再点击另一角。");
                     } else {
                         d.minX = Math.min(session.corner.getX(), block.getX());
                         d.minZ = Math.min(session.corner.getZ(), block.getZ());
                         d.maxX = Math.max(session.corner.getX(), block.getX());
                         d.maxZ = Math.max(session.corner.getZ(), block.getZ());
                         session.corner = null;
-                        Text.send(player, "<#5BD16B>已设置地图边界。");
+                        Text.send(player, "<ok>已设置地图边界。");
                     }
                 } else {
                     save(player, session);
@@ -510,17 +511,17 @@ public final class EditorService implements Listener {
         clearLabels(session);
         World world = player.getWorld();
         MapDraft d = session.draft;
-        for (MapDef.SpawnDef s : d.spawns) label(player, session, world, s.pos(), "<#4FA3FF>◆ 出生点 · 第" + s.group() + "组");
-        for (MapDef.ExtractDef e : d.extracts) label(player, session, world, e.pos(), "<#5BD16B>⬆ " + Text.escape(e.name()) + " <#8A8F98>" + e.type().displayName()
+        for (MapDef.SpawnDef s : d.spawns) label(player, session, world, s.pos(), "<info>◆ 出生点 · 第" + s.group() + "组");
+        for (MapDef.ExtractDef e : d.extracts) label(player, session, world, e.pos(), "<ok>⬆ " + Text.escape(e.name()) + " <muted>" + e.type().displayName()
                 + (e.switchId().isEmpty() ? "" : " → " + e.switchId()));
         for (MapDef.ContainerDef c : d.containers) {
             ContainerType type = plugin.loot().type(c.type());
-            label(player, session, world, c.pos(), "<#F2C94C>▣ " + (type == null ? c.type() : type.name()));
+            label(player, session, world, c.pos(), "<accent>▣ " + (type == null ? c.type() : type.name()));
         }
-        for (MapDef.AiDef a : d.ai) label(player, session, world, a.pos(), "<#FF8A80>✦ 敌兵 ×" + a.count() + " " + a.kind());
-        for (MapDef.BossDef b : d.bosses) label(player, session, world, b.pos(), "<#FF4D4D>☠ " + Text.escape(b.name()));
-        for (MapDef.DoorDef dd : d.doors) label(player, session, world, dd.pos(), "<#B66BFF>🔒 门禁 " + dd.lock());
-        for (MapDef.SwitchDef sw : d.switches) label(player, session, world, sw.pos(), "<#FFC23D>⚡ " + Text.escape(sw.name()) + " (" + sw.id() + ")");
+        for (MapDef.AiDef a : d.ai) label(player, session, world, a.pos(), "<danger>✦ 敌兵 ×" + a.count() + " " + a.kind());
+        for (MapDef.BossDef b : d.bosses) label(player, session, world, b.pos(), "<danger>☠ " + Text.escape(b.name()));
+        for (MapDef.DoorDef dd : d.doors) label(player, session, world, dd.pos(), "<info>🔒 门禁 " + dd.lock());
+        for (MapDef.SwitchDef sw : d.switches) label(player, session, world, sw.pos(), "<accent>⚡ " + Text.escape(sw.name()) + " (" + sw.id() + ")");
     }
 
     private void label(Player player, Session session, World world, Pos pos, String text) {

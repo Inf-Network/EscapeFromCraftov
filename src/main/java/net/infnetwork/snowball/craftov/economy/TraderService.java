@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.economy;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -74,7 +75,7 @@ public final class TraderService {
         Profile profile = plugin.profiles().get(player);
         long cost = buyPrice(def) * amount;
         if (profile.money < cost) {
-            Text.send(player, "<#FF8A80>块币不足，需要 ◈" + Text.money(cost));
+            Notify.error(player, "块币不足，需要 ◈" + Text.money(cost));
             return false;
         }
         int remaining = amount;
@@ -93,7 +94,7 @@ public final class TraderService {
             }
         }
         if (profile.stashUsed() + needStash > profile.stashCapacity) {
-            Text.send(player, "<#FF8A80>背包与仓库都放不下了（还差 " + (profile.stashUsed() + needStash - profile.stashCapacity) + " 格仓库空间）。");
+            Notify.error(player, "背包与仓库都放不下了（还差 " + (profile.stashUsed() + needStash - profile.stashCapacity) + " 格仓库空间）。");
             return false;
         }
         profile.money -= cost;
@@ -111,8 +112,8 @@ public final class TraderService {
         plugin.profiles().markDirty(player.getUniqueId());
         plugin.lobby().captureLoadout(player);
         player.playSound(player.getLocation(), "craftov:ui.buy", 1f, 1f);
-        player.sendActionBar(Text.mm("<#5BD16B>购买 " + def.coloredName() + " ×" + amount + " <#8A8F98>-◈" + Text.money(cost)
-                + (toStash ? " <#9AA0A6>(部分存入仓库)" : "")));
+        Notify.ok(player, "购买 " + def.coloredName() + " ×" + amount + " <muted>-◈" + Text.money(cost)
+                + (toStash ? " <muted>(部分存入仓库)" : ""));
         return true;
     }
 
@@ -168,21 +169,22 @@ public final class TraderService {
         long value = plugin.carry().gearValue(player);
         long max = plugin.getConfig().getLong("free-kit.max-value", 15000);
         if (value > max) {
-            Text.send(player, "<#FF8A80>你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");
+            Notify.error(player, "你的战备值超过 ◈" + Text.money(max) + "，暂不能领取免费补给。");
             return;
         }
         long assets = assets(player);
         long maxAssets = freeKitMaxAssets();
         if (assets > maxAssets) {
-            Text.send(player, "<#FF8A80>免费补给只发给几乎一无所有的干员：你的总资产（块币、仓库、邮箱、理赔途中的装备、携带、安全箱、交易行上架、托管中的护航赏金）约 ◈"
-                    + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets) + "。<#9AA0A6>可以从仓库取出装备或到商人处购买。");
+            // Short enough for the action bar; what counts as assets is on the button itself.
+            Notify.error(player, "总资产约 ◈" + Text.money(assets) + "，超过 ◈" + Text.money(maxAssets)
+                    + "<muted>，可以从仓库取出装备或到商人处购买");
             return;
         }
         long last = profile.stat("free_kit_at");
         long cooldown = plugin.getConfig().getInt("free-kit.cooldown-minutes", 20) * 60_000L;
         long wait = last + cooldown - System.currentTimeMillis();
         if (wait > 0) {
-            Text.send(player, "<#FF8A80>免费补给冷却中，还需 " + net.infnetwork.snowball.craftov.util.Text.duration(wait / 1000) + "。");
+            Notify.error(player, "免费补给冷却中，还需 " + net.infnetwork.snowball.craftov.util.Text.duration(wait / 1000) + "。");
             return;
         }
         List<ItemStack> kit = new ArrayList<>();
@@ -213,8 +215,8 @@ public final class TraderService {
         // when something actually has to go into it.
         int free = profile.stashCapacity - profile.stashUsed();
         if (toStash > 0 && toStash > free) {
-            Text.send(player, "<#FF8A80>仓库空间不足：免费补给有 " + toStash + " 件背不下、要存进仓库，但仓库只剩 " + Math.max(0, free)
-                    + " 格。<#9AA0A6>清理仓库或腾出背包后再领取。");
+            Notify.error(player, "仓库空间不足：免费补给有 " + toStash + " 件背不下、要存进仓库，但仓库只剩 " + Math.max(0, free)
+                    + " 格。<muted>清理仓库或腾出背包后再领取。");
             return;
         }
         profile.stats.put("free_kit_at", System.currentTimeMillis());
@@ -240,7 +242,8 @@ public final class TraderService {
         }
         plugin.lobby().captureLoadout(player);
         plugin.profiles().markDirty(player.getUniqueId());
-        Text.send(player, "<#5BD16B>已领取免费补给，祝你好运。");
+        Notify.ok(player, "已领取免费补给，祝你好运。");
+        net.infnetwork.snowball.craftov.gui.UiSound.REWARD.play(player);
     }
 
     /** Where a free-kit item is put on when that slot is empty: rigs, backpacks, helmets and armour; -1 for the rest. */
@@ -269,18 +272,18 @@ public final class TraderService {
     public boolean upgradeSecure(Player player) {
         Profile profile = plugin.profiles().get(player);
         if (profile.secureTier >= 4) {
-            Text.send(player, "<#9AA0A6>安全箱已是最高等级。");
+            Text.send(player, "<muted>安全箱已是最高等级。");
             return false;
         }
         long price = SECURE_PRICES[profile.secureTier + 1];
         if (profile.money < price) {
-            Text.send(player, "<#FF8A80>块币不足，需要 ◈" + Text.money(price));
+            Notify.error(player, "块币不足，需要 ◈" + Text.money(price));
             return false;
         }
         profile.money -= price;
         profile.secureTier++;
         plugin.profiles().markDirty(player.getUniqueId());
-        Text.send(player, "<#5BD16B>安全箱升级为 " + secureSlots(profile) + " 格！");
+        Notify.ok(player, "安全箱升级为 " + secureSlots(profile) + " 格！");
         return true;
     }
 
@@ -291,18 +294,18 @@ public final class TraderService {
     public boolean upgradeStash(Player player) {
         Profile profile = plugin.profiles().get(player);
         if (profile.stashCapacity >= 600) {
-            Text.send(player, "<#9AA0A6>仓库已扩容至上限。");
+            Text.send(player, "<muted>仓库已扩容至上限。");
             return false;
         }
         long price = stashUpgradePrice(profile);
         if (profile.money < price) {
-            Text.send(player, "<#FF8A80>块币不足，需要 ◈" + Text.money(price));
+            Notify.error(player, "块币不足，需要 ◈" + Text.money(price));
             return false;
         }
         profile.money -= price;
         profile.stashCapacity += 30;
         plugin.profiles().markDirty(player.getUniqueId());
-        Text.send(player, "<#5BD16B>仓库扩容至 " + profile.stashCapacity + " 格。");
+        Notify.ok(player, "仓库扩容至 " + profile.stashCapacity + " 格。");
         return true;
     }
 
@@ -339,11 +342,11 @@ public final class TraderService {
             }
         }
         if (targets.isEmpty()) {
-            Text.send(player, "<#9AA0A6>没有需要维修的护甲。");
+            Text.send(player, "<muted>没有需要维修的护甲。");
             return;
         }
         if (profile.money < total) {
-            Text.send(player, "<#FF8A80>维修需要 ◈" + Text.money(total));
+            Notify.error(player, "维修需要 ◈" + Text.money(total));
             return;
         }
         profile.money -= total;
@@ -352,6 +355,6 @@ public final class TraderService {
             plugin.items().setDura(stack, def.durability());
         }
         plugin.lobby().captureLoadout(player);
-        Text.send(player, "<#5BD16B>已维修 " + targets.size() + " 件护甲，花费 ◈" + Text.money(total));
+        Notify.ok(player, "已维修 " + targets.size() + " 件护甲，花费 ◈" + Text.money(total));
     }
 }

@@ -110,6 +110,16 @@ function openWindow (bot, fn, timeout = 4000) {
   })
 }
 
+/**
+ * The stash's mailbox button (slot 50) opens the mailbox screen, whose item-mailbox button (slot 49)
+ * takes everything into the stash; then back to the stash, whose window is returned.
+ */
+async function claimMailbox (bot) {
+  const mail = await openWindow(bot, () => bot.clickWindow(50, 0, 0))
+  if (mail) { await bot.clickWindow(49, 0, 0); await sleep(600) }
+  return openWindow(bot, () => bot.chat('/cv stash'))
+}
+
 const carried = bot => bot.inventory.slots.slice(5, 45).filter(s => s && !String(cid(s)).startsWith('ui/'))
 const carriedIds = bot => carried(bot).map(s => cid(s) + 'x' + s.count).join(' ')
 const top = w => w.slots.slice(0, w.inventoryStart)
@@ -200,13 +210,12 @@ async function unknown () {
     log('restored items.yml:', await rcon('cv reload'))
   }
   bot = await make(name)
-  const stash = await openWindow(bot, () => bot.chat('/cv stash'))
-  await bot.clickWindow(50, 0, 0) // claim the mailbox
-  await sleep(600)
-  const at = top(stash).findIndex(s => cid(s) === 'medkit_s')
+  await openWindow(bot, () => bot.chat('/cv stash'))
+  const stash = await claimMailbox(bot)
+  const at = stash ? top(stash).findIndex(s => cid(s) === 'medkit_s') : -1
   check('restored item shows in the stash', at >= 0)
   if (at >= 0) { await bot.clickWindow(at, 0, 0); await sleep(600) }
-  bot.closeWindow(stash)
+  if (stash) bot.closeWindow(stash)
   check('restored item taken out of the stash', carried(bot).some(s => cid(s) === 'medkit_s'), carriedIds(bot))
   await leave(bot)
 }
@@ -277,7 +286,10 @@ async function cursorpack () {
   const bot = await make(name)
   // The countdown beeps every second (craftov:extract.beep); a blocked exit stays silent.
   const beeps = []
-  bot.on('soundEffectHeard', n => { if (String(n).includes('extract.beep')) beeps.push(Date.now()) })
+  // The last ten seconds tick with craftov:extract.final instead, played on the player as an entity
+  // sound, which mineflayer's soundEffectHeard never reports: both packets are read directly.
+  const tick = p => { if (/extract\.(beep|final)/.test(JSON.stringify(p))) beeps.push(Date.now()) }
+  for (const packet of ['sound_effect', 'entity_sound_effect']) bot._client.on(packet, tick)
   await deploy([bot])
   await rcon(`cv give ${name} pocket_watch`)
   await sleep(800)
@@ -492,7 +504,7 @@ async function preset () {
   await prepare(name, p => { p.loadout = loadout; p.presets = []; p.stash = [] })
   let bot = await make(name)
   let menu = await openWindow(bot, () => bot.chat('/cv'))
-  const presets = await openWindow(bot, () => bot.clickWindow(19, 0, 0))
+  const presets = await openWindow(bot, () => bot.clickWindow(21, 0, 0))
   await bot.clickWindow(10, 0, 0) // save the current loadout
   await sleep(600)
   bot.closeWindow(presets || menu)
@@ -507,7 +519,7 @@ async function preset () {
   writeProfile(name, p0)
   bot = await make(name)
   menu = await openWindow(bot, () => bot.chat('/cv'))
-  const again = await openWindow(bot, () => bot.clickWindow(19, 0, 0))
+  const again = await openWindow(bot, () => bot.clickWindow(21, 0, 0))
   await bot.clickWindow(10, 0, 0) // load it
   await sleep(800)
   bot.closeWindow(again || menu)
@@ -533,15 +545,14 @@ async function season () {
   })
   const bot = await make(name)
   await openWindow(bot, () => bot.chat('/cv'))
-  const pass = await openWindow(bot, () => bot.clickWindow(33, 0, 0))
+  const pass = await openWindow(bot, () => bot.clickWindow(24, 0, 0))
   await bot.clickWindow(20, 0, 0) // tier 12: two military med cases
   await sleep(600)
   bot.closeWindow(pass)
-  const stash = await openWindow(bot, () => bot.chat('/cv stash'))
-  await bot.clickWindow(50, 0, 0) // claim the mailbox
-  await sleep(600)
+  await openWindow(bot, () => bot.chat('/cv stash'))
+  const stash = await claimMailbox(bot)
   for (let i = 0; i < 5; i++) { await bot.clickWindow(0, 0, 0); await sleep(500) }
-  bot.closeWindow(stash)
+  if (stash) bot.closeWindow(stash)
   const cases = carried(bot).filter(s => cid(s) === 'medkit_l').length
   check('four military med cases taken (2 from the pass, 2 from the old record)', cases === 4, carriedIds(bot))
   await leave(bot)

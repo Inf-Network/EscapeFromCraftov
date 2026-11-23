@@ -29,7 +29,7 @@ final class MarketMenu extends Menu {
     private @Nullable String item;
 
     MarketMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>交易行"));
+        super(viewer, 6, Text.mm("<text>交易行"));
         this.plugin = plugin;
     }
 
@@ -45,14 +45,14 @@ final class MarketMenu extends Menu {
         for (Category c : TABS) {
             boolean selected = view == View.BROWSE && c == category;
             String label = c == null ? "全部" : c.displayName();
-            button(slot++, UiItems.button("craftov:ui/tab_market", (selected ? "<#F2C94C>▶ " : "<white>") + label, List.of()), e -> {
+            tabButton(slot++, UiItems.button("craftov:ui/tab_market", (selected ? "<accent>▶ " : "<white>") + label, List.of()), e -> {
                 view = View.BROWSE;
                 category = c;
                 redraw();
             });
         }
-        button(53, UiItems.button("craftov:ui/icon_mail", (view == View.MINE ? "<#F2C94C>▶ " : "<white>") + "我的上架",
-                List.of("<#8A8F98>在仓库切换到“上架”模式即可寄售", "<#8A8F98>块币 ◈" + Text.money(plugin.profiles().get(viewer).money))), e -> {
+        button(53, UiItems.button("craftov:ui/icon_mail", (view == View.MINE ? "<accent>▶ " : "<white>") + "我的上架",
+                List.of("<muted>在仓库切换到“上架”模式即可寄售", "<muted>块币 ◈" + Text.money(plugin.profiles().get(viewer).money))), e -> {
             view = View.MINE;
             redraw();
         });
@@ -71,12 +71,12 @@ final class MarketMenu extends Menu {
             ItemStack display = plugin.items().create(def, 1);
             List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
-            lore.add(Text.mm("<#8A8F98>最低单价 <#F2C94C>◈" + Text.money(offer.lowest()) + " <#8A8F98>· 在售 " + offer.count() + " 件"));
-            lore.add(Text.mm("<#8A8F98>参考价 ◈" + Text.money(Math.round(offer.anchor()))));
+            lore.add(Text.mm("<muted>最低单价 <accent>◈" + Text.money(offer.lowest()) + " <muted>· 在售 " + offer.count() + " 件"));
+            lore.add(Text.mm("<muted>参考价 ◈" + Text.money(Math.round(offer.anchor()))));
             if (offer.traded()) {
-                lore.add(Text.mm("<#8A8F98>玩家成交均价 ◈" + Text.money(Math.round(offer.reference()))));
+                lore.add(Text.mm("<muted>玩家成交均价 ◈" + Text.money(Math.round(offer.reference()))));
             }
-            lore.add(Text.mm("<#5BD16B>点击查看在售列表"));
+            lore.add(Text.mm("<ok>点击查看在售列表"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot++, display, e -> {
                 view = View.ITEM;
@@ -85,7 +85,7 @@ final class MarketMenu extends Menu {
             });
         }
         if (slot == 0) {
-            set(22, UiItems.button("craftov:ui/icon_market", "<#9AA0A6>暂时没有在售物品", List.of("<#8A8F98>去仓库切换“上架”模式，成为第一个卖家吧")));
+            set(22, UiItems.button("craftov:ui/icon_market", "<muted>暂时没有在售物品", List.of("<muted>去仓库切换“上架”模式，成为第一个卖家吧")));
         }
     }
 
@@ -101,12 +101,12 @@ final class MarketMenu extends Menu {
             }
             List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
-            lore.add(Text.mm("<#8A8F98>卖家 <white>" + Text.escape(listing.sellerName)));
-            lore.add(Text.mm("<#8A8F98>价格 <#F2C94C>◈" + Text.money(listing.price)));
+            lore.add(Text.mm("<muted>卖家 <white>" + Text.escape(listing.sellerName)));
+            lore.add(Text.mm("<muted>价格 <accent>◈" + Text.money(listing.price)));
             int level = plugin.market().minBuyLevel();
-            lore.add(Text.mm(plugin.profiles().get(viewer).level < level ? "<#FF8A80>需要账号等级 " + level + " 才能购买其他玩家的商品"
-                    : !plugin.market().sellerCanTrade(listing.seller) ? "<#FF8A80>卖家账号等级不足 " + level + "，只卖给系统买家"
-                    : "<#5BD16B>点击购买（存入仓库）"));
+            lore.add(Text.mm(plugin.profiles().get(viewer).level < level ? "<danger>需要账号等级 " + level + " 才能购买其他玩家的商品"
+                    : !plugin.market().sellerCanTrade(listing.seller) ? "<danger>卖家账号等级不足 " + level + "，只卖给系统买家"
+                    : "<ok>点击购买（存入仓库）"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             String id = listing.id;
             button(slot++, display, e -> {
@@ -129,10 +129,10 @@ final class MarketMenu extends Menu {
             }
             List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
-            lore.add(Text.mm("<#8A8F98>售价 <#F2C94C>◈" + Text.money(listing.price)));
+            lore.add(Text.mm("<muted>售价 <accent>◈" + Text.money(listing.price)));
             long hours = Math.max(0, (listing.expires - System.currentTimeMillis()) / 3_600_000L);
-            lore.add(Text.mm("<#8A8F98>剩余 " + hours + " 小时"));
-            lore.add(Text.mm("<#FF8A80>点击下架（退回邮箱）"));
+            lore.add(Text.mm("<muted>剩余 " + hours + " 小时"));
+            lore.add(Text.mm("<danger>点击下架（退回邮箱）"));
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             String id = listing.id;
             button(slot++, display, e -> {
@@ -141,7 +141,7 @@ final class MarketMenu extends Menu {
             });
         }
         if (slot == 0) {
-            set(22, UiItems.button("craftov:ui/icon_mail", "<#9AA0A6>你还没有上架物品", List.of()));
+            set(22, UiItems.button("craftov:ui/icon_mail", "<muted>你还没有上架物品", List.of()));
         }
     }
 }

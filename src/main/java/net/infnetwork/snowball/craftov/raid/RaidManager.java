@@ -1008,26 +1008,46 @@ public final class RaidManager implements Listener {
      */
     private void tickExtractMarkers() {
         long now = Bukkit.getCurrentTick();
+        double ringRange = plugin.getConfig().getDouble("raid.extract-ring-range", 48);
+        List<Player> near = new ArrayList<>();
         for (Raid raid : raids.values()) {
             if (raid.state != Raid.State.RUNNING) {
                 continue;
             }
             for (ExtractPoint point : raid.extracts) {
-                drawExtract(raid, point, now);
+                near.clear();
+                for (Player player : raid.world.getPlayers()) {
+                    if (player.getLocation().distanceSquared(point.center) <= ringRange * ringRange) {
+                        near.add(player);
+                    }
+                }
+                drawExtract(raid, point, now, near);
             }
         }
     }
 
-    private void drawExtract(Raid raid, ExtractPoint point, long now) {
+    /**
+     * One extract's marker. The ring only goes to {@code near}, the players within
+     * {@code raid.extract-ring-range} of it: it shows where to stand, which nobody needs from across
+     * the map, and forced on every player of a large map it came to a few hundred packets a second
+     * each (24 per extract per draw). The beam is still forced on the whole map, as it is what shows
+     * the way from afar.
+     */
+    private void drawExtract(Raid raid, ExtractPoint point, long now, List<Player> near) {
         Location c = point.center;
         boolean open = point.available && extractOpenByTime(raid, point);
         Color color = !point.available ? Color.fromRGB(90, 90, 90) : open ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);
-        Particle.DustOptions dust = new Particle.DustOptions(color, 1.3f);
-        double r = point.def.radius();
-        for (int i = 0; i < 24; i++) {
-            double a = i / 24.0 * Math.PI * 2 + now * 0.02;
-            raid.world.spawnParticle(Particle.DUST, c.getX() + Math.cos(a) * r, c.getY() + 0.15, c.getZ() + Math.sin(a) * r,
-                    1, 0, 0, 0, 0, dust, true);
+        if (!near.isEmpty()) {
+            Particle.DustOptions dust = new Particle.DustOptions(color, 1.3f);
+            double r = point.def.radius();
+            for (int i = 0; i < 24; i++) {
+                double a = i / 24.0 * Math.PI * 2 + now * 0.02;
+                double x = c.getX() + Math.cos(a) * r;
+                double z = c.getZ() + Math.sin(a) * r;
+                for (Player player : near) {
+                    player.spawnParticle(Particle.DUST, x, c.getY() + 0.15, z, 1, 0, 0, 0, 0, dust, true);
+                }
+            }
         }
         if (point.available) {
             for (int y = 0; y < 8; y++) {

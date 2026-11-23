@@ -119,6 +119,9 @@ raid:
   # the lobby (they cannot queue again meanwhile; whoever leaves the server drops out). A copy that has
   # not finished after this many seconds calls the launch off: everyone is told and can queue again.
   map-copy-timeout-seconds: 60
+  # Every extract has a ring of dust on the ground at its radius; only players within this many blocks
+  # of it are sent the ring (the beam over it goes to the whole map).
+  extract-ring-range: 48
   # A raid the server stops in (or crashes in) is void for everyone still in it, flying in, downed or
   # disconnected included: back to the gear and secure container they went in with, entry fee and
   # insurance premium refunded, and nothing gained in it counts. Each of them also gets a letter in the

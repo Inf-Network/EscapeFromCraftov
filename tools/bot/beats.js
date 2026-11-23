@@ -1,13 +1,16 @@
-// Repeating effects that come round on a beat of their own (issue #40), with two bots in a squad on
-// the proving ground: A, the one everything happens to, and its mate M, who stays out of the way
-// until the revive. The beats used to be read off the server tick (`getCurrentTick() % N == 0`) in
-// timers that never ran on such a tick, so some never came at all.
+// Repeating effects that come round on a beat of their own (issue #40), with three bots in a squad on
+// the proving ground: A, the one everything happens to, its mate M, who stays out of the way until
+// the revive, and W, who only watches the limited extract fill up at the end. The beats used to be
+// read off the server tick (`getCurrentTick() % N == 0`) in timers that never ran on such a tick, so
+// some never came at all.
 //
 //   markers  standing beside the extract strip, A gets the extract markers as DUST particles,
 //            about every 10 ticks per extract: a ring of 24 at the extract's radius (2.5) and, the
 //            extract being open to use this raid, a beam of 8 at its centre. Green where it can be
 //            used now (always, paid, no-backpack, limited), orange where it cannot yet (timed: two
 //            minutes in; switch: until the lever is pulled).
+//   far      in the spawn bays, 90+ blocks from every pad: A still gets every beam but no ring (the
+//            ring only goes to players within raid.extract-ring-range, 48).
 //   switch   A pulls the proving ground's lever: the switch extract's marker turns green.
 //   heart    RCON damage takes A to 18-35 HP: it hears craftov:status.heartbeat about once a
 //            second (10 in 10 s); under 18 HP twice a second (20 in 10 s); healed to full, none.
@@ -16,12 +19,15 @@
 //            (DownedService) about once a second, and the low-health one not on top of it.
 //   revive   M holds right click on A until A is up (downed.revive-seconds, 5): M hears the bandage
 //            being wrapped (craftov:med.wrap) about once a second, 4 to 6 times.
+//   full     A and M leave through the limited extract (2 places): W, beside it, sees its ring turn
+//            grey and its beam go, the extract being shut for the rest of the raid.
 //
 //   PORT=25565 RCON_PORT=25575 [RCON_PASSWORD=craftov-local] node beats.js [scenario ...]
 //
 // Server config: test.enabled true (the proving ground is a test map, and the heal button of the test
 // armory; the bots are also made op), match.wait-seconds short (5). Soldiers are killed so they keep
-// out of it. The bots leave the raid by disconnecting. Exit code: number of failed checks (2+ also
+// out of it. The bots leave the raid by disconnecting (A and M through the limited extract when
+// `full` runs). Exit code: number of failed checks (2+ also
 // when the setup failed).
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
@@ -34,7 +40,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const wanted = process.argv.slice(2)
-const ORDER = ['markers', 'switch', 'heart', 'timed', 'downed', 'revive']
+const ORDER = ['markers', 'far', 'switch', 'heart', 'timed', 'downed', 'revive', 'full']
 const scenarios = wanted.length ? wanted : ORDER
 const failures = []
 const check = (name, ok, got) => { if (!ok) failures.push(name); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${got === undefined ? '' : ': ' + JSON.stringify(got)}`) }
@@ -42,12 +48,14 @@ const check = (name, ok, got) => { if (!ok) failures.push(name); console.log(`${
 // The proving ground's extract strip (ProvingGroundGenerator.extractStrip): pads at x 106, z 8 + 9i.
 const GREEN = 0x50E678
 const ORANGE = 0xFFAA3C
+const GREY = 0x5A5A5A
 const EXTRACTS = [
   ['t_always', GREEN], ['t_timed', ORANGE], ['t_paid', GREEN], ['t_switch', ORANGE], ['t_nopack', GREEN], ['t_limited', GREEN]
 ].map(([id, color], i) => ({ id, color, x: 106.5, y: 65, z: 8.5 + i * 9, radius: 2.5 }))
 
 let bot // A
 let mate // M
+let watcher // W
 let raidAt = 0
 function make (name) {
   const b = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
@@ -124,6 +132,14 @@ async function dustFor (ms) {
 }
 const colours = dust => [...new Set(dust.map(d => d.color.toString(16)))]
 const extract = id => EXTRACTS.find(e => e.id === id)
+/** The ring and the beam of extract `e` among `dust`. */
+function parts (dust, e) {
+  const near = around(dust, e)
+  return {
+    ring: near.filter(d => Math.abs(d.y - (e.y + 0.15)) < 0.01 && Math.hypot(d.x - e.x, d.z - e.z) > 1),
+    beam: near.filter(d => Math.hypot(d.x - e.x, d.z - e.z) < 0.01)
+  }
+}
 
 async function markers () {
   // East of the pads, between them and the signs on the perimeter wall.
@@ -147,6 +163,20 @@ async function markers () {
     check(`markers: ${e.id} is ${e.color === GREEN ? 'green (usable now)' : 'orange (not yet)'}`,
       colors.length === 1 && colors[0] === e.color.toString(16), colors)
   }
+}
+
+async function far () {
+  // Spawn bay 1, at the far end of the map from the extract strip.
+  await tp(bot, 15.5, 65, 95.5, 180)
+  await sleep(1500)
+  const dust = await dustFor(3000)
+  for (const e of EXTRACTS) {
+    const { ring, beam } = parts(dust, e)
+    const away = Math.hypot(15.5 - e.x, 95.5 - e.z).toFixed(0)
+    check(`far: ${e.id}, ${away} blocks away, sends A its beam but not its ring`, ring.length === 0 && beam.length >= 30,
+      { ring: ring.length, beam: beam.length })
+  }
+  return 0
 }
 
 async function pullSwitch () {
@@ -205,6 +235,32 @@ async function heart () {
   await sleep(1000)
   beats = await heartbeats(3000)
   check('heart: healed to full the heartbeat stops', beats === 0, beats)
+  return 0
+}
+
+async function full () {
+  const e = extract('t_limited')
+  await tp(watcher, 112.5, 65, 45.5, 135)
+  await sleep(1000)
+  const from = Date.now()
+  await sleep(1500)
+  const before = parts(watcher.dust.filter(d => d.at >= from), e)
+  check('full: with no one out yet W sees the limited extract green with its beam',
+    colours(before.ring).join() === GREEN.toString(16) && before.beam.length > 0, { colours: colours(before.ring), beam: before.beam.length })
+  for (const b of [bot, mate]) await tp(b, e.x, e.y, e.z + (b === bot ? -1 : 1))
+  if (!await waitFor(() => !inRaid(bot) && !inRaid(mate), 15000)) {
+    log('SETUP: A and M did not get out through the limited extract', bot.worldName, mate.worldName)
+    return 2
+  }
+  await sleep(1000)
+  const since = Date.now()
+  await sleep(2000)
+  const after = parts(watcher.dust.filter(d => d.at >= since), e)
+  check('full: with both places taken W sees the limited extract grey (shut), its ring still there',
+    after.ring.length >= 48 && colours(after.ring).join() === GREY.toString(16), { ring: after.ring.length, colours: colours(after.ring) })
+  check('full: and its beam gone', after.beam.length === 0, after.beam.length)
+  const always = parts(watcher.dust.filter(d => d.at >= since), extract('t_always'))
+  check('full: the other extracts keep their beam (the always-open one)', always.beam.length > 0, always.beam.length)
   return 0
 }
 
@@ -270,21 +326,24 @@ async function revive () {
   const tag = Math.random().toString(36).slice(2, 7)
   bot = await make('BeatA' + tag)
   mate = await make('BeatM' + tag)
-  for (const b of [bot, mate]) await rcon(`op ${b.username}`)
-  bot.chat(`/cv party invite ${mate.username}`)
-  await sleep(800)
-  mate.chat('/cv party accept')
-  await sleep(800)
+  watcher = await make('BeatW' + tag)
+  for (const b of [bot, mate, watcher]) await rcon(`op ${b.username}`)
+  for (const b of [mate, watcher]) {
+    bot.chat(`/cv party invite ${b.username}`)
+    await sleep(800)
+    b.chat('/cv party accept')
+    await sleep(800)
+  }
   bot.chat('/cv queue proving NORMAL TRIO')
   log('queued; waiting for the raid')
-  if (!await waitFor(() => inRaid(bot) && inRaid(mate), 150000)) {
-    log('SETUP: the bots never reached a raid', bot.worldName, mate.worldName)
+  if (!await waitFor(() => inRaid(bot) && inRaid(mate) && inRaid(watcher), 150000)) {
+    log('SETUP: the bots never reached a raid', bot.worldName, mate.worldName, watcher.worldName)
     return finish(2)
   }
   raidAt = Date.now()
   await sleep(7000) // insertion camera and spawn protection
   await clearSoldiers()
-  const RUN = { markers, switch: pullSwitch, heart, timed, downed, revive }
+  const RUN = { markers, far, switch: pullSwitch, heart, timed, downed, revive, full }
   for (const name of ORDER.filter(s => scenarios.includes(s))) {
     log('---', name)
     const code = await RUN[name]()
@@ -295,7 +354,7 @@ async function revive () {
 
 async function finish (code) {
   log(failures.length ? `FAILED: ${failures.join('; ')}` : 'all checks passed')
-  for (const b of [bot, mate]) {
+  for (const b of [bot, mate, watcher]) {
     if (!b) continue
     try { await rcon(`deop ${b.username}`) } catch (e) { }
     try { b.quit() } catch (e) { }

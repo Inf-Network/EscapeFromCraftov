@@ -5,18 +5,25 @@
 //           click lands the bot on the course with the kit (K47 with 8 rounds, no gear of its own).
 //           The east gate stays shut until the crate is emptied; hip fire at a target does not
 //           count, aimed hits do (1/3 .. 3/3); a reload; the tripwire breaks a leg and opens a
-//           bleed, and bandage and splint open the next gate; the lever and 10 s in the extract
-//           end it. Back in the lobby: the black curtain, then the training settlement screen;
+//           bleed, and bandage and splint open the next gate; a lever countdown that runs out
+//           with the bot outside the extract sends it back to the lever ("再拉一次电闸"), and the
+//           lever again and 10 s in the extract end it. Back in the lobby: the black curtain, then the training settlement screen;
 //           the inventory is exactly what it was, chat has the one summary line, and the saved
 //           profile has the same loadout, no raid in its stats, the guide's deploy and extract
 //           steps, no reward yet (the range and the gunsmith are still open) and no letter.
 //   quit    (Tq####) a bot leaves halfway through the course and joins again: its gear is back,
-//           its profile names no raid and holds no letter.
+//           its profile names no raid and holds no letter, and /cv training right away is
+//           refused until the cooldown (training.cooldown-seconds) is over.
+//   solo    (Ts####) a bot waits in the yard, more than 50 blocks from the course's spawn, until
+//           a rival operator squad would have landed there (ai.operator-delay-seconds, 60 by
+//           default, plus 15 s): /cv ai lists no soldier in its raid.
 //
-//   PORT=25565 RCON_PORT=25575 node training.js [course] [quit]     env: RCON_PASSWORD, SERVER_DIR
+//   PORT=25565 RCON_PORT=25575 node training.js [course] [quit] [solo]     env: RCON_PASSWORD, SERVER_DIR
 //
 // Needs a local test server with RCON on and the whitelist off (or the bots added), the guide on
-// (tutorial.enabled, the default) and training.enabled (the default). Reads profiles from
+// (tutorial.enabled, the default) and training.enabled (the default). 'solo' proves something only
+// with ai.operator-chance at [1.0, 1.0, 1.0] in plugins/Craftov/config.yml, where every other raid
+// gets an operator squad. 'course' and 'quit' run by default; 'solo' takes 80 s. Reads profiles from
 // SERVER_DIR/plugins/Craftov/data/players (default ../../server/run), so it runs on the server's
 // machine. Prints PASS / FAIL per check; the exit code is the number of failed checks.
 const fs = require('fs')
@@ -37,6 +44,7 @@ const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)
 const rcon = c => rconRaw(c, RCON).then(r => r.replace(/§./g, ''))
 const wanted = process.argv.slice(2)
 const scenarios = wanted.length ? wanted : ['course', 'quit']
+const OPERATOR_DELAY = Number(process.env.OPERATOR_DELAY || 60)
 const failures = []
 function check (name, ok, detail) {
   if (!ok) failures.push(name)
@@ -217,7 +225,7 @@ async function course () {
   const kit = carried(bot)
   check('the kit is the K47 and no own gear', Object.values(kit).some(v => v.startsWith('k47')) && !Object.values(kit).some(v => /p18|armor_2|helmet_2|pack_1/.test(v)), kit)
   let o = await objectiveOf(name)
-  check('the first lesson is the crate', o.includes('物资箱') && o.includes('(compass)'), o)
+  check('the first lesson is the crate', o.includes('搜箱') && o.includes('(compass)'), o)
   check('the east gate is shut', gateShut(bot, GATES.loot), block(bot, GATES.loot, G + 2, 10))
 
   // Lesson 1: the crate.
@@ -243,7 +251,7 @@ async function course () {
   const opened = await waitFor(() => !gateShut(bot, GATES.loot), 4000)
   check('emptying the crate opens the gate', opened, carried(bot))
   o = await objectiveOf(name)
-  check('then the targets, 0/3', o.includes('靶子') && o.includes('0/3'), o)
+  check('then the targets, 0/3', o.includes('打靶') && o.includes('0/3'), o)
 
   // Lesson 2: aimed hits on all three targets, then a reload.
   const k47 = hotbar(bot, 'k47')
@@ -275,7 +283,7 @@ async function course () {
   dig(bot, 4)
   check('a reload before the targets are done says to go on aiming',
     await waitFor(() => bot.bars.slice(barsFrom).some(b => b.text.includes('接着开镜打靶')), 6000))
-  const hits = async () => { const o = await objectiveOf(name); const m = o.match(/(\d)\/3/); return o.includes('靶子') ? Number(m ? m[1] : 0) : 3 }
+  const hits = async () => { const o = await objectiveOf(name); const m = o.match(/(\d)\/3/); return o.includes('打靶') ? Number(m ? m[1] : 0) : 3 }
   for (let i = 0; i < 3; i++) {
     for (let tries = 0; tries < 3 && (await hits()) < i + 1; tries++) {
       a = aimAt(i)
@@ -289,7 +297,7 @@ async function course () {
     log(name, 'after target', i, o)
   }
   o = await objectiveOf(name)
-  check('three aimed hits finish the targets', !o.includes('靶子'), o)
+  check('three aimed hits finish the targets', !o.includes('打靶'), o)
   if (o.includes('换')) {
     dig(bot, 4) // Q
     await waitFor(async () => !(await objectiveOf(name)).includes('换'), 6000)
@@ -320,6 +328,18 @@ async function course () {
   await sleep(800)
   o = await objectiveOf(name)
   check('after the lever the objective is the extract', o.includes('撤离'), o)
+  // The bot stays by the lever: the countdown runs out, the extract is shut again, and the lesson
+  // goes back to the lever instead of pointing at a closed extract.
+  const barsAt = bot.bars.length
+  const again = await waitFor(async () => (await objectiveOf(name)).includes('再拉一次电闸'), 15000, 500)
+  check('a countdown missed outside the extract points back to the lever', again, await objectiveOf(name))
+  check('and the hint says to pull it again', bot.bars.slice(barsAt).some(b => b.text.includes('再右键一次电闸')),
+    bot.bars.slice(barsAt).map(b => b.text))
+  await sleep(1500) // the lever springs back a second after its countdown
+  if (lever) await bot.activateBlock(bot.blockAt(LEVER))
+  await sleep(800)
+  o = await objectiveOf(name)
+  check('pulled again, the objective is the extract again', o.includes('撤离'), o)
   const worlds = bot.worldChanges
   const titlesFrom = bot.titles.length
   const screensFrom = bot.screens.length
@@ -366,7 +386,14 @@ async function quit () {
   await sleep(1500)
   const after = carried(bot)
   check('after leaving mid-course the gear is back', JSON.stringify(after) === JSON.stringify(before), { before, after })
-  check('back in the lobby', !(await hud(name)).includes('in_raid=true'))
+  const raids = await rcon('cv raids')
+  check('back in the lobby, with no training raid holding the bot', !/训练场.*玩家 [1-9]/.test(raids), raids)
+  // Seconds after the last start: another one waits (training.cooldown-seconds, 30 by default).
+  const chatAt = bot.chatLines.length
+  const worlds = bot.worldChanges
+  bot.chat('/cv training')
+  const refused = await waitFor(() => bot.chatLines.slice(chatAt).some(l => l.includes('秒后再开始')), 4000)
+  check('a second course right away waits for the cooldown', refused && bot.worldChanges === worlds, bot.chatLines.slice(chatAt))
   const left = Date.now()
   bot.quit()
   const p = await savedAfter(name, left)
@@ -375,8 +402,26 @@ async function quit () {
   check('no raid in its stats', p && !(p.stats && p.stats.raids), p && p.stats)
 }
 
+async function solo () {
+  const bot = await join('Ts')
+  const name = bot.username
+  if (!await deployTraining(bot)) { bot.quit(); return }
+  const landed = Date.now()
+  // The yard: the operators' only spawn point, at x 3, is clear of the player from here.
+  await tp(bot, '68.5 65 14.5')
+  log(name, 'waiting for the operator squad that must not come')
+  await sleep(Math.max(0, landed + (OPERATOR_DELAY + 15) * 1000 - Date.now()))
+  // The console's /cv ai lists the one running raid (and says so when there are more).
+  const listing = await rcon('cv ai')
+  const count = (listing.match(/敌兵 (\d+)/) || [, '?'])[1]
+  check('no soldier or rival operator ever comes to the course', count === '0', listing)
+  const raids = await rcon('cv raids')
+  check('the bot is still on the course', /训练场 训练 RUNNING.*玩家 1/.test(raids), raids)
+  bot.quit()
+}
+
 ;(async () => {
-  const runs = { course, quit }
+  const runs = { course, quit, solo }
   for (const s of scenarios) {
     log('scenario', s)
     try {

@@ -29,7 +29,9 @@
 //   wall     A slides at a stone wall 2.5 blocks ahead: the slide stops at the wall (reason wall,
 //            under 2.5 blocks); at a closed oak door the same
 //   low      A slides under a roof 1.5 blocks over the runway and stops under it: A crouches there
-//            (pose CROUCHING), not standing in the roof
+//            (pose CROUCHING), not standing in the roof. Under the same roof over a snow layer (a
+//            1.375 gap, room to crawl but not to crouch) the slide stops at its edge (reason wall)
+//            and A stands there, not crawling under it
 //   rejoin   A slides and quits mid-slide: its stand-in stands on the runway (not 0.6 into it), and
 //            when A comes back it is on the runway too
 //   body     A slides and is killed mid-slide: the body lies on the runway
@@ -737,7 +739,24 @@ async function low () {
   check('low: stopped under it, A crouches there (pose CROUCHING, box 1.5) on the runway',
     info.pose === 'SNEAKING' && Math.abs(info.height - 1.5) < 0.01 && Math.abs(info.y - GROUND) < 0.05 && !info.vehicle,
     `pose ${info.pose}, height ${info.height}, y ${info.y}`)
-  // Walk out of it before the next scenario.
+  // Walk out of it before the next part.
+  await toStart()
+  await clearRunway()
+  // The same roof over a snow layer (collision 0.125 high): a 1.375 gap, room to crawl, not to crouch.
+  let gapFrom = 0
+  const gap = await slideInto(async x0 => {
+    gapFrom = Math.floor(x0 + 1.5)
+    await at(`fill ${gapFrom} ${GROUND} ${RZ - 2} ${gapFrom + 8} ${GROUND} ${RZ + 2} minecraft:snow[layers=2]`)
+    await at(`fill ${gapFrom} ${GROUND + 1} ${RZ - 2} ${gapFrom + 8} ${GROUND + 1} ${RZ + 2} minecraft:smooth_stone_slab[type=top]`)
+  }, { release: 100 })
+  await sleep(400)
+  const there = await slideInfo(A_NAME)
+  log('gap', gapFrom, gap, there.text)
+  const gapEnd = gap && gap.last && Number(gap.last.to.split(',')[0])
+  check('low: a slide stops at the edge of a 1.375 gap (crouching would not fit under it)',
+    gap && gap.last.reason === 'wall' && gapEnd <= gapFrom - 0.3 + 1e-3, gap && `${gap.last.reason}, ended at x ${gapEnd}, gap from ${gapFrom}`)
+  check('low: and A stands there, not crawling under it (pose STANDING)', there.pose === 'STANDING' && !there.vehicle,
+    `pose ${there.pose}, height ${there.height}, y ${there.y}`)
   await toStart()
 }
 

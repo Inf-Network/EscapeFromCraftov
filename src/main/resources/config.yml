@@ -210,7 +210,8 @@ slide:
   max-ticks: 20
   steer-degrees: 1.5
   # Steps up to step-up blocks are slid up and drops up to max-drop followed down; a deeper drop
-  # ends the slide and the player falls on with its speed. A wall or a closed door stops it at once.
+  # ends the slide and the player falls on with its speed. A wall, a closed door or a ceiling too
+  # low to crouch under (under 1.5 over the ground) stops it at once.
   step-up: 0.5
   max-drop: 1.0
   leg-hitbox: true

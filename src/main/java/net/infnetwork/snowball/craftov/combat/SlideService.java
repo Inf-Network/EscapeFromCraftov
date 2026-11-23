@@ -56,9 +56,10 @@ import java.util.UUID;
  * itself above the ground (head 0.7 to 1.2, torso down to 0.12, by HitZone's split of the standing
  * box, which is held: the pose is fixed standing, so sneak cannot shrink it), with the legs stretched
  * out in front as a box of their own ({@link #legs}, HitboxHistory). The seat follows the ground: up
- * steps of up to slide.step-up, down drops of up to slide.max-drop; a wall or a closed door stops the
- * slide at once, and a deeper drop ends it with the speed handed back, so the player falls on. Jump
- * ends it too, with the speed kept: the client jumps as it lands on its feet.
+ * steps of up to slide.step-up, down drops of up to slide.max-drop; a wall, a closed door or a ceiling
+ * too low to crouch under stops the slide at once, and a deeper drop ends it with the speed handed
+ * back, so the player falls on. Jump ends it too, with the speed kept: the client jumps as it lands
+ * on its feet.
  *
  * <p>Sneak is not sneaking while sliding: the second tap is usually still held, and vanilla dismounts
  * a rider whose sneak key is down. The server's sneak state is cleared every tick before the riders
@@ -82,9 +83,13 @@ public final class SlideService implements Listener {
     private static final double BLOCKS_PER_SPEED = 2.1585;
     /** Ticks a sprint's pace is remembered after it ended, for the slide that follows the taps. */
     private static final int PACE_TICKS = 10;
-    /** Half the width of the sliding body, and its height above the ground, for collisions. */
+    /** Half the width of the sliding body, for collisions. */
     private static final double HALF = 0.3;
-    private static final double BODY = 1.2;
+    /**
+     * The room a slide needs over the ground to go on: a crouching body's height, not the 1.2 of the
+     * sliding one, so it never carries anyone into a gap they could only crawl out of.
+     */
+    private static final double HEADROOM = 1.5;
     private static final String SEAT = "slide_seat";
 
     /**
@@ -663,7 +668,7 @@ public final class SlideService implements Listener {
             if (floor == null) {
                 return share == 1.0 ? LEDGE : WALL;
             }
-            if (world.hasCollisionsIn(new BoundingBox(nx - HALF, floor + 0.01, nz - HALF, nx + HALF, floor + BODY, nz + HALF))) {
+            if (world.hasCollisionsIn(new BoundingBox(nx - HALF, floor + 0.01, nz - HALF, nx + HALF, floor + HEADROOM - 1e-7, nz + HALF))) {
                 continue;
             }
             double rise = floor - slide.y;

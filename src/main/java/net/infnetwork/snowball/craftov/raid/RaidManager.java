@@ -853,11 +853,14 @@ public final class RaidManager implements Listener {
             }
             if (remaining <= 300 && !raid.warned5) {
                 raid.warned5 = true;
-                announce(raid, "<accent>行动剩余 5 分钟，请尽快撤离", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
+                // Nothing goes missing in training (TrainingService): its warnings say so.
+                announce(raid, raid.training() ? "<accent>训练剩余 5 分钟" : "<accent>行动剩余 5 分钟，请尽快撤离",
+                        net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             if (remaining <= 60 && !raid.warned1) {
                 raid.warned1 = true;
-                announce(raid, "<danger>行动剩余 60 秒 · 超时未撤离将视为失踪", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
+                announce(raid, raid.training() ? "<accent>训练剩余 60 秒 <muted>· 时间到了训练结束，装备照样归还"
+                        : "<danger>行动剩余 60 秒 · 超时未撤离将视为失踪", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             if (remaining > 0 && remaining <= 10) {
                 // The last ten seconds tick for everyone still inside.
@@ -881,7 +884,7 @@ public final class RaidManager implements Listener {
                     } else if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
                         Player player = Bukkit.getPlayer(rp.uuid);
                         if (player != null && rp.active()) {
-                            die(raid, player, rp, "行动超时，失踪", null);
+                            die(raid, player, rp, raid.training() ? "训练时间到" : "行动超时，失踪", null);
                         } else {
                             missing(raid, rp, "行动超时");
                         }

@@ -12,7 +12,7 @@
 //          drawn and the draw is heard (gun.foley.pistol.draw); the pistol waits in the hotbar
 //          with the holster mark (damage 5, the draw's first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
 //          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
-//          the draw (6 ticks; 8 for the M4C), ahead of the draw mark (the holster frame reads no
+//          the draw (6 ticks; 9 for the M4C), ahead of the draw mark (the holster frame reads no
 //          cooldown, the draw's rest pose would show between the two); a gun switched away from mid-draw is holstered
 //          again (damage 5) and its draw cooldown stops; the trigger held from the moment of the switch fires once, 6 ticks
 //          after the draw began, though the dig starts over (abort and start) each time the mark
@@ -307,15 +307,15 @@ async function draw (spot) {
   const leaveFrom = slotUpdates.length
   const leaveCools = cooldowns.length
   hold('m4c')
-  await sleep(150) // the M4C takes 8 ticks
+  await sleep(150) // the M4C takes 9 ticks
   hold('p18')
   await sleep(700)
   const rifle = slotUpdates.slice(leaveFrom).filter(u => u.slot === rifleSlot).map(u => u.damage)
   check('draw: a gun switched away from mid-draw is holstered again', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 5,
     `M4C slot damage over the switch: ${rifle.join(',')}`)
   const leftCools = cooldowns.slice(leaveCools).map(c => c.ticks)
-  check('draw: the M4C draw cooldown (8 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
-    leftCools.slice(0, 4).join(',') === '8,0,6,0', `cooldowns ${leftCools.join(',')}`)
+  check('draw: the M4C draw cooldown (9 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
+    leftCools.slice(0, 4).join(',') === '9,0,6,0', `cooldowns ${leftCools.join(',')}`)
 
   // The trigger held from the moment of the switch fires once, as the gun comes up.
   hold('m4c')
@@ -425,7 +425,7 @@ async function bloom (spot) {
   hold('p18')
   await sleep(100)
   hold('m4c')
-  await sleep(800) // M4C draws in 8 ticks
+  await sleep(800) // M4C draws in 9 ticks
   const after = logSize()
   click()
   await sleep(400)

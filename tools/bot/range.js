@@ -161,10 +161,15 @@ async function rangePhase () {
     for (let i = 0; i < 3; i++) { bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }); await sleep(400) }
     await sleep(3500)
     check('Q reloads without firing', shots === 0, shots + ' shots')
+    // Down the range at a dummy: the capture block the click digs sits in the air in front of the
+    // crosshair, which a wall or the rack right in front would leave no room for.
+    const dummy = bot.nearestEntity(e => e.name === 'zombie')
+    if (dummy) await bot.lookAt(dummy.position.offset(0, 1.3, 0), true)
+    await sleep(500)
     shots = 0
-    await pullTrigger(bot)
+    const cell = await pullTrigger(bot)
     await sleep(600)
-    check('a left click fires', shots >= 1, shots + ' shots')
+    check('a left click fires', shots >= 1, `${shots} shots${cell ? '' : ', no capture block in front of the crosshair'}`)
   } else check('m4c reached the hotbar on the range', false)
 
   // Outlast the lobby's 2 s loadout snapshot before leaving.

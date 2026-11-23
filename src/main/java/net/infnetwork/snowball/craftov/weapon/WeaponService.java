@@ -785,9 +785,9 @@ public final class WeaponService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
-                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player)));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -850,8 +850,8 @@ public final class WeaponService implements Listener {
     /**
      * Cone half-angle of the next shot. Moving widens it by the gun's own amount (items.yml `move`, in
      * degrees, half of it while aiming) in proportion to how close the player is to their full walking
-     * pace past a small dead zone (see {@link #moveLevel}): a pistol barely minds, a sniper rifle
-     * cannot hit a thing on the move, and stopping before the shot puts it back. Hip fire on a sprint
+     * pace past a small dead zone (see {@link #moveCost}): a pistol barely minds, a sniper rifle cannot
+     * hit a thing on the move, and stopping before the shot puts it back. Hip fire on a sprint
      * (run-and-gun) is that cone, at full pace, times the gun's sprint multiplier (see {@link #sprintSpread}).
      */
     private double currentSpread(Player player, GunState state) {
@@ -868,7 +868,7 @@ public final class WeaponService implements Listener {
         if (state.fireMode() != FireMode.BOLT) {
             spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
-        spread += gun.moveSpread() * moveLevel(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
+        spread += gun.moveSpread() * moveCost(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
         if (!aiming && sprinting(player)) {
             spread *= sprintSpread(gun);
         }
@@ -896,6 +896,22 @@ public final class WeaponService implements Listener {
             dead = Math.max(dead, Math.min(0.9, (sneak == null ? 0.3 : sneak.getValue()) + 0.1));
         }
         return Math.max(0, Math.min(1, (motion.moveFactor(player) - dead) / (1 - dead)));
+    }
+
+    /**
+     * How much of the gun's move spread the player's movement costs right now: {@link #moveLevel} times
+     * weapons.spread.walk, and times weapons.spread.stop while they are coming to a stop (letting go
+     * of the keys or pressing the opposite one, see {@link MotionTracker#stopping}): the measured speed
+     * takes a tick or two to catch up with a stop, and stopping before the shot is the skill.
+     */
+    private double moveCost(Player player) {
+        double level = moveLevel(player);
+        if (level <= 0) {
+            return 0;
+        }
+        var config = plugin.getConfig();
+        double cost = level * Math.max(0, config.getDouble("weapons.spread.walk", 1.0));
+        return motion.stopping(player) ? cost * Math.max(0, config.getDouble("weapons.spread.stop", 0.5)) : cost;
     }
 
     /**

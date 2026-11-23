@@ -280,15 +280,28 @@ weapons:
     pump: 14
     lmg: 18
     bolt: 18
+  # How moving costs accuracy, by what the player is doing:
+  #   standing   the gun's base spread (items.yml hip-spread / ads-spread) plus bloom from firing
+  #   walking    + the gun's `move` x walk x how close the player is to full walking pace
+  #   stopping   that walking part x stop while slowing to a stop (letting go of the keys or pressing
+  #              the opposite one: a counter-strafe)
+  #   sprinting  the whole hip cone at a full walk x sprint (by gun), hip fire only
+  #   jumping    the base spread x airborne while off the ground; sneaking x sneak
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
-    # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.
-    # How much counts goes from 0 at move-deadzone of the player's walking pace (measured on the
-    # server, against what their movement speed allows right now) to 1 at full pace, so the last ticks
-    # of stopping cost nothing: stopping before the shot is what makes it accurate. Sneaking costs
-    # nothing either: while sneaking the dead zone is the sneaking speed (0.3 of walking pace) + 0.1.
+    # 1.5 for a pistol up to 6 for the marksman and sniper rifles) times walk, and times
+    # move-ads-share while aiming. How much counts goes from 0 at move-deadzone of the player's
+    # walking pace (measured on the server, against what their movement speed allows right now) to 1
+    # at full pace, so the last ticks of stopping cost nothing: stopping before the shot is what makes
+    # it accurate. Sneaking costs nothing either: while sneaking the dead zone is the sneaking speed
+    # (0.3 of walking pace) + 0.1.
+    walk: 1.0
     move-ads-share: 0.5
     move-deadzone: 0.25
+    # While the measured speed is falling to a stop (well under both the speed of the last few ticks
+    # and the walking pace the player may go at now), the walking part counts this much: the measured
+    # speed takes a tick or two to catch up with a stop. 1.0 counts it in full.
+    stop: 0.5
     # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
     sneak: 0.7
     airborne: 2.5

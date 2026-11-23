@@ -266,14 +266,16 @@ public final class FootstepService implements Listener {
 
     /**
      * In a raid the silent walk is quicker (footsteps.sneak-speed of the walk, vanilla 0.3): a modifier
-     * on the sneaking-speed attribute, taken off outside a raid.
+     * on the sneaking-speed attribute, taken off outside a raid. Not while downed: the client scales
+     * the crawl by the same attribute, and the crawl's pace is HealthService's (downed movement 0.35
+     * of the walk, crawled at vanilla's 0.3 of that).
      */
     private void silentWalk(Player player, boolean on) {
         AttributeInstance attribute = player.getAttribute(Attribute.SNEAKING_SPEED);
         if (attribute == null) {
             return;
         }
-        double want = on && plugin.raids().raidOf(player) != null
+        double want = on && plugin.raids().raidOf(player) != null && !plugin.downed().isDowned(player)
                 ? Math.max(0, Math.min(1, plugin.getConfig().getDouble("footsteps.sneak-speed", 0.45))) - VANILLA_SNEAK : 0;
         AttributeModifier current = attribute.getModifier(SILENT_WALK);
         if (current != null && Math.abs(current.getAmount() - want) < 1e-6) {

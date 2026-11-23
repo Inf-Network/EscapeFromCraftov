@@ -25,9 +25,11 @@ import java.util.logging.Logger;
  *   updates, which would erase the client-only capture cells in front of a gun. A small outbound
  *   handler rewrites those updates back to the capture block. The same handler reports, in the
  *   order they arrive, the client's dig starts and arm swings (see {@link DigInputs}).</li>
- *   <li>Scope zoom: the client's FOV multiplier is {@code (moveSpeed / abilities.walkingSpeed + 1) / 2},
- *   so sending a (negative) walking speed in a private abilities packet zooms the view without
- *   touching how fast the player actually moves.</li>
+ *   <li>Own view: the client's FOV multiplier is {@code (moveSpeed / abilities.walkingSpeed + 1) / 2},
+ *   so the walking speed in the player's own abilities packets sets the field of view without
+ *   touching how fast they move: the movement speed itself at the hip, so nothing that slows them
+ *   changes the view, and a (negative) value that zooms while aiming (see {@link SelfView}). The
+ *   same handler keeps a scope picture's client-only helmet on their head.</li>
  *   <li>Held-gun stance: other players' equipment packets carry a gun as a charged crossbow so
  *   their client draws the two-handed aiming pose (see {@code StanceService}).</li>
  * </ul>
@@ -154,7 +156,7 @@ public final class Nms {
             ready = true;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Low-level hooks unavailable (" + ex + "); trigger capture falls back to resending cells, "
-                    + "scopes use movement-based zoom.");
+                    + "and aiming does not zoom.");
         }
         try {
             actionPacketClass = Class.forName("net.minecraft.network.protocol.game.ServerboundPlayerActionPacket");
@@ -191,6 +193,7 @@ public final class Nms {
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Held-gun stance unavailable (" + ex + "); others see guns held like items.");
         }
+        initSelf(logger);
     }
 
     public static boolean ready() {
@@ -255,6 +258,12 @@ public final class Nms {
                 ChannelHandler view = pipeline.get(VIEW_HANDLER);
                 if (view instanceof ViewHandler) {
                     pipeline.remove(view);
+                }
+                ChannelHandler self = pipeline.get(SELF_HANDLER);
+                if (self instanceof SelfHandler) {
+                    pipeline.remove(self);
+                    // Back to the real walking speed: a zoom left behind would outlast the plugin.
+                    onUpdateAbilities.invoke(getHandle.invoke(player));
                 }
             } catch (ReflectiveOperationException | RuntimeException ignored) {
                 // the connection is closing anyway
@@ -426,47 +435,300 @@ public final class Nms {
         return out == null ? packet : equipmentCtor.newInstance(id, out);
     }
 
-    // ------------------------------------------------------------------ scope zoom
+    // ------------------------------------------------------------------ own view: field of view and scope helmet
 
     /**
-     * Shows the player a field of view of {@code fovMultiplier} times normal (client FOV effects
-     * must be enabled), given their current movement-speed attribute value.
+     * What a player's own client is made to show, read on the network thread: the field-of-view
+     * multiplier their walking speed asks for, and the client-only helmet carrying a scope picture.
      */
-    public static boolean zoom(Player player, double fovMultiplier, double moveSpeed) {
-        if (!ready) {
+    public static final class SelfView {
+        /** Field-of-view multiplier to show (1 = the hip view, below 1 zoomed in), as the client will see it. */
+        public volatile double fov = 1.0;
+        /** The client's FOV Effects slider as the player declared it (0..1): the zoom is divided by it. */
+        public volatile double effects = 1.0;
+        /** Movement speed without sprinting in the last attribute update this player was sent. */
+        volatile double move = 0.1;
+        /** The client-only helmet (an NMS stack) every update of the player's own head slot is turned into, or null. */
+        volatile @Nullable Object helmet;
+
+        /**
+         * The walking speed to send: the client's multiplier is lerp(slider, 1, (move / walk + 1) / 2),
+         * so walk = move / (2 m' - 1) with m' = 1 - (1 - fov) / slider shows exactly {@link #fov}. At
+         * the hip (fov 1) walk is the movement speed itself, so armour, weight or aiming that slow the
+         * player never change the view; sprinting still widens it as in vanilla, since the sprint
+         * modifier is left out of {@link #move}.
+         */
+        float walkingSpeed() {
+            double slider = effects;
+            double target = slider >= 0.05 ? 1 - (1 - fov) / slider : fov;
+            double denominator = 2 * target - 1;
+            if (Math.abs(denominator) < 1e-3) {
+                denominator = denominator < 0 ? -1e-3 : 1e-3;
+            }
+            return (float) (move / denominator);
+        }
+    }
+
+    private static final String SELF_HANDLER = "craftov_self";
+    private static boolean selfReady;
+    private static @Nullable Class<?> attributesPacketClass;
+    private static @Nullable Method attributesEntity;
+    private static @Nullable Method attributesValues;
+    private static @Nullable Constructor<?> attributesCtor;
+    private static @Nullable Method snapshotAttribute;
+    private static @Nullable Method snapshotBase;
+    private static @Nullable Method snapshotModifiers;
+    private static @Nullable Method modifierId;
+    private static @Nullable Method modifierAmount;
+    private static @Nullable Method modifierOperation;
+    private static @Nullable Object movementSpeed;
+    private static @Nullable Method getAttribute;
+    private static @Nullable Class<?> abilitiesPacketClass;
+    private static @Nullable Class<?> setSlotClass;
+    private static @Nullable Method setSlotContainer;
+    private static @Nullable Method setSlotState;
+    private static @Nullable Method setSlotSlot;
+    private static @Nullable Constructor<?> setSlotCtor;
+    private static @Nullable Class<?> setContentClass;
+    private static @Nullable Method setContentContainer;
+    private static @Nullable Method setContentState;
+    private static @Nullable Method setContentItems;
+    private static @Nullable Method setContentCarried;
+    private static @Nullable Constructor<?> setContentCtor;
+    /** The helmet slot of the player's own inventory menu (container 0). */
+    private static final int HEAD_SLOT = 5;
+
+    private static void initSelf(Logger logger) {
+        try {
+            attributesPacketClass = Class.forName("net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket");
+            attributesEntity = attributesPacketClass.getMethod("getEntityId");
+            attributesValues = attributesPacketClass.getMethod("getValues");
+            attributesCtor = attributesPacketClass.getConstructor(int.class, Collection.class);
+            Class<?> snapshot = Class.forName("net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket$AttributeSnapshot");
+            snapshotAttribute = snapshot.getMethod("attribute");
+            snapshotBase = snapshot.getMethod("base");
+            snapshotModifiers = snapshot.getMethod("modifiers");
+            Class<?> modifier = Class.forName("net.minecraft.world.entity.ai.attributes.AttributeModifier");
+            modifierId = modifier.getMethod("id");
+            modifierAmount = modifier.getMethod("amount");
+            modifierOperation = modifier.getMethod("operation");
+            movementSpeed = Class.forName("net.minecraft.world.entity.ai.attributes.Attributes").getField("MOVEMENT_SPEED").get(null);
+            getAttribute = Class.forName("net.minecraft.world.entity.LivingEntity")
+                    .getMethod("getAttribute", Class.forName("net.minecraft.core.Holder"));
+            abilitiesPacketClass = abilitiesPacketCtor.getDeclaringClass();
+            Class<?> stack = Class.forName("net.minecraft.world.item.ItemStack");
+            setSlotClass = Class.forName("net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket");
+            setSlotContainer = setSlotClass.getMethod("getContainerId");
+            setSlotState = setSlotClass.getMethod("getStateId");
+            setSlotSlot = setSlotClass.getMethod("getSlot");
+            setSlotCtor = setSlotClass.getConstructor(int.class, int.class, int.class, stack);
+            setContentClass = Class.forName("net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket");
+            setContentContainer = setContentClass.getMethod("containerId");
+            setContentState = setContentClass.getMethod("stateId");
+            setContentItems = setContentClass.getMethod("items");
+            setContentCarried = setContentClass.getMethod("carriedItem");
+            setContentCtor = setContentClass.getConstructor(int.class, int.class, java.util.List.class, stack);
+            selfReady = ready && viewReady;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Own-view hooks unavailable (" + ex + "); aiming does not zoom and scopes show no picture.");
+        }
+    }
+
+    /** Routes everything this player is sent about their own speed, abilities and helmet through {@code view}. */
+    public static void installSelf(Player player, SelfView view) {
+        if (!selfReady) {
+            return;
+        }
+        try {
+            Channel channel = channel(player);
+            if (channel != null) {
+                install(channel, SELF_HANDLER, SelfHandler.class, new SelfHandler(player, view));
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // no zoom for this player
+        }
+    }
+
+    /**
+     * Sends the player their movement speed and abilities in one bundle, so the client applies both
+     * in the same tick: on its way out the walking speed becomes the one {@code view} asks for (see
+     * {@link SelfHandler}). False if it could not be sent.
+     */
+    public static boolean sendView(Player player) {
+        if (!selfReady) {
             return false;
         }
         try {
             Object handle = getHandle.invoke(player);
-            Object real = getAbilities.invoke(handle);
-            Object copy = abilitiesClass.getConstructor().newInstance();
-            for (String name : new String[]{"invulnerable", "flying", "mayfly", "instabuild", "mayBuild", "flyingSpeed"}) {
-                Field f = abilitiesClass.getField(name);
-                f.set(copy, f.get(real));
+            Object instance = getAttribute.invoke(handle, movementSpeed);
+            java.util.List<Object> parts = new java.util.ArrayList<>(2);
+            if (instance != null) {
+                parts.add(attributesCtor.newInstance(player.getEntityId(), java.util.List.of(instance)));
             }
-            // fov = (move / walk + 1) / 2  =>  walk = move / (2 * fov - 1)
-            double denominator = 2 * fovMultiplier - 1;
-            if (Math.abs(denominator) < 0.02) {
-                denominator = -0.02;
-            }
-            abilitiesClass.getField("walkingSpeed").setFloat(copy, (float) (moveSpeed / denominator));
-            sendPacket.invoke(playerConnection.get(handle), abilitiesPacketCtor.newInstance(copy));
+            parts.add(abilitiesPacketCtor.newInstance(getAbilities.invoke(handle)));
+            sendPacket.invoke(playerConnection.get(handle), bundleCtor.newInstance(parts));
             return true;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             return false;
         }
     }
 
-    /** Sends the player's real abilities again, ending any zoom. */
-    public static void unzoom(Player player) {
-        if (!ready) {
+    /** Shows {@code helmet} (a Bukkit stack) in the player's own head slot until cleared with null. */
+    public static void selfHelmet(SelfView view, org.bukkit.inventory.@Nullable ItemStack helmet) {
+        if (!selfReady) {
             return;
         }
         try {
-            onUpdateAbilities.invoke(getHandle.invoke(player));
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // nothing to undo
+            view.helmet = helmet == null ? null : asNmsCopy.invoke(null, helmet);
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            view.helmet = null;
         }
+    }
+
+    /**
+     * Rewrites what the player is told about themselves: every abilities packet carries the walking
+     * speed {@link SelfView} asks for, every update of their movement speed is followed in the same
+     * bundle by such an abilities packet (the server sends one whenever armour, weight or aiming
+     * change the speed, and a gamemode change or respawn resends abilities), and while a scope
+     * picture is up every update of their head slot shows its helmet instead (a headshot that damages
+     * the helmet, or an inventory resync, would otherwise take the picture away until the next aim).
+     */
+    private static final class SelfHandler extends ChannelDuplexHandler {
+        private final Player player;
+        private final int self;
+        private final SelfView view;
+
+        SelfHandler(Player player, SelfView view) {
+            this.player = player;
+            this.self = player.getEntityId();
+            this.view = view;
+        }
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            Object out = msg;
+            try {
+                if (bundleClass.isInstance(msg)) {
+                    java.util.List<Object> parts = new java.util.ArrayList<>();
+                    boolean changed = rewriteAll((Iterable<?>) bundleSubPackets.invoke(msg), parts);
+                    if (changed) {
+                        out = bundleCtor.newInstance(parts);
+                    }
+                } else {
+                    java.util.List<Object> parts = new java.util.ArrayList<>(2);
+                    if (rewriteAll(java.util.List.of(msg), parts)) {
+                        out = parts.size() == 1 ? parts.get(0) : bundleCtor.newInstance(parts);
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException ex) {
+                out = msg;
+            }
+            super.write(ctx, out, promise);
+        }
+
+        /** Copies {@code in} to {@code out} rewritten; true if anything changed. */
+        private boolean rewriteAll(Iterable<?> in, java.util.List<Object> out) throws ReflectiveOperationException {
+            boolean changed = false;
+            boolean speedSent = false;
+            boolean abilitiesSent = false;
+            for (Object part : in) {
+                Object replaced = part;
+                if (attributesPacketClass.isInstance(part) && (int) attributesEntity.invoke(part) == self) {
+                    Double move = walkSpeed(part);
+                    if (move != null) {
+                        view.move = move;
+                        speedSent = true;
+                    }
+                } else if (abilitiesPacketClass.isInstance(part)) {
+                    replaced = withWalkingSpeed(part);
+                    abilitiesSent = true;
+                } else if (view.helmet != null) {
+                    replaced = withHelmet(part, view.helmet);
+                }
+                changed |= replaced != part;
+                out.add(replaced);
+            }
+            if (speedSent && !abilitiesSent) {
+                out.add(abilitiesPacketCtor.newInstance(getAbilities.invoke(getHandle.invoke(player))));
+                out.set(out.size() - 1, withWalkingSpeed(out.get(out.size() - 1)));
+                changed = true;
+            }
+            return changed;
+        }
+
+        private Object withWalkingSpeed(Object packet) throws ReflectiveOperationException {
+            Object abilities = abilitiesClass.getConstructor().newInstance();
+            Class<?> type = packet.getClass();
+            abilitiesClass.getField("invulnerable").setBoolean(abilities, (boolean) type.getMethod("isInvulnerable").invoke(packet));
+            abilitiesClass.getField("flying").setBoolean(abilities, (boolean) type.getMethod("isFlying").invoke(packet));
+            abilitiesClass.getField("mayfly").setBoolean(abilities, (boolean) type.getMethod("canFly").invoke(packet));
+            abilitiesClass.getField("instabuild").setBoolean(abilities, (boolean) type.getMethod("canInstabuild").invoke(packet));
+            abilitiesClass.getField("flyingSpeed").setFloat(abilities, (float) type.getMethod("getFlyingSpeed").invoke(packet));
+            abilitiesClass.getField("walkingSpeed").setFloat(abilities, view.walkingSpeed());
+            return abilitiesPacketCtor.newInstance(abilities);
+        }
+
+        private Object withHelmet(Object part, Object helmet) throws ReflectiveOperationException {
+            if (setSlotClass.isInstance(part)) {
+                if ((int) setSlotContainer.invoke(part) == 0 && (int) setSlotSlot.invoke(part) == HEAD_SLOT) {
+                    return setSlotCtor.newInstance(0, setSlotState.invoke(part), HEAD_SLOT, helmet);
+                }
+                return part;
+            }
+            if (setContentClass.isInstance(part)) {
+                java.util.List<?> items = (java.util.List<?>) setContentItems.invoke(part);
+                if ((int) setContentContainer.invoke(part) != 0 || items.size() <= HEAD_SLOT || items.get(HEAD_SLOT) == helmet) {
+                    return part;
+                }
+                java.util.List<Object> copy = new java.util.ArrayList<>(items);
+                copy.set(HEAD_SLOT, helmet);
+                return setContentCtor.newInstance(0, setContentState.invoke(part), copy, setContentCarried.invoke(part));
+            }
+            if (equipmentClass.isInstance(part) && (int) equipmentEntity.invoke(part) == self) {
+                java.util.List<?> slots = (java.util.List<?>) equipmentSlots.invoke(part);
+                java.util.List<Object> copy = null;
+                for (int i = 0; i < slots.size(); i++) {
+                    Object pair = slots.get(i);
+                    if ("HEAD".equals(((Enum<?>) pairFirst.invoke(pair)).name()) && pairSecond.invoke(pair) != helmet) {
+                        if (copy == null) {
+                            copy = new java.util.ArrayList<>(slots);
+                        }
+                        copy.set(i, pairOf.invoke(null, pairFirst.invoke(pair), helmet));
+                    }
+                }
+                return copy == null ? part : equipmentCtor.newInstance(self, copy);
+            }
+            return part;
+        }
+    }
+
+    /**
+     * The movement speed in an attribute update, sprinting left out, or null if the update is not
+     * about the movement speed: the base plus every modifier, in vanilla's order (additions, then
+     * multiples of the base, then multiples of the total), clamped to the attribute's 0..1024.
+     */
+    private static @Nullable Double walkSpeed(Object packet) throws ReflectiveOperationException {
+        for (Object snapshot : (java.util.List<?>) attributesValues.invoke(packet)) {
+            if (snapshotAttribute.invoke(snapshot) != movementSpeed) {
+                continue;
+            }
+            double base = (double) snapshotBase.invoke(snapshot);
+            double scaled = 0;
+            double total = 1;
+            for (Object modifier : (Collection<?>) snapshotModifiers.invoke(snapshot)) {
+                if ("minecraft:sprinting".equals(String.valueOf(modifierId.invoke(modifier)))) {
+                    continue;
+                }
+                double amount = (double) modifierAmount.invoke(modifier);
+                switch (((Enum<?>) modifierOperation.invoke(modifier)).name()) {
+                    case "ADD_VALUE" -> base += amount;
+                    case "ADD_MULTIPLIED_BASE" -> scaled += amount;
+                    default -> total *= 1 + amount;
+                }
+            }
+            return Math.max(0, Math.min(1024, (base + base * scaled) * total));
+        }
+        return null;
     }
 
     private static @Nullable Field containerMenu;

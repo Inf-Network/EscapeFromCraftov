@@ -262,8 +262,6 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Boolean> ads = new HashMap<>();
     /** Right mouse repeats a use packet every 4 ticks while held; ADS ends shortly after they stop. */
     private final Map<UUID, Long> adsUntil = new HashMap<>();
-    /** FOV zoom last sent to each aiming player (see {@link Nms#zoom}). */
-    private final Map<UUID, Double> sentZoom = new HashMap<>();
     private final Map<UUID, Long> lastHint = new HashMap<>();
     private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
@@ -569,9 +567,6 @@ public final class WeaponService implements Listener {
                     adsUntil.put(player.getUniqueId(), now + 6);
                 } else if (now > adsUntil.getOrDefault(player.getUniqueId(), 0L)) {
                     setAds(player, false);
-                }
-                if (isAiming(player) && now % 4 == 0) {
-                    applyZoom(player, state);
                 }
             }
             if (!held && state.triggerHeld) {
@@ -1378,10 +1373,10 @@ public final class WeaponService implements Listener {
             plugin.hud().scopeOverlay(player, null);
         }
         if (on && state != null) {
-            applyZoom(player, state);
+            plugin.fov().show(player, fovFor(state));
             player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
-        } else if (!on && sentZoom.remove(player.getUniqueId()) != null) {
-            Nms.unzoom(player);
+        } else if (!on) {
+            plugin.fov().show(player, 1.0);
         }
     }
 
@@ -1404,18 +1399,6 @@ public final class WeaponService implements Listener {
     /** Field-of-view multiplier while aiming, at the default 70 degree field of view. */
     private double fovFor(GunState state) {
         return OpticSpec.fovMultiplier(magnification(state), 70);
-    }
-
-    private void applyZoom(Player player, GunState state) {
-        org.bukkit.attribute.AttributeInstance speed = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
-        double move = speed == null ? 0.1 : speed.getValue();
-        Double previous = sentZoom.get(player.getUniqueId());
-        if (previous != null && Math.abs(previous - move) < 0.0005) {
-            return;
-        }
-        if (Nms.zoom(player, fovFor(state), move)) {
-            sentZoom.put(player.getUniqueId(), move);
-        }
     }
 
     /** Explains, at most once a second, why a trigger pull did nothing. */
@@ -1658,7 +1641,6 @@ public final class WeaponService implements Listener {
         stowed.values().removeIf(kept -> kept.owner().equals(id));
         ads.remove(event.getPlayer().getUniqueId());
         adsUntil.remove(event.getPlayer().getUniqueId());
-        sentZoom.remove(event.getPlayer().getUniqueId());
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());

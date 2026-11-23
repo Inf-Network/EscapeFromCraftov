@@ -1734,6 +1734,10 @@ public final class WeaponService implements Listener {
         if (kept < state.adsTicks) {
             state.upAt = -1; // a new rise: the gun has to settle again (see sway); sights picked up as they were go on settling
         }
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s aims %s tick=%d ticks=%d kept=%d handling=%.0f",
+                    player.getName(), state.def.id(), now, state.adsTicks, kept, state.gun.handling()));
+        }
         plugin.health().forceSpeedUpdate(player);
         if (kept < state.adsTicks) {
             if (scopeShown) {
@@ -1770,9 +1774,15 @@ public final class WeaponService implements Listener {
     private static final double ADS_FRAMES_TAIL = 0.25;
 
     /**
-     * One tick of aiming: the view narrows with the sights' progress (eased in and out), and once
-     * they are up the gun takes the aimed mark (its cooldown is a shot's kick again) and a scope
-     * shows its picture.
+     * One tick of aiming. While the sights come up the view narrows with their progress: a tick ahead
+     * of the server's own (the client shows what it is sent a tick later), eased out a little so the
+     * press answers at once yet the zoom lands as the sights come up (with a scope, as its picture
+     * does), and spread evenly over the sight's power (the multiplier goes as target^p, so an 8x does
+     * not save its zoom for the end). It is steered
+     * past the client's easing (see FovService.steer), so the view is at the sight's zoom on the tick
+     * the sights are up rather than a quarter of a second after. Then the gun takes the aimed mark (its
+     * cooldown is a shot's kick again), a scope shows its picture, and the view is steered on until
+     * the client has caught up.
      */
     private void raise(Player player, GunState state, long now) {
         if (state.adsStart < 0) {
@@ -1780,6 +1790,9 @@ public final class WeaponService implements Listener {
         }
         double target = fovFor(player, state);
         if (state.adsUp) {
+            if (!plugin.fov().settled(player, target)) {
+                plugin.fov().steer(player, target, target);
+            }
             return;
         }
         if (!state.adsFrames && now >= state.adsMarkAt + ADS_FRAMES_DELAY) {
@@ -1789,17 +1802,20 @@ public final class WeaponService implements Listener {
             int frames = (int) Math.max(1, state.adsStart + state.adsTicks - now);
             player.setCooldown(ItemFactory.RELOAD_GROUP, (int) Math.ceil(frames / (1 - ADS_FRAMES_TAIL)));
         }
-        double t = Math.max(0, Math.min(1, (now - state.adsStart) / (double) Math.max(1, state.adsTicks)));
-        if (t < 1) {
-            double eased = t * t * (3 - 2 * t);
-            plugin.fov().show(player, 1 + (target - 1) * eased);
+        long done = now - state.adsStart;
+        if (done < state.adsTicks) {
+            double next = Math.min(1, (done + 1) / (double) Math.max(1, state.adsTicks));
+            plugin.fov().steer(player, Math.pow(target, 1 - Math.pow(1 - next, 1.5)), target);
             return;
         }
         state.adsUp = true;
         if (state.upAt < 0) {
             state.upAt = now;
         }
-        plugin.fov().show(player, target);
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s aimed %s tick=%d", player.getName(), state.def.id(), now));
+        }
+        plugin.fov().steer(player, target, target);
         setMark(player, state, ItemFactory.MARK_AIMED);
         if (state.optic != null && state.optic.magnified()) {
             plugin.hud().scopeOverlay(player, state.optic.overlay());

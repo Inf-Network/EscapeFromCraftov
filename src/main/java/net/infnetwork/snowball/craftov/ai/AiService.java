@@ -932,7 +932,7 @@ public final class AiService implements Listener {
             if (id.equals(bot.threatFrom) && now < bot.threatUntil) {
                 range *= 1.5; // it knows which way to look for whoever just shot it
             }
-            double d2 = from.distanceSquared(player.getLocation());
+            double d2 = from.distanceSquared(plugin.slides().feet(player));
             if (d2 > range * range) {
                 bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
@@ -943,7 +943,7 @@ public final class AiService implements Listener {
             boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
             // Hearing: footsteps carry as far for a soldier as for a player (FootstepService: walking 16
             // blocks, sprinting 32, half that through a wall, the silent walk nothing).
-            boolean moving = moving(player);
+            boolean moving = moving(player) || plugin.slides().isSliding(player);
             boolean noisy = moving && plugin.footsteps().heardAt(player, mob.getEyeLocation());
             double view = view(facing, from, player.getLocation(), alerted);
             if (noisy) {
@@ -959,8 +959,9 @@ public final class AiService implements Listener {
                 aware = 1;
             } else if (seen > 0 && view > 0) {
                 double closeness = Math.pow(1 - d / range, 1.5) * (d < 6 && view >= 1 ? 3 : 1);
-                double stance = player.isSneaking() ? 0.5 : 1.0;
-                double motion = !moving ? 0.7 : player.isSprinting() ? 1.5 : 1.0;
+                boolean sliding = plugin.slides().isSliding(player);
+                double stance = player.isSneaking() && !sliding ? 0.5 : 1.0;
+                double motion = !moving ? 0.7 : player.isSprinting() || sliding ? 1.5 : 1.0;
                 double light = 0.3 + 0.7 * player.getEyeLocation().getBlock().getLightLevel() / 15.0;
                 aware = Math.min(1, aware + 0.1 * rate * closeness * stance * motion * light * view * seen * (alerted ? 1.5 : 1));
             } else {
@@ -1038,7 +1039,7 @@ public final class AiService implements Listener {
         AmmoSpec ammo = bot.ammo == null ? null : bot.ammo.ammo();
         int pen = ammo == null ? 1 : ammo.penetration();
         Ballistics ballistics = plugin.weapons().ballistics();
-        Vector feet = player.getLocation().toVector();
+        Vector feet = plugin.slides().feet(player).toVector();
         double[] heights = aimHeights(player);
         double[] seen = new double[heights.length];
         boolean[] open = new boolean[heights.length];
@@ -1082,8 +1083,14 @@ public final class AiService implements Listener {
         return total;
     }
 
-    /** Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling. */
-    private static double[] aimHeights(Player player) {
+    /**
+     * Head, chest and pelvis heights above a player's feet, for standing, crouching or crawling; above
+     * the ground for a player sliding (sat low, the head 0.7 to 1.2 up: SlideService).
+     */
+    private double[] aimHeights(Player player) {
+        if (plugin.slides().isSliding(player)) {
+            return new double[]{1.0, 0.45, 0.2};
+        }
         double h = player.getHeight();
         return new double[]{h - 0.2, h * 0.55, h * 0.33};
     }
@@ -1234,9 +1241,9 @@ public final class AiService implements Listener {
      * else the head (someone crouched behind low cover), else the pelvis (under something). Null if
      * none of them. {@code look} is the last look at the target; without one the chest.
      */
-    private static @Nullable Vector aimPoint(Player target, @Nullable Look look) {
+    private @Nullable Vector aimPoint(Player target, @Nullable Look look) {
         double[] heights = aimHeights(target);
-        Vector feet = target.getLocation().toVector();
+        Vector feet = plugin.slides().feet(target).toVector();
         if (look == null) {
             return feet.add(new Vector(0, heights[1], 0));
         }

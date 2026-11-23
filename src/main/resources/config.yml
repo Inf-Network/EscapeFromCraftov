@@ -437,9 +437,12 @@ weapons:
     # and the walking pace the player may go at now), the walking part counts this much: the measured
     # speed takes a tick or two to catch up with a stop. 1.0 counts it in full.
     stop: 0.5
-    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
+    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping), and
+    # while sliding (from the hip, and aimed: slide-ads; sneaking does not count while sliding).
     sneak: 0.7
     airborne: 2.5
+    slide: 1.6
+    slide-ads: 1.3
     # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
     # gun's action in items.yml. Sprinting is the client's sprint, or running at more than 1.2x walking
     # pace on the ground, as the server measures it. Once the sprint ends it fades back to 1 over the

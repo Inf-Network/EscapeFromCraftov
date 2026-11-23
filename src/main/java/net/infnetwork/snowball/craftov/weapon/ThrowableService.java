@@ -350,9 +350,10 @@ public final class ThrowableService implements Listener {
         return new double[] {at.getX(), at.getY(), at.getZ()};
     }
 
-    /** How fast a grenade leaves the hand: a gentle lob while sneaking. */
-    private static double[] throwVelocity(Player player) {
-        Vector v = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
+    /** How fast a grenade leaves the hand: a gentle lob while sneaking (a slide throws in full). */
+    private double[] throwVelocity(Player player) {
+        boolean lob = player.isSneaking() && !plugin.slides().isSliding(player);
+        Vector v = player.getEyeLocation().getDirection().multiply(lob ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
         return new double[] {v.getX(), v.getY(), v.getZ()};
     }
 

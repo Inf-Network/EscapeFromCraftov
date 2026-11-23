@@ -1087,7 +1087,8 @@ public final class WeaponService implements Listener {
      * Cone half-angle of the next shot. Moving widens it by the gun's own amount (items.yml `move`, in
      * degrees, half of it while aiming) in proportion to how close the player is to their full walking
      * pace past a small dead zone (see {@link #moveCost}): a pistol barely minds, a sniper rifle cannot
-     * hit a thing on the move, and stopping before the shot puts it back. Hip fire on a sprint
+     * hit a thing on the move, and stopping before the shot puts it back. A slide widens it by
+     * weapons.spread.slide (slide-ads aimed) and never gets the sneaking bonus. Hip fire on a sprint
      * (run-and-gun) is that cone, at full pace, times the gun's sprint multiplier (see {@link #sprintSpread}),
      * and straight out of one the multiplier wears off as the gun comes up from the sprint carry (see
      * {@link #sprintCarry}): quickly on a gun with much handling, slowly on one with little.
@@ -1100,7 +1101,12 @@ public final class WeaponService implements Listener {
         double aimed = gun.adsSpread() * opticSpread(state);
         // The cone narrows as the sights come up, and is the aimed one only once they are.
         double spread = gun.hipSpread() + (aimed - gun.hipSpread()) * up;
-        if (player.isSneaking()) {
+        boolean sliding = plugin.slides().isSliding(player);
+        if (sliding) {
+            // A slide is no steady crouch: wider from the hip, a little wider aimed (SlideService).
+            double hip = config.getDouble("weapons.spread.slide", 1.6);
+            spread *= hip + (config.getDouble("weapons.spread.slide-ads", 1.3) - hip) * up;
+        } else if (player.isSneaking()) {
             spread *= config.getDouble("weapons.spread.sneak", 0.7);
         }
         if (!MotionTracker.grounded(player)) {
@@ -1261,7 +1267,7 @@ public final class WeaponService implements Listener {
         kickPending(player, state, now);
         boolean aiming = isAiming(player);
         double scale = (1.0 + (config.getDouble("weapons.recoil.ads", 0.6) - 1.0) * adsProgress(player))
-                * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
+                * (player.isSneaking() && !plugin.slides().isSliding(player) ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
                 * (!aiming && sprinting(player) ? config.getDouble("weapons.recoil.sprint", 1.15) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
@@ -1628,6 +1634,10 @@ public final class WeaponService implements Listener {
         state.sampleLeft = 0;
         state.reloadEmpty = state.ammo == 0;
         reloadFoley(player, state, state.reloadEnd - now);
+        if (plugin.getConfig().getBoolean("debug", false)) {
+            plugin.getLogger().info(String.format("[debug] %s reload %s type=%s cycle=%b ammo=%d sliding=%b",
+                    player.getName(), gun.caliber(), type, cycleType, state.ammo, plugin.slides().isSliding(player)));
+        }
     }
 
     /** Handling sounds spread over the reload: magazine out and in, or one shell at a time for the pump gun. */
@@ -2197,10 +2207,11 @@ public final class WeaponService implements Listener {
             }
             return;
         }
-        // Q outside the inventory screen = reload (sneak+Q cycles ammo type).
+        // Q outside the inventory screen = reload (sneak+Q cycles ammo type; not mid-slide, whose
+        // second tap of sneak is usually still held).
         event.setCancelled(true);
         if (state != null && plugin.raids().canFire(player)) {
-            startReload(player, state, player.isSneaking());
+            startReload(player, state, player.isSneaking() && !plugin.slides().isSliding(player));
         }
     }
 

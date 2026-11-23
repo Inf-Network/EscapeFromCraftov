@@ -379,8 +379,8 @@ async function semi (bot = shooter) {
   throw new Error('the M4C did not switch to single shots')
 }
 
-// "[Craftov] <id> 试验场 NORMAL RUNNING · ...", one line per raid.
-const raidIds = async () => (await rcon('cv raids')).split('\n').map(l => (l.trim().match(/^\[Craftov\]\s+(\S+)\s/) || [])[1]).filter(Boolean)
+// `cv raids` lists one raid a line, "R6 试验场 常规 RUNNING · ..." (once with a [Craftov] prefix).
+const raidIds = async () => (await rcon('cv raids')).split('\n').map(l => (l.trim().match(/^(?:\[Craftov\]\s+)?(R\d+)\s/) || [])[1]).filter(Boolean)
 let ourRaids = []
 
 async function intoRaid () {

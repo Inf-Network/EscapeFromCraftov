@@ -243,6 +243,10 @@ public final class MatchService {
             Text.send(player, "<danger>地图或难度不存在。");
             return false;
         }
+        if (map.training()) {
+            Text.send(player, "<danger>训练场不能匹配，请从部署界面的「训练行动」进入。");
+            return false;
+        }
         for (UUID uuid : members) {
             Player member = Bukkit.getPlayer(uuid);
             if (member == null) {

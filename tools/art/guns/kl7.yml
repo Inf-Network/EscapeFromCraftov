@@ -45,3 +45,4 @@ parts:
 sight_y: 13.38
 eye: [10.4, 0.3]
 mag_axis: [0.3, -0.95]
+hands: {grip: [1.4, 7.8, 71.6], fore: [13.0, 9.95]}

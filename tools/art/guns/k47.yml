@@ -14,6 +14,11 @@
 #   eye              [x of the rear sight, blocks in front of the eye] when aimed
 #   rail             [x, y] where an optic sits (top of the receiver cover)
 #   mag_axis         [x, y] the magazine slides out along (default: down its largest box)
+#   hands            where the hands hold it (the first-person gloves and the third-person low carry,
+#                    models.py): grip [x, y, angle] the middle of the right fist on the pistol grip (or the
+#                    stock's wrist) and the angle of the grip's line from the barrel, bottom to top; fore
+#                    [x, y] the bottom of the handguard (or the pump) where the left palm holds it, with
+#                    fore_grip: vertical for a vertical foregrip; no fore: a pistol, held in both fists
 #
 # Real widths at this scale (31 units for 880 mm, 28 mm a unit): receiver 1.2, the lower handguard
 # 1.8, the barrel 0.6 and round, the magazine 1.0.
@@ -60,3 +65,4 @@ parts:
 sight_y: 13.05
 eye: [10.25, 0.3]
 mag_axis: [0.29, -0.96]
+hands: {grip: [2.06, 7.7, 71.6], fore: [13.0, 9.78]}

@@ -79,7 +79,7 @@ def generated(texture, parent='minecraft:item/generated'):
 ATT_SLOTS = ['muzzle', 'grip', 'tactical', 'mag']   # custom_model_data strings 1..4 (Attachments.java)
 # Leaves that are the whole gun body: every attachment and the mounted optic (string 0) ride on them.
 BODY_LEAVES = ('item/gun/', 'item/gun_low/', 'item/gun_mid/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_aimed/',
-               'item/gun_adsin/', 'item/gun_draw/')
+               'item/gun_lowready/', 'item/gun_adsin/', 'item/gun_draw/')
 
 
 def attachments_for(spec, item_defs):
@@ -299,12 +299,24 @@ def build_gun(item_id, spec, item_defs):
                                 {'threshold': 4.5, 'model': holstered}],
                     'fallback': hip_tree}
 
-    # Everyone else sees the low model. Other players receive the gun as a charged crossbow while it is
-    # raised (StanceService), which gives the two-handed aiming pose; gun_aimed keeps the barrel straight.
+    # Everyone else sees the low model, posed for the stance StanceService shows them: shouldered, the
+    # gun comes as a charged crossbow (the two-handed aim; gun_aimed keeps the barrel straight); carried
+    # low, it comes with custom_model_data flag 0 and a crossbow's use (gun_lowready holds it low and
+    # level in the crossbow-charge pose). Without either (the ground, an item frame) it is the plain one.
+    # Flag 1 says the holder is crouching, whose arms swing back with the body's lean: the _crouch
+    # variants turn the gun back in the hand by as much.
     low = models.low_ref(item_id)
-    aimed_low = leaf('gun_aimed/' + item_id, models.gun_aimed_model(item_id, low))
+
+    def flag(index, on, off):
+        return {'type': 'minecraft:condition', 'property': 'minecraft:custom_model_data', 'index': index,
+                'on_true': on, 'on_false': off}
+
+    def stances(folder, make):
+        return flag(1, leaf('%s/%s_crouch' % (folder, item_id), make(item_id, low, True)),
+                    leaf('%s/%s' % (folder, item_id), make(item_id, low)))
     others = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
-              'cases': [{'when': 'arrow', 'model': aimed_low}], 'fallback': model_ref(low)}
+              'cases': [{'when': 'arrow', 'model': stances('gun_aimed', models.gun_aimed_model)}],
+              'fallback': flag(0, stances('gun_lowready', models.gun_lowready_model), model_ref(low))}
 
     atts = attachments_for(spec, item_defs)
     tree = {'type': 'minecraft:select', 'property': 'minecraft:display_context',

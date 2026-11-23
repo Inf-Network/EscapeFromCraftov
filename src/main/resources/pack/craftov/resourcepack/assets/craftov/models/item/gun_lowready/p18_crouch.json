@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_low/p18",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    -16.448,
+    78.416,
+    50.981
+   ],
+   "translation": [
+    0.273,
+    1.804,
+    -1.923
+   ],
+   "scale": [
+    0.75,
+    0.75,
+    0.75
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    -16.448,
+    -78.416,
+    -50.981
+   ],
+   "translation": [
+    0.273,
+    1.804,
+    -1.923
+   ],
+   "scale": [
+    0.75,
+    0.75,
+    0.75
+   ]
+  }
+ }
+}

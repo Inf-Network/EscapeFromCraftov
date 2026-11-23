@@ -238,9 +238,106 @@ def third_person_aimed(gid):
             {'rotation': [r[0], -r[1], -r[2]], 'translation': t, 'scale': s})
 
 
-def gun_aimed_model(gid, parent):
+def gun_aimed_model(gid, parent, crouched=False):
     """Variant shown to other players while the holder has the gun up (see AIMED_ROTATION)."""
-    tp_r, tp_l = third_person_aimed(gid)
+    tp_r, tp_l = third_person_crouched(third_person_aimed(gid), AIM_ARM) if crouched else third_person_aimed(gid)
+    return {'parent': parent, 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
+
+
+# The main arm with the gun shouldered and the look level (AnimationUtils.animateCrossbowHold), and how
+# much further back crouching swings both arms (HumanoidModel.setupAnim: xRot + 0.4, the arms following
+# the body's lean). Crouched, the gun would point 23 degrees under the look and the low carry at the
+# feet, so StanceService marks a crouching holder (custom_model_data flag 1) and these variants turn
+# the gun back in the hand by as much.
+AIM_ARM = (-math.pi / 2 + 0.1, -0.3)
+CROUCH_ARM = 0.4
+
+
+def third_person_crouched(displays, arm):
+    """(right, left) displays that hold the gun as `displays` do with the arm at `arm`, for an arm swung
+    CROUCH_ARM further back: the gun turned about the hand so it points the same way."""
+    right = displays[0]
+    standing = hand_chain(*arm)
+    crouched = hand_chain(arm[0] + CROUCH_ARM, arm[1])
+    turn = reload._mul([list(row) for row in zip(*crouched)], standing)
+    r = reload._mul(turn, reload.euler_matrix(right['rotation']))
+    t = reload._apply(turn, right['translation'])
+    rotation = reload.to_euler(r)
+    out = {'rotation': rotation, 'translation': [round(v, 3) for v in t], 'scale': right['scale']}
+    return out, {'rotation': [rotation[0], -rotation[1], -rotation[2]], 'translation': out['translation'], 'scale': right['scale']}
+
+
+# The low carry (StanceService LOW: standing, walking, crouching, sprinting, drawing, reloading). Others
+# get the gun with a crossbow's use animation and see the player using it, which is the crossbow-charge
+# pose at its start (AnimationUtils.animateCrossbowCharge, the use restarted so it stays there): both arms
+# 55.6 degrees up from hanging, the right turned 46 degrees in, the left 23. The gun is solved into the
+# right hand: its barrel LOW_CARRY pitch degrees under level and yaw degrees across the body, its top up
+# (rolled by roll), the middle of the fist (hands.grip in the gun's spec) in the hand. Across the body
+# rather than straight ahead, so it still reads as a gun held low from the front, where a barrel pointing
+# at the viewer foreshortens to a stub (tools/art/tpview.py shows both).
+LOW_ARM = (-0.97079635, -0.8)
+LOW_CARRY = {'pitch': 22.0, 'yaw': 38.0, 'roll': -12.0}
+
+
+def _r3(axis, a):
+    c, s = math.cos(a), math.sin(a)
+    if axis == 'x':
+        return [[1, 0, 0], [0, c, -s], [0, s, c]]
+    if axis == 'y':
+        return [[c, 0, s], [0, 1, 0], [-s, 0, c]]
+    return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+
+
+def hand_chain(arm_x, arm_y):
+    """Rotation from a held item's display space to the player model's (+Y down, -Z forward, +X the
+    player's left): the arm (ModelPart rotationZYX, no z) then ItemInHandLayer's -90 about X, 180 about Y."""
+    m = reload._mul(_r3('y', arm_y), _r3('x', arm_x))
+    return reload._mul(reload._mul(m, _r3('x', math.radians(-90))), _r3('y', math.pi))
+
+
+def hands_spec(gid):
+    """The spec's hands (see guns/k47.yml), or {} for a gun without one."""
+    return meshprim.spec(gid).get('hands', {}) if meshprim.has_spec(gid) else {}
+
+
+def grip_point(gid):
+    """Model point of the middle of the right fist: the spec's hands.grip, else under the gun's middle."""
+    grip = hands_spec(gid).get('grip')
+    if grip:
+        return [grip[0], grip[1], 8.0]
+    (x0, x1), (y0, _), _ = _bounds(gun_elements(gid))
+    return [x0 + (x1 - x0) * 0.3, y0 + 2.0, 8.0]
+
+
+def third_person_low(gid, carry=None):
+    """(right, left) third-person displays of the low carry (see LOW_CARRY)."""
+    c = dict(LOW_CARRY, **(carry or {}))
+    p, y, roll = (math.radians(c[k]) for k in ('pitch', 'yaw', 'roll'))
+    d = [math.cos(p) * math.sin(y), math.sin(p), -math.cos(p) * math.cos(y)]
+    up = [0.0, -1.0, 0.0]
+    k = sum(a * b for a, b in zip(up, d))
+    up = [a - k * b for a, b in zip(up, d)]
+    n = math.sqrt(sum(a * a for a in up))
+    up = [a / n for a in up]
+    side = [d[1] * up[2] - d[2] * up[1], d[2] * up[0] - d[0] * up[2], d[0] * up[1] - d[1] * up[0]]
+    # Roll about the barrel: the top leans towards the side.
+    up, side = ([math.cos(roll) * u + math.sin(roll) * s for u, s in zip(up, side)],
+                [math.cos(roll) * s - math.sin(roll) * u for u, s in zip(up, side)])
+    world = [[d[i], up[i], side[i]] for i in range(3)]
+    chain = hand_chain(*LOW_ARM)
+    r = reload._mul([list(row) for row in zip(*chain)], world)
+    s = 0.75 if gid in PISTOLS else 0.6
+    g = grip_point(gid)
+    t = [-s * v for v in reload._apply(r, [g[0] - 8, g[1] - 8, g[2] - 8])]
+    rotation = reload.to_euler(r)
+    right = {'rotation': rotation, 'translation': [round(v, 3) for v in t], 'scale': [s] * 3}
+    left = {'rotation': [rotation[0], -rotation[1], -rotation[2]], 'translation': right['translation'], 'scale': [s] * 3}
+    return right, left
+
+
+def gun_lowready_model(gid, parent, crouched=False):
+    """Variant shown to other players while the holder carries the gun low (see LOW_CARRY)."""
+    tp_r, tp_l = third_person_crouched(third_person_low(gid), LOW_ARM) if crouched else third_person_low(gid)
     return {'parent': parent, 'display': {'thirdperson_righthand': tp_r, 'thirdperson_lefthand': tp_l}}
 
 

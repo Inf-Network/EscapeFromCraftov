@@ -2,13 +2,18 @@ package net.infnetwork.snowball.craftov.weapon;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ChargedProjectiles;
+import io.papermc.paper.datacomponent.item.Consumable;
+import io.papermc.paper.datacomponent.item.CustomModelData;
+import io.papermc.paper.datacomponent.item.consumable.ItemUseAnimation;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
+import net.kyori.adventure.key.Key;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -20,97 +25,301 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jspecify.annotations.Nullable;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * How other players see someone holding a gun. Vanilla only has one two-handed aiming pose that a
- * server can trigger without a mod: holding a charged crossbow. So while a player has a gun up, the
- * gun is sent to everyone else as a charged crossbow that keeps the gun's item model (the model
- * switches to a variant posed for that stance on {@code charge_type}); the holder's own client keeps
- * the real item, so first person, ADS and reload frames are untouched. Sprinting, reloading, being
- * downed, reviving or swimming lowers the gun back to the normal one-handed carry; a sprint that fires
- * (run-and-gun) shoulders it while it does.
+ * How other players see someone's hands. A server cannot animate a player model, but the vanilla
+ * client picks each arm's pose from what the player holds and whether they are using it, so what
+ * everyone else is told about those two things decides the pose they see. The ladder:
+ *
+ * <ul>
+ *   <li>{@link Stance#LOW}: a gun carried low in both hands, muzzle down, standing, walking, crouching,
+ *   sprinting or while it comes up after a switch. Others get the gun with a crossbow's use
+ *   animation and are told the player is using it, which is the crossbow-charge pose; that pose
+ *   slowly lifts the support arm the longer the use runs, so the use is restarted every other tick
+ *   and the arms stay where it starts.</li>
+ *   <li>{@link Stance#SHOULDER}: aiming, or a shot fired in the last moment: the gun as a charged
+ *   crossbow, which is the two-handed aim along the look (crossbow hold).</li>
+ *   <li>{@link Stance#RELOAD}: low, but the use runs on, so the support arm comes up to the
+ *   magazine; it is restarted as the new magazine goes in and comes up again.</li>
+ *   <li>{@link Stance#THROW}: a grenade being cooked is held overhead (the trident throw).</li>
+ *   <li>{@link Stance#DOWNED}: crawling with empty hands.</li>
+ *   <li>{@link Stance#REVIVE}: working on a downed squadmate with a bandage (the brush pose).</li>
+ * </ul>
+ *
+ * <p>Everything here is what <em>others</em> are sent (see {@link Nms.ViewRewriter}): the player's own
+ * client keeps the real item and is never told they are using it, so first person, ADS, the
+ * reload frames and the trigger (which needs the client to be digging, not using) are untouched.
+ * Kill-replay stand-ins are posed the same way ({@link #pose}). The gun's item model shows its own
+ * third-person variant for each stance (tools/art/build.py: the low carry on custom_model_data flag
+ * 0, the shouldered one on the crossbow's charge).
  */
 public final class StanceService implements Listener, Nms.ViewRewriter {
 
-    /** Ticks a gun fired on a sprint stays shouldered after its last shot. */
+    public enum Stance {
+        /** Nothing to pose: the real item as vanilla shows it (a knife, a med, swimming, a spectator). */
+        NONE,
+        LOW,
+        SHOULDER,
+        RELOAD,
+        THROW,
+        DOWNED,
+        REVIVE;
+
+        /** The stances shown by telling others the item in hand is being used. */
+        boolean using() {
+            return this == LOW || this == RELOAD || this == REVIVE;
+        }
+
+        /** The stances with a gun (or a bandage) held in both hands: arm swings are not shown. */
+        boolean twoHanded() {
+            return this == LOW || this == SHOULDER || this == RELOAD || this == REVIVE || this == DOWNED;
+        }
+    }
+
+    /** Ticks a gun stays shouldered after its last shot, and on a sprint (run-and-gun). */
+    private static final int FIRE_TICKS = 30;
     private static final int SPRINT_FIRE_TICKS = 10;
+    /** Reload progress at which the new magazine goes in (tools/art/reload.py MAG_KEYS): the support arm comes up again. */
+    private static final double MAG_IN = 0.55;
+    /** Bit 1 of the living-entity flags: using the item in hand (bit 2 would make it the off hand). */
+    private static final byte USING = 1;
 
     private final CraftovPlugin plugin;
-    /** Entity ids of players holding a gun up, read by the Netty threads. */
-    private final Set<Integer> raised = ConcurrentHashMap.newKeySet();
+    /** Stance by entity id, read by the Netty threads; NONE is left out. */
+    private final Map<Integer, Stance> stances = new ConcurrentHashMap<>();
+    /**
+     * Entity ids of those crouching (read by the Netty threads): the arms swing back with the body's
+     * lean, and the gun's model turns it back in the hand (custom_model_data flag 1).
+     */
+    private final Set<Integer> crouching = ConcurrentHashMap.newKeySet();
     /** Entity ids of players with a gun in hand at all (middle click goes to the tactical light). */
     private final Set<Integer> armed = ConcurrentHashMap.newKeySet();
+    /** Kill-replay stand-ins posed by {@link #pose}, by entity id. */
+    private final Map<Integer, LivingEntity> standIns = new HashMap<>();
+    /** Who has been sent each posed entity's use since its stance last changed, by entity id. */
+    private final Map<Integer, Set<UUID>> told = new HashMap<>();
+    /** Reload progress last seen per player id, to restart the support arm as the magazine goes in. */
+    private final Map<Integer, Double> reloadSeen = new HashMap<>();
     private final List<ItemStack> chargedArrow = List.of(ItemStack.of(Material.ARROW));
+    private final ItemStack bandage;
 
     public StanceService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        bandage = ItemStack.of(Material.PAPER);
+        bandage.setData(DataComponentTypes.ITEM_MODEL, Key.key("craftov", "bandage"));
+        bandage.setData(DataComponentTypes.CONSUMABLE, use(ItemUseAnimation.BRUSH));
     }
 
     public void start() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Nms.installView(player, this);
         }
-        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 2L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 1L);
+    }
+
+    /** A use that never runs out while it is shown, silent and without particles. */
+    private static Consumable use(ItemUseAnimation animation) {
+        return Consumable.consumable()
+                .consumeSeconds(3600f)
+                .animation(animation)
+                .sound(Key.key("minecraft", "intentionally_empty"))
+                .hasConsumeParticles(false)
+                .build();
     }
 
     private void tick() {
+        long now = Bukkit.getCurrentTick();
+        Set<Integer> seen = new HashSet<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
+            int id = player.getEntityId();
+            seen.add(id);
             if (isGun(player.getInventory().getItemInMainHand())) {
-                armed.add(player.getEntityId());
+                armed.add(id);
             } else {
-                armed.remove(player.getEntityId());
+                armed.remove(id);
             }
-            boolean want = wantsRaised(player);
-            boolean changed = want ? raised.add(player.getEntityId()) : raised.remove(player.getEntityId());
-            if (changed) {
-                // Resend the real item; the view handler turns it into whatever the new stance shows.
-                ItemStack hand = player.getInventory().getItemInMainHand();
-                for (Player viewer : player.getTrackedBy()) {
-                    viewer.sendEquipmentChange(player, EquipmentSlot.HAND, hand);
-                }
-            }
+            update(player, want(player), player.isSneaking(), now);
         }
+        for (Integer gone : standIns.entrySet().stream().filter(e -> !e.getValue().isValid()).map(Map.Entry::getKey).toList()) {
+            forget(gone);
+        }
+        for (Map.Entry<Integer, LivingEntity> entry : standIns.entrySet()) {
+            seen.add(entry.getKey());
+            Stance stance = stances.getOrDefault(entry.getKey(), Stance.NONE);
+            keepUsing(entry.getValue(), stance, false, now);
+        }
+        stances.keySet().retainAll(seen);
+        crouching.retainAll(seen);
+        armed.retainAll(seen);
+        told.keySet().retainAll(seen);
+        reloadSeen.keySet().retainAll(seen);
     }
 
-    private boolean wantsRaised(Player player) {
-        if (player.getGameMode() == GameMode.SPECTATOR || sprintCarry(player) || player.isSwimming() || player.isGliding()
-                || player.isInsideVehicle() || plugin.downed().isDowned(player) || plugin.downed().isReviving(player)
-                || !isGun(player.getInventory().getItemInMainHand())) {
-            return false;
+    /** Moves a player to {@code want}, telling everyone who sees them, and keeps a use going. */
+    private void update(Player player, Stance want, boolean crouched, long now) {
+        int id = player.getEntityId();
+        boolean restart = false;
+        if (want == Stance.RELOAD) {
+            WeaponService.GunState state = plugin.weapons().state(player);
+            double progress = state == null ? 0 : state.reloadProgress();
+            Double before = reloadSeen.put(id, progress);
+            restart = before != null && before < MAG_IN && progress >= MAG_IN;
+        } else {
+            reloadSeen.remove(id);
         }
-        WeaponService.GunState state = plugin.weapons().state(player);
-        return state == null || !state.reloading();
+        show(player, player.getInventory().getItemInMainHand(), want, crouched);
+        keepUsing(player, want, restart, now);
     }
 
     /**
-     * The gun is carried low on a sprint: the player is sprinting and has not fired in the last
-     * {@link #SPRINT_FIRE_TICKS}. Firing on the run shoulders it, so others see where the shots come from.
+     * Records the entity's stance and, if it or the crouch changed, sends whoever sees it the real
+     * item in hand again: the view handler turns it into what the new stance shows, and the use (or
+     * its end) follows, so the client starts the use with the right item in hand.
      */
-    public boolean sprintCarry(Player player) {
-        if (!player.isSprinting()) {
-            return false;
+    private void show(LivingEntity entity, ItemStack hand, Stance want, boolean crouched) {
+        int id = entity.getEntityId();
+        Stance had = want == Stance.NONE ? stances.remove(id) : stances.put(id, want);
+        if (had == null) {
+            had = Stance.NONE;
+        }
+        boolean crouchChanged = crouched ? crouching.add(id) : crouching.remove(id);
+        if (want == had && !(crouchChanged && want != Stance.NONE)) {
+            return;
+        }
+        if (want != had) {
+            told.remove(id);
+        }
+        for (Player viewer : entity.getTrackedBy()) {
+            viewer.sendEquipmentChange(entity, EquipmentSlot.HAND, hand);
+            if (had.using() && !want.using()) {
+                Nms.sendLivingFlags(viewer, id, (byte) 0);
+            }
+        }
+    }
+
+    /**
+     * Sends the use to whoever sees the entity and has not been sent it since the stance changed (a
+     * new stance, or someone who just came into view), and restarts it: every other tick for the low
+     * carry, whose pose drifts as the use runs, and on {@code restart} for a reload.
+     */
+    private void keepUsing(LivingEntity entity, Stance stance, boolean restart, long now) {
+        if (!stance.using()) {
+            return;
+        }
+        int id = entity.getEntityId();
+        Set<UUID> sent = told.computeIfAbsent(id, k -> new HashSet<>());
+        boolean all = restart || stance == Stance.LOW && now % 2 == 0;
+        Set<UUID> present = new HashSet<>();
+        for (Player viewer : entity.getTrackedBy()) {
+            present.add(viewer.getUniqueId());
+            if (all || !sent.contains(viewer.getUniqueId())) {
+                Nms.sendLivingFlags(viewer, id, (byte) 0, USING);
+                sent.add(viewer.getUniqueId());
+            }
+        }
+        sent.retainAll(present);
+    }
+
+    private Stance want(Player player) {
+        if (player.getGameMode() == GameMode.SPECTATOR) {
+            return Stance.NONE;
+        }
+        if (plugin.downed().isDowned(player)) {
+            return Stance.DOWNED;
+        }
+        if (plugin.downed().isReviving(player)) {
+            return Stance.REVIVE;
+        }
+        if (player.hasActiveItem() && isThrowable(player.getActiveItem())) {
+            return Stance.THROW;
+        }
+        if (player.isSwimming() || player.isGliding() || player.isInsideVehicle() || !isGun(player.getInventory().getItemInMainHand())) {
+            return Stance.NONE;
         }
         WeaponService.GunState state = plugin.weapons().state(player);
-        return state == null || Bukkit.getCurrentTick() - state.lastShotTick > SPRINT_FIRE_TICKS;
+        if (state == null || state.slot != player.getInventory().getHeldItemSlot()) {
+            return Stance.LOW;
+        }
+        if (state.reloading()) {
+            return Stance.RELOAD;
+        }
+        if (state.drawing()) {
+            return Stance.LOW;
+        }
+        if (plugin.weapons().isAiming(player)) {
+            return Stance.SHOULDER;
+        }
+        long since = Bukkit.getCurrentTick() - state.lastShotTick;
+        return state.lastShotTick > 0 && since <= (player.isSprinting() ? SPRINT_FIRE_TICKS : FIRE_TICKS) ? Stance.SHOULDER : Stance.LOW;
+    }
+
+    /** What the player is shown doing to others right now. */
+    public Stance stanceOf(LivingEntity entity) {
+        return stances.getOrDefault(entity.getEntityId(), Stance.NONE);
+    }
+
+    /**
+     * Poses a kill-replay stand-in (a mannequin seen only by the player watching): its real
+     * equipment is what the recorded player held, and it is shown in {@code stance} as a player
+     * would be. Call again whenever the recorded stance changes; {@link #release} when it goes.
+     */
+    public void pose(LivingEntity standIn, Stance stance, boolean crouched) {
+        standIns.put(standIn.getEntityId(), standIn);
+        ItemStack hand = standIn.getEquipment() == null ? ItemStack.empty() : standIn.getEquipment().getItemInMainHand();
+        show(standIn, hand, stance, crouched);
+        keepUsing(standIn, stance, false, Bukkit.getCurrentTick());
+    }
+
+    public void release(LivingEntity standIn) {
+        forget(standIn.getEntityId());
+    }
+
+    private void forget(int id) {
+        standIns.remove(id);
+        stances.remove(id);
+        crouching.remove(id);
+        told.remove(id);
+    }
+
+    /**
+     * The stance a recorded moment shows, for a kill replay: what {@link #stanceOf} says, except
+     * that a soldier (which has no stance of its own) shoulders its gun.
+     */
+    public Stance recorded(LivingEntity entity) {
+        return entity instanceof Player ? stanceOf(entity) : Stance.SHOULDER;
     }
 
     private boolean isGun(@Nullable ItemStack stack) {
+        ItemDef def = defOf(stack);
+        return def != null && def.isGun();
+    }
+
+    private boolean isThrowable(@Nullable ItemStack stack) {
+        ItemDef def = defOf(stack);
+        return def != null && def.throwable() != null;
+    }
+
+    private @Nullable ItemDef defOf(@Nullable ItemStack stack) {
         if (stack == null || stack.isEmpty() || stack.getType() != Material.PAPER) {
-            return false;
+            return null;
         }
         String id = stack.getPersistentDataContainer().get(Keys.ITEM_ID, PersistentDataType.STRING);
-        ItemDef def = id == null ? null : plugin.registry().get(id);
-        return def != null && def.isGun();
+        return id == null ? null : plugin.registry().get(id);
     }
 
     // ------------------------------------------------------------------ Netty side
 
     @Override
     public boolean raised(int entityId) {
-        return raised.contains(entityId);
+        Stance stance = stances.get(entityId);
+        return stance != null && stance.twoHanded();
     }
 
     @Override
@@ -120,20 +329,68 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
 
     @Override
     public @Nullable ItemStack mainHand(int entityId, ItemStack real) {
-        if (!raised.contains(entityId) || !isGun(real)) {
+        Stance stance = stances.get(entityId);
+        if (stance == null) {
             return null;
         }
-        return raisedCopy(real);
+        boolean crouched = crouching.contains(entityId);
+        return switch (stance) {
+            case NONE -> null;
+            case LOW, RELOAD -> isGun(real) ? lowCopy(real, crouched) : null;
+            case SHOULDER -> isGun(real) ? raisedCopy(real, crouched) : null;
+            case THROW -> isThrowable(real) ? withUse(real, ItemUseAnimation.TRIDENT) : null;
+            case DOWNED -> ItemStack.empty();
+            case REVIVE -> bandage.clone();
+        };
+    }
+
+    @Override
+    public byte livingFlags(int entityId, byte real) {
+        Stance stance = stances.get(entityId);
+        if (stance == null || stance == Stance.NONE || stance == Stance.THROW) {
+            return real;
+        }
+        // Using the main-hand item for the poses that are a use; for the rest whatever the server says
+        // less the use, which a stale packet from before the stance could still carry.
+        return stance.using() ? (byte) ((real & ~3) | USING) : (byte) (real & ~3);
     }
 
     /** The gun as a charged crossbow keeping its model: held that way, a humanoid shoulders it. */
-    public ItemStack raisedCopy(ItemStack real) {
+    public ItemStack raisedCopy(ItemStack real, boolean crouched) {
         ItemStack shown = real.withType(Material.CROSSBOW);
         // Crossbows are damageable, so the stack must stay unstackable or the packet fails to encode.
         shown.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
         shown.setAmount(1);
         shown.unsetData(DataComponentTypes.LORE);
         shown.setData(DataComponentTypes.CHARGED_PROJECTILES, ChargedProjectiles.chargedProjectiles(chargedArrow));
+        flags(shown, real, false, crouched);
+        return shown;
+    }
+
+    /**
+     * The gun carried low: a use with the crossbow's animation (the crossbow-charge pose while it is
+     * used) and custom_model_data flag 0, on which the item model holds the gun low and level.
+     */
+    private ItemStack lowCopy(ItemStack real, boolean crouched) {
+        ItemStack shown = withUse(real, ItemUseAnimation.CROSSBOW);
+        flags(shown, real, true, crouched);
+        return shown;
+    }
+
+    /** custom_model_data flags 0 (carried low) and 1 (crouching), the real stack's strings (the attachments) kept. */
+    private static void flags(ItemStack shown, ItemStack real, boolean low, boolean crouched) {
+        CustomModelData data = real.getData(DataComponentTypes.CUSTOM_MODEL_DATA);
+        CustomModelData.Builder cmd = CustomModelData.customModelData().addFlag(low).addFlag(crouched);
+        if (data != null) {
+            cmd.addStrings(data.strings());
+        }
+        shown.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
+    }
+
+    private static ItemStack withUse(ItemStack real, ItemUseAnimation animation) {
+        ItemStack shown = real.clone();
+        shown.unsetData(DataComponentTypes.LORE);
+        shown.setData(DataComponentTypes.CONSUMABLE, use(animation));
         return shown;
     }
 
@@ -146,7 +403,10 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        raised.remove(event.getPlayer().getEntityId());
-        armed.remove(event.getPlayer().getEntityId());
+        int id = event.getPlayer().getEntityId();
+        stances.remove(id);
+        armed.remove(id);
+        told.remove(id);
+        reloadSeen.remove(id);
     }
 }

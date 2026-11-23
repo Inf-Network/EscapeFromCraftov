@@ -341,12 +341,14 @@ async function escort () {
   e.closeWindow(list)
   // Kicked escort in the same raid: the client extracts, the escort gets nothing, the client gets it all back.
   const cBefore = await money(c.username)
+  const cMark = c.msgs.length
   const eBefore = await money(e.username)
   const inRaid = await enterRaid([c, e], () => { c.chat('/cv queue proving NORMAL SOLO'); e.chat('/cv queue proving NORMAL SOLO') })
   log('both', 'in raid', inRaid)
   check('escort: client extracted', await extract(c))
   await sleep(1500)
-  const cAfter = await money(c.username)
+  // Less what the client's own extraction paid it (an extract contract, a level-up): announced.
+  const cAfter = await money(c.username) - announcedSince(c, cMark)
   const eAfter = await money(e.username)
   check('escort: a kicked escort in the same raid is not paid', eAfter === eBefore, `escort ${eBefore} -> ${eAfter}`)
   await extract(e)
@@ -356,7 +358,7 @@ async function escort () {
   list = await openWith(e, () => e.clickWindow(16, 0, 0))
   const still = json(list.slots[slotOf(list, c.username)])
   check('escort: the contract stays open for the client, reward still in escrow', still.includes('等待护航') && cAfter === cBefore,
-    `client ${cBefore} -> ${cAfter}`)
+    `client ${cBefore} -> ${cAfter} (rewards announced on extracting taken off)`)
   // A real escort is still paid.
   await e.clickWindow(slotOf(list, c.username), 0, 0); await sleep(500)
   e.closeWindow(list)

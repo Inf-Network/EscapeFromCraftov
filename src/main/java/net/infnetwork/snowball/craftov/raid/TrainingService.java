@@ -98,7 +98,10 @@ public final class TrainingService {
         boolean reloaded;
         boolean trapped;
         boolean healed;
+        /** The lever's countdown is running (or just ran out and is being dealt with). */
         boolean lever;
+        /** The countdown ran out with the player outside the extract: the lever is to pull again. */
+        boolean leverMissed;
         /** The lesson whose hint was shown last, and when it is due again. */
         @Nullable Lesson hinted;
         long hintAt;
@@ -344,7 +347,8 @@ public final class TrainingService {
             case EXTRACT -> new Location(world, TrainingGroundGenerator.EXTRACT_X + 0.5, g + 1, TrainingGroundGenerator.EXTRACT_Z + 0.5);
         };
         String text = lesson == Lesson.AIM ? lesson.objective + " " + session.hits.size() + "/" + TrainingGroundGenerator.TARGETS.length
-                : lesson == Lesson.HEAL && !session.trapped ? "穿过走廊" : lesson.objective;
+                : lesson == Lesson.HEAL && !session.trapped ? "穿过走廊"
+                : lesson == Lesson.LEVER && session.leverMissed ? "再拉一次电闸" : lesson.objective;
         return new TutorialService.Objective(text, target);
     }
 
@@ -368,7 +372,8 @@ public final class TrainingService {
                     : plugin.health().hasInjury(player, Injury.LIGHT_BLEED) || plugin.health().hasInjury(player, Injury.HEAVY_BLEED)
                     ? "先止血：选中绷带，按住 <white><key:key.use></white> 直到用完"
                     : "再固定骨折：选中夹板，按住 <white><key:key.use></white> 直到用完";
-            case LEVER -> "到撤离区右键电闸";
+            case LEVER -> session.leverMissed ? "倒计时结束时你不在撤离点，它又关了：再右键一次电闸，然后站进绿色撤离点"
+                    : "到撤离区右键电闸";
             case EXTRACT -> "站进绿色撤离点，倒计时结束就撤离";
         };
     }
@@ -413,9 +418,13 @@ public final class TrainingService {
                 open(session.raid, TrainingGroundGenerator.GATE_HEAL);
                 Notify.ok(player, "伤势处理好了 <muted>· 门开了：去撤离区");
             }
-            if (!session.lever && (session.raid.switchActive(TrainingGroundGenerator.SWITCH)
-                    || session.raid.departing.contains(TrainingGroundGenerator.SWITCH))) {
-                session.lever = true;
+            // Worked out again every time: a countdown that runs out with the player outside the
+            // extract closes it again (RaidManager#extractBlocker), and the lesson goes back to the lever.
+            boolean pulled = session.raid.switchActive(TrainingGroundGenerator.SWITCH)
+                    || session.raid.departing.contains(TrainingGroundGenerator.SWITCH);
+            if (pulled != session.lever) {
+                session.leverMissed = session.lever;
+                session.lever = pulled;
                 session.hinted = null;
             }
             Lesson lesson = session.current();

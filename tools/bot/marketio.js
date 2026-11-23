@@ -286,16 +286,19 @@ function openWith (bot, fn, ms = 3000) {
 const click = async (bot, slot, wait = 250) => { await bot.clickWindow(slot, 0, 0); await sleep(wait) }
 const shut = bot => { try { if (bot.currentWindow) bot.closeWindow(bot.currentWindow) } catch { /* gone */ } }
 
-/** Lists up to `count` tracked guns from the stash at the price the pricing screen starts at. */
+/**
+ * Lists up to `count` tracked guns from the stash at the price the pricing screen starts at. The
+ * stash has no modes since #10: its records start at slot 9 (0-8 are the tabs) and a right click
+ * on one opens the pricing screen.
+ */
 async function listSome (bot, count) {
   let w = await openWith(bot, () => bot.chat('/cv stash'))
   if (!w) return
-  for (let i = 0; i < 3 && !title(w.slots[48]).includes('上架'); i++) await click(bot, 48)
   for (let k = 0; k < count && !bot.gone; k++) {
     const slots = []
-    for (let s = 0; s < 45; s++) if (w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
+    for (let s = 9; s < 45; s++) if (w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
     if (!slots.length) break
-    const pm = await openWith(bot, () => bot.clickWindow(slots[Math.floor(Math.random() * slots.length)], 0, 0))
+    const pm = await openWith(bot, () => bot.clickWindow(slots[Math.floor(Math.random() * slots.length)], 1, 0))
     if (!pm) break
     // Confirm: the stash opens again on success, the menu just closes on a refusal.
     const back = await openWith(bot, () => bot.clickWindow(26, 0, 0), 1500)

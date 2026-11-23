@@ -93,6 +93,7 @@ public final class RaidManager implements Listener {
     public RaidManager(CraftovPlugin plugin) {
         this.plugin = plugin;
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickFast, 10L, 5L);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickExtractMarkers, 10L, 10L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSecond, 20L, 20L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickSpectators, 30L, 20L);
     }
@@ -875,9 +876,6 @@ public final class RaidManager implements Listener {
             if (raid.state != Raid.State.RUNNING) {
                 continue;
             }
-            for (ExtractPoint point : raid.extracts) {
-                drawExtract(raid, point, now);
-            }
             for (RaidPlayer rp : raid.players.values()) {
                 Player player = rp.active() ? Bukkit.getPlayer(rp.uuid) : null;
                 if (player != null && player.getWorld() != raid.world) {
@@ -1001,10 +999,26 @@ public final class RaidManager implements Listener {
         return null;
     }
 
-    private void drawExtract(Raid raid, ExtractPoint point, long now) {
-        if (now % 10 != 0) {
-            return;
+    /**
+     * Every extract's marker on the ground, on a timer of its own: the colour of the ring says
+     * whether it can be used now, and one that is open this raid has a beam over it. The markers
+     * used to be drawn from {@link #tickFast} when the server tick was a multiple of 10, but that
+     * timer only ever runs on ticks ending in 4 and 9 (the scheduler counts from -1 while the
+     * plugin enables), so not one was ever drawn.
+     */
+    private void tickExtractMarkers() {
+        long now = Bukkit.getCurrentTick();
+        for (Raid raid : raids.values()) {
+            if (raid.state != Raid.State.RUNNING) {
+                continue;
+            }
+            for (ExtractPoint point : raid.extracts) {
+                drawExtract(raid, point, now);
+            }
         }
+    }
+
+    private void drawExtract(Raid raid, ExtractPoint point, long now) {
         Location c = point.center;
         boolean open = point.available && extractOpenByTime(raid, point);
         Color color = !point.available ? Color.fromRGB(90, 90, 90) : open ? Color.fromRGB(80, 230, 120) : Color.fromRGB(255, 170, 60);

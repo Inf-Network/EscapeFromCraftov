@@ -61,16 +61,16 @@ public final class InspectService implements Listener {
     }
 
     /**
-     * Starts an inspect of the knife in hand; one already running plays on. A sprinting, downed,
-     * reviving or spectating player cannot inspect.
+     * Starts an inspect of the knife in hand, or starts a running one over: the last moments of an
+     * inspect look like the knife at rest, and a press there used to do nothing. A sprinting,
+     * downed, reviving or spectating player cannot inspect.
      */
     private void start(Player player, ItemDef def, boolean sprinting) {
-        if (inspecting(player) || !free(player, sprinting)) {
-            debug(player, "F ->", inspecting(player) ? "ignored: already inspecting"
-                    : sprinting ? "refused: sprinting" : "refused: downed, reviving or spectating");
+        if (!free(player, sprinting)) {
+            debug(player, "F ->", sprinting ? "refused: sprinting" : "refused: downed, reviving or spectating");
             return;
         }
-        debug(player, "F ->", "started");
+        debug(player, "F ->", inspecting(player) ? "restarted" : "started");
         int ticks = Math.max(1, plugin.getConfig().getInt("combat.melee.inspect-ticks", 50));
         active.put(player.getUniqueId(), new Inspect(Bukkit.getCurrentTick() + ticks,
                 player.getInventory().getHeldItemSlot(), def.id()));

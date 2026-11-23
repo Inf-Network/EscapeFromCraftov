@@ -224,9 +224,12 @@ async function order () {
     const fourth = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 检查 FOV 特效.*下一步：装一个配件/.test(b.text)), 5000)
     check('order: confirming FOV Effects ticks it off and names the gunsmith next', fourth, bot.bars.slice(barsFrom).map(b => b.text))
 
-    // The gunsmith: a red dot on an M4C.
+    // The gunsmith: a red dot on an M4C. An attachment is carried in a backpack only (#10), so
+    // the bot wears one (cv give puts it on); the bench lists the carried guns along the top and
+    // the parts for the picked one along the bottom, and retitles itself on a pick.
     await rcon(`clear ${name}`)
     await sleep(800)
+    await rcon(`cv give ${name} pack_1`)
     await rcon(`cv give ${name} m4c`)
     await rcon(`cv give ${name} optic_reddot`)
     await sleep(800)
@@ -234,7 +237,11 @@ async function order () {
     from = bot.chatLog.length
     const bench = await openWith(bot, () => bot.chat('/cv mod'))
     if (!bench) throw new Error('the gunsmith did not open')
-    await bot.clickWindow(45, 0, 0)
+    const idIn = (w, wanted, a, b) => { for (let i = a; i < b; i++) if (JSON.stringify((w.slots[i] || {}).components || '').includes(`"value":"${wanted}"`)) return i; return -1 }
+    const gun = idIn(bench, 'm4c', 0, 9)
+    if (gun >= 0) { await bot.clickWindow(gun, 0, 0); await sleep(500) }
+    const part = idIn(bot.currentWindow || bench, 'optic_reddot', 45, 54)
+    await bot.clickWindow(part >= 0 ? part : 45, 0, 0)
     const finished = await waitChat(bot, /新手指引完成/, 5000, from)
     if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
     await sleep(500)

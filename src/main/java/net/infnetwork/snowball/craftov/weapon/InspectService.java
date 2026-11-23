@@ -103,9 +103,18 @@ public final class InspectService implements Listener {
         player.setCooldown(ItemFactory.INSPECT_GROUP, ticks);
     }
 
+    /**
+     * Says why F did not inspect. The bleed-out bar of a downed player and the revive bar of a
+     * reviver hold the action bar and would swallow the hint, so the reason goes on that bar too.
+     */
     private void refuse(Player player, String why) {
         debug(player, "F ->", "refused: " + why);
         Notify.hint(player, why);
+        if (plugin.downed().isDowned(player)) {
+            plugin.downed().refused(player, why);
+        } else if (plugin.downed().isReviving(player)) {
+            plugin.downed().refusedWhileReviving(player, why);
+        }
     }
 
     /** Ends a running inspect at once: the client snaps back to the knife's normal pose. */

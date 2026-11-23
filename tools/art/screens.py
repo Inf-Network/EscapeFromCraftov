@@ -373,7 +373,7 @@ def main_screen():
     s = Screen(6)
     s.band(0, 0, 1, '行动').band(0, 2, 4, '备战').band(0, 5, 6, '成长').band(0, 7, 8, '社交')
     s.big(1, 0, 3, 1, ['开始', '行动'], mini('deploy'))
-    s.wells([36, 37]).wells(slots(1, 2, 2, 4) + [29, 30]).wells(slots(1, 5, 3, 6)).wells([16, 17, 25])
+    s.wells([36, 37]).wells(slots(1, 2, 2, 4) + [29, 30]).wells(slots(1, 5, 3, 6)).wells([16, 17, 25, 26])
     s.toolbar(5).wells([45, 49, 53])
     return s.done()
 
@@ -533,6 +533,53 @@ def settlement_screen(extracted):
         s.d.line([x0 - 2, y1, x1 + 2, y1], fill=rgb(tone))
         return s.done()
     return make
+
+
+def skin_screen(knife, knives, skins):
+    """外观 (knife skins, #106) for one knife: the knives as tabs down the left (this one marked), and a
+    card per look (the knife's own, then its skins in skins.yml order): the look drawn at twice the
+    size of an item with its name under it, above a well for its state (worn, owned, locked: bought
+    with 点券) and one for the inspect preview. The card cells hold invisible buttons, so the art
+    shows through. The 点券 shop and balance sit at the right end of the top band, back, help and
+    close in the bottom bar. `knives` are the tabs in order, `skins` is [(name, sprite)] for this
+    knife's skins."""
+    import icons
+    s = Screen(6)
+    s.band(0, 0, 6, '皮肤只改变刀的外观').wells([7, 8])
+    # Tabs: one well per knife; this one framed in amber and joined to the cards.
+    s.wells([9 + 9 * i for i in range(len(knives))])
+    x, y = slot_xy(9 + 9 * knives.index(knife))
+    s.d.rectangle([x - 2, y - 2, x + 19, y + 19], outline=rgb(P.ACCENT))
+    s.d.rectangle([x + 20, y + 7, x + 22, y + 10], fill=rgb(P.ACCENT))
+    looks = [('默认', icons.render(knife))] + list(skins)
+    for i, (name, sprite) in enumerate(looks[:4]):
+        c0 = 1 + 2 * i
+        x0, y0, x1, y1 = cells(1, c0, 3, c0 + 1)
+        s.d.rectangle([x0, y0, x1, y1], fill=WELL_DARK)
+        s.d.rectangle([x0 + 1, y0 + 1, x1 - 1, y1 - 1], fill=rgb('#11151A'), outline=rgb(P.LINE))
+        # A soft light behind the knife, as on a display stand.
+        s.d.ellipse([x0 + 4, y0 + 6, x1 - 4, y0 + 38], fill=mix(rgb('#11151A'), rgb(P.RAISED), 0.9))
+        s.img.alpha_composite(sprite, ((x0 + x1 + 1 - sprite.width) // 2, y0 + 5))
+        s.d.line([x0 + 5, y0 + 40, x1 - 5, y0 + 40], fill=rgb(P.LINE))
+        label(s.img, (x0 + x1 + 1 - pixelfont.width(name)) // 2, y0 + 42, name, P.TEXT if i else P.MUTED)
+        s.wells([36 + c0, 37 + c0])
+    s.toolbar(5).wells([45, 49, 53])
+    return s.done()
+
+
+def skin_screens(catalogue):
+    """Screen id -> maker for the 外观 menu, one per knife (SkinMenu): catalogue is skins.yml's skins.
+    The tabs are the knives in the order they first come in it, as SkinService.knives() has them; the
+    menu has room for four tabs and four cards (the knife's own look and three skins)."""
+    import knife_skins
+    knives = list(dict.fromkeys(spec['knife'] for spec in catalogue.values()))
+    assert len(knives) <= 4, 'the 外观 menu has four tabs, skins.yml has skins for %d knives' % len(knives)
+    out = {}
+    for knife in knives:
+        skins = [(spec['name'], knife_skins.render(sid)) for sid, spec in catalogue.items() if spec['knife'] == knife]
+        assert len(skins) <= 3, '%s has %d skins: a tab has room for three' % (knife, len(skins))
+        out['skins_' + knife] = (lambda k, sk: lambda: skin_screen(k, knives, sk))(knife, skins)
+    return out
 
 
 def training_settlement_screen(done):

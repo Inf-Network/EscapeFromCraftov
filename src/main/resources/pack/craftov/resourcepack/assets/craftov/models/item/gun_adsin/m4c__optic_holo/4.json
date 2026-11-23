@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/m4c__optic_holo",
+ "parent": "craftov:item/gun/m4c",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -7.748,
-    4.62,
-    9.508
+    4.72,
+    7.446
    ],
    "scale": [
     0.586,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -7.748,
-    4.62,
-    9.508
+    4.72,
+    7.446
    ],
    "scale": [
     0.586,

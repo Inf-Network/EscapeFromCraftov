@@ -51,6 +51,15 @@ public final class UiItems {
         return stack;
     }
 
+    /**
+     * The picture of a button that is there but cannot be used right now (a downed player's
+     * terminal): the button's own pictogram greyed out under a red padlock, so it still says which
+     * button it is. tools/art/ui.py draws one for each such button ({@code <key>_locked}).
+     */
+    public static String lockedModel(String model) {
+        return model + "_locked";
+    }
+
     public static ItemStack locked(String reason) {
         ItemStack stack = button("craftov:ui/locked", "<dim>未解锁格位", List.of("<muted>" + reason), LOCKED);
         return stack;

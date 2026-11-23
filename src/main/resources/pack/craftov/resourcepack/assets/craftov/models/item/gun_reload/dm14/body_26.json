@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/dm14_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    99.804,
+    63.923,
+    -80.882
+   ],
+   "translation": [
+    -3.9,
+    5.05,
+    -2.18
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -80.196,
+    -63.923,
+    -99.118
+   ],
+   "translation": [
+    -3.9,
+    5.05,
+    -2.18
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

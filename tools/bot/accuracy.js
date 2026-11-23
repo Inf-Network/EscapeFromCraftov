@@ -1,12 +1,28 @@
-// Moving accuracy, sprint fire and recoil return (issue #32), on the private range.
+// Moving accuracy (issue #32), run-and-gun (#105) and recoil return, on the private range.
 //
-//   spread   SV9 on semi, 10 shots each standing, strafing and strafing while aiming: the per-shot
-//            spread in the server's debug log must grow with the real (position-measured) speed,
-//            walking hip fire at least 1.4x standing hip fire, walking ADS at least 1.8x standing ADS.
-//   sprint   (P18) pulling the trigger while sprinting fires nothing (no shot sound, no debug shot line)
-//            and says why; right after the sprint ends still nothing, a moment later the gun fires;
-//            a trigger held through the end of the sprint fires once the gun is back up; running at
-//            sprint pace without ever sending the sprint command fires nothing either.
+//   spread   SV9 on semi, 10 shots each standing, strafing, strafing while aiming, sprinting and a
+//            tick or two into a stop: the per-shot spread in the server's debug log must grow with the
+//            real (position-measured) speed, walking hip fire at least 1.4x standing hip fire, walking
+//            ADS at least 1.8x standing ADS, sprinting hip fire at least 1.3x walking (sprint > walk >
+//            stand); a steady strafe never reads as stopping, a shot right after letting go does, and
+//            costs less than half the walking part. Shots near the top of a standing jump read as
+//            airborne (the server's own check under the feet) with 2.5x the standing cone, no other.
+//   sprint   sprinting along the firing line: P18 clicks fire, every shot with the server still
+//            sprinting at sprint pace, and no "cannot fire" hint; M4C held 1.2 s the way the vanilla
+//            client holds left mouse (digging the capture cells, which move as the player runs) fires
+//            full auto with the sprint cone while the sprint goes on; running at sprint pace without
+//            the sprint command fires with the sprint cone as well. Right mouse on a sprint drops the
+//            food level to 6 (the vanilla client stops sprinting there), the sights come up 0.2-0.7 s
+//            after the press, and the food level is back at 20 once right mouse is let go. The newer
+//            press wins: the sprint key pressed with forward while aiming (right mouse still held) drops
+//            the sights and puts the food level back at 20 at once, the sprint that follows fires from
+//            the hip and right mouse held on does not stop it, and once it is over the sights come up
+//            again; the sprint key without forward changes nothing. A client that runs at sprint pace
+//            with the sights up (ignoring the food level and the aiming slowdown, and never saying it
+//            sprints) loses them: its shots go from the hip with the sprint cone.
+//   stance   a spectator next to the runway sees the M4C up while standing, low on a sprint, up while
+//            firing on the sprint, low half a second after the last shot and up again once the sprint
+//            is over.
 //   recoil   M4C on full auto, 30 rounds without touching the mouse: a second after letting go the
 //            camera must have come back down at least half of the climb, and not past where it
 //            started; pulling all or half of the climb down while firing is not pulled further. A
@@ -45,7 +61,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const name = 'Acc' + Math.floor(10000 + Math.random() * 90000)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'recoil']
+const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'stance', 'recoil']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -60,8 +76,10 @@ bot.on('error', e => log('ERROR', e.message))
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
 // the range too), walks faster than it may, and the server takes the strafe for running.
+// `ignoreSlow` plays a modified client that keeps its full pace whatever the server says.
+let ignoreSlow = false
 bot.on('entityAttributes', e => {
-  if (e === bot.entity && e.attributes['generic.movement_speed']) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
+  if (e === bot.entity && e.attributes['generic.movement_speed'] && !ignoreSlow) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
 })
 let worldChanges = 0
 bot.on('respawn', () => worldChanges++)
@@ -69,9 +87,13 @@ const bars = []
 bot._client.on('action_bar', p => bars.push({ at: Date.now(), text: JSON.stringify(p) }))
 // The shooter hears its own first-person report: gun.<id>.fp, or gun.<id>.x<n>.fp holding n rounds.
 let shots = 0
+/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads). */
+const adsHeard = []
 const shotSound = p => {
-  const m = JSON.stringify(p.sound || p.soundId || '').match(/gun\.[a-z0-9_]+?(?:\.x(\d))?\.fp/)
+  const sound = JSON.stringify(p.sound || p.soundId || '')
+  const m = sound.match(/gun\.[a-z0-9_]+?(?:\.x(\d))?\.fp/)
   if (m) shots += m[1] ? Number(m[1]) : 1
+  if (/gun\.ads\b/.test(sound)) adsHeard.push(Date.now())
 }
 bot._client.on('entity_sound_effect', shotSound)
 bot._client.on('sound_effect', shotSound)
@@ -111,7 +133,10 @@ function shotLines (from) {
   const out = []
   for (const line of logSince(from)) {
     const m = line.match(new RegExp(`\\[debug\\] ${name} shot spread=([0-9.]+) speed=([0-9.]+) move=([0-9.]+) aim=(true|false) ground=(?:true|false) pitch=(-?[0-9.]+) climb=([0-9.]+)`))
-    if (m) out.push({ spread: Number(m[1]), speed: Number(m[2]), move: Number(m[3]), aim: m[4] === 'true', pitch: Number(m[5]), climb: Number(m[6]) })
+    if (!m) continue
+    const flag = key => (line.match(new RegExp(` ${key}=(true|false)`)) || [])[1] === 'true'
+    out.push({ spread: Number(m[1]), speed: Number(m[2]), move: Number(m[3]), aim: m[4] === 'true', pitch: Number(m[5]), climb: Number(m[6]),
+      sprint: flag('sprint'), run: flag('run'), stop: flag('stop'), ground: flag('ground') })
   }
   return out
 }
@@ -160,21 +185,64 @@ async function home (spot) {
   await sleep(1200)
 }
 
+/**
+ * To the east end of the firing line, facing west along it: flat floor for a 1.2 s sprint (toward the
+ * targets a sprint runs into the slab at the edge of the range and goes up it).
+ */
+async function runway (spot) {
+  bot.clearControlStates()
+  await rcon(`execute as ${name} at @s run tp @s ${(spot.x + 5).toFixed(2)} ${spot.y} ${(spot.z - 1).toFixed(2)} 90 0`)
+  await sleep(1200)
+}
+
 // ---------------------------------------------------------------- spread
 async function spread (spot) {
   await arm('sv9')
   swapKey() // AUTO -> SEMI
   await sleep(500)
   const series = {}
-  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads']) {
+  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads', 'sprint', 'stop', 'jump']) {
     await home(spot)
     dropKey() // a full magazine for each series
     await sleep(3000)
     const stopAim = mode.endsWith('ads') ? aimWhile() : null
     await sleep(600)
     const from = logSize()
+    if (mode === 'sprint') {
+      // Sprint toward the targets, 2 shots per run once up to pace, and back to the firing point.
+      for (let leg = 0; leg < 5; leg++) {
+        await runway(spot)
+        await startSprint()
+        bot.swingArm()
+        await sleep(350)
+        bot.swingArm()
+        await sleep(100)
+        stopSprint()
+      }
+    } else if (mode === 'jump') {
+      // Standing jumps, a shot near the top of each.
+      for (let leg = 0; leg < 10; leg++) {
+        bot.setControlState('jump', true)
+        await sleep(150)
+        bot.setControlState('jump', false)
+        bot.swingArm()
+        await sleep(1000)
+      }
+    } else if (mode === 'stop') {
+      // Strafe to full pace, let go and fire as the player slows down, two ticks into the stop (on the
+      // first the measured speed has not moved yet: one short step reads the same as a late packet).
+      for (let leg = 0; leg < 10; leg++) {
+        const dir = leg % 2 ? 'right' : 'left'
+        bot.setControlState(dir, true)
+        await sleep(600)
+        bot.setControlState(dir, false)
+        await sleep(100)
+        bot.swingArm()
+        await sleep(600)
+      }
+    }
     // Strafe left and right, 2 shots per leg once up to pace (bloom decays fully between shots).
-    for (let leg = 0; leg < 5; leg++) {
+    for (let leg = 0; leg < (['sprint', 'stop', 'jump'].includes(mode) ? 0 : 5); leg++) {
       const dir = leg % 2 ? 'right' : 'left'
       if (mode.startsWith('walk')) bot.setControlState(dir, true)
       await sleep(450)
@@ -189,7 +257,8 @@ async function spread (spot) {
     const lines = shotLines(from)
     series[mode] = lines
     log(mode, 'shots', lines.length, 'spread avg', avg(lines.map(l => l.spread)).toFixed(3), 'speed avg', avg(lines.map(l => l.speed)).toFixed(3),
-      'move avg', avg(lines.map(l => l.move)).toFixed(2), 'aiming', lines.filter(l => l.aim).length)
+      'move avg', avg(lines.map(l => l.move)).toFixed(2), 'aiming', lines.filter(l => l.aim).length,
+      'sprinting', lines.filter(l => l.sprint).length, 'stopping', lines.filter(l => l.stop).length)
   }
   const s = m => avg(series[m].map(l => l.spread))
   check('spread: 10 shots logged in each series', Object.values(series).every(l => l.length >= 10), Object.entries(series).map(([k, v]) => k + '=' + v.length).join(' '))
@@ -198,87 +267,324 @@ async function spread (spot) {
   check('spread: aiming series were aimed', series['stand-ads'].every(l => l.aim) && series['walk-ads'].every(l => l.aim))
   check('spread: walking hip fire >= 1.4x standing', s('walk') >= 1.4 * s('stand'), `${s('walk').toFixed(3)} vs ${s('stand').toFixed(3)} = ${(s('walk') / s('stand')).toFixed(2)}x`)
   check('spread: walking ADS >= 1.8x standing ADS', s('walk-ads') >= 1.8 * s('stand-ads'), `${s('walk-ads').toFixed(3)} vs ${s('stand-ads').toFixed(3)} = ${(s('walk-ads') / s('stand-ads')).toFixed(2)}x`)
+  check('spread: no shot on the ground reads as airborne', ['stand', 'walk', 'stand-ads', 'walk-ads', 'sprint', 'stop'].every(m => series[m].every(l => l.ground)))
+  check('spread: shots near the top of a jump do, with the jump cone (2.5x standing)', series.jump.every(l => !l.ground) && s('jump') >= 2.2 * s('stand'),
+    `${series.jump.filter(l => !l.ground).length}/${series.jump.length} airborne, ${s('jump').toFixed(3)} vs ${s('stand').toFixed(3)}`)
+  check('spread: a steady strafe never reads as stopping', series.walk.every(l => !l.stop) && series['walk-ads'].every(l => !l.stop))
+  check('spread: the sprint series was sprinting, at sprint pace', series.sprint.every(l => l.sprint && l.speed > 0.25),
+    series.sprint.map(l => `${l.sprint ? 'S' : '-'}${l.speed.toFixed(2)}`).join(' '))
+  check('spread: sprinting hip fire >= 1.3x walking (SV9: x1.4)', s('sprint') >= 1.3 * s('walk'), `${s('sprint').toFixed(3)} vs ${s('walk').toFixed(3)} = ${(s('sprint') / s('walk')).toFixed(2)}x`)
+  check('spread: so sprint > walk > stand', s('sprint') > s('walk') && s('walk') > s('stand'),
+    `${s('sprint').toFixed(2)} > ${s('walk').toFixed(2)} > ${s('stand').toFixed(2)}`)
+  // A shot a tick or two into a stop: the measured speed still reads part of the walk, of which only
+  // weapons.spread.stop (0.5) counts while it falls.
+  const stops = series.stop.filter(l => l.stop)
+  const stopPart = avg(stops.map(l => l.spread - s('stand')))
+  const walkPart = avg(series.walk.map(l => l.spread - s('stand')))
+  check('spread: most shots fired right after letting go read as stopping', stops.length >= series.stop.length / 2, `${stops.length}/${series.stop.length}`)
+  check('spread: and cost less than half of the walking part', stops.length > 0 && stopPart < 0.5 * walkPart,
+    `${stopPart.toFixed(3)} vs ${walkPart.toFixed(3)} degrees over standing; moves ${stops.map(l => l.move.toFixed(2)).join(' ')}`)
 }
 
 // ---------------------------------------------------------------- sprint
-async function sprint (spot) {
-  await arm('p18') // semi only, whatever ran before
-  await home(spot)
-  // mineflayer 4.39 sends the 1.21.11 sprint command with the old numeric id, which the server reads as
-  // a horse jump; send the right one as well.
-  const command = actionId => bot._client.write('entity_action', { entityId: bot.entity.id, actionId, jumpBoost: 0 })
-  const start = async () => {
-    bot.setControlState('forward', true)
-    bot.setControlState('sprint', true)
-    command('start_sprinting')
-    await sleep(500)
+// mineflayer 4.39 sends the 1.21.11 sprint command with the old numeric id, which the server reads as
+// a horse jump; send the right one as well.
+const command = actionId => bot._client.write('entity_action', { entityId: bot.entity.id, actionId, jumpBoost: 0 })
+/** The movement keys held, as the vanilla client reports them (mineflayer sends none of its own but sneak). */
+const keys = (held = {}) => bot._client.write('player_input', { inputs: held })
+/** Waits up to `ms` for `test` to hold, polling; the milliseconds it took, or null. */
+async function within (ms, test) {
+  const from = Date.now()
+  while (Date.now() - from < ms) {
+    if (test()) return Date.now() - from
+    await sleep(10)
   }
-  const stop = () => {
-    bot.setControlState('sprint', false)
-    command('stop_sprinting')
-    bot.setControlState('forward', false)
-  }
+  return test() ? Date.now() - from : null
+}
+/** Sprints forward, as a vanilla client does with W and the sprint key (`flag` false: without saying so). */
+async function startSprint (flag = true) {
+  bot.setControlState('forward', true)
+  bot.setControlState('sprint', true)
+  if (flag) command('start_sprinting')
+  await sleep(600)
+}
+function stopSprint (flag = true) {
+  bot.setControlState('sprint', false)
+  if (flag) command('stop_sprinting')
+  bot.setControlState('forward', false)
+}
 
-  // Clicks while sprinting.
-  await start()
+let digSequence = 1
+const dig = (status, cell) => bot._client.write('block_dig', { status, location: cell, face: 1, sequence: digSequence++ })
+/** Distance along the ray at which it enters the box, or null if it misses. */
+function rayBox (o, d, min, max) {
+  let tin = 0
+  let tout = Infinity
+  for (const a of ['x', 'y', 'z']) {
+    if (Math.abs(d[a]) < 1e-9) {
+      if (o[a] < min[a] || o[a] > max[a]) return null
+      continue
+    }
+    let t1 = (min[a] - o[a]) / d[a]
+    let t2 = (max[a] - o[a]) / d[a]
+    if (t1 > t2) [t1, t2] = [t2, t1]
+    tin = Math.max(tin, t1)
+    tout = Math.min(tout, t2)
+  }
+  return tin <= tout ? tin : null
+}
+/**
+ * The capture cell the crosshair meets first within block reach, or null. The cells sit three blocks
+ * ahead, so the ray enters one from outside, where its outline's face plate is (tools/bot/trigger.js
+ * has the full shell for an eye inside a cell).
+ */
+function crosshairCell () {
+  const vein = bot.registry.blocksByName.sculk_vein.id
+  const o = bot.entity.position.offset(0, 1.62, 0)
+  const yaw = conv.toNotchianYaw(bot.entity.yaw) * Math.PI / 180
+  const pitch = conv.toNotchianPitch(bot.entity.pitch) * Math.PI / 180
+  const d = { x: -Math.sin(yaw) * Math.cos(pitch), y: -Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) }
+  let best = null
+  let bestT = 4.5
+  for (const c of bot.findBlocks({ matching: vein, maxDistance: 6, count: 64 })) {
+    const t = rayBox(o, d, c, c.offset(1, 1, 1))
+    if (t !== null && t < bestT) { best = c; bestT = t }
+  }
+  return best
+}
+/**
+ * Holds left mouse for `ms` the way the vanilla client does: a dig start on the capture cell under the
+ * crosshair, a swing every tick, an abort and a new start when the crosshair moves to another cell (it
+ * does as the player runs), an abort at the end. Returns the ticks no cell was under the crosshair.
+ */
+async function holdTrigger (ms) {
+  let digging = null
+  let misses = 0
+  const step = () => {
+    const cell = crosshairCell()
+    if (cell) {
+      if (!digging || !digging.equals(cell)) {
+        if (digging) dig(1, digging)
+        dig(0, cell)
+        digging = cell
+      }
+      bot._client.write('arm_animation', { hand: 0 })
+    } else {
+      misses++
+      if (digging) dig(1, digging)
+      digging = null
+    }
+  }
+  step()
+  const until = Date.now() + ms
+  while (Date.now() < until) {
+    await sleep(50)
+    step()
+  }
+  if (digging) dig(1, digging)
+  return misses
+}
+
+async function sprint (spot) {
+  const horizontal = () => { const v = bot.entity.position; return Math.hypot(v.x - spot.x - 5, v.z - spot.z + 1) }
+
+  // Semi-auto: clicks while sprinting fire, and the sprint goes on.
+  await arm('p18')
+  await runway(spot)
+  await startSprint()
   let from = logSize()
   shots = 0
   const barsFrom = bars.length
-  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(150) }
-  stop()
+  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
+  const p18 = shotLines(from)
+  stopSprint()
   await sleep(300)
-  check('sprint: clicks while sprinting fire nothing', shots === 0 && shotLines(from).length === 0, `${shots} shot sounds, ${shotLines(from).length} logged`)
-  check('sprint: the player is told why', bars.slice(barsFrom).some(b => b.text.includes('冲刺时不能开火')), bars.slice(barsFrom).map(b => b.text).join(' | '))
+  check('sprint: three clicks while sprinting fire three rounds', shots === 3 && p18.length === 3, `${shots} shot sounds, ${p18.length} logged`)
+  check('sprint: the server still has the player sprinting at every shot', p18.length > 0 && p18.every(l => l.sprint),
+    p18.map(l => l.sprint).join(','))
+  check('sprint: and running at sprint pace (over 0.25 blocks a tick)', p18.length > 0 && p18.every(l => l.speed > 0.25), p18.map(l => l.speed).join(','))
+  check('sprint: no "cannot fire while sprinting" hint', !bars.slice(barsFrom).some(b => b.text.includes('冲刺时不能开火')))
 
-  // A click right as the sprint ends still does nothing; a moment later the gun fires.
-  await home(spot)
-  await start()
+  // Full auto, the trigger held the vanilla way (digging the capture cells, which move as the player runs).
+  await arm('m4c')
+  await runway(spot)
+  await startSprint()
   from = logSize()
   shots = 0
-  stop()
-  bot.swingArm()
-  await sleep(150)
-  check('sprint: a click right after the sprint fires nothing', shots === 0 && shotLines(from).length === 0, `${shots} shot sounds`)
-  await sleep(600)
-  shots = 0
-  bot.swingArm()
+  const before = horizontal()
+  const began = Date.now()
+  const misses = await holdTrigger(1200)
+  const ran = (horizontal() - before) / ((Date.now() - began) / 50)
+  const m4c = shotLines(from)
+  stopSprint()
   await sleep(400)
-  check('sprint: a click a moment after the sprint fires', shots === 1, `${shots} shot sounds`)
+  log(`M4C held 1.2 s on a sprint: ${shots} rounds heard, ${m4c.length} logged, ${ran.toFixed(3)} blocks a tick, ${misses} ticks with no capture cell under the crosshair`)
+  check('sprint: a trigger held on a sprint fires full auto (at least 12 rounds in 1.2 s)', m4c.length >= 12, `${m4c.length} logged`)
+  check('sprint: the capture cells stay under the crosshair while running', misses <= 1, `${misses} ticks without one`)
+  check('sprint: the sprint goes on through the spray', m4c.length > 0 && m4c.every(l => l.sprint) && ran > 0.25,
+    `sprint flags ${m4c.filter(l => l.sprint).length}/${m4c.length}, ${ran.toFixed(3)} blocks a tick`)
+  check('sprint: every round of it has the sprint cone', m4c.length > 0 && m4c.every(l => !l.aim && l.spread > 5),
+    m4c.map(l => l.spread.toFixed(1)).join(' '))
 
-  // A client that runs at sprint pace but never says it started sprinting: mineflayer's own sprint
-  // command is the broken one, so leaving out the right one plays it. The server goes by the speed.
-  await home(spot)
-  bot.setControlState('forward', true)
-  bot.setControlState('sprint', true)
-  await sleep(500)
+  // Running at sprint pace without ever sending the sprint command (a modified client): it fires too,
+  // with the sprint cone, since the server goes by the measured speed.
+  await arm('p18')
+  await runway(spot)
+  await startSprint(false)
   from = logSize()
   shots = 0
-  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(150) }
-  bot.setControlState('sprint', false)
-  bot.setControlState('forward', false)
+  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
+  const sly = shotLines(from)
+  stopSprint(false)
   await sleep(300)
-  check('sprint: running at sprint pace without the sprint command fires nothing', shots === 0 && shotLines(from).length === 0,
-    `${shots} shot sounds, ${shotLines(from).length} logged`)
+  check('sprint: running at sprint pace without the sprint command fires, with the sprint cone',
+    sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', '))
 
-  // Trigger held through the end of the sprint: one shot, once the gun is back up.
-  await home(spot)
-  await start()
-  shots = 0
-  const release = triggerWhile()
-  await sleep(400)
-  const held = shots
-  let firedAt = null
-  const stopAt = Date.now()
-  stop()
-  while (Date.now() - stopAt < 1500 && firedAt === null) {
-    if (shots > held) firedAt = Date.now() - stopAt
+  // Right mouse on a sprint ends it: the food level drops to 6 (where the vanilla client cannot sprint),
+  // the sights come up a moment after the sprint is over, and letting go lets the sprint start again.
+  await arm('m4c')
+  await runway(spot)
+  await startSprint()
+  adsHeard.length = 0
+  const pressed = Date.now()
+  const stopAim = aimWhile()
+  let food = null
+  let stoppedAt = null
+  while (Date.now() - pressed < 1500 && !adsHeard.length) {
+    if (food === null && bot.food <= 6) {
+      food = Date.now() - pressed
+      stopSprint() // what the vanilla client does at food 6: it stops sprinting
+      stoppedAt = Date.now()
+    }
     await sleep(10)
   }
-  release()
+  const aimedAt = adsHeard.length ? adsHeard[0] - pressed : null
   await sleep(300)
-  check('sprint: a trigger held while sprinting does not fire', held === 0, `${held} shot sounds`)
-  check('sprint: held through the end of the sprint it fires once the gun is up (150-700 ms)', firedAt !== null && firedAt >= 150 && firedAt <= 700,
-    firedAt === null ? 'never fired' : firedAt + ' ms after the sprint ended')
+  const stillLow = bot.food <= 6
+  stopAim()
+  await sleep(800)
+  check('sprint: right mouse on a sprint holds the food level at 6, so the sprint ends', food !== null && food < 400,
+    food === null ? `food ${bot.food}` : `${food} ms after the press`)
+  check('sprint: the sights come up once the sprint is over (0.2 to 0.7 s after the press)', aimedAt !== null && aimedAt >= 200 && aimedAt <= 700,
+    aimedAt === null ? 'never aimed' : `${aimedAt} ms after the press, ${stoppedAt ? adsHeard[0] - stoppedAt : '?'} ms after the sprint stopped`)
+  check('sprint: no sprint while aiming, and it may start again once right mouse is let go', stillLow && bot.food === 20, `food ${stillLow ? 6 : 'not 6'} while aiming, ${bot.food} after`)
+
+  // The newer press wins: the sprint key pressed while aiming, right mouse still held, takes the player
+  // out of the sights and lets the client sprint; once that sprint is over the sights come up again.
+  await arm('m4c')
+  await runway(spot)
+  keys({})
+  adsHeard.length = 0
+  let stopHold = aimWhile()
+  const up = await within(1500, () => adsHeard.length > 0)
+  await sleep(300)
+  check('sprint: (sprint key) aimed, with the food level at 6', up !== null && bot.food <= 6, `${up} ms, food ${bot.food}`)
+  keys({ sprint: true }) // the sprint key alone: the vanilla client does not sprint standing still
+  await sleep(400)
+  check('sprint: the sprint key without forward leaves the sights up', bot.food <= 6, `food ${bot.food}`)
+  keys({ forward: true, sprint: true })
+  const freed = await within(400, () => bot.food === 20)
+  check('sprint: forward with the sprint key held puts the food level back at 20 at once', freed !== null && freed < 300, `${freed} ms`)
+  await startSprint() // what the vanilla client does at food 20 with both keys held
+  from = logSize()
+  const heardBefore = adsHeard.length
+  for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
+  const won = shotLines(from)
+  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
+    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
+  check('sprint: right mouse held on neither aims nor stops it', adsHeard.length === heardBefore && bot.food === 20, `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}`)
+  stopSprint()
+  keys({})
+  const stopped = Date.now()
+  const back = await within(1500, () => adsHeard.length > heardBefore)
+  await sleep(200)
+  check('sprint: once that sprint is over the sights come up again (right mouse still held)', back !== null && back <= 900 && bot.food <= 6,
+    `${back === null ? 'never' : back + ' ms'} after the stop, food ${bot.food}`)
+  stopHold()
+  await sleep(800)
+  log(`sprint key: food back at ${bot.food} ${Date.now() - stopped} ms after the stop, right mouse let go`)
+
+  // A client running at sprint pace with the sights up, which a vanilla client cannot do: it ignores the
+  // food level and the aiming slowdown and never says it sprints. It holds the trigger from before the
+  // run, which keeps an aim up without the use packets (they do not hold it on a run). The sights drop
+  // as for a sprint once the server measures the run.
+  await arm('m4c')
+  await runway(spot)
+  adsHeard.length = 0
+  stopHold = aimWhile()
+  const aimedUp = await within(1500, () => adsHeard.length > 0)
+  await sleep(400)
+  ignoreSlow = true
+  bot.entity.attributes['minecraft:movement_speed'] = { value: 0.1, modifiers: [] }
+  from = logSize()
+  const stopTrigger = triggerWhile()
+  await sleep(150)
+  await startSprint(false)
+  await sleep(500)
+  stopTrigger()
+  stopSprint(false)
+  stopHold()
+  ignoreSlow = false
+  if (bot.entity.attributes['generic.movement_speed']) bot.entity.attributes['minecraft:movement_speed'] = bot.entity.attributes['generic.movement_speed']
+  await sleep(600)
+  const cheat = shotLines(from)
+  const running = cheat.filter(l => l.run)
+  log('sights up on a run: ' + cheat.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.run ? 'R' : ''}`).join(' '))
+  check('sprint: aimed before the run, the first rounds aimed', aimedUp !== null && cheat.length > 0 && cheat[0].aim && !cheat[0].run,
+    `aimed ${aimedUp} ms, first ${cheat.length ? (cheat[0].aim ? 'aimed' : 'hip') : 'none'}`)
+  check('sprint: running at sprint pace with the sights up drops them: every round on the run from the hip, with the sprint cone',
+    running.length >= 4 && running.every(l => !l.aim && l.spread > 5), `${running.length} rounds on the run, ${running.filter(l => l.aim).length} aimed`)
+}
+
+// ---------------------------------------------------------------- stance
+/**
+ * What another player sees: a spectator next to the runway watches the shooter's main hand. A gun
+ * held up is sent as a charged crossbow (StanceService), carried low as the real item (paper).
+ */
+async function stance (spot) {
+  const viewerName = 'Vw' + name.slice(3)
+  const viewer = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: viewerName, version: '1.21.11', auth: 'offline' })
+  viewer._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) viewer._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
+  viewer.on('error', e => log('viewer ERROR', e.message))
+  const seen = []
+  viewer._client.on('entity_equipment', p => {
+    if (p.entityId !== bot.entity.id) return
+    for (const e of p.equipments) {
+      if (e.slot !== 0) continue
+      const item = e.item && e.item.itemId ? viewer.registry.items[e.item.itemId] : null
+      seen.push({ at: Date.now(), raised: !!item && item.name === 'crossbow' })
+    }
+  })
+  await new Promise(resolve => viewer.once('spawn', resolve))
+  try {
+    await sleep(1500)
+    await rcon(`gamemode spectator ${viewerName}`)
+    await arm('m4c')
+    await runway(spot)
+    await rcon(`execute as ${viewerName} at ${name} run tp @s ~-5 ~1 ~3 -120 10`)
+    await sleep(2000)
+    const raisedNow = () => seen.length ? seen[seen.length - 1].raised : null
+    const standing = raisedNow()
+    await startSprint()
+    await sleep(300)
+    const sprinting = raisedNow()
+    const firing = holdTrigger(700)
+    await sleep(400)
+    const sprintFiring = raisedNow()
+    await firing
+    await sleep(800)
+    const after = raisedNow()
+    stopSprint()
+    await sleep(600)
+    log('viewer saw', seen.map(e => e.raised ? 'up' : 'low').join(' '))
+    check('stance: others see the gun up while standing', standing === true, String(standing))
+    check('stance: carried low on a sprint', sprinting === false, String(sprinting))
+    check('stance: shouldered while firing on the sprint', sprintFiring === true, String(sprintFiring))
+    check('stance: and low again half a second after the last shot, still sprinting', after === false, String(after))
+    check('stance: up again once the sprint is over', raisedNow() === true, String(raisedNow()))
+  } finally {
+    viewer.quit()
+  }
 }
 
 // ---------------------------------------------------------------- recoil
@@ -605,6 +911,7 @@ async function ai () {
     log('---', scenario)
     if (scenario === 'spread') await spread(spot)
     else if (scenario === 'sprint') await sprint(spot)
+    else if (scenario === 'stance') await stance(spot)
     else if (scenario === 'recoil') await recoil(spot)
     else if (scenario === 'impact') await impact(spot)
     else if (scenario === 'ai') await ai()

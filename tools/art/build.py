@@ -8,6 +8,7 @@ Outputs:
 import json
 import math
 import os
+import re
 import shutil
 import sys
 
@@ -19,6 +20,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import hudart  # noqa: E402
 import icons  # noqa: E402
 import knife_inspect  # noqa: E402
+import knife_skins  # noqa: E402
 import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
@@ -103,8 +105,9 @@ def generated(texture, parent='minecraft:item/generated'):
 
 
 ATT_SLOTS = ['muzzle', 'grip', 'tactical', 'mag']   # custom_model_data strings 1..4 (Attachments.java)
-BODY_LEAVES = ('item/gun/', 'item/gun_opt/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_opt_ads/', 'item/gun_aimed/',
-               'item/gun_adsin/')
+# Leaves that are the whole gun body: every attachment and the mounted optic (string 0) ride on them.
+BODY_LEAVES = ('item/gun/', 'item/gun_low/', 'item/gun_mid/', 'item/gun_pose/', 'item/gun_ads/', 'item/gun_aimed/',
+               'item/gun_adsin/', 'item/gun_draw/')
 
 
 def attachments_for(spec, item_defs):
@@ -120,11 +123,13 @@ def attachments_for(spec, item_defs):
 
 
 def wrap_attachments(node, gid, atts):
-    """Adds the fitted attachments to every gun leaf of an item model tree.
+    """Adds the fitted attachments and the mounted optic to every gun leaf of an item model tree.
 
-    Each attachment is a small model whose parent is the leaf, so it inherits that pose's (or reload
-    frame's) display transforms; the leaf becomes a composite of itself plus one select per slot.
-    Muzzle flashes disappear behind a suppressor.
+    Each is a small model whose parent is the leaf, so it inherits that pose's (or reload or draw
+    frame's) display transforms; the leaf becomes a composite of itself plus one select per slot (the
+    optic on custom_model_data string 0, the attachments on 1 to 4). A leaf made for one optic (its
+    name ends in __<optic>: that sight's aimed pose) carries only that optic. Muzzle flashes disappear
+    behind a suppressor.
     """
     if isinstance(node, list):
         return [wrap_attachments(v, gid, atts) for v in node]
@@ -139,26 +144,211 @@ def wrap_attachments(node, gid, atts):
             return node
         return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 1,
                 'cases': [{'when': 'att_suppressor', 'model': {'type': 'minecraft:empty'}}], 'fallback': node}
+    # The aimed poses and the rise to them are made per sight: such a leaf carries its own optic (named
+    # in it), or none for iron sights.
+    optics = models.optics_for(gid)
+    named = re.search(r'__(optic_[a-z0-9]+)', name)
+    if named:
+        optics = [named.group(1)]
+    elif name.startswith(('item/gun_ads/', 'item/gun_adsin/', 'item/gun_pose/ads_')):
+        optics = []
     if name.startswith('item/gun_reload/'):
         part = name.rsplit('/', 1)[1].rsplit('_', 1)[0]
-        slots = ['muzzle', 'grip', 'tactical'] if part == 'body' else ['mag'] if part == 'mag' else []
+        slots = ['optic', 'muzzle', 'grip', 'tactical'] if part == 'body' else ['mag'] if part == 'mag' else []
     elif name.startswith(BODY_LEAVES):
-        slots = ATT_SLOTS
+        slots = ['optic'] + ATT_SLOTS
     else:
         slots = []
     selects = []
     for slot in slots:
         cases = []
-        for aid in atts[slot]:
+        for aid in (optics if slot == 'optic' else atts[slot]):
             path = 'gun_att/%s/%s' % (aid, name[len('item/'):].replace('/', '__'))
             out = os.path.join(CV, 'models', 'item', path + '.json')
             if not os.path.exists(out):
-                write_json(out, models.attachment_model(ref, gid, aid))
+                write_json(out, models.optic_attachment_model(ref, gid, aid) if slot == 'optic'
+                           else models.attachment_model(ref, gid, aid))
             cases.append({'when': aid, 'model': model_ref('craftov:item/' + path)})
         if cases:
+            index = 0 if slot == 'optic' else ATT_SLOTS.index(slot) + 1
             selects.append({'type': 'minecraft:select', 'property': 'minecraft:custom_model_data',
-                            'index': ATT_SLOTS.index(slot) + 1, 'cases': cases, 'fallback': {'type': 'minecraft:empty'}})
+                            'index': index, 'cases': cases, 'fallback': {'type': 'minecraft:empty'}})
     return {'type': 'minecraft:composite', 'models': [node] + selects} if selects else node
+
+
+def by_optic(gid, make):
+    """A select on the mounted optic (custom_model_data string 0) over make(optic id or None for irons)."""
+    cases = [{'when': oid, 'model': make(oid)} for oid in models.optics_for(gid)]
+    fallback = make(None)
+    if not cases:
+        return fallback
+    return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0, 'cases': cases,
+            'fallback': fallback}
+
+
+def build_gun(item_id, spec, item_defs):
+    """A gun's models and item definition.
+
+    The definition picks by display context: the inventory icon in the GUI; in first person a tree of
+    the fine model in its poses, kicks, sights and the reload and draw frames (mid model); everywhere
+    else (third person, the ground, item frames) the low model. In first person the stack's damage
+    says what the gun is doing (ItemFactory.setHandMark), the one component the client swaps in
+    without lowering the gun: 0 at rest (the cooldown is a shot's kick), 1 coming up after a switch
+    (the cooldown runs the draw frames), 2 reloading (the reload frames), 3 the sights coming up (the
+    rise frames), 4 aimed, 5 put away (the draw's first frame, so a switch shows the gun low at once).
+    The mounted optic and the attachments are composite members of every leaf (wrap_attachments);
+    only the aimed poses and the rise to them differ per optic.
+    """
+    gun_spec = spec.get('gun') or {}
+    scoped = bool(gun_spec.get('scope'))
+    fine = models.gun_model(item_id)
+    write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), fine)
+    skin = models.gun_skin_image(item_id)
+    if skin is not None:
+        save(skin, os.path.join(CV, 'textures', 'item', 'gun', item_id + '_skin.png'))
+    held = 'craftov:item/gun/' + item_id
+    if models.has_lods(item_id):
+        write_json(os.path.join(CV, 'models', 'item', 'gun_low', item_id + '.json'), models.gun_low_model(item_id))
+        write_json(os.path.join(CV, 'models', 'item', 'gun_mid', item_id + '.json'), models.gun_mid_model(item_id))
+        for part in models.voxel_gun(item_id)['mid']:
+            write_json(os.path.join(CV, 'models', 'item', 'gun_mid', '%s_%s.json' % (item_id, part)),
+                       models.gun_mid_model(item_id, part))
+    else:
+        for part in models.gun_parts(item_id):
+            write_json(os.path.join(CV, 'models', 'item', 'gun_part', item_id + '_' + part + '.json'),
+                       models.gun_part_model(item_id, part))
+    write_json(os.path.join(CV, 'models', 'item', 'gun_ai', item_id + '.json'), models.gun_ai_model(item_id))
+    write_json(os.path.join(CV, 'items', 'ai_' + item_id + '.json'), {'model': model_ref('craftov:item/gun_ai/' + item_id)})
+
+    kicks = models.kick_frames(gun_spec.get('rpm', 600))
+    strength = models.kick_strength(gun_spec.get('recoil', 1.0))
+    hip_display = fine['display']
+
+    def key(k, on, off):
+        return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
+                'on_true': on, 'on_false': off}
+
+    def leaf(path, model):
+        write_json(os.path.join(CV, 'models', 'item', path + '.json'), model)
+        return model_ref('craftov:item/' + path)
+
+    def pose(kind, name, base, display, pose_name, pose_spec):
+        return leaf('gun_pose/%s_%s/%s' % (kind, pose_name, name), models.pose_model(base, display, pose_spec))
+
+    def flash(kind, name, base, display, pose_spec):
+        fire = models.pose_model(base, display, pose_spec)['display']
+        return leaf('gun_flash/%s/%s' % (kind, name),
+                    models.flash_model(item_id, fire['firstperson_righthand'], fire['firstperson_lefthand']))
+
+    def strafe(base, poses):
+        return key('key.left', poses['left'], key('key.right', poses['right'], base))
+
+    def kicked(kind, name, base, display, rest):
+        # Shots are not a key: the server starts the gun's cooldown on every shot it really fires
+        # (WeaponService.shoot), and the gun kicks back and flashes while the client counts it down.
+        entries = []
+        for threshold, level, lit in kicks:
+            kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength)
+            model = pose(kind, name, base, display, 'kick%d' % level, kick)
+            if lit:
+                model = {'type': 'minecraft:composite', 'models': [model, flash(kind, name, base, display, kick)]}
+            entries.append({'threshold': threshold, 'model': model})
+        return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries, 'fallback': rest}
+
+    # At the hip: sprinting carries the gun low and canted, strafing leans it (held keys, no packets).
+    hp = {n: pose('hip', item_id, held, hip_display, n, sp) for n, sp in models.HIP_POSES.items()}
+    hip_idle = strafe(model_ref(held), hp)
+    # Left mouse held on a sprint fires from the hip (run-and-gun): the gun comes up out of the sprint
+    # carry while the trigger is down, so a spray kicks and flashes from one pose instead of dropping
+    # back to the carry between rounds.
+    sprint = key('key.attack', hip_idle, hp['sprint'])
+    hip_rest = key('key.forward', key('key.sprint', sprint, hip_idle), hip_idle)
+    hip_tree = kicked('hip', item_id, held, hip_display, hip_rest)
+
+    # Aimed, per sight: iron sights and 1x sights show the gun aimed (and kick), a scope its mask.
+    def aimed(oid):
+        if oid is None and scoped:
+            return {'type': 'minecraft:composite', 'models': [
+                model_ref('craftov:item/gun_ads/' + item_id), model_ref('craftov:item/scope_mask/' + gun_spec['scope'])]}
+        if oid is not None and oid in models.MASK_HOLE:
+            return model_ref('craftov:item/scope_mask/' + oid)
+        name = item_id if oid is None else item_id + '__' + oid
+        display = models.ads_display(item_id, oid)
+        ads = leaf('gun_ads/' + name, {'parent': held, 'display': display})
+        ads_ref = 'craftov:item/gun_ads/' + name
+        ap = {n: pose('ads', name, ads_ref, display, n, sp) for n, sp in models.ADS_POSES.items()}
+        return kicked('ads', name, ads_ref, display, strafe(ads, ap))
+    if scoped:
+        leaf('gun_ads/' + item_id, models.gun_ads_model(item_id, True))
+
+    # The sights coming up: the gun eases from the hip to the aimed pose (a scoped gun to its eyepiece)
+    # as the server's ads cooldown counts down. Without the cooldown it is at the hip.
+    def rise(oid):
+        name = item_id if oid is None else item_id + '__' + oid
+        if oid is None:
+            target = models.gun_rise_display(item_id) if scoped else models.ads_display(item_id)
+        else:
+            target = models.optic_rise_display(item_id, oid)
+        entries = []
+        for k, (threshold, progress) in enumerate(models.ads_rise_frames()):
+            ref = leaf('gun_adsin/%s/%d' % (name, k), {'parent': held, 'display': {
+                side: models.lerp_display(hip_display[side], target[side], progress)
+                for side in ('firstperson_righthand', 'firstperson_lefthand')}})
+            entries.append({'threshold': threshold, 'model': ref})
+        return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                'fallback': entries[0]['model']}
+
+    # Reloading: one frame a tick at most of the cooldown the client counts for the gun's reload, each a
+    # composite of its moving parts.
+    reload_entries = []
+    reload_ticks = models.reload_cooldown(gun_spec.get('reload', 48))
+    for k, (threshold, parts) in enumerate(models.reload_timeline(item_id, reload_ticks)):
+        members = []
+        for part, (parent, right) in parts.items():
+            members.append(leaf('gun_reload/%s/%s_%d' % (item_id, part, k), models.frame_model(parent, right)))
+        reload_entries.append({'threshold': threshold, 'model': {'type': 'minecraft:composite', 'models': members}})
+    reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': reload_entries,
+                   'fallback': hip_rest}
+
+    # Coming up after a switch: one frame a tick of the draw time (models.draw_frames).
+    draw_entries = []
+    for k, (threshold, right, left) in enumerate(models.draw_frames(item_id, models.draw_ticks(gun_spec.get('action')))):
+        ref = leaf('gun_draw/%s/%d' % (item_id, k), {'parent': models.mid_ref(item_id), 'display': {
+            'firstperson_righthand': right, 'firstperson_lefthand': left}})
+        draw_entries.append({'threshold': threshold, 'model': ref})
+    draw_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': draw_entries,
+                 'fallback': model_ref(held)}
+    holstered = draw_entries[0]['model']
+
+    first_person = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
+                    'entries': [{'threshold': 0.5, 'model': draw_tree}, {'threshold': 1.5, 'model': reload_tree},
+                                {'threshold': 2.5, 'model': by_optic(item_id, rise)},
+                                {'threshold': 3.5, 'model': by_optic(item_id, aimed)},
+                                {'threshold': 4.5, 'model': holstered}],
+                    'fallback': hip_tree}
+
+    # Everyone else sees the low model. Other players receive the gun as a charged crossbow while it is
+    # raised (StanceService), which gives the two-handed aiming pose; gun_aimed keeps the barrel straight.
+    low = models.low_ref(item_id)
+    aimed_low = leaf('gun_aimed/' + item_id, models.gun_aimed_model(item_id, low))
+    others = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
+              'cases': [{'when': 'arrow', 'model': aimed_low}], 'fallback': model_ref(low)}
+
+    atts = attachments_for(spec, item_defs)
+    tree = {'type': 'minecraft:select', 'property': 'minecraft:display_context',
+            'cases': [{'when': ['gui'], 'model': gui_case(item_id)},
+                      {'when': ['firstperson_righthand', 'firstperson_lefthand'],
+                       'model': wrap_attachments(first_person, item_id, atts)}],
+            'fallback': wrap_attachments(others, item_id, atts)}
+    # Gun trees are large (poses x sights x frames x attachments): written compact.
+    # hand_animation_on_swap false: the client never lowers and raises the gun when its stack changes
+    # (the magazine written back at the end of a reload or when it runs dry, a switch to it); the
+    # model's own frames are the only motion (ItemInHandRenderer otherwise dips for every component
+    # but damage).
+    path = os.path.join(CV, 'items', item_id + '.json')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump({'model': tree, 'hand_animation_on_swap': False, 'oversized_in_gui': True}, f, separators=(',', ':'))
 
 
 def build_items(item_defs):
@@ -167,24 +357,6 @@ def build_items(item_defs):
         bg = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
         if item_id in models.GUNS:
             icon = models.gun_icon(item_id)
-            write_json(os.path.join(CV, 'models', 'item', 'gun', item_id + '.json'), models.gun_model(item_id))
-            skin = models.gun_skin_image(item_id)
-            if skin is not None:
-                save(skin, os.path.join(CV, 'textures', 'item', 'gun', item_id + '_skin.png'))
-            parts = models.gun_parts(item_id)
-            for part in parts:
-                write_json(os.path.join(CV, 'models', 'item', 'gun_part', item_id + '_' + part + '.json'),
-                           models.gun_part_model(item_id, part))
-            frames = {}
-            for k, part, parent, right in models.reload_frames(item_id):
-                name = 'craftov:item/gun_reload/%s/%s_%d' % (item_id, part, k)
-                write_json(os.path.join(CV, 'models', 'item', 'gun_reload', item_id, '%s_%d.json' % (part, k)),
-                           models.frame_model(parent, right))
-                frames.setdefault(k, []).append(name)
-            write_json(os.path.join(CV, 'models', 'item', 'gun_ai', item_id + '.json'), models.gun_ai_model(item_id))
-            scoped = bool((spec.get('gun') or {}).get('scope'))
-            write_json(os.path.join(CV, 'models', 'item', 'gun_ads', item_id + '.json'), models.gun_ads_model(item_id, scoped))
-            write_json(os.path.join(CV, 'items', 'ai_' + item_id + '.json'), {'model': model_ref('craftov:item/gun_ai/' + item_id)})
             held = 'craftov:item/gun/' + item_id
         elif item_id in models.OPTICS:
             icon = models.optic_icon(item_id)
@@ -206,156 +378,65 @@ def build_items(item_defs):
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), gui_tile_model('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
-            gun_spec = spec.get('gun') or {}
-            kicks = models.kick_frames(gun_spec.get('rpm', 600))
-            strength = models.kick_strength(gun_spec.get('recoil', 1.0))
-
-            # Pose trees. Picked on the client from held keys (no packet, no delay): sprinting carries the
-            # gun low and canted, strafing leans it. Shots are not a key: the server starts the gun's
-            # cooldown on every shot it really fires (WeaponService.shoot), and the gun kicks back and
-            # flashes while the client counts it down (models.kick_frames), so a held trigger that fires
-            # nothing (between bolt-action shots, a semi-auto held down, outside the range) shows nothing.
-            # Nor is aiming: the stack's damage says what the gun is doing (ItemFactory.setHandMark), and
-            # the sights are up only when the server says so, so the pose, the zoom and the spread always
-            # agree. 1 while it comes up after a switch (it neither aims nor kicks), 2 while it reloads
-            # (the same cooldown then runs the reload frames), 3 while the sights come up (the cooldown,
-            # as long as the gun's ads time, runs the frames of the gun rising to the eye), 4 aimed (the
-            # cooldown is a shot's kick again; a scope shows its mask instead of the gun). Damage is the
-            # one component the client swaps in without lowering and raising the gun again.
-            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames, rise_display=None, mask=None):
-                def key(k, on, off):
-                    return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
-                            'on_true': on, 'on_false': off}
-
-                def pose(kind, base, display, pose_name, spec):
-                    path = 'gun_pose/%s_%s/%s' % (kind, pose_name, name)
-                    write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.pose_model(base, display, spec))
-                    return model_ref('craftov:item/' + path)
-
-                def flash(kind, base, display, spec):
-                    fire = models.pose_model(base, display, spec)['display']
-                    path = 'gun_flash/%s/%s' % (kind, name)
-                    write_json(os.path.join(CV, 'models', 'item', path + '.json'),
-                               models.flash_model(item_id, fire['firstperson_righthand'], fire['firstperson_lefthand']))
-                    return model_ref('craftov:item/' + path)
-
-                def strafe(base, poses):
-                    return key('key.left', poses['left'], key('key.right', poses['right'], base))
-
-                def kicked(kind, base, display, rest):
-                    entries = []
-                    for threshold, level, lit in kicks:
-                        kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength)
-                        model = pose(kind, base, display, 'kick%d' % level, kick)
-                        if lit:
-                            model = {'type': 'minecraft:composite', 'models': [model, flash(kind, base, display, kick)]}
-                        entries.append({'threshold': threshold, 'model': model})
-                    return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
-                            'fallback': rest}
-
-                hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
-                hip_idle = strafe(model_ref(hip), hp)
-                hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
-                hip_tree = kicked('hip', hip, hip_display, hip_rest)
-                if mask:
-                    # A scope: its round mask in first person, the gun (hidden in first person) for the rest.
-                    ads_tree = {'type': 'minecraft:composite', 'models': [model_ref(ads), model_ref(mask)]}
-                elif ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
-                    ads_tree = model_ref(ads)
-                else:
-                    ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
-                    ads_tree = kicked('ads', ads, ads_display, strafe(model_ref(ads), ap))
-                # The sights coming up: the gun eases from the hip pose to the aimed one (a scoped gun to
-                # its eyepiece, where its mask takes over) as the server's ads cooldown counts down.
-                rise = rise_display or ads_display
-                rise_entries = []
-                for k, (threshold, progress) in enumerate(models.ads_rise_frames()):
-                    path = 'gun_adsin/%s/%d' % (name, k)
-                    write_json(os.path.join(CV, 'models', 'item', path + '.json'), {'parent': hip, 'display': {
-                        'firstperson_righthand': models.lerp_display(hip_display['firstperson_righthand'],
-                                                                     rise['firstperson_righthand'], progress),
-                        'firstperson_lefthand': models.lerp_display(hip_display['firstperson_lefthand'],
-                                                                    rise['firstperson_lefthand'], progress)}})
-                    rise_entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
-                # Without the cooldown (the tick before it comes, see WeaponService.startAds) the gun is at
-                # the hip: the aimed model shows only once the server marks the sights up (damage 4).
-                rise_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': rise_entries,
-                             'fallback': rise_entries[0]['model']}
-                # While the reload cooldown runs, the client steps through the reload frames itself.
-                entries = [{'threshold': threshold, 'model': {
-                    'type': 'minecraft:composite', 'models': [model_ref(n) for n in reload_frames[k]]}}
-                    for k, threshold in enumerate(models.reload.thresholds())]
-                reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
-                               'fallback': hip_rest}
-                return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
-                        'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree},
-                                    {'threshold': 2.5, 'model': rise_tree}, {'threshold': 3.5, 'model': ads_tree}],
-                        'fallback': hip_tree}
-            in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
-                               models.gun_model(item_id)['display'], models.gun_ads_model(item_id, scoped)['display'],
-                               [frames[k] for k in range(len(frames))],
-                               models.gun_rise_display(item_id) if scoped else None,
-                               'craftov:item/scope_mask/' + gun_spec['scope'] if scoped else None)
-            # Other players receive the gun as a charged crossbow while it is raised (StanceService),
-            # which gives the two-handed aiming pose; these models keep the barrel straight in it.
-            write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
-            aimed = model_ref('craftov:item/gun_aimed/' + item_id)
-            aimed_cases = []
-            # A mounted optic is stored as custom_model_data string 0 and picks a gun+optic model.
-            cases = []
-            for oid in models.optics_for(item_id):
-                combo = item_id + '__' + oid
-                write_json(os.path.join(CV, 'models', 'item', 'gun_opt', combo + '.json'), models.gun_with_optic(item_id, oid, False))
-                write_json(os.path.join(CV, 'models', 'item', 'gun_opt_ads', combo + '.json'), models.gun_with_optic(item_id, oid, True))
-                write_json(os.path.join(CV, 'models', 'item', 'gun_part', combo + '.json'), models.optic_on_gun_model(item_id, oid))
-                optic_frames = []
-                for k, right in enumerate(models.reload_frames_optic(item_id)):
-                    name = 'craftov:item/gun_reload/%s/%s_%d' % (item_id, oid, k)
-                    write_json(os.path.join(CV, 'models', 'item', 'gun_reload', item_id, '%s_%d.json' % (oid, k)),
-                               models.frame_model('craftov:item/gun_part/' + combo, right))
-                    optic_frames.append(name)
-                write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', combo + '.json'),
-                           models.gun_aimed_model(item_id, 'craftov:item/gun_opt/' + combo))
-                aimed_cases.append({'when': oid, 'model': model_ref('craftov:item/gun_aimed/' + combo)})
-                cases.append({'when': oid, 'model': gun_tree(
-                    combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
-                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display'],
-                    [frames[k] + [optic_frames[k]] for k in range(len(frames))], models.optic_rise_display(item_id, oid),
-                    'craftov:item/scope_mask/' + oid if oid in models.MASK_HOLE else None)})
-            if cases:
-                in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
-                           'cases': cases, 'fallback': in_hand}
-                aimed = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
-                         'cases': aimed_cases, 'fallback': aimed}
-            in_hand = {'type': 'minecraft:select', 'property': 'minecraft:charge_type',
-                       'cases': [{'when': 'arrow', 'model': aimed}], 'fallback': in_hand}
-            in_hand = wrap_attachments(in_hand, item_id, attachments_for(spec, item_defs))
-            # Gun trees are large (poses x sights x reload frames x attachments): written compact.
-            path = os.path.join(CV, 'items', item_id + '.json')
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump({'model': {
-                    'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                    'cases': [{'when': ['gui'], 'model': gui_case(item_id)}], 'fallback': in_hand},
-                    'oversized_in_gui': True}, f, separators=(',', ':'))
+            build_gun(item_id, spec, item_defs)
         elif item_id in knife_inspect.KEYS:
-            # F with the knife in hand runs its craftov:inspect cooldown (InspectService), and the client
-            # steps through the inspect frames while it counts down, as for the gun reload.
-            entries = []
-            for k, (right, threshold) in enumerate(zip(knife_inspect.frames(item_id), knife_inspect.thresholds())):
-                path = 'knife_inspect/%s/%d' % (item_id, k)
-                write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
-                entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
-            write_json(os.path.join(CV, 'items', item_id + '.json'), {'model': {
-                'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                'cases': [{'when': ['gui'], 'model': gui_case(item_id)}],
-                'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
-                             'entries': entries, 'fallback': model_ref(held)}}, 'oversized_in_gui': True})
+            write_knife_item(item_id, item_id, item_id, held)
         else:
             write_json(os.path.join(CV, 'items', item_id + '.json'), gui_select(gui_case(item_id), held))
     save(models.palette_texture(models.GUN_PALETTE), os.path.join(CV, 'textures', 'item', 'gun_palette.png'))
     write_json(os.path.join(CV, 'models', 'item', 'gun_part', 'shell.json'), models.shell_model())
     save(models.palette_texture(models.BOX_PALETTE), os.path.join(CV, 'textures', 'item', 'box_palette.png'))
+
+
+def write_knife_item(name, frames_name, knife, held):
+    """The item definition craftov:<name> of a knife, or of a skin of one (#106): its icon in menus
+    (craftov:item/gui/<name>), otherwise `held`, held like a sword. F with the knife in hand runs its
+    craftov:inspect cooldown (InspectService), and the client steps through the knife's inspect frames
+    (knife_inspect/<frames_name>/<k>, each `held` in that frame's pose) while it counts down, as for the
+    gun reload."""
+    entries = []
+    for k, (right, threshold) in enumerate(zip(knife_inspect.frames(knife), knife_inspect.thresholds())):
+        path = 'knife_inspect/%s/%d' % (frames_name, k)
+        write_json(os.path.join(CV, 'models', 'item', path + '.json'), models.frame_model(held, right))
+        entries.append({'threshold': threshold, 'model': model_ref('craftov:item/' + path)})
+    write_json(os.path.join(CV, 'items', name + '.json'), {'model': {
+        'type': 'minecraft:select', 'property': 'minecraft:display_context',
+        'cases': [{'when': ['gui'], 'model': gui_case(name)}],
+        'fallback': {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown',
+                     'entries': entries, 'fallback': model_ref(held)}}, 'oversized_in_gui': True})
+
+
+def load_knife_skins():
+    """skins.yml (the plugin's catalogue of knife skins), checked against the art in knife_skins.py."""
+    with open(os.path.join(RES, 'skins.yml'), encoding='utf-8') as f:
+        catalogue = yaml.safe_load(f)['skins']
+    missing = sorted(set(catalogue) - set(knife_skins.SKINS))
+    unused = sorted(set(knife_skins.SKINS) - set(catalogue))
+    assert not missing, 'skins.yml lists skins that knife_skins.py does not draw: %s' % missing
+    assert not unused, 'knife_skins.py draws skins that skins.yml does not list: %s' % unused
+    for sid, spec in catalogue.items():
+        assert spec['knife'] == knife_skins.knife_of(sid), '%s: skins.yml says %s, knife_skins.py draws %s' % (
+            sid, spec['knife'], knife_skins.knife_of(sid))
+    return catalogue
+
+
+def build_knife_skins(item_defs):
+    """Knife skins (#106). SkinService puts the item model craftov:knife_skin/<id> on the knife in the
+    melee slot: a definition shaped like the knife's own, with the skin's sprite held, in menus (on the
+    knife's rarity background) and in every inspect frame."""
+    for sid, spec in load_knife_skins().items():
+        knife = spec['knife']
+        name = 'knife_skin/' + sid
+        icon = knife_skins.render(sid)
+        save(icon, os.path.join(CV, 'textures', 'item', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', name + '.json'),
+                   generated('craftov:item/' + name, 'minecraft:item/handheld'))
+        rarity = item_defs[knife].get('rarity', 'WHITE')
+        composite = px.rarity_tile(rgb(RARITY_COLORS[rarity]), list(RARITY_COLORS).index(rarity))
+        composite.alpha_composite(icon, (px.TILE_ICON, px.TILE_ICON))
+        save(composite, os.path.join(CV, 'textures', 'item', 'gui', name + '.png'))
+        write_json(os.path.join(CV, 'models', 'item', 'gui', name + '.json'), gui_tile_model('craftov:item/gui/' + name))
+        write_knife_item(name, sid, knife, 'craftov:item/' + name)
 
 
 def build_containers():
@@ -596,7 +677,10 @@ def build_screens():
     providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
                       'chars': rows})
     meta = {}
-    for i, (sid, make) in enumerate(screens.SCREENS.items()):
+    # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
+    # older keep theirs.
+    all_screens = {**screens.SCREENS, **screens.skin_screens(load_knife_skins())}
+    for i, (sid, make) in enumerate(all_screens.items()):
         img, left, top = make()
         cp = chr(SCREEN_BASE + i)
         save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))
@@ -1145,6 +1229,7 @@ def main():
         shutil.rmtree(PACK)
     build_pack_meta()
     build_items(item_defs)
+    build_knife_skins(item_defs)
     build_containers()
     build_fx()
     build_ui()

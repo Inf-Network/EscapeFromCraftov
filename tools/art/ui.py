@@ -31,6 +31,21 @@ def person(c, x, col):
     c.poly([(x - 6, 26), (x - 5, 16), (x + 5, 16), (x + 6, 26)], col)
 
 
+def occupied_cell():
+    """A secure-container cell taken by the big item to its left (SecureMenu): a sunken, hatched
+    plate with an arrow pointing back at the item."""
+    c = Canvas()
+    plate(c, shade(PLATE, 0.75))
+    hatch = shade(rgb(PAL.DIM), 0.7)
+    for k in range(6, 58, 5):
+        x0, x1 = max(3, k - 28), min(28, k - 3)
+        if x0 <= x1:
+            c.line([(x0, k - x0), (x1, k - x1)], hatch)
+    c.poly([(6, 16), (13, 9), (13, 23)], G)
+    c.rect(13, 14, 24, 18, G)
+    return c.img
+
+
 UI = {
     'blank': lambda: Image.new('RGBA', (16, 16), (0, 0, 0, 0)),
     'locked': lambda: icon(lambda c: (c.box(10, 14, 21, 24, G), c.ellipse(11, 7, 20, 17, (0, 0, 0, 0)),
@@ -53,6 +68,7 @@ UI = {
                                             c.poly([(9, 26), (10, 20), (22, 20), (23, 26)], shade(O, 0.8)))),
     'icon_secure': lambda: icon(lambda c: (c.box(7, 7, 24, 25, P), c.ellipse(12, 11, 19, 18, D), c.rect(15, 14, 16, 15, P),
                                           c.rect(20, 12, 22, 14, W))),
+    'secure_used': occupied_cell,
     'icon_escort': lambda: icon(lambda c: (c.poly([(16, 5), (25, 9), (24, 18), (16, 26), (8, 18), (7, 9)], C),
                                           c.poly([(16, 9), (21, 11), (20, 17), (16, 22), (12, 17), (11, 11)], shade(C, 0.6)))),
     'icon_collection': lambda: icon(lambda c: c.poly([(16, 5), (19, 13), (27, 13), (21, 18), (23, 26), (16, 21), (9, 26), (11, 18),
@@ -246,6 +262,24 @@ UI.update({
                                            c.rect(5, 27, 27, 28, Y))),
     'report_fail': lambda: icon(lambda c: (c.d.ellipse([6, 6, 26, 26], outline=R, width=2), c.line([(12, 12), (20, 20)], R, 2),
                                           c.line([(20, 12), (12, 20)], R, 2))),
+    # Appearance (knife skins, #106): a blade under a four-point sparkle.
+    'icon_skins': lambda: icon(lambda c: (c.poly([(8, 25), (21, 11), (25, 8), (24, 12), (11, 27)], W),
+                                         c.line([(9, 24), (22, 10)], rgb('#FFFFFF')), c.line([(5, 21), (12, 28)], Y, 2),
+                                         c.rect(3, 26, 6, 29, G),
+                                         c.poly([(24, 16), (25, 20), (29, 21), (25, 22), (24, 26), (23, 22), (19, 21), (23, 20)], Y))),
+    # 点券 (the premium currency): a ticket with a notched edge, in the info colour, apart from the amber of 块币.
+    'icon_points': lambda: icon(lambda c: (c.box(5, 9, 26, 23, B), c.ellipse(3, 13, 7, 19, PLATE), c.ellipse(24, 13, 28, 19, PLATE),
+                                          [c.rect(10, y, 10, y, shade(B, 0.6)) for y in range(11, 22, 2)],
+                                          c.poly([(18, 11), (19, 15), (23, 16), (19, 17), (18, 21), (17, 17), (13, 16), (17, 15)], W))),
+    # The 点券 shop: a shopping bag with the ticket's star.
+    'icon_points_shop': lambda: icon(lambda c: (c.box(7, 11, 25, 27, shade(B, 0.8)), c.d.arc([11, 5, 21, 17], 180, 360, fill=G, width=2),
+                                               c.poly([(16, 14), (17, 18), (21, 19), (17, 20), (16, 24), (15, 20), (11, 19), (15, 18)], W))),
+    # Preview the inspect: an eye.
+    'icon_inspect': lambda: icon(lambda c: (c.d.ellipse([4, 10, 27, 22], fill=W), c.ellipse(11, 11, 20, 21, rgb('#3A6EA5')),
+                                           c.ellipse(13, 13, 18, 19, D), c.rect(14, 13, 15, 14, rgb('#FFFFFF')))),
+    # A skin's state: worn (a filled amber dot in a ring) or owned and ready to wear (an empty ring).
+    'skin_on': lambda: icon(lambda c: (c.d.ellipse([6, 6, 25, 25], outline=Y, width=2), c.ellipse(11, 11, 20, 20, Y))),
+    'skin_off': lambda: icon(lambda c: c.d.ellipse([6, 6, 25, 25], outline=G, width=2)),
 })
 
 
@@ -272,6 +306,36 @@ def attachment_tab():
 
 
 UI['tab_attachment'] = attachment_tab
+
+
+def locked(fn):
+    """A button that is there but cannot be used right now (a downed player's terminal: TerminalMenu)
+    keeps its own pictogram, faded to grey under a red padlock, so it still says which button it is.
+    The plain 'locked' picture is for slots that hold nothing yet."""
+    def make():
+        base = fn().convert('RGBA')
+        px = base.load()
+        for y in range(base.height):
+            for x in range(base.width):
+                r, g, b, a = px[x, y]
+                lum = (r * 299 + g * 587 + b * 114) / 1000
+                px[x, y] = tuple(int((lum * 0.8 + ch * 0.2) * 0.62) for ch in (r, g, b)) + (a,)
+        c = Canvas()
+        c.img.alpha_composite(base)
+        # Dark backing first so the padlock reads on any picture, then the shackle and the body.
+        c.line([(20, 23), (20, 18), (22, 15), (27, 15), (29, 18), (29, 23)], D, 4)
+        c.rect(16, 20, 31, 31, D)
+        c.line([(20, 23), (20, 18), (22, 16), (27, 16), (29, 18), (29, 23)], W, 2)
+        c.box(17, 21, 30, 30, R)
+        c.rect(23, 24, 24, 27, D)
+        return c.img
+    return make
+
+
+# Every button a downed player's terminal greys out (TerminalMenu: the secure container, the
+# gunsmith, the test armory and each operator's skill) has its locked picture: <key>_locked.
+for _key in ('icon_secure', 'icon_gunsmith', 'icon_catalog', 'op_vanguard', 'op_medic', 'op_recon', 'op_engineer'):
+    UI[_key + '_locked'] = locked(UI[_key])
 
 
 # Scope reticles are drawn for the default 70 degree field of view at each scope's power (OpticSpec):

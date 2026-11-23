@@ -16,6 +16,12 @@ public final class Profile {
     public UUID uuid;
     public String name = "";
     public long money;
+    /**
+     * 点券, the server's premium currency, while it is a placeholder: read and changed only through
+     * PointsBank (CraftovPlugin.points()), which the server's global currency can replace. Never
+     * bought with {@link #money}.
+     */
+    public long points;
     public int level = 1;
     public long xp;
     public int rankPoints = 1000;
@@ -97,6 +103,13 @@ public final class Profile {
     public Set<String> unlockedOperators = new LinkedHashSet<>(List.of("vanguard", "medic", "recon", "engineer"));
     /** Personal loot luck (LuckService, #80). */
     public Luck luck = new Luck();
+    /**
+     * Knife skins this player has bought (SkinService, #106). Looks, not items: they never go into
+     * the stash, the market or a body. With skins.own-all every skin counts as owned anyway.
+     */
+    public Set<String> skins = new LinkedHashSet<>();
+    /** Knife item id -> the skin that knife wears (SkinService); a knife not listed wears its own look. */
+    public Map<String, String> knifeSkins = new HashMap<>();
 
     /** Raid id while the player is inside a raid; a crash leaves it set (see {@link #deployment}). */
     public @Nullable String activeRaid;

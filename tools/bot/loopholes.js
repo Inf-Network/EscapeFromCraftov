@@ -312,7 +312,9 @@ async function escort () {
   check('escort: accepting a contract works', !!await heard(e, /已接取/, mark))
   mark = e.msgs.length
   await e.clickWindow(slotOf(list, c2.username), 0, 0)
-  check('escort: a second contract is refused', !!await heard(e, /已经在 .* 的护航委托中/, mark))
+  // The refusal names the client the escort is guarding (#63), not the contract they clicked.
+  const second = await heard(e, /你正在护航 .*，离开其小队后才能接取别的委托/, mark)
+  check('escort: a second contract is refused', !!second && second.includes(c.username) && !second.includes(c2.username), second)
   e.closeWindow(list)
   mark = e.msgs.length
   c.chat(`/cv party kick ${e.username}`)

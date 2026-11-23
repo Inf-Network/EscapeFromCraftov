@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/r12_body",
+ "parent": "craftov:item/gun_mid/r12_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    96.512,
+    96.711,
     52.06,
     -86.75
    ],
    "translation": [
     -3.6,
-    4.825,
-    -1.36
+    5.095,
+    -1.35
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -83.488,
+    -83.289,
     -52.06,
     -93.25
    ],
    "translation": [
     -3.6,
-    4.825,
-    -1.36
+    5.095,
+    -1.35
    ],
    "scale": [
     0.51,

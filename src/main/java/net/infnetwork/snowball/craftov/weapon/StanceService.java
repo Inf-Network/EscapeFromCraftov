@@ -30,9 +30,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * gun is sent to everyone else as a charged crossbow that keeps the gun's item model (the model
  * switches to a variant posed for that stance on {@code charge_type}); the holder's own client keeps
  * the real item, so first person, ADS and reload frames are untouched. Sprinting, reloading, being
- * downed, reviving or swimming lowers the gun back to the normal one-handed carry.
+ * downed, reviving or swimming lowers the gun back to the normal one-handed carry; a sprint that fires
+ * (run-and-gun) shoulders it while it does.
  */
 public final class StanceService implements Listener, Nms.ViewRewriter {
+
+    /** Ticks a gun fired on a sprint stays shouldered after its last shot. */
+    private static final int SPRINT_FIRE_TICKS = 10;
 
     private final CraftovPlugin plugin;
     /** Entity ids of players holding a gun up, read by the Netty threads. */
@@ -72,13 +76,25 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     }
 
     private boolean wantsRaised(Player player) {
-        if (player.getGameMode() == GameMode.SPECTATOR || player.isSprinting() || player.isSwimming() || player.isGliding()
+        if (player.getGameMode() == GameMode.SPECTATOR || sprintCarry(player) || player.isSwimming() || player.isGliding()
                 || player.isInsideVehicle() || plugin.downed().isDowned(player) || plugin.downed().isReviving(player)
                 || !isGun(player.getInventory().getItemInMainHand())) {
             return false;
         }
         WeaponService.GunState state = plugin.weapons().state(player);
         return state == null || !state.reloading();
+    }
+
+    /**
+     * The gun is carried low on a sprint: the player is sprinting and has not fired in the last
+     * {@link #SPRINT_FIRE_TICKS}. Firing on the run shoulders it, so others see where the shots come from.
+     */
+    public boolean sprintCarry(Player player) {
+        if (!player.isSprinting()) {
+            return false;
+        }
+        WeaponService.GunState state = plugin.weapons().state(player);
+        return state == null || Bukkit.getCurrentTick() - state.lastShotTick > SPRINT_FIRE_TICKS;
     }
 
     private boolean isGun(@Nullable ItemStack stack) {

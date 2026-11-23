@@ -708,7 +708,9 @@ public final class LootMenu extends Menu {
             refuse("箱子已满");
             return;
         }
-        container.set(target, current.clone());
+        // Knives never get here (isMelee above), but a stack copied out of the inventory as it is
+        // must never carry its owner's skin into a crate (SkinService#undress).
+        container.set(target, plugin.skins().undress(current.clone()));
         viewer.getInventory().setItem(slot, null);
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.5f, 0.8f);
         viewer.updateInventory();

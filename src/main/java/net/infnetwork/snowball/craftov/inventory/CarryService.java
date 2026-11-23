@@ -8,6 +8,7 @@ import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.ProfileService;
 import net.infnetwork.snowball.craftov.util.Text;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -539,16 +540,41 @@ public final class CarryService {
         return rest;
     }
 
+    /** Whether the carry rules apply to the player: never in creative or spectator mode. */
+    public static boolean manages(Player player) {
+        return player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR;
+    }
+
+    /**
+     * Puts the cursor back on the player the way closing the inventory screen does. Right after the
+     * close event vanilla puts it into the first free cell, or, with none free, throws it. That throw
+     * is refused in the lobby, on the range and while downed, and for a gun even by a raider who is
+     * up (a throw that does not come from a click is a reload), and a refused throw is put back with
+     * addItem, which deletes whatever has no room. A packed rig or backpack must not land in a cell
+     * either. So the cursor is always settled here first ({@link #reclaimCursor}): a helmet, vest,
+     * rig or backpack goes back on when its slot is free, anything else finds its carry cell, and
+     * what has no room is spilled (mailed outside a raid, dropped at the player's feet in one). Players
+     * in creative or spectator mode are left alone ({@link #manages}). Used on closing the
+     * inventory, which a deploy does before it records anything, and on logging off (CarryListener),
+     * and for everyone when the server stops, which removes the players only once the plugin is
+     * disabled, so neither of those runs then.
+     */
+    public void settleCursor(Player player) {
+        if (manages(player)) {
+            spill(player, reclaimCursor(player));
+        }
+    }
+
     /**
      * Puts the item held on the cursor (inventory screen open) back into the carry cells; a helmet,
      * vest, rig or backpack, packed or not, is worn again if its slot is free ({@link #giveOrWear}).
      * Gear fits no carry cell but the backpack's, so the helmet just taken off with the backpack full,
      * or the empty backpack just taken off, would otherwise have nowhere to go and be mailed or
      * dropped. The cursor is empty afterwards. Returns what did not fit, or null. The one way the
-     * cursor is settled: on closing the inventory and on logging off (CarryListener), before an
-     * extraction is counted and on the way home from a raid (both through
-     * {@link #reclaimCursorHome}), and before an explicit lobby loadout capture. Calling it again
-     * finds the cursor empty.
+     * cursor is settled: on closing the inventory, on logging off and when the server stops (all
+     * three through {@link #settleCursor}), before an extraction is counted and on the way home from
+     * a raid (both through {@link #reclaimCursorHome}), and before an explicit lobby loadout capture.
+     * Calling it again finds the cursor empty.
      */
     public @Nullable ItemStack reclaimCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();
@@ -798,7 +824,7 @@ public final class CarryService {
             return "试验场物资不能放入安全箱";
         }
         ItemDef def = items.defOf(stack);
-        if (def == null || def.isGun() || def.isArmor() || def.isContainer() || def.category() == Category.WEAPON) {
+        if (def == null || !def.fitsSecure()) {
             return "该物品无法放入安全箱";
         }
         return null;

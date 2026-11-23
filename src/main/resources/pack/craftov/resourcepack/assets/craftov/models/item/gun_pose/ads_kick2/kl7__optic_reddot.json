@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt_ads/kl7__optic_reddot",
+ "parent": "craftov:item/gun_ads/kl7__optic_reddot",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -10,7 +10,7 @@
    "translation": [
     -8.96,
     4.79,
-    9.21
+    8.28
    ],
    "scale": [
     0.6,
@@ -27,7 +27,7 @@
    "translation": [
     -8.96,
     4.79,
-    9.21
+    8.28
    ],
    "scale": [
     0.6,

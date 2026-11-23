@@ -7,7 +7,6 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Notify;
-import org.bukkit.GameMode;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -39,7 +38,7 @@ public final class CarryListener implements Listener {
     }
 
     private static boolean managed(Player player) {
-        return player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR;
+        return CarryService.manages(player);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
@@ -377,13 +376,12 @@ public final class CarryListener implements Listener {
         if (!(event.getPlayer() instanceof Player player)) {
             return;
         }
-        if (managed(player)) {
-            settleCursor(player);
-            if (event.getView().getType() == InventoryType.CRAFTING) {
-                // Closing the inventory screen clears the crafting result slot on the client, and with
-                // it the protection cell (CarryInfo); the server never sees it go, so it is sent again.
-                plugin.carryInfo().resend(player);
-            }
+        // The cursor goes back on the player before vanilla does (CarryService#settleCursor says why).
+        carry.settleCursor(player);
+        if (managed(player) && event.getView().getType() == InventoryType.CRAFTING) {
+            // Closing the inventory screen clears the crafting result slot on the client, and with
+            // it the protection cell (CarryInfo); the server never sees it go, so it is sent again.
+            plugin.carryInfo().resend(player);
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !managed(player)) {
@@ -400,22 +398,6 @@ public final class CarryListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onQuit(PlayerQuitEvent event) {
-        if (managed(event.getPlayer())) {
-            settleCursor(event.getPlayer());
-        }
-    }
-
-    /**
-     * Puts the cursor back on the player before vanilla does. Right after the close event vanilla puts
-     * it into the first free cell, or, with none free, throws it. That throw is refused in the lobby,
-     * on the range and while downed, and for a gun even by a raider who is up (a throw that does not
-     * come from a click is a reload), and a refused throw is put back with addItem, which deletes
-     * whatever has no room. A packed rig or backpack must not land in a cell either. So the cursor is
-     * always settled here ({@link CarryService#reclaimCursor}): a packed container goes back on when
-     * its slot is free, anything else goes into a free cell, and what has no room is spilled (mailed
-     * outside a raid, dropped at the player's feet in one).
-     */
-    private void settleCursor(Player player) {
-        carry.spill(player, carry.reclaimCursor(player));
+        carry.settleCursor(event.getPlayer());
     }
 }

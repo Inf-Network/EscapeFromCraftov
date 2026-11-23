@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/d50_body",
+ "parent": "craftov:item/gun_mid/d50_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    96.07,
-    58.677,
-    -82.299
+    96.527,
+    58.075,
+    -82.43
    ],
    "translation": [
-    -3.93,
-    8.281,
-    -0.55
+    -4.0,
+    8.361,
+    -0.73
    ],
    "scale": [
     0.612,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -83.93,
-    -58.677,
-    -97.701
+    -83.473,
+    -58.075,
+    -97.57
    ],
    "translation": [
-    -3.93,
-    8.281,
-    -0.55
+    -4.0,
+    8.361,
+    -0.73
    ],
    "scale": [
     0.612,

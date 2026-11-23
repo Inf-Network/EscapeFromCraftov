@@ -618,6 +618,8 @@ public final class LobbyService implements Listener {
         } else if (RangeService.EXIT.equals(tag)) {
             plugin.range().leave(player, true);
         } else if (UiItems.RAID_TERMINAL.equals(tag)) {
+            // Also while downed (DownedService cancels the click first, which this handler ignores
+            // on purpose): the terminal locks what needs free hands, the secure container among them.
             plugin.menus().openTerminal(player);
         }
     }

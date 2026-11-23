@@ -11,6 +11,9 @@
 //            - C fires at bare floor: no craftov:hit.*, no flesh or armour impact, the floor is hit;
 //            - C fires at A: A loses health and C hears the hit.
 //          B must still see the replay: the stand-ins are spawned for B and B's camera follows one.
+//          The stand-ins are posed as the players were seen (#3, StanceService.pose): C's, standing
+//          with its M4C, is sent the gun carried low (with a use) and in use; A's, firing at B, the
+//          gun shouldered (a charged crossbow) and then not in use.
 // targets  Bullets stop only on combatants, so check that the rest still do: a training dummy on
 //          the private range, an enemy operator squad (summoned with /cv event operators) and a
 //          recon drone (/cv event drone) on the proving ground each give the shooter a hit.
@@ -72,6 +75,16 @@ function make (tag) {
     if (p.type === TEXT_DISPLAY) bot.texts.push(Date.now())
   })
   bot._client.on('camera', p => bot.cameras.push(p.cameraId))
+  // What this bot is told about other entities' main hands and living flags (bit 1: using it).
+  bot.hands = []
+  bot.flags = []
+  bot._client.on('entity_equipment', p => {
+    for (const e of p.equipments || []) if (e.slot === 0) bot.hands.push({ at: Date.now(), entityId: p.entityId, item: e.item })
+  })
+  bot._client.on('entity_metadata', p => {
+    const m = (p.metadata || []).find(x => x.key === 8 && typeof x.value === 'number')
+    if (m) bot.flags.push({ at: Date.now(), entityId: p.entityId, value: m.value })
+  })
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), text: strip(JSON.stringify(t)) }))
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLog.push(m); log(tag, 'CHAT', m) } })
   bot.on('kicked', r => log(tag, 'KICKED', JSON.stringify(r)))
@@ -201,6 +214,26 @@ async function replay () {
   check('shooting A gives hit feedback', atA.some(s => s.startsWith('craftov:hit.')))
   const still = await count('@e[type=minecraft:mannequin]') - await count('@e[type=minecraft:mannequin,nbt={BukkitValues:{"craftov:role":"container"}}]')
   check('the replay was still playing during the shots', still >= 3, `${still} stand-ins left`)
+
+  // How the stand-ins were posed for B.
+  const paper = b.registry.itemsByName.paper.id
+  const crossbow = b.registry.itemsByName.crossbow.id
+  const handsOf = id => b.hands.filter(h => h.entityId === id)
+  const flagsOf = id => b.flags.filter(f => f.entityId === id)
+  const shown = since(b).map(id => ({
+    id,
+    hands: handsOf(id).map(h => h.item.itemId === paper ? (JSON.stringify(h.item).includes('consumable') ? 'low' : 'paper')
+      : h.item.itemId === crossbow ? (JSON.stringify(h.item).includes('charged_projectiles') ? 'up' : 'crossbow') : String(h.item.itemId || 'empty')),
+    flags: flagsOf(id).map(f => f.value & 1)
+  }))
+  log('stand-ins as B saw them', shown)
+  const low = shown.filter(x => x.hands.includes('low') && x.flags.includes(1))
+  check('a stand-in of someone standing with a gun is sent it carried low, in use (C)', low.length >= 1, JSON.stringify(shown))
+  const up = since(b).filter(id => {
+    const raised = handsOf(id).find(h => h.item.itemId === crossbow && JSON.stringify(h.item).includes('charged_projectiles'))
+    return raised && flagsOf(id).some(f => f.at >= raised.at && (f.value & 1) === 0)
+  })
+  check('the shooter\'s stand-in is sent the gun shouldered and not in use (A firing at B)', up.length >= 1, JSON.stringify(shown))
   await done([a, b, c])
 }
 

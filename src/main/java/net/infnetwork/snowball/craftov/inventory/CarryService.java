@@ -522,12 +522,15 @@ public final class CarryService {
     }
 
     /**
-     * Puts the item held on the cursor (inventory screen open) back into the carry cells; a packed
-     * rig or backpack is worn again if its slot is free. The cursor is empty afterwards. Returns what
-     * did not fit, or null. The one way the cursor is settled: on closing the inventory and on
-     * logging off (CarryListener), before an extraction is counted and on the way home from a raid
-     * (both through {@link #reclaimCursorHome}), and before an explicit lobby loadout capture.
-     * Calling it again finds the cursor empty.
+     * Puts the item held on the cursor (inventory screen open) back into the carry cells; a helmet,
+     * vest, rig or backpack, packed or not, is worn again if its slot is free ({@link #giveOrWear}).
+     * Gear fits no carry cell but the backpack's, so the helmet just taken off with the backpack full,
+     * or the empty backpack just taken off, would otherwise have nowhere to go and be mailed or
+     * dropped. The cursor is empty afterwards. Returns what did not fit, or null. The one way the
+     * cursor is settled: on closing the inventory and on logging off (CarryListener), before an
+     * extraction is counted and on the way home from a raid (both through
+     * {@link #reclaimCursorHome}), and before an explicit lobby loadout capture. Calling it again
+     * finds the cursor empty.
      */
     public @Nullable ItemStack reclaimCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();
@@ -539,15 +542,7 @@ public final class CarryService {
         if (ItemFactory.isUi(moving)) {
             return null;
         }
-        ItemDef def = items.defOf(moving);
-        if (def != null && def.isContainer() && ItemFactory.hasContents(moving)) {
-            ItemStack worn = player.getInventory().getItem(containerSlot(def.category()));
-            if (worn == null || worn.isEmpty()) {
-                equip(player, moving);
-                return null;
-            }
-        }
-        return give(player, moving, false);
+        return giveOrWear(player, moving, false, false);
     }
 
     /**

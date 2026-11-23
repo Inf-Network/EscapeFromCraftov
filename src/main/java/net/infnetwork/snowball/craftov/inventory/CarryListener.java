@@ -247,7 +247,7 @@ public final class CarryListener implements Listener {
         carry.equip(player, moving);
     }
 
-    /** Shift-click takes off an empty rig or backpack into a free carry cell. */
+    /** Shift-click takes off an empty rig into a free backpack cell; a backpack has no such cell and stays on. */
     private void shiftUnequip(Player player, int slot) {
         PlayerInventory inv = player.getInventory();
         int start = slot == CarryService.LEGS ? CarryService.RIG_START : CarryService.PACK_START;
@@ -263,7 +263,9 @@ public final class CarryListener implements Listener {
         if (removed != null) {
             ItemStack left = carry.give(player, removed, false);
             if (left != null) {
+                // A rig or backpack fits only into a backpack cell: the backpack itself never does.
                 carry.equip(player, left);
+                Notify.error(player, slot == CarryService.FEET ? "背包只能穿着，或用鼠标拿起放进仓库或箱子" : "背包里没有空位");
             }
         }
     }

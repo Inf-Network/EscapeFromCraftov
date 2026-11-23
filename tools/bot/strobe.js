@@ -1,10 +1,10 @@
 // Strobe light and flashbang check (issue #15): neither may freeze a soldier, and a flashed player gets
 // a white screen instead of a black one with nausea. One bot fits a tactical light to an M4, enters the
 // proving ground solo and then:
-//   1. throws a flashbang against the outside of the AI arena wall while the soldiers inside are still
-//      at their posts: the soldiers behind the wall within the blast radius must not all stand frozen
+//   1. drops a flashbang at its feet against the outside of the AI arena wall while the soldiers
+//      inside are still at their posts: the soldiers behind the wall within the blast radius must not all stand frozen
 //      for the next 3.5 s (the blast draws them, so one walks off, or one shoots);
-//   2. facing that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
+//   2. at that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
 //      slot and the ringing sound, and no nausea. Blindness only comes with the fully white screen (so
 //      F5 cannot clear it) and must be lifted before the first translucent fade step. The bot wears a
 //      helmet that is swapped while it is white: while the screen is flashed, every update of the
@@ -36,14 +36,18 @@ const SOLDIERS = ['zombie', 'husk', 'drowned']
 const checks = {}
 
 // Places outside the arena walls (ProvingGroundGenerator.arena) to throw from, clear of the entrance
-// baffles: the bot stands 1.5 blocks off the wall facing it, and the grenade drops against it.
+// baffles: the bot stands against the wall (its outer faces are z 34 and x 92) and drops the grenade
+// at its feet, so it goes off right there. Thrown at the wall it would bounce back off it (#42) and
+// go off a few blocks behind the bot, out of the soldiers' reach.
 const THROW_SPOTS = []
 for (let x = 2; x <= 87; x++) {
-  if (x <= 16 || (x >= 25 && x <= 54) || x >= 64) THROW_SPOTS.push({ stand: [x + 0.5, 35.5], yaw: 180, blast: [x + 0.5, 34] })
+  if (x <= 16 || (x >= 25 && x <= 54) || x >= 64) THROW_SPOTS.push({ stand: [x + 0.5, 34.35], yaw: 180, blast: [x + 0.5, 34.35] })
 }
 for (let z = 2; z <= 32; z++) {
-  if (z <= 15 || z >= 25) THROW_SPOTS.push({ stand: [92.5, z + 0.5], yaw: 90, blast: [92, z + 0.5] })
+  if (z <= 15 || z >= 25) THROW_SPOTS.push({ stand: [92.35, z + 0.5], yaw: 90, blast: [92.35, z + 0.5] })
 }
+// A soldier this close to the drop point (across the floor) is inside the flashbang's radius (10).
+const REACH = 9.5
 const insideArena = (p) => p.x < 91 && p.z < 33 && p.y < 69 // not the sniper on its tower
 
 async function waitFor (pred, ms) {
@@ -186,14 +190,14 @@ function openSpotNear (bot, soldier) {
   const heal = setInterval(() => rcon(`effect give ${name} instant_health 1 3 true`).catch(() => {}), 1500)
 
   // ---------------------------------------------------------------- 1. flashbang through the wall
-  // Wait outside the arena (out of sight) until a soldier at its post is within 8.5 blocks of a spot
+  // Wait outside the arena (out of sight) until a soldier at its post is within REACH of a spot
   // where a grenade would land against the wall.
   await rcon(`execute as ${name} at @s run tp @s 47.5 65 35.5 180 10`)
   let spot = null
   await waitFor(() => {
     let best = 0
     for (const s of THROW_SPOTS) {
-      const n = soldiers(bot).filter(e => insideArena(e.position) && Math.hypot(e.position.x - s.blast[0], e.position.z - s.blast[1]) < 8.5).length
+      const n = soldiers(bot).filter(e => insideArena(e.position) && Math.hypot(e.position.x - s.blast[0], e.position.z - s.blast[1]) < REACH).length
       if (n > best) { best = n; spot = s }
     }
     return best > 0
@@ -209,9 +213,15 @@ function openSpotNear (bot, soldier) {
   const effectsBefore = effects.length
   const removedBefore = removedEffects.length
   const soundsBefore = sounds.length
-  bot.activateItem() // the teleport left us facing the wall, slightly down
+  // Crouching and looking straight down, the grenade lands right under the bot's eyes.
+  bot.setControlState('sneak', true)
+  await bot.look(bot.entity.yaw, -Math.PI / 2, true)
+  await sleep(300)
+  bot.activateItem()
   await sleep(200)
   bot.deactivateItem()
+  await sleep(150)
+  bot.setControlState('sneak', false)
   if (!await waitFor(() => sounds.slice(soundsBefore).some(s => s.sound.includes('throw.flash')), 6000)) throw new Error('no flashbang went off')
   const blast = sounds.slice(soundsBefore).find(s => s.sound.includes('throw.flash')).pos
   // A new helmet while the screen is white, like one losing durability to a headshot.

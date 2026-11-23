@@ -87,6 +87,6 @@ final class MapDraft {
         Pos cam = camera != null ? camera : new Pos((x0 + x1) / 2, 120, (z0 + z1) / 2, 0);
         return new MapDef(id, name, description, template, raidMinutes * 60, cam, List.copyOf(spawns), List.copyOf(extracts),
                 List.copyOf(containers), List.copyOf(ai), List.copyOf(bosses), List.copyOf(doors), List.copyOf(switches),
-                x0, z0, x1, z1, time, test);
+                x0, z0, x1, z1, time, test, false);
     }
 }

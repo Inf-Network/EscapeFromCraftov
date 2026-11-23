@@ -25,7 +25,9 @@ Craftov：Paper 1.21.11 上的搜打撤（extraction shooter）插件，玩法�
 - **匹配**：每张图、每档难度一个匹配池，同一时段排队的小队进同一局，互为敌人；排位只决定加不加排位分，不影响匹配；开局后名单固定，**不允许中途加入**。一局小队数 = `min(match.max-squads, 地图出生点组数)`。
 - **对局中关服**（正常关服和崩溃都一样）：**整局作废**，局内的人恢复出发前的配装和安全箱，退入场费和保险费，发一封系统补偿邮件（块币，可配置）；被作废的人不再走保险理赔，已阵亡 / 已撤离的人照常结算（#67）。
 - **爆率**：**不要靠压低产出、封顶获取来控制经济**。箱子照常纯随机出货（顶级物品也有极低的基础概率），另外每个玩家有个人运气：按品质和大奖物品的保底计数（例如 1000 场没出过，第 1001 场必出）、按行为分（赚损比、合作分、KD、出红率）累积的额度池（「工资」，够了就发）、短时间大额亏损后对本人生效的高爆率补偿局；发了没带出去，下把从额度里继续补（#80）。经济靠入场费、收购价等消耗来平衡。
-- **刀不计入战备值**（#81）；刀要有检视动作（#82）。
+- **刀不计入战备值**（#81）；刀要有检视动作（#82），而且拿着刀按 F 必须每次都能检视（#104）。
+- **刀皮只是外观，不是物品**（#106）：记在玩家档案里，不进仓库、交易行、遗体，不能用块币买；用**点券**买。点券是服主服务器的全局货币，现在先占位（独立于块币的余额字段，以后接入全局系统），默认所有人拥有全部刀皮。
+- **可以跑射**（#105）：冲刺中可以腰射，开火不会打断冲刺，只是腰射散布更大；开镜仍会打断冲刺。
 - **分工**：功能测试用假人自己测完再合并，服主只看外观（发截图）；合并由 Claude 做。
 
 ### 只有真人能确认的（bot 看不到）
@@ -55,11 +57,11 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - **开关服 / 状态**：`tools/mac/mac start|stop|restart|status`。扩展会处理 Mac 上的 `run-forever.sh` 重启循环（5 秒后自动拉起）和用户手动开的 `screen -S craftov`：关服先结束循环再 RCON `stop`，等 `paper.jar` 退出。不要用 `ssh mac` 之外的方式去动 Mac 上的进程。
 - **控制台命令**：`tools/mac/mac rcon <命令>`，命令原样传过去（JSON 引号保留）。
 - **日志**：`tools/mac/mac log [行数]`（`logs/latest.log`）；开服失败时 Paper 还没打开日志前的报错（坏 jar、java 起不来）在 `tools/mac/mac consolelog [行数]`；客户端日志 `tools/mac/mac clientlog [行数]`，排查资源包下载失败（`download_failed`）时看。
-- **Mac 测试服的 `config.yml` 是旧版生成的**：缺的键会回落到 jar 默认值，但已有的键不会更新（例如 `match.wait-seconds` 还是 15，新默认是 30）。改动默认值时要提醒服主或在 Mac 上手动改。
+- **`config.yml` 的默认值改动会自动迁移（#101）**：缺的键回落到 jar 默认值；已有的键靠文件开头的 `config-revision`：服务器那份版本比 jar 低时，开服把仍等于旧默认值的键换成新值（手改过的不动、注释保留、旧文件留作 `plugins/Craftov/config.yml.rev<n>`），日志里每个键一行 `config.yml: 键 旧值 -> 新值`，保留的写 `kept`。所以改了默认值不用再请服主或去 Mac 上手动改 `config.yml`，部署后看一眼 `tools/mac/mac log` 里的这几行就行。Mac 那份里的 `rank.min-level: 1`、`test.enabled: true` 是手改的，迁移不会碰。
 - **白名单**：`online-mode=false`，离线 UUID 由名字的**确切大小写**算出，`whitelist add` 必须用玩家真实的大小写（看日志里的 `UUID of player Xxx`）。用户的名字是 `Snowball_233`。
 - **资源包地址**：`plugins/CraftEngine/config.yml` 的 `self-host.ip`，资源包托管在 MC 同一端口 25565。改用 `tools/mac/mac packip <IP>`（服务器运行中会自动 `ce reload all`）。平时用 Mac 的局域网 IP，`start.sh` 每次开服会自动刷新私有网段的地址；用户要让外网玩家进来时会告诉你公网 IP（"换ip x.x.x.x"），公网 IP 不会被自动覆盖，外网要能连还需要用户把 25565 映射到 Mac。Mac 当前的公网 IP 可以从这台机器 `who` 里用户 ssh 进来的地址看到。
 - **开放外网前先关掉冒名（#39）**：`online-mode=false` 时报出名字就能登进任何人的账号（包括服主的 OP 账号）。插件只拦 OP：离线模式下 OP 只能从 `security.admin-addresses`（默认本机 + 局域网）登录，普通玩家的仓库照样能被冒名拿走。所以 `packip` 收到公网 IP 而 `online-mode=false`（`server.properties` 里，或正在运行的服务器开服时用的，从它的 `latest.log` 判断）时会拒绝（`status` 也会警告），**不要直接加 `--force`**：先问服主选哪条路，① `tools/mac/mac online-mode true --restart`（服务器在运行时必须带 `--restart`：先关服、再改文件、再开服并确认生效，因为运行中的服务器在 `/whitelist on|off` 时会把旧值写回 `server.properties`；正版客户端能进、离线启动器进不来；所有人的 UUID 变成正版 UUID，白名单和 OP 要重新加，`data/players/` 里的旧档案不会自动迁移，等于大家重新开号），② 装登录插件（AuthMe 一类，和 Craftov 加入流程的兼容性要先实测），③ 服主明确接受风险时才 `packip <IP> --force`。
-- **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后先 `tools/mac/mac yml diff items.yml` 确认服务器那份没有手动改动，再 `tools/mac/mac yml copy items.yml`（自动备份旧的），然后重启。`config.yml` 缺的键会回落到 jar 里的默认值。
+- **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后先 `tools/mac/mac yml diff items.yml` 确认服务器那份没有手动改动，再 `tools/mac/mac yml copy items.yml`（自动备份旧的），然后重启。`config.yml` 不用这样换（见上面「默认值改动会自动迁移」那条）。
 - **同步被拒绝**：Mac 项目有未提交改动、或有这边没有的提交时，`sync` 会拒绝而不是覆盖。`tools/mac/mac pull-mac` 把 Mac 的本地分支取到这边的 `refs/mac/*` 查看；确认保住之后用 `tools/mac/mac sync --park <名字>` 把那个分支改名保留，再切到 `main`。
 - **扩展本身**：Mac 上的 `~/.local/libexec/remote-gate/craftov` 会在每次 `sync`（包括 `deploy`）之后自动换成同步过去的 `tools/mac/craftov`，所以改扩展只要提交再 `deploy`；没提交时用 `tools/mac/mac selfupdate` 直接推工作区里的版本。替换前新版本必须在 Mac 上跑通 `selfupdate --check`，否则保留旧的，所以**新版本必须保留 `selfupdate` 指令**，不然以后就只能请用户手动装（`ssh mac put craftov < tools/mac/craftov`，用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`）。门卫 `~/.local/bin/remote-gate` 不会自动更新，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库，改它要用户手动装。
 - **本机无头测试服**（给 bot 用）：在这台机器上 `server/setup.sh --local` 生成 `server/run/`，`server/run/start.sh` 开服；控制台命令用 `cd tools/bot && node -e "require('./rcon')('命令').then(console.log)"`（需要在 `server.properties` 里打开 RCON，密码和 `tools/bot/rcon.js` 一致）。
@@ -107,7 +109,7 @@ tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/Remote
 - 类用 `final`，字段 `private final`；可空值用 `org.jspecify.annotations.Nullable`，嵌套类型要写成 `Outer.@Nullable Inner`。
 - 代码注释和 Javadoc 用英文，写"为什么"；类头一段 Javadoc 说明这个系统的玩法。
 - 玩家可见文本全部中文，用 MiniMessage，通过 `util/Text`（`Text.send`、`Text.mm`、`Text.money`、`Text.escape` 转义玩家名）。常用色：金 `#F2C94C`、灰 `#9AA0A6`、红 `#FF4D4D`。货币符号 `◈`。返回"失败原因"的方法约定：成功返回 null，失败返回中文原因字符串。
-- 数值放 `config.yml`（用 `plugin.getConfig().getXxx("path", 默认值)` 读，代码里带默认值），物品放 `items.yml`，掉落放 `loot.yml`。新增配置段要同时更新 `src/main/resources/config.yml`。
+- 数值放 `config.yml`（用 `plugin.getConfig().getXxx("path", 默认值)` 读，代码里带默认值），物品放 `items.yml`，掉落放 `loot.yml`。新增配置段要同时更新 `src/main/resources/config.yml`。**改已有键的默认值**时，把 `config.yml` 开头的 `config-revision` 加一，并在 `ConfigMigration.CHANGES` 里加一行（新版本号、键、旧值列表 → 新值；同一个键再改一次就再加一行），否则已有服务器拿不到新值。
 - 玩家数据在 `profile/Profile`（Gson JSON，原子写、异步单线程保存）；修改后调用 `markDirty` 或 `profiles().edit(...)`。
 - 物品构造方式改变时把 `ItemFactory.VERSION` 加一，玩家身上的旧物品会被重建。
 - BetterHud 的 placeholder 在异步线程上求值，只能读主线程每 2 tick 生成的 `HudSnapshot`，不能直接读游戏状态。

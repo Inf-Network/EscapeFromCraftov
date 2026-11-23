@@ -78,7 +78,7 @@ public final class TrainingGroundGenerator implements MapGenerator {
         return new MapDef(ID, "训练场", "新手训练行动：搜箱子、开镜打靶、换弹、处理伤势、拉闸撤离。单人，装备原样归还，不计战绩。",
                 "craftov_tpl_" + ID, 15 * 60, new Pos(40, G + 30, 10, 0),
                 List.copyOf(bp.spawns), List.copyOf(bp.extracts), List.copyOf(bp.containers), List.copyOf(bp.ai),
-                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), -2, -35, 82, 21, "day", true);
+                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), -2, -35, 82, 21, "day", true, true);
     }
 
     @Override

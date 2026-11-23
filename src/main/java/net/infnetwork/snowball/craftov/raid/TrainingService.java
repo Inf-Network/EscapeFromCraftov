@@ -139,9 +139,13 @@ public final class TrainingService {
 
     // ------------------------------------------------------------------ entering
 
-    /** The training map, or null while it has not been generated (or its file is broken). */
+    /**
+     * The training map, or null while there is none to play: not generated (or its file is broken),
+     * or an editor draft that nobody has published.
+     */
     public @Nullable MapDef map() {
-        return plugin.maps().get(TrainingGroundGenerator.ID);
+        MapDef map = plugin.maps().get(TrainingGroundGenerator.ID);
+        return map == null || !map.enabled() ? null : map;
     }
 
     /** Whether the deploy screen offers the training raid to this player: while their guide runs. */
@@ -155,6 +159,10 @@ public final class TrainingService {
         MapDef map = map();
         if (map == null || !plugin.getConfig().getBoolean("training.enabled", true)) {
             return "训练场暂时不可用";
+        }
+        if (plugin.editor().underMaintenance(map)) {
+            // A raid copies the template folder, which must not be copied while it is being edited.
+            return "训练场正在维护（地图编辑中），稍后再试";
         }
         if (plugin.raids().raidOf(player) != null) {
             return "你已经在行动中";

@@ -5,8 +5,10 @@ import java.util.List;
 /**
  * Immutable description of a raid map. Coordinates are in the template world.
  *
- * @param test a test map (the proving ground): only players with test access (test.enabled or
- *             craftov.admin) can see or queue for it
+ * @param test    a test map (the proving ground): only players with test access (test.enabled or
+ *                craftov.admin) can see or queue for it
+ * @param enabled published: listed on the deploy screen and open for matchmaking. A map the editor
+ *                has saved but nobody has published yet is not (files without the key are)
  */
 public record MapDef(
         String id,
@@ -24,7 +26,8 @@ public record MapDef(
         List<SwitchDef> switches,
         double minX, double minZ, double maxX, double maxZ,
         String timeOfDay,
-        boolean test
+        boolean test,
+        boolean enabled
 ) {
     public record SpawnDef(int group, Pos pos) {
     }
@@ -64,5 +67,10 @@ public record MapDef(
 
     public boolean inside(double x, double z) {
         return x >= minX && x <= maxX && z >= minZ && z <= maxZ;
+    }
+
+    public MapDef withEnabled(boolean enabled) {
+        return new MapDef(id, name, description, template, raidSeconds, camera, spawns, extracts, containers, ai, bosses,
+                doors, switches, minX, minZ, maxX, maxZ, timeOfDay, test, enabled);
     }
 }

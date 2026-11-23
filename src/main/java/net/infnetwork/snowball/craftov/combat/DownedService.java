@@ -81,13 +81,15 @@ public final class DownedService implements Listener {
     private final Map<UUID, Map.Entry<UUID, Long>> clicks = new HashMap<>();
     /**
      * reviver -> what they last tried and could not do because their hands are busy (a trigger pull,
-     * F on a knife), and the tick. The revive bar holds the action bar while it runs, so the reason
-     * is said there rather than queued behind it.
+     * F on a knife), and the tick. The revive bar holds the action bar while it runs, and so does
+     * the line saying why a revive cannot start, so the reason is said there rather than queued
+     * behind it.
      */
     private final Map<UUID, Map.Entry<String, Long>> busyRefusals = new HashMap<>();
     /**
-     * downed player -> what they just tried and could not do (a menu that stays shut), and the tick.
-     * The bleed-out bar holds the action bar, so the reason is said there for a moment.
+     * downed player -> what they just tried and could not do (a menu that stays shut, F on a knife),
+     * and the tick. The bleed-out bar holds the action bar, and the revive bar while a squadmate
+     * works on them, so the reason is said there for a moment.
      */
     private final Map<UUID, Map.Entry<String, Long>> refusals = new HashMap<>();
     /**
@@ -97,6 +99,8 @@ public final class DownedService implements Listener {
     private static final int HOLD_TICKS = 8;
     /** How long a refusal stays on the bleed-out bar. */
     private static final int REFUSAL_TICKS = 40;
+    /** How long a refusal stays on the revive bar. */
+    private static final int BUSY_REFUSAL_TICKS = 20;
 
     public DownedService(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -297,7 +301,10 @@ public final class DownedService implements Listener {
     }
 
     private void tick() {
+        long now = Bukkit.getCurrentTick();
         refusals.keySet().retainAll(downed.keySet());
+        refusals.values().removeIf(refusal -> now - refusal.getValue() >= REFUSAL_TICKS);
+        busyRefusals.values().removeIf(refusal -> now - refusal.getValue() >= BUSY_REFUSAL_TICKS);
         for (Map.Entry<UUID, Downed> entry : new HashMap<>(downed).entrySet()) {
             Player player = Bukkit.getPlayer(entry.getKey());
             Downed state = entry.getValue();
@@ -331,16 +338,13 @@ public final class DownedService implements Listener {
                 state.reviveTicks += Math.round(5 * plugin.operators().reviveMultiplier(reviver));
                 reviveEffects(reviver, player);
                 double progress = Math.min(1, state.reviveTicks / (double) state.reviveNeeded);
-                long now = Bukkit.getCurrentTick();
                 String note = now - state.interruptedAt < 20 ? "<danger>救援被打断，重新开始  " : "";
-                Map.Entry<String, Long> refused = busyRefusals.get(reviver.getUniqueId());
-                if (refused != null && now - refused.getValue() >= 20) {
-                    busyRefusals.remove(reviver.getUniqueId());
-                    refused = null;
-                }
-                String own = note.isEmpty() && refused != null ? "<muted>" + refused.getKey() + "  " : note;
+                // What either of them just tried and could not do goes on their own revive bar,
+                // which holds the action bar over the hint.
+                String own = note.isEmpty() ? reason(busyRefusals, reviver) : note;
+                String theirs = note.isEmpty() ? reason(refusals, player) : note;
                 Notify.critical(reviver, "revive", own + "<ok>正在救援 " + Text.escape(player.getName()) + "  " + Text.bar(progress, 20, "ok", "dim"));
-                Notify.critical(player, "revive", note + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim"));
+                Notify.critical(player, "revive", theirs + "<ok>" + Text.escape(reviver.getName()) + " 正在救援你  " + Text.bar(progress, 20, "ok", "dim"));
                 if (state.reviveTicks >= state.reviveNeeded) {
                     stopReviving(reviver);
                     revive(player, reviver);
@@ -362,10 +366,6 @@ public final class DownedService implements Listener {
                 player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.6f, 1f);
             }
             Map.Entry<String, Long> refusal = refusals.get(player.getUniqueId());
-            if (refusal != null && Bukkit.getCurrentTick() - refusal.getValue() >= REFUSAL_TICKS) {
-                refusals.remove(player.getUniqueId());
-                refusal = null;
-            }
             Notify.critical(player, "downed", "<danger>倒地 " + Text.bar(state.fraction(), 24, "danger", "dim")
                     + " <muted>" + (int) Math.ceil(state.pool) + "s"
                     + (refusal != null ? "  <danger>" + refusal.getKey() : mates ? "" : "  <accent>没有队友能救你，使用自救注射器"));
@@ -500,7 +500,8 @@ public final class DownedService implements Listener {
             }
             String blocked = reviveBlocker(p, downedPlayer);
             if (blocked != null) {
-                Notify.critical(p, "revive", "<danger>" + blocked);
+                // Their hands count as busy from the click on: what that refused is said here too.
+                Notify.critical(p, "revive", reason(busyRefusals, p) + "<danger>" + blocked);
                 continue;
             }
             if (p.getUniqueId().equals(state.reviver)) {
@@ -511,6 +512,12 @@ public final class DownedService implements Listener {
             }
         }
         return found;
+    }
+
+    /** The player's refusal in {@code reasons} as the start of a bar line, or "" when there is none. */
+    private static String reason(Map<UUID, Map.Entry<String, Long>> reasons, Player player) {
+        Map.Entry<String, Long> refusal = reasons.get(player.getUniqueId());
+        return refusal == null ? "" : "<muted>" + refusal.getKey() + "  ";
     }
 
     /** True while {@code reviver} holds right click on {@code downedPlayer}. */

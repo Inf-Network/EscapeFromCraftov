@@ -85,6 +85,19 @@ function make (tag) {
     const m = (p.metadata || []).find(x => x.key === 8 && typeof x.value === 'number')
     if (m) bot.flags.push({ at: Date.now(), entityId: p.entityId, value: m.value })
   })
+  // Recoil kicks the view with a relative rotation, which mineflayer applies as absolute: every other
+  // round of A's spray at the downed B went out level (pitch about 0, not B's 6) and drifted south,
+  // missing B for a whole magazine or downing C instead. Apply it as relative, as melee.js does;
+  // mineflayer adds its own listener a tick after createBot, so this one goes on at login, after it.
+  bot.once('login', () => {
+    let before = null
+    bot._client.prependListener('player_rotation', () => { before = bot.entity && [bot.entity.yaw, bot.entity.pitch] })
+    bot._client.on('player_rotation', p => {
+      if (!before || !(p.relativeYaw || p.relativePitch)) return
+      if (p.relativeYaw) bot.entity.yaw = before[0] - p.yaw * Math.PI / 180
+      if (p.relativePitch) bot.entity.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, before[1] - p.pitch * Math.PI / 180))
+    })
+  })
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), text: strip(JSON.stringify(t)) }))
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLog.push(m); log(tag, 'CHAT', m) } })
   bot.on('kicked', r => log(tag, 'KICKED', JSON.stringify(r)))

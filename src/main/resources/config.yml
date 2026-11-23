@@ -175,7 +175,8 @@ footsteps:
   # out to walk-range blocks walking and sprint-range sprinting (louder the nearer), and a landing
   # from land-min-fall blocks or more out to land-range. A wall in between cuts the range to
   # wall-share of it. Sneaking makes none (sneak-range), and in a raid the sneaking speed is
-  # sneak-speed of the walk (vanilla 0.3). The soldiers hear by the same ranges.
+  # sneak-speed of the walk (vanilla 0.3). The soldiers hear by the same ranges and walls. enabled:
+  # false gives players vanilla's steps back; the soldiers still hear by these ranges.
   enabled: true
   stride: 1.6
   walk-range: 16

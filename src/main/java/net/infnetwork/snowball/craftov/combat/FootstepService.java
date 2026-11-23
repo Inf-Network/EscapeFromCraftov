@@ -39,8 +39,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * distance like the rest. Sneaking is the silent walk: no steps at all (footsteps.sneak-range 0),
  * and in a raid it is faster than vanilla's (footsteps.sneak-speed, the sneaking-speed attribute,
  * 0.45 of the walk where vanilla's is 0.3), so it is a way to move, not only to stand still. The
- * soldiers hear by the same ranges ({@link #range}). The player's own client still plays their own
- * vanilla steps for them.
+ * soldiers hear by the same ranges and walls ({@link #heardAt}), whether footsteps.enabled is on or
+ * not. The player's own client still plays their own vanilla steps for them.
  */
 public final class FootstepService implements Listener {
 
@@ -176,18 +176,38 @@ public final class FootstepService implements Listener {
     }
 
     /**
-     * How far this player's footsteps carry right now (blocks): sneaking, walking or sprinting, by
-     * footsteps.*-range. Soldiers hear by it too. 0 while they stand still or make no steps.
+     * How far this player's footsteps carry right now in the open (blocks): sneaking, walking or
+     * sprinting, by footsteps.*-range; 0 while they make no steps (downed, swimming, riding...).
      */
-    public double range(Player player) {
+    private double range(Player player) {
         var config = plugin.getConfig();
-        if (!config.getBoolean("footsteps.enabled", true) || silent(player)) {
+        if (silent(player)) {
             return 0;
         }
         if (player.isSneaking()) {
             return Math.max(0, config.getDouble("footsteps.sneak-range", 0));
         }
         return player.isSprinting() ? config.getDouble("footsteps.sprint-range", 32) : config.getDouble("footsteps.walk-range", 16);
+    }
+
+    /**
+     * Whether a moving player's footsteps reach {@code ear} (a soldier's): within the range they carry
+     * in the open, or footsteps.wall-share of it with a solid block in between, as a player standing
+     * there would hear them. footsteps.enabled only chooses whether players hear these steps or
+     * vanilla's; soldiers hear by these ranges either way.
+     */
+    public boolean heardAt(Player player, Location ear) {
+        double range = range(player);
+        Location feet = player.getLocation().add(0, 0.1, 0);
+        if (range <= 0 || ear.getWorld() != feet.getWorld()) {
+            return false;
+        }
+        double d = ear.distance(feet);
+        if (d >= range) {
+            return false;
+        }
+        double wallShare = Math.max(0, Math.min(1, plugin.getConfig().getDouble("footsteps.wall-share", 0.5)));
+        return d < range * wallShare || !occluded(ear, feet);
     }
 
     /**

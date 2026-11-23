@@ -942,10 +942,9 @@ public final class AiService implements Listener {
             boolean recent = id.equals(bot.lastFought) && now - bot.lastSeenTick < 20L * 10;
             boolean known = id.equals(bot.target) && now - bot.lastSeenTick < 40;
             // Hearing: footsteps carry as far for a soldier as for a player (FootstepService: walking 16
-            // blocks, sprinting 32, the silent walk nothing).
+            // blocks, sprinting 32, half that through a wall, the silent walk nothing).
             boolean moving = moving(player);
-            double heard = moving ? plugin.footsteps().range(player) : 0;
-            boolean noisy = d < heard;
+            boolean noisy = moving && plugin.footsteps().heardAt(player, mob.getEyeLocation());
             double view = view(facing, from, player.getLocation(), alerted);
             if (noisy) {
                 view = Math.max(view, 0.8); // it turns towards the footsteps

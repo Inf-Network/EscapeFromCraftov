@@ -4,7 +4,9 @@
 Per gun: hands-<gun>-hip (at rest), -ads (right mouse held until the sights are up), -sprint (forward
 and sprint held), -draw (just after switching to it: coming up low) and -reload-a..c (Q with rounds
 gone, about 0.45, 0.9 and 1.5 s in: the left hand goes to the magazine, out of view with it and
-back). Then the knife: hands-knife (at rest), -stab (a left click: the thrust), -inspect-a..c (F).
+back). Then the knife: hands-knife (at rest), -stab-a..c (a left click on a dummy 2.5 blocks away: the
+8-tick thrust, about 0.06, 0.16 and 0.26 s in; a stab into thin air would show the knife dropping out of
+view instead, as the client lowers a weapon after a miss), -inspect-a..c (F).
 """
 
 import pathlib
@@ -64,9 +66,19 @@ def run(s):
     face_dummy(s)
     s.wait(0.8)
     s.shot('hands-knife')
+    # Up to the nearest dummy, 2.5 blocks in front of it, looking at its chest.
+    near = '@e[type=minecraft:zombie,sort=nearest,limit=1]'
+    s.rcon(f'execute as {s.name} at @s at {near} run tp @s ^ ^ ^2.5')
+    s.wait(0.3)
+    s.rcon(f'execute as {s.name} at @s anchored eyes facing entity {near} eyes run tp @s ~ ~ ~ ~ ~12')
+    s.clear_chat()
+    s.wait(1.2)
+    s.shot('hands-knife-close')
     with s.mouse(1):
-        time.sleep(0.12)
-        s.shot('hands-knife-stab', quick=True)
+        start = time.time()
+        for suffix, at in (('a', 0.06), ('b', 0.16), ('c', 0.26)):
+            time.sleep(max(0.0, start + at - time.time()))
+            s.shot(f'hands-knife-stab-{suffix}', quick=True)
     s.wait(1)
     s.key('f')
     start = time.time()

@@ -8,10 +8,15 @@ land together; ShotCam then walks round the puppet with the HUD hidden:
   stance-shoulder-front / -side aiming: the gun shouldered along the look
   stance-shoulder-crouch        aiming crouched
   stance-reload                 reloading: the support arm comes up to the magazine
-  stance-revive                 the puppet working on ShotCam, who is down (seen from ShotCam's back)
+  stance-revive / -revive-side  the puppet, empty-handed, working on ShotCam, who is down: seen with
+                                the front view (F5 twice) from in front of ShotCam's face, the
+                                puppet kneeling behind ShotCam's head; then with ShotCam's head
+                                turned 50 degrees, so the camera sees the puppet from the side
   stance-downed                 the puppet knocked down: crawling with empty hands
   stance-revived                ShotCam, gun in hand, has held right click on the puppet: it is up again
-  stance-throw                  a smoke grenade cooked overhead (last: the smoke hides the yard)
+  stance-throw                  a smoke grenade cooked overhead, seen from above the puppet's right
+                                side: the grenade lies flat behind the raised hand, edge-on from
+                                eye level (last: the smoke hides the yard)
 
 Both leave through the always-open extract at the end, so neither reconnects into the raid later.
 """
@@ -70,17 +75,27 @@ def run(s):
                 s.wait(0.9)
                 s.shot('stance-reload')
                 s.wait(3)
-                # ShotCam goes down and the puppet works on it, seen over ShotCam's shoulder.
+                # ShotCam goes down with the puppet behind it, and the puppet, empty-handed (an empty
+                # hotbar slot), works on it: seen with the front view from in front of ShotCam's face,
+                # looking a little down, so the puppet kneels behind ShotCam's head.
+                s.rcon(f'item replace entity {mate.name} hotbar.6 with minecraft:air')
+                mate.send('slot 6')
                 mate.orbit(0, distance=1.6)
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~180 -20')
+                s.wait(0.5)
                 s.rcon(f'damage {s.name} 500 minecraft:generic')
                 s.wait(1.5)
                 mate.send(f'revive {s.name} on')
-                s.key('F5')
+                s.key('F5', 'F5')
                 s.wait(1.5)
                 s.shot('stance-revive')
-                s.wait(4.5)
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~50 -20')
+                s.wait(0.8)
+                s.shot('stance-revive-side')
+                s.wait(3)
                 mate.send(f'revive {s.name} off')
-                s.key('F5', 'F5')
+                s.key('F5')
+                mate.hold(gun)
                 s.wait(1.5)
                 # Now the puppet goes down, and ShotCam, gun in hand, gets it up.
                 s.rcon(f'damage {mate.name} 500 minecraft:generic')
@@ -97,13 +112,19 @@ def run(s):
                 mate.orbit(30, distance=2.6)
                 s.shot('stance-revived')
                 mate.send(f'slot {s.hotbar_slot("smoke", mate.name)}')
-                mate.orbit(40, distance=2.6)
-                s.wait(0.3)
+                # The cooked grenade lies flat behind the raised hand, edge-on from eye level: ShotCam
+                # looks down at it from a barrier block two blocks up, at the puppet's right side.
+                mate.orbit(70, distance=2.6)
+                s.rcon(f'execute as {s.name} at @s run setblock ~ ~1 ~ minecraft:barrier')
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~2 ~ facing entity {mate.name} eyes')
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~ ~22')  # the whole puppet in view
+                s.wait(0.6)
                 mate.send('hold on')  # the smoke's fuse is 1.5 s from here
-                s.wait(0.5)
+                s.wait(0.4)
                 s.shot('stance-throw')
                 s.rcon(f'execute as {mate.name} at @s run tp @s ~ ~ ~ 180 -35')
                 mate.send('hold off')
+                s.rcon(f'execute as {s.name} at @s run setblock ~ ~-1 ~ minecraft:air')
                 s.wait(1)
             finally:
                 s.key('F1')

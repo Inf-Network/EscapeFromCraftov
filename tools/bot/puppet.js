@@ -10,6 +10,8 @@
 //   hold on|off         press right click once and keep it down, or let it up (a grenade's pin)
 //   drop                the drop key (Q): reloads a gun
 //   revive <name> on|off  hold right click on that player (a downed squadmate), or let go
+//   slide [ms]          sprint forward along its view for ms (1000), then tap sneak twice (100 ms
+//                       down, 100 up, down again): a slide; the keys go up 1.6 s later
 //   chat <text>         say something or run a /command
 //   click <slot>        left-click a slot of the open menu (e.g. post an escort contract)
 //   close               close the open menu
@@ -28,6 +30,27 @@ bot.on('error', e => console.log('error', e.message))
 
 let aiming = null
 let reviving = null
+
+/** The keys held, as one player_input packet (mineflayer's own sends shift alone). */
+function keys (k = {}) {
+  bot._client.write('player_input', { inputs: { forward: !!k.forward, backward: false, left: false, right: false, jump: false, shift: !!k.shift, sprint: !!k.sprint } })
+}
+
+/** The sprint command (mineflayer's own sends an action id 1.21.11 reads as something else). */
+function sprinting (on) {
+  bot._client.write('entity_action', { entityId: bot.entity.id, actionId: on ? 'start_sprinting' : 'stop_sprinting', jumpBoost: 0 })
+}
+
+function slide (ms) {
+  bot.setControlState('forward', true)
+  bot.setControlState('sprint', true)
+  sprinting(true)
+  keys({ forward: true, sprint: true })
+  setTimeout(() => keys({ forward: true, sprint: true, shift: true }), ms)
+  setTimeout(() => keys({ forward: true, sprint: true }), ms + 100)
+  setTimeout(() => keys({ forward: true, sprint: true, shift: true }), ms + 200)
+  setTimeout(() => { bot.clearControlStates(); keys({}); sprinting(false) }, ms + 1600)
+}
 
 function stop (timer) {
   if (timer) clearInterval(timer)
@@ -63,7 +86,8 @@ readline.createInterface({ input: process.stdin })
         bot.activateEntity(target)
         reviving = setInterval(() => bot.activateEntity(target), 200)
       } else if (on) console.log('revive: no', rest[0], 'in sight')
-    } else if (cmd === 'chat') bot.chat(rest.join(' '))
+    } else if (cmd === 'slide') slide(Number(rest[0] || 1000))
+    else if (cmd === 'chat') bot.chat(rest.join(' '))
     else if (cmd === 'click' && bot.currentWindow) bot.clickWindow(Number(rest[0]), 0, 0).catch(e => console.log('error', e.message))
     else if (cmd === 'close' && bot.currentWindow) bot.closeWindow(bot.currentWindow)
     else if (cmd === 'quit') quit()

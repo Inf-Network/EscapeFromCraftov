@@ -922,7 +922,7 @@ class Puppet:
 
     def send(self, line):
         """One puppet.js command: slot N, sneak on|off, use on|off, hold on|off, drop, revive <name> on|off,
-        chat <text>."""
+        slide [ms], chat <text>."""
         self.proc.stdin.write((line + '\n').encode('utf-8'))
         self.proc.stdin.flush()
         time.sleep(0.3)

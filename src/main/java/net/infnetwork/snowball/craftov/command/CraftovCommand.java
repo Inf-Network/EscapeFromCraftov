@@ -199,7 +199,7 @@ public final class CraftovCommand implements TabExecutor {
             sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
+            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] [瞄准镜] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
                     + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"));
         }
     }
@@ -219,6 +219,10 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 int amount = args.length > 3 ? Integer.parseInt(args[3]) : 1;
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
+                ItemDef optic = args.length > 4 && def.isGun() ? plugin.registry().get(args[4]) : null;
+                if (optic != null && optic.optic() != null && def.gun().accepts(optic.optic())) {
+                    stack = plugin.items().withOptic(stack, optic.id()); // /cv give <玩家> <枪> 1 <瞄准镜>
+                }
                 plugin.carry().give(target, stack, true);
                 Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + amount);
             }

@@ -46,7 +46,9 @@ import java.util.UUID;
  * name after its own. Records keep neither, so the same knife taken out of the stash, rebuilt from
  * the loadout or handed to someone else shows its own look until it is in a melee slot again, then
  * that player's choice. A sweep every other tick puts it right, so every path a knife can take
- * into the slot is covered without each one having to know about skins.
+ * into the slot is covered without each one having to know about skins. The few paths that copy
+ * a stack out of the inventory as it is, rather than through its record (a crate in a raid, a
+ * body), take the skin off with {@link #undress}.
  * <p>
  * Skins are priced in 点券 ({@link net.infnetwork.snowball.craftov.economy.PointsBank}), never in
  * 块币. Buying stays closed ({@code skins.shop-open}) until the server's global 点券 is plugged in.
@@ -244,6 +246,28 @@ public final class SkinService implements Listener {
         copy.setData(DataComponentTypes.ITEM_MODEL, model);
         copy.setData(DataComponentTypes.ITEM_NAME, name);
         inv.setItem(CarryService.MELEE_SLOT, copy);
+    }
+
+    /**
+     * The knife as it is without a skin, for a stack copied out of a player's inventory rather than
+     * rebuilt from its record: the knife they put into a crate, or one that goes into their body.
+     * The skin is the owner's look, never the knife's, so whoever picks it up must not see it.
+     * Anything else, and a knife that already looks its own, comes back as it is.
+     */
+    public @Nullable ItemStack undress(@Nullable ItemStack stack) {
+        ItemDef def = plugin.items().defOf(stack);
+        if (stack == null || def == null || !def.isMelee()) {
+            return stack;
+        }
+        Key model = Key.key(def.model());
+        Component name = names.computeIfAbsent(def.coloredName(), Text::mm);
+        if (model.equals(stack.getData(DataComponentTypes.ITEM_MODEL)) && name.equals(stack.getData(DataComponentTypes.ITEM_NAME))) {
+            return stack;
+        }
+        ItemStack plain = stack.clone();
+        plain.setData(DataComponentTypes.ITEM_MODEL, model);
+        plain.setData(DataComponentTypes.ITEM_NAME, name);
+        return plain;
     }
 
     // ------------------------------------------------------------------ preview

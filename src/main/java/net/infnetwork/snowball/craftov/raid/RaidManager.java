@@ -1917,18 +1917,23 @@ public final class RaidManager implements Listener {
         if (type == null) {
             return;
         }
+        // A knife that left its melee slot as it was (on the cursor, say) would still wear its owner's skin.
+        List<ItemStack> plain = new ArrayList<>(items.size());
+        for (ItemStack stack : items) {
+            plain.add(plugin.skins().undress(stack));
+        }
         Location ground = at.clone();
         ground.setPitch(0);
         // A fully loaded player carries up to 38 stacks (7 pockets, 9 rig cells, 18 backpack cells
         // and 4 worn pieces), and the cursor can add one more: more than the 4-row bag holds, and worn
         // armour comes last in slot order. The body grows to fit, up to a double chest.
-        int rows = Math.min(6, Math.max(type.rows(), (items.size() + 8) / 9));
+        int rows = Math.min(6, Math.max(type.rows(), (plain.size() + 8) / 9));
         LootContainer container = new LootContainer(LootContainer.newId(), new ContainerType(type.id(), type.name(), "none",
                 1f, 1.4, 0.6, rows, 0, 0, type.searchSpeed(), type.categories(), type.rarities(), List.of()),
                 ground, 0, title);
-        List<ItemStack> left = container.fill(items, false);
+        List<ItemStack> left = container.fill(plain, false);
         if (!left.isEmpty()) {
-            plugin.getLogger().warning(title + " holds " + items.size() + " items, " + left.size()
+            plugin.getLogger().warning(title + " holds " + plain.size() + " items, " + left.size()
                     + " more than fit in a body; they are dropped beside it");
             for (ItemStack stack : left) {
                 raid.world.dropItemNaturally(ground, stack);

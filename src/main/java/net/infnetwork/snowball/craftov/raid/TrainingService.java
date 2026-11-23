@@ -184,6 +184,11 @@ public final class TrainingService {
         if (plugin.raids().raidOf(player) != null) {
             return "你已经在行动中";
         }
+        if (plugin.raids().launching(player.getUniqueId())) {
+            // Matched (or a training course started) and waiting for the map: a second launch would
+            // take the player from the first one without a word to their squad.
+            return "已经匹配成功，正在部署行动";
+        }
         if (plugin.range().isIn(player)) {
             return "请先离开靶场";
         }

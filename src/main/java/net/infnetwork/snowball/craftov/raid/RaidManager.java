@@ -2726,12 +2726,13 @@ public final class RaidManager implements Listener {
     /**
      * What a void did to one player, for the chat line that goes with its letter: {@code refund}
      * the entry fee and premium handed back, {@code earned} what the raid had paid out (less what it
-     * cost on the way) and was taken back, {@code withheld} whether anything was not handed back
-     * because others had taken it out (or, {@code left}, it is still in the raid), {@code record}
+     * cost on the way) and was taken back, {@code gone} what was not handed back because others had
+     * taken it out (or, {@code left}, it is still in the raid; see {@link #gone}), {@code record}
      * false for a profile without a deployment record (left by an older build), whose loadout simply
-     * stays and which gets no refund. A player who {@code left} a raid that goes on gets no letter.
+     * stays and which gets no refund. A player who {@code left} a raid that goes on gets no letter,
+     * so the chat line names what was kept back itself.
      */
-    private record Voided(long refund, long earned, boolean withheld, boolean record, boolean training, boolean left) {
+    private record Voided(long refund, long earned, List<String> gone, boolean record, boolean training, boolean left) {
         String summary() {
             if (training) {
                 return "<muted>训练里拿到的东西已收回，带进去的装备和安全箱已原样归还。";
@@ -2741,8 +2742,9 @@ public final class RaidManager implements Listener {
                 return "<muted>配装和安全箱仍是出发前的样子，局内捡到的物品不计" + letter;
             }
             StringBuilder sb = new StringBuilder("<muted>出发前的装备和安全箱已退回");
-            if (withheld) {
-                sb.append(left ? "（还留在局内的和已被其他干员带出本局的不再退回）" : "（已被其他干员带出本局的不再退回）");
+            if (!gone.isEmpty()) {
+                sb.append(left ? "（还留在局内的和已被其他干员带出本局的不再退回：" + Text.escape(String.join("、", gone)) + "）"
+                        : "（已被其他干员带出本局的不再退回）");
             }
             if (refund > 0) {
                 sb.append("，入场费和保险费 ◈").append(Text.money(refund)).append(" 已退还");
@@ -2790,6 +2792,8 @@ public final class RaidManager implements Listener {
         boolean training = known != null && known.training;
         boolean crash = why == VoidCause.CRASH;
         boolean left = why == VoidCause.LEFT;
+        // A letter for whoever cannot read it in chat: not someone moved out of a raid that goes on.
+        boolean letterSent = !training && why != VoidCause.LEFT;
         long compensation = training || left ? 0 : Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
         Voided[] sent = new Voided[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
@@ -2799,22 +2803,23 @@ public final class RaidManager implements Listener {
                 + (crash ? ", luck.pity and luck.jackpots as at the deploy and the quota its hand-outs spent back" : "")
                 + ", luck.deployed = null";
         plugin.profiles().edit(uuid, () -> {
-            int[] lost = new int[1];
+            List<String> lost = new ArrayList<>();
             Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, known.gone, lost);
             List<ItemRecord> secure = known == null ? List.of() : without(known.secure, known.gone, lost);
             Map<String, Long> lostStacks = known == null ? Map.of() : deduct(loadout, secure, known.goneStacks);
-            return describeVoid(cause, known, loadout, secure, training || left ? null : voidLetter(known, lost[0], lostStacks, compensation, crash));
+            return describeVoid(cause, known, loadout, secure, letterSent ? voidLetter(known, gone(lost, lostStacks), compensation, why) : null);
         }, p -> {
             Profile.Deployment d = p.deployment;
             if (p.activeRaid == null && d == null || known != null && d != null && !d.raid.equals(known.raid)) {
                 return; // settled already (or, never expected, another raid's record)
             }
             // Everything is worked out before the profile is touched, so it changes all at once.
-            int[] lost = new int[1];
+            List<String> lost = new ArrayList<>();
             Map<Integer, ItemRecord> loadout = d == null ? p.loadout : without(d.loadout, d.gone, lost);
             List<ItemRecord> secure = d == null ? p.secure : without(d.secure, d.gone, lost);
             Map<String, Long> lostStacks = d == null ? Map.of() : deduct(loadout, secure, d.goneStacks);
-            Profile.Mail letter = voidLetter(d, lost[0], lostStacks, compensation, crash);
+            List<String> gone = gone(lost, lostStacks);
+            Profile.Mail letter = voidLetter(d, gone, compensation, why);
             List<Profile.TaskState> tasks = new ArrayList<>();
             if (d != null) {
                 d.tasks.forEach(task -> tasks.add(task.copy()));
@@ -2858,11 +2863,11 @@ public final class RaidManager implements Listener {
                 // the raid closes (voidOnStop, evacuate).
                 p.luck.deployed = null;
             }
-            if (!left && (d == null || !d.training)) {
+            if (letterSent && (d == null || !d.training)) {
                 MailService.deliver(p, letter);
             }
             sent[0] = new Voided(d == null ? 0 : d.entryFee + d.premium, d == null ? 0 : d.earned,
-                    lost[0] > 0 || !lostStacks.isEmpty(), d != null, d != null && d.training, left);
+                    gone, d != null, d != null && d.training, left);
         });
         if (sent[0] == null) {
             return null;
@@ -2905,23 +2910,14 @@ public final class RaidManager implements Listener {
 
     /**
      * The letter that tells a player their raid was voided, with the compensation attached.
-     * {@code lost} single items and {@code lostStacks} (item id -> count) had left the raid with
-     * others and were not handed back.
+     * {@code gone} names what had left the raid with others and was not handed back ({@link #gone}).
      */
-    private Profile.Mail voidLetter(Profile.@Nullable Deployment d, int lost, Map<String, Long> lostStacks, long compensation,
-                                    boolean crash) {
-        StringBuilder body = new StringBuilder(crash ? "服务器意外中断时" : "服务器维护时");
-        body.append(d == null ? "你还在行动中" : "你还在「" + d.map + "」（" + d.tier + "）的行动中").append("，这局行动已作废。\n")
+    private Profile.Mail voidLetter(Profile.@Nullable Deployment d, List<String> gone, long compensation, VoidCause why) {
+        String raid = d == null ? "行动" : "「" + d.map + "」（" + d.tier + "）的行动";
+        StringBuilder body = new StringBuilder((why == VoidCause.CRASH ? "服务器意外中断时" : "服务器维护时") + "你还在" + raid
+                + "中，这局行动已作废。\n")
                 .append(d == null ? "你的配装和安全箱仍是出发前的样子，局内捡到的物品不计。"
                         : "出发前的装备和安全箱已原样退回；局内获得的物品、经验、任务进度和战绩都不计。");
-        List<String> gone = new ArrayList<>();
-        if (lost > 0) {
-            gone.add(lost + " 件装备");
-        }
-        lostStacks.forEach((id, n) -> {
-            ItemDef def = plugin.registry().get(id);
-            gone.add((def == null ? id : def.name()) + " ×" + n);
-        });
         if (!gone.isEmpty()) {
             body.append("\n已被其他干员带出本局的不再退回：").append(String.join("、", gone)).append("。");
         }
@@ -2943,10 +2939,27 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Copies of the records, leaving out (packed contents included) everything whose instance id
-     * is in {@code gone}; {@code lost[0]} counts what was left out.
+     * What a void did not hand back, for the player to read: {@code lost} the item ids of single
+     * items (by instance id, see {@link #without}) and {@code lostStacks} stacking items by count,
+     * each as 「名字 ×数量」.
      */
-    private static Map<Integer, ItemRecord> without(Map<Integer, ItemRecord> records, Set<String> gone, int[] lost) {
+    private List<String> gone(List<String> lost, Map<String, Long> lostStacks) {
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        lost.forEach(id -> counts.merge(id, 1L, Long::sum));
+        lostStacks.forEach((id, n) -> counts.merge(id, n, Long::sum));
+        List<String> out = new ArrayList<>();
+        counts.forEach((id, n) -> {
+            ItemDef def = plugin.registry().get(id);
+            out.add((def == null ? id : def.name()) + " ×" + n);
+        });
+        return out;
+    }
+
+    /**
+     * Copies of the records, leaving out (packed contents included) everything whose instance id
+     * is in {@code gone}; {@code lost} gets the item id of each record left out.
+     */
+    private static Map<Integer, ItemRecord> without(Map<Integer, ItemRecord> records, Set<String> gone, List<String> lost) {
         Map<Integer, ItemRecord> out = new HashMap<>();
         records.forEach((slot, record) -> {
             ItemRecord kept = without(record, gone, lost);
@@ -2957,7 +2970,7 @@ public final class RaidManager implements Listener {
         return out;
     }
 
-    private static List<ItemRecord> without(List<ItemRecord> records, Set<String> gone, int[] lost) {
+    private static List<ItemRecord> without(List<ItemRecord> records, Set<String> gone, List<String> lost) {
         List<ItemRecord> out = new ArrayList<>();
         for (ItemRecord record : records) {
             ItemRecord kept = without(record, gone, lost);
@@ -2968,9 +2981,9 @@ public final class RaidManager implements Listener {
         return out;
     }
 
-    private static @Nullable ItemRecord without(ItemRecord record, Set<String> gone, int[] lost) {
+    private static @Nullable ItemRecord without(ItemRecord record, Set<String> gone, List<String> lost) {
         if (record.uid != null && gone.contains(record.uid)) {
-            lost[0]++;
+            lost.add(record.id);
             return null;
         }
         ItemRecord copy = record.copy();
@@ -3063,7 +3076,7 @@ public final class RaidManager implements Listener {
      * secure container without the gear by instance id in {@code gone}, less its goneStacks.
      */
     private Map<String, Long> refundable(Profile.Deployment d, Set<String> gone) {
-        int[] ignored = new int[1];
+        List<String> ignored = new ArrayList<>();
         List<ItemRecord> records = new ArrayList<>(without(d.loadout, gone, ignored).values());
         records.addAll(without(d.secure, gone, ignored));
         Map<String, Long> counts = stackCounts(records);

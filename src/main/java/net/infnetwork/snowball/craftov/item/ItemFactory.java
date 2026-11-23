@@ -71,8 +71,10 @@ public final class ItemFactory {
      * The grenade line used 16 to stay clear of the ads line's 15; it landed second, so it goes one
      * past both, or stacks already rebuilt at 15 or 16 would keep missing one side's changes.
      * 18: the weight line says how many secure-container cells the item takes (#37).
+     * 19: gun models (#4, which used 16): guns carry max_damage 5 and, out of the hand, the holster
+     * mark (the item model shows the gun low, as the draw starts).
      */
-    public static final int VERSION = 18;
+    public static final int VERSION = 19;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -89,13 +91,14 @@ public final class ItemFactory {
     public static final Key THROW_GROUP = Key.key("craftov", "throw");
     /**
      * Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading, the sights
-     * coming up, aimed.
+     * coming up, aimed, put away.
      */
     public static final int MARK_NONE = 0;
     public static final int MARK_DRAW = 1;
     public static final int MARK_RELOAD = 2;
     public static final int MARK_AIM = 3;
     public static final int MARK_AIMED = 4;
+    public static final int MARK_HOLSTER = 5;
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
@@ -296,11 +299,12 @@ public final class ItemFactory {
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
             stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
                     .type(SwingAnimation.Animation.NONE).duration(1).build());
-            // Room for the hand marks (damage 1 to 4, see setHandMark). Unbreakable, so it is never worn
-            // down, shows no durability bar and no tooltip line; a damageable item may not stack.
+            // Room for the hand marks (damage 1 to 5, see setHandMark). Unbreakable, so it is never worn
+            // down, shows no durability bar and no tooltip line; a damageable item may not stack. A gun
+            // starts put away: switched to, it shows low at once and comes up as it is drawn.
             stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
-            stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_AIMED);
-            stack.setData(DataComponentTypes.DAMAGE, MARK_NONE);
+            stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_HOLSTER);
+            stack.setData(DataComponentTypes.DAMAGE, MARK_HOLSTER);
             stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
@@ -610,6 +614,11 @@ public final class ItemFactory {
         setHandMark(stack, drawing ? MARK_DRAW : MARK_NONE);
     }
 
+    /** Marks a gun as put away: out of the hand (dropped, stowed, in a container), see {@link #setHandMark}. */
+    public static void setHolstered(ItemStack stack) {
+        setHandMark(stack, MARK_HOLSTER);
+    }
+
     /**
      * Tells the gun's item model what the gun is doing besides being held: {@link #MARK_DRAW} while it
      * comes up after a switch (the model ignores the shot cooldown, so the client shows no kick while
@@ -617,16 +626,20 @@ public final class ItemFactory {
      * the reload frames instead of a shot's kick), {@link #MARK_AIM} while the sights come up (the
      * cooldown runs those frames) and {@link #MARK_AIMED} once they are up (aimed pose, or a scope's
      * mask; the cooldown is a shot's kick again). Right mouse itself changes nothing on the client:
-     * the sights show when the server aims, so the view, the spread and the pose always agree. The
-     * mark is the stack's damage, against max_damage 4, because damage is the only component the
-     * vanilla 1.21.11 client swaps in on a held item without lowering and raising it again
-     * (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun. "No mark" is a
+     * the sights show when the server aims, so the view, the spread and the pose always agree.
+     * {@link #MARK_HOLSTER} is every gun out of the hand: the model shows the first frame of the draw
+     * (the gun low and canted), so a switch to it shows it low at once, while the server's draw mark
+     * and the cooldown that runs the draw frames are still on their way. The mark is the stack's
+     * damage, against max_damage 5, because damage is the only component the vanilla 1.21.11 client
+     * swaps in on a held item without lowering and raising it again (DataComponentType.
+     * ignoreSwapAnimation; the gun's item definitions also say hand_animation_on_swap false, so no
+     * other change dips it either). "No mark" is a
      * damage of 0, never a missing component: ItemStack.matchesIgnoringComponents first compares how
      * many components the two stacks have, so a damage that came and went dipped the gun anyway (at
      * the start and end of every reload, and of the sights coming up).
      */
     public static void setHandMark(ItemStack stack, int mark) {
-        stack.setData(DataComponentTypes.DAMAGE, Math.max(MARK_NONE, Math.min(MARK_AIMED, mark)));
+        stack.setData(DataComponentTypes.DAMAGE, Math.max(MARK_NONE, Math.min(MARK_HOLSTER, mark)));
     }
 
     public void setDura(ItemStack stack, double dura) {

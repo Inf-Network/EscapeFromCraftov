@@ -1,14 +1,19 @@
 """Converts low-poly OBJ gun meshes into Minecraft box models.
 
-The source meshes are Quaternius' "Ultimate Gun Pack" (CC0, public domain). Minecraft item models
-can only use boxes, so each mesh is voxelised: the surface is rasterised into a grid and columns are
-filled across the gun's width. Output is a small JSON per gun (the voxel grid) committed under
-tools/art/voxguns/,
-so building the resource pack never needs the original download. The voxels keep their source
+The source meshes are Quaternius' "Ultimate Gun Pack" (CC0, public domain). The ones Craftov uses
+are kept unchanged in tools/art/src/quaternius/, with where they came from and their SHA-256 in
+sources.json there. Minecraft item models can only use boxes, so each mesh is voxelised: the
+surface is rasterised into a grid and columns are filled across the gun's width. Output is a small
+JSON per gun (the voxel grid) committed under tools/art/voxguns/. The voxels keep their source
 material; gunvox.py repaints them, splits off moving parts and merges them into textured boxes.
+Guns with a tools/art/guns/<id>.yml are built from the same meshes by meshprim.py instead.
 
-    python3 tools/art/meshvox.py <OBJ folder> sheet      # contact sheet of every model
-    python3 tools/art/meshvox.py <OBJ folder> convert    # write tools/art/voxguns/*.json
+    python3 tools/art/meshvox.py convert [gun ...]     # write tools/art/voxguns/*.json
+    python3 tools/art/meshvox.py sheet [out.png]       # contact sheet of every model
+    python3 tools/art/meshvox.py verify                # the meshes still match sources.json
+
+A folder of the whole pack's OBJ files may come first (`meshvox.py <folder> sheet`) to look at the
+models Craftov does not use yet.
 """
 import json
 import math
@@ -19,6 +24,7 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'voxguns')
+SRC = os.path.join(HERE, 'src', 'quaternius')
 
 
 def srgb(c):
@@ -192,13 +198,41 @@ def convert(folder, gid, source, length, flip, voxel):
     print('%-8s <- %-20s %5d voxels, materials %s' % (gid, source, len(solid), ', '.join(names)))
 
 
+def verify(folder=SRC):
+    """Every file sources.json lists is there and unchanged: returns the problems (empty when all match)."""
+    import hashlib
+    with open(os.path.join(folder, 'sources.json'), encoding='utf-8') as f:
+        listed = json.load(f)['files']
+    problems = []
+    for name, digest in sorted(listed.items()):
+        path = os.path.join(folder, name)
+        if not os.path.exists(path):
+            problems.append('missing ' + name)
+            continue
+        with open(path, 'rb') as f:
+            if hashlib.sha256(f.read()).hexdigest() != digest:
+                problems.append('changed ' + name)
+    return problems
+
+
 def main():
-    folder, mode = sys.argv[1], sys.argv[2]
+    args = sys.argv[1:]
+    folder = SRC
+    if args and os.path.isdir(args[0]):
+        folder = args.pop(0)
+    mode = args.pop(0) if args else 'convert'
     if mode == 'sheet':
-        contact_sheet(folder, sys.argv[3] if len(sys.argv) > 3 else '/tmp/gun_sheet.png')
+        contact_sheet(folder, args[0] if args else '/tmp/gun_sheet.png')
+    elif mode == 'verify':
+        problems = verify(folder)
+        for problem in problems:
+            print(problem)
+        print('sources: %s' % ('%d problem(s)' % len(problems) if problems else 'all match sources.json'))
+        sys.exit(1 if problems else 0)
     else:
-        only = sys.argv[3:] or list(MAPPING)
-        for gid in only:
+        if folder == SRC and verify(folder):
+            sys.exit('tools/art/src/quaternius does not match sources.json: run `meshvox.py verify`')
+        for gid in args or list(MAPPING):
             source, length, flip, voxel = MAPPING[gid]
             convert(folder, gid, source, length, flip, voxel)
 

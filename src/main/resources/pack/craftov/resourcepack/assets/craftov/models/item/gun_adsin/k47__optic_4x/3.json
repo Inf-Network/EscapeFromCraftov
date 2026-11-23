@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/k47__optic_4x",
+ "parent": "craftov:item/gun/k47",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -6.041,
-    4.065,
-    -2.177
+    4.032,
+    -2.362
    ],
    "scale": [
     0.566,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -6.041,
-    4.065,
-    -2.177
+    4.032,
+    -2.362
    ],
    "scale": [
     0.566,

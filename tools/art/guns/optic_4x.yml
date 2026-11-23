@@ -1,0 +1,13 @@
+# 4x riflescope: a short tube on two rings. Built by tools/art/meshprim.py from Quaternius'
+# Accessories/Scope_1 (keys: see k47.yml). The tube's parts are eight-sided; the lenses are glass.
+source: Accessories/Scope_1
+length: 9.5
+paint: {Black: steel, DarkMetal: alu, Glass: glass}
+pieces:
+  - {piece: 0, round: 8}
+boxes:
+  - {at: [6.8, 7.3], piece: 0, round: 0, width: 0.5}         # front ring
+  - {at: [9.55, 7.3], piece: 0, round: 0, width: 0.5}        # rear ring
+parts:
+  - {from: [12.55, 7.5, 7.32], to: [12.62, 8.78, 8.68], mat: glass, round: 8}
+  - {from: [3.27, 7.62, 7.45], to: [3.34, 8.62, 8.55], mat: glass, round: 8}

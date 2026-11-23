@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/kl7_body",
+ "parent": "craftov:item/gun_mid/kl7_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    95.264,
-    59.817,
-    -82.036
+    94.865,
+    66.954,
+    -84.507
    ],
    "translation": [
-    -3.815,
-    3.405,
-    -1.62
+    -3.353,
+    2.926,
+    -1.872
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -84.736,
-    -59.817,
-    -97.964
+    -85.135,
+    -66.954,
+    -95.493
    ],
    "translation": [
-    -3.815,
-    3.405,
-    -1.62
+    -3.353,
+    2.926,
+    -1.872
    ],
    "scale": [
     0.51,

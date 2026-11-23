@@ -1,0 +1,62 @@
+# K47: an AKM-pattern rifle. Built by tools/art/meshprim.py from Quaternius' AssaultRifle_2.
+#
+# Keys (every gun spec takes the same ones):
+#   source, length   the mesh in tools/art/src/quaternius/ and its length in model units (barrel along +X)
+#   paint            the mesh's material -> our finish (gunpaint.MATERIALS)
+#   pieces           rules per mesh piece, by `piece` index (see `meshprim.py k47 sheet`) or `at: [x, y]`:
+#                    width (units across), round: 8 (eight-sided; height for an oval), mat, part (body,
+#                    mag, pump), skip,
+#                    fill / depth (how closely the piece is fitted), detail (left out of the mid model)
+#   boxes            rules for one fitted box of a piece, by `at: [x, y]` inside it (same keys)
+#   parts            hand-placed boxes: from/to or centre/size, rot (degrees about z, or [x, y, z]),
+#                    mat, part, round, detail
+#   sight_y          height of the iron sight line (top of the front post): aiming puts it on the crosshair
+#   eye              [x of the rear sight, blocks in front of the eye] when aimed
+#   rail             [x, y] where an optic sits (top of the receiver cover)
+#   mag_axis         [x, y] the magazine slides out along (default: down its largest box)
+#
+# Real widths at this scale (31 units for 880 mm, 28 mm a unit): receiver 1.2, the lower handguard
+# 1.8, the barrel 0.6 and round, the magazine 1.0.
+source: AssaultRifle_2
+length: 31.0
+paint: {Wood: ak_wood, DarkWood: ak_wood, Black: steel, DarkMetal: steel, Metal: steel}
+pieces:
+  - {piece: 0, part: mag, mat: bakelite, width: 1.0}          # 30-round magazine
+  - {piece: 1, round: 8, width: 0.6}                          # barrel
+  - {piece: 2, width: 1.05, mat: ak_wood}                     # pistol grip
+  - {piece: 3, round: 8, width: 0.62}                         # gas tube, front
+  - {piece: 4, width: 1.8}                                    # lower handguard
+  - {piece: 5, width: 0.3}                                    # trigger guard
+  - {piece: 6, width: 1.3}                                    # stock
+  - {piece: 7, width: 0.18, detail: true}                     # trigger
+  - {piece: 8, skip: true}                                    # front sight block: rebuilt below
+  - {piece: 9, width: 1.0}                                    # rear sight base and gas tube, rear
+  - {piece: 10, width: 1.12}                                  # receiver cover
+  - {piece: 11, width: 1.25}                                  # upper handguard
+  - {piece: 12, width: 1.22}                                  # receiver
+  - {piece: 13, round: 8, width: 0.8}                         # barrel band
+parts:
+  # Rear sight: a block on the trunnion, the leaf, and two ears around the notch. The sight line
+  # stands 0.7 units (20 mm) over the receiver cover, as on an AKM: the ear tops and the front post's
+  # tip are on it, so the aimed eye sees the post standing in the notch.
+  - {from: [9.6, 11.95, 7.5], to: [11.0, 12.65, 8.5]}
+  - {from: [10.0, 12.65, 7.55], to: [10.5, 12.78, 8.45]}
+  - {from: [10.1, 12.78, 7.55], to: [10.4, 13.05, 7.86], detail: true}
+  - {from: [10.1, 12.78, 8.14], to: [10.4, 13.05, 8.45], detail: true}
+  # Front sight: the base round the barrel, the post, and the hood's two ears.
+  - {from: [22.0, 10.5, 7.6], to: [23.1, 11.55, 8.4]}
+  - {from: [22.15, 11.55, 7.66], to: [23.0, 12.0, 8.34]}
+  - {from: [22.5, 12.0, 7.93], to: [22.66, 13.05, 8.07], detail: true}
+  - {from: [22.25, 12.0, 7.58], to: [22.95, 13.2, 7.68], detail: true}
+  - {from: [22.25, 12.0, 8.32], to: [22.95, 13.2, 8.42], detail: true}
+  # Slant compensator.
+  - {from: [23.3, 10.62, 7.64], to: [24.7, 11.34, 8.36], round: 8}
+  # Right side: charging handle, selector lever, the bolt carrier in the ejection port.
+  - {from: [7.2, 11.0, 8.6], to: [7.9, 11.45, 9.25], detail: true}
+  - {from: [3.2, 10.55, 8.61], to: [7.6, 10.9, 8.7], rot: -4, detail: true}
+  - {from: [5.2, 11.08, 8.57], to: [7.2, 11.5, 8.6], mat: bare, detail: true}
+  # Butt plate.
+  - {centre: [-7.42, 8.85, 8.0], size: [0.3, 3.7, 1.36], rot: 8}
+sight_y: 13.05
+eye: [10.25, 0.3]
+mag_axis: [0.29, -0.96]

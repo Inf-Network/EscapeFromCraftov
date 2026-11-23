@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/scr_mag",
+ "parent": "craftov:item/gun_mid/scr_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    94.776,
-    64.896,
-    -83.644
+    110.109,
+    82.198,
+    -105.01
    ],
    "translation": [
-    -3.544,
-    3.742,
-    -0.405
+    -1.894,
+    2.647,
+    -1.671
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -85.224,
-    -64.896,
-    -96.356
+    -69.891,
+    -82.198,
+    -74.99
    ],
    "translation": [
-    -3.544,
-    3.742,
-    -0.405
+    -1.894,
+    2.647,
+    -1.671
    ],
    "scale": [
     0.51,

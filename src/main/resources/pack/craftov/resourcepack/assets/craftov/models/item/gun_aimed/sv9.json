@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/sv9",
+ "parent": "craftov:item/gun_low/sv9",
  "display": {
   "thirdperson_righthand": {
    "rotation": [

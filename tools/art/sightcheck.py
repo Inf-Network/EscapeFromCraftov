@@ -44,8 +44,14 @@ def screen_points(model, display, select):
     return out
 
 
+def aimed_optic(gid, oid):
+    """The optic mounted on the gun's aimed pose for it: an attachment of that pose (build.wrap_attachments),
+    so it carries the pose's display and its own elements (the housing and the reticle)."""
+    return posed('gun_att/%s/gun_ads__%s__%s' % (oid, gid, oid))
+
+
 def reticle_check(gid, oid):
-    model, display = posed('gun_opt_ads/%s__%s' % (gid, oid))
+    model, display = aimed_optic(gid, oid)
     glow = screen_points(model, display, lambda e: any(f.get('texture') == '#r' for f in e.get('faces', {}).values()))
     if not glow:
         return 'no reticle'
@@ -96,8 +102,10 @@ def main():
             if not ok:
                 misses.append('%s %s' % (gid, oid))
             if out_dir:
-                model, display = posed('gun_opt_ads/%s__%s' % (gid, oid))
-                fpview.render(model, display, os.path.join(out_dir, 'ads_%s_%s.png' % (gid, oid)), '%s %s aimed' % (gid, oid))
+                gun, display = posed('gun_ads/%s__%s' % (gid, oid))
+                optic, _ = aimed_optic(gid, oid)
+                fpview.render_many([(gun, display), (optic, display)], os.path.join(out_dir, 'ads_%s_%s.png' % (gid, oid)),
+                                   '%s %s aimed' % (gid, oid))
     for oid in models.MASK_HOLE:
         for w, h in ((1000, 584), (1000, 750), (1000, 400)):
             radii, covers = mask_radii(oid, w, h)

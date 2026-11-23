@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/kl7_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    179.529,
+    86.008,
+    -176.515
+   ],
+   "translation": [
+    -1.204,
+    1.852,
+    -2.18
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -0.471,
+    -86.008,
+    -3.485
+   ],
+   "translation": [
+    -1.204,
+    1.852,
+    -2.18
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

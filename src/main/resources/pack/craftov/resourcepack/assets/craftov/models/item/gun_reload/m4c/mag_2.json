@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/m4c_mag",
+ "parent": "craftov:item/gun_mid/m4c_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    94.776,
-    64.896,
-    -83.644
+    104.046,
+    80.125,
+    -98.255
    ],
    "translation": [
-    -3.544,
-    3.142,
-    -0.915
+    -2.105,
+    2.473,
+    -1.251
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -85.224,
-    -64.896,
-    -96.356
+    -75.954,
+    -80.125,
+    -81.745
    ],
    "translation": [
-    -3.544,
-    3.142,
-    -0.915
+    -2.105,
+    2.473,
+    -1.251
    ],
    "scale": [
     0.51,

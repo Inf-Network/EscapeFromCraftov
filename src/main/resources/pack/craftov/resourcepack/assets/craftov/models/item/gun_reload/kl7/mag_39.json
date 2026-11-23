@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/kl7_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    96.303,
+    59.006,
+    -82.225
+   ],
+   "translation": [
+    -4.33,
+    2.474,
+    -2.255
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -83.697,
+    -59.006,
+    -97.775
+   ],
+   "translation": [
+    -4.33,
+    2.474,
+    -2.255
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

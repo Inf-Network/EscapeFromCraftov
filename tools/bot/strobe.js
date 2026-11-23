@@ -10,10 +10,11 @@
 //      helmet that is swapped while it is white: while the screen is flashed, every update of the
 //      head slot either carries the overlay (the server dresses its own syncs of the slot) or is
 //      followed by one within half a second;
-//   3. switches to strobe (two pick-block packets), waits for a soldier within strobe range to shoot
-//      it, steps in to about 4.5 blocks and holds the beam on that soldier for 8 s: the soldier must
-//      still hit the bot at least once and move over a block (from that close it backs off unless
-//      frozen).
+//   3. switches to strobe (two pick-block packets, outside the arena once the test armory's full heal
+//      has cleared its wounds, whose critical action-bar lines would hide the light's), steps into the
+//      arena, waits for a soldier within strobe range to shoot it, steps in to about 4.5 blocks and
+//      holds the beam on that soldier for 8 s: the soldier must still hit the bot at least once and
+//      move over a block (from that close it backs off unless frozen).
 //
 //   node strobe.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js)
 // Exit code 0 when every check passes, 1 when one fails, 2 when the scenario could not be set up.
@@ -46,8 +47,9 @@ for (let x = 2; x <= 87; x++) {
 for (let z = 2; z <= 32; z++) {
   if (z <= 15 || z >= 25) THROW_SPOTS.push({ stand: [92.35, z + 0.5], yaw: 90, blast: [92.35, z + 0.5] })
 }
-// A soldier this close to the drop point (across the floor) is inside the flashbang's radius (10).
-const REACH = 9.5
+// A soldier this close to the drop point (across the floor) when the spot is picked is still inside
+// the flashbang's radius (10) a few seconds later, when it goes off, though it shifts about its post.
+const REACH = 8
 const insideArena = (p) => p.x < 91 && p.z < 33 && p.y < 69 // not the sniper on its tower
 
 async function waitFor (pred, ms) {
@@ -281,21 +283,33 @@ function openSpotNear (bot, soldier) {
   await rcon(`item replace entity ${name} armor.head with minecraft:air`)
 
   // ---------------------------------------------------------------- 3. strobe on a soldier
-  await rcon(`execute as ${name} at @s run tp @s 36.5 65 30.5 180 0`)
-  await sleep(1500)
+  // The light goes to strobe still outside the arena, with no wound: a bleeding line on the action bar
+  // is a critical one, and util/Notify drops the light's line while it shows (a third click to make
+  // up for the missing line would turn the light off again). The test armory's full heal clears them.
+  const armory = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 4000)
+    bot.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    bot.chat('/cv items')
+  })
+  if (armory) {
+    await bot.clickWindow(46, 0, 0) // 满血并清除伤病
+    await sleep(300)
+    bot.closeWindow(bot.currentWindow || armory)
+  }
   bot.setQuickBarSlot(heldSlot(bot, 'm4c') - 36)
-  await sleep(1200)
-  // Each middle click steps the light off -> always on -> strobe and says so on the action bar, which
-  // shows one result line per 1.5 s (util/Notify): every click waits for its own line before the
-  // next, or two quick ones could be read as one.
+  await sleep(1500)
+  // Two middle clicks step the light off -> always on -> strobe; each says so on the action bar, which
+  // shows one result line per 1.5 s, so each click waits for its own line before the next.
   const barsFrom = bars.length
-  for (let i = 0; i < 3 && !bars.slice(barsFrom).some(b => b.includes('爆闪')); i++) {
+  for (let i = 0; i < 2; i++) {
     const n = bars.length
     pick(bot)
-    await waitFor(() => bars.slice(n).some(b => b.includes('战术手电')), 3000)
+    await waitFor(() => bars.slice(n).some(b => b.includes('战术手电')), 3500)
   }
   checks.strobeOn = bars.slice(barsFrom).some(b => b.includes('爆闪'))
-  if (!checks.strobeOn) log('no strobe: held slot', bot.quickBarSlot, 'm4c at', heldSlot(bot, 'm4c'), 'action bars', bars.slice(barsFrom).map(plainBar))
+  if (!checks.strobeOn) log('no strobe: armory', !!armory, 'held slot', bot.quickBarSlot, 'm4c at', heldSlot(bot, 'm4c'), 'action bars', bars.slice(barsFrom).map(plainBar))
+  await rcon(`execute as ${name} at @s run tp @s 36.5 65 30.5 180 0`)
+  await sleep(1500)
   // Light the first soldier within strobe range that shoots us: it is engaged and has a clear line.
   let target = null
   const waitFrom = hits.length

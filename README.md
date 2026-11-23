@@ -209,6 +209,7 @@ python3 tools/art/build.py    # 重新生成全部贴图、模型、音效与 Be
 - 护甲数值表：`python3 tools/combat/armor.py`（按 `items.yml` 和 `config.yml` 的 `combat.armor` 算每把枪每种子弹打倒穿各级护甲的玩家要几枪（霰弹枪一枪按所有弹丸都打中胸口算，每颗弹丸都磨损背心），并检查新手枪打 2 / 3 级甲、穿甲弹打 4 级甲的枪数下限，不满足时退出码为 1）
 - 近战数值表：`python3 tools/combat/melee.py`（同样按 `items.yml` 和 `config.yml` 算每把刀砍倒玩家（胸口对没穿和各级背心、头对没戴和各级头盔、手臂和腿）和首领（胸口、头、手脚）要几刀、要挥多少秒，并检查首领砍哪里都至少 10 刀、4 级以上背心的玩家砍胸口和 4 级以上头盔的玩家砍头（平视就砍在头上）至少 5 刀、砍手脚至少 4 刀、没穿护甲的胸口和头 2–3 刀，不满足时退出码为 1）
 - 第一人称/第三人称持枪预览：`python3 tools/art/fpview.py k47`（按客户端同样的变换计算，调枪的位置不用进游戏）；`fpview.py knife_karambit inspect sheet.png` 出刀检视动画的逐帧预览（关键帧在 `tools/art/knife_inspect.py`），`tools/shots/shots.py run inspect:knife_karambit` 在真客户端里截检视过程（不写刀就四把都截）
+- 枪模检查：`python3 tools/art/gunbudget.py --lint` 检查每把枪的模型预算、拟合、贴图，换弹和拔枪帧（按客户端的浮点算法回放服务器发的冷却，每一帧都要显示到，拔枪每 tick 正好一帧），以及机瞄画面：从开镜时眼睛的位置看，准星点正上方不能有东西挡着，正下方第一眼看到的必须是准星，顶端就在 `sight_y` 上。`python3 tools/art/treecmp.py <提交A> <提交B> k47 m4c p18` 按客户端的规则解析两个提交的物品定义，用 fpview 逐像素比较腰射、后坐、装消音器、机瞄、红点和全息的第一人称画面（整理物品树这类重构前后应当完全一样，有不同时退出码为 1）
 
 ### 左键开火的实现
 

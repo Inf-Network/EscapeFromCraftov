@@ -102,20 +102,23 @@ final class ConfigMigration {
         } catch (IOException ex) {
             return false; // missing or unreadable: Bukkit reports that itself
         }
-        int local = revision(text);
+        YamlConfiguration before = new YamlConfiguration();
+        try {
+            before.loadFromString(text);
+        } catch (InvalidConfigurationException ex) {
+            if (revision(text) < target) {
+                log.warning("config.yml is not valid YAML, so it was not brought up to revision " + target
+                        + ": fix it and restart.");
+            }
+            return false;
+        }
+        // Read as YAML, not by pattern, so a quoted key or a BOM before it still counts.
+        int local = before.getInt(REVISION_KEY, 0);
         if (local >= target) {
             return false;
         }
         String bom = text.startsWith("\uFEFF") ? "\uFEFF" : "";
         String newline = text.contains("\r\n") ? "\r\n" : "\n";
-        YamlConfiguration before = new YamlConfiguration();
-        try {
-            before.loadFromString(text);
-        } catch (InvalidConfigurationException ex) {
-            log.warning("config.yml (revision " + local + ") is not valid YAML, so it was not brought up to revision "
-                    + target + ": fix it and restart.");
-            return false;
-        }
 
         List<String> lines = new ArrayList<>(List.of(text.substring(bom.length()).split("\r?\n", -1)));
         Map<String, Object> values = new HashMap<>(); // each key's value so far
@@ -151,7 +154,7 @@ final class ConfigMigration {
         stamp(lines, target, jarText);
 
         String result = bom + String.join(newline, lines);
-        String mismatch = verify(before, result, moved);
+        String mismatch = verify(before, result, moved, target);
         if (mismatch != null) {
             log.warning("config.yml was not brought up to revision " + target + " (" + mismatch
                     + "); it stays as it is. Changed defaults: " + String.join(", ", report));
@@ -186,7 +189,14 @@ final class ConfigMigration {
 
     private static int revision(String text) {
         Matcher m = REVISION.matcher(text);
-        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+        if (!m.find()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException ex) {
+            return Integer.MAX_VALUE; // too many digits for an int: newer than anything
+        }
     }
 
     /**
@@ -338,14 +348,18 @@ final class ConfigMigration {
 
     /**
      * Null when {@code result} holds the same values as {@code before} except the moved ones (now at
-     * their new defaults) and the revision; otherwise what differs.
+     * their new defaults) and the revision, which must now read {@code revision} (or the next start
+     * would migrate again); otherwise what differs.
      */
-    private static @Nullable String verify(YamlConfiguration before, String result, Map<String, Object> moved) {
+    private static @Nullable String verify(YamlConfiguration before, String result, Map<String, Object> moved, int revision) {
         YamlConfiguration after = new YamlConfiguration();
         try {
             after.loadFromString(result);
         } catch (InvalidConfigurationException ex) {
             return "the edited file would not parse: " + ex.getMessage();
+        }
+        if (after.getInt(REVISION_KEY, -1) != revision) {
+            return REVISION_KEY + " would not read " + revision + ": set it by hand";
         }
         Set<String> paths = new LinkedHashSet<>(before.getKeys(true));
         paths.addAll(after.getKeys(true));

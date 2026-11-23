@@ -1,7 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
-import net.infnetwork.snowball.craftov.util.Notify;
+import io.papermc.paper.datacomponent.item.CustomModelData;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -11,30 +11,113 @@ import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.profile.MailService;
 import net.infnetwork.snowball.craftov.profile.Profile;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
+/**
+ * The stash (#10).
+ * <pre>
+ *  0-8    category tabs: all, weapons (melee too), ammo, armour, carry, meds, valuables and
+ *         collectibles, keys and special items, attachments and grenades
+ *  9-44   36 items a page
+ *  45 ◀   46 sort (value / rarity / category / newest)   47 multi-select   48 sell the selection
+ *  49 room used and total value   50 mailbox   51 secure container   52 more room   53 ▶
+ * </pre>
+ * There are no modes: left takes an item out, right lists it on the market, shift (or any click
+ * while multi-select is on) picks it. Selling only ever sells the selection, and only on a second
+ * click of the sell button within five seconds of the first. Items wear a corner mark for their value
+ * band (one to four pips) and, a rig or backpack with things inside, a plus with the count. The title
+ * gives the room used, the total value and the page; the chosen tab is lit by the screen behind it.
+ * Clicking an item in the inventory below puts it in (shift: every stack of it).
+ */
 @SuppressWarnings("UnstableApiUsage")
 final class StashMenu extends Menu {
 
-    enum Mode { TAKE, SELL, LIST }
+    enum Tab {
+        ALL("全部", "tab_all"),
+        WEAPON("武器", "tab_weapon", Category.WEAPON, Category.MELEE),
+        AMMO("弹药", "tab_ammo", Category.AMMO),
+        ARMOR("防具", "tab_armor", Category.HELMET, Category.ARMOR),
+        CARRY("携行", "tab_carry", Category.RIG, Category.BACKPACK),
+        MEDICAL("医疗", "tab_medical", Category.MEDICAL),
+        LOOT("物资 · 收藏", "tab_loot", Category.VALUABLE, Category.COLLECTIBLE),
+        KEY("钥匙 · 特殊", "tab_key", Category.KEY, Category.SPECIAL),
+        PARTS("配件 · 投掷物", "tab_attachment", Category.ATTACHMENT, Category.THROWABLE);
+
+        final String label;
+        final String icon;
+        final List<Category> categories;
+
+        Tab(String label, String icon, Category... categories) {
+            this.label = label;
+            this.icon = icon;
+            this.categories = List.of(categories);
+        }
+
+        boolean holds(@Nullable ItemDef def) {
+            return categories.isEmpty() || def != null && categories.contains(def.category());
+        }
+    }
+
+    enum Sort {
+        VALUE("价值"), RARITY("品质"), CATEGORY("类别"), NEWEST("最新");
+
+        final String label;
+
+        Sort(String label) {
+            this.label = label;
+        }
+    }
+
+    /** Value bands for the corner pips (stash.value-bands): at or above each, one more pip, four at most (tools/art/ui.py). */
+    private static final List<Long> VALUE_BANDS = List.of(10_000L, 50_000L, 150_000L, 500_000L);
+    private static final int MAX_PIPS = 4;
+    /** custom_model_data strings the item models read the corner marks from (tools/art/build.py, gui_case). */
+    private static final int BADGE_VALUE = 6;
+    private static final int BADGE_PLUS = 7;
+    private static final int CELLS = 36;
+    private static final int FIRST_CELL = 9;
+
+    /** How long the sell button waits for its second click, in ticks (stash.sell-confirm-seconds). */
+    private int confirmTicks() {
+        return (int) Math.max(20, Math.round(plugin.getConfig().getDouble("stash.sell-confirm-seconds", 5) * 20));
+    }
+
+    private int pips(long value) {
+        List<?> raw = plugin.getConfig().getList("stash.value-bands", VALUE_BANDS);
+        int band = 0;
+        for (Object floor : raw) {
+            if (floor instanceof Number n && value >= n.longValue()) {
+                band++;
+            }
+        }
+        return Math.min(MAX_PIPS, band);
+    }
 
     private final CraftovPlugin plugin;
     private int page;
-    private Mode mode = Mode.TAKE;
-    private @Nullable Category filter;
-    private final List<Integer> visible = new ArrayList<>();
+    private Tab tab = Tab.ALL;
+    private Sort sort = Sort.NEWEST;
+    private boolean selecting;
+    private final Set<ItemRecord> selected = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** The sell button was clicked once and sells on the next click until this tick. */
+    private long sellArmedUntil = -1;
 
     StashMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, "stash", Text.mm("仓库"));
+        super(viewer, 6, "stash_0", Text.mm("仓库"));
         this.plugin = plugin;
     }
 
@@ -42,74 +125,117 @@ final class StashMenu extends Menu {
         return plugin.profiles().get(viewer);
     }
 
+    /** The records the chosen tab shows, in the chosen order. */
+    private List<ItemRecord> shown(Profile p) {
+        List<ItemRecord> out = new ArrayList<>();
+        for (ItemRecord record : p.stash) {
+            if (tab.holds(plugin.registry().get(record.id))) {
+                out.add(record);
+            }
+        }
+        Comparator<ItemRecord> byValue = Comparator.comparingLong(r -> -plugin.items().value(r));
+        Comparator<ItemRecord> byRarity = Comparator.comparingInt(r -> {
+            ItemDef d = plugin.registry().get(r.id);
+            return d == null ? 0 : -d.rarity().ordinal();
+        });
+        Comparator<ItemRecord> byCategory = Comparator.comparingInt(r -> {
+            ItemDef d = plugin.registry().get(r.id);
+            return d == null ? 99 : d.category().ordinal();
+        });
+        switch (sort) {
+            case VALUE -> out.sort(byValue);
+            case RARITY -> out.sort(byRarity.thenComparing(byValue));
+            case CATEGORY -> out.sort(byCategory.thenComparing(byRarity).thenComparing(byValue));
+            case NEWEST -> Collections.reverse(out);
+        }
+        return out;
+    }
+
+    private long total(Profile p) {
+        long total = 0;
+        for (ItemRecord record : p.stash) {
+            total += plugin.items().value(record);
+        }
+        return total;
+    }
+
     @Override
     protected void draw() {
         Profile p = profile();
-        visible.clear();
-        for (int i = 0; i < p.stash.size(); i++) {
-            ItemDef def = plugin.registry().get(p.stash.get(i).id);
-            if (def != null && (filter == null || def.category() == filter)) {
-                visible.add(i);
+        // A record that left the stash (taken, sold, listed) is no longer picked.
+        Set<ItemRecord> present = Collections.newSetFromMap(new IdentityHashMap<>());
+        present.addAll(p.stash);
+        selected.retainAll(present);
+        List<ItemRecord> shown = shown(p);
+        int pages = Math.max(1, (shown.size() + CELLS - 1) / CELLS);
+        page = Math.max(0, Math.min(page, pages - 1));
+        long total = total(p);
+        restyle("stash_" + tab.ordinal(), Text.mm("仓库 <muted>" + p.stashUsed() + "/" + p.stashCapacity
+                + " · <accent>◈" + Text.moneyShort(total) + " <muted>· " + (page + 1) + "/" + pages));
+        for (Tab t : Tab.values()) {
+            boolean on = t == tab;
+            int count = 0;
+            for (ItemRecord record : p.stash) {
+                if (t.holds(plugin.registry().get(record.id))) {
+                    count++;
+                }
             }
+            tabButton(t.ordinal(), UiItems.button("craftov:ui/" + t.icon, (on ? "<accent>▶ " : "<text>") + t.label,
+                    List.of("<muted>" + count + " 件")), e -> {
+                tab = t;
+                page = 0;
+                redraw();
+            });
         }
-        int pages = Math.max(1, (visible.size() + 44) / 45);
-        page = Math.min(page, pages - 1);
-        // Page and filter live in the title, changed in place as the player pages through.
-        restyle("stash", Text.mm("仓库 <muted>· " + (page + 1) + "/" + pages + (filter == null ? "" : " · " + filter.displayName())));
-        for (int slot = 0; slot < 45; slot++) {
-            int index = page * 45 + slot;
-            if (index >= visible.size()) {
+        for (int i = 0; i < CELLS; i++) {
+            int index = page * CELLS + i;
+            if (index >= shown.size()) {
                 break;
             }
-            int stashIndex = visible.get(index);
-            ItemRecord record = p.stash.get(stashIndex);
-            ItemStack display = plugin.items().fromRecord(record);
-            if (display == null) {
-                continue;
+            ItemRecord record = shown.get(index);
+            ItemStack display = display(record);
+            if (display != null) {
+                button(FIRST_CELL + i, display, e -> clickItem(record, e));
             }
-            List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE) == null ? List.of()
-                    : display.getData(DataComponentTypes.LORE).lines());
-            lore.add(Component.empty());
-            switch (mode) {
-                case TAKE -> lore.add(Text.mm("<ok>点击取出到背包"));
-                case SELL -> lore.add(Text.mm("<accent>点击出售给商人 <accent>◈" + Text.money(plugin.traders().sellPrice(record))));
-                case LIST -> lore.add(Text.mm("<info>点击在交易行上架 <muted>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
-            }
-            display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
-            button(slot, display, e -> clickStash(stashIndex, record));
         }
         fillRow(5, UiItems.filler());
-        tabButton(45, UiItems.button("craftov:ui/arrow_left", "<white>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(45, UiItems.button("craftov:ui/arrow_left", "<text>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.max(0, page - 1);
             redraw();
         });
-        tabButton(53, UiItems.button("craftov:ui/arrow_right", "<white>下一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(53, UiItems.button("craftov:ui/arrow_right", "<text>下一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.min(pages - 1, page + 1);
             redraw();
         });
-        button(46, UiItems.button("craftov:ui/icon_sort", "<white>整理", List.of("<muted>按类别、品质、价值排序并合并堆叠")), e -> {
-            sort(p);
-            redraw();
-        });
-        tabButton(47, UiItems.button("craftov:ui/icon_filter", "<white>筛选：" + (filter == null ? "全部" : filter.displayName()),
-                List.of("<muted>点击切换类别")), e -> {
-            Category[] all = Category.values();
-            filter = filter == null ? all[0] : filter.ordinal() + 1 < all.length ? all[filter.ordinal() + 1] : null;
+        List<String> sortLore = new ArrayList<>();
+        for (Sort s : Sort.values()) {
+            sortLore.add((s == sort ? "<accent>▶ " : "<dim>  ") + s.label);
+        }
+        sortLore.add("<muted>点击切换排序 · 只改变显示顺序");
+        tabButton(46, UiItems.button("craftov:ui/icon_sort", "<text>排序：<accent>" + sort.label, sortLore), e -> {
+            sort = Sort.values()[(sort.ordinal() + 1) % Sort.values().length];
             page = 0;
             redraw();
         });
-        String modeName = switch (mode) {
-            case TAKE -> "<ok>取出";
-            case SELL -> "<accent>出售给商人";
-            case LIST -> "<info>交易行上架";
-        };
-        tabButton(48, UiItems.button("craftov:ui/icon_mode", "<white>模式：" + modeName, List.of("<muted>点击切换：取出 / 出售 / 上架",
-                "<muted>点击下方背包中的物品可存入仓库", "<muted>潜行点击可存入同类全部")), e -> {
-            mode = Mode.values()[(mode.ordinal() + 1) % Mode.values().length];
+        ItemStack select = UiItems.button("craftov:ui/info_select", (selecting ? "<accent>多选：开" : "<text>多选：关")
+                + (selected.isEmpty() ? "" : " <muted>· 已选 <white>" + selected.size()),
+                List.of("<muted>开启后左键点物品即可选中", "<muted>任何时候 Shift+点击 也能选中", "<muted>右键清空已选"));
+        if (selecting) {
+            select.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
+        button(47, select, e -> {
+            if (e.isRightClick()) {
+                selected.clear();
+                sellArmedUntil = -1;
+            } else {
+                selecting = !selecting;
+            }
             redraw();
         });
-        set(49, UiItems.button("craftov:ui/icon_stash", "<text>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
-                List.of("<muted>块币 <accent>◈" + Text.money(p.money), "<muted>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
+        drawSell();
+        button(49, UiItems.button("craftov:ui/icon_stash", "<text>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
+                List.of("<muted>块币 <accent>◈" + Text.money(p.money), "<muted>仓库总价值 <white>◈" + Text.money(total),
+                        "<muted>点击下方背包物品存入，Shift 存入同类全部")), e -> { });
         int letters = MailService.unclaimed(p);
         List<String> mailLore = new ArrayList<>(List.of("<muted>系统邮件 <white>" + letters + "</white> 封未读",
                 "<muted>物品邮箱 <white>" + p.mailbox.size() + "</white> 件"));
@@ -132,71 +258,180 @@ final class StashMenu extends Menu {
                 });
     }
 
-    private long stashValue(Profile p) {
-        long total = 0;
-        for (ItemRecord record : p.stash) {
-            total += plugin.items().value(record);
+    private void drawSell() {
+        long price = 0;
+        for (ItemRecord record : selected) {
+            price += plugin.traders().sellPrice(record);
         }
-        return total;
+        boolean armed = Bukkit.getCurrentTick() < sellArmedUntil && !selected.isEmpty();
+        ItemStack sell = armed
+                ? UiItems.button("craftov:ui/info_sell_confirm", "<danger><b>再点一次确认出售",
+                List.of("<text>" + selected.size() + " 件 <muted>· 商人出价 <accent>◈" + Text.money(price), "<dim>" + Math.round(confirmTicks() / 20.0) + " 秒内不点则取消"))
+                : UiItems.button("craftov:ui/icon_sell", selected.isEmpty() ? "<muted>出售所选" : "<text>出售所选 <white>" + selected.size() + " 件",
+                List.of(selected.isEmpty() ? "<muted>Shift+点击物品选中，或先开启多选" : "<muted>商人出价 <accent>◈" + Text.money(price),
+                        "<dim>需要点两次才会成交"));
+        if (armed) {
+            sell.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
+        button(48, sell, e -> clickSell());
     }
 
-    private void clickStash(int stashIndex, ItemRecord record) {
+    /** A stash item as shown: its lore plus what the clicks do, the value pips and, packed, the plus and count. */
+    private @Nullable ItemStack display(ItemRecord record) {
+        ItemStack display = plugin.items().fromRecord(record);
+        if (display == null) {
+            return null;
+        }
+        boolean picked = selected.contains(record);
+        List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE) == null ? List.of()
+                : display.getData(DataComponentTypes.LORE).lines());
+        if (record.footprint() > 1) {
+            lore.add(Text.mm("<accent>内含 " + (record.footprint() - 1) + " 件 · 占用仓库 " + record.footprint() + " 格"));
+        }
+        lore.add(Component.empty());
+        lore.add(Text.mm("<ok>左键 取出 <muted>· <info>右键 上架 <muted>· Shift 选中"));
+        lore.add(Text.mm("<muted>商人收购价 <accent>◈" + Text.money(plugin.traders().sellPrice(record))));
+        if (picked) {
+            lore.add(Text.mm("<accent>✔ 已选中"));
+            display.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+        }
+        display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+        int band = pips(plugin.items().value(record));
+        int inside = record.contents == null ? 0 : record.contents.size();
+        if (band > 0 || inside > 0) {
+            List<String> strings = new ArrayList<>();
+            CustomModelData had = display.getData(DataComponentTypes.CUSTOM_MODEL_DATA);
+            if (had != null) {
+                strings.addAll(had.strings());
+            }
+            while (strings.size() <= BADGE_PLUS) {
+                strings.add("");
+            }
+            strings.set(BADGE_VALUE, band > 0 ? "v" + band : "");
+            strings.set(BADGE_PLUS, inside > 0 ? "plus" : "");
+            CustomModelData.Builder cmd = CustomModelData.customModelData().addStrings(strings);
+            if (had != null) {
+                cmd.addFloats(had.floats()).addFlags(had.flags()).addColors(had.colors());
+            }
+            display.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
+        }
+        if (inside > 1) {
+            display.setData(DataComponentTypes.MAX_STACK_SIZE, 99);
+            display.setAmount(Math.min(99, inside));
+        }
+        return display;
+    }
+
+    private void clickItem(ItemRecord record, InventoryClickEvent event) {
         Profile p = profile();
-        if (stashIndex >= p.stash.size() || p.stash.get(stashIndex) != record) {
+        int index = indexOf(p, record);
+        if (index < 0) {
             redraw();
             return;
         }
-        switch (mode) {
-            case TAKE -> {
-                ItemStack stack = plugin.items().fromRecord(record);
-                if (stack == null) {
-                    return;
-                }
-                ItemDef def = plugin.items().defOf(stack);
-                if (ItemFactory.hasContents(stack) && def != null && def.isContainer()) {
-                    int slot = CarryService.containerSlot(def.category());
-                    ItemStack equipped = viewer.getInventory().getItem(slot);
-                    if (equipped != null && !equipped.isEmpty()) {
-                        Notify.error(viewer, "请先卸下当前的" + def.category().displayName());
-                        return;
-                    }
-                    p.stash.remove(stashIndex);
-                    plugin.carry().equip(viewer, stack);
-                } else {
-                    ItemStack left = plugin.carry().give(viewer, stack, false);
-                    int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
-                    if (moved <= 0) {
-                        Notify.error(viewer, "背包空间不足");
-                        return;
-                    }
-                    // Only what was handed over leaves the record: a record above the stack size
-                    // (older builds stored those) builds a single stack and keeps the rest.
-                    record.amount -= moved;
-                    if (record.amount <= 0) {
-                        p.stash.remove(stashIndex);
-                    }
-                }
-                viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.6f, 1f);
+        if (event.isShiftClick() || selecting && event.isLeftClick()) {
+            if (!selected.remove(record)) {
+                selected.add(record);
             }
-            case SELL -> {
-                p.stash.remove(stashIndex);
-                long price = plugin.traders().sell(viewer, record);
-                Notify.info(viewer, "<accent>已出售，获得 ◈" + Text.money(price));
-            }
-            case LIST -> {
-                if (record.isKit()) {
-                    Notify.error(viewer, "免费补给的物品不能上架交易行");
-                    return;
-                }
-                if (!plugin.market().refuseIfClosed(viewer)) {
-                    new PriceMenu(plugin, viewer, stashIndex, record, this).open();
-                }
+            sellArmedUntil = -1;
+            redraw();
+            return;
+        }
+        if (event.isRightClick()) {
+            if (record.isKit()) {
+                Notify.error(viewer, "免费补给的物品不能上架交易行");
                 return;
             }
+            if (!plugin.market().refuseIfClosed(viewer)) {
+                new PriceMenu(plugin, viewer, index, record, this).open();
+            }
+            return;
         }
+        if (!event.isLeftClick()) {
+            return;
+        }
+        takeOut(p, index, record);
+    }
+
+    private static int indexOf(Profile p, ItemRecord record) {
+        for (int i = 0; i < p.stash.size(); i++) {
+            if (p.stash.get(i) == record) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void takeOut(Profile p, int index, ItemRecord record) {
+        ItemStack stack = plugin.items().fromRecord(record);
+        if (stack == null) {
+            return;
+        }
+        ItemDef def = plugin.items().defOf(stack);
+        if (ItemFactory.hasContents(stack) && def != null && def.isContainer()) {
+            int slot = CarryService.containerSlot(def.category());
+            ItemStack equipped = viewer.getInventory().getItem(slot);
+            if (equipped != null && !equipped.isEmpty()) {
+                Notify.error(viewer, "请先卸下当前的" + def.category().displayName());
+                return;
+            }
+            p.stash.remove(index);
+            plugin.carry().equip(viewer, stack);
+        } else {
+            ItemStack left = plugin.carry().giveOrWear(viewer, stack, false, false);
+            int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
+            if (moved <= 0) {
+                Notify.error(viewer, "身上没有放它的位置");
+                return;
+            }
+            // Only what was handed over leaves the record: a record above the stack size (older
+            // builds stored those) builds a single stack and keeps the rest.
+            record.amount -= moved;
+            if (record.amount <= 0) {
+                p.stash.remove(index);
+            }
+        }
+        viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.6f, 1f);
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
         redraw();
+    }
+
+    /** First click arms the sale for five seconds; the second sells exactly what is picked. */
+    private void clickSell() {
+        if (selected.isEmpty()) {
+            Notify.error(viewer, "先 Shift+点击 选中要出售的物品");
+            return;
+        }
+        if (Bukkit.getCurrentTick() >= sellArmedUntil) {
+            sellArmedUntil = Bukkit.getCurrentTick() + confirmTicks();
+            redraw();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (sellArmedUntil > 0 && Bukkit.getCurrentTick() >= sellArmedUntil
+                        && viewer.getOpenInventory().getTopInventory().getHolder() == this) {
+                    sellArmedUntil = -1;
+                    redraw();
+                }
+            }, confirmTicks() + 1L);
+            return;
+        }
+        sellArmedUntil = -1;
+        Profile p = profile();
+        long earned = 0;
+        int sold = 0;
+        for (ItemRecord record : new ArrayList<>(selected)) {
+            int index = indexOf(p, record);
+            if (index < 0) {
+                continue;
+            }
+            p.stash.remove(index);
+            earned += plugin.traders().sell(viewer, record);
+            sold++;
+        }
+        selected.clear();
+        plugin.profiles().markDirty(viewer.getUniqueId());
+        redraw();
+        Notify.ok(viewer, "已出售 " + sold + " 件，获得 <accent>◈" + Text.money(earned));
     }
 
     @Override
@@ -273,24 +508,6 @@ final class StashMenu extends Menu {
         if (record.amount > 0) {
             p.stash.add(record);
         }
-    }
-
-    private void sort(Profile p) {
-        List<ItemRecord> merged = new ArrayList<>();
-        for (ItemRecord record : p.stash) {
-            Profile tmp = new Profile();
-            tmp.stash = merged;
-            deposit(plugin, tmp, record.copy());
-        }
-        merged.sort(Comparator.<ItemRecord>comparingInt(r -> {
-            ItemDef d = plugin.registry().get(r.id);
-            return d == null ? 99 : d.category().ordinal();
-        }).thenComparing(r -> {
-            ItemDef d = plugin.registry().get(r.id);
-            return d == null ? 0 : -d.rarity().ordinal();
-        }).thenComparingLong(r -> -plugin.items().value(r)));
-        p.stash = merged;
-        plugin.profiles().markDirty(viewer.getUniqueId());
     }
 
     void reopen() {

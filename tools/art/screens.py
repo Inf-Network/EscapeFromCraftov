@@ -394,12 +394,29 @@ def deploy_screen(queued=False):
     return s.done()
 
 
-def stash_screen():
-    """Stash: five rows of stored items and the control bar."""
-    s = Screen(6)
-    s.wells(slots(0, 0, 4, 8))
-    s.toolbar(5).wells(slots(5, 0, 5, 8))
-    return s.done()
+def stash_screen(tab):
+    """Stash (#10): nine category tabs along the top with the chosen one lit (one screen per tab, so
+    the tab shows even under the pointer), four rows of stored items, and the control bar (pages,
+    sort, multi-select, sell, capacity, mail, secure container, more room)."""
+    def make():
+        s = Screen(6)
+        s.toolbar(0)
+        for i in slots(0, 0, 0, 8):
+            x, y = slot_xy(i)
+            on = i == tab
+            s.d.rectangle([x, y, x + 17, y + 17], fill=WELL_DARK)
+            s.d.rectangle([x + 1, y + 1, x + 16, y + 17], fill=mix(rgb(P.RAISED), rgb(P.ACCENT), 0.14) if on else rgb(P.PANEL))
+            s.d.line([x + 1, y + 1, x + 16, y + 1], fill=rgb(P.LINE))
+            if on:
+                # The tab's icon covers the inner 16x16: the frame round it shows.
+                s.d.rectangle([x, y, x + 17, y + 17], outline=rgb(P.ACCENT))
+        s.wells(slots(1, 0, 4, 8))
+        s.toolbar(5).wells(slots(5, 0, 5, 8))
+        return s.done()
+    return make
+
+
+STASH_TABS = 9
 
 
 def trader_screen():
@@ -552,7 +569,7 @@ SCREENS = {
     'main': main_screen,
     'deploy': deploy_screen,
     'deploy_queued': lambda: deploy_screen(True),
-    'stash': stash_screen,
+    **{'stash_%d' % t: stash_screen(t) for t in range(STASH_TABS)},
     'trader': trader_screen,
     **{'loot_%d' % n: loot_screen(n) for n in LOOT_SIZES},
     'health': health_screen,

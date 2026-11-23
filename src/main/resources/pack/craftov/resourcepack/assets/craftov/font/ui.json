@@ -161,7 +161,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/stash.png",
+   "file": "craftov:font/screen/stash_0.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -170,7 +170,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/trader.png",
+   "file": "craftov:font/screen/stash_1.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -179,7 +179,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_9.png",
+   "file": "craftov:font/screen/stash_2.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -188,7 +188,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_18.png",
+   "file": "craftov:font/screen/stash_3.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -197,7 +197,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_27.png",
+   "file": "craftov:font/screen/stash_4.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -206,7 +206,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_36.png",
+   "file": "craftov:font/screen/stash_5.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -215,7 +215,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/health.png",
+   "file": "craftov:font/screen/stash_6.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -224,7 +224,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/gunsmith.png",
+   "file": "craftov:font/screen/stash_7.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -233,7 +233,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/settlement_ok.png",
+   "file": "craftov:font/screen/stash_8.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -242,7 +242,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/settlement_fail.png",
+   "file": "craftov:font/screen/trader.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -251,7 +251,7 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/settlement_training_ok.png",
+   "file": "craftov:font/screen/loot_9.png",
    "height": 125,
    "ascent": 13,
    "chars": [
@@ -260,11 +260,83 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/settlement_training_fail.png",
+   "file": "craftov:font/screen/loot_18.png",
    "height": 125,
    "ascent": 13,
    "chars": [
     ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_27.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/loot_36.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/health.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/gunsmith.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_ok.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_fail.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_training_ok.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/settlement_training_fail.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
    ]
   },
   {

@@ -496,6 +496,13 @@ trader:
   # Rarest tier the trader sells (GOLD and RED only come from raids and the market).
   max-rarity: PURPLE
 
+# The stash screen (#10). Selling takes two clicks of the sell button: the second must come within
+# this many seconds of the first. Every stored item wears one amber pip in its corner for each of
+# these values (in ◈, whole stack) it reaches; the art has room for four.
+stash:
+  sell-confirm-seconds: 5
+  value-bands: [10000, 50000, 150000, 500000]
+
 market:
   listing-hours: 48
   listing-fee: 0.02

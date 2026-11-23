@@ -3,6 +3,10 @@
 The bounty board's header tooltip (bounty-house): the top player's house bounty counts only when
 they themselves deploy for ranked.
 
+The escort hall's 护航规则 tooltip (escort-rules) states the same one-contract rules as the README
+and the refusals: a client cancels their own contract first, an escort who leaves the squad before
+deploying gives the contract up, and after the client deploys everyone waits for that raid to end.
+
 Then the escort hall with a puppet (ShotMate) that posts a contract of its own. ShotCam posts one
 too and clicks ShotMate's: the refusal flashes into that button's tooltip and tells ShotCam to
 cancel its own first (escort-busy-client; it used to name ShotCam as the client it was escorting).
@@ -12,6 +16,7 @@ ShotMate and must leave that squad first (escort-busy-escort). Everything is cal
 
 MAIN_ROWS, HALL_ROWS, BOARD_ROWS = 6, 5, 4
 POST = 38  # first 发布委托 button in the hall
+RULES = 36  # 护航规则
 
 
 def hall(s):
@@ -33,6 +38,16 @@ def run(s):
         s.mouse_to(*s.slot_center(4, BOARD_ROWS))
         s.wait(0.8)
         s.shot('bounty-house')
+    finally:
+        s.park_mouse()
+        s.key('Escape')
+        s.wait(0.6)
+
+    hall(s)
+    try:
+        s.mouse_to(*s.slot_center(RULES, HALL_ROWS))
+        s.wait(0.8)
+        s.shot('escort-rules')
     finally:
         s.park_mouse()
         s.key('Escape')

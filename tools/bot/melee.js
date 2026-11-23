@@ -201,8 +201,11 @@ const commandSlot = i => i >= 36 ? `hotbar.${i - 36}` : `inventory.${i - 9}`
 async function wear (bot, id, slot) {
   await rcon(`item replace entity ${bot.username} armor.${slot} with minecraft:air`)
   await rcon(`cv give ${bot.username} ${id}`)
+  // cv give puts gear on when its slot is free (the slot was just emptied): then it is worn already.
+  const worn = () => pdc(bot.inventory.slots[slot === 'chest' ? 6 : 5], 'id') === id
   let i = -1
-  await waitFor(() => (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  await waitFor(() => worn() || (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  if (worn()) return true
   if (i < 0) return false
   await rcon(`item replace entity ${bot.username} armor.${slot} from entity ${bot.username} ${commandSlot(i)}`)
   await rcon(`item replace entity ${bot.username} ${commandSlot(i)} with minecraft:air`)

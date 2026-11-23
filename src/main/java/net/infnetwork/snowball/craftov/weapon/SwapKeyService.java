@@ -11,8 +11,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,15 +34,20 @@ import java.util.UUID;
  * of the next one, after its slot change. That is 50 to 100 ms, less than a frame of the inspect or
  * the fire-mode sound. A client that sends no tick ends (a bot) has its F read
  * {@link #FALLBACK_TICKS} server ticks after it came in.
+ *
+ * <p>Each F is read on its own and in order, with the Shift, sprint and hand of its own tick: two
+ * quick taps on a gun step the fire mode twice, as they did when F was read as it came in.
  */
 public final class SwapKeyService implements Listener {
 
     /** Server ticks an F waits for the client's tick ends before it is read anyway. */
     private static final int FALLBACK_TICKS = 3;
+    /** F presses kept per player until read; more within 0.1 s is a macro, and the rest is dropped. */
+    private static final int MAX_PENDING = 4;
 
     private final CraftovPlugin plugin;
-    /** F presses not read yet, by player. */
-    private final Map<UUID, Press> pending = new HashMap<>();
+    /** F presses not read yet, by player, oldest first. */
+    private final Map<UUID, ArrayDeque<Press>> pending = new HashMap<>();
 
     private static final class Press {
         final long arrived;
@@ -63,44 +69,55 @@ public final class SwapKeyService implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onKey(PlayerSwapHandItemsEvent event) {
         event.setCancelled(true);
-        // A second F before the first is read is part of the same press: no one taps F twice in 0.1 s.
-        pending.putIfAbsent(event.getPlayer().getUniqueId(), new Press(Bukkit.getCurrentTick()));
+        ArrayDeque<Press> presses = pending.computeIfAbsent(event.getPlayer().getUniqueId(), id -> new ArrayDeque<>());
+        if (presses.size() < MAX_PENDING) {
+            presses.addLast(new Press(Bukkit.getCurrentTick()));
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onTickEnd(ClientTickEndEvent event) {
         Player player = event.getPlayer();
-        Press press = pending.get(player.getUniqueId());
-        if (press == null) {
+        ArrayDeque<Press> presses = pending.get(player.getUniqueId());
+        if (presses == null) {
             return;
         }
-        if (++press.tickEnds == 1) {
-            press.sneaking = player.isSneaking();
-            press.sprinting = player.isSprinting();
-        } else {
+        for (Press press : presses) {
+            if (++press.tickEnds == 1) {
+                press.sneaking = player.isSneaking();
+                press.sprinting = player.isSprinting();
+            }
+        }
+        // Presses came in order, so the ones whose second tick end this was are at the front.
+        while (!presses.isEmpty() && presses.peekFirst().tickEnds >= 2) {
+            read(player, presses.pollFirst());
+        }
+        if (presses.isEmpty()) {
             pending.remove(player.getUniqueId());
-            read(player, press);
         }
     }
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
-        for (Iterator<Map.Entry<UUID, Press>> it = pending.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<UUID, Press> entry = it.next();
-            Press press = entry.getValue();
-            if (now - press.arrived < FALLBACK_TICKS) {
+        // A copy of the keys: what a press does (a skill, a sound) must not be able to upset the loop.
+        for (UUID id : new ArrayList<>(pending.keySet())) {
+            ArrayDeque<Press> presses = pending.get(id);
+            Player player = Bukkit.getPlayer(id);
+            if (presses == null || player == null) {
+                pending.remove(id);
                 continue;
             }
-            it.remove();
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player == null) {
-                continue;
+            while (!presses.isEmpty() && now - presses.peekFirst().arrived >= FALLBACK_TICKS) {
+                Press press = presses.pollFirst();
+                if (press.tickEnds == 0) {
+                    press.sneaking = player.isSneaking();
+                    press.sprinting = player.isSprinting();
+                }
+                read(player, press);
             }
-            if (press.tickEnds == 0) {
-                press.sneaking = player.isSneaking();
-                press.sprinting = player.isSprinting();
+            if (presses.isEmpty()) {
+                pending.remove(id);
             }
-            read(player, press);
         }
     }
 

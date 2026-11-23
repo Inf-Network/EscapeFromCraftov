@@ -63,9 +63,11 @@ public final class ItemFactory {
      * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
      * 14: stackables show one unit's weight and price, so stacks of different sizes merge (#43, which
      * used 13).
-     * 15: grenades carry the throw cooldown group, and a long use so they can be held to cook (#42).
+     * 16: grenades carry the throw cooldown group, and a long use so they can be held to cook (#42).
+     * It skips 15, which the unmerged #5 ads line also takes: whichever of the two lands second goes
+     * one past the other, or stacks already rebuilt at the first one's number keep missing its changes.
      */
-    public static final int VERSION = 15;
+    public static final int VERSION = 16;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries

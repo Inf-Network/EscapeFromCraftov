@@ -10,6 +10,9 @@ ground ShotCam sprints (W and left Ctrl held) and taps Shift twice the way a pla
                        gun in hand, no "Press Shift to Dismount" over the hotbar
   slide-fp-after       standing again where the slide ended, keys let go: the eyes back at standing
                        height, not stuck in the floor
+  slide-fp-fire        firing from the hip mid-slide (left mouse held through it): needs `debug: true`
+                       in the server's config.yml to count the rounds in its log, as runandgun does
+  slide-fp-ads         aiming mid-slide (right mouse held through it): the sights come up
   slide-tp-0/1         the same in third person from behind (F5)
   slide-others-0/1/2   the puppet sliding past ShotCam, seen from the side with the HUD hidden: sat low
                        with the legs forward and the gun shouldered in both hands
@@ -72,6 +75,18 @@ def let_go(s):
         s.up(key)
 
 
+def rounds(s, since):
+    """ShotCam's rounds in the server's debug log since byte `since`."""
+    with open(s.cfg.server_dir / 'logs' / 'latest.log', 'rb') as f:
+        f.seek(since)
+        text = f.read().decode('utf-8', 'replace')
+    return [line for line in text.splitlines() if f'[debug] {s.name} impact ' in line]
+
+
+def log_size(s):
+    return (s.cfg.server_dir / 'logs' / 'latest.log').stat().st_size
+
+
 def to_start(s, who):
     s.rcon(f'execute as {who} at @s run tp @s {LANE_X} {GROUND} {START_Z} 180 0')
     s.clear_chat()
@@ -107,6 +122,31 @@ def run(s):
             let_go(s)
             report(s, s.name, 'first person')
             s.shot('slide-fp-after')
+
+            # Firing from the hip through a slide, then aiming through one.
+            s.wait(1.5)
+            to_start(s, s.name)
+            s.wait(1.5)
+            since = log_size(s)
+            sprint_and_tap(s)
+            with s.mouse(1):
+                s.wait(0.45)
+                s.shot('slide-fp-fire', quick=True)
+                s.wait(0.3)
+            let_go(s)
+            fired = rounds(s, since)
+            check('first person: left mouse held through a slide fires', len(fired) >= 3,
+                  f'{len(fired)} rounds' + ('' if fired else ' (is debug: true set in the server config.yml?)'))
+            report(s, s.name, 'firing')
+            s.wait(1.5)
+            to_start(s, s.name)
+            s.wait(1.5)
+            sprint_and_tap(s)
+            with s.mouse(3):
+                s.wait(0.65)
+                s.shot('slide-fp-ads', quick=True)
+            let_go(s)
+            report(s, s.name, 'aiming')
 
             # Third person from behind.
             s.wait(2)

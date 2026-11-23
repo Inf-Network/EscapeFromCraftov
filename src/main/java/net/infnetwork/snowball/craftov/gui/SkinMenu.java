@@ -117,7 +117,7 @@ final class SkinMenu extends Menu {
         if (skin == null) {
             lore.add("<muted>" + Text.escape(def.name()) + "本来的样子");
         } else {
-            lore.addAll(Text.wrap("<muted>" + Text.escape(skin.lore()), 40));
+            lore.addAll(wrap(skin.lore()));
             lore.add("<muted>价格 <info>点券 " + Text.money(skins.price(skin)));
         }
         lore.add(wearing ? "<accent>正在使用" : owned ? "<ok>已拥有" : "<dim>未拥有");
@@ -146,6 +146,16 @@ final class SkinMenu extends Menu {
         button(37 + column, UiItems.button("craftov:ui/icon_inspect", "<text><b>预览检视", List.of(
                 "<muted>关闭界面，在第一人称看一遍" + Text.escape(name) + "的检视动作",
                 "<muted>看完回到这里；切换快捷栏或冲刺会提前结束")), e -> preview(skin));
+    }
+
+    /** A skin's line of lore for the tooltip, a full stop never on a line of its own. */
+    private static List<String> wrap(String text) {
+        List<String> lines = new ArrayList<>(Text.wrap("<muted>" + Text.escape(text), 44));
+        int last = lines.size() - 1;
+        if (last > 0 && Text.plain(Text.mm(lines.get(last))).trim().length() <= 1) {
+            lines.set(last - 1, lines.get(last - 1) + lines.remove(last).replace("<muted>", ""));
+        }
+        return lines;
     }
 
     private void choose(@Nullable SkinDef skin, boolean owned, boolean wearing) {

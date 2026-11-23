@@ -26,6 +26,7 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -300,6 +301,19 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastSprint = new HashMap<>();
     /** Players whose food level was last told that aiming stops their sprint (see {@link #stopsSprint}). */
     private final java.util.Set<UUID> sprintStopped = new java.util.HashSet<>();
+    /** Last tick a use packet came from each player holding a gun (see {@link #rightHeld}). */
+    private final Map<UUID, Long> lastUse = new HashMap<>();
+    /**
+     * Players the sprint key took out of the sights while right mouse was held (see {@link #onInput}),
+     * and the tick it did: until that sprint is over or right mouse is let go, the sights stay down and
+     * right mouse does not stop the sprint (see {@link #stopsSprint} and {@link #sightsUp}).
+     */
+    private final Map<UUID, Long> sprintWon = new HashMap<>();
+    /**
+     * Ticks the sprint the sprint key won has to start in (the client hears the food level, sprints and
+     * says so): a sprint that has not started by then, or has ended since, gives right mouse back.
+     */
+    private static final int SPRINT_START_TICKS = 10;
     /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
     private final Map<UUID, Long> lastEntityUse = new HashMap<>();
     /**
@@ -648,14 +662,28 @@ public final class WeaponService implements Listener {
      * Aiming ends a sprint and none starts while it lasts: true while the player aims or holds right
      * mouse to (the sights still coming up). The server cannot stop a client that holds the sprint key,
      * so this holds the food level where the vanilla client may not sprint (see HealthService.updateFood);
-     * once right mouse is let go the client sprints again if the key is still held.
+     * once right mouse is let go the client sprints again if the key is still held. The sprint key
+     * pressed while aiming wins it back (see {@link #onInput}): false until that sprint is over.
      */
     public boolean stopsSprint(Player player) {
+        if (sprintWon.containsKey(player.getUniqueId())) {
+            return false;
+        }
         if (isAiming(player)) {
             return true;
         }
         GunState state = states.get(player.getUniqueId());
         return state != null && aimAsked(state, Bukkit.getCurrentTick()) && plugin.raids().canFire(player);
+    }
+
+    /** Right mouse is held: a use packet came within the last repeat. */
+    private boolean rightHeld(Player player, long now) {
+        return now - lastUse.getOrDefault(player.getUniqueId(), -100L) <= USE_REPEAT + 1;
+    }
+
+    /** The keys the vanilla client starts a sprint with: the sprint key and forward, not sneaking. */
+    private static boolean sprintKeys(org.bukkit.Input input) {
+        return input.isSprint() && input.isForward() && !input.isBackward() && !input.isSneak();
     }
 
     /** Tells the food level when {@link #stopsSprint} changes, so a sprint ends (or may start) right away. */
@@ -703,6 +731,12 @@ public final class WeaponService implements Listener {
                 // both and never says it sprints. They drop as for a sprint, so its shots go from the hip
                 // with the sprint cone rather than aimed with only the walking penalty.
                 setAds(player, false);
+            }
+            Long won = sprintWon.get(player.getUniqueId());
+            if (won != null && (!rightHeld(player, now) || !player.isSprinting() && now - won > SPRINT_START_TICKS)) {
+                // Right mouse let go (pressed again, it ends the sprint as ever), or the sprint the key won
+                // is over (or never came): right mouse still held aims once the sights can come up.
+                sprintWon.remove(player.getUniqueId());
             }
             syncSprintStop(player);
             if (state == null) {
@@ -1764,10 +1798,11 @@ public final class WeaponService implements Listener {
      * client's sprint ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry.
      * Hip fire is never held back by a sprint: the gun fires on the run, with a wider cone (see
      * {@link #currentSpread}). Right mouse ends the sprint (see {@link #stopsSprint}) and aims once
-     * this allows (see {@link #aimIfAsked}).
+     * this allows (see {@link #aimIfAsked}), but not during a sprint the sprint key won over the sights
+     * (see {@link #onInput}), nor while that sprint is still to start.
      */
     private boolean sightsUp(Player player) {
-        if (sprinting(player)) {
+        if (sprinting(player) || sprintWon.containsKey(player.getUniqueId())) {
             return false;
         }
         Long last = lastSprint.get(player.getUniqueId());
@@ -1816,6 +1851,7 @@ public final class WeaponService implements Listener {
         if (state == null) {
             return;
         }
+        lastUse.put(player.getUniqueId(), (long) Bukkit.getCurrentTick());
         if (Bukkit.getCurrentTick() - handledUse.getOrDefault(player.getUniqueId(), -100L) <= 1 || useEntityBehindCell(player)) {
             return; // opened a box or a rack, or reviving: no aiming at it
         }
@@ -1967,6 +2003,29 @@ public final class WeaponService implements Listener {
         setAds(event.getPlayer(), false);
     }
 
+    /**
+     * The sprint key pressed while aiming (or while right mouse asks to) takes the player out of the
+     * sights and lets them sprint, as a sprint always took them out before aiming held the client off
+     * one: the newer press wins. Pressed is when the keys the client sprints with come together (the
+     * sprint key with forward held, or forward with the sprint key held), and only when nothing else
+     * holds the sprint off, or the sights would drop for nothing. With right mouse still held they stay
+     * down until that sprint is over (see {@link #sprintWon}).
+     */
+    @EventHandler
+    public void onInput(PlayerInputEvent event) {
+        Player player = event.getPlayer();
+        // During the event the player still has the input from before it.
+        if (!sprintKeys(event.getInput()) || sprintKeys(player.getCurrentInput()) || !stopsSprint(player)
+                || plugin.health().sprintBlocked(player)) {
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        if (rightHeld(player, now)) {
+            sprintWon.put(player.getUniqueId(), now);
+        }
+        setAds(player, false); // and the food level lets the client sprint (see syncSprintStop)
+    }
+
     @EventHandler
     public void onSprint(PlayerToggleSprintEvent event) {
         if (event.isSprinting()) {
@@ -2001,6 +2060,8 @@ public final class WeaponService implements Listener {
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());
         sprintStopped.remove(event.getPlayer().getUniqueId());
+        lastUse.remove(event.getPlayer().getUniqueId());
+        sprintWon.remove(event.getPlayer().getUniqueId());
         lastEntityUse.remove(event.getPlayer().getUniqueId());
         handledUse.remove(event.getPlayer().getUniqueId());
     }

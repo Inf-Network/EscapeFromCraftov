@@ -457,18 +457,26 @@ public final class SlideService implements Listener {
     }
 
     /**
-     * How fast the player has lately been moving, in blocks a tick: the fastest of the two-tick
-     * averages over the last ticks (movement packets sometimes arrive two in one tick). The fastest,
-     * since the first tap already slows a sprint down.
+     * How fast the player has lately been moving, in blocks a tick: about the fastest two-tick average
+     * over the last ticks, since the first tap already slows a sprint down. The second fastest, in
+     * fact: when a tick's movement packet arrives with the next tick's, one of those averages reads
+     * half as fast again as the player went, and the slide would set off faster than the sprint was.
      */
     private static double recentSpeed(State s) {
         double best = 0;
+        double second = 0;
         for (int back = 0; back + 2 < s.count && back < HISTORY - 2; back++) {
             double[] a = at(s, back);
             double[] b = at(s, back + 2);
-            best = Math.max(best, Math.hypot(a[0] - b[0], a[1] - b[1]) / 2);
+            double speed = Math.hypot(a[0] - b[0], a[1] - b[1]) / 2;
+            if (speed > best) {
+                second = best;
+                best = speed;
+            } else if (speed > second) {
+                second = speed;
+            }
         }
-        return best;
+        return second;
     }
 
     /** The way the player has been going lately, as a yaw; their view when they hardly moved. */

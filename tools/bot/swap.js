@@ -179,9 +179,22 @@ async function enterRange () {
   if (!dim.includes('craftov_range')) throw new Error('not on the range: ' + dim)
 }
 
-/** Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). */
+/**
+ * Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). Guns go to the
+ * two weapon slots only (hotbar 0 and 1, then a backpack: CarryService.route), so after the AWR the
+ * R12 found both taken: the weapon slot that does not hold the P18 (every scenario's other gun) is
+ * emptied first.
+ */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    const keep = id === 'p18' ? -1 : hotbar('p18') - 36
+    const free = [0, 1].find(s => s !== keep && !bot.inventory.slots[36 + s]) ?? [0, 1].find(s => s !== keep)
+    if (bot.inventory.slots[36 + free]) {
+      await rcon(`item replace entity ${name} hotbar.${free} with minecraft:air`)
+      await sleep(200)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   if (hotbar(id) < 0) throw new Error(id + ' did not reach the hotbar')
   hold(id)

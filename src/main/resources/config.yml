@@ -271,7 +271,7 @@ weapons:
   # 操控速度: every gun has a handling (items.yml `handling`, 0-100; a fitted sight takes some off, a
   # grip adds a little, see the parts in items.yml), and these times run in a straight line from
   # `slow` at handling 0 to `quick` at 100, in seconds, rounded to whole ticks (0.05 s):
-  #   ads         the sights coming up once the server takes the aim (SV9 0.15 s, M4C 0.2, K47 0.25,
+  #   ads         the sights coming up once the server takes the aim (SV9 0.15 s, M4C and K47 0.25,
   #               SCR 0.3, KL7 0.35, AWR 0.45); the view, the spread and the recoil follow that progress,
   #               and the shots are aimed only once the sights are up.
   #   draw        the gun coming up once it is in the hand (switched to, or after a revive). Until then

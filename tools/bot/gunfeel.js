@@ -29,7 +29,7 @@
 //           so does writing the magazine to the stack after: the new magazine is in memory, the stack
 //           still says 30 PS, the inventory has the PS back and 30 AP fewer, and the inventory's value
 //           counts the magazine in memory. It dies at the end: run it after lore, which needs the
-//           starting kit's pockets for eleven guns.
+//           lobby (it puts a pack_3 on for eleven guns: keys 1-2 and a backpack are all a gun goes in).
 //   batch   K47 single shots while strafing with the movement packets held back and sent four at a
 //           time every 200 ms (a lagging or cheating client): every shot still reads as moving.
 //   lore    In the lobby, every gun's tooltip has the seven ten-segment stat bars (伤害 射速 精准 开镜 后坐
@@ -198,7 +198,14 @@ async function enterRange () {
 
 /** Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    // Keys 1-2 are the only cells a gun goes to here (#10): with both taken, key 1 makes room.
+    if (bot.inventory.slots[36] && bot.inventory.slots[37]) {
+      await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
+      await sleep(300)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   if (hotbar(id) < 0) throw new Error(id + ' did not reach the hotbar')
   hold(id)
@@ -572,6 +579,10 @@ function barsOf (item) {
 async function lore () {
   await rcon(`execute as ${name} at @s run tp @s 0.5 65 6.5 0 0`)
   await sleep(1000)
+  // Guns go on keys 1-2 or into a backpack only (#10): a pack_3 (18 cells) takes the other nine.
+  await rcon(`item replace entity ${name} armor.feet with minecraft:air`)
+  await rcon(`cv give ${name} pack_3`)
+  await sleep(500)
   for (const gun of GUNS) if (!bot.inventory.slots.some(s => s && itemId(s) === gun)) await rcon(`cv give ${name} ${gun}`)
   await sleep(1500)
   const bars = {}

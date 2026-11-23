@@ -1,7 +1,8 @@
 // The new player's first steps (issue #7), checked with fresh random names:
 //
-//   deploy     the deploy menu lists no proving ground and has 锈港 selected; `/cv queue proving`
-//              is refused (the server runs without test mode).
+//   deploy     the deploy menu's first card is the training raid, it lists no proving ground and no
+//              training ground among the maps and has 锈港 selected; `/cv queue proving` and
+//              `/cv queue training` are refused (the server runs without test mode).
 //   objective  the HUD objective (`cv hud`) says to open the terminal; once the terminal is open it
 //              points at the range rack with a distance and the compass; the terminal's guide
 //              button (slot 46) reads 1/5 and the range button shines as the next step.
@@ -10,9 +11,11 @@
 //              told so in chat, has no objective line, and gets no briefing when it joins again.
 //              `/cv guide start` turns the objective back on.
 //   skip       the bot opens the terminal, skips the range and the gunsmith, and deploys straight to
-//              锈港: in the raid the objective is the extraction, no action bar names a lobby step
-//              during a minute in the raid, and after it extracts the profile has tutorialDone and the
-//              money went up by tutorial.reward.
+//              锈港: the landing briefing points out the extract (5/5), in the raid the objective is
+//              the extraction, no action bar names a lobby step during a minute in the raid, and
+//              after it extracts the profile counts the terminal, the deploy and the extract but the
+//              guide stays open without the reward (#43: it is paid for all five), and the lobby
+//              points out the range (2/5).
 //
 //   PORT=25565 RCON_PORT=25575 node onboarding.js [deploy objective dialog skip]
 //
@@ -47,13 +50,27 @@ function flat (n) {
   if (n.type === 'string') return n.value
   if (n.type === 'list') return flat(n.value && n.value.value)
   if (n.type === 'compound') return flat(n.value)
-  return flat(n.text) + flat(n.extra) + flat(n.keybind)
+  // A mixed list wraps its plain strings as {"": text}; children come after a node's own text.
+  return flat(n['']) + flat(n.text) + flat(n.keybind) + flat(n.extra)
 }
 
 async function waitFor (pred, ms, every = 200) {
   const end = Date.now() + ms
   while (Date.now() < end) { if (await pred()) return true; await sleep(every) }
   return false
+}
+
+/** The profile file and when it was written. */
+function savedFile (name) {
+  if (!fs.existsSync(PLAYERS)) return null
+  for (const file of fs.readdirSync(PLAYERS)) {
+    if (!file.endsWith('.json')) continue
+    try {
+      const p = JSON.parse(fs.readFileSync(path.join(PLAYERS, file), 'utf8'))
+      if (p.name === name) return { p, at: fs.statSync(path.join(PLAYERS, file)).mtimeMs }
+    } catch (e) { /* being written */ }
+  }
+  return null
 }
 
 function profile (name) {
@@ -112,8 +129,10 @@ async function deploy () {
   if (w) {
     const maps = []
     for (let i = 10; i <= 16; i++) if (w.slots[i]) maps.push(json(w.slots[i]))
+    check('the first card is the training raid', (maps[0] || '').includes('训练行动'), (maps[0] || '').slice(0, 120))
     check('no proving ground among the maps', !maps.some(m => m.includes('试验场')), maps.length + ' maps')
-    const selected = maps.find(m => m.includes('enchantment_glint_override') || m.includes('已选择'))
+    check('no training ground among the maps', !maps.some(m => m.includes('训练场')), maps.length + ' maps')
+    const selected = maps.find(m => m.includes('已选择'))
     check('锈港 is selected', !!selected && selected.includes('锈港'), (selected || '').slice(0, 160))
     bot.closeWindow(w)
   }
@@ -122,6 +141,11 @@ async function deploy () {
   await sleep(1500)
   check('queueing for the proving ground is refused', bot.chatLines.slice(from).some(l => l.includes('测试模式')),
     bot.chatLines.slice(from))
+  const from2 = bot.chatLines.length
+  bot.chat('/cv queue training NORMAL SOLO')
+  await sleep(1500)
+  check('queueing for the training ground is refused', bot.chatLines.slice(from2).some(l => l.includes('训练场不能匹配')),
+    bot.chatLines.slice(from2))
   bot.chat('/cv leave')
   bot.quit()
 }
@@ -222,13 +246,15 @@ async function skip () {
   if (w) bot.closeWindow(w)
   await sleep(500)
   const before = await money(name)
-  const reward = 20000
   const worlds = bot.worldChanges
   bot.chat('/cv queue rustport NORMAL SOLO')
+  const chatFrom = bot.chatLines.length
   const landed = await waitFor(() => bot.worldChanges > worlds && bot.game.gameMode === 'adventure', 120000)
   check('the bot lands in 锈港 without the range or the gunsmith', landed)
   if (!landed) { bot.quit(); return }
   await sleep(3000)
+  const briefing = bot.chatLines.slice(chatFrom).find(l => l.includes('行动简报'))
+  check('one landing briefing, which points out the extract (5/5)', !!briefing && briefing.includes('新手指引 5/5'), briefing)
   const o = await objectiveOf(name)
   check('in the raid the objective is the extraction, with a distance', o.includes('撤离点') && /\d+m/.test(o), o)
   // A minute in the raid: reminders come every 45 s, and none may name a lobby step.
@@ -243,14 +269,20 @@ async function skip () {
   await rcon(`execute as ${name} at @s run tp @s 89.5 65 3.5`)
   const home = await waitFor(() => bot.worldChanges > world, 30000)
   check('the bot extracts', home)
-  await sleep(2500)
-  await waitFor(() => { const p = profile(name); return p && p.tutorialDone }, 10000)
-  const p = profile(name) || {}
-  check('the guide is done after the first extraction', p.tutorialDone === true, { tutorialDone: p.tutorialDone, steps: p.tutorialSteps })
+  const lobbyFrom = bot.chatLines.length
+  const range = await waitFor(() => bot.chatLines.slice(lobbyFrom).some(l => l.includes('新手指引 2/5')), 8000)
+  check('back in the lobby the guide points out the range (2/5)', range, bot.chatLines.slice(lobbyFrom))
   const after = await money(name)
-  check('the bonus was paid', after - before === reward, `${before} -> ${after}`)
-  check('chat says the guide is done', bot.chatLines.some(l => l.includes('新手指引完成')))
+  // A daily contract may pay for the extraction; the guide's ◈20,000 must not come with it.
+  check('no bonus yet: it is paid for all five steps', after - before !== 20000, `${before} -> ${after}`)
+  check('chat does not say the guide is done', !bot.chatLines.some(l => l.includes('新手指引完成')))
+  const left = Date.now()
   bot.quit()
+  let p = null
+  await waitFor(() => { const f = savedFile(name); if (f && f.at > left) { p = f.p; return true } return false }, 15000)
+  p = p || {}
+  check('the profile counts the terminal, the deploy and the extract', ((p.tutorialMask || 0) & 25) === 25 && !p.tutorialDone,
+    { tutorialDone: p.tutorialDone, mask: p.tutorialMask })
 }
 
 ;(async () => {

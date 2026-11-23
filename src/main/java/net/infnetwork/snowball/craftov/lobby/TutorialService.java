@@ -207,9 +207,8 @@ public final class TutorialService {
         // Deploying is done on the way into a raid, where the extraction is the one step left to do.
         Step next = plugin.raids().raidOf(player) != null ? Step.EXTRACT : current(profile);
         // The action bar, not chat: on the range the entry line is in chat already, and a step done
-        // with a click in a menu (the gunsmith) shows on that button.
-        Notify.ok(player, "新手指引 " + doneCount(profile) + "/" + Step.values().length + " · " + step.title
-                + (next == null ? "" : " <muted>· 下一步：<text>" + next.title));
+        // with a click in a menu (the terminal, the gunsmith) would land in chat behind that menu.
+        Notify.ok(player, "新手指引 ✔ " + step.title + (next == null ? "" : " <muted>· 下一步：<text>" + next.title));
     }
 
     /** The guide is over: the starter bonus, once. */
@@ -278,8 +277,18 @@ public final class TutorialService {
         return step.hint;
     }
 
-    private String line(Profile profile, String hint) {
-        return "<accent>新手指引 " + (doneCount(profile) + 1) + "/" + Step.values().length + "：<text>" + hint;
+    /** A hint line, numbered by the step it is about (2/5 is always the range), as since #43. */
+    private static String line(Step step, String hint) {
+        return "<accent>新手指引 " + (step.ordinal() + 1) + "/" + Step.values().length + "：<text>" + hint;
+    }
+
+    /**
+     * The guide's line in the landing briefing (RaidManager#brief): the extraction, while it is
+     * still to do, for a player the guide points for. Null otherwise.
+     */
+    public @Nullable String landingLine(Player player) {
+        Profile profile = plugin.profiles().get(player);
+        return !guided(profile) || isDone(profile, Step.EXTRACT) ? null : line(Step.EXTRACT, hint(player, Step.EXTRACT));
     }
 
     /** Back in the lobby: the step to do next, in chat. Players who extracted before are let go here. */
@@ -293,7 +302,7 @@ public final class TutorialService {
         if (!guided(profile) || step == null) {
             return;
         }
-        Text.send(player, line(profile, hint(player, step)));
+        Text.send(player, line(step, hint(player, step)));
     }
 
     /**
@@ -312,7 +321,7 @@ public final class TutorialService {
             }
             Step step = current(profile);
             if (step != null) {
-                Notify.hint(player, line(profile, hint(player, step)));
+                Notify.hint(player, line(step, hint(player, step)));
             }
         }
     }

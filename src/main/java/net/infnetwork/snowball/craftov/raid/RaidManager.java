@@ -630,6 +630,10 @@ public final class RaidManager implements Listener {
             sb.append("\n").append(line);
         }
         rp.briefing.clear();
+        String guide = plugin.tutorial().landingLine(player);
+        if (guide != null) {
+            sb.append("\n").append(guide);
+        }
         Text.send(player, sb.toString());
     }
 

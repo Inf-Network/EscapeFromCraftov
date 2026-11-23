@@ -339,6 +339,13 @@ throwables:
     # vest at full strength lets 15% of it through, class 3 40% and class 2 60%.
     penetration: 2
     armor-damage: 1.5
+  bounce:
+    # Share of its speed into a face that a grenade keeps when it bounces off it: walls and ceilings,
+    # and the floor (a landing too soft to leave the ground again settles). It falls and slows in
+    # the air as a dropped item does, scrapes off some speed along whatever it hits and rolls to a
+    # stop on the ground.
+    wall: 0.35
+    floor: 0.25
 
 ai:
   # Chance of a rival operator squad per raid, by difficulty (常规, 机密, 绝密); they appear after the delay.

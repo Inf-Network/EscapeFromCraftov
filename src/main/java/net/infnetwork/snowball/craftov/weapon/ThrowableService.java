@@ -7,10 +7,13 @@ import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.Keys;
 import org.bukkit.Bukkit;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.SoundCategory;
-import org.bukkit.entity.Item;
+import org.bukkit.World;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -28,8 +31,38 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Grenades: thrown as bouncing item entities, then detonate after their fuse. */
+/**
+ * Grenades. A thrown grenade flies under its own physics: gravity and air drag as for a dropped
+ * item (so throws reach as far as they always did), but it bounces off walls and ceilings with
+ * {@code throwables.bounce.wall} of its speed into them and off the floor with
+ * {@code throwables.bounce.floor}, then rolls to a stop, and goes off where it lies when its fuse
+ * runs out. One throw locks every grenade (only grenades: they have a cooldown group of their own)
+ * for a second.
+ */
 public final class ThrowableService implements Listener {
+
+    /** Gravity and air drag per tick, as vanilla gives a dropped item. */
+    private static final double GRAVITY = 0.04;
+    private static final double DRAG = 0.98;
+    /** Horizontal speed kept per tick while rolling on the ground. */
+    private static final double ROLL = 0.7;
+    /** Speed kept along a wall or ceiling in an impact, and along the floor in a landing. */
+    private static final double WALL_SCRAPE = 0.85;
+    private static final double FLOOR_SCRAPE = 0.6;
+    /** A floor bounce slower than this settles the grenade instead. */
+    private static final double SETTLE = 0.08;
+    /** How close the grenade's centre comes to a face: half its size. */
+    private static final double RADIUS = 0.125;
+    /** The clink of an impact needs at least this speed (blocks per tick). */
+    private static final double CLINK = 0.15;
+    /** Ticks every grenade is locked for after a throw. */
+    private static final int THROW_COOLDOWN = 20;
+    /** The axes in the order a grenade moves along them: up and down first, as vanilla moves entities. */
+    private static final int[] AXES = {1, 0, 2};
+
+    /** Share of the speed into a face a grenade keeps off it: walls and ceilings, and the floor. */
+    private record Bounce(double wall, double floor) {
+    }
 
     private final CraftovPlugin plugin;
 
@@ -62,26 +95,148 @@ public final class ThrowableService implements Listener {
         if (!ItemFactory.isTest(thrownStack)) {
             plugin.raids().usedUp(player, def.id(), 1);
         }
-        player.setCooldown(ItemFactory.THROW_GROUP, 20);
-        Vector velocity = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
-        Item item = player.getWorld().dropItem(player.getEyeLocation().add(player.getEyeLocation().getDirection().multiply(0.4)), thrownStack, i -> {
-            i.setPickupDelay(Integer.MAX_VALUE);
-            i.setVelocity(velocity);
-            i.setPersistent(false);
-            i.setUnlimitedLifetime(false);
-            i.getPersistentDataContainer().set(Keys.ENTITY_ROLE, PersistentDataType.STRING, "grenade");
-        });
+        player.setCooldown(ItemFactory.THROW_GROUP, THROW_COOLDOWN);
         player.getWorld().playSound(player.getLocation(), "craftov:throw.pin", SoundCategory.PLAYERS, 1f, 1f);
-        ThrowableSpec spec = def.throwable();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> detonate(player, item, spec, def.name()), spec.fuseTicks());
+        launch(player, thrownStack, def, Bukkit.getCurrentTick() + def.throwable().fuseTicks());
     }
 
-    private void detonate(Player thrower, Item item, ThrowableSpec spec, String name) {
-        if (!item.isValid()) {
-            return;
+    /** Where a grenade leaves the hand: a little in front of the eyes, short of any wall there. */
+    private static double[] throwOrigin(Player player) {
+        Location eye = player.getEyeLocation();
+        Vector dir = eye.getDirection();
+        double reach = 0.4;
+        RayTraceResult wall = eye.getWorld().rayTraceBlocks(eye, dir, reach + RADIUS, FluidCollisionMode.NEVER, true);
+        if (wall != null) {
+            reach = Math.max(0, wall.getHitPosition().distance(eye.toVector()) - RADIUS);
         }
-        Location at = item.getLocation().add(0, 0.2, 0);
-        item.remove();
+        Vector at = eye.toVector().add(dir.multiply(reach));
+        return new double[] {at.getX(), at.getY(), at.getZ()};
+    }
+
+    /** How fast a grenade leaves the hand: a gentle lob while sneaking. */
+    private static double[] throwVelocity(Player player) {
+        Vector v = player.getEyeLocation().getDirection().multiply(player.isSneaking() ? 0.6 : 1.15).add(new Vector(0, 0.15, 0));
+        return new double[] {v.getX(), v.getY(), v.getZ()};
+    }
+
+    private Bounce bounce() {
+        return new Bounce(plugin.getConfig().getDouble("throwables.bounce.wall", 0.35),
+                plugin.getConfig().getDouble("throwables.bounce.floor", 0.25));
+    }
+
+    /** Sends a grenade flying from the thrower's hand; it goes off on tick {@code goesOff}. */
+    private void launch(Player thrower, ItemStack stack, ItemDef def, long goesOff) {
+        World world = thrower.getWorld();
+        double[] pos = throwOrigin(thrower);
+        double[] vel = throwVelocity(thrower);
+        ItemDisplay display = world.spawn(new Location(world, pos[0], pos[1], pos[2]), ItemDisplay.class, d -> {
+            d.setItemStack(stack);
+            // Drawn as a dropped item is, always turned to the viewer so it never shows its thin edge.
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.GROUND);
+            d.setBillboard(Display.Billboard.VERTICAL);
+            d.setTeleportDuration(2);
+            d.setPersistent(false);
+            d.getPersistentDataContainer().set(Keys.ENTITY_ROLE, PersistentDataType.STRING, "grenade");
+        });
+        Bounce bounce = bounce();
+        ThrowableSpec spec = def.throwable();
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!display.isValid()) {
+                    cancel(); // the raid ended and took its world along
+                    return;
+                }
+                if (Bukkit.getCurrentTick() >= goesOff) {
+                    cancel();
+                    display.remove();
+                    detonate(thrower, new Location(world, pos[0], pos[1], pos[2]), spec, def.name());
+                    return;
+                }
+                double impact = step(world, pos, vel, bounce);
+                if (pos[1] < world.getMinHeight() - 16) {
+                    cancel(); // fell out of the world
+                    display.remove();
+                    return;
+                }
+                Location at = new Location(world, pos[0], pos[1], pos[2]);
+                if (impact >= CLINK) {
+                    world.playSound(at, "minecraft:block.chain.hit", SoundCategory.PLAYERS, (float) Math.min(1.0, 0.3 + impact), 1.3f);
+                }
+                if (at.distanceSquared(display.getLocation()) > 1e-8) {
+                    display.teleport(at);
+                }
+            }
+        }.runTaskTimer(plugin, 1L, 1L);
+    }
+
+    /**
+     * Moves a grenade at {@code p} with velocity {@code v} (x, y, z, both changed in place) on by one
+     * tick. Gravity comes first and drag last, as for a dropped item. In between it moves along each
+     * axis in turn, as far as the first block in the way lets it (its centre stays {@link #RADIUS}
+     * off the face): the speed into the face comes back times the bounce, and the speed along it is
+     * scraped down. A floor bounce too slow to leave the ground settles instead, and on the ground
+     * it rolls to a stop. In water it slows down. Returns the speed of the hardest impact, 0 if it
+     * met nothing (lying on the floor is no impact).
+     */
+    private static double step(World world, double[] p, double[] v, Bounce bounce) {
+        if (world.getBlockAt((int) Math.floor(p[0]), (int) Math.floor(p[1]), (int) Math.floor(p[2])).isLiquid()) {
+            for (int i = 0; i < 3; i++) {
+                v[i] *= 0.8;
+            }
+        }
+        v[1] -= GRAVITY;
+        double impact = 0;
+        boolean ground = false;
+        for (int axis : AXES) {
+            double d = v[axis];
+            if (Math.abs(d) < 1e-7) {
+                continue;
+            }
+            double sign = Math.signum(d);
+            Vector dir = new Vector(axis == 0 ? sign : 0, axis == 1 ? sign : 0, axis == 2 ? sign : 0);
+            RayTraceResult hit = world.rayTraceBlocks(new Location(world, p[0], p[1], p[2]), dir, Math.abs(d) + RADIUS,
+                    FluidCollisionMode.NEVER, true);
+            if (hit == null) {
+                p[axis] += d;
+                continue;
+            }
+            Vector face = hit.getHitPosition();
+            double gap = Math.abs((axis == 0 ? face.getX() : axis == 1 ? face.getY() : face.getZ()) - p[axis]);
+            p[axis] += sign * Math.max(0, gap - RADIUS);
+            boolean floor = axis == 1 && d < 0;
+            double back = -d * (floor ? bounce.floor() : bounce.wall());
+            if (floor) {
+                ground = true;
+                if (Math.abs(back) < SETTLE) {
+                    back = 0;
+                }
+            }
+            v[axis] = back;
+            if (Math.abs(d) > SETTLE) { // a real impact, not just lying on the floor
+                impact = Math.max(impact, Math.abs(d));
+                for (int other = 0; other < 3; other++) {
+                    if (other != axis) {
+                        v[other] *= floor ? FLOOR_SCRAPE : WALL_SCRAPE;
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            v[i] *= DRAG;
+        }
+        if (ground) {
+            v[0] *= ROLL;
+            v[2] *= ROLL;
+            if (v[0] * v[0] + v[2] * v[2] < 1e-5) {
+                v[0] = 0;
+                v[2] = 0;
+            }
+        }
+        return impact;
+    }
+
+    private void detonate(Player thrower, Location at, ThrowableSpec spec, String name) {
         switch (spec.type()) {
             case FRAG -> frag(thrower, at, spec, name);
             case SMOKE -> smoke(at, spec);
@@ -159,7 +314,7 @@ public final class ThrowableService implements Listener {
         }
         if (distance > 1e-3) {
             RayTraceResult wall = at.getWorld().rayTraceBlocks(at, to.multiply(1 / distance), distance,
-                    org.bukkit.FluidCollisionMode.NEVER, true);
+                    FluidCollisionMode.NEVER, true);
             if (wall != null && wall.getHitBlock() != null) {
                 return 0;
             }
@@ -225,9 +380,10 @@ public final class ThrowableService implements Listener {
     }
 
     /**
-     * How a flashbang going off at {@code at} reaches someone: null if they are out of range or a block
-     * stands between the blast and their eyes. Full strength at the blast, fading to
-     * combat.flashbang.edge-strength at the edge of the radius.
+     * How a flashbang going off at {@code at} reaches someone: null if they are out of range (a
+     * sphere round the blast, measured to the eyes) or a block stands between the blast and their
+     * eyes. Full strength at the blast, fading to combat.flashbang.edge-strength at the edge of the
+     * radius.
      */
     private @Nullable FlashHit flashHit(Location at, LivingEntity entity, double radius) {
         Location eye = entity.getEyeLocation();
@@ -242,7 +398,7 @@ public final class ThrowableService implements Listener {
         boolean facing = true;
         if (distance > 0.05) {
             Vector dir = toEye.clone().multiply(1 / distance);
-            RayTraceResult wall = at.getWorld().rayTraceBlocks(at, dir, distance, org.bukkit.FluidCollisionMode.NEVER, true);
+            RayTraceResult wall = at.getWorld().rayTraceBlocks(at, dir, distance, FluidCollisionMode.NEVER, true);
             if (wall != null && wall.getHitBlock() != null) {
                 return null;
             }
@@ -251,12 +407,4 @@ public final class ThrowableService implements Listener {
         double edge = plugin.getConfig().getDouble("combat.flashbang.edge-strength", 0.4);
         return new FlashHit(facing, 1 - (1 - edge) * Math.min(1, distance / Math.max(0.1, radius)));
     }
-
-    @EventHandler(ignoreCancelled = true)
-    public void onPickupGrenade(org.bukkit.event.entity.EntityPickupItemEvent event) {
-        if (event.getItem().getPersistentDataContainer().has(Keys.ENTITY_ROLE)) {
-            event.setCancelled(true);
-        }
-    }
-
 }

@@ -415,8 +415,9 @@ weapons:
     sprint: 1.15
     # With the sights up a shot kicks this share of the gun's recoil up and of its recoil-h sideways
     # (the side-to-side jitter is what cannot be pulled against, so it shrinks most); in between
-    # while the sights come up. These are for guns whose items.yml entry gives no ads-recoil /
-    # ads-recoil-h of its own (every bundled gun gives both).
+    # while the sights come up. These are for a gun neither the server's items.yml nor the jar's
+    # gives an ads-recoil / ads-recoil-h for (an added gun): every bundled gun gives both, and an
+    # older items.yml without them takes the jar's.
     ads: 0.5
     ads-h: 0.35
     # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.

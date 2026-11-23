@@ -112,6 +112,8 @@ public final class CraftovPlugin extends JavaPlugin {
     private HudService hud;
     private net.infnetwork.snowball.craftov.hud.KillFeedService killFeed;
     private MenuService menus;
+    private net.infnetwork.snowball.craftov.economy.PointsBank profilePoints;
+    private net.infnetwork.snowball.craftov.cosmetic.SkinService skins;
     private net.infnetwork.snowball.craftov.map.editor.EditorService editor;
     private BetterHudHook betterHud = BetterHudHook.NONE;
     private final Map<String, Tier> tiers = new LinkedHashMap<>();
@@ -154,6 +156,7 @@ public final class CraftovPlugin extends JavaPlugin {
         loot = new LootService(items, getLogger());
         loot.load(new File(getDataFolder(), "loot.yml"));
         profiles = new ProfileService(this);
+        profilePoints = new net.infnetwork.snowball.craftov.economy.ProfilePoints(profiles);
         try {
             profiles.start();
         } catch (IOException ex) {
@@ -175,6 +178,7 @@ public final class CraftovPlugin extends JavaPlugin {
         fov = new net.infnetwork.snowball.craftov.weapon.FovService(this);
         triggers = new TriggerService(this);
         inspect = new InspectService(this);
+        skins = new net.infnetwork.snowball.craftov.cosmetic.SkinService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
         replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
@@ -209,7 +213,7 @@ public final class CraftovPlugin extends JavaPlugin {
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, new net.infnetwork.snowball.craftov.security.VanillaGuardService(), editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
-                inspect, new SwapKeyService(this), market, profiles, killFeed, fov);
+                inspect, new SwapKeyService(this), market, profiles, killFeed, fov, skins);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -251,6 +255,18 @@ public final class CraftovPlugin extends JavaPlugin {
     public void onDisable() {
         // Every step on its own: one throwing must not skip the refunds, saves and backup after it.
         step("network hooks", this, () -> net.infnetwork.snowball.craftov.util.Nms.shutdown(Bukkit.getOnlinePlayers()));
+        // Whatever is held on the cursor goes back on its player before anything below saves an
+        // inventory or sends someone home. Closing the inventory and logging off do that, but a stop
+        // removes the players only once the plugin is disabled, so neither runs and the item would
+        // be outside every save. In a raid it then stays in the raid with the rest of what they
+        // carry. On the range the hands hold only loaners, which leaving the range throws away.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            step("cursor of " + player.getName(), carry, () -> {
+                if (range == null || !range.isIn(player)) {
+                    carry.settleCursor(player);
+                }
+            });
+        }
         step("betterhud", betterHud, () -> betterHud.shutdown());
         step("editor", editor, () -> editor.shutdown());
         step("replays", replays, () -> replays.shutdown());
@@ -429,6 +445,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public WeaponService weapons() { return weapons; }
     public net.infnetwork.snowball.craftov.weapon.FovService fov() { return fov; }
     public InspectService inspect() { return inspect; }
+    public net.infnetwork.snowball.craftov.cosmetic.SkinService skins() { return skins; }
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }
@@ -446,6 +463,15 @@ public final class CraftovPlugin extends JavaPlugin {
     public HudService hud() { return hud; }
     public net.infnetwork.snowball.craftov.hud.KillFeedService killFeed() { return killFeed; }
     public MenuService menus() { return menus; }
+
+    /**
+     * The 点券 balances (#106): the server's global currency once its plugin has registered a
+     * PointsBank with the services manager, the placeholder in the profile until then.
+     */
+    public net.infnetwork.snowball.craftov.economy.PointsBank points() {
+        var external = Bukkit.getServicesManager().load(net.infnetwork.snowball.craftov.economy.PointsBank.class);
+        return external != null ? external : profilePoints;
+    }
     public net.infnetwork.snowball.craftov.map.editor.EditorService editor() { return editor; }
     public BetterHudHook betterHud() { return betterHud; }
 }

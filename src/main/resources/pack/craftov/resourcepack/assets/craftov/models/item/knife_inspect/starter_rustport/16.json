@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/starter_rustport",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    -8.932,
+    -11.569,
+    92.159
+   ],
+   "translation": [
+    -4.966,
+    6.371,
+    -6.072
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    171.068,
+    11.569,
+    87.841
+   ],
+   "translation": [
+    -4.966,
+    6.371,
+    -6.072
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

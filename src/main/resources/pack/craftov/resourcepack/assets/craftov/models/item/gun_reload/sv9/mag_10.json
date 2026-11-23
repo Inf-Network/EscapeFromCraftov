@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/sv9_mag",
+ "parent": "craftov:item/gun_mid/sv9_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    95.697,
-    59.48,
-    -82.116
+    95.731,
+    59.118,
+    -82.2
    ],
    "translation": [
-    -6.336,
-    -0.831,
-    -0.383
+    -7.907,
+    -3.102,
+    -1.569
    ],
    "scale": [
     0.561,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -84.303,
-    -59.48,
-    -97.884
+    -84.269,
+    -59.118,
+    -97.8
    ],
    "translation": [
-    -6.336,
-    -0.831,
-    -0.383
+    -7.907,
+    -3.102,
+    -1.569
    ],
    "scale": [
     0.561,

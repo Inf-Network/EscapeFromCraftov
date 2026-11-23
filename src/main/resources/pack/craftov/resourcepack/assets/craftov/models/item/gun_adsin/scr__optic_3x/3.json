@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/scr__optic_3x",
+ "parent": "craftov:item/gun/scr",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -6.041,
-    4.148,
-    -1.326
+    4.14,
+    -2.469
    ],
    "scale": [
     0.566,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -6.041,
-    4.148,
-    -1.326
+    4.14,
+    -2.469
    ],
    "scale": [
     0.566,

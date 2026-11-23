@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/sv9_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    97.968,
+    68.927,
+    -86.455
+   ],
+   "translation": [
+    -3.383,
+    3.238,
+    0.677
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -82.032,
+    -68.927,
+    -93.545
+   ],
+   "translation": [
+    -3.383,
+    3.238,
+    0.677
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/karambit_starchart",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    171.055,
+    -25.406,
+    -166.987
+   ],
+   "translation": [
+    -3.514,
+    6.5,
+    -3.246
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -8.945,
+    25.406,
+    -13.013
+   ],
+   "translation": [
+    -3.514,
+    6.5,
+    -3.246
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

@@ -287,6 +287,42 @@
   },
   {
    "type": "bitmap",
+   "file": "craftov:font/screen/skins_knife_starter.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/skins_knife_tactical.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/skins_knife_machete.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
+   "file": "craftov:font/screen/skins_knife_karambit.png",
+   "height": 125,
+   "ascent": 13,
+   "chars": [
+    ""
+   ]
+  },
+  {
+   "type": "bitmap",
    "file": "craftov:font/blackout.png",
    "height": 192,
    "ascent": 93,

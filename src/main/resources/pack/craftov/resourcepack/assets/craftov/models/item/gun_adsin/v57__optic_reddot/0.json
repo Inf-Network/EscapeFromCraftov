@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt/v57__optic_reddot",
+ "parent": "craftov:item/gun/v57",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -1.353,
-    2.283,
-    -0.647
+    2.373,
+    -0.763
    ],
    "scale": [
     0.563,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -1.353,
-    2.283,
-    -0.647
+    2.373,
+    -0.763
    ],
    "scale": [
     0.563,

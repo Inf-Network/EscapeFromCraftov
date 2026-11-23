@@ -127,6 +127,10 @@ public final class MenuService {
     }
 
     public void openGunsmith(Player player) {
+        if (plugin.downed().isDowned(player)) {
+            refuse(player, "倒地时无法改枪");
+            return;
+        }
         new GunsmithMenu(plugin, player).open();
     }
 

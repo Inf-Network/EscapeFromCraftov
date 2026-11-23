@@ -34,7 +34,12 @@ final class TerminalMenu extends Menu {
         button(4, UiItems.button("craftov:ui/body_chest", "<danger><b>伤势", List.of(
                 wounds.isEmpty() ? "<ok>身体状况良好" : "<accent>" + Text.escape(wounds),
                 "<muted>查看每个部位的伤口与治疗方法")), e -> new HealthMenu(plugin, viewer).open());
-        button(10, UiItems.button("craftov:ui/icon_secure", "<info><b>安全箱", List.of("<muted>阵亡也不会丢失的物品")),
+        // Downed, the terminal still shows the squad and the exits and can give up the raid, but
+        // the hands are busy: the secure container, the gunsmith and the skill are locked. The
+        // buttons still lead to the real thing, which refuses until the player is back up.
+        boolean down = plugin.downed().isDowned(viewer);
+        button(10, down ? UiItems.button("craftov:ui/locked", "<dim><b>安全箱", List.of("<danger>倒地时无法使用", "<muted>被救起后才能存取"))
+                : UiItems.button("craftov:ui/icon_secure", "<info><b>安全箱", List.of("<muted>阵亡也不会丢失的物品")),
                 e -> plugin.menus().openSecure(viewer));
         List<String> extracts = new ArrayList<>();
         for (ExtractPoint point : raid.extracts) {
@@ -66,14 +71,20 @@ final class TerminalMenu extends Menu {
         set(14, UiItems.button("craftov:ui/icon_party", "<info><b>小队状态", squad));
         var op = plugin.operators().of(viewer);
         int cd = plugin.operators().cooldownLeft(viewer);
-        button(16, UiItems.button(op.icon(), "<" + op.color() + "><b>" + op.skillName(), List.of(cd > 0 ? "<danger>冷却 " + cd + "s" : "<ok>点击释放",
+        button(16, down ? UiItems.button("craftov:ui/locked", "<dim><b>" + op.skillName(), List.of("<danger>倒地时无法释放"))
+                : UiItems.button(op.icon(), "<" + op.color() + "><b>" + op.skillName(), List.of(cd > 0 ? "<danger>冷却 " + cd + "s" : "<ok>点击释放",
                 "<muted>也可以使用 潜行+F")), e -> {
+            if (plugin.downed().isDowned(viewer)) {
+                plugin.menus().refuse(viewer, "倒地时无法释放技能");
+                return;
+            }
             viewer.closeInventory();
             plugin.operators().activate(viewer);
         });
         button(24, UiItems.button("craftov:ui/icon_tasks", "<accent><b>每日任务", List.of("<muted>查看今日任务进度")),
                 e -> new TaskMenu(plugin, viewer, true).open());
-        button(20, UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>安装 / 拆下瞄准镜")),
+        button(20, down ? UiItems.button("craftov:ui/locked", "<dim><b>改枪台", List.of("<danger>倒地时无法改枪"))
+                : UiItems.button("craftov:ui/icon_gunsmith", "<accent><b>改枪台", List.of("<muted>安装 / 拆下瞄准镜")),
                 e -> plugin.menus().openGunsmith(viewer));
         if (plugin.canUseCatalog(viewer)) {
             button(26, UiItems.button("craftov:ui/icon_catalog", "<accent><b>测试军械库", List.of("<muted>免费领取任意物品（测试模式）")),

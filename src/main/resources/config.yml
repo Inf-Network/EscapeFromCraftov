@@ -1,5 +1,10 @@
 # Craftov configuration. Values marked (s) are seconds.
 
+# Goes up with every plugin update that changes a default. On start-up a server copy with a lower
+# number gets each such key moved to the new default if it still holds an old one; a value someone
+# changed stays, and so do the comments. The log lists what changed. Leave it to the plugin.
+config-revision: 1
+
 # New players receive this once. Loadout keys are inventory slots:
 # 0-7 hotbar, 9-17 chest rig cells, 18-35 backpack cells, 36 backpack, 37 rig, 38 body armor, 39 helmet.
 # Format: item[:amount[:ammo for guns]]

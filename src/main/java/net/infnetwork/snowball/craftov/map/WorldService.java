@@ -20,14 +20,21 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
-/** Creates template worlds, clones them for raids and disposes of finished raid worlds. */
+/**
+ * Creates template worlds, clones them for raids and disposes of finished raid worlds. The map
+ * editor changes a published map on a working copy of its template (see {@link #copyForEditing})
+ * that only replaces the template when it is published ({@link #replaceTemplate}).
+ */
 public final class WorldService {
 
     public static final String RAID_PREFIX = "craftov_raid_";
+    /** The map editor's working copies of published maps' templates. */
+    public static final String EDIT_PREFIX = "craftov_edit_";
     private static final Set<String> SKIP = Set.of("uid.dat", "session.lock");
 
     private final Plugin plugin;
@@ -137,6 +144,116 @@ public final class WorldService {
                 + def.extracts().size() + " extracts)");
     }
 
+    // ------------------------------------------------------------------ editor working copies
+
+    /**
+     * The working copy's world name for a map: craftov_edit_&lt;id&gt;. An id that is not a plain
+     * folder name (one saved before ids were checked, "Old-Map" or "废弃工厂") is reduced to one,
+     * with its hash added so two such ids do not share a copy.
+     */
+    public static String editCopy(String mapId) {
+        String safe = mapId.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+        return EDIT_PREFIX + (safe.equals(mapId) ? safe : safe + "_" + Integer.toHexString(mapId.hashCode()));
+    }
+
+    /** Whether a world folder of this name exists in the world container. */
+    public static boolean exists(String name) {
+        return new File(Bukkit.getWorldContainer(), name).isDirectory();
+    }
+
+    /** Loads a world folder (or returns it if loaded) with the rules of an editing world. */
+    public @Nullable World load(String name) {
+        World world = Bukkit.getWorld(name);
+        if (world == null) {
+            world = creator(name).createWorld();
+        }
+        if (world != null) {
+            applyRules(world, false);
+        }
+        return world;
+    }
+
+    /**
+     * Replaces the working copy with a fresh copy of the template and loads it. The copy must not
+     * be loaded. Returns null on failure (logged).
+     */
+    public @Nullable World copyForEditing(String template, String copy) {
+        File container = Bukkit.getWorldContainer();
+        Path target = new File(container, copy).toPath();
+        if (Bukkit.getWorld(copy) != null) {
+            plugin.getLogger().severe("Cannot refresh the working copy " + copy + " while it is loaded");
+            return null;
+        }
+        World loadedTemplate = Bukkit.getWorld(template);
+        if (loadedTemplate != null) {
+            loadedTemplate.save(true);
+        }
+        try {
+            deleteTree(target);
+            copy(new File(container, template).toPath(), target);
+        } catch (IOException ex) {
+            plugin.getLogger().severe("Could not copy template " + template + " to " + copy + ": " + ex.getMessage());
+            return null;
+        }
+        return load(copy);
+    }
+
+    /** Unloads a world (players must have been moved out). Returns whether it is unloaded now. */
+    public boolean unload(String name, boolean save) {
+        World world = Bukkit.getWorld(name);
+        return world == null || Bukkit.unloadWorld(world, save);
+    }
+
+    /** Unloads a world without saving and deletes its folder. Returns false if it could not be unloaded. */
+    public boolean delete(String name) {
+        if (!unload(name, false)) {
+            return false;
+        }
+        deleteQuietly(new File(Bukkit.getWorldContainer(), name).toPath());
+        return true;
+    }
+
+    /**
+     * Publishes a working copy: the copy's folder becomes the template's, and the template's
+     * becomes &lt;template&gt;.prev (the one before that is deleted), so a publish can be undone
+     * by hand. Both worlds are unloaded first (the copy saved, the template not: nothing may have
+     * changed it), so players must have been moved out. Runs on the main thread, as raids copy the
+     * template, so no raid can see the folder half replaced. Returns null when done, or why not.
+     */
+    public @Nullable String replaceTemplate(String template, String copy) {
+        if (!unload(copy, true)) {
+            return "编辑副本卸载失败（里面还有人？）";
+        }
+        if (!unload(template, false)) {
+            return "模板世界卸载失败（里面还有人？）";
+        }
+        Path container = Bukkit.getWorldContainer().toPath();
+        Path live = container.resolve(template);
+        Path edited = container.resolve(copy);
+        Path prev = container.resolve(template + ".prev");
+        if (!Files.isDirectory(edited)) {
+            return "编辑副本 " + copy + " 不存在";
+        }
+        try {
+            deleteTree(prev);
+            if (Files.exists(live)) {
+                Files.move(live, prev, StandardCopyOption.ATOMIC_MOVE);
+            }
+            try {
+                Files.move(edited, live, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException ex) {
+                if (Files.exists(prev) && !Files.exists(live)) {
+                    Files.move(prev, live, StandardCopyOption.ATOMIC_MOVE);
+                }
+                throw ex;
+            }
+        } catch (IOException ex) {
+            plugin.getLogger().severe("Could not replace template " + template + " with " + copy + ": " + ex);
+            return "替换模板失败：" + ex.getMessage();
+        }
+        return null;
+    }
+
     /** Copies a template world and loads it for one raid. Returns null on failure. */
     public @Nullable World createRaidWorld(MapDef map) {
         File container = Bukkit.getWorldContainer();
@@ -147,7 +264,9 @@ public final class WorldService {
         }
         World loadedTemplate = Bukkit.getWorld(map.template());
         if (loadedTemplate != null) {
-            loadedTemplate.save();
+            // Flushed before the folder is copied: save() alone only queues chunks for the IO
+            // thread, which may still be writing region files while they are read.
+            loadedTemplate.save(true);
         }
         String name = RAID_PREFIX + System.currentTimeMillis() % 100000 + "_" + counter.incrementAndGet();
         File target = new File(container, name);
@@ -221,24 +340,28 @@ public final class WorldService {
 
     private void deleteQuietly(Path root) {
         try {
-            if (!Files.exists(root)) {
-                return;
-            }
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    Files.deleteIfExists(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.deleteIfExists(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            deleteTree(root);
         } catch (IOException ex) {
             plugin.getLogger().warning("Could not delete " + root + ": " + ex.getMessage());
         }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.deleteIfExists(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 }

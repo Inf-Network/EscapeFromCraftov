@@ -66,7 +66,7 @@ public final class RustPortGenerator implements MapGenerator {
         return new MapDef(ID, "锈港", "被遗弃的军用港口。指挥中心机房藏着最值钱的东西，码头和铁道是你的退路。",
                 "craftov_tpl_" + ID, 25 * 60, new Pos(104, 128, 104, 0),
                 List.copyOf(bp.spawns), List.copyOf(bp.extracts), List.copyOf(bp.containers), List.copyOf(bp.ai),
-                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, S - 1, S - 1, "dusk", false);
+                List.copyOf(bp.bosses), List.copyOf(bp.doors), List.copyOf(bp.switches), 0, 0, S - 1, S - 1, "dusk", false, true);
     }
 
     @Override
@@ -113,7 +113,7 @@ public final class RustPortGenerator implements MapGenerator {
         }
         return new MapDef(def.id(), def.name(), def.description(), def.template(), def.raidSeconds(), def.camera(), spawns,
                 def.extracts(), def.containers(), ai, def.bosses(), def.doors(), def.switches(), def.minX(), def.minZ(),
-                def.maxX(), def.maxZ(), def.timeOfDay(), def.test());
+                def.maxX(), def.maxZ(), def.timeOfDay(), def.test(), def.enabled());
     }
 
     private static @Nullable Pos moved(Pos pos, double[][] table) {

@@ -241,7 +241,7 @@ public final class EditorService implements Listener {
         }
         Location origin = player.getLocation();
         if (plugin.lobby().isLobby(here)) {
-            // Coming back to the lobby restores this loadout (see leave).
+            // Coming back to the lobby puts this loadout on again (see close).
             plugin.lobby().captureLoadout(player);
         }
         plugin.match().cancelQueue(player.getUniqueId(), "开始编辑地图");
@@ -430,23 +430,24 @@ public final class EditorService implements Listener {
     private void close(Player player, Session session, boolean leaveWorld) {
         sessions.remove(player.getUniqueId());
         clearLabels(session);
+        boolean leaving = (session.copy || leaveWorld) && player.getWorld().equals(session.world);
+        Location origin = session.origin;
+        boolean otherWorld = origin.isWorldLoaded() && !plugin.lobby().isLobby(origin.getWorld()) && !origin.getWorld().equals(session.world);
         player.getInventory().clear();
-        plugin.carry().apply(player, session.inventory, UiItems.lobbyMenu());
-        player.setGameMode(session.mode);
-        if ((session.copy || leaveWorld) && player.getWorld().equals(session.world)) {
-            leave(player, session);
+        if (leaving && !otherWorld) {
+            // Back to the lobby proper (also when the world it started from is gone), which puts on
+            // the loadout saved when the session started: applying the session's copy of it first
+            // would mail an unknown item twice.
+            plugin.lobby().enterLobby(player);
+        } else {
+            plugin.carry().apply(player, session.inventory, UiItems.lobbyMenu());
+            player.setGameMode(session.mode);
+            if (leaving) {
+                // Back to the spot in the other world the session started from.
+                player.teleport(origin);
+            }
         }
         Text.send(player, "<#9AA0A6>已退出编辑模式。");
-    }
-
-    /** Back where the session started: the lobby proper, the spot in another world, or the lobby if that is gone. */
-    private void leave(Player player, Session session) {
-        Location origin = session.origin;
-        if (origin.isWorldLoaded() && !plugin.lobby().isLobby(origin.getWorld()) && !origin.getWorld().equals(session.world)) {
-            player.teleport(origin);
-        } else {
-            plugin.lobby().enterLobby(player);
-        }
     }
 
     public void save(Player player) {

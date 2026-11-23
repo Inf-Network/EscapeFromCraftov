@@ -32,6 +32,7 @@ import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
 import net.infnetwork.snowball.craftov.weapon.InspectService;
+import net.infnetwork.snowball.craftov.weapon.SwapKeyService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
 import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
@@ -94,6 +95,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private net.infnetwork.snowball.craftov.luck.LuckService luck;
     private DownedService downed;
     private WeaponService weapons;
+    private InspectService inspect;
     private RaidManager raids;
     private AiService ai;
     private LobbyService lobby;
@@ -164,6 +166,7 @@ public final class CraftovPlugin extends JavaPlugin {
         downed = new DownedService(this);
         weapons = new WeaponService(this);
         triggers = new TriggerService(this);
+        inspect = new InspectService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
         replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
@@ -196,8 +199,8 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
-                new InspectService(this), market, profiles, killFeed);
+                raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
+                inspect, new SwapKeyService(this), market, profiles, killFeed);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -414,6 +417,7 @@ public final class CraftovPlugin extends JavaPlugin {
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
+    public InspectService inspect() { return inspect; }
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }

@@ -108,7 +108,7 @@ class Run:
         for i, press in enumerate(self.presses):
             press.lines = raw[bounds[i]:bounds[i + 1]].decode('utf-8', 'replace')
             inspect = re.findall(rf'\[debug\] inspect {name} F -> (.*?) tick=', press.lines)
-            key = re.findall(rf'\[debug\] F {name} -> (\S+(?: \S+)?)', press.lines)
+            key = re.findall(rf'\[debug\] F {name} -> (.*?) \(', press.lines)
             started = next((v for v in inspect if v.split()[0] in ('started', 'restarted')), None)
             press.verdict = started or (inspect[-1] if inspect else key[-1] if key else 'no F reached the server')
             press.ok = (started is not None) == (press.expect == 'inspect')

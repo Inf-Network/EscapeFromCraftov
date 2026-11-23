@@ -31,7 +31,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -1598,12 +1597,8 @@ public final class WeaponService implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onSwap(PlayerSwapHandItemsEvent event) {
-        Player player = event.getPlayer();
-        if (player.isSneaking()) {
-            return; // sneak+F is the operator skill
-        }
+    /** F with a gun in hand (SwapKeyService reads the key): the gun's next fire mode, if it has more than one. */
+    public void nextFireMode(Player player) {
         GunState state = bind(player);
         if (state == null || state.gun.modes().size() < 2) {
             return;

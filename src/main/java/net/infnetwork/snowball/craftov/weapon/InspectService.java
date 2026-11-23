@@ -12,7 +12,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.jspecify.annotations.Nullable;
@@ -23,11 +22,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Knife inspect: F with a knife in hand (sneak+F stays the operator skill) turns the knife over in
- * first person for a couple of seconds, each knife its own way. It is only for show. The server runs
- * the knife's {@code craftov:inspect} cooldown group for {@code combat.melee.inspect-ticks}, and the
- * client steps through the inspect frames of the item model while that counts down
- * (tools/art/knife_inspect.py), as it does for the gun reload; nobody else sees it.
+ * Knife inspect: F with a knife in hand (sneak+F stays the operator skill; SwapKeyService reads the
+ * key) turns the knife over in first person for a couple of seconds, each knife its own way. It is
+ * only for show. The server runs the knife's {@code craftov:inspect} cooldown group for
+ * {@code combat.melee.inspect-ticks}, and the client steps through the inspect frames of the item
+ * model while that counts down (tools/art/knife_inspect.py), as it does for the gun reload; nobody
+ * else sees it.
  *
  * <p>Swinging (a cut, Q, a click on a block), switching slot, sprinting, being downed or reviving
  * ends it at once by clearing the cooldown. It never touches the knife's swing interval, so a cut
@@ -52,31 +52,22 @@ public final class InspectService implements Listener {
         return inspect != null && Bukkit.getCurrentTick() < inspect.end;
     }
 
-    /** F: the gun's fire mode (WeaponService) and sneak+F's skill (OperatorService) leave a knife alone. */
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onKey(PlayerSwapHandItemsEvent event) {
-        Player player = event.getPlayer();
-        ItemDef def = knife(player);
-        if (player.isSneaking()) {
-            debug(player, "F ->", "ignored: sneaking (operator skill)");
-            return;
-        }
-        if (def != null) {
-            event.setCancelled(true);
-            start(player, def);
-        } else {
-            debug(player, "F ->", "ignored: no knife");
-        }
+    /**
+     * F with this knife in hand and without Shift, read by SwapKeyService once the client's tick is
+     * over; {@code sprinting} is whether the player still sprinted at the end of that tick.
+     */
+    public void press(Player player, ItemDef knife, boolean sprinting) {
+        start(player, knife, sprinting);
     }
 
     /**
      * Starts an inspect of the knife in hand; one already running plays on. A sprinting, downed,
      * reviving or spectating player cannot inspect.
      */
-    private void start(Player player, ItemDef def) {
-        if (inspecting(player) || !free(player)) {
+    private void start(Player player, ItemDef def, boolean sprinting) {
+        if (inspecting(player) || !free(player, sprinting)) {
             debug(player, "F ->", inspecting(player) ? "ignored: already inspecting"
-                    : player.isSprinting() ? "refused: sprinting" : "refused: downed, reviving or spectating");
+                    : sprinting ? "refused: sprinting" : "refused: downed, reviving or spectating");
             return;
         }
         debug(player, "F ->", "started");
@@ -99,8 +90,8 @@ public final class InspectService implements Listener {
         return def != null && def.isMelee() ? def : null;
     }
 
-    private boolean free(Player player) {
-        return !player.isSprinting() && player.getGameMode() != GameMode.SPECTATOR
+    private boolean free(Player player, boolean sprinting) {
+        return !sprinting && player.getGameMode() != GameMode.SPECTATOR
                 && !plugin.downed().isDowned(player) && !plugin.downed().isReviving(player);
     }
 
@@ -120,7 +111,7 @@ public final class InspectService implements Listener {
             }
             ItemDef def = knife(player);
             if (def == null || !def.id().equals(inspect.item) || player.getInventory().getHeldItemSlot() != inspect.slot
-                    || !free(player)) {
+                    || !free(player, player.isSprinting())) {
                 it.remove();
                 debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "not free");
                 player.setCooldown(ItemFactory.INSPECT_GROUP, 0);

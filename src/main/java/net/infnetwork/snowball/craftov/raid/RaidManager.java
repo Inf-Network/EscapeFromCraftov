@@ -567,6 +567,47 @@ public final class RaidManager implements Listener {
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
         player.playSound(player.getLocation(), "craftov:ui.deploy", SoundCategory.MASTER, 1f, 1f);
         plugin.hud().onRaidStart(player);
+        briefLanding(raid, player, rp);
+    }
+
+    /**
+     * A line for the landing briefing: kept until the player is on the ground while they deploy
+     * (the fly-in hides chat behind the camera, and lines arriving one by one there were never
+     * read), straight to chat otherwise.
+     */
+    public void brief(Player player, String line) {
+        RaidPlayer rp = session(player);
+        if (rp != null && rp.state == RaidPlayer.State.DEPLOYING) {
+            rp.briefing.add(line);
+        } else {
+            Text.send(player, line);
+        }
+    }
+
+    /**
+     * The one chat message on landing: map, difficulty, time, the open extracts and how the compass
+     * shows them, night, who carries a bounty, and whatever came up while deploying (insurance, a
+     * compensation raid). It used to be four or five separate lines spread over the fly-in.
+     */
+    private void briefLanding(Raid raid, Player player, RaidPlayer rp) {
+        long extracts = raid.extracts.stream().filter(point -> point.available).count();
+        StringBuilder sb = new StringBuilder("<accent><b>行动简报</b> <muted>· <white>").append(Text.escape(raid.map.name()))
+                .append(" <muted>· ").append(raid.tier.tag()).append(" <muted>· 限时 ").append(raid.map.raidSeconds() / 60)
+                .append(" 分钟 · 撤离点 ").append(extracts).append(" 个（罗盘上的绿色 ◆）")
+                .append(raid.night ? " · <text>夜间行动" : "");
+        String targets = plugin.bounties().targets(raid);
+        if (targets != null) {
+            sb.append("\n<danger>☠ 本局悬赏目标：").append(targets);
+        }
+        long own = plugin.bounties().inRaid(rp);
+        if (own > 0) {
+            sb.append("\n<danger>你身上有 <accent>◈").append(Text.money(own)).append(" <danger>的悬赏，所有人都知道你在这局。");
+        }
+        for (String line : rp.briefing) {
+            sb.append("\n").append(line);
+        }
+        rp.briefing.clear();
+        Text.send(player, sb.toString());
     }
 
     // ------------------------------------------------------------------ ticking

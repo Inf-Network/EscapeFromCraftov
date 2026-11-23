@@ -175,6 +175,16 @@ public final class BetterHudBridge implements BetterHudHook {
         if (!plugin.raids().isInRaid(player) || !player.getWorld().equals(raid.world)) {
             return out;
         }
+        if (raid.training()) {
+            // The training raid's lesson: the crate, the next target, the lever.
+            var objective = plugin.tutorial().objective(player);
+            Location target = objective == null ? null : objective.target();
+            if (target != null && target.getWorld() == player.getWorld()) {
+                out.add(new PointedLocation(PointedLocationSource.INTERNAL, "craftov_objective", "objective",
+                        new LocationWrapper(new WorldWrapper(target.getWorld().getName()), target.getX(), target.getY(),
+                                target.getZ(), 0f, 0f)));
+            }
+        }
         for (ExtractPoint point : raid.extracts) {
             if (!point.available) {
                 continue;

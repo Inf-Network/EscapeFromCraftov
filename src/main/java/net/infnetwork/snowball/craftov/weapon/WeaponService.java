@@ -1290,6 +1290,7 @@ public final class WeaponService implements Listener {
     /** Closing sound of a finished reload: the bolt or pump is worked only if the magazine had run dry. */
     private void reloadDone(Player player, GunState state) {
         GunSpec gun = state.gun;
+        plugin.training().onReload(player);
         if (!state.reloadEmpty) {
             return;
         }

@@ -487,6 +487,15 @@ tutorial:
   # The three-page briefing (goal, rules, controls) that opens for a new player after joining.
   briefing: true
 
+# The training raid: a solo course on the training ground (crate, targets, a reload, a wound to
+# treat, a lever extract). Offered on the deploy screen while the guide runs, or /cv training.
+# Nothing in it counts and the gear brought in comes back; finishing it counts as the guide's
+# deploy and extract steps.
+training:
+  enabled: true
+  # (s) the lever's countdown on the course, much shorter than extract.switch-countdown-seconds.
+  switch-countdown-seconds: 10
+
 season:
   # Changing the id starts a new season (everyone's pass progress resets).
   id: S1

@@ -58,6 +58,14 @@ public final class Cinematic {
             ids.forEach(onDone);
             return;
         }
+        if (raid.training()) {
+            // No flight over a course of four rooms: the curtain alone, and down once the screen is black.
+            for (Player player : players) {
+                net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, CURTAIN_IN, CURTAIN_STAY, CURTAIN_OUT);
+            }
+            Bukkit.getScheduler().runTaskLater(plugin, () -> ids.forEach(onDone), CURTAIN_IN + 2L);
+            return;
+        }
         Location center = raid.map.camera().at(raid.world);
         Vector p0 = center.toVector().add(new Vector(-30, 30, -30));
         Vector p1 = center.toVector().add(new Vector(0, 10, 0));

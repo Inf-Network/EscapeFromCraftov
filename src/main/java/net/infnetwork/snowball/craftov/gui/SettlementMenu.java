@@ -19,17 +19,30 @@ import java.util.List;
  * distance and the hits taken), a row of figures (time,
  * kills, experience, rank points, value brought in and out, net result, new collectibles), the ten
  * most valuable items taken out or lost, and back to the lobby, the stash or straight into another
- * raid. Chat keeps one summary line.
+ * raid. Chat keeps one summary line. A training raid has its own: the lessons done, the time and
+ * the rounds fired, with no money, experience or items, since nothing in it counts.
  */
 public final class SettlementMenu extends Menu {
 
     /** Everything the screen shows, gathered when the raid ends for this player. */
     public record Settlement(boolean extracted, String outcome, String map, String tier, int seconds, int kills, int aiKills,
                              long xp, int rankDelta, long broughtIn, long broughtOut, long net, List<ItemStack> items,
-                             List<String> collectibles, @Nullable String killer, List<String> wounds, int shots, int stillShots) {
+                             List<String> collectibles, @Nullable String killer, List<String> wounds, int shots, int stillShots,
+                             boolean training) {
+
+        /** A training raid's result: {@code lessons} are its checklist lines (in {@link #wounds}). */
+        public static Settlement training(boolean done, String outcome, String map, int seconds, List<String> lessons,
+                                          int shots, int stillShots) {
+            return new Settlement(done, outcome, map, "训练", seconds, 0, 0, 0, 0, 0, 0, 0, List.of(), List.of(), null,
+                    lessons, shots, stillShots, true);
+        }
 
         /** The one chat line kept as a record. */
         public String summary() {
+            if (training) {
+                return (extracted ? "<ok>训练完成" : "<danger>训练中断 <muted>· <white>" + Text.escape(outcome))
+                        + " <muted>· 用时 " + Text.duration(seconds) + " · 不计战绩，带进去的装备已原样归还";
+            }
             return (extracted ? "<ok>撤离成功" : "<danger>行动失败 <muted>· <white>" + Text.escape(outcome))
                     + " <muted>· " + Text.escape(map) + " · " + Text.escape(tier)
                     + " · " + Text.duration(seconds) + " · " + (extracted
@@ -48,7 +61,9 @@ public final class SettlementMenu extends Menu {
     public SettlementMenu(CraftovPlugin plugin, Player viewer, Settlement settlement) {
         super(viewer, 6, settlement.extracted() ? "settlement_ok" : "settlement_fail",
                 // The two figures that matter most stay readable without hovering: net result and time.
-                Text.mm("行动结算 <muted>· " + (settlement.net() >= 0 ? "<ok>+◈" + Text.money(settlement.net())
+                settlement.training() ? Text.mm("训练结算 <muted>· " + (settlement.extracted() ? "<ok>完成" : "<danger>中断")
+                        + " <muted>· " + Text.duration(settlement.seconds()))
+                        : Text.mm("行动结算 <muted>· " + (settlement.net() >= 0 ? "<ok>+◈" + Text.money(settlement.net())
                         : "<danger>-◈" + Text.money(-settlement.net())) + " <muted>· " + Text.duration(settlement.seconds())));
         this.plugin = plugin;
         this.s = settlement;
@@ -56,6 +71,10 @@ public final class SettlementMenu extends Menu {
 
     @Override
     protected void draw() {
+        if (s.training()) {
+            drawTraining();
+            return;
+        }
         List<String> report = new ArrayList<>(List.of("<muted>" + Text.escape(s.outcome())));
         if (s.killer() != null) {
             report.add("<muted>击杀者 <danger>" + Text.escape(s.killer()));
@@ -95,6 +114,31 @@ public final class SettlementMenu extends Menu {
         button(49, UiItems.button("craftov:ui/icon_stash", "<text><b>打开仓库", List.of("<muted>整理带回来的物资")),
                 e -> plugin.menus().openStash(viewer));
         bigButton(AGAIN, "<accent><b>再来一局", List.of("<muted>打开部署界面"), e -> plugin.menus().openDeploy(viewer));
+    }
+
+    /**
+     * A training raid's screen: the outcome with the lessons ticked off, the time and the rounds
+     * fired, and the way on: back to the lobby, or a real raid.
+     */
+    private void drawTraining() {
+        List<String> report = new ArrayList<>(List.of("<muted>" + Text.escape(s.outcome())));
+        report.addAll(s.wounds());
+        report.add("<muted>训练不计战绩：带进去的装备和安全箱已原样归还，");
+        report.add("<muted>训练里拿到的枪、弹药和药品已收回。");
+        set(8, UiItems.button(s.extracted() ? "craftov:ui/report_ok" : "craftov:ui/report_fail",
+                s.extracted() ? "<ok><b>训练完成" : "<danger><b>训练中断", report));
+        stat(9, "icon_mode", "用时", "<white>" + Text.duration(s.seconds()));
+        if (s.shots() > 0) {
+            stat(10, "icon_deploy", "开火", "<white>" + s.shots() + " <muted>发 · 急停射击 <white>" + s.stillShots() + " <muted>发");
+        }
+        List<String> next = new ArrayList<>(List.of(
+                "<muted>真正的行动里：身上的装备就是出发装备，",
+                "<muted>阵亡会丢掉安全箱以外的一切，撤离才能带回物资。"));
+        set(13, UiItems.button("craftov:ui/icon_help", "<accent>接下来", next));
+        button(45, UiItems.button("craftov:ui/arrow_left", "<text><b>返回大厅", List.of("<muted>关闭结算")), e -> viewer.closeInventory());
+        button(49, UiItems.button("craftov:ui/icon_stash", "<text><b>打开仓库", List.of("<muted>配好装备再出发")),
+                e -> plugin.menus().openStash(viewer));
+        bigButton(AGAIN, "<accent><b>开始行动", List.of("<muted>打开部署界面，选一张地图出发"), e -> plugin.menus().openDeploy(viewer));
     }
 
     private void stat(int slot, String icon, String label, String value) {

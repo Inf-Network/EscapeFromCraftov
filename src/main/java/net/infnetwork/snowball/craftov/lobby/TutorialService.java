@@ -324,11 +324,15 @@ public final class TutorialService {
      * Main thread (HudService builds the snapshot from it).
      */
     public @Nullable Objective objective(Player player) {
+        Raid raid = plugin.raids().raidOf(player);
+        if (raid != null && raid.training()) {
+            // The training raid has its own lessons, guide or no guide (TrainingService).
+            return plugin.training().objective(player);
+        }
         Profile profile = plugin.profiles().get(player);
         if (!guided(profile)) {
             return null;
         }
-        Raid raid = plugin.raids().raidOf(player);
         if (raid != null) {
             if (!plugin.raids().isInRaid(player) || isDone(profile, Step.EXTRACT)) {
                 return null;

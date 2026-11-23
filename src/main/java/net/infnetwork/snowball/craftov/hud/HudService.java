@@ -99,10 +99,14 @@ public final class HudService {
         boolean inRaid = data.inRaid(player);
         var gun = data.gun(player);
         var objective = plugin.tutorial().objective(player);
+        // The objective's own marker is on the compass outside raids and on the training course
+        // (BetterHudBridge); a raid's compass shows its extracts instead.
+        var raid = plugin.raids().raidOf(player);
+        boolean marked = objective != null && objective.target() != null && (!inRaid || raid != null && raid.training());
         return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
                 gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
                 alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "",
-                data.objective(player, objective), !inRaid && objective != null && objective.target() != null);
+                data.objective(player, objective), marked);
     }
 
     /**

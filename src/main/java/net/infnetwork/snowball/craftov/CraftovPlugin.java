@@ -102,6 +102,7 @@ public final class CraftovPlugin extends JavaPlugin {
     private AiService ai;
     private LobbyService lobby;
     private net.infnetwork.snowball.craftov.lobby.RangeService range;
+    private net.infnetwork.snowball.craftov.raid.TrainingService training;
     private MatchService match;
     private TraderService traders;
     private MarketService market;
@@ -180,6 +181,7 @@ public final class CraftovPlugin extends JavaPlugin {
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
         range = new net.infnetwork.snowball.craftov.lobby.RangeService(this);
+        training = new net.infnetwork.snowball.craftov.raid.TrainingService(this);
         match = new MatchService(this);
         traders = new TraderService(this);
         market = new MarketService(this);
@@ -481,6 +483,7 @@ public final class CraftovPlugin extends JavaPlugin {
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }
     public net.infnetwork.snowball.craftov.lobby.RangeService range() { return range; }
+    public net.infnetwork.snowball.craftov.raid.TrainingService training() { return training; }
     public MatchService match() { return match; }
     public TraderService traders() { return traders; }
     public MarketService market() { return market; }

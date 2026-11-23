@@ -167,6 +167,11 @@ public final class Profile {
     public static final class Deployment {
         /** Raid.key: unique across restarts, unlike the raid id. */
         public String raid = "";
+        /**
+         * A training raid (TrainingService): however it ends, it is undone like a void raid, but
+         * without a letter or compensation, since nothing in it was ever at stake.
+         */
+        public boolean training;
         /** Map and difficulty names, for the letter that says the raid was void. */
         public String map = "";
         public String tier = "";

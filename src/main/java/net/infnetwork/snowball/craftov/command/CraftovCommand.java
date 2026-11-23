@@ -20,7 +20,7 @@ import java.util.Locale;
 public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
-            "leave", "help", "mod", "guide");
+            "leave", "help", "mod", "guide", "training");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
             "feed", "marketaudit", "ai", "lagcomp", "luck");
 
@@ -106,6 +106,15 @@ public final class CraftovCommand implements TabExecutor {
                     plugin.tutorial().openBriefing(player, page);
                 }
             }
+            case "training" -> {
+                // /cv training: the training raid (the deploy screen offers it while the guide runs).
+                if (player != null) {
+                    String why = plugin.training().start(player);
+                    if (why != null) {
+                        Text.send(player, "<danger>" + why);
+                    }
+                }
+            }
             case "queue" -> {
                 // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
                 if (player == null) {
@@ -177,6 +186,7 @@ public final class CraftovCommand implements TabExecutor {
         sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配  <muted>/cv guide <muted>新手简报（start | skip 开启或关闭指引）"));
+        sender.sendMessage(Text.mm("<muted>/cv training <muted>训练行动（单人，不计战绩，装备原样归还）"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
             sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }

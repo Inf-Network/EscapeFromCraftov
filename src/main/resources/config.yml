@@ -291,6 +291,26 @@ weapons:
       reflex: 1
       low: 2
       high: 3
+    # Aiming slows the player to this share of their speed, by ads-class, times optic-speed for the
+    # optic (on the range too). The aimed cone is the gun's ads-spread times optic-spread.
+    speed:
+      pistol: 0.85
+      smg: 0.8
+      rifle: 0.7
+      shotgun: 0.8
+      dmr: 0.6
+      lmg: 0.55
+      bolt: 0.5
+    optic-speed:
+      iron: 1.0
+      reflex: 1.0
+      low: 0.9
+      high: 0.8
+    optic-spread:
+      iron: 1.0
+      reflex: 0.95
+      low: 0.85
+      high: 0.8
     # Right mouse held repeats a use packet every 4 ticks: aiming ends this many ticks after the last.
     timeout-ticks: 5
     # Let go of a scope, its picture stays this many ticks while the client's view widens back.

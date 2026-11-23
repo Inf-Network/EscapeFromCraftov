@@ -386,17 +386,46 @@ public final class WeaponService implements Listener {
         return motion.speed(player);
     }
 
+    /**
+     * How much aiming slows the player (a multiplier of their speed): by the gun's ads-class
+     * (weapons.ads.speed: a pistol barely, a bolt rifle by half), times the optic's
+     * (weapons.ads.optic-speed: a long scope a little more). 1 while not aiming.
+     */
     public double adsSpeedFactor(Player player) {
-        if (!isAiming(player)) {
+        GunState state = state(player);
+        if (!isAiming(player) || state == null) {
             return 1.0;
         }
-        GunState state = state(player);
-        return switch (state == null ? "rifle" : state.gun.adsClass()) {
-            case "pistol", "shotgun" -> 0.85;
-            case "dmr" -> 0.5;
-            case "bolt" -> 0.3;
-            default -> 0.7;
+        var config = plugin.getConfig();
+        String kind = state.gun.adsClass();
+        double fallback = switch (kind) {
+            case "pistol" -> 0.85;
+            case "smg", "shotgun" -> 0.8;
+            case "dmr" -> 0.6;
+            case "lmg" -> 0.55;
+            case "bolt" -> 0.5;
+            default -> 0.7; // rifle
         };
+        OpticSpec.Tier tier = state.optic == null ? OpticSpec.Tier.IRON : state.optic.tier();
+        double optic = switch (tier) {
+            case IRON, REFLEX -> 1.0;
+            case LOW -> 0.9;
+            case HIGH -> 0.8;
+        };
+        double factor = config.getDouble("weapons.ads.speed." + kind, fallback) * config.getDouble("weapons.ads.optic-speed." + tier.key(), optic);
+        return Math.max(0.1, Math.min(1.0, factor));
+    }
+
+    /** The aimed cone is the gun's ads-spread times this for its optic (weapons.ads.optic-spread). */
+    private double opticSpread(GunState state) {
+        OpticSpec.Tier tier = state.optic == null ? OpticSpec.Tier.IRON : state.optic.tier();
+        double fallback = switch (tier) {
+            case IRON -> 1.0;
+            case REFLEX -> 0.95;
+            case LOW -> 0.85;
+            case HIGH -> 0.8;
+        };
+        return plugin.getConfig().getDouble("weapons.ads.optic-spread." + tier.key(), fallback);
     }
 
     // ------------------------------------------------------------------ state binding
@@ -898,7 +927,7 @@ public final class WeaponService implements Listener {
         double up = adsProgress(player);
         boolean aiming = up >= 1;
         var config = plugin.getConfig();
-        double aimed = gun.adsSpread() * (state.optic != null && state.optic.magnified() ? 0.8 : 1.0);
+        double aimed = gun.adsSpread() * opticSpread(state);
         // The cone narrows as the sights come up, and is the aimed one only once they are.
         double spread = gun.hipSpread() + (aimed - gun.hipSpread()) * up;
         if (player.isSneaking()) {

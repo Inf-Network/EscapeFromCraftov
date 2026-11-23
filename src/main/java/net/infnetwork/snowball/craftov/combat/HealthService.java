@@ -523,7 +523,8 @@ public final class HealthService implements Listener {
 
     private double speedFactor(Player player) {
         if (!plugin.raids().isInRaid(player)) {
-            return 1.0;
+            // The range: aiming slows the player as it would in a raid; nothing else does.
+            return plugin.weapons().adsSpeedFactor(player);
         }
         double factor = 1.0;
         for (ItemStack armor : player.getInventory().getArmorContents()) {

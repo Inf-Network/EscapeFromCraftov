@@ -58,6 +58,7 @@ const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { pullTrigger } = require('./common')
 
 const PORT = env.PORT
 const RCON = env.RCON
@@ -552,7 +553,9 @@ async function soldierlag () {
       // Into the air: a swing with a block within reach under the crosshair is a click on it, not a shot.
       lookAt(target.entity.position.offset(-10, 8, 0), target)
       await sleep(200)
-      target.swingArm()
+      // A real trigger pull (the capture block in front of the crosshair dug, as the vanilla client
+      // does): a bare swing does not reliably fire the target's M4C, which is on full auto.
+      await pullTrigger(target)
       await sleep(1500)
       walking = motion.velocity().x < -1.2
     }

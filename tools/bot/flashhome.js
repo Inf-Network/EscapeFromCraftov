@@ -1,7 +1,7 @@
 // A flashbang's white-out ends with the raid (issue #61): flashed and then sent home, or killed,
 // the player's screen must clear at once instead of fading out over the next four seconds.
 //
-//   node flashhome.js                 both scenarios
+//   node flashhome.js                 all three scenarios
 //   node flashhome.js lobby death     only these
 //
 //   lobby  flashed in the face on the proving ground, the bot leaves with /cv lobby while the
@@ -10,9 +10,15 @@
 //   death  flashed the same way and then killed: by 300 ms after turning spectator the head slot
 //          is plain and the white-out's blindness is lifted, and neither comes back on the death
 //          camera
+//   blast  at a tenth of its health, a flashbang ahead and then a frag held in the hand until it
+//          goes off while the screen is still white: a death through the weapon damage path,
+//          which shows the red hit rim after the hit. Once the bot is a spectator no head-slot
+//          update carries any camera overlay (white-out, hit rim, blood edge), and the last one
+//          is plain
 //
 // Before the fix (#61) the white-out stepped down over the lobby and the death camera for about two
-// seconds after either, and the blindness stayed on the dead for a second.
+// seconds after either, and the blindness stayed on the dead for a second; a killing hit put the red
+// rim back on the death camera for 0.3 s after dying had cleared it.
 //
 // Camera overlays reach the client as a client-only helmet on the bot's own head slot: an equipment
 // packet about itself, or the real head slot (inventory slot 5) dressed with the overlay.
@@ -66,6 +72,12 @@ async function make () {
   })
   bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) bot.heads.push({ at: Date.now(), via: 'slot', overlay: overlayOf(p.item) }) })
   bot._client.on('window_items', p => { if (p.windowId === 0 && p.items) bot.heads.push({ at: Date.now(), via: 'window', overlay: overlayOf(p.items[5]) }) })
+  // Where the head-slot list stood when the bot turned spectator: what came after is known by
+  // packet order, not by the clock (the same tick sends both).
+  bot.spectatorAt = -1
+  bot._client.on('game_state_change', p => {
+    if ((p.reason === 'change_game_mode' || p.reason === 3) && Math.round(p.gameMode) === 3) bot.spectatorAt = bot.heads.length
+  })
   bot._client.on('entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) bot.effects.push({ at: Date.now(), id: p.effectId, on: true }) })
   bot._client.on('remove_entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) bot.effects.push({ at: Date.now(), id: p.effectId, on: false }) })
   bot.on('kicked', r => log(name, 'KICKED', r))
@@ -82,34 +94,51 @@ function heldSlot (bot, id) {
   return bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && JSON.stringify(s.components || '').includes(`"value":"${id}"`))
 }
 
-/**
- * Solo into the proving ground with two flashbangs, then one thrown a few blocks ahead while facing
- * it, until the screen is fully white (misc/flash_4). Returns when it was, or null.
- */
-async function flashed (bot) {
+/** Solo into the proving ground with two flashbangs and {@code extra} items ("frag 1"). Returns whether it got in. */
+async function deploy (bot, extra) {
   const name = bot.username
   await rcon(`cv give ${name} flash 2`)
+  if (extra) await rcon(`cv give ${name} ${extra}`)
   bot.chat('/cv queue proving NORMAL SOLO')
   if (!await waitFor(() => inRaidWorld(bot) && bot.game.gameMode === 'adventure', 90000)) {
     log('not inserted')
-    return null
+    return false
   }
   await sleep(3500) // spawn protection and the landing
   // Soldiers shoot from afar; the bot must live until it is killed on purpose.
   await rcon(`effect give ${name} resistance 120 4 true`)
+  return true
+}
+
+/**
+ * A flashbang tapped a few blocks ahead (or, at pitch 90, at the feet, for a longer white-out),
+ * facing it; it goes off 2 s later. Returns when it left the hand, or null.
+ */
+async function throwFlash (bot, attempt, pitch = 35) {
+  const slot = heldSlot(bot, 'flash')
+  if (slot < 0) return null
+  bot.setQuickBarSlot(slot - 36)
+  await rcon(`execute as ${bot.username} at @s run tp @s ~ ~ ~ ${attempt * 180} ${pitch}`)
+  await sleep(600)
+  const from = Date.now()
+  bot.activateItem()
+  await sleep(200)
+  bot.deactivateItem()
+  return from
+}
+
+const whiteSince = (bot, from) => bot.heads.find(h => h.at >= from && h.overlay === 'flash_4')
+
+/**
+ * Into the proving ground, then flashed until the screen is fully white (misc/flash_4). Returns
+ * when it was, or null.
+ */
+async function flashed (bot) {
+  if (!await deploy(bot)) return null
   for (let attempt = 0; attempt < 2; attempt++) {
-    const slot = heldSlot(bot, 'flash')
-    if (slot < 0) break
-    bot.setQuickBarSlot(slot - 36)
-    await rcon(`execute as ${name} at @s run tp @s ~ ~ ~ ${attempt * 180} 35`)
-    await sleep(600)
-    const from = Date.now()
-    bot.activateItem()
-    await sleep(200)
-    bot.deactivateItem()
-    if (await waitFor(() => bot.heads.some(h => h.at >= from && h.overlay === 'flash_4'), 5000)) {
-      return bot.heads.find(h => h.at >= from && h.overlay === 'flash_4').at
-    }
+    const from = await throwFlash(bot, attempt)
+    if (from == null) break
+    if (await waitFor(() => whiteSince(bot, from), 5000)) return whiteSince(bot, from).at
     log('no white-out from throw', attempt + 1)
   }
   return null
@@ -170,6 +199,52 @@ const scenarios = {
     const off = bot.effects.find(e => e.at >= killed && e.id === BLINDNESS && !e.on)
     check('death: the white-out\'s blindness is lifted by 300 ms after dying', blind && !!off && off.at - dead <= 300,
       { blindWhenKilled: blind, liftedAfterMs: off ? off.at - dead : null })
+    return true
+  },
+
+  async blast (bot) {
+    if (!await deploy(bot, 'frag 1')) return false
+    const frag = heldSlot(bot, 'frag')
+    const thrown = await throwFlash(bot, 0, 90)
+    if (frag < 0 || thrown == null) {
+      log('no frag or flashbang in the hotbar')
+      return false
+    }
+    await rcon(`effect clear ${bot.username} resistance`)
+    // A frag going off in the hand takes about two thirds of full health through the proving
+    // ground's vest: down to a tenth first, so it kills, with the low-health blood edge under the
+    // white-out. Health is scaled to 20 on the client, so the real maximum comes from the server.
+    const max = Number((await rcon(`attribute ${bot.username} minecraft:max_health get`)).match(/([\d.]+)\s*$/)?.[1] || 20)
+    await rcon(`damage ${bot.username} ${Math.round(max * 0.9)} minecraft:generic`)
+    // The pin comes out once the 1 s throw cooldown from the flashbang's release is over: the
+    // flashbang goes off 0.6 s into the frag's 3.5 s fuse, so the frag goes off in the hand 2.9 s
+    // into the white-out, which lasts about 3.6 s from a flashbang at the feet.
+    await sleep(Math.max(0, thrown + 1400 - Date.now()))
+    bot.setQuickBarSlot(frag - 36)
+    await sleep(50)
+    bot.activateItem()
+    if (!await waitFor(() => bot.game.gameMode === 'spectator', 6000)) {
+      bot.deactivateItem()
+      log('the frag did not kill the bot')
+      return false
+    }
+    bot.physicsEnabled = false
+    await sleep(3000)
+    const mark = bot.spectatorAt
+    const report = { ...seen(bot, thrown), spectatorAfter: mark < 0 ? null : bot.heads.slice(0, mark).filter(h => h.at >= thrown).length }
+    if (mark < 0 || !whiteSince(bot, thrown)) {
+      log('no white-out or no switch to spectator', report)
+      return false
+    }
+    // Dying clears the camera before the switch to spectator: the last overlay before it must be
+    // the white-out (the frag went off with the screen still white, and clearing it let no blood
+    // edge out from under it).
+    const shown = bot.heads.slice(0, mark).filter(h => h.at >= thrown && h.overlay)
+    check('blast: the white-out goes straight to a plain screen at death',
+      shown.length > 0 && shown[shown.length - 1].overlay.startsWith('flash'), report)
+    check('blast: no camera overlay on the head slot once dead', !bot.heads.slice(mark).some(h => h.overlay), report)
+    const heads = bot.heads.filter(h => h.at >= thrown)
+    check('blast: the last head-slot update is plain', heads[heads.length - 1].overlay === null)
     return true
   }
 }

@@ -157,10 +157,12 @@ async function replay () {
   await sleep(3500) // spawn protection
   await clear(world)
   check('A and C hold an M4C', (await arm(a)) && (await arm(c)))
-  // Spawn bay 1: A faces B from 12 blocks west, C stands 5 blocks south of B.
+  // Spawn bay 1: A faces B from 12 blocks west, C stands 4 blocks north of B. A's misses drift
+  // south with the recoil (rounds landed up to 10 blocks south of B on the bay's east wall), and
+  // with C to the south they downed C, after which B bled out without a killer and no replay.
   await rcon(`execute as ${a.username} at @s run tp @s 10.5 65 90.5 -90 0`)
   await rcon(`execute as ${b.username} at @s run tp @s 22.5 65 90.5 90 0`)
-  await rcon(`execute as ${c.username} at @s run tp @s 22.5 65 95.5 90 0`)
+  await rcon(`execute as ${c.username} at @s run tp @s 22.5 65 86.5 90 0`)
   // Stand still for longer than the six-second replay window, so the stand-ins of A and C stand
   // exactly where A and C stand for the whole replay.
   await sleep(8500)

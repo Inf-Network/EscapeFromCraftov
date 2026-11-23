@@ -86,6 +86,13 @@ public final class ThrowableService implements Listener {
         plugin.ai().alert(at, 40, thrower);
     }
 
+    /**
+     * Shrapnel reaches whoever is within the radius (a sphere: Bukkit's nearby query is a box, whose
+     * corners reach 1.7 times as far) along three lines, to the eyes, the middle of the body and the
+     * legs. Each line no block cuts carries a third of the damage, less the farther that point is
+     * from the blast, so a head showing over a crate still gets hurt, less than in the open, and only
+     * someone wholly behind cover is spared.
+     */
     private void frag(Player thrower, Location at, ThrowableSpec spec, String name) {
         at.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, at, 1);
         at.getWorld().spawnParticle(Particle.LARGE_SMOKE, at, 30, 1.2, 0.6, 1.2, 0.05);
@@ -104,21 +111,51 @@ public final class ThrowableService implements Listener {
             if (!self && !plugin.raids().canDamage(thrower, entity)) {
                 continue;
             }
-            Location target = entity.getLocation().add(0, entity.getHeight() / 2, 0);
-            Vector to = target.toVector().subtract(at.toVector());
-            double distance = to.length();
-            RayTraceResult wall = at.getWorld().rayTraceBlocks(at, to.clone().normalize(), Math.max(0.1, distance), org.bukkit.FluidCollisionMode.NEVER, true);
-            if (wall != null && wall.getHitBlock() != null) {
+            double damage = 0;
+            for (Location point : shrapnelTargets(entity)) {
+                damage += shrapnel(at, point, spec);
+            }
+            if (damage <= 0) {
                 continue;
             }
-            double damage = spec.damage() * Math.max(0.1, 1 - distance / spec.radius());
             plugin.damage().recordHit(entity, self ? null : thrower, name, HitZone.TORSO);
             plugin.damage().deal(entity, self ? null : thrower, damage);
             // A soldier caught in the blast knows roughly where it came from, and a sleeping boss
             // group wakes, as it would to a bullet.
             plugin.ai().onBotHurt(entity, thrower);
-            entity.setVelocity(entity.getVelocity().add(to.normalize().multiply(0.4)));
+            Vector push = entity.getLocation().add(0, entity.getHeight() / 2, 0).toVector().subtract(at.toVector());
+            if (push.lengthSquared() > 1e-4) {
+                entity.setVelocity(entity.getVelocity().add(push.normalize().multiply(0.4)));
+            }
         }
+    }
+
+    /** The three points of a body shrapnel flies at: the eyes, the middle and the legs. */
+    private static Location[] shrapnelTargets(LivingEntity entity) {
+        Location feet = entity.getLocation();
+        return new Location[] {entity.getEyeLocation(), feet.clone().add(0, entity.getHeight() / 2, 0),
+                feet.clone().add(0, Math.min(0.4, entity.getHeight() / 4), 0)};
+    }
+
+    /**
+     * The damage the shrapnel flying from {@code at} to {@code point} carries: a third of the
+     * grenade's, falling off linearly to a tenth at the edge of the radius, and none beyond it or
+     * when a block stands in the way.
+     */
+    private static double shrapnel(Location at, Location point, ThrowableSpec spec) {
+        Vector to = point.toVector().subtract(at.toVector());
+        double distance = to.length();
+        if (distance > spec.radius()) {
+            return 0;
+        }
+        if (distance > 1e-3) {
+            RayTraceResult wall = at.getWorld().rayTraceBlocks(at, to.multiply(1 / distance), distance,
+                    org.bukkit.FluidCollisionMode.NEVER, true);
+            if (wall != null && wall.getHitBlock() != null) {
+                return 0;
+            }
+        }
+        return spec.damage() / 3 * Math.max(0.1, 1 - distance / spec.radius());
     }
 
     private void smoke(Location at, ThrowableSpec spec) {

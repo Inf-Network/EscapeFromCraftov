@@ -548,7 +548,11 @@ async function preset () {
   const p = readProfile(name)
   const all = Object.values(p.loadout).concat(p.stash)
   check('ten medkits still there', countIds(all, 'medkit_s') === 10, { stash: p.stash.map(r => r.id), loadout: Object.values(p.loadout).map(r => r.id) })
-  check('screws and bandage carried', countIds(Object.values(p.loadout), 'screws') === 1 && countIds(Object.values(p.loadout), 'bandage') === 1)
+  // The preset has them on keys 1 and 2, which take guns only (#10): the bandage goes to a quick key,
+  // and the screws, with no rig or backpack to carry them, back to the stash.
+  const slotsOf = id => Object.entries(p.loadout).filter(([, r]) => r.id === id).map(([slot]) => Number(slot))
+  check('the bandage carried on a quick key', slotsOf('bandage').length === 1 && slotsOf('bandage')[0] >= 3 && slotsOf('bandage')[0] <= 7, p.loadout)
+  check('the screws kept in the stash, not on a gun key', slotsOf('screws').length === 0 && countIds(p.stash, 'screws') === 1, slotsOf('screws'))
   check('only the bandage was paid for', p.money === 5000 - 920, p.money)
 }
 

@@ -136,8 +136,8 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>这个名字留给对局世界和编辑副本，换一个吧。");
             return;
         }
-        MapDef owner = templateOwner(name);
-        if (owner != null && owner.enabled()) {
+        MapDef owner = liveTemplateOwner(name);
+        if (owner != null) {
             // Changed here, the live template would reach the next raid half built: edit a copy instead.
             Text.send(player, "<#FF8A80>这是已发布地图 " + Text.escape(owner.name()) + " 的模板世界。<#9AA0A6>用 <white>/cv editor start "
                     + Text.escape(owner.id()) + "</white> 在副本上编辑，发布后才会影响对局。");
@@ -208,7 +208,14 @@ public final class EditorService implements Listener {
                 Text.send(player, "<#9AA0A6>继续编辑上次保存、还没发布的草稿。");
             }
         } else if (existing != null) {
-            // Nobody has published it: no raid copies its world, so it is edited where it is.
+            // Nobody has published it: no raid copies its world, so it is edited where it is,
+            // unless a published map uses the same world.
+            MapDef owner = liveTemplateOwner(existing.template());
+            if (owner != null) {
+                Text.send(player, "<#FF8A80>世界 " + Text.escape(existing.template()) + " 是已发布地图 " + Text.escape(owner.name())
+                        + " 的模板，不能在里面直接编辑。");
+                return;
+            }
             world = WorldService.exists(existing.template()) ? plugin.worlds().load(existing.template()) : null;
             if (world == null) {
                 Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 的世界 " + Text.escape(existing.template()) + " 不存在。");
@@ -309,10 +316,20 @@ public final class EditorService implements Listener {
         return world;
     }
 
-    /** The map whose template this world is, or null. */
+    /** A map whose template this world is, or null. */
     private @Nullable MapDef templateOwner(String world) {
         for (MapDef def : plugin.maps().all()) {
             if (def.template().equals(world)) {
+                return def;
+            }
+        }
+        return null;
+    }
+
+    /** A published map whose template this world is, or null: such a world is only ever changed through a copy. */
+    private @Nullable MapDef liveTemplateOwner(String world) {
+        for (MapDef def : plugin.maps().all()) {
+            if (def.enabled() && def.template().equals(world)) {
                 return def;
             }
         }

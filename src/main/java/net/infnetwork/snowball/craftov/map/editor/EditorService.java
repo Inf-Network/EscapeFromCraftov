@@ -69,14 +69,17 @@ public final class EditorService implements Listener {
 
     private final class Session {
         final MapDraft draft;
+        /** The world the markers belong to: tools do nothing anywhere else, and labels go here. */
+        final World world;
         final Map<Integer, ItemRecord> inventory;
         final GameMode mode;
         final Map<Tool, Integer> option = new HashMap<>();
         final List<TextDisplay> labels = new ArrayList<>();
         @Nullable Location corner;
 
-        Session(MapDraft draft, Map<Integer, ItemRecord> inventory, GameMode mode) {
+        Session(MapDraft draft, World world, Map<Integer, ItemRecord> inventory, GameMode mode) {
             this.draft = draft;
+            this.world = world;
             this.inventory = inventory;
             this.mode = mode;
         }
@@ -159,7 +162,7 @@ public final class EditorService implements Listener {
             draft.template = world.getName();
         }
         plugin.weapons().reset(player);
-        Session session = new Session(draft, plugin.carry().snapshot(player), player.getGameMode());
+        Session session = new Session(draft, world, plugin.carry().snapshot(player), player.getGameMode());
         sessions.put(player.getUniqueId(), session);
         player.getInventory().clear();
         player.setGameMode(GameMode.CREATIVE);
@@ -347,6 +350,11 @@ public final class EditorService implements Listener {
             }
             return;
         }
+        if (!player.getWorld().equals(session.world)) {
+            // Coordinates from another world would land on whatever stands there in this map.
+            player.sendActionBar(Text.mm("<#FF8A80>这里不是正在编辑的世界 " + session.world.getName() + "，标记没有放下"));
+            return;
+        }
         Block block = event.getClickedBlock();
         Location top = block.getLocation().add(0.5, 1, 0.5);
         float yaw = Math.round(player.getYaw() / 90f) * 90f + 180f;
@@ -357,7 +365,8 @@ public final class EditorService implements Listener {
             case EXTRACT -> {
                 ExtractType type = EXTRACT_TYPES[o % EXTRACT_TYPES.length];
                 String sw = d.switches.isEmpty() ? "" : d.switches.get(d.switches.size() - 1).id();
-                d.extracts.add(new MapDef.ExtractDef("extract_" + (d.extracts.size() + 1), "撤离点 " + (d.extracts.size() + 1),
+                int n = nextNumber("extract_", d.extracts.stream().map(MapDef.ExtractDef::id).toList());
+                d.extracts.add(new MapDef.ExtractDef("extract_" + n, "撤离点 " + n,
                         new Pos(top.getX(), top.getY(), top.getZ(), 0), 3.5, type, 8,
                         type == ExtractType.PAID ? 10_000 : 0, type == ExtractType.TIMED ? 600 : 0, 0,
                         type == ExtractType.SWITCH ? sw : "", type == ExtractType.LIMITED ? 4 : 0, 1.0));
@@ -372,7 +381,8 @@ public final class EditorService implements Listener {
                 }
             }
             case AI -> d.ai.add(new MapDef.AiDef(new Pos(top.getX(), top.getY(), top.getZ(), 0), 2, 8, AI_KINDS[o % AI_KINDS.length]));
-            case BOSS -> d.bosses.add(new MapDef.BossDef("boss_" + (d.bosses.size() + 1), "首领", new Pos(top.getX(), top.getY(), top.getZ(), 0), 3, 1.0, 120));
+            case BOSS -> d.bosses.add(new MapDef.BossDef("boss_" + nextNumber("boss_", d.bosses.stream().map(MapDef.BossDef::id).toList()),
+                    "首领", new Pos(top.getX(), top.getY(), top.getZ(), 0), 3, 1.0, 120));
             case LOCK -> {
                 Material type = block.getType();
                 if (type == Material.IRON_DOOR) {
@@ -385,27 +395,36 @@ public final class EditorService implements Listener {
                     d.doors.add(new MapDef.DoorDef(key.lockId(), new Pos(lower.getX() + 0.5, lower.getY(), lower.getZ() + 0.5, 0)));
                     Text.send(player, "<#5BD16B>已设置门禁，需要钥匙：" + key.coloredName());
                 } else if (type == Material.LEVER || type.name().endsWith("_BUTTON")) {
-                    String id = "switch_" + (d.switches.size() + 1);
-                    d.switches.add(new MapDef.SwitchDef(id, "电闸 " + (d.switches.size() + 1),
+                    // Past the highest number in use, not the count: after a removal the count names
+                    // a lever that still exists, and two levers with one id open each other's extracts.
+                    int n = nextNumber("switch_", d.switches.stream().map(MapDef.SwitchDef::id).toList());
+                    String id = "switch_" + n;
+                    d.switches.add(new MapDef.SwitchDef(id, "电闸 " + n,
                             new Pos(block.getX() + 0.5, block.getY(), block.getZ() + 0.5, 0), 300));
-                    // Bind the newest unbound switch extract.
+                    // Every lever extract still waiting for a switch is bound to this one.
+                    List<String> bound = new ArrayList<>();
                     for (int i = 0; i < d.extracts.size(); i++) {
                         MapDef.ExtractDef e = d.extracts.get(i);
                         if (e.type() == ExtractType.SWITCH && e.switchId().isEmpty()) {
-                            d.extracts.set(i, new MapDef.ExtractDef(e.id(), e.name(), e.pos(), e.radius(), e.type(), e.seconds(), e.cost(),
-                                    e.opensAt(), e.closesAt(), id, e.capacity(), e.chance()));
+                            d.extracts.set(i, withSwitch(e, id));
+                            bound.add(e.name());
                         }
                     }
-                    Text.send(player, "<#5BD16B>已设置电闸 " + id);
+                    Text.send(player, "<#5BD16B>已设置电闸 " + id + (bound.isEmpty() ? ""
+                            : "<#9AA0A6>，绑定撤离点：<white>" + Text.escape(String.join("、", bound))));
                 } else {
                     Text.send(player, "<#FF8A80>请点击铁门、拉杆或按钮。");
                     return;
                 }
             }
             case REMOVE -> {
-                if (!removeNear(d, block.getLocation().add(0.5, 1, 0.5))) {
+                Object removed = removeNear(d, block.getLocation().add(0.5, 1, 0.5));
+                if (removed == null) {
                     player.sendActionBar(Text.mm("<#FF8A80>附近 3 格内没有标记"));
                     return;
+                }
+                if (removed instanceof MapDef.SwitchDef sw) {
+                    unbind(player, d, sw);
                 }
             }
             case SCAN -> {
@@ -435,24 +454,69 @@ public final class EditorService implements Listener {
         refreshLabels(player, session);
     }
 
-    private boolean removeNear(MapDraft d, Location at) {
+    /** Removes the marker nearest to {@code at} within 3 blocks and returns it, or null if there is none. */
+    private static @Nullable Object removeNear(MapDraft d, Location at) {
         double best = 9;
-        Runnable remove = null;
+        List<?> from = null;
+        Object nearest = null;
         for (List<?> list : List.of(d.spawns, d.extracts, d.containers, d.ai, d.bosses, d.doors, d.switches)) {
             for (Object o : list) {
-                Pos p = posOf(o);
-                double dist = p.distanceSq(at);
+                double dist = posOf(o).distanceSq(at);
                 if (dist < best) {
                     best = dist;
-                    remove = () -> list.remove(o);
+                    from = list;
+                    nearest = o;
                 }
             }
         }
-        if (remove != null) {
-            remove.run();
-            return true;
+        if (from != null) {
+            from.remove(nearest);
         }
-        return false;
+        return nearest;
+    }
+
+    /**
+     * Lever extracts bound to a removed switch lose the binding (unless another lever still has its
+     * id): left as it was, the extract would wait for a lever that is gone. The next lever placed
+     * picks them up.
+     */
+    private static void unbind(Player player, MapDraft d, MapDef.SwitchDef removed) {
+        if (d.switches.stream().anyMatch(s -> s.id().equals(removed.id()))) {
+            return;
+        }
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < d.extracts.size(); i++) {
+            MapDef.ExtractDef e = d.extracts.get(i);
+            if (e.switchId().equals(removed.id())) {
+                d.extracts.set(i, withSwitch(e, ""));
+                names.add(e.name());
+            }
+        }
+        Text.send(player, "<#FFC23D>已删除电闸 " + Text.escape(removed.id()) + (names.isEmpty() ? "。"
+                : "，撤离点 <white>" + Text.escape(String.join("、", names)) + "</white> 不再绑定电闸<#9AA0A6>（再点一个拉杆会自动绑定）"));
+    }
+
+    private static MapDef.ExtractDef withSwitch(MapDef.ExtractDef e, String switchId) {
+        return new MapDef.ExtractDef(e.id(), e.name(), e.pos(), e.radius(), e.type(), e.seconds(), e.cost(),
+                e.opensAt(), e.closesAt(), switchId, e.capacity(), e.chance());
+    }
+
+    /**
+     * One past the highest number among ids of the form prefix + number ("switch_3"), so an id
+     * freed by a removal is never handed out again while an older marker could still refer to it.
+     */
+    private static int nextNumber(String prefix, List<String> ids) {
+        int max = 0;
+        for (String id : ids) {
+            if (id.startsWith(prefix)) {
+                try {
+                    max = Math.max(max, Integer.parseInt(id.substring(prefix.length())));
+                } catch (NumberFormatException ignored) {
+                    // a hand-written id ("switch_gate"): not part of the numbering
+                }
+            }
+        }
+        return max + 1;
     }
 
     private static Pos posOf(Object o) {
@@ -508,7 +572,7 @@ public final class EditorService implements Listener {
 
     private void refreshLabels(Player player, Session session) {
         clearLabels(session);
-        World world = player.getWorld();
+        World world = session.world;
         MapDraft d = session.draft;
         for (MapDef.SpawnDef s : d.spawns) label(player, session, world, s.pos(), "<#4FA3FF>◆ 出生点 · 第" + s.group() + "组");
         for (MapDef.ExtractDef e : d.extracts) label(player, session, world, e.pos(), "<#5BD16B>⬆ " + Text.escape(e.name()) + " <#8A8F98>" + e.type().displayName()

@@ -54,11 +54,56 @@ public final class MapRegistry {
                 yaml.load(file);
                 MapDef def = read(yaml);
                 maps.put(def.id(), def);
+                warnReferences(def);
             } catch (IOException | InvalidConfigurationException | RuntimeException ex) {
                 reportBroken(file, ex);
             }
         }
         logger.info("Loaded " + maps.size() + " raid maps");
+    }
+
+    /**
+     * Logs lever extracts that can never open and ids used twice. A lever extract whose switch is
+     * missing tells players to pull a lever that does not exist; two levers sharing an id open each
+     * other's extracts, since a raid keys pulled levers by id.
+     */
+    private void warnReferences(MapDef def) {
+        String map = def.name() + " (" + def.id() + ")";
+        for (MapDef.ExtractDef extract : unboundSwitchExtracts(def)) {
+            logger.warning("Map " + map + ": lever extract " + extract.id() + (extract.switchId().isEmpty()
+                    ? " is bound to no switch" : " needs switch " + extract.switchId() + ", which the map does not have")
+                    + ", so it never opens (raids show it as unavailable)");
+        }
+        for (String id : duplicates(def.extracts().stream().map(MapDef.ExtractDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one extract has the id " + id);
+        }
+        for (String id : duplicates(def.switches().stream().map(MapDef.SwitchDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one switch has the id " + id + " (pulling one opens the extracts of all)");
+        }
+        for (String id : duplicates(def.bosses().stream().map(MapDef.BossDef::id).toList())) {
+            logger.warning("Map " + map + ": more than one boss has the id " + id);
+        }
+    }
+
+    /** Lever extracts bound to no switch, or to one the map does not have: they never open. */
+    public static List<MapDef.ExtractDef> unboundSwitchExtracts(MapDef def) {
+        Set<String> switches = new LinkedHashSet<>();
+        def.switches().forEach(s -> switches.add(s.id()));
+        return def.extracts().stream()
+                .filter(e -> e.type() == ExtractType.SWITCH && !switches.contains(e.switchId()))
+                .toList();
+    }
+
+    /** Ids that appear more than once, each once, in order of first appearance. */
+    public static Set<String> duplicates(List<String> ids) {
+        Set<String> seen = new LinkedHashSet<>();
+        Set<String> twice = new LinkedHashSet<>();
+        for (String id : ids) {
+            if (!seen.add(id)) {
+                twice.add(id);
+            }
+        }
+        return twice;
     }
 
     /**

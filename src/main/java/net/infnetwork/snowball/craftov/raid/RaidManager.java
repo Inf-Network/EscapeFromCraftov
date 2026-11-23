@@ -14,6 +14,7 @@ import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.loot.ContainerType;
 import net.infnetwork.snowball.craftov.map.ExtractType;
 import net.infnetwork.snowball.craftov.map.MapDef;
+import net.infnetwork.snowball.craftov.map.MapRegistry;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.profile.MailService;
 import net.infnetwork.snowball.craftov.profile.Profile;
@@ -383,8 +384,11 @@ public final class RaidManager implements Listener {
             container.spawn(def.pos().yaw());
             raid.containers.put(container.id, container);
         }
+        // A lever extract whose switch the map lacks could only ever say "pull the lever first":
+        // it is closed for the whole raid instead (MapRegistry logs it when the map loads).
+        List<MapDef.ExtractDef> dead = MapRegistry.unboundSwitchExtracts(map);
         for (MapDef.ExtractDef def : map.extracts()) {
-            raid.extracts.add(new ExtractPoint(def, def.pos().at(world), rng.nextDouble() < def.chance()));
+            raid.extracts.add(new ExtractPoint(def, def.pos().at(world), !dead.contains(def) && rng.nextDouble() < def.chance()));
         }
         for (MapDef.DoorDef door : map.doors()) {
             raid.lockedDoors.put(Raid.blockKey(door.pos().at(world)), door.lock());

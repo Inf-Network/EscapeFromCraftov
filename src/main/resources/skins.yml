@@ -1,0 +1,74 @@
+# Knife skins (#106). A skin is a look for one kind of knife and never an item: the player's profile
+# keeps which skins they own and which one each knife wears (SkinService), and the knife in the melee
+# slot shows it in first and third person, in the inspect and on the ground. It cannot be stored,
+# sold, listed, put in the secure container or lost.
+#
+# This file ships inside the jar and is read from there (it is not copied to the server): every skin
+# needs its art, which tools/art/knife_skins.py draws for the same id when the resource pack is built.
+# The order here is the order in the 外观 menu, three skins a knife.
+#
+#   knife   the knife it is for (an items.yml id)
+#   name    two characters: the menu card has room for no more
+#   lore    one line about it
+#   price   in 点券, the server's premium currency; config.yml skins.prices.<id> overrides it
+skins:
+  starter_rustport:
+    knife: knife_starter
+    name: "锈港"
+    lore: "在锈港码头的盐雾里放了一冬，刀身长满锈斑，只有刃口还亮着。"
+    price: 600
+  starter_snowline:
+    knife: knife_starter
+    name: "雪线"
+    lore: "从护手到刀尖由冰蓝褪成雪白，像越过雪线的山脊。"
+    price: 600
+  starter_hazard:
+    knife: knife_starter
+    name: "警戒"
+    lore: "施工警戒带的黑黄斜纹，隔着半个仓库都看得见。"
+    price: 800
+  tactical_obsidian:
+    knife: knife_tactical
+    name: "黑曜"
+    lore: "火山玻璃一样的黑色刀身，中脊泛着一线紫光。"
+    price: 880
+  tactical_nightrun:
+    knife: knife_tactical
+    name: "夜航"
+    lore: "深蓝刀身，中脊亮着一串青色灯点，护手是一抹品红。"
+    price: 1280
+  tactical_gobi:
+    knife: knife_tactical
+    name: "戈壁"
+    lore: "沙地数码迷彩，2×2 的色块在烈日下最不显眼。"
+    price: 680
+  machete_canopy:
+    knife: knife_machete
+    name: "密林"
+    lore: "大块墨绿、橄榄和黑的雨林迷彩，刃口磨出了钢的本色。"
+    price: 680
+  machete_magma:
+    knife: knife_machete
+    name: "熔脉"
+    lore: "炭黑的刀身布满橙红裂纹，越往刀尖越烫。"
+    price: 1280
+  machete_bronze:
+    knife: knife_machete
+    name: "古铜"
+    lore: "青铜色刀身蚀着一道波纹，带几点铜绿，配乌木握柄。"
+    price: 880
+  karambit_gilded:
+    knife: knife_karambit
+    name: "鎏金"
+    lore: "整把刀镀了一层金，在灯下晃眼。"
+    price: 1680
+  karambit_starchart:
+    knife: knife_karambit
+    name: "星图"
+    lore: "深蓝渐紫的刀身上连着五颗星，是一张随身的星图。"
+    price: 1280
+  karambit_redtide:
+    knife: knife_karambit
+    name: "赤潮"
+    lore: "暗红刀身上一层层浪纹，像涨潮时的海面。"
+    price: 1080

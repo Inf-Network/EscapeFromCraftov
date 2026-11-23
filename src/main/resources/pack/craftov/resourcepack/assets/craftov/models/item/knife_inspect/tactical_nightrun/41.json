@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/tactical_nightrun",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    55.683,
+    -48.849,
+    123.369
+   ],
+   "translation": [
+    -3.58,
+    6.052,
+    -5.772
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -124.317,
+    48.849,
+    56.631
+   ],
+   "translation": [
+    -3.58,
+    6.052,
+    -5.772
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

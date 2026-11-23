@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/tactical_obsidian",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    62.502,
+    -88.386,
+    88.444
+   ],
+   "translation": [
+    0.988,
+    3.329,
+    0.938
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -117.498,
+    88.386,
+    91.556
+   ],
+   "translation": [
+    0.988,
+    3.329,
+    0.938
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

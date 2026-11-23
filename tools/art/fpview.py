@@ -6,6 +6,7 @@
     python3 tools/art/fpview.py k47 reload sheet.png [optic id]     # contact sheet of reload frames
     python3 tools/art/fpview.py k47 kick sheet.png                  # one shot's kick frames (kick-ads: aimed)
     python3 tools/art/fpview.py knife_karambit inspect sheet.png    # contact sheet of a knife inspect
+    python3 tools/art/fpview.py karambit_gilded inspect sheet.png   # the same in a skin (knife_skins.py)
 """
 import json
 import math
@@ -336,6 +337,8 @@ def main():
     path = os.path.join(ROOT, 'models', 'item', folder, gid + '.json')
     if not os.path.exists(path):  # not a gun: a flat item such as a knife
         path = os.path.join(ROOT, 'models', 'item', gid + '.json')
+    if not os.path.exists(path):  # a knife skin (knife_skins.py)
+        path = os.path.join(ROOT, 'models', 'item', 'knife_skin', gid + '.json')
     model = load_model(path)
     display = model['display']['firstperson_righthand']
     render(model, display, out, '%s %s %s' % (gid, which, display))

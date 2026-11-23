@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/tactical_gobi",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    14.326,
+    -28.091,
+    87.481
+   ],
+   "translation": [
+    -3.993,
+    5.926,
+    -4.895
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -165.674,
+    28.091,
+    92.519
+   ],
+   "translation": [
+    -3.993,
+    5.926,
+    -4.895
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

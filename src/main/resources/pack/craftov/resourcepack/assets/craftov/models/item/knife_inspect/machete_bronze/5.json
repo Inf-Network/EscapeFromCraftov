@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_skin/machete_bronze",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    43.215,
+    -37.513,
+    86.39
+   ],
+   "translation": [
+    -1.803,
+    4.684,
+    -1.83
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -136.785,
+    37.513,
+    93.61
+   ],
+   "translation": [
+    -1.803,
+    4.684,
+    -1.83
+   ],
+   "scale": [
+    0.68,
+    0.68,
+    0.68
+   ]
+  }
+ }
+}

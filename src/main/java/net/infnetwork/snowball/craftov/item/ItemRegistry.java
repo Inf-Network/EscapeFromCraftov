@@ -256,7 +256,9 @@ public final class ItemRegistry {
                     g.getString("audio", id),
                     g.getString("action", modes.contains(FireMode.PUMP) ? "pump" : modes.contains(FireMode.BOLT) ? "bolt"
                             : "SECONDARY".equalsIgnoreCase(g.getString("slot", "PRIMARY")) ? "pistol" : "ar"),
-                    Handling.clamp(g.getDouble("handling", bundled.handling().getOrDefault(id, Handling.fallback(adsClass(id, g))))));
+                    Handling.clamp(g.getDouble("handling", bundled.handling().getOrDefault(id, Handling.fallback(adsClass(id, g))))),
+                    share(g, "ads-recoil"),
+                    share(g, "ads-recoil-h"));
         }
         AmmoSpec ammo = null;
         ConfigurationSection a = s.getConfigurationSection("ammo");
@@ -379,6 +381,11 @@ public final class ItemRegistry {
                 attach,
                 Math.max(1, s.contains("size") ? s.getInt("size", 1) : bundled.sizes().getOrDefault(id, 1)),
                 secureStack);
+    }
+
+    /** A share (0..2) the section gives under {@code key}, or NaN when it gives none (the config's default then applies). */
+    private static double share(ConfigurationSection section, String key) {
+        return section.contains(key) ? Math.max(0, Math.min(2, section.getDouble(key))) : Double.NaN;
     }
 
     /**

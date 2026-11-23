@@ -1260,12 +1260,15 @@ public final class WeaponService implements Listener {
         long now = Bukkit.getCurrentTick();
         kickPending(player, state, now);
         boolean aiming = isAiming(player);
-        double scale = (1.0 + (config.getDouble("weapons.recoil.ads", 0.6) - 1.0) * adsProgress(player))
-                * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
+        double scale = (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
                 * (!aiming && sprinting(player) ? config.getDouble("weapons.recoil.sprint", 1.15) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
-        double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
-        double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
+        // The sights coming up take the kick from the hip's to the aimed one (see adsRecoil).
+        double progress = adsProgress(player);
+        double scaleUp = scale * (1.0 + (adsRecoil(state, false) - 1.0) * progress);
+        double scaleSide = scale * (1.0 + (adsRecoil(state, true) - 1.0) * progress);
+        double up = gun.recoil() * scaleUp * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
+        double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scaleSide;
         boolean automatic = state.fireMode() == FireMode.AUTO || state.fireMode() == FireMode.BURST;
         double share = automatic ? Math.max(0, Math.min(1, config.getDouble("weapons.recoil.muzzle-share", 0.2))) : 0;
         if (share > 0) {
@@ -1283,6 +1286,21 @@ public final class WeaponService implements Listener {
         kick(player, state, now, pitchKick * first, yawKick * first);
         state.pendingUp += pitchKick * (1 - first);
         state.pendingRight += yawKick * (1 - first);
+    }
+
+    /**
+     * The share of the gun's kick (up, or {@code sideways}) a shot has once the sights are up: the gun's
+     * own (items.yml ads-recoil and ads-recoil-h; weapons.recoil.ads and ads-h for a gun that gives
+     * none), less than from the hip and least sideways: the side-to-side jitter is what cannot be
+     * pulled against, and through a sight it shakes the picture (issue #118).
+     */
+    private double adsRecoil(GunState state, boolean sideways) {
+        var config = plugin.getConfig();
+        double own = sideways ? state.gun.adsRecoilH() : state.gun.adsRecoil();
+        if (Double.isNaN(own)) {
+            own = sideways ? config.getDouble("weapons.recoil.ads-h", 0.35) : config.getDouble("weapons.recoil.ads", 0.5);
+        }
+        return Math.max(0, own);
     }
 
     /** Turns the camera by a kick (degrees up, and right) and counts it toward the spray's recovery. */

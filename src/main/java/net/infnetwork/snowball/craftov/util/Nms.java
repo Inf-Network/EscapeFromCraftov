@@ -613,8 +613,9 @@ public final class Nms {
                 continue;
             }
             org.bukkit.inventory.ItemStack real = (org.bukkit.inventory.ItemStack) asBukkitCopy.invoke(null, pairSecond.invoke(pair));
-            org.bukkit.inventory.ItemStack shown = real.isEmpty() ? null : rewriter.mainHand(id, real);
-            if (shown == null) {
+            // Empty hands are asked about too: a stance can put something in them (a reviver's bandage).
+            org.bukkit.inventory.ItemStack shown = rewriter.mainHand(id, real);
+            if (shown == null || shown.isEmpty() && real.isEmpty()) {
                 continue;
             }
             if (out == null) {

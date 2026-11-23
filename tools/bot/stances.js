@@ -1,6 +1,7 @@
-// What other players are told about someone's hands (issue #3, StanceService). A and B queue as one
-// squad for the proving ground; A holds a K47 and B, in front of it, records every equipment and
-// entity-data packet about A (and A about B, for the revive).
+// What other players are told about someone's hands (issue #3, StanceService). A, B and C queue as
+// one squad for the proving ground; A holds a K47 and B, in front of it, records every equipment and
+// entity-data packet about A (and A about B, for the revive). C waits out of everyone's sight (a short
+// view distance, at the far corner of the map) until the revive.
 //
 //   low      standing with the gun: B sees A's main hand as the gun (paper) with custom_model_data
 //            flag 0 on and a crossbow use animation, and A using it (living flags bit 1), the use
@@ -12,7 +13,8 @@
 //   knife    A switches to its knife: B sees the knife as it is, not in use, and no restarts
 //   downed   A is knocked down: B sees A's hands empty and A not using anything
 //   revive   B holds right click on A: A sees B holding a bandage (craftov:bandage) with a brush use,
-//            and in use; A gets up
+//            and in use; still the bandage once B switches to an empty hotbar slot; C, coming into
+//            view of B halfway through, sees the bandage in use too; A gets up
 //   self     A with the gun and B reviving are never told they are using their item (A's client must
 //            keep digging for the trigger)
 //
@@ -37,8 +39,8 @@ function check (ok, what) {
 }
 
 const bots = []
-function make (name) {
-  const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
+function make (name, viewDistance = 'far') {
+  const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline', viewDistance })
   bot.worldName = ''
   const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
   bot._client.on('login', track)
@@ -92,22 +94,36 @@ async function main () {
   const tag = Math.floor(Math.random() * 9000)
   const A = await make('PoseA' + tag)
   const B = await make('PoseB' + tag)
+  // Two chunks: C only sees players within 32 blocks, so it can be put out of view inside the map.
+  const C = await make('PoseC' + tag, 2)
   A.ownFlags = []
   B.ownFlags = []
-  for (const bot of [A, B]) await rcon(`op ${bot.username}`)
+  C.ownFlags = []
+  for (const bot of [A, B, C]) await rcon(`op ${bot.username}`)
   const crossbowId = B.registry.itemsByName.crossbow.id
   const paperId = B.registry.itemsByName.paper.id
   const before = new Set((await rcon('cv raids')).match(/R\d+/g) || [])
-  A.chat(`/cv party invite ${B.username}`)
-  await sleep(1000)
-  B.chat('/cv party accept')
-  await sleep(1000)
+  for (const bot of [B, C]) {
+    A.chat(`/cv party invite ${bot.username}`)
+    await sleep(1000)
+    bot.chat('/cv party accept')
+    await sleep(1000)
+  }
   A.chat('/cv queue proving NORMAL TRIO')
-  if (!await waitFor(() => inRaid(A) && inRaid(B), 120000)) throw new Error('the bots never reached a raid')
+  if (!await waitFor(() => inRaid(A) && inRaid(B) && inRaid(C), 120000)) throw new Error('the bots never reached a raid')
   const raids = ((await rcon('cv raids')).match(/R\d+/g) || []).filter(r => !before.has(r))
-  await sleep(6000) // the landing
+  // the landing: the entry camera over, everyone on the ground
+  if (!await waitFor(() => [A, B, C].every(bot => bot.game.gameMode === 'adventure'), 30000)) throw new Error('the bots never landed')
+  await sleep(1500)
+  // C to the corner of the proving ground (bounds x 0..119, z 0..103) farthest from A, on a block of its own
+  const corner = [[5, 5], [114, 5], [5, 98], [114, 98]]
+    .map(([x, z]) => ({ x, z, d: Math.hypot(x - A.entity.position.x, z - A.entity.position.z) }))
+    .sort((a, b) => b.d - a.d)[0]
+  await rcon(`execute in minecraft:${A.worldName} run setblock ${corner.x} 120 ${corner.z} minecraft:stone`)
+  await rcon(`execute in minecraft:${A.worldName} run tp ${C.username} ${corner.x + 0.5} 121 ${corner.z + 0.5}`)
   const seen = watch(B, A)
   const seenB = watch(A, B)
+  const seenByC = watch(C, B)
   try {
     await rcon('kill @e[type=minecraft:zombie]')
     await rcon('kill @e[type=minecraft:husk]')
@@ -119,6 +135,9 @@ async function main () {
     const smoke = slotOf('smoke')
     if (gun < 0 || knife < 0 || smoke < 0) throw new Error(`k47 in ${gun}, knife in ${knife}, smoke in ${smoke}`)
     await rcon(`execute as ${B.username} at ${A.username} run tp @s ^ ^ ^3 facing entity ${A.username} feet`)
+    // the knife first, so that B is sent the gun coming into A's hand (A may have landed holding one)
+    A.setQuickBarSlot(knife - 36)
+    await sleep(800)
     A.setQuickBarSlot(gun - 36)
     await sleep(2500)
 
@@ -201,13 +220,32 @@ async function main () {
     await sleep(500)
     const target = B.players[A.username] && B.players[A.username].entity
     if (!target) throw new Error('B cannot see A')
+    const bandaged = (seenOf, from) => {
+      const shown = hand(seenOf, from)
+      return !!shown && text(shown.item).includes('craftov:bandage') && /"animation":\s*"?(brush|9)"?/i.test(text(shown.item)) && (lastFlags(seenOf) & 1) === 1
+    }
     B.activateEntity(target)
     const reviving = setInterval(() => B.activateEntity(target), 200)
-    await sleep(1500)
+    await sleep(1200)
     h = hand(seenB)
-    check(!!h && text(h.item).includes('craftov:bandage') && /"animation":\s*"?(brush|9)"?/i.test(text(h.item)) && (lastFlags(seenB) & 1) === 1,
-      `revive: A sees B with a bandage and a brush use, in use (${h ? text(h.item).slice(0, 120) : 'nothing'})`)
-    await sleep(5000)
+    check(bandaged(seenB, 0), `revive: A sees B with a bandage and a brush use, in use (${h ? text(h.item).slice(0, 120) : 'nothing'})`)
+    // an empty hand: the server sends the empty slot, and the bandage has to be shown instead
+    const empty = B.inventory.slots.findIndex((it, i) => i >= 36 && i <= 44 && !it)
+    if (empty < 0) throw new Error('B has no empty hotbar slot')
+    from = Date.now()
+    B.setQuickBarSlot(empty - 36)
+    await sleep(700)
+    h = hand(seenB, from)
+    check(bandaged(seenB, from), `revive: empty-handed, A still sees B with the bandage in use (${h ? text(h.item).slice(0, 120) : 'no new equipment'})`)
+    // someone coming into view of the empty-handed reviver
+    const told = seenByC.length
+    if (C.entity.position.distanceTo(B.entity.position) < 40) throw new Error(`C was not kept out of view (${C.entity.position.floored()}, B at ${B.entity.position.floored()})`)
+    await rcon(`execute as ${C.username} at ${B.username} run tp @s ~ ~ ~`)
+    await sleep(1200)
+    h = hand(seenByC)
+    check(seenByC.length > told && bandaged(seenByC, 0),
+      `revive: C, coming into view, sees B with the bandage in use (${h ? text(h.item).slice(0, 120) : 'no equipment'}, flags ${lastFlags(seenByC)})`)
+    await sleep(3500)
     clearInterval(reviving)
     const health = await rcon(`data get entity ${A.username} Health`)
     check(/: (3[0-9]|20)\./.test(health), `revive: A is up (${health.replace(/.*data: /, '')})`)

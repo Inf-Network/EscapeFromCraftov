@@ -207,7 +207,9 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
     /**
      * Sends the use to whoever sees the entity and has not been sent it since the stance changed (a
      * new stance, or someone who just came into view), and restarts it: every other tick for the low
-     * carry, whose pose drifts as the use runs, and on {@code restart} for a reload.
+     * carry, whose pose drifts as the use runs, and on {@code restart} for a reload. Someone who just
+     * came into view of an empty-handed reviver is sent the hand first: an empty hand is not among
+     * what the server sends of an entity coming into view, so the bandage would never reach them.
      */
     private void keepUsing(LivingEntity entity, Stance stance, boolean restart, long now) {
         if (!stance.using()) {
@@ -219,7 +221,11 @@ public final class StanceService implements Listener, Nms.ViewRewriter {
         Set<UUID> present = new HashSet<>();
         for (Player viewer : entity.getTrackedBy()) {
             present.add(viewer.getUniqueId());
-            if (all || !sent.contains(viewer.getUniqueId())) {
+            boolean fresh = !sent.contains(viewer.getUniqueId());
+            if (fresh && stance == Stance.REVIVE && entity.getEquipment() != null && entity.getEquipment().getItemInMainHand().isEmpty()) {
+                viewer.sendEquipmentChange(entity, EquipmentSlot.HAND, ItemStack.empty());
+            }
+            if (all || fresh) {
                 Nms.sendLivingFlags(viewer, id, (byte) 0, USING);
                 sent.add(viewer.getUniqueId());
             }

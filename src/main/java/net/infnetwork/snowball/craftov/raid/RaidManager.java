@@ -732,7 +732,7 @@ public final class RaidManager implements Listener {
         // be undone to exactly this (voidRaid), and nothing is charged that would not come back.
         profile.deployment = deployment(raid, player, profile, rp, entryFee, premium);
         rp.deployment = profile.deployment;
-        profile.activeRaid = raid.id;
+        profile.activeRaid = raid.key;
         if (!training) {
             profile.statInRaid("raids", 1);
         }

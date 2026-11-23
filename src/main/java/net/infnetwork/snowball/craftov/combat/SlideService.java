@@ -10,6 +10,8 @@ import org.bukkit.Input;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -76,6 +78,10 @@ public final class SlideService implements Listener {
     public static final double LEGS_HEIGHT = 0.3;
     /** Ticks of positions kept per player, to measure speed and direction at the second tap. */
     private static final int HISTORY = 8;
+    /** Blocks a tick walked per point of the movement-speed attribute (as MotionTracker: 0.1 walks 0.216). */
+    private static final double BLOCKS_PER_SPEED = 2.1585;
+    /** Ticks a sprint's pace is remembered after it ended, for the slide that follows the taps. */
+    private static final int PACE_TICKS = 10;
     /** Half the width of the sliding body, and its height above the ground, for collisions. */
     private static final double HALF = 0.3;
     private static final double BODY = 1.2;
@@ -157,6 +163,9 @@ public final class SlideService implements Listener {
         boolean sprintAtFirst;
         /** nanoTime the player was last seen sprinting. */
         long sprintSeen;
+        /** The pace (blocks a tick) the player's movement speed sprinted at, and the tick it was last seen. */
+        double sprintPace;
+        long sprintPaceTick = -1000;
         /** A double tap passed every check: the slide starts on the next tick. */
         boolean pending;
         long endedTick = -1000;
@@ -457,10 +466,10 @@ public final class SlideService implements Listener {
     }
 
     /**
-     * How fast the player has lately been moving, in blocks a tick: about the fastest two-tick average
-     * over the last ticks, since the first tap already slows a sprint down. The second fastest, in
-     * fact: when a tick's movement packet arrives with the next tick's, one of those averages reads
-     * half as fast again as the player went, and the slide would set off faster than the sprint was.
+     * How fast the player has lately been moving, in blocks a tick, to tell a sprint from a sprint key
+     * held against a wall: about the fastest two-tick average over the last ticks, since the first tap
+     * already slows a sprint down. The second fastest, in fact: when a tick's movement packet arrives
+     * with the next tick's, one of those averages reads half as fast again as the player went.
      */
     private static double recentSpeed(State s) {
         double best = 0;
@@ -477,6 +486,17 @@ public final class SlideService implements Listener {
             }
         }
         return second;
+    }
+
+    /**
+     * The pace a sprint goes at with the player's movement speed right now (the sprint's own boost
+     * included while sprinting), in blocks a tick: 0.28 for a plain sprint, more with a speed boost
+     * (the vanguard's tactical sprint), less under a load. Read off the attribute rather than measured,
+     * since movement packets that arrive bunched up make a measured speed read high.
+     */
+    private static double sprintPace(Player player) {
+        AttributeInstance speed = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        return (speed == null ? 0.13 : speed.getValue()) * BLOCKS_PER_SPEED;
     }
 
     /** The way the player has been going lately, as a yaw; their view when they hardly moved. */
@@ -504,6 +524,8 @@ public final class SlideService implements Listener {
             sample(player, s);
             if (player.isSprinting() && !isSliding(player)) {
                 s.sprintSeen = nanos;
+                s.sprintPace = sprintPace(player);
+                s.sprintPaceTick = now;
                 if (s.sprintTicks < Integer.MAX_VALUE / 2) {
                     s.sprintTicks++;
                 }
@@ -532,7 +554,8 @@ public final class SlideService implements Listener {
         Location feet = player.getLocation();
         World world = feet.getWorld();
         double boost = setting("boost", 1.4);
-        double speed = Math.min(setting("max-speed", 0.45), Math.max(recentSpeed(s), setting("min-start-speed", 0.286)) * boost);
+        double pace = Bukkit.getCurrentTick() - s.sprintPaceTick <= PACE_TICKS ? s.sprintPace : 0;
+        double speed = Math.min(setting("max-speed", 0.45), Math.max(pace, setting("min-start-speed", 0.286)) * boost);
         double yaw = heading(s, player);
         ItemDisplay seat = world.spawn(new Location(world, feet.getX(), feet.getY(), feet.getZ(), (float) yaw, 0), ItemDisplay.class, d -> {
             d.setPersistent(false);

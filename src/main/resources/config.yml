@@ -195,8 +195,9 @@ slide:
   # sliding is never faster than running.
   cooldown-ticks: 30
   sprint-ticks: 10
-  # Speed (blocks a tick): the recent speed, at least min-start-speed, times boost, at most
-  # max-speed; then times friction every tick on the flat (friction-downhill going down a step,
+  # Speed (blocks a tick): the pace the player's movement speed sprints at (0.28, more with a speed
+  # boost), at least min-start-speed, times boost, at most max-speed (0.40 from a plain sprint);
+  # then times friction every tick on the flat (friction-downhill going down a step,
   # friction-uphill going up one) until it is under stop-speed or max-ticks have passed: about 4
   # blocks in 17 ticks on the flat. steer-degrees a tick while A or D is held.
   boost: 1.4

@@ -303,12 +303,17 @@ def build_items(item_defs):
                        'cases': [{'when': 'arrow', 'model': aimed}], 'fallback': in_hand}
             in_hand = wrap_attachments(in_hand, item_id, attachments_for(spec, item_defs))
             # Gun trees are large (poses x sights x reload frames x attachments): written compact.
+            # hand_animation_on_swap false: the client never lowers and raises the gun when its stack
+            # changes (the magazine written back at the end of a reload or when it runs dry, a switch
+            # to it); the model's own frames are the only motion (ItemInHandRenderer otherwise dips
+            # for every component but damage).
             path = os.path.join(CV, 'items', item_id + '.json')
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump({'model': {
                     'type': 'minecraft:select', 'property': 'minecraft:display_context',
-                    'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand}},
+                    'cases': [{'when': ['gui'], 'model': model_ref('craftov:item/gui/' + item_id)}], 'fallback': in_hand},
+                    'hand_animation_on_swap': False},
                     f, separators=(',', ':'))
         elif item_id in knife_inspect.KEYS:
             # F with the knife in hand runs its craftov:inspect cooldown (InspectService), and the client

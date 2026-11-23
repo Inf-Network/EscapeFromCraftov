@@ -178,13 +178,15 @@ def _gun_class(gid):
     return 'pistol' if gid in PISTOLS else 'smg' if gid in SMGS else 'rifle'
 
 
-def first_person(gid, elements, ads, sight_y=None):
+def first_person(gid, elements, ads, sight_y=None, eye=None):
     """Display transforms tuned with tools/art/fpview.py (the client's own first-person maths).
 
     Guns are built barrel-along-+X, so a +90 degree yaw points the barrel away from the camera. ADS
     centres the gun with its top surface just under the crosshair and the stock near the cheek; hip
     fire sits lower right with a slight inward yaw. The left hand mirrors the right one: the client
     negates the left-hand yaw/roll and X offset, so the JSON uses (yaw-180) for a mirrored barrel.
+    eye: (model x, blocks) puts that point of the gun that far in front of the eye when aimed (a 1x
+    sight's window, see sight_eye) instead of the stock at the cheek.
     """
     (x0, _), (_, y1), _ = _bounds(elements)
     kind = _gun_class(gid)
@@ -194,6 +196,8 @@ def first_person(gid, elements, ads, sight_y=None):
         # Iron sights: the gun's top edge sits just under the crosshair. Optics: the reticle sits on it.
         ty = 16 * (0.505 - (y1 - 8) / 16 * s) if sight_y is None else 16 * (0.52 - (sight_y - 8) / 16 * s)
         tz = 16 * (rear + 0.72 + (x0 - 8) / 16 * s)
+        if eye is not None:
+            tz = 16 * (-eye[1] + 0.72 + (eye[0] - 8) / 16 * s)
         right = {'rotation': [0, 90, 0], 'translation': [-8.96, round(ty, 2), round(tz, 2)], 'scale': [s] * 3}
         left = {'rotation': [0, -90, 0], 'translation': [-8.96, round(ty, 2), round(tz, 2)], 'scale': [s] * 3}
         return right, left
@@ -463,16 +467,67 @@ def pose_model(parent, base_display, pose):
         'firstperson_lefthand': posed(base_display['firstperson_lefthand'], left=True, **pose)}}
 
 
-def gun_ads_model(gid, zoom=0):
+def gun_ads_model(gid, scoped=False):
     """Aim-down-sights pose, selected client-side while the use key (right mouse) is held.
 
-    Scoped guns (zoom 2+) look through the scope overlay instead, so the gun itself is hidden.
+    Guns with a built-in scope (items.yml scope) look through the scope overlay instead, so the gun itself is hidden.
     """
-    if zoom >= 2:
+    if scoped:
         hidden = {'rotation': [0, 0, 0], 'translation': [0, -80, 0], 'scale': [0, 0, 0]}
         return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': hidden, 'firstperson_lefthand': hidden}}
     fp_r, fp_l = first_person(gid, gun_elements(gid), True)
     return {'parent': 'craftov:item/gun/' + gid, 'display': {'firstperson_righthand': fp_r, 'firstperson_lefthand': fp_l}}
+
+
+# The sights coming up (WeaponService.startAds): the server runs the gun's cooldown for its ads time with
+# the aiming mark on, and the item model steps through these frames while the client counts it down,
+# eased in and out like the zoom the server sends alongside.
+ADS_RISE_FRAMES = 6
+
+
+def ads_ease(t):
+    return t * t * (3 - 2 * t)
+
+
+# The last ADS_RISE_TAIL of that cooldown holds the final frame (WeaponService.ADS_FRAMES_TAIL): the
+# server's aimed mark, which ends the frames, may come a tick late without the gun dropping back.
+ADS_RISE_TAIL = 0.25
+
+
+def ads_rise_frames(n=ADS_RISE_FRAMES):
+    """(cooldown threshold, progress 0..1) per frame, the first first. The cooldown runs from 1 down
+    to 0: the frames step through its first 1 - ADS_RISE_TAIL, the last one holds to the end. Once it
+    has run out (and before it comes) the model is the first frame, the gun at the hip."""
+    span = 1 - ADS_RISE_TAIL
+    return [(max(1e-4, round(ADS_RISE_TAIL + span * (1 - (k + 1) / n), 5)) if k < n - 1 else 1e-4, round(ads_ease((k + 0.5) / n), 4))
+            for k in range(n)]
+
+
+def lerp_display(a, b, t):
+    """A display transform t of the way from a to b (angles, offset and scale each straight across)."""
+    out = {}
+    for key, default in (('rotation', [0, 0, 0]), ('translation', [0, 0, 0]), ('scale', [1, 1, 1])):
+        va, vb = a.get(key, default), b.get(key, default)
+        out[key] = [round(x + (y - x) * t, 3) for x, y in zip(va, vb)]
+    return out
+
+
+def gun_rise_display(gid):
+    """Where a gun with a built-in scope rises to before its mask takes over: the top of the scope
+    under the crosshair, as iron sights would be."""
+    r, l = first_person(gid, gun_elements(gid), True)
+    return {'firstperson_righthand': r, 'firstperson_lefthand': l}
+
+
+def optic_rise_display(gid, oid):
+    """Where a gun with this optic rises to: a 1x sight's aimed pose, a scope's eyepiece on the crosshair."""
+    gun = gun_elements(gid)
+    placed, sight_y = placed_optic(gid, oid)
+    if sight_y is not None:
+        return gun_with_optic(gid, oid, True)['display']
+    sight_y = (min(e['from'][1] for e in placed) + max(e['to'][1] for e in placed)) / 2
+    r, l = first_person(gid, gun, True, sight_y=sight_y)
+    return {'firstperson_righthand': r, 'firstperson_lefthand': l}
 
 
 def gun_part_model(gid, part):
@@ -648,21 +703,68 @@ def _optic_box(x0, y0, z0, x1, y1, z1, c, glow=False):
     return e
 
 
+# The window of a 1x sight seen from the eye: the far end of its housing (x), the height of the sight
+# line (y) and the clear opening around it (half width and half height). When aimed, the eye is put so
+# the window spans SIGHT_WINDOW of the screen's width (the issue #5 target: 18-25%), and the reticle,
+# a glowing picture just behind the glass, is RETICLE_PX pixels across on a 1080-pixel-high screen.
+SIGHT_WINDOW = 0.21
+WINDOW_ASPECT = 1000 / 584      # fpview's window, the owner's 2000x1168
+RETICLE = {'optic_reddot': dict(x=0.5, y=1.3, half_w=0.75, half_h=0.75, kind='dot', px=4),
+           'optic_holo': dict(x=1.3, y=1.55, half_w=0.95, half_h=0.65, kind='holo', px=64)}
+HAND_TAN = math.tan(math.radians(35))
+
+
 def _reddot():
-    return [_optic_box(-1.3, 0, -0.6, 1.3, 0.5, 0.6, 1),
-            _optic_box(-0.9, 0.5, -0.8, 0.9, 2.0, -0.6, 0), _optic_box(-0.9, 0.5, 0.6, 0.9, 2.0, 0.8, 0),
-            _optic_box(-0.9, 1.9, -0.8, 0.9, 2.2, 0.8, 0), _optic_box(-1.2, 0.5, -0.4, -0.9, 0.9, 0.4, 1),
-            _optic_box(0.8, 0.5, -0.6, 0.86, 1.9, 0.6, 2),
-            _optic_box(0.3, 1.14, -0.05, 0.36, 1.24, 0.05, 3, True)]
+    """A compact sight: a short square hood over a low mount, the dot just behind the glass."""
+    w, top, bottom, t = 0.75, 2.05, 0.55, 0.1
+    return [_optic_box(-1.0, 0, -0.55, 1.0, 0.45, 0.55, 1),
+            _optic_box(0.0, 0.45, -w - t, 0.5, bottom, w + t, 0),
+            _optic_box(0.0, bottom, -w - t, 0.5, top + t, -w, 0), _optic_box(0.0, bottom, w, 0.5, top + t, w + t, 0),
+            _optic_box(0.0, top, -w, 0.5, top + t, w, 0),
+            _optic_box(0.1, 1.0, w + t, 0.4, 1.4, w + t + 0.15, 1),
+            _optic_box(0.46, bottom, -w, 0.5, top, w, 2)]
 
 
 def _holo():
-    return [_optic_box(-1.7, 0, -0.8, 1.7, 0.6, 0.8, 1), _optic_box(-1.7, 0.6, -0.75, -0.6, 1.4, 0.75, 0),
-            _optic_box(-0.6, 0.6, -0.95, 1.4, 2.4, -0.75, 0), _optic_box(-0.6, 0.6, 0.75, 1.4, 2.4, 0.95, 0),
-            _optic_box(-0.6, 2.3, -0.95, 1.4, 2.6, 0.95, 0), _optic_box(1.2, 0.6, -0.75, 1.26, 2.3, 0.75, 2),
-            _optic_box(0.9, 1.47, -0.04, 0.95, 1.53, 0.04, 3, True),
-            _optic_box(0.9, 1.78, -0.12, 0.95, 1.84, 0.12, 3, True), _optic_box(0.9, 1.16, -0.12, 0.95, 1.22, 0.12, 3, True),
-            _optic_box(0.9, 1.38, -0.34, 0.95, 1.62, -0.28, 3, True), _optic_box(0.9, 1.38, 0.28, 0.95, 1.62, 0.34, 3, True)]
+    """A holographic sight: a flat battery box behind a short, wide hood; a ring-and-dot reticle in the glass."""
+    w, top, bottom, t = 0.95, 2.2, 0.9, 0.12
+    return [_optic_box(-1.6, 0, -0.8, 1.6, 0.6, 0.8, 1), _optic_box(-1.6, 0.6, -0.7, 0.5, 0.82, 0.7, 0),
+            _optic_box(0.6, 0.6, -w - t, 1.3, bottom, w + t, 0),
+            _optic_box(0.6, bottom, -w - t, 1.3, top + t, -w, 0), _optic_box(0.6, bottom, w, 1.3, top + t, w + t, 0),
+            _optic_box(0.6, top, -w, 1.3, top + t, w, 0),
+            _optic_box(1.26, bottom, -w, 1.3, top, w, 2)]
+
+
+def reticle_image(kind, size=64):
+    """The reticle picture of a 1x sight, red on clear: a round dot, or a ring around a dot."""
+    from PIL import ImageDraw as _Draw
+    big = size * 4
+    img = Image.new('RGBA', (big, big), (0, 0, 0, 0))
+    d = _Draw.Draw(img)
+    red = (255, 52, 40, 255)
+    if kind == 'dot':
+        d.ellipse([0, 0, big - 1, big - 1], fill=red)
+    else:
+        ring = big * 3 // 64
+        d.ellipse([0, 0, big - 1, big - 1], outline=red, width=ring)
+        c, r = big // 2, big * 2 // 64
+        d.ellipse([c - r, c - r, c + r, c + r], fill=red)
+        for k in range(4):  # short ticks inside the ring, top, bottom and both sides
+            if k % 2 == 0:
+                x = c
+                y0, y1 = (ring, ring + big // 12) if k == 0 else (big - ring - big // 12, big - ring)
+                d.rectangle([x - ring // 2, y0, x + ring // 2, y1], fill=red)
+    small = img.resize((size, size), Image.LANCZOS)
+    px = small.load()
+    for yy in range(size):
+        for xx in range(size):
+            r, g, b, a = px[xx, yy]
+            px[xx, yy] = (255, 52, 40, 255) if a >= 110 else (0, 0, 0, 0)
+    return small
+
+
+def reticle_texture(oid):
+    return 'craftov:item/optic/reticle_' + RETICLE[oid]['kind']
 
 
 def _prism3x():
@@ -685,7 +787,8 @@ def _shift(elements, dx, dy, dz):
 # id -> (textured elements on '#o' with the base at y=0 centred on x=z=0, texture image,
 #        sight height above the base for 1x sights or None for overlay scopes)
 def optic_data(oid):
-    procedural = {'optic_reddot': (_reddot, 1.19), 'optic_holo': (_holo, 1.5), 'optic_3x': (_prism3x, None)}
+    procedural = {'optic_reddot': (_reddot, RETICLE['optic_reddot']['y']), 'optic_holo': (_holo, RETICLE['optic_holo']['y']),
+                  'optic_3x': (_prism3x, None)}
     if oid in procedural:
         build, sight = procedural[oid]
         return _textured(build(), '#o'), palette_texture(OPTIC_PALETTE), sight
@@ -770,12 +873,52 @@ def placed_optic(gid, oid):
     return _shift(optic, mx, my, 8), (None if sight is None else my + sight)
 
 
+def _gun_scale(gid):
+    return {'rifle': 0.6, 'smg': 0.66, 'pistol': 0.72}[_gun_class(gid)]
+
+
+def sight_window(gid, oid):
+    """A 1x sight's window on this gun, in the gun's model units: the far end of the housing (x), the
+    sight line (y) and the opening (y0..y1 high, z0..z1 wide)."""
+    r = RETICLE[oid]
+    mx, my = rail_mount(gun_elements(gid))
+    return {'x': mx + r['x'], 'y': my + r['y'], 'y0': my + r['y'] - r['half_h'], 'y1': my + r['y'] + r['half_h'],
+            'z0': 8 - r['half_w'], 'z1': 8 + r['half_w']}
+
+
+def sight_eye(gid, oid):
+    """(model x, blocks): how far in front of the eye the window's far end goes when aimed, so the window
+    spans SIGHT_WINDOW of the screen's width (the hand is drawn at a fixed 70 degree field of view)."""
+    win = sight_window(gid, oid)
+    width = (win['z1'] - win['z0']) * _gun_scale(gid) / 16
+    return win['x'], width / (SIGHT_WINDOW * 2 * HAND_TAN * WINDOW_ASPECT)
+
+
+def reticle_element(gid, oid):
+    """The reticle: a glowing picture just in front of the glass, centred on the sight line, sized so it
+    is RETICLE px pixels across on a 1080-pixel-high screen at the distance the sight is aimed at."""
+    r = RETICLE[oid]
+    win = sight_window(gid, oid)
+    x_at, front = sight_eye(gid, oid)
+    x = win['x'] - 0.06
+    dist = front - (x_at - x) * _gun_scale(gid) / 16
+    side = r['px'] / 1080 * 2 * HAND_TAN * dist * 16 / _gun_scale(gid)
+    h = side / 2
+    face = {'uv': [0, 0, 16, 16], 'texture': '#r'}
+    return {'from': [round(x, 4), round(win['y'] - h, 5), round(8 - h, 5)], 'to': [round(x, 4), round(win['y'] + h, 5), round(8 + h, 5)],
+            'shade': False, 'light_emission': 15, 'faces': {'west': face, 'east': face}}
+
+
 def gun_with_optic(gid, oid, ads):
-    """Gun plus mounted optic. Hip pose uses the bare gun's bounds so the gun stays put; ADS lines up the sight."""
+    """Gun plus mounted optic. Hip pose uses the bare gun's bounds so the gun stays put; ADS lines up the
+    sight, a 1x sight close to the eye (see sight_eye) with its reticle just behind the glass."""
     gun = gun_elements(gid)
     placed, sight_y = placed_optic(gid, oid)
     texture = gun_texture(gid)
     model = {'textures': {'p': texture, 'o': optic_texture(oid), 'particle': texture}, 'elements': gun + placed}
+    if oid in RETICLE:
+        model['textures']['r'] = reticle_texture(oid)
+        model['elements'] = gun + placed + [reticle_element(gid, oid)]
     display = dict(gun_model(gid)['display'])
     if ads:
         if sight_y is None:
@@ -783,7 +926,7 @@ def gun_with_optic(gid, oid, ads):
             display['firstperson_righthand'] = hidden
             display['firstperson_lefthand'] = hidden
         else:
-            r, l = first_person(gid, gun, True, sight_y=sight_y)
+            r, l = first_person(gid, gun, True, sight_y=sight_y, eye=sight_eye(gid, oid) if oid in RETICLE else None)
             display['firstperson_righthand'] = r
             display['firstperson_lefthand'] = l
     model['display'] = display
@@ -805,6 +948,54 @@ def optic_item_model(oid):
                         'thirdperson_righthand': {'rotation': [0, 90, 90], 'translation': [0, 2, 1], 'scale': [1.2, 1.2, 1.2]},
                         'ground': {'translation': [0, 2, 0], 'scale': [1, 1, 1]},
                         'fixed': {'rotation': [0, 180, 0], 'scale': [1.5, 1.5, 1.5]}}}
+
+
+# The dark ring around a magnified scope's view: a square picture with a round hole, drawn with the
+# hand. The hand is projected at a fixed 70 degree field of view with the window's own aspect, so the
+# hole stays round at any window shape (the camera overlay, stretched over the window, would not) and
+# the same size at any zoom. The quad is MASK_DIST blocks in front of the eye and covers windows up to
+# 2.5:1; the hole's radius is MASK_HOLE of the screen height, as the reticles assume (ui.SCOPE_HOLE).
+MASK_DIST = 0.45
+MASK_HALF = 14.0          # model units either side of the centre: the quad is 28 units across
+MASK_SIZE = 1024
+MASK_BASE = 0.45
+MASK_HOLE = {'optic_3x': 0.47, 'optic_4x': 0.45, 'optic_8x': 0.43}
+MASK_TEXTURE = 'craftov:item/scope/mask'
+
+
+def mask_hole_fraction():
+    """The hole's radius as a share of the quad's half side, at the base size (MASK_BASE)."""
+    quad = MASK_HALF / 16 / MASK_DIST
+    hole = 2 * MASK_BASE * math.tan(math.radians(35))
+    return hole / quad
+
+
+def mask_image(size=MASK_SIZE):
+    """Black, with a clear round hole and a soft dark edge just inside it, like looking down a tube."""
+    import numpy as np
+    yy, xx = np.mgrid[0:size, 0:size] + 0.5
+    r = np.hypot(xx - size / 2, yy - size / 2) / (size / 2)
+    hole = mask_hole_fraction()
+    edge = 0.035 * hole
+    a = np.clip((r - (hole - edge)) / edge, 0, 1) ** 1.6
+    alpha = np.where(r >= hole, 255, (a * 235).astype(np.uint8)).astype(np.uint8)
+    rgba = np.zeros((size, size, 4), np.uint8)
+    rgba[..., 3] = alpha
+    return Image.fromarray(rgba, 'RGBA')
+
+
+def scope_mask_model(oid):
+    """The mask posed straight ahead in first person only (both hands: it sits on the view axis)."""
+    scale = round(MASK_HOLE[oid] / MASK_BASE, 4)
+    lo, hi = 8 - MASK_HALF, 8 + MASK_HALF
+    face = {'uv': [0, 0, 16, 16], 'texture': '#m'}
+    fp = {'rotation': [0, 0, 0], 'translation': [-8.96, 8.32, round(16 * (0.72 - MASK_DIST), 3)], 'scale': [scale] * 3}
+    display = {k: HIDDEN for k in ('thirdperson_righthand', 'thirdperson_lefthand', 'ground', 'fixed', 'head', 'gui')}
+    display['firstperson_righthand'] = fp
+    display['firstperson_lefthand'] = fp
+    return {'textures': {'m': MASK_TEXTURE, 'particle': MASK_TEXTURE},
+            'elements': [{'from': [lo, lo, 8], 'to': [hi, hi, 8], 'shade': False, 'faces': {'south': face, 'north': face}}],
+            'display': display}
 
 
 def optic_icon(oid):

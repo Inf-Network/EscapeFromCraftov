@@ -257,7 +257,54 @@ public final class RangeService implements Listener {
                         }
                     }));
         }
+        calibration(lobby, plot, dx, spawned);
         plotEntities.put(plot, spawned);
+    }
+
+    /** Distance (blocks) from the firing position to the calibration target, and its size (tools/art/ui.py). */
+    private static final double CALIBRATION_DISTANCE = 50;
+    private static final float CALIBRATION_SIZE = 5f;
+
+    /**
+     * A 50 m calibration target straight down the lane from where the range puts the player, seen
+     * through a window cut in the back walls: a ring 40 mil across the radius, where the 4x reticle's
+     * thin centre ends (its posts just touch the ring when the zoom is right), ticks every 5 mil for
+     * the 3x hash marks and the 8x mil-dots.
+     */
+    private void calibration(World lobby, int plot, int dx, List<Entity> spawned) {
+        double eye = LobbyBuilder.Y + 1 + 1.62;
+        for (int x = 11; x <= 18; x++) {
+            for (int y = LobbyBuilder.Y + 1; y <= LobbyBuilder.Y + 3; y++) {
+                for (int z = -LobbyBuilder.R - 1; z <= -LobbyBuilder.R + 1; z++) {
+                    world.getBlockAt(x + dx, y, z).setType(org.bukkit.Material.AIR, false);
+                }
+            }
+        }
+        Location at = new Location(world, dx + 14.5, eye, -5.5 - CALIBRATION_DISTANCE, 0f, 0f);
+        org.bukkit.inventory.ItemStack target = org.bukkit.inventory.ItemStack.of(org.bukkit.Material.PAPER);
+        target.setData(io.papermc.paper.datacomponent.DataComponentTypes.ITEM_MODEL, net.kyori.adventure.key.Key.key("craftov", "fx/calibration"));
+        spawned.add(world.spawn(at, ItemDisplay.class, d -> {
+            d.setItemStack(target);
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            d.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
+                    new org.joml.Vector3f(CALIBRATION_SIZE, CALIBRATION_SIZE, CALIBRATION_SIZE), new org.joml.Quaternionf()));
+            d.setBillboard(Display.Billboard.FIXED);
+            d.setBrightness(new Display.Brightness(15, 15));
+            d.setViewRange(2f);
+            d.setPersistent(false);
+        }));
+        // Under the target (a text display grows upwards from where it stands) and a little to the left:
+        // above it, the label hung at the height of the 7 m dummy's name tag, which is wide that close
+        // and covered it, and the top of the window cut its title; centred, the dummy's body hid its end.
+        spawned.add(world.spawn(at.clone().add(-2.0, -CALIBRATION_SIZE / 2 - 1.6, 0), TextDisplay.class, d -> {
+            d.text(Text.mm("<b><text>50 m 校准靶</b>\n<muted>4 倍镜粗线碰到外圈 · 刻度 5 mil"));
+            d.setBillboard(Display.Billboard.CENTER);
+            d.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
+                    new org.joml.Vector3f(3f, 3f, 3f), new org.joml.Quaternionf()));
+            d.setViewRange(2f);
+            d.setPersistent(false);
+            d.setBackgroundColor(org.bukkit.Color.fromARGB(150, 10, 12, 16));
+        }));
     }
 
     private void release(int plot) {

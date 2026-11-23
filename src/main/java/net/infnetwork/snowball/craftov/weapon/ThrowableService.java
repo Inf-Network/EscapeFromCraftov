@@ -6,20 +6,28 @@ import net.infnetwork.snowball.craftov.combat.HitZone;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.Keys;
+import net.infnetwork.snowball.craftov.util.Notify;
+import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -29,15 +37,23 @@ import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * Grenades. A thrown grenade flies under its own physics: gravity and air drag as for a dropped
- * item (so throws reach as far as they always did), but it bounces off walls and ceilings with
+ * Grenades. Holding right mouse pulls the pin and starts the fuse (cooking), and the action bar
+ * counts it down; letting go throws the grenade with what is left of it, so a grenade held a while
+ * goes off sooner after it lands, or in the air. Held to the end of its fuse it goes off in the
+ * hand. Taking out another item while the pin is out puts it back. One throw locks every grenade
+ * (only grenades: they have a cooldown group of their own) for a second.
+ *
+ * <p>A thrown grenade flies under its own physics: gravity and air drag as for a dropped item (so
+ * throws reach as far as they always did), but it bounces off walls and ceilings with
  * {@code throwables.bounce.wall} of its speed into them and off the floor with
  * {@code throwables.bounce.floor}, then rolls to a stop, and goes off where it lies when its fuse
- * runs out. One throw locks every grenade (only grenades: they have a cooldown group of their own)
- * for a second.
+ * runs out.
  */
 public final class ThrowableService implements Listener {
 
@@ -59,45 +75,218 @@ public final class ThrowableService implements Listener {
     private static final int THROW_COOLDOWN = 20;
     /** The axes in the order a grenade moves along them: up and down first, as vanilla moves entities. */
     private static final int[] AXES = {1, 0, 2};
+    /** Ticks after the button went down for the client to take hold of the grenade. */
+    private static final int HOLD_GRACE = 2;
+    /** Notify key of the fuse countdown, so each update replaces the last. */
+    private static final String COOK_LINE = "grenade-cook";
 
     /** Share of the speed into a face a grenade keeps off it: walls and ceilings, and the floor. */
     private record Bounce(double wall, double floor) {
     }
 
+    /**
+     * A grenade whose pin came out on tick {@code start}, when the button went down: it goes off
+     * a fuse later, whether or not it has left the hand by then. {@code held} once the client has
+     * taken hold of it (its item use began), which is when the pin is heard.
+     */
+    private static final class Cook {
+        private final ItemDef def;
+        private final long start;
+        private boolean held;
+
+        private Cook(ItemDef def, long start) {
+            this.def = def;
+            this.start = start;
+        }
+
+        private long goesOff() {
+            return start + def.throwable().fuseTicks();
+        }
+    }
+
     private final CraftovPlugin plugin;
+    private final Map<UUID, Cook> cooks = new HashMap<>();
+    /** Player -> tick a click on an entity of theirs was taken (a box or body opened, a revive). */
+    private final Map<UUID, Long> entityClicks = new HashMap<>();
 
     public ThrowableService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tickCooks, 1L, 1L);
     }
 
+    private boolean isGrenade(@Nullable ItemStack stack, ItemDef def) {
+        ItemDef held = plugin.items().defOf(stack);
+        return held != null && held.id().equals(def.id());
+    }
+
+    /**
+     * Right mouse going down with a grenade in hand pulls the pin: the fuse starts now, and the
+     * client goes on holding the grenade (vanilla's item use, see ItemFactory) until the button comes
+     * up ({@link #onRelease}). Doors, levers and buttons within reach still work with a grenade in
+     * hand, and so does a click on a box, a body or a downed squadmate: the client sends the use
+     * straight after one, which must not pull the pin.
+     */
     @EventHandler(priority = EventPriority.HIGH)
-    public void onThrow(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND || !event.getAction().isRightClick()) {
+    public void onPress(PlayerInteractEvent event) {
+        if (!event.getAction().isRightClick()) {
             return;
         }
         ItemDef def = plugin.items().defOf(event.getItem());
         if (def == null || def.throwable() == null) {
             return;
         }
-        event.setCancelled(true);
         Player player = event.getPlayer();
-        if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())) {
+        if (event.getHand() != EquipmentSlot.HAND
+                || Bukkit.getCurrentTick() - entityClicks.getOrDefault(player.getUniqueId(), -100L) <= 1) {
+            event.setUseItemInHand(Event.Result.DENY); // thrown from the main hand only, never off a click on an entity
             return;
         }
-        if (player.getCooldown(ItemFactory.THROW_GROUP) > 0) {
+        Block clicked = event.getClickedBlock();
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && clicked != null && clicked.getType().isInteractable()
+                && !player.isSneaking() && clicked.getLocation().add(0.5, 0.5, 0.5).distanceSquared(player.getEyeLocation()) < 16) {
+            return; // the client uses the door instead of the grenade
+        }
+        if (!plugin.raids().canAttack(player) || plugin.lobby().isLobby(player.getWorld())
+                || player.getCooldown(ItemFactory.THROW_GROUP) > 0 || event.useItemInHand() == Event.Result.DENY) {
+            event.setCancelled(true);
             return;
         }
-        plugin.raids().onAttack(player);
+        event.setUseInteractedBlock(Event.Result.DENY);
+        event.setUseItemInHand(Event.Result.ALLOW);
+        // Clicking a block, the client sends the use straight after this; the cook only counts once
+        // it is holding the grenade (tickCooks).
+        if (!cooks.containsKey(player.getUniqueId())) {
+            plugin.raids().onAttack(player);
+            cooks.put(player.getUniqueId(), new Cook(def, Bukkit.getCurrentTick()));
+        }
+    }
+
+    /** Right mouse coming up throws the cooked grenade, with what is left of its fuse. */
+    @EventHandler
+    public void onRelease(PlayerStopUsingItemEvent event) {
+        Player player = event.getPlayer();
+        Cook cook = cooks.remove(player.getUniqueId());
+        if (cook == null) {
+            return;
+        }
         ItemStack hand = player.getInventory().getItemInMainHand();
-        ItemStack thrownStack = hand.clone();
-        thrownStack.setAmount(1);
+        if (!isGrenade(hand, cook.def) || !plugin.raids().canFire(player)) {
+            return; // the pin goes back in
+        }
+        if (!cook.held) {
+            pinOut(player); // a tap: the pin comes out as it leaves the hand
+        }
+        if (Bukkit.getCurrentTick() >= cook.goesOff()) {
+            goesOffInHand(player, cook);
+            return;
+        }
+        launch(player, takeOne(player, hand, cook.def), cook.def, cook.goesOff());
+        Notify.critical(player, COOK_LINE, "<muted>已投出");
+    }
+
+    /**
+     * Follows every grenade with its pin out. The client holding it confirms the pin is out (and
+     * it is heard); once it stops holding it without letting go (another item, a menu taking the
+     * hand, downed, reviving, gone) the pin goes back in. Held to the end of its fuse it goes off
+     * in the hand. Meanwhile the action bar counts the fuse down.
+     */
+    private void tickCooks() {
+        if (cooks.isEmpty()) {
+            return;
+        }
+        long now = Bukkit.getCurrentTick();
+        for (UUID id : new ArrayList<>(cooks.keySet())) {
+            Cook cook = cooks.get(id);
+            Player player = Bukkit.getPlayer(id);
+            if (player == null) {
+                cooks.remove(id);
+                continue;
+            }
+            boolean holding = player.hasActiveItem() && isGrenade(player.getActiveItem(), cook.def);
+            // A menu over the screen takes the hand: the client would only let go of the grenade
+            // once it closes, long after it went off in the hand.
+            boolean menu = holding && menuOpen(player);
+            if (!cook.held) {
+                if (!holding || menu) {
+                    if (menu || now - cook.start > HOLD_GRACE) {
+                        cooks.remove(id); // the client never took hold of it: nothing happened
+                        if (menu) {
+                            player.clearActiveItem();
+                        }
+                    }
+                    continue;
+                }
+                cook.held = true;
+                pinOut(player);
+            }
+            boolean able = plugin.raids().canFire(player);
+            if (!holding || !able || menu) {
+                cooks.remove(id);
+                if (holding) {
+                    player.clearActiveItem(); // letting go later throws nothing
+                }
+                if (able) {
+                    Notify.critical(player, COOK_LINE, "<muted>保险销已插回");
+                }
+                continue;
+            }
+            if (now >= cook.goesOff()) {
+                cooks.remove(id);
+                goesOffInHand(player, cook);
+                continue;
+            }
+            if ((now - cook.start) % 2 == 0) {
+                Notify.critical(player, COOK_LINE, "<accent>已拉环 <text>" + String.format(java.util.Locale.ROOT, "%.1f", (cook.goesOff() - now) / 20.0)
+                        + " 秒 <muted>· 松开右键投掷");
+            }
+        }
+    }
+
+    /** Whether a menu of the server's is open over the screen (the player's own inventory is not one it knows of). */
+    private static boolean menuOpen(Player player) {
+        InventoryType type = player.getOpenInventory().getType();
+        return type != InventoryType.CRAFTING && type != InventoryType.CREATIVE;
+    }
+
+    /** A click on an entity that something took (a box or body opened, a revive begun): no pin follows it. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityClick(PlayerInteractEntityEvent event) {
+        if (event.isCancelled()) {
+            entityClicks.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        cooks.remove(event.getPlayer().getUniqueId());
+        entityClicks.remove(event.getPlayer().getUniqueId());
+    }
+
+    private static void pinOut(Player player) {
+        player.getWorld().playSound(player.getLocation(), "craftov:throw.pin", SoundCategory.PLAYERS, 1f, 1f);
+    }
+
+    /** One grenade out of the hand, as thrown: counted as used, and every grenade locked for a second. */
+    private ItemStack takeOne(Player player, ItemStack hand, ItemDef def) {
+        ItemStack one = hand.clone();
+        one.setAmount(1);
         hand.setAmount(hand.getAmount() - 1);
-        if (!ItemFactory.isTest(thrownStack)) {
+        if (!ItemFactory.isTest(one)) {
             plugin.raids().usedUp(player, def.id(), 1);
         }
         player.setCooldown(ItemFactory.THROW_GROUP, THROW_COOLDOWN);
-        player.getWorld().playSound(player.getLocation(), "craftov:throw.pin", SoundCategory.PLAYERS, 1f, 1f);
-        launch(player, thrownStack, def, Bukkit.getCurrentTick() + def.throwable().fuseTicks());
+        return one;
+    }
+
+    /** Held past its fuse: the grenade goes off at the thrower's middle. */
+    private void goesOffInHand(Player player, Cook cook) {
+        ItemStack hand = player.getInventory().getItemInMainHand();
+        if (!isGrenade(hand, cook.def)) {
+            return;
+        }
+        player.clearActiveItem();
+        takeOne(player, hand, cook.def);
+        detonate(player, player.getLocation().add(0, player.getHeight() * 0.55, 0), cook.def.throwable(), cook.def.name());
     }
 
     /** Where a grenade leaves the hand: a little in front of the eyes, short of any wall there. */

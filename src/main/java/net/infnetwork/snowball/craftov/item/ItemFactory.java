@@ -63,7 +63,7 @@ public final class ItemFactory {
      * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
      * 14: stackables show one unit's weight and price, so stacks of different sizes merge (#43, which
      * used 13).
-     * 15: grenades carry the throw cooldown group (#42).
+     * 15: grenades carry the throw cooldown group, and a long use so they can be held to cook (#42).
      */
     public static final int VERSION = 15;
     /**
@@ -302,6 +302,22 @@ public final class ItemFactory {
         } else if (def.throwable() != null) {
             // Only the server sets this cooldown, after a throw; the client shades grenades alone meanwhile.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(THROW_GROUP).build());
+            // Holding right mouse "uses" the grenade, which is how the server learns when the button
+            // comes up again (ThrowableService cooks it meanwhile). The use never finishes: a grenade
+            // goes off long before ten minutes, and the eating sound only starts after a fifth of
+            // the use. No use pose (the trident's turns the flat sprite into a slab across the top
+            // of the screen), and walking and sprinting stay as they are.
+            stack.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
+                    .consumeSeconds(600f)
+                    .animation(ItemUseAnimation.NONE)
+                    .sound(Key.key("craftov", "throw.pin"))
+                    .hasConsumeParticles(false)
+                    .build());
+            stack.setData(DataComponentTypes.USE_EFFECTS, UseEffects.useEffects()
+                    .canSprint(true)
+                    .speedMultiplier(1.0f)
+                    .interactVibrations(false)
+                    .build());
         } else if (med != null) {
             ItemUseAnimation animation;
             try {

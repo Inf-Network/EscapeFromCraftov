@@ -130,11 +130,6 @@ public final class SlideService implements Listener {
             return side >= 0 ? BodyPart.RIGHT_LEG : BodyPart.LEFT_LEG;
         }
 
-        /** These legs moved to another body centre and ground (the same slide a moment later or earlier). */
-        public Legs at(double x2, double y2, double z2) {
-            return new Legs(x2, y2, z2, dirX, dirZ);
-        }
-
         /** Between {@code this} and {@code other}, {@code f} of the way. */
         public Legs lerp(Legs other, double f) {
             double dx = dirX + (other.dirX - dirX) * f;

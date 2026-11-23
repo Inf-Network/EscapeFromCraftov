@@ -274,8 +274,22 @@ public final class CraftovCommand implements TabExecutor {
             case "injure" -> {
                 // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
                 // A bleed with a source is that player's wound: it keeps their kill credit going.
+                // /cv injure <player> clear: full health and no wounds, as the test catalog's button, for
+                // tests that shoot a player again and again (tools/bot/slide.js).
+                if (args.length == 3 && args[2].equalsIgnoreCase("clear")) {
+                    Player target = Bukkit.getPlayerExact(args[1]);
+                    if (target == null) {
+                        Text.send(sender, "<danger>玩家无效。");
+                        return;
+                    }
+                    plugin.health().clear(target);
+                    plugin.health().heal(target, net.infnetwork.snowball.craftov.combat.HealthService.MAX_HP);
+                    plugin.health().forceSpeedUpdate(target);
+                    Text.send(sender, "<ok>" + target.getName() + " 生命回满，伤病已清除");
+                    return;
+                }
                 if (args.length < 4) {
-                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture> [造成伤口的玩家]");
+                    Text.send(sender, "/cv injure <玩家> <部位> <light|heavy|fracture> [造成伤口的玩家] · /cv injure <玩家> clear");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);

@@ -207,7 +207,7 @@ public final class CraftovPlugin extends JavaPlugin {
         adminGuard.start();
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
-        register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
+        register(adminGuard, new net.infnetwork.snowball.craftov.security.VanillaGuardService(), editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
                 raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
                 inspect, new SwapKeyService(this), market, profiles, killFeed, fov);
 

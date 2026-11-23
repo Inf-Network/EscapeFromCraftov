@@ -69,15 +69,15 @@ const ZONES = { head: K47 * 2, chest: K47, stomach: K47 * 0.95, arm: K47 * 0.65,
 const plain = j => [...JSON.stringify(j || '').matchAll(/"text":\{"type":"string","value":"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]).join('')
 
 /**
- * The action bar as a string in which every bar segment `|` is G (revive green #5BD16B), g (empty
- * grey #3A3F47) or x (any other colour), and other characters are kept.
+ * The action bar as a string in which every bar segment `|` is G (the palette's ok green #7FD1AE),
+ * g (its dim grey #69707A, the empty part) or x (any other colour), and other characters are kept.
  */
 function coded (text) {
   let out = ''
   const walk = (node, color) => {
     if (node === null || node === undefined) return
     if (typeof node === 'string' || typeof node === 'number') {
-      for (const ch of String(node)) out += ch !== '|' ? ch : /^#5bd16b$/i.test(color || '') ? 'G' : /^#3a3f47$/i.test(color || '') ? 'g' : 'x'
+      for (const ch of String(node)) out += ch !== '|' ? ch : /^#7fd1ae$/i.test(color || '') ? 'G' : /^#69707a$/i.test(color || '') ? 'g' : 'x'
       return
     }
     if (Array.isArray(node)) { node.forEach(n => walk(n, color)); return }

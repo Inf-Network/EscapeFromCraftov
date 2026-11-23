@@ -106,7 +106,10 @@ public final class WeaponService implements Listener {
         boolean drawPending;
         /** The reload cooldown, which plays the reload frames, has been sent for the reload under way. */
         boolean reloadShown;
-        /** Last tick right mouse asked to aim while the gun came up: still held at readyAt, it aims then. */
+        /**
+         * Last tick right mouse asked to aim while the sights could not come up (the gun coming up after a
+         * switch, a sprint and the moments after one): still held once they can, it aims then.
+         */
         long aimAsked = -100;
         /** The magazine was empty when this reload started (the bolt has to be worked at the end). */
         boolean reloadEmpty;
@@ -270,6 +273,8 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
     /** Last tick each player was sprinting: the sights take a moment to come up afterwards (see {@link #sightsUp}). */
     private final Map<UUID, Long> lastSprint = new HashMap<>();
+    /** Players whose food level was last told that aiming stops their sprint (see {@link #stopsSprint}). */
+    private final java.util.Set<UUID> sprintStopped = new java.util.HashSet<>();
     /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
     private final Map<UUID, Long> lastEntityUse = new HashMap<>();
     /**
@@ -512,22 +517,55 @@ public final class WeaponService implements Listener {
         }
     }
 
-    /**
-     * The gun is up: its model may aim and kick again, and right mouse held through the draw aims at
-     * once rather than with the next use packet, which on a scoped gun would leave up to 4 ticks of
-     * neither gun nor scope (the model hides the gun as soon as the mark is gone).
-     */
+    /** The gun is up: its model may aim and kick again, and right mouse held through the draw aims. */
     private void drawn(Player player, GunState state, long now) {
         state.drawPending = false;
         setMark(player, state, wantedMark(state));
-        if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
-                && sightsUp(player)) {
-            adsUntil.put(player.getUniqueId(), now + 6);
-            setAds(player, true);
-        }
+        aimIfAsked(player, state, now);
         if (plugin.getConfig().getBoolean("debug", false)) {
             plugin.getLogger().info(String.format("[debug] %s up %s tick=%d aim=%b",
                     player.getName(), state.def.id(), now, isAiming(player)));
+        }
+    }
+
+    /**
+     * Right mouse held while the sights could not come up (the gun coming up after a switch, a sprint
+     * and the moments after one) aims as soon as they can, rather than with the next use packet, which
+     * on a scoped gun would leave up to 4 ticks of neither gun nor scope (the model hides the gun as
+     * soon as the mark is gone).
+     */
+    private void aimIfAsked(Player player, GunState state, long now) {
+        if (!isAiming(player) && aimAsked(state, now) && !state.drawing() && !state.reloading()
+                && plugin.raids().canFire(player) && sightsUp(player)) {
+            adsUntil.put(player.getUniqueId(), now + 6);
+            setAds(player, true);
+        }
+    }
+
+    /** Right mouse is held asking to aim: a use packet came within the last repeat (see {@link GunState#aimAsked}). */
+    private static boolean aimAsked(GunState state, long now) {
+        return now - state.aimAsked <= USE_REPEAT + 1;
+    }
+
+    /**
+     * Aiming ends a sprint and none starts while it lasts: true while the player aims or holds right
+     * mouse to (the sights still coming up). The server cannot stop a client that holds the sprint key,
+     * so this holds the food level where the vanilla client may not sprint (see HealthService.updateFood);
+     * once right mouse is let go the client sprints again if the key is still held.
+     */
+    public boolean stopsSprint(Player player) {
+        if (isAiming(player)) {
+            return true;
+        }
+        GunState state = states.get(player.getUniqueId());
+        return state != null && aimAsked(state, Bukkit.getCurrentTick()) && plugin.raids().canFire(player);
+    }
+
+    /** Tells the food level when {@link #stopsSprint} changes, so a sprint ends (or may start) right away. */
+    private void syncSprintStop(Player player) {
+        boolean stop = stopsSprint(player);
+        if (stop ? sprintStopped.add(player.getUniqueId()) : sprintStopped.remove(player.getUniqueId())) {
+            plugin.health().updateFood(player);
         }
     }
 
@@ -540,10 +578,12 @@ public final class WeaponService implements Listener {
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             motion.sample(player);
-            if (sprinting(player)) {
+            if (player.isSprinting()) {
+                // The client's sprint, not the measured run, which reads on for a few ticks of slowing down.
                 lastSprint.put(player.getUniqueId(), now);
             }
             GunState state = bind(player);
+            syncSprintStop(player);
             if (state == null) {
                 continue;
             }
@@ -552,6 +592,7 @@ public final class WeaponService implements Listener {
             if (state.drawPending && !state.drawing()) {
                 drawn(player, state, now);
             }
+            aimIfAsked(player, state, now);
             if (state.reloading()) {
                 if (now >= state.reloadEnd) {
                     finishReload(player, state);
@@ -1398,6 +1439,7 @@ public final class WeaponService implements Listener {
         } else if (!on && sentZoom.remove(player.getUniqueId()) != null) {
             Nms.unzoom(player);
         }
+        syncSprintStop(player);
     }
 
     /** Zoom level at which ADS looks through a scope (overlay + strong magnification) instead of iron sights. */
@@ -1433,9 +1475,11 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * The sights can come up: not sprinting (see {@link #sprinting}), nor in the few ticks after a sprint
-     * ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry. Hip fire is
-     * never held back by a sprint: the gun fires on the run, with a wider cone (see {@link #currentSpread}).
+     * The sights can come up: not sprinting (see {@link #sprinting}), nor in the few ticks after the
+     * client's sprint ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry.
+     * Hip fire is never held back by a sprint: the gun fires on the run, with a wider cone (see
+     * {@link #currentSpread}). Right mouse ends the sprint (see {@link #stopsSprint}) and aims once
+     * this allows (see {@link #aimIfAsked}).
      */
     private boolean sightsUp(Player player) {
         if (sprinting(player)) {
@@ -1498,10 +1542,16 @@ public final class WeaponService implements Listener {
         // Never cancel or deny: a denied use makes Paper resync the whole inventory, which wipes the
         // scope overlay (a fake helmet) five times a second. Paper guns have no vanilla use anyway.
         if (state.drawing()) {
-            state.aimAsked = Bukkit.getCurrentTick(); // still held once the gun is up, it aims then (see drawn)
+            state.aimAsked = Bukkit.getCurrentTick(); // still held once the gun is up, it aims then (see aimIfAsked)
             return;
         }
-        if (state.reloading() || !plugin.raids().canFire(player) || !sightsUp(player)) {
+        if (state.reloading() || !plugin.raids().canFire(player)) {
+            return;
+        }
+        if (!sightsUp(player)) {
+            // Aiming ends a sprint: the food level stops it now, and the sights come up a moment after.
+            state.aimAsked = Bukkit.getCurrentTick();
+            syncSprintStop(player);
             return;
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);
@@ -1660,6 +1710,7 @@ public final class WeaponService implements Listener {
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());
+        sprintStopped.remove(event.getPlayer().getUniqueId());
         lastEntityUse.remove(event.getPlayer().getUniqueId());
         handledUse.remove(event.getPlayer().getUniqueId());
     }

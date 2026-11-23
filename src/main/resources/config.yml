@@ -263,7 +263,8 @@ combat:
 weapons:
   # Guns fire from the hip on a sprint (run-and-gun, with the wider cone of spread.sprint), but the
   # sights only come up this many ticks after a sprint ends (the gun coming up from the sprint
-  # carry). Right mouse held through it aims as soon as it is over.
+  # carry). Right mouse ends a sprint, and no sprint starts while it is held; held through these
+  # ticks, it aims as soon as they are over.
   sprint-recovery-ticks: 5
   # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
   # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still

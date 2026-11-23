@@ -396,12 +396,13 @@ public final class HealthService implements Listener {
     }
 
     /**
-     * Sprinting is impossible with an untreated broken leg, no stamina or an overloaded pack (food
-     * at 6 disables it: the vanilla client has no other switch for it).
+     * Sprinting is impossible with an untreated broken leg, no stamina or an overloaded pack, and while
+     * aiming down the sights (food at 6 disables it: the vanilla client has no other switch for it).
      */
     public void updateFood(Player player) {
         boolean noSprint = plugin.raids().isInRaid(player)
-                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player));
+                && (activeFractures(player, false) > 0 || plugin.stamina().exhausted(player) || plugin.stamina().overloaded(player))
+                || plugin.weapons().stopsSprint(player);
         int food = noSprint ? 6 : 20;
         if (player.getFoodLevel() != food) {
             player.setFoodLevel(food);

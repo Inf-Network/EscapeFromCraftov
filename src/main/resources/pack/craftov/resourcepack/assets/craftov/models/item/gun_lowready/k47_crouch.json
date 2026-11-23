@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_low/k47",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    -16.448,
+    78.416,
+    50.981
+   ],
+   "translation": [
+    0.422,
+    2.181,
+    -2.793
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    -16.448,
+    -78.416,
+    -50.981
+   ],
+   "translation": [
+    0.422,
+    2.181,
+    -2.793
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

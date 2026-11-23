@@ -23,7 +23,9 @@
 //   8. the other bot in armor_6 and helmet_6, karambit: chest cuts wear the vest 8.64 a hit and do
 //      5.4, a head cut wears the helmet and not the vest, a leg cut does 21.6 (0.6) and wears
 //      neither; a level machete swing lands on the head (wears the helmet 15.6, not the vest);
-//   9. it is then cut down (chest and legs) and its death report lists more than the chest.
+//   9. it is then cut down (chest and legs) and its death report lists more than the chest;
+//  10. (before 7) the rhythm: the starter knife (12-tick interval) swung at the boss every 6 ticks,
+//      12 times, lands one cut every 12 ticks (6, give or take one), counted by the cut's sound.
 //
 // Soldiers are frozen (NoAI) and teleported in front of the attacker; both bots have resistance
 // while soldiers are around (their rounds would otherwise kill them), the soldiers are killed before
@@ -194,10 +196,13 @@ const commandSlot = i => i >= 36 ? `hotbar.${i - 36}` : `inventory.${i - 9}`
 
 /** Gives `bot` a fresh piece of armour and moves it onto `slot` (chest or head). */
 async function wear (bot, id, slot) {
+  const worn = () => pdc(bot.inventory.slots[slot === 'chest' ? 6 : 5], 'id') === id
   await rcon(`item replace entity ${bot.username} armor.${slot} with minecraft:air`)
   await rcon(`cv give ${bot.username} ${id}`)
   let i = -1
-  await waitFor(() => (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  // Armour handed out goes straight onto an empty armour slot (CarryService.giveOrWear, #126).
+  await waitFor(() => worn() || (i = bot.inventory.slots.findIndex((s, n) => n >= 9 && n <= 44 && s && pdc(s, 'id') === id)) >= 0, 5000)
+  if (worn()) return true
   if (i < 0) return false
   await rcon(`item replace entity ${bot.username} armor.${slot} from entity ${bot.username} ${commandSlot(i)}`)
   await rcon(`item replace entity ${bot.username} ${commandSlot(i)} with minecraft:air`)
@@ -551,6 +556,36 @@ async function armourAttr (sel) {
     const kill = attacker.actionBars.filter(m => m.includes('击败'))
     check('the knife kill to the head is not called a headshot (no 爆头 on the action bar)',
       kill.length > 0 && kill.every(m => !m.includes('爆头')), kill)
+  }
+
+  // 10. The rhythm (#3): swinging twice as fast as the knife's interval lands one cut per interval.
+  {
+    const sel = one('m_boss')
+    const ks = items.knives.knife_starter
+    await rcon(`attribute ${sel} minecraft:max_health base set 1000`)
+    await rcon(`data merge entity ${sel} {Health:1000f}`)
+    await placeTarget(attacker, sel, FACING_ATTACKER)
+    await holdKnife(attacker, 'knife_starter')
+    const entity = frontEntity(attacker, isMob)
+    if (entity) {
+      await attacker.lookAt(entity.position.offset(0, ZOMBIE_H * 1.12 * 0.64, 0), true)
+      await sleep(500)
+      attacker.sounds.length = 0
+      const swings = 12
+      for (let i = 0; i < swings; i++) {
+        attacker.attack(entity)
+        await sleep(300)
+      }
+      await sleep(300)
+      const landed = attacker.sounds.filter(s => /attack\.sweep/.test(s)).length
+      const want = swings * 6 / ks.cd
+      check(`the starter knife swung every 6 ticks, ${swings} times: one cut lands every ${ks.cd} ticks (${want})`,
+        Math.abs(landed - want) <= 1, { landed, want })
+    } else {
+      check('the starter knife swung every 6 ticks: the boss is in front of the attacker', false)
+    }
+    await rcon(`attribute ${sel} minecraft:max_health base set 380`)
+    await rcon(`data merge entity ${sel} {Health:380f}`)
   }
 
   // 7-9. The other bot.

@@ -8,11 +8,11 @@
 //          the server ticks in the log, not by when the clicks were sent.
 //   pump   R12 (70 rpm: 17 ticks, 10 to draw): the same, clicks up to 0.7 s and one at 1.2 s.
 //   draw   M4C to P18 (6 ticks to draw): clicks in the first 200 ms after the switch fire nothing
-//          before the tick the gun is up, one at 500 ms fires, and the action bar says the gun is
-//          being drawn; the pistol waits in the hotbar with the holster mark (damage 5, the draw's
-//          first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
+//          before the tick the gun is up, one at 500 ms fires, the action bar says the gun is being
+//          drawn and the draw is heard (gun.foley.pistol.draw); the pistol waits in the hotbar
+//          with the holster mark (damage 5, the draw's first frame), carries the draw mark (damage 1, the draw frames) from the switch until it
 //          is up, and the craftov:reload cooldown that runs those frames is sent with it, as long as
-//          the draw (6 ticks; 8 for the M4C), ahead of the draw mark (the holster frame reads no
+//          the draw (6 ticks; 9 for the M4C), ahead of the draw mark (the holster frame reads no
 //          cooldown, the draw's rest pose would show between the two); a gun switched away from mid-draw is holstered
 //          again (damage 5) and its draw cooldown stops; the trigger held from the moment of the switch fires once, 6 ticks
 //          after the draw began, though the dig starts over (abort and start) each time the mark
@@ -69,9 +69,15 @@ bot.once('login', () => {
     bot.entity.pitch = conv.fromNotchianPitch(pitch)
   })
 })
-/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads). */
+/** When the bot heard its gun go to aim-down-sights (WeaponService.setAds plays gun.ads), and draw sounds. */
 const adsHeard = []
-const onSound = p => { if (/gun\.ads\b/.test(JSON.stringify(p.sound || p.soundId || ''))) adsHeard.push(Date.now()) }
+const drawHeard = []
+const onSound = p => {
+  const name = JSON.stringify(p.sound || p.soundId || '')
+  if (/gun\.ads\b/.test(name)) adsHeard.push(Date.now())
+  const draw = name.match(/gun\.foley\.([a-z_]+)\.draw/)
+  if (draw) drawHeard.push({ at: Date.now(), family: draw[1] })
+}
 bot._client.on('entity_sound_effect', onSound)
 bot._client.on('sound_effect', onSound)
 /** Action bar lines and craftov:reload cooldowns the bot was sent: { at, text } and { at, ticks }. */
@@ -173,9 +179,22 @@ async function enterRange () {
   if (!dim.includes('craftov_range')) throw new Error('not on the range: ' + dim)
 }
 
-/** Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). */
+/**
+ * Gives the gun if it is not on the hotbar yet, holds it and fills its magazine (Q). Guns go to the
+ * two weapon slots only (hotbar 0 and 1, then a backpack: CarryService.route), so after the AWR the
+ * R12 found both taken: the weapon slot that does not hold the P18 (every scenario's other gun) is
+ * emptied first.
+ */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    const keep = id === 'p18' ? -1 : hotbar('p18') - 36
+    const free = [0, 1].find(s => s !== keep && !bot.inventory.slots[36 + s]) ?? [0, 1].find(s => s !== keep)
+    if (bot.inventory.slots[36 + free]) {
+      await rcon(`item replace entity ${name} hotbar.${free} with minecraft:air`)
+      await sleep(200)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   if (hotbar(id) < 0) throw new Error(id + ' did not reach the hotbar')
   hold(id)
@@ -265,6 +284,9 @@ async function draw (spot) {
   check('draw: a click at 500 ms fires', late.length === 1, `${late.length} shots`)
   check('draw: a click while drawing says so', bars.slice(barsFrom).some(b => b.at - swapped < 400 && b.text.includes('拔枪中')),
     `${bars.length - barsFrom} action bar lines`)
+  const drawn = drawHeard.filter(h => h.at >= swapped - 50)
+  check('draw: the pistol coming up is heard (gun.foley.pistol.draw), once', drawn.length === 1 && drawn[0].family === 'pistol' &&
+    drawn[0].at - swapped < 250, drawn.map(h => `${h.family} at ${h.at - swapped} ms`).join(', ') || 'none')
   // The mark goes on with the switch and comes off when the gun is up (6 ticks), by the slot updates.
   const marks = slotUpdates.slice(slotsFrom).filter(u => u.slot === pistolSlot)
   const on = marks.find(u => u.damage === 1)
@@ -285,15 +307,15 @@ async function draw (spot) {
   const leaveFrom = slotUpdates.length
   const leaveCools = cooldowns.length
   hold('m4c')
-  await sleep(150) // the M4C takes 8 ticks
+  await sleep(150) // the M4C takes 9 ticks
   hold('p18')
   await sleep(700)
   const rifle = slotUpdates.slice(leaveFrom).filter(u => u.slot === rifleSlot).map(u => u.damage)
   check('draw: a gun switched away from mid-draw is holstered again', rifle.includes(1) && damageOf(bot.inventory.slots[rifleSlot]) === 5,
     `M4C slot damage over the switch: ${rifle.join(',')}`)
   const leftCools = cooldowns.slice(leaveCools).map(c => c.ticks)
-  check('draw: the M4C draw cooldown (8 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
-    leftCools.slice(0, 4).join(',') === '8,0,6,0', `cooldowns ${leftCools.join(',')}`)
+  check('draw: the M4C draw cooldown (9 ticks) stops when it is left, then the P18 draw runs (6) and is cleared once up',
+    leftCools.slice(0, 4).join(',') === '9,0,6,0', `cooldowns ${leftCools.join(',')}`)
 
   // The trigger held from the moment of the switch fires once, as the gun comes up.
   hold('m4c')
@@ -403,7 +425,7 @@ async function bloom (spot) {
   hold('p18')
   await sleep(100)
   hold('m4c')
-  await sleep(800) // M4C draws in 8 ticks
+  await sleep(800) // M4C draws in 9 ticks
   const after = logSize()
   click()
   await sleep(400)

@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/knife_hand/knife_machete_glove",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    11.267,
+    -5.654,
+    133.544
+   ],
+   "translation": [
+    -6.225,
+    5.687,
+    -7.549
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -168.733,
+    5.654,
+    46.456
+   ],
+   "translation": [
+    -6.225,
+    5.687,
+    -7.549
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
+ }
+}

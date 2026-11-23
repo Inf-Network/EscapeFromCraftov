@@ -27,3 +27,4 @@ parts:
   - {from: [24.0, 9.37, 7.71], to: [24.12, 10.07, 8.29], mat: bare, detail: true}   # muzzle crown
 sight_y: 10.43
 eye: [1.7, 0.12]
+hands: {grip: [0.3, 8.2, 40.0], fore: [10.2, 7.95]}

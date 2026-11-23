@@ -1,0 +1,135 @@
+"""Every stance another player is seen in (StanceService), on the proving ground. Arg: gun id (k47).
+
+ShotCam and a puppet (tools/bot/puppet.js, needs tools/bot/node_modules) queue as one squad and
+land together; ShotCam then walks round the puppet with the HUD hidden:
+
+  stance-low-front / -side      the gun carried low in both hands, muzzle down
+  stance-low-crouch             the same crouching (the gun turned back against the body's lean)
+  stance-shoulder-front / -side aiming: the gun shouldered along the look
+  stance-shoulder-crouch        aiming crouched
+  stance-reload                 reloading: the support arm comes up to the magazine
+  stance-revive / -revive-side  the puppet, empty-handed, working on ShotCam, who is down: seen with
+                                the front view (F5 twice) from in front of ShotCam's face, the
+                                puppet kneeling behind ShotCam's head; then with ShotCam's head
+                                turned 50 degrees, so the camera sees the puppet from the side
+  stance-downed                 the puppet knocked down: crawling with empty hands
+  stance-revived                ShotCam, gun in hand, has held right click on the puppet: it is up again
+  stance-throw                  a smoke grenade cooked overhead, seen from above the puppet's right
+                                side: the grenade lies flat behind the raised hand, edge-on from
+                                eye level (last: the smoke hides the yard)
+
+Both leave through the always-open extract at the end, so neither reconnects into the raid later.
+"""
+
+MAP = 'proving'
+
+
+def raid(s, mate):
+    s.cmd('cv party invite ' + mate.name)
+    s.wait(1)
+    mate.send('chat /cv party accept')
+    s.wait(1.5)
+    before = s.raids()
+    s.cmd(f'cv queue {MAP} NORMAL TRIO')
+    s.wait_until(s.in_raid, 150, 'the proving ground raid to start')
+    s.wait_until(lambda: 'craftov_raid' in (s.data('Dimension', mate.name) or ''), 30, f'{mate.name} in the raid')
+    return s.raids() - before
+
+
+def run(s):
+    gun = s.arg or 'k47'
+    s.lobby()
+    with s.puppet() as mate:
+        mine = raid(s, mate)
+        try:
+            s.wait(6)  # the landing
+            s.rcon(f'execute as {mate.name} at {s.name} run tp @s ~ ~ ~ 0 0')
+            mate.hold(gun)
+            s.give(s.ammo_for(gun) if gun not in ('k47', 'kl7') else 'ammo_762_bp', 60, mate.name)
+            s.give('smoke', 1, mate.name)
+            s.hold(gun)
+            s.wait(2)  # the guns come up
+            s.key('F1')
+            try:
+                mate.orbit(30, distance=2.6)
+                s.shot('stance-low-front')
+                mate.orbit(90, distance=2.6)
+                s.shot('stance-low-side')
+                mate.send('sneak on')
+                s.wait(0.8)
+                mate.orbit(40, distance=2.6)
+                s.shot('stance-low-crouch')
+                mate.send('use on')
+                s.wait(1.2)
+                s.shot('stance-shoulder-crouch')
+                mate.send('sneak off')
+                s.wait(0.8)
+                mate.orbit(30, distance=2.6)
+                s.shot('stance-shoulder-front')
+                mate.orbit(90, distance=2.6)
+                s.shot('stance-shoulder-side')
+                mate.send('use off')
+                s.wait(1.8)  # the shoulder holds a moment after aiming stops
+                mate.orbit(40, distance=2.6)
+                mate.send('drop')
+                s.wait(0.9)
+                s.shot('stance-reload')
+                s.wait(3)
+                # ShotCam goes down with the puppet behind it, and the puppet, empty-handed (an empty
+                # hotbar slot), works on it: seen with the front view from in front of ShotCam's face,
+                # looking a little down, so the puppet kneels behind ShotCam's head.
+                s.rcon(f'item replace entity {mate.name} hotbar.6 with minecraft:air')
+                mate.send('slot 6')
+                mate.orbit(0, distance=1.6)
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~180 -20')
+                s.wait(0.5)
+                s.rcon(f'damage {s.name} 500 minecraft:generic')
+                s.wait(1.5)
+                mate.send(f'revive {s.name} on')
+                s.key('F5', 'F5')
+                s.wait(1.5)
+                s.shot('stance-revive')
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~50 -20')
+                s.wait(0.8)
+                s.shot('stance-revive-side')
+                s.wait(3)
+                mate.send(f'revive {s.name} off')
+                s.key('F5')
+                mate.hold(gun)
+                s.wait(1.5)
+                # Now the puppet goes down, and ShotCam, gun in hand, gets it up.
+                s.rcon(f'damage {mate.name} 500 minecraft:generic')
+                s.wait(2)
+                mate.orbit(70, distance=3.2)
+                s.rcon(f'execute as {s.name} at @s anchored eyes facing entity {mate.name} feet run tp @s ~ ~ ~ ~ ~')
+                s.wait(0.5)
+                s.shot('stance-downed')
+                mate.orbit(0, distance=1.5)
+                s.rcon(f'execute as {s.name} at @s anchored eyes facing entity {mate.name} feet run tp @s ~ ~ ~ ~ ~')
+                with s.mouse(3):
+                    s.wait(6)
+                s.wait(1.5)
+                mate.orbit(30, distance=2.6)
+                s.shot('stance-revived')
+                mate.send(f'slot {s.hotbar_slot("smoke", mate.name)}')
+                # The cooked grenade lies flat behind the raised hand, edge-on from eye level: ShotCam
+                # looks down at it from a barrier block two blocks up, at the puppet's right side.
+                mate.orbit(70, distance=2.6)
+                s.rcon(f'execute as {s.name} at @s run setblock ~ ~1 ~ minecraft:barrier')
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~2 ~ facing entity {mate.name} eyes')
+                s.rcon(f'execute as {s.name} at @s run tp @s ~ ~ ~ ~ ~22')  # the whole puppet in view
+                s.wait(0.6)
+                mate.send('hold on')  # the smoke's fuse is 1.5 s from here
+                s.wait(0.4)
+                s.shot('stance-throw')
+                s.rcon(f'execute as {mate.name} at @s run tp @s ~ ~ ~ 180 -35')
+                mate.send('hold off')
+                s.rcon(f'execute as {s.name} at @s run setblock ~ ~-1 ~ minecraft:air')
+                s.wait(1)
+            finally:
+                s.key('F1')
+        finally:
+            spot = s.always_extract(MAP)
+            if spot:
+                s.rcon(f'execute as {mate.name} at @s run tp @s {spot[0]} {spot[1]} {spot[2]}')
+            s.extract(MAP, mine)

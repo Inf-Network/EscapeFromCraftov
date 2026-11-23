@@ -2,5 +2,41 @@
  "parent": "minecraft:item/handheld",
  "textures": {
   "layer0": "craftov:item/knife_skin/machete_bronze"
+ },
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    0,
+    -90,
+    32
+   ],
+   "translation": [
+    -0.8,
+    5.0,
+    -0.8
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -32.0,
+    90.0,
+    -0.0
+   ],
+   "translation": [
+    -0.8,
+    5.0,
+    -0.8
+   ],
+   "scale": [
+    0.62,
+    0.62,
+    0.62
+   ]
+  }
  }
 }

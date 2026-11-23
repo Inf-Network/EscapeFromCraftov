@@ -304,7 +304,10 @@ def reload_sheet(gid, out, optic=None, cols=6, step=2):
     for k in range(0, count, step):
         posed = []
         for part in parts:
-            model = load_model(os.path.join(folder, '%s_%d.json' % (part, k)))
+            path = os.path.join(folder, '%s_%d.json' % (part, k))
+            if not os.path.exists(path):  # the left hand, out of view with the magazine
+                continue
+            model = load_model(path)
             posed.append((model, model['display']['firstperson_righthand']))
         tmp = '/tmp/_fp_frame.png'
         render_many(posed, tmp, '%s frame %d' % (gid, k))

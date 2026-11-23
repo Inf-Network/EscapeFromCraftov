@@ -71,368 +71,1042 @@
       }
      ]
     }
+   },
+   {
+    "when": [
+     "firstperson_righthand",
+     "firstperson_lefthand"
+    ],
+    "model": {
+     "type": "minecraft:range_dispatch",
+     "property": "minecraft:cooldown",
+     "entries": [
+      {
+       "threshold": 0.99,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/0"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_1"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_1"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.97,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/1"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_2"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_2"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.95,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/2"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_3"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_3"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.93,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/3"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_4"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_4"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.91,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/4"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_5"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_5"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.89,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/5"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_6"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_6"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.87,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/6"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_7"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_7"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.85,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/7"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_8"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_8"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.83,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/8"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_9"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_9"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.81,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/9"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_10"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_10"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.79,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/10"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_11"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_11"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.77,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/11"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_12"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_12"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.75,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/12"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_13"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_13"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.73,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/13"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_14"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_14"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.71,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/14"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_15"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_15"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.69,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/15"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_16"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_16"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.67,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/16"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_17"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_17"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.65,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/17"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_18"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_18"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.63,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/18"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_19"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_19"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.61,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/19"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_20"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_20"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.59,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/20"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_21"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_21"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.57,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/21"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_22"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_22"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.55,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/22"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_23"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_23"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.53,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/23"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_24"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_24"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.51,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/24"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_25"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_25"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.49,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/25"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_26"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_26"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.47,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/26"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_27"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_27"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.45,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/27"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_28"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_28"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.43,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/28"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_29"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_29"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.41,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/29"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_30"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_30"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.39,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/30"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_31"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_31"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.37,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/31"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_32"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_32"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.35,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/32"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_33"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_33"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.33,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/33"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_34"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_34"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.31,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/34"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_35"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_35"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.29,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/35"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_36"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_36"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.27,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/36"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_37"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_37"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.25,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/37"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_38"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_38"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.23,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/38"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_39"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_39"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.21,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/39"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_40"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_40"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.19,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/40"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_41"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_41"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.17,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/41"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_42"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_42"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.15,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/42"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_43"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_43"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.13,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/43"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_44"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_44"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.11,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/44"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_45"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_45"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.09,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/45"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_46"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_46"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.07,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/46"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_47"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.05,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/47"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_48"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_48"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.03,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/48"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_49"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_49"
+         }
+        ]
+       }
+      },
+      {
+       "threshold": 0.01,
+       "model": {
+        "type": "minecraft:composite",
+        "models": [
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_inspect/tactical_obsidian/49"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/glove_50"
+         },
+         {
+          "type": "minecraft:model",
+          "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_50"
+         }
+        ]
+       }
+      }
+     ],
+     "fallback": {
+      "type": "minecraft:composite",
+      "models": [
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_skin/tactical_obsidian"
+       },
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_hand/tactical_obsidian/glove_0"
+       },
+       {
+        "type": "minecraft:model",
+        "model": "craftov:item/knife_hand/tactical_obsidian/sleeve_0"
+       }
+      ]
+     }
+    }
    }
   ],
   "fallback": {
-   "type": "minecraft:range_dispatch",
-   "property": "minecraft:cooldown",
-   "entries": [
-    {
-     "threshold": 0.99,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/0"
-     }
-    },
-    {
-     "threshold": 0.97,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/1"
-     }
-    },
-    {
-     "threshold": 0.95,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/2"
-     }
-    },
-    {
-     "threshold": 0.93,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/3"
-     }
-    },
-    {
-     "threshold": 0.91,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/4"
-     }
-    },
-    {
-     "threshold": 0.89,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/5"
-     }
-    },
-    {
-     "threshold": 0.87,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/6"
-     }
-    },
-    {
-     "threshold": 0.85,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/7"
-     }
-    },
-    {
-     "threshold": 0.83,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/8"
-     }
-    },
-    {
-     "threshold": 0.81,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/9"
-     }
-    },
-    {
-     "threshold": 0.79,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/10"
-     }
-    },
-    {
-     "threshold": 0.77,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/11"
-     }
-    },
-    {
-     "threshold": 0.75,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/12"
-     }
-    },
-    {
-     "threshold": 0.73,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/13"
-     }
-    },
-    {
-     "threshold": 0.71,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/14"
-     }
-    },
-    {
-     "threshold": 0.69,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/15"
-     }
-    },
-    {
-     "threshold": 0.67,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/16"
-     }
-    },
-    {
-     "threshold": 0.65,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/17"
-     }
-    },
-    {
-     "threshold": 0.63,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/18"
-     }
-    },
-    {
-     "threshold": 0.61,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/19"
-     }
-    },
-    {
-     "threshold": 0.59,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/20"
-     }
-    },
-    {
-     "threshold": 0.57,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/21"
-     }
-    },
-    {
-     "threshold": 0.55,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/22"
-     }
-    },
-    {
-     "threshold": 0.53,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/23"
-     }
-    },
-    {
-     "threshold": 0.51,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/24"
-     }
-    },
-    {
-     "threshold": 0.49,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/25"
-     }
-    },
-    {
-     "threshold": 0.47,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/26"
-     }
-    },
-    {
-     "threshold": 0.45,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/27"
-     }
-    },
-    {
-     "threshold": 0.43,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/28"
-     }
-    },
-    {
-     "threshold": 0.41,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/29"
-     }
-    },
-    {
-     "threshold": 0.39,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/30"
-     }
-    },
-    {
-     "threshold": 0.37,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/31"
-     }
-    },
-    {
-     "threshold": 0.35,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/32"
-     }
-    },
-    {
-     "threshold": 0.33,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/33"
-     }
-    },
-    {
-     "threshold": 0.31,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/34"
-     }
-    },
-    {
-     "threshold": 0.29,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/35"
-     }
-    },
-    {
-     "threshold": 0.27,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/36"
-     }
-    },
-    {
-     "threshold": 0.25,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/37"
-     }
-    },
-    {
-     "threshold": 0.23,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/38"
-     }
-    },
-    {
-     "threshold": 0.21,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/39"
-     }
-    },
-    {
-     "threshold": 0.19,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/40"
-     }
-    },
-    {
-     "threshold": 0.17,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/41"
-     }
-    },
-    {
-     "threshold": 0.15,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/42"
-     }
-    },
-    {
-     "threshold": 0.13,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/43"
-     }
-    },
-    {
-     "threshold": 0.11,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/44"
-     }
-    },
-    {
-     "threshold": 0.09,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/45"
-     }
-    },
-    {
-     "threshold": 0.07,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/46"
-     }
-    },
-    {
-     "threshold": 0.05,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/47"
-     }
-    },
-    {
-     "threshold": 0.03,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/48"
-     }
-    },
-    {
-     "threshold": 0.01,
-     "model": {
-      "type": "minecraft:model",
-      "model": "craftov:item/knife_inspect/tactical_obsidian/49"
-     }
-    }
-   ],
-   "fallback": {
-    "type": "minecraft:model",
-    "model": "craftov:item/knife_skin/tactical_obsidian"
-   }
+   "type": "minecraft:model",
+   "model": "craftov:item/knife_skin/tactical_obsidian"
   }
  },
- "oversized_in_gui": true
+ "oversized_in_gui": true,
+ "swap_animation_scale": 0.25
 }

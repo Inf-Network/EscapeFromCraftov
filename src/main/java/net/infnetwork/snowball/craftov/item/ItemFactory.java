@@ -75,8 +75,11 @@ public final class ItemFactory {
      * mark (the item model shows the gun low, as the draw starts).
      * 20: handling (#117): guns show a 操控 bar and a 操控速度 line with what it comes to, sights and
      * parts what they add to it.
+     * 21: knives stab (#3, which also used 20): a STAB swing_animation, an attack_range out to the
+     * knife's reach and an attack-speed modifier so the attack indicator fills over the knife's
+     * cooldown. It goes one past both 20s, or stacks rebuilt at either would miss the other's changes.
      */
-    public static final int VERSION = 20;
+    public static final int VERSION = 21;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -103,6 +106,11 @@ public final class ItemFactory {
     public static final int MARK_HOLSTER = 5;
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
+    private static final NamespacedKey KNIFE_ATTACK = new NamespacedKey("craftov", "knife_attack");
+    /** The attack speed a player has with nothing in hand (vanilla's base): a knife's modifier is measured from it. */
+    private static final double BASE_ATTACK_SPEED = 4.0;
+    /** Ticks an arm swing plays on the client for an item without a swing_animation of its own (vanilla, no haste). */
+    public static final int VANILLA_SWING_TICKS = 6;
 
     private final ItemRegistry registry;
 
@@ -318,6 +326,10 @@ public final class ItemFactory {
             // Knives have no use action either: only F (InspectService) sets this cooldown, and the
             // client plays the inspect frames of the item model while it counts down.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(INSPECT_GROUP).build());
+            MeleeSpec melee = def.melee();
+            if (melee != null) {
+                knife(stack, melee);
+            }
         } else if (def.throwable() != null) {
             // Only the server sets this cooldown, after a throw; the client shades grenades alone meanwhile.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(THROW_GROUP).build());
@@ -583,6 +595,36 @@ public final class ItemFactory {
             applyModelData(stack);
         }
         refreshLore(stack, def);
+    }
+
+    /**
+     * Ticks the client plays an arm swing (a cut, Q, a click on a block) with {@code stack} in hand:
+     * its swing_animation's duration, so a knife's stab (up to 8 ticks, see {@link #knife}), or
+     * vanilla's 6.
+     */
+    public static int swingTicks(@Nullable ItemStack stack) {
+        SwingAnimation swing = stack == null || stack.isEmpty() ? null : stack.getData(DataComponentTypes.SWING_ANIMATION);
+        return swing == null ? VANILLA_SWING_TICKS : Math.max(1, swing.duration());
+    }
+
+    /**
+     * A knife stabs rather than swings, and the client knows its rhythm and reach: the swing is a
+     * thrust (first person, and the arm stab others see), the attack indicator fills over exactly the
+     * knife's cooldown (the server takes one hit per cooldown, items.yml melee.cooldown, so a cut made
+     * before it is full does nothing, as the indicator now shows), and the client picks targets out
+     * to the knife's reach and no further.
+     */
+    private static void knife(ItemStack stack, MeleeSpec melee) {
+        int cooldown = Math.max(1, melee.cooldownTicks());
+        stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
+                .type(SwingAnimation.Animation.STAB).duration(Math.max(4, Math.min(8, cooldown - 2))).build());
+        float reach = (float) melee.reach();
+        stack.setData(DataComponentTypes.ATTACK_RANGE, io.papermc.paper.datacomponent.item.AttackRange.attackRange()
+                .minReach(0f).maxReach(reach).minCreativeReach(0f).maxCreativeReach(reach).hitboxMargin(0.3f).mobFactor(1f).build());
+        stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
+                .addModifier(Attribute.ATTACK_SPEED, new AttributeModifier(KNIFE_ATTACK, 20.0 / cooldown - BASE_ATTACK_SPEED,
+                        AttributeModifier.Operation.ADD_NUMBER), EquipmentSlotGroup.MAINHAND)
+                .build());
     }
 
     /**

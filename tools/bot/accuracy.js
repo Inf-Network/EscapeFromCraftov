@@ -5,7 +5,8 @@
 //            real (position-measured) speed, walking hip fire at least 1.4x standing hip fire, walking
 //            ADS at least 1.8x standing ADS, sprinting hip fire at least 1.3x walking (sprint > walk >
 //            stand); a steady strafe never reads as stopping, a shot right after letting go does, and
-//            costs less than half the walking part.
+//            costs less than half the walking part. Shots near the top of a standing jump read as
+//            airborne (the server's own check under the feet) with 2.5x the standing cone, no other.
 //   sprint   sprinting along the firing line: P18 clicks fire, every shot with the server still
 //            sprinting at sprint pace, and no "cannot fire" hint; M4C held 1.2 s the way the vanilla
 //            client holds left mouse (digging the capture cells, which move as the player runs) fires
@@ -121,7 +122,7 @@ function shotLines (from) {
     if (!m) continue
     const flag = key => (line.match(new RegExp(` ${key}=(true|false)`)) || [])[1] === 'true'
     out.push({ spread: Number(m[1]), speed: Number(m[2]), move: Number(m[3]), aim: m[4] === 'true', pitch: Number(m[5]), climb: Number(m[6]),
-      sprint: flag('sprint'), run: flag('run'), stop: flag('stop') })
+      sprint: flag('sprint'), run: flag('run'), stop: flag('stop'), ground: flag('ground') })
   }
   return out
 }
@@ -186,7 +187,7 @@ async function spread (spot) {
   swapKey() // AUTO -> SEMI
   await sleep(500)
   const series = {}
-  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads', 'sprint', 'stop']) {
+  for (const mode of ['stand', 'walk', 'stand-ads', 'walk-ads', 'sprint', 'stop', 'jump']) {
     await home(spot)
     dropKey() // a full magazine for each series
     await sleep(3000)
@@ -204,6 +205,15 @@ async function spread (spot) {
         await sleep(100)
         stopSprint()
       }
+    } else if (mode === 'jump') {
+      // Standing jumps, a shot near the top of each.
+      for (let leg = 0; leg < 10; leg++) {
+        bot.setControlState('jump', true)
+        await sleep(150)
+        bot.setControlState('jump', false)
+        bot.swingArm()
+        await sleep(1000)
+      }
     } else if (mode === 'stop') {
       // Strafe to full pace, let go and fire as the player slows down, two ticks into the stop (on the
       // first the measured speed has not moved yet: one short step reads the same as a late packet).
@@ -218,7 +228,7 @@ async function spread (spot) {
       }
     }
     // Strafe left and right, 2 shots per leg once up to pace (bloom decays fully between shots).
-    for (let leg = 0; leg < (['sprint', 'stop'].includes(mode) ? 0 : 5); leg++) {
+    for (let leg = 0; leg < (['sprint', 'stop', 'jump'].includes(mode) ? 0 : 5); leg++) {
       const dir = leg % 2 ? 'right' : 'left'
       if (mode.startsWith('walk')) bot.setControlState(dir, true)
       await sleep(450)
@@ -243,6 +253,9 @@ async function spread (spot) {
   check('spread: aiming series were aimed', series['stand-ads'].every(l => l.aim) && series['walk-ads'].every(l => l.aim))
   check('spread: walking hip fire >= 1.4x standing', s('walk') >= 1.4 * s('stand'), `${s('walk').toFixed(3)} vs ${s('stand').toFixed(3)} = ${(s('walk') / s('stand')).toFixed(2)}x`)
   check('spread: walking ADS >= 1.8x standing ADS', s('walk-ads') >= 1.8 * s('stand-ads'), `${s('walk-ads').toFixed(3)} vs ${s('stand-ads').toFixed(3)} = ${(s('walk-ads') / s('stand-ads')).toFixed(2)}x`)
+  check('spread: no shot on the ground reads as airborne', ['stand', 'walk', 'stand-ads', 'walk-ads', 'sprint', 'stop'].every(m => series[m].every(l => l.ground)))
+  check('spread: shots near the top of a jump do, with the jump cone (2.5x standing)', series.jump.every(l => !l.ground) && s('jump') >= 2.2 * s('stand'),
+    `${series.jump.filter(l => !l.ground).length}/${series.jump.length} airborne, ${s('jump').toFixed(3)} vs ${s('stand').toFixed(3)}`)
   check('spread: a steady strafe never reads as stopping', series.walk.every(l => !l.stop) && series['walk-ads'].every(l => !l.stop))
   check('spread: the sprint series was sprinting, at sprint pace', series.sprint.every(l => l.sprint && l.speed > 0.25),
     series.sprint.map(l => `${l.sprint ? 'S' : '-'}${l.speed.toFixed(2)}`).join(' '))

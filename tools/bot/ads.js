@@ -23,7 +23,8 @@
 //   mode     Aiming with the 4x, the gamemode changed by RCON to creative and back: the zoom holds.
 //   helmet   Aiming with the 4x while wearing a helmet, the helmet replaced by RCON (as a headshot
 //            that wears it does): every head-slot update the bot gets from then on (its inventory
-//            slot, or equipment about itself) still carries the scope overlay; let go, the real
+//            slot, or equipment about itself) still carries the scope overlay, on the helmet now
+//            worn (the new one, not the old); taken off, on the blank item; let go, the real
 //            helmet comes back.
 //   heavy    Solo on the proving ground (test mode, test.enabled: true): helmet_6, armor_6, pack_3
 //            and eight 3 kg reactor cells: the hip view is still 1.000 within 0.002, aimed the K47's 1.25x.
@@ -114,12 +115,15 @@ bot._client.on('set_cooldown', p => { if (JSON.stringify(p).includes('reload')) 
 /** Head-slot updates the bot got (its own inventory slot 5 and equipment packets about itself), in order. */
 const heads = []
 const overlayOf = item => JSON.stringify(item || '').includes('camera_overlay') || JSON.stringify(item || '').includes('misc/scope')
-bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) heads.push({ at: Date.now(), via: 'slot', overlay: overlayOf(p.item), id: itemId(p.item) }) })
-bot._client.on('set_player_inventory', p => { if (p.slotId === 39) heads.push({ at: Date.now(), via: 'inventory', overlay: overlayOf(p.contents), id: itemId(p.contents) }) })
-bot._client.on('window_items', p => { if (p.windowId === 0 && p.items.length > 5) heads.push({ at: Date.now(), via: 'content', overlay: overlayOf(p.items[5]), id: itemId(p.items[5]) }) })
+/** The vanilla item a slot carries (diamond_helmet, paper ...), or null for an empty one. */
+const kindOf = item => item && item.itemCount > 0 && bot.registry.items[item.itemId] ? bot.registry.items[item.itemId].name : null
+const head = (via, item) => ({ at: Date.now(), via, overlay: overlayOf(item), kind: kindOf(item), blank: JSON.stringify(item || '').includes('ui/blank') })
+bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) heads.push(head('slot', p.item)) })
+bot._client.on('set_player_inventory', p => { if (p.slotId === 39) heads.push(head('inventory', p.contents)) })
+bot._client.on('window_items', p => { if (p.windowId === 0 && p.items.length > 5) heads.push(head('content', p.items[5])) })
 bot._client.on('entity_equipment', p => {
   if (!bot.entity || p.entityId !== bot.entity.id) return
-  for (const e of p.equipments) if (e.slot === 5) heads.push({ at: Date.now(), via: 'equipment', overlay: overlayOf(e.item), id: itemId(e.item) })
+  for (const e of p.equipments) if (e.slot === 5) heads.push(head('equipment', e.item))
 })
 
 const itemId = item => { const m = JSON.stringify(item && (item.components || item) || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
@@ -290,17 +294,29 @@ async function helmet () {
   let last = null
   await aimFor(900, async () => {
     const from = heads.length
-    check('helmet: aiming the 4x puts the scope overlay on the head slot', heads.length > 0 && heads[heads.length - 1].overlay)
+    last = heads[heads.length - 1]
+    check('helmet: aiming the 4x puts the scope overlay on the head slot, on a copy of the helmet worn',
+      last && last.overlay && last.kind === 'iron_helmet', JSON.stringify(last))
     await rcon(`item replace entity ${name} armor.head with minecraft:diamond_helmet`)
     await sleep(500)
     const since = heads.slice(from)
     last = since.length ? since[since.length - 1] : null
     check('helmet: the helmet replaced mid-aim, every head-slot update since still carries the overlay', since.length > 0 && since.every(h => h.overlay),
       JSON.stringify(since))
+    check('helmet: and the slot shows the new helmet, not the old one', last && last.kind === 'diamond_helmet', JSON.stringify(last))
+    const bare = heads.length
+    await rcon(`item replace entity ${name} armor.head with minecraft:air`)
+    await sleep(500)
+    const off = heads.slice(bare)
+    last = off.length ? off[off.length - 1] : null
+    check('helmet: taken off mid-aim, the slot holds the blank overlay item, not the helmet', last && last.overlay && last.kind === 'paper' && last.blank,
+      JSON.stringify(off))
+    await rcon(`item replace entity ${name} armor.head with minecraft:diamond_helmet`)
+    await sleep(300)
   })
   await sleep(800)
   last = heads[heads.length - 1]
-  check('helmet: let go, the real helmet is back', last && !last.overlay, JSON.stringify(last))
+  check('helmet: let go, the real helmet is back', last && !last.overlay && last.kind === 'diamond_helmet', JSON.stringify(last))
   await rcon(`item replace entity ${name} armor.head with minecraft:air`)
 }
 

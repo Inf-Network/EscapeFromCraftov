@@ -22,6 +22,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -598,9 +599,44 @@ public final class WeaponService implements Listener {
                 || state.adsStart >= 0 && !state.adsUp) {
             player.setCooldown(ItemFactory.RELOAD_GROUP, 0);
         }
-        // Put away: the next switch to it shows it low at once (ItemFactory.MARK_HOLSTER).
-        setMark(player, state, ItemFactory.MARK_HOLSTER);
+        // Put away: the next switch to it shows it low at once (ItemFactory.MARK_HOLSTER). A gun that
+        // left the hand by leaving the inventory (shift-clicked into a box, picked up on the cursor) is
+        // marked where it went, or it would keep the mark it had in the hand and come up from rest,
+        // then snap down, for whoever draws it next. A gun on the ground is marked as it lands
+        // (onItemSpawn).
+        ItemStack stack = stackOf(player, state);
+        if (stack == null) {
+            stack = outsideStackOf(player, state.uid);
+        }
+        if (stack != null && ItemFactory.handMark(stack) != ItemFactory.MARK_HOLSTER) {
+            ItemFactory.setHolstered(stack);
+        }
         return state;
+    }
+
+    /** The live stack of a gun just out of the player's inventory: on their cursor or in the container they have open. */
+    private static @Nullable ItemStack outsideStackOf(Player player, String uid) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (uid.equals(ItemFactory.uid(cursor))) {
+            return cursor;
+        }
+        for (ItemStack candidate : player.getOpenInventory().getTopInventory().getContents()) {
+            if (uid.equals(ItemFactory.uid(candidate))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Every gun on the ground is put away, however it got there (see {@link #stow}). */
+    @EventHandler(ignoreCancelled = true)
+    public void onItemSpawn(ItemSpawnEvent event) {
+        ItemStack stack = event.getEntity().getItemStack();
+        ItemDef def = plugin.items().defOf(stack);
+        if (def != null && def.isGun() && ItemFactory.handMark(stack) != ItemFactory.MARK_HOLSTER) {
+            ItemFactory.setHolstered(stack);
+            event.getEntity().setItemStack(stack);
+        }
     }
 
     /** The hand mark the gun's state calls for: reloading, coming up, aiming, aimed, or none. */

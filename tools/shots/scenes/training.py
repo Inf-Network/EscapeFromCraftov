@@ -30,7 +30,7 @@ def angles(frm, to):
 def hits(s):
     """Targets hit so far, read off the objective line (`cv hud`); 3 once the line moved on."""
     line = s.rcon(f'cv hud {s.name}')
-    match = re.search(r'靶子 (\d)/3', line)
+    match = re.search(r'打靶 (\d)/3', line)
     return int(match.group(1)) if match else 3
 
 

@@ -63,16 +63,21 @@ public final class TrainingService {
 
     /** The course's lessons in order; the first one not done is the objective. */
     public enum Lesson {
-        LOOT("搜索物资箱", "搜物资箱，拿走全部物资"),
-        AIM("开镜打靶", "开镜打中三个靶子"),
+        LOOT("搜索物资箱", "搜箱拿齐物资"),
+        AIM("开镜打靶", "开镜打靶"),
         RELOAD("换弹", "换一次弹匣"),
         HEAL("处理伤势", "止血并固定骨折"),
         LEVER("拉下电闸", "拉下电闸"),
-        EXTRACT("撤离", "站进撤离点等倒计时");
+        EXTRACT("撤离", "站进撤离点");
 
         /** The settlement's checklist line. */
         public final String title;
-        /** The HUD objective line: plain text, at most about 11 Chinese characters. */
+        /**
+         * The HUD objective line: plain text. In a raid it sits on the 132 px panel under the squad
+         * rows, after "目标 " and before " · 99m" or " · 到了" (HudData#objective): with a target
+         * at most 6 Chinese characters, or the 0/3 count's room after four. The kill feed reaches
+         * in from the right on a 320 px wide GUI, so the panel cannot grow.
+         */
         public final String objective;
 
         Lesson(String title, String objective) {

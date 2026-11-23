@@ -298,7 +298,8 @@ public final class HudData {
             int distance = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
             sb.append(Style.tag(Style.MUTED)).append(" · ");
             if (distance <= 3) {
-                sb.append("就在这里");
+                // The raid's panel is the squad rows' 132 px (TrainingService.Lesson#objective).
+                sb.append(inRaid(p) ? "到了" : "就在这里");
             } else if (inRaid(p)) {
                 sb.append(distance).append('m');
             } else {

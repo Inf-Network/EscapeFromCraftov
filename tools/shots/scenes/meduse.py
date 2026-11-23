@@ -4,7 +4,9 @@ front (F5 twice: the item in the hand of the player model, as others see it).
 
 Arg: an item id (bandage); without one, all nine. Before each use the player is healed and given a
 light bleed, a broken leg and 40 damage, so every item has something to treat; the self-revive
-injector goes last: the player carries it, takes a lethal hit, goes down and uses it lying there.
+injector goes last: the player carries it, takes a lethal hit, goes down and uses it lying there,
+in the first person only (F5 puts the camera of a player lying down inside the body). The scene
+`medothers` shows every item as other players see it.
 Shots: meduse-<item>-<fp|front>-<15|35|60|85> (quick shots, so the times hold). Night vision keeps
 the held item lit wherever the player stands.
 """
@@ -34,7 +36,7 @@ def run(s):
         s.rcon(f'effect give {s.name} minecraft:night_vision 600 0 true')
         s.look(0, 10)
         for item in items:
-            for view in ('fp', 'front'):
+            for view in ('fp',) if item == 'revive_kit' else ('fp', 'front'):
                 use(s, item, view)
     finally:
         s.rcon(f'effect clear {s.name} minecraft:night_vision')

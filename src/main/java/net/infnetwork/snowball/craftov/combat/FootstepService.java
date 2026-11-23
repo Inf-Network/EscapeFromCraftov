@@ -32,7 +32,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * walk told anyone anything. Here every player's vanilla step and landing sounds are kept from
  * everyone else (the view handler drops them, see {@link #replaces}) and the server plays its own:
  * {@code craftov:step.<surface>.<walk|run|land>} by the ground underfoot, one every
- * footsteps.stride blocks walked on the ground, heard out to footsteps.walk-range blocks walking and
+ * footsteps.stride blocks covered (ground crossed in a jump counts, and the step it is owed falls on
+ * the landing, as vanilla's does), heard out to footsteps.walk-range blocks walking and
  * footsteps.sprint-range sprinting, and a landing from footsteps.land-min-fall blocks or more out to
  * footsteps.land-range. A wall between cuts the range to footsteps.wall-share of it, muffled by
  * distance like the rest. Sneaking is the silent walk: no steps at all (footsteps.sneak-range 0),
@@ -57,6 +58,8 @@ public final class FootstepService implements Listener {
         boolean onGround = true;
         /** Highest point since the feet last touched the ground. */
         double top;
+        /** How far the feet last rose (or, below 0, fell) in a tick they moved up or down at all. */
+        double rise;
     }
 
     private final CraftovPlugin plugin;
@@ -86,18 +89,31 @@ public final class FootstepService implements Listener {
         }
     }
 
-    /** Follows one player's feet: a step every stride on the ground, a landing after a fall. */
+    /**
+     * Follows one player's feet: a step every stride, a landing after a fall. Ground covered in the
+     * air counts towards the next step as it does in vanilla, and the step falls due when the feet
+     * come down: a jump on the run lands with a step (the run sound on a sprint), so sprint-jumping
+     * across a yard is heard about once a jump rather than hardly at all.
+     */
     private void step(Player player) {
         Location at = player.getLocation();
         Walk walk = walks.computeIfAbsent(player.getUniqueId(), k -> new Walk());
         double dx = at.getX() - walk.x;
         double dz = at.getZ() - walk.z;
         double moved = Math.sqrt(dx * dx + dz * dz);
-        boolean fresh = walk.world != at.getWorld() || moved > 4 || Math.abs(at.getY() - walk.y) > 4;
+        double rise = at.getY() - walk.y;
+        boolean fresh = walk.world != at.getWorld() || moved > 4 || Math.abs(rise) > 4;
         walk.world = at.getWorld();
         walk.x = at.getX();
         walk.y = at.getY();
         walk.z = at.getZ();
+        // Coming down and then going up, the feet touched the ground in between: the server sees the
+        // player once a tick, and a landing and the next jump can arrive in one (after a tick that
+        // brought no move at all, which is why a tick without a rise or fall is passed over).
+        boolean bounced = !fresh && !walk.onGround && walk.rise < -1e-3 && rise > 1e-3;
+        if (fresh || Math.abs(rise) > 1e-3) {
+            walk.rise = fresh ? 0 : rise;
+        }
         boolean ground = grounded(player);
         if (fresh || silent(player)) {
             walk.walked = 0;
@@ -105,26 +121,32 @@ public final class FootstepService implements Listener {
             walk.top = at.getY();
             return;
         }
-        if (!ground) {
+        walk.walked += moved;
+        double stride = Math.max(0.5, plugin.getConfig().getDouble("footsteps.stride", 1.6));
+        if (!ground && !bounced) {
             walk.top = walk.onGround ? at.getY() : Math.max(walk.top, at.getY());
             walk.onGround = false;
             return;
         }
         if (!walk.onGround) {
-            walk.onGround = true;
-            double fell = walk.top - at.getY();
+            // Touchdown: from a fall a landing, from a jump or a step down the step it was owed.
+            double fell = walk.top - (bounced ? at.getY() - rise : at.getY());
+            walk.onGround = !bounced;
+            walk.top = at.getY();
             if (fell >= plugin.getConfig().getDouble("footsteps.land-min-fall", 1.5)) {
                 walk.walked = 0;
                 emit(player, "land", plugin.getConfig().getDouble("footsteps.land-range", 24));
                 return;
             }
+            if (walk.walked >= stride) {
+                walk.walked = 0;
+                emit(player, player.isSprinting() ? "run" : "walk", range(player));
+            }
+            return;
         }
-        walk.walked += moved;
-        double stride = Math.max(0.5, plugin.getConfig().getDouble("footsteps.stride", 1.6));
         if (walk.walked >= stride) {
             walk.walked %= stride;
-            boolean running = player.isSprinting();
-            emit(player, running ? "run" : "walk", range(player));
+            emit(player, player.isSprinting() ? "run" : "walk", range(player));
         }
     }
 

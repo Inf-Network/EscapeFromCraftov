@@ -5,6 +5,8 @@
 //            footsteps.stride (1.6) blocks A covered, and no vanilla step sound from A at all
 //   sprint   A sprints the same way: craftov:step.stone.run, as often per block
 //   sneak    A sneaks the same way: nothing
+//   jump     A sprint-jumps about 24 blocks past B: one step (craftov:step.stone.run) on every
+//            landing, and no landing sound (a jump falls short of land-min-fall)
 //   range    A walks 20 blocks from B (past walk-range 16): nothing; sprints there (inside 32): steps
 //   wall     a stone wall between them, A walking 10 blocks away (past 16 x wall-share 0.5): nothing;
 //            6 blocks away: steps, quieter than without the wall at that distance
@@ -51,8 +53,11 @@ function make (name) {
 
 const tp = (bot, p, yaw = 0) => rcon(`execute as ${bot.username} at @s run tp @s ${p.x} ${p.y} ${p.z} ${yaw} 0`)
 
-/** Moves A along +X for ms with the given controls; returns the blocks it covered and what B heard meanwhile. */
-async function run (A, B, ms, controls) {
+/**
+ * Moves A along +X for ms with the given controls; returns the blocks it covered and what B heard
+ * meanwhile. onStart is called as the controls go down.
+ */
+async function run (A, B, ms, controls, onStart = () => {}) {
   await sleep(600)
   const from = A.entity.position.clone()
   B.heard.length = 0
@@ -63,6 +68,7 @@ async function run (A, B, ms, controls) {
   // mineflayer does not send the sprint command itself
   const sprinting = controls.includes('sprint')
   if (sprinting) A._client.write('entity_action', { entityId: A.entity.id, actionId: 'start_sprinting', jumpBoost: 0 })
+  onStart()
   await sleep(ms)
   A.clearControlStates()
   if (sprinting) A._client.write('entity_action', { entityId: A.entity.id, actionId: 'stop_sprinting', jumpBoost: 0 })
@@ -107,6 +113,26 @@ async function main () {
       check(r.vanilla.length === 0, `${name}: no vanilla step or fall sound from A (${r.vanilla.map(h => h.key || JSON.stringify(h.raw)).join(', ') || 'none'})`)
       check(r.own.length === 0, `${name}: A hears none of its own steps from the server (${r.own.length})`)
     }
+
+    // jump: sprinting with jump held, A lands about every 4 blocks; each landing is one step. B stands
+    // 6 blocks off the middle of the run, so the last landing (after the sprint, walk-range) is heard.
+    await tp(A, start, -90)
+    await tp(B, new Vec3(base.x + 12.5, base.y, base.z - 5.5), 0)
+    let landings = 0
+    let wasOnGround = null
+    const onTick = () => {
+      if (wasOnGround === false && A.entity.onGround) landings++
+      if (wasOnGround !== null) wasOnGround = A.entity.onGround
+    }
+    A.on('physicsTick', onTick)
+    const jumped = await run(A, B, 3200, ['sprint', 'jump'], () => { wasOnGround = A.entity.onGround })
+    A.removeListener('physicsTick', onTick)
+    // the last landing can come after the sprint is let go: a walk step then
+    const footfalls = jumped.steps('run').length + jumped.steps('walk').length
+    check(landings >= 3 && footfalls >= landings - 1 && footfalls <= landings + 1,
+      `jump: ${footfalls} steps (${jumped.steps('run').length} run) for ${landings} landings over ${jumped.covered.toFixed(1)} blocks (one a landing expected)`)
+    check(jumped.steps('land').length === 0, `jump: ${jumped.steps('land').length} landing sounds (none expected, a jump is no fall)`)
+    check(jumped.vanilla.length === 0, `jump: no vanilla step or fall sound from A (${jumped.vanilla.map(h => h.key || JSON.stringify(h.raw)).join(', ') || 'none'})`)
 
     // range: 20 blocks to the side
     await tp(A, start, -90)

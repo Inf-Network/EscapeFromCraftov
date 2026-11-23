@@ -171,11 +171,11 @@ stamina:
 
 footsteps:
   # Other players' vanilla steps (quiet, a few blocks) are replaced by the server's own, by the ground
-  # underfoot: one every stride blocks walked on the ground, heard out to walk-range blocks walking and
-  # sprint-range sprinting (louder the nearer), and a landing from land-min-fall blocks or more out
-  # to land-range. A wall in between cuts the range to wall-share of it. Sneaking makes none
-  # (sneak-range), and in a raid the sneaking speed is sneak-speed of the walk (vanilla 0.3). The
-  # soldiers hear by the same ranges.
+  # underfoot: one every stride blocks covered (a jump's too, the step landing with the feet), heard
+  # out to walk-range blocks walking and sprint-range sprinting (louder the nearer), and a landing
+  # from land-min-fall blocks or more out to land-range. A wall in between cuts the range to
+  # wall-share of it. Sneaking makes none (sneak-range), and in a raid the sneaking speed is
+  # sneak-speed of the walk (vanilla 0.3). The soldiers hear by the same ranges.
   enabled: true
   stride: 1.6
   walk-range: 16

@@ -918,7 +918,9 @@ def build_betterhud():
         place('craftov_skill', 0, 0, 4, 51),
         place('craftov_mate_1', 0, 0, 4, 66),
         place('craftov_mate_2', 0, 0, 4, 79),
-        *[place('craftov_feed_%d' % i, 100, 0, -6, 4 + 12 * (i - 1)) for i in FEED_LINES],
+        # The kill feed starts under the corner where the client draws advancement and recipe toasts
+        # (32 px) and status-effect icons: at the very top a kill's "Monster Hunter" toast hid it.
+        *[place('craftov_feed_%d' % i, 100, 0, -6, 52 + 12 * (i - 1)) for i in FEED_LINES],
         place('craftov_alert', 50, 0, -150, 30),
         place('craftov_prompt', 50, 50, -100, 14),
         place('craftov_extract', 50, 50, -60, 26),

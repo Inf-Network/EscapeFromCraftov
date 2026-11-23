@@ -3,7 +3,7 @@
 // queue again while their map is still being copied.
 //
 //   node launch.js                         every scenario
-//   node launch.js mspt quit requeue       only these (mspt quit squad requeue timeout)
+//   node launch.js mspt quit requeue       only these (mspt quit squad requeue timeout status)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on, and in
 // plugins/Craftov/config.yml:  match: { wait-seconds: 3 }   test: { enabled: true }
@@ -26,6 +26,9 @@
 // then it lands in exactly one raid, and once that raid is ended it can queue again. timeout:
 // raid.map-copy-timeout-seconds is set to 1 for the run (put back afterwards): the launch is
 // called off with a message, no raid is made when the copy finishes, and the bot can queue again.
+// status: with STATUS_PAD (20) times the padding (a copy of several seconds), the bot's action bar says
+// "正在部署 试验场 · 地图准备中" and counts up while it waits; /cv raids counts that copy (1), still
+// after the bot has left, and 0 once it is done.
 // Each scenario prints PASS or FAIL; the exit code is the number of failures.
 const fs = require('fs')
 const path = require('path')
@@ -41,9 +44,23 @@ const CONFIG = path.join(SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
 const PAD_DIR = path.join(SERVER_DIR, 'craftov_tpl_proving', 'pad')
 const PAD_FILES = Number(process.env.PAD_FILES || 20000)
 const LAUNCHES = Number(process.env.LAUNCHES || 4)
+const STATUS_PAD = Number(process.env.STATUS_PAD || 20)
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const strip = s => s.replace(/§x(§[0-9a-f]){6}/gi, '').replace(/§./g, '')
+/** Plain text of a chat component, as JSON or as the NBT mineflayer hands over. */
+function flat (n) {
+  if (n == null) return ''
+  if (typeof n === 'string') {
+    if (n.startsWith('{') || n.startsWith('[')) { try { return flat(JSON.parse(n)) } catch (e) { return n } }
+    return n
+  }
+  if (Array.isArray(n)) return n.map(flat).join('')
+  if (n.type === 'string') return n.value
+  if (n.type === 'list') return flat(n.value && n.value.value)
+  if (n.type === 'compound') return flat(n.value)
+  return flat(n.text) + flat(n['']) + flat(n.extra)
+}
 const rcon = cmd => rconRaw(cmd, RCON).then(strip)
 const run = Math.random().toString(36).slice(2, 5)
 let serial = 0
@@ -78,6 +95,7 @@ function make (name = `l${run}${(serial++).toString().padStart(2, '0')}`) {
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: MC_PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.titles = []
+  bot.bars = []
   bot.worldName = ''
   // mineflayer's game.dimension is only the dimension type; the world's name comes with login and respawn.
   const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
@@ -86,6 +104,10 @@ function make (name = `l${run}${(serial++).toString().padStart(2, '0')}`) {
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), type, text: strip(JSON.stringify(t)) }))
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) bot.chatLog.push({ at: Date.now(), text: m }) })
+  // Paper sends the action bar as its own packet, which mineflayer's 'actionBar' event never reports.
+  const bar = text => { if (text.trim()) bot.bars.push({ at: Date.now(), text }) }
+  bot._client.on('action_bar', p => bar(flat(p.text)))
+  bot._client.on('system_chat', p => { if (p.isActionBar) bar(flat(p.content)) })
   bot.on('kicked', r => console.log(name, 'KICKED', JSON.stringify(r)))
   bot.on('error', e => console.log(name, 'ERROR', e.message))
   return new Promise(resolve => bot.once('spawn', () => resolve(bot)))
@@ -144,6 +166,17 @@ function pad () {
   for (let i = 0; i < PAD_FILES; i++) fs.writeFileSync(path.join(PAD_DIR, `p${i}.bin`), data)
 }
 const unpad = () => fs.rmSync(PAD_DIR, { recursive: true, force: true })
+/** Raises the padding to `times` times PAD_FILES, for a copy of several seconds. */
+function padMore (times) {
+  const data = Buffer.alloc(512, 7)
+  for (let i = PAD_FILES; i < PAD_FILES * times; i++) fs.writeFileSync(path.join(PAD_DIR, `p${i}.bin`), data)
+}
+
+/** The map copies under way, from the last line of /cv raids ("正在复制地图 N 份"). */
+async function copies () {
+  const m = (await rcon('cv raids')).match(/正在复制地图 (\d+) 份/)
+  return m ? Number(m[1]) : NaN
+}
 
 async function padded (fn) {
   pad()
@@ -330,8 +363,7 @@ const scenarios = {
       if (!(await rcon('cv reload')).includes('已重新加载')) return ['FAIL', 'cv reload failed']
       return await padded(async () => {
         // A copy that outlasts a second for sure: eight times the padding (four took 1.1 to 2.3 s here).
-        const data = Buffer.alloc(512, 7)
-        for (let i = PAD_FILES; i < PAD_FILES * 8; i++) fs.writeFileSync(path.join(PAD_DIR, `p${i}.bin`), data)
+        padMore(8)
         const bot = await make()
         await sleep(2500)
         const mark = logMark()
@@ -357,6 +389,44 @@ const scenarios = {
       fs.writeFileSync(CONFIG, original)
       await rcon('cv reload').catch(() => {})
     }
+  },
+
+  async status () {
+    return padded(async () => {
+      // Eight times took 2.2 to 2.8 s here once the disk cache was warm: the bot needs about 4.5 s.
+      padMore(STATUS_PAD)
+      const bot = await make()
+      await sleep(2500)
+      const mark = logMark()
+      const at = await queueAndMatch(bot)
+      if (!at) return ['FAIL', 'no match-found title']
+      await sleep(3600)
+      const copyDone = () => timings(logSince(mark)).some(l => /Copied template/.test(l))
+      const problems = []
+      const bars = bot.bars.filter(b => b.at >= at - 500 && b.text.includes('地图准备中'))
+      const waits = bars.map(b => (b.text.match(/(\d+):(\d+)\s*$/) || []).slice(1).reduce((m, s) => m * 60 + Number(s), 0))
+      const waiting = await copies()
+      const early = copyDone()
+      if (early) problems.push('the copy was done within 3.6 s: pad more (STATUS_PAD)')
+      if (bars.length < 3) problems.push(`${bars.length} status lines in 3.6 s: ${bot.bars.filter(b => b.at >= at - 500).map(b => b.text).join(' | ')}`)
+      if (!bars.every(b => b.text.includes('正在部署 试验场'))) problems.push(`status line: ${bars.map(b => b.text).join(' | ')}`)
+      if (waits.some((w, i) => i > 0 && w < waits[i - 1]) || waits[waits.length - 1] < 2) problems.push(`waits ${waits.join(', ')}`)
+      if (waiting !== 1) problems.push(`/cv raids: ${waiting} copies while the bot waits`)
+      await quit(bot)
+      await sleep(800)
+      const left = await copies()
+      const stillCopying = !copyDone()
+      if (!stillCopying) problems.push('the copy was done before the bot had left: pad more (STATUS_PAD)')
+      else if (left !== 1) problems.push(`/cv raids: ${left} copies once the bot had left, with the copy still running`)
+      if (!await waitFor(copyDone, 60000)) problems.push('no copy timing logged')
+      await sleep(1500)
+      const done = await copies()
+      if (done !== 0) problems.push(`/cv raids: ${done} copies once it was done`)
+      if ((await raids()).length) problems.push(`raids left: ${JSON.stringify(await raids())}`)
+      const copy = timings(logSince(mark)).find(l => /Copied template/.test(l))
+      return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || `status line counted ${waits.join(', ')} s; copies 1 waiting, ${left} after leaving, 0 done`}`
+        + ` | ${copy ? copy.replace(/^.*\[Craftov\] /, '') : ''}`]
+    })
   }
 }
 

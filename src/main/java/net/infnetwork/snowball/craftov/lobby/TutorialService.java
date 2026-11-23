@@ -26,14 +26,14 @@ import java.util.UUID;
 
 /**
  * First steps for a new player: open the terminal, try a gun on the range, fit an attachment at the
- * gunsmith, deploy, and extract. Steps count in any order: the guide always points at the first one
- * not done yet, and the first extraction ends it with the starter bonus whatever was skipped on the
- * way (an extraction is what the guide is there to teach). Hints say what to do where the player
- * is: on the range the gunsmith is behind the weapon rack, and in a raid only the extraction can be
- * done, so that is all a raid ever reminds of. Players who extracted before the guide existed are
- * veterans and never see it. A new player is first shown the briefing ({@link Briefing}), which
- * starts the guide or skips it; whoever skips keeps the reward for the first extraction but gets no
- * objective line, waypoints or reminders, until the terminal's guide button turns them back on.
+ * gunsmith, deploy, and extract. Steps count in any order (one bit each in
+ * {@link Profile#tutorialMask}): the guide always points at the first one not done yet, and
+ * finishing all five pays the starter bonus. Hints say what to do where the player is: on the range
+ * the gunsmith is behind the weapon rack, and in a raid only the extraction can be done, so that is
+ * all a raid ever reminds of. Players who extracted before the guide existed are veterans and never
+ * see it. A new player is first shown the briefing ({@link Briefing}), which starts the guide or
+ * skips it; whoever skips still has the steps counted and the bonus paid, but gets no objective
+ * line, waypoints or reminders, until the terminal's guide button turns them back on.
  * <p>
  * The goal is always in view: a line under the HUD's top-left panel says what to do next and how
  * far it is, the compass points at the lobby station it is done at (in a raid it already points at
@@ -72,6 +72,8 @@ public final class TutorialService {
         }
     }
 
+    private static final int ALL = (1 << Step.values().length) - 1;
+
     /** What the HUD shows as the current goal: a line of plain text and where it is, if anywhere. */
     public record Objective(String text, @Nullable Location target) {
     }
@@ -102,24 +104,62 @@ public final class TutorialService {
     }
 
     /**
-     * The steps done, as bits. Profiles saved by the in-order guide only have its counter, which
-     * stands for that many steps from the first; read here without writing, so a getter on the HUD
-     * thread never changes the profile.
+     * When the guide was released (75f7382b, 2026-11-11T13:17:51Z). A player whose first raid came
+     * later began with the guide.
      */
-    public static int steps(Profile profile) {
-        if (profile.tutorialSteps != 0 || profile.tutorialStep <= 0) {
-            return profile.tutorialSteps;
+    private static final long GUIDE_RELEASED = 1_794_403_071_000L;
+
+    /**
+     * Turns the old step counter of a saved profile into the set of finished steps: a counter at
+     * {@code n} had the first {@code n} steps done. The old build also lost the guide for a new player
+     * who extracted before reaching the extract step: their next step took them for a veteran and
+     * closed it without the reward, and until then it stayed open but silent. Such a guide is opened
+     * again with the deploy and the extract that broke it counted. Two kinds of profile show it:
+     * <ul>
+     *   <li>a counter at 1 to 4 and an extract: the old counter only moved while the player had no
+     *       extract, so the extract came after the guide had begun;</li>
+     *   <li>no counter, an extract, and every raid on record after the guide's release: a new player
+     *       who deployed from the lobby station or {@code /cv deploy}, which skip the terminal step.
+     *       The old builds kept a player's last 20 raid reports, so with fewer the first raid is among
+     *       them, and a veteran's first raid came before the guide.</li>
+     * </ul>
+     * Called on load. A reopened guide has steps on record, so it never matches twice.
+     */
+    public static void migrate(Profile profile) {
+        int steps = Math.clamp(profile.tutorialStep, 0, Step.values().length);
+        profile.tutorialMask |= (1 << steps) - 1;
+        profile.tutorialStep = 0;
+        if (steps < Step.values().length && profile.stat("extracts") > 0
+                && (steps > 0 || profile.tutorialMask == 0 && beganWithGuide(profile))) {
+            profile.tutorialDone = false;
+            profile.tutorialMask |= Step.DEPLOY.bit() | Step.EXTRACT.bit();
         }
-        return (1 << Math.min(profile.tutorialStep, Step.values().length)) - 1;
+    }
+
+    private static boolean beganWithGuide(Profile profile) {
+        if (profile.reports.isEmpty() || profile.reports.size() >= 20) {
+            return false;
+        }
+        for (Profile.RaidReport report : profile.reports) {
+            if (report == null || report.time < GUIDE_RELEASED) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static boolean isDone(Profile profile, Step step) {
-        return (steps(profile) & step.bit()) != 0;
+        return (profile.tutorialMask & step.bit()) != 0;
     }
 
-    /** A player who extracted before the guide began counting anything has nothing to learn from it. */
+    /**
+     * Someone who has extracted without a single step on record extracted before the guide existed
+     * (every extract counts as a step before it counts as an extract): nothing to teach them. Pure,
+     * so the menu and the HUD can ask; {@link #show} closes the guide for them on their way into the
+     * lobby, once and without a reward.
+     */
     private static boolean veteran(Profile profile) {
-        return steps(profile) == 0 && profile.stat("extracts") > 0;
+        return profile.tutorialMask == 0 && profile.stat("extracts") > 0;
     }
 
     /** The guide is running for this player (whether or not they muted its pointers). */
@@ -134,7 +174,7 @@ public final class TutorialService {
 
     /** The first step not done yet, or null when all are. */
     public static @Nullable Step current(Profile profile) {
-        int mask = steps(profile);
+        int mask = profile.tutorialMask;
         for (Step step : Step.values()) {
             if ((mask & step.bit()) == 0) {
                 return step;
@@ -144,23 +184,24 @@ public final class TutorialService {
     }
 
     public static int doneCount(Profile profile) {
-        return Integer.bitCount(steps(profile) & ((1 << Step.values().length) - 1));
+        return Integer.bitCount(profile.tutorialMask & ALL);
     }
 
-    /** Marks a step done, whatever came before it; the extraction finishes the guide. */
+    /** Marks a step done, whatever order it comes in, then pays out or points out the next one. */
     public void done(Player player, Step step) {
         Profile profile = plugin.profiles().get(player);
         if (!active(profile) || isDone(profile, step)) {
             return;
         }
-        profile.tutorialSteps = steps(profile) | step.bit();
+        profile.tutorialMask |= step.bit();
         plugin.profiles().markDirty(player.getUniqueId());
-        if (step == Step.EXTRACT) {
+        if ((profile.tutorialMask & ALL) == ALL) {
             finish(player, profile);
             return;
         }
         player.playSound(player.getLocation(), "craftov:ui.queue", org.bukkit.SoundCategory.MASTER, 0.7f, 1.3f);
-        if (profile.guideMuted) {
+        if (profile.guideMuted || step == Step.EXTRACT) {
+            // After an extract the lobby, a moment later, points out what is left (LobbyService#enterLobby).
             return;
         }
         // Deploying is done on the way into a raid, where the extraction is the one step left to do.
@@ -256,27 +297,20 @@ public final class TutorialService {
     }
 
     /**
-     * Every 45 seconds, the step on the action bar: in the lobby and on the range the next step, in a
-     * raid only the extraction (nothing else can be done there), and nothing while queueing (the
-     * queue timer has the bar) or watching a squadmate.
+     * Every 45 seconds, the step on the action bar, in the lobby and on the range only. In a raid it
+     * would cover the short messages that matter there (a kill, an injury, a med used), and the
+     * objective line already points at the nearest extract; someone dead and watching a squadmate
+     * is still in the raid's world. The matchmaking queue keeps the action bar for its countdown.
      */
     private void remind() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Profile profile = plugin.profiles().get(player);
-            if (!guided(profile) || plugin.match().queued(player.getUniqueId()) != null) {
+            if (!guided(profile) || plugin.raids().raidOf(player) != null || plugin.raids().raidIn(player.getWorld()) != null
+                    || plugin.match().queued(player.getUniqueId()) != null
+                    || !plugin.lobby().isLobby(player.getWorld()) && !plugin.range().isIn(player)) {
                 continue;
             }
-            Step step;
-            if (plugin.raids().raidOf(player) != null) {
-                if (!plugin.raids().isInRaid(player) || isDone(profile, Step.EXTRACT)) {
-                    continue;
-                }
-                step = Step.EXTRACT;
-            } else if (plugin.lobby().isLobby(player.getWorld()) || plugin.range().isIn(player)) {
-                step = current(profile);
-            } else {
-                continue;
-            }
+            Step step = current(profile);
             if (step != null) {
                 Notify.hint(player, line(profile, hint(player, step)));
             }

@@ -59,14 +59,11 @@ public final class Profile {
     public String seasonId = "";
     public long seasonXp;
     public Set<Integer> seasonClaimed = new LinkedHashSet<>();
-    /**
-     * New-player guide progress (TutorialService): {@link #tutorialSteps} has bit n set once step n is
-     * done, in any order. {@link #tutorialStep} is the old in-order counter, read once to fill the
-     * bits for profiles saved before them.
-     */
-    public int tutorialStep;
-    public int tutorialSteps;
+    /** New-player guide (TutorialService): the steps done, one bit per step in any order, and whether it is over. */
+    public int tutorialMask;
     public boolean tutorialDone;
+    /** The old guide's step counter (the first n steps done), turned into {@link #tutorialMask} on load. */
+    public int tutorialStep;
     /** The first-join briefing was answered (either button): it no longer opens by itself. */
     public boolean briefed;
     /** The player chose to skip the guide: no objective line, waypoints or reminders. */

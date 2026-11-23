@@ -61,8 +61,10 @@ public final class ItemFactory {
      * 12 (#6 line): the tooltip is framed in the item's rarity colour (tooltip_style craftov:rarity_*;
      * #6 used 10).
      * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
+     * 14: stackables show one unit's weight and price, so stacks of different sizes merge (#43, which
+     * used 13).
      */
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -613,6 +615,16 @@ public final class ItemFactory {
         return value(record, false, false);
     }
 
+    /** What one unit of a stack is worth: its value as though it held a single item. */
+    public long unitValue(@Nullable ItemStack stack) {
+        ItemRecord record = toRecord(stack);
+        if (record == null) {
+            return 0;
+        }
+        record.amount = 1; // a fresh record (recordOf), so the stack is not touched
+        return value(record);
+    }
+
     /**
      * What the trader pays against: {@link #value(ItemRecord)}, except that free-kit items count
      * nothing for themselves. Attachments, rounds in the magazine and packed contents still count,
@@ -788,7 +800,13 @@ public final class ItemFactory {
         if (def.category() == Category.KEY) {
             lore.add(Text.mm("<muted>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
         }
-        lore.add(Text.mm("<muted>重量 <white>" + fmt(def.weight() * stack.getAmount()) + "kg"));
+        // A stackable item shows one unit's weight and price: lore that follows the amount would make
+        // two stacks of different sizes different items, which neither the client's click merge nor
+        // CarryService#give (isSimilar) would put together, and would go stale whenever the amount
+        // changes without a rebuild (a reload, a partial merge). The trader shows the whole stack.
+        boolean stackable = def.maxStack() > 1;
+        String unit = def.category() == Category.AMMO ? "发" : "个";
+        lore.add(Text.mm("<muted>重量 <white>" + fmtWeight(def.weight()) + "kg" + (stackable ? "<muted>/" + unit : "")));
         if (isKit(stack)) {
             lore.add(Text.mm("<accent>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
         }
@@ -797,13 +815,19 @@ public final class ItemFactory {
         } else if (isTest(stack)) {
             lore.add(Text.mm("<accent>试验场物资 · 没有价值，不能带出对局，撤离时收回"));
         } else {
-            long value = value(stack);
-            lore.add(Text.mm("<muted>价值 <accent>◈ " + Text.money(value)));
+            lore.add(stackable
+                    ? Text.mm("<muted>单价 <accent>◈ " + Text.money(unitValue(stack)) + "<muted>/" + unit)
+                    : Text.mm("<muted>价值 <accent>◈ " + Text.money(value(stack))));
         }
         stack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
     }
 
     private static String fmt(double value) {
         return value == Math.rint(value) ? Long.toString((long) value) : String.format("%.1f", value);
+    }
+
+    /** A weight in kg to the gram, trailing zeros dropped: a round of 0.012kg must not read 0.0. */
+    private static String fmtWeight(double kg) {
+        return java.math.BigDecimal.valueOf(kg).setScale(3, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 }

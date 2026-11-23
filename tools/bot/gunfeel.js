@@ -106,6 +106,12 @@ bot.once('spawn', () => bot.inventory.on('updateSlot', (slot, before, after) => 
 }))
 const bars = []
 bot._client.on('action_bar', p => bars.push({ at: Date.now(), text: JSON.stringify(p) }))
+// mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
+// reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
+// the range too), walks faster than it may, and the server takes the strafe for running.
+bot.on('entityAttributes', e => {
+  if (e === bot.entity && e.attributes['generic.movement_speed']) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
+})
 
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
 const hotbar = id => bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && itemId(s) === id)

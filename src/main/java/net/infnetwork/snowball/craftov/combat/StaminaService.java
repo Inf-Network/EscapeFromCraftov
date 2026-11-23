@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
 import com.destroystokyo.paper.event.player.PlayerJumpEvent;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
@@ -145,11 +146,11 @@ public final class StaminaService implements Listener {
         s.overloaded = now;
         plugin.health().updateFood(player);
         if (now) {
-            player.sendActionBar(Text.mm("<#FF8A80>负重 " + Math.round(s.weight) + "kg，超过 " + Math.round(overloadKg())
-                    + "kg：无法冲刺，移动很慢"));
+            Notify.info(player, "<danger>负重 " + Math.round(s.weight) + "kg，超过 " + Math.round(overloadKg())
+                    + "kg：无法冲刺，移动很慢");
             player.playSound(player.getLocation(), "craftov:status.heartbeat", SoundCategory.PLAYERS, 0.5f, 0.8f);
         } else if (inRaid) {
-            player.sendActionBar(Text.mm("<#5BD16B>负重降到 " + Math.round(overloadKg()) + "kg 以下，可以冲刺了"));
+            Notify.ok(player, "负重降到 " + Math.round(overloadKg()) + "kg 以下，可以冲刺了");
         }
     }
 

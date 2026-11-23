@@ -341,7 +341,7 @@ public final class LuckService {
         luck.deployed = deployed;
         rp.luck.boosted = luck.boostRaids > 0;
         if (rp.luck.boosted && notifyBoost()) {
-            Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>本局你搜出金色和红色物品的概率提高（含本局还剩 "
+            Text.send(player, "<accent>补偿局：<muted>本局你搜出金色和红色物品的概率提高（含本局还剩 "
                     + luck.boostRaids + " 局）。");
         }
     }
@@ -368,7 +368,7 @@ public final class LuckService {
                 + " x the threshold, last raid " + raid.id + " " + raid.tier.id() + "): loss compensation for the next " + raids + " raids");
         Player player = Bukkit.getPlayer(profile.uuid);
         if (player != null && notifyBoost()) {
-            Text.send(player, "<#F2C94C>补偿局：<#9AA0A6>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
+            Text.send(player, "<accent>补偿局：<muted>接下来 " + raids + " 局你搜出金色和红色物品的概率提高。");
         }
     }
 
@@ -818,29 +818,29 @@ public final class LuckService {
         long now = System.currentTimeMillis();
         Behaviour b = behaviour(luck);
         List<String> out = new ArrayList<>();
-        out.add("<#F2E6C8>运气 · <white>" + Text.escape(profile.name) + (cfg().getBoolean("luck.enabled", true) ? "" : " <#FF8A80>（luck.enabled 已关闭）"));
-        out.add("<#9AA0A6>额度池 <#F2C94C>◈" + Text.money(decayed(luck, now)) + " <#8A8F98>/ 上限 ◈" + Text.money(quotaCap())
-                + " · <#9AA0A6>行为系数 <white>×" + fmt(b.multiplier()) + " <#8A8F98>（最近 " + b.raids() + " 场有效对局）");
-        out.add("<#8A8F98>  赚 ◈" + Text.money(b.gains()) + " / 亏 ◈" + Text.money(b.losses()) + " → " + fmt(b.profit())
+        out.add("<text>运气 · <white>" + Text.escape(profile.name) + (cfg().getBoolean("luck.enabled", true) ? "" : " <danger>（luck.enabled 已关闭）"));
+        out.add("<muted>额度池 <accent>◈" + Text.money(decayed(luck, now)) + " <muted>/ 上限 ◈" + Text.money(quotaCap())
+                + " · <muted>行为系数 <white>×" + fmt(b.multiplier()) + " <muted>（最近 " + b.raids() + " 场有效对局）");
+        out.add("<muted>  赚 ◈" + Text.money(b.gains()) + " / 亏 ◈" + Text.money(b.losses()) + " → " + fmt(b.profit())
                 + " · 击败 " + b.kills() + " / 阵亡 " + b.deaths() + " → " + fmt(b.kd())
                 + " · 出红 " + b.reds() + " 场 → " + fmt(b.red()) + " · 合作 " + b.coop() + " → " + fmt(b.cooperation()));
-        StringBuilder pity = new StringBuilder("<#9AA0A6>保底");
+        StringBuilder pity = new StringBuilder("<muted>保底");
         for (Rarity rarity : List.of(Rarity.GOLD, Rarity.RED)) {
             pity.append(" ").append(rarity.tag()).append(rarity == Rarity.GOLD ? "金 " : "红 ")
-                    .append(luck.pity.getOrDefault(rarity.name(), 0)).append("<#8A8F98>（软 ").append(pitySoft(rarity))
+                    .append(luck.pity.getOrDefault(rarity.name(), 0)).append("<muted>（软 ").append(pitySoft(rarity))
                     .append(" / 硬 ").append(pityHard(rarity)).append("）");
         }
         out.add(pity.toString());
-        StringBuilder jackpots = new StringBuilder("<#9AA0A6>大奖（有效场次，软 " + jackpotSoft() + " / 硬 " + jackpotHard() + "）");
+        StringBuilder jackpots = new StringBuilder("<muted>大奖（有效场次，软 " + jackpotSoft() + " / 硬 " + jackpotHard() + "）");
         for (String id : plugin.loot().jackpots()) {
             ItemDef def = plugin.registry().get(id);
-            jackpots.append(" <#FF4D4D>").append(def == null ? id : Text.escape(def.name())).append(" <white>")
+            jackpots.append(" <danger>").append(def == null ? id : Text.escape(def.name())).append(" <white>")
                     .append(luck.jackpots.getOrDefault(id, 0));
         }
         out.add(jackpots.toString());
-        out.add("<#9AA0A6>补偿局 " + (luck.boostRaids > 0 ? "<#5BD16B>还剩 " + luck.boostRaids + " 局" : "<#8A8F98>未生效")
-                + " <#9AA0A6>· 窗口内亏损 <white>" + Math.round(lossScore(luck, now) * 100) + "%<#8A8F98> 的阈值");
-        out.add("<#8A8F98>/cv luck " + Text.escape(profile.name) + " quota <数量|+数量|-数量> · pity <GOLD|RED|大奖物品> <数量> · boost <局数> · reset");
+        out.add("<muted>补偿局 " + (luck.boostRaids > 0 ? "<ok>还剩 " + luck.boostRaids + " 局" : "<muted>未生效")
+                + " <muted>· 窗口内亏损 <white>" + Math.round(lossScore(luck, now) * 100) + "%<muted> 的阈值");
+        out.add("<muted>/cv luck " + Text.escape(profile.name) + " quota <数量|+数量|-数量> · pity <GOLD|RED|大奖物品> <数量> · boost <局数> · reset");
         return out;
     }
 

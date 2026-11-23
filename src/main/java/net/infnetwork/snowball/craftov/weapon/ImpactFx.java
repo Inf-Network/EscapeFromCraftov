@@ -44,6 +44,7 @@ public final class ImpactFx {
     private static final int DECALS_PER_WORLD = 250;
     private static final Color TRACER = Color.fromRGB(255, 206, 128);
     private static final Particle.DustOptions BLOOD = new Particle.DustOptions(Color.fromRGB(120, 10, 10), 1.1f);
+    private static final Particle.DustOptions BLOOD_DARK = new Particle.DustOptions(Color.fromRGB(78, 6, 8), 0.8f);
 
     private record Decal(ItemDisplay entity, long expires) {
     }
@@ -96,10 +97,11 @@ public final class ImpactFx {
     /** A bullet hit a body: a spray of blood carried along the bullet's direction. */
     public void body(LivingEntity victim, Location at, Vector direction) {
         World world = at.getWorld();
+        // Dark red mist and a short spray out of the exit side; no bright red block chips.
         world.spawnParticle(Particle.DUST, at, 6, 0.08, 0.08, 0.08, 0, BLOOD);
-        Vector d = direction.clone().normalize().multiply(0.35);
-        for (int i = 0; i < 4; i++) {
-            world.spawnParticle(Particle.BLOCK, at, 0, d.getX(), d.getY() + 0.1, d.getZ(), 1, Material.REDSTONE_BLOCK.createBlockData());
+        Vector d = direction.clone().normalize().multiply(0.12);
+        for (int i = 1; i <= 4; i++) {
+            world.spawnParticle(Particle.DUST, at.clone().add(d.clone().multiply(i)), 2, 0.04, 0.04, 0.04, 0, BLOOD_DARK);
         }
     }
 

@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
@@ -17,11 +18,11 @@ public final class MenuService {
 
     private boolean lobbyOnly(Player player) {
         if (plugin.raids().raidOf(player) != null) {
-            Text.send(player, "<#FF8A80>行动中无法使用该功能。");
+            Notify.error(player, "行动中无法使用该功能。");
             return false;
         }
         if (plugin.raids().isSpectating(player)) {
-            Text.send(player, "<#FF8A80>观战中无法使用该功能，按 Shift 返回大厅。");
+            Notify.error(player, "观战中无法使用该功能，按 Shift 返回大厅。");
             return false;
         }
         return notInRange(player);
@@ -34,7 +35,7 @@ public final class MenuService {
      */
     private boolean notInRange(Player player) {
         if (plugin.range().isIn(player)) {
-            Text.send(player, "<#FF8A80>靶场内无法使用，请先离开靶场。");
+            Notify.error(player, "靶场内无法使用，请先离开靶场。");
             return false;
         }
         return true;
@@ -119,7 +120,7 @@ public final class MenuService {
         if (plugin.canUseCatalog(player)) {
             new CatalogMenu(plugin, player).open();
         } else {
-            Text.send(player, "<#FF8A80>测试军械库只在测试模式下开放。");
+            Notify.error(player, "测试军械库只在测试模式下开放。");
         }
     }
 
@@ -139,7 +140,7 @@ public final class MenuService {
         // settled it and the loadout, and outside the raid the menu would save the spectator's
         // empty inventory as the loadout.
         if (plugin.raids().isSpectating(player) || rp != null && raid.state != Raid.State.LOADING && !rp.active()) {
-            Text.send(player, "<#FF8A80>入场途中或观战时无法打开安全箱。");
+            Notify.error(player, "入场途中或观战时无法打开安全箱。");
             return;
         }
         new SecureMenu(plugin, player).open();

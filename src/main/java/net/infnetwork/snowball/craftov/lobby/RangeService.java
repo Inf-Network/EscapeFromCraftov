@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -130,7 +131,7 @@ public final class RangeService implements Listener {
         player.setGameMode(GameMode.ADVENTURE);
         hideOthers(player);
         plugin.tutorial().done(player, TutorialService.Step.RANGE);
-        Text.send(player, "<#F2C94C>已进入个人靶场。<#9AA0A6>右键武器架领取武器，子弹无限；离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
+        Text.send(player, "<accent>已进入个人靶场。<muted>右键武器架领取武器，子弹无限；离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
     }
 
     /** Ends the session: everything held is discarded and the saved lobby inventory comes back. */
@@ -139,7 +140,7 @@ public final class RangeService implements Listener {
             return;
         }
         plugin.lobby().enterLobby(player);
-        player.sendActionBar(Text.mm("<#9AA0A6>已离开靶场，原有装备已归还"));
+        Notify.hint(player, "已离开靶场，原有装备已归还");
     }
 
     /**
@@ -198,8 +199,8 @@ public final class RangeService implements Listener {
     }
 
     private static org.bukkit.inventory.ItemStack exitItem() {
-        return UiItems.button("craftov:ui/icon_cancel", "<#FF8A80><b>离开靶场</b> <#8A8F98>(右键)",
-                List.of("<#9AA0A6>清空靶场物品，归还原有装备"), EXIT);
+        return UiItems.button("craftov:ui/icon_cancel", "<danger><b>离开靶场</b> <muted>(右键)",
+                List.of("<muted>清空靶场物品，归还原有装备"), EXIT);
     }
 
     // ------------------------------------------------------------------ plots
@@ -224,7 +225,7 @@ public final class RangeService implements Listener {
             d.setPersistent(false);
         }));
         spawned.add(world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><#F2E6C8>靶场武器架</b>\n<#9AA0A6>免费试用 · 子弹无限 · 可装瞄准镜"));
+            d.text(Text.mm("<b><text>靶场武器架</b>\n<muted>免费试用 · 子弹无限 · 可装瞄准镜"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
@@ -244,7 +245,7 @@ public final class RangeService implements Listener {
                         z.setPersistent(false);
                         z.setShouldBurnInDay(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
-                        z.customName(Text.mm("<#9AA0A6>训练靶 " + Math.abs(t[1] + 9) + "m"));
+                        z.customName(Text.mm("<muted>训练靶 " + Math.abs(t[1] + 9) + "m"));
                         z.setCustomNameVisible(true);
                         ItemDef helmet = plugin.registry().get("helmet_3");
                         ItemDef vest = plugin.registry().get("armor_3");

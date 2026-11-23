@@ -45,6 +45,11 @@ public final class MenuListener implements Listener {
     public void onClose(InventoryCloseEvent event) {
         if (event.getView().getTopInventory().getHolder() instanceof Menu menu) {
             menu.onClose();
+            // Going from one menu to the next also closes the first: only the last one sounds.
+            if (event.getPlayer() instanceof Player player
+                    && event.getReason() != InventoryCloseEvent.Reason.OPEN_NEW) {
+                UiSound.CLOSE.play(player);
+            }
         }
     }
 }

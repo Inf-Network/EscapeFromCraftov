@@ -57,7 +57,7 @@ free-kit:
 tiers:
   NORMAL:
     name: "常规"
-    color: "#5BD16B"
+    color: "#7FD1AE"
     min-value: 0
     entry-fee: 0
     loot-shift: 0
@@ -68,7 +68,7 @@ tiers:
     xp: 1.0
   CONFIDENTIAL:
     name: "机密"
-    color: "#4FA3FF"
+    color: "#8AB4F8"
     min-value: 60000
     entry-fee: 32000
     loot-shift: 1
@@ -79,7 +79,7 @@ tiers:
     xp: 1.5
   SECRET:
     name: "绝密"
-    color: "#FF4D4D"
+    color: "#E5484D"
     min-value: 250000
     entry-fee: 43000
     loot-shift: 2
@@ -100,6 +100,9 @@ match:
 raid:
   # A disconnected player can rejoin the raid within this window (s); afterwards they are missing in action.
   reconnect-seconds: 120
+  # Ticks between arriving back in the lobby and the settlement screen opening (the black curtain
+  # over the trip home lasts about 32 ticks).
+  settlement-delay-ticks: 30
   # Leaving the game within this many seconds of a hit taken from, or dealt to, another player or a
   # soldier is death on the spot (report: 交战中断线); the kill goes to whoever hit them last. 0 turns
   # it off.
@@ -157,7 +160,9 @@ stamina:
 
 combat:
   friendly-fire: false
-  damage-numbers: true
+  # Floating damage numbers over whoever you hit. Off by default: an extraction shooter tells you a
+  # hit with the marker and the sound, not with arcade numbers.
+  damage-numbers: false
   flashbang:
     # A flashed player's screen goes white (then fades) and their ears ring: facing-ticks when they
     # looked at the blast, away-ticks when it was behind them, never less than min-ticks. No effect
@@ -539,10 +544,12 @@ hud:
   # Keep the boss-bar HUD even when BetterHud is active.
   vanilla-bars-with-betterhud: false
   # Kill feed in the top-right corner (in the chat without BetterHud): each line shows this long.
-  # Kills within streak-seconds of each other make a streak: rising chimes and a badge above the
-  # crosshair, shown badge-seconds after each kill.
+  # A player's death reaches only the killer's and the victim's squads; raid-wide: true shows every
+  # death to everyone in the raid. Kills within streak-seconds of each other make a streak: rising
+  # chimes and a badge above the crosshair, shown badge-seconds after each kill.
   feed:
     seconds: 5
+    raid-wide: false
     streak-seconds: 6
     badge-seconds: 2.5
   # The crosshair (BetterHud: an outlined dot whose arms open with the cone of the next shot, from 3 to

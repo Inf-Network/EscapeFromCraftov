@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.replay;
 
 import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ResolvableProfile;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
@@ -368,8 +369,8 @@ public final class ReplayService implements Listener {
         }
         // The camera follows the killer's stand-in once the client has it (see step).
         playback.camera = playback.standIns.get(clip.killer());
-        viewer.showTitle(Title.title(Text.mm("<#FF4D4D><b>击杀回放"), Text.mm("<white>" + Text.escape(clip.killerName())
-                        + " <#8A8F98>· " + Text.escape(clip.weapon()) + " · " + clip.distance() + "m"),
+        viewer.showTitle(Title.title(Text.mm("<danger><b>击杀回放"), Text.mm("<white>" + Text.escape(clip.killerName())
+                        + " <muted>· " + Text.escape(clip.weapon()) + " · " + clip.distance() + "m"),
                 Title.Times.times(Duration.ofMillis(150), Duration.ofSeconds(2), Duration.ofMillis(400))));
         playback.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> step(playback), 1L, 1L).getTaskId();
     }
@@ -408,7 +409,7 @@ public final class ReplayService implements Listener {
                 }
                 m.getEquipment().setHelmet(look.helmet());
                 m.getEquipment().setChestplate(look.chest());
-                m.customName(Text.mm("<#C8CCD2>" + Text.escape(look.name())));
+                m.customName(Text.mm("<text>" + Text.escape(look.name())));
                 m.setCustomNameVisible(false);
             }
         });
@@ -492,7 +493,7 @@ public final class ReplayService implements Listener {
         }
         playback.lastShotTick = Math.max(playback.lastShotTick, now);
         if ((long) playback.recorded % 20 == 0) {
-            viewer.sendActionBar(Text.mm("<#FF8A80>击杀回放 <#8A8F98>· 按 <white>Shift</white> 跳过"));
+            Notify.critical(viewer, "replay", "<danger>击杀回放 <muted>· 按 <white>Shift</white> 跳过");
         }
     }
 

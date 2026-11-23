@@ -13,7 +13,8 @@ public final class RankService {
 
     private static final int[] THRESHOLDS = {0, 1100, 1250, 1400, 1550, 1700, 1850};
     private static final String[] NAMES = {"青铜", "白银", "黄金", "铂金", "钻石", "大师", "传奇"};
-    private static final String[] COLORS = {"#B08D57", "#C8CCD2", "#FFC23D", "#7FE0D0", "#4FA3FF", "#B66BFF", "#FF4D4D"};
+    // Metals and stones, kept apart from the rarity colours (those belong to items only).
+    private static final String[] COLORS = {"#B08D57", "#B9C0C9", "#E3B53D", "#86D4CC", "#79B7F2", "#C59AF2", "#F0705A"};
 
     private final CraftovPlugin plugin;
 
@@ -101,7 +102,7 @@ public final class RankService {
             profile.money += reward;
             profile.earnedInRaid(reward); // a level reached in a raid (a contract done) goes with a void raid
             if (player != null) {
-                Text.send(player, "<#FFC23D>账号升级至 Lv." + profile.level + "！<#9AA0A6>奖励 ◈" + Text.money(reward));
+                Text.send(player, "<accent>账号升级至 Lv." + profile.level + "！<muted>奖励 ◈" + Text.money(reward));
                 player.playSound(player.getLocation(), "craftov:ui.levelup", 1f, 1f);
             }
         }

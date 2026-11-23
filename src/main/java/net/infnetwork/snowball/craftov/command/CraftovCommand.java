@@ -21,8 +21,8 @@ public final class CraftovCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
-    private static final List<String> ADMIN_SUBS = List.of("give", "money", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event", "feed",
-            "marketaudit", "ai", "lagcomp", "luck");
+    private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
+            "feed", "marketaudit", "ai", "lagcomp", "luck");
 
     private final CraftovPlugin plugin;
 
@@ -74,7 +74,7 @@ public final class CraftovCommand implements TabExecutor {
                     if (plugin.match().queued(player.getUniqueId()) != null) {
                         plugin.match().cancelQueue(player.getUniqueId(), "");
                     } else {
-                        Text.send(player, "<#9AA0A6>你不在匹配队列中。行动中可通过战术终端放弃行动。");
+                        Text.send(player, "<muted>你不在匹配队列中。行动中可通过战术终端放弃行动。");
                     }
                 }
             }
@@ -93,7 +93,7 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 RaidMode mode = args.length >= 4 ? mode(args[3]) : RaidMode.SOLO;
                 if (args.length < 3 || mode == null) {
-                    Text.send(player, "<#9AA0A6>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
+                    Text.send(player, "<muted>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
                     return true;
                 }
                 plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
@@ -118,12 +118,12 @@ public final class CraftovCommand implements TabExecutor {
         switch (action) {
             case "invite" -> {
                 if (args.length < 3) {
-                    Text.send(player, "<#9AA0A6>用法：/cv party invite <玩家>");
+                    Text.send(player, "<muted>用法：/cv party invite <玩家>");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[2]);
                 if (target == null) {
-                    Text.send(player, "<#FF8A80>玩家不在线。");
+                    Text.send(player, "<danger>玩家不在线。");
                     return;
                 }
                 plugin.match().invite(player, target);
@@ -138,7 +138,7 @@ public final class CraftovCommand implements TabExecutor {
             default -> {
                 var party = plugin.match().partyOf(player.getUniqueId());
                 if (party == null) {
-                    Text.send(player, "<#9AA0A6>你不在小队中。<white>/cv party invite <玩家></white> 邀请队友。");
+                    Text.send(player, "<muted>你不在小队中。<white>/cv party invite <玩家></white> 邀请队友。");
                     return;
                 }
                 StringBuilder sb = new StringBuilder();
@@ -146,22 +146,22 @@ public final class CraftovCommand implements TabExecutor {
                     Player p = Bukkit.getPlayer(uuid);
                     sb.append(uuid.equals(party.leader) ? "★" : "").append(p == null ? "?" : p.getName()).append("  ");
                 }
-                Text.send(player, "<#9AA0A6>小队 (" + party.size() + "/3)：<white>" + Text.escape(sb.toString().trim()));
+                Text.send(player, "<muted>小队 (" + party.size() + "/3)：<white>" + Text.escape(sb.toString().trim()));
             }
         }
     }
 
     private void help(CommandSender sender) {
-        Text.send(sender, "<#F2E6C8>Craftov 指令");
-        sender.sendMessage(Text.mm("<#9AA0A6>/cv <#8A8F98>打开战术终端  <#9AA0A6>/cv deploy <#8A8F98>开始行动"));
-        sender.sendMessage(Text.mm("<#9AA0A6>/cv stash | mail | trader | market | secure"));
-        sender.sendMessage(Text.mm("<#9AA0A6>/cv party invite <玩家> | accept | leave | kick <玩家>"));
-        sender.sendMessage(Text.mm("<#9AA0A6>/cv leave <#8A8F98>取消匹配"));
+        Text.send(sender, "<text>Craftov 指令");
+        sender.sendMessage(Text.mm("<muted>/cv <muted>打开战术终端  <muted>/cv deploy <muted>开始行动"));
+        sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
+        sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
+        sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
-            sender.sendMessage(Text.mm("<#FF9F43>/cv items <#8A8F98>测试军械库（免费领取任意物品）"));
+            sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }
         if (sender.hasPermission("craftov.admin")) {
-            sender.sendMessage(Text.mm("<#FFC23D>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · raids · end <id> · tp <id> · lobby · reload"
+            sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
                     + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"));
         }
     }
@@ -169,7 +169,7 @@ public final class CraftovCommand implements TabExecutor {
     private void admin(CommandSender sender, String sub, String[] args) {
         switch (sub) {
             case "give" -> {
-                String usage = "<#9AA0A6>用法：/cv give <玩家> <物品ID> [数量]";
+                String usage = "<muted>用法：/cv give <玩家> <物品ID> [数量]";
                 int amount = args.length > 3 ? positiveInt(args[3]) : 1;
                 if (args.length < 3 || amount <= 0) {
                     Text.send(sender, usage);
@@ -178,13 +178,13 @@ public final class CraftovCommand implements TabExecutor {
                 Player target = Bukkit.getPlayerExact(args[1]);
                 ItemDef def = plugin.registry().get(args[2]);
                 if (target == null || def == null) {
-                    Text.send(sender, "<#FF8A80>玩家或物品不存在。");
+                    Text.send(sender, "<danger>玩家或物品不存在。");
                     return;
                 }
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
                 plugin.carry().give(target, stack, true);
                 // The stack is capped at the item's stack size: say what was handed out.
-                Text.send(sender, "<#5BD16B>已给予 " + def.coloredName() + " ×" + stack.getAmount());
+                Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + stack.getAmount());
             }
             case "injure" -> {
                 // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
@@ -204,11 +204,11 @@ public final class CraftovCommand implements TabExecutor {
                 };
                 Player source = args.length > 4 ? Bukkit.getPlayerExact(args[4]) : null;
                 if (target == null || part == null || injury == null || (args.length > 4 && source == null)) {
-                    Text.send(sender, "<#FF8A80>玩家、部位、伤势或造成伤口的玩家无效。");
+                    Text.send(sender, "<danger>玩家、部位、伤势或造成伤口的玩家无效。");
                     return;
                 }
                 plugin.health().addInjury(target, part, injury, source == null ? null : source.getUniqueId());
-                Text.send(sender, "<#5BD16B>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
+                Text.send(sender, "<ok>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
             }
             case "feed" -> {
                 // /cv feed <player>: the kill feed lines the player's HUD holds, oldest first (tests read it).
@@ -219,23 +219,23 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 java.util.List<String> lines = plugin.killFeed().allLines(target);
                 if (lines.isEmpty()) {
-                    sender.sendMessage(Text.mm("<#9AA0A6>（击杀栏是空的）"));
+                    sender.sendMessage(Text.mm("<muted>（击杀栏是空的）"));
                 }
                 for (String line : lines) {
                     sender.sendMessage(Text.mm(line));
                 }
-                sender.sendMessage(Text.mm("<#9AA0A6>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
+                sender.sendMessage(Text.mm("<muted>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
             }
             case "money" -> {
                 // /cv money <player> <amount>: adds the amount (negative takes money away).
                 Long delta = args.length < 3 ? null : parseLong(args[2]);
                 if (delta == null) {
-                    Text.send(sender, "<#9AA0A6>用法：/cv money <玩家> <数量>（负数为扣除）");
+                    Text.send(sender, "<muted>用法：/cv money <玩家> <数量>（负数为扣除）");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
                 if (target == null) {
-                    Text.send(sender, "<#FF8A80>玩家不在线。");
+                    Text.send(sender, "<danger>玩家不在线。");
                     return;
                 }
                 Profile profile = plugin.profiles().get(target);
@@ -243,39 +243,58 @@ public final class CraftovCommand implements TabExecutor {
                 try {
                     balance = Math.addExact(profile.money, delta);
                 } catch (ArithmeticException ex) {
-                    Text.send(sender, "<#FF8A80>数额过大。");
+                    Text.send(sender, "<danger>数额过大。");
                     return;
                 }
                 profile.money = balance;
                 plugin.profiles().markDirty(target.getUniqueId());
-                Text.send(sender, "<#5BD16B>" + target.getName() + " 余额 ◈" + Text.money(profile.money));
+                Text.send(sender, "<ok>" + target.getName() + " 余额 ◈" + Text.money(profile.money));
+            }
+            case "close" -> {
+                // /cv close <player>: closes whatever screen the player has open (the settlement
+                // screen after an extraction, say), for scripts driving a real client.
+                Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+                if (target == null) {
+                    Text.send(sender, "/cv close <玩家>");
+                    return;
+                }
+                target.closeInventory();
+            }
+            case "hud" -> {
+                // /cv hud <player>: what that player's BetterHud shows besides the panels (bots cannot see it).
+                Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+                if (target == null) {
+                    Text.send(sender, "/cv hud <玩家>");
+                    return;
+                }
+                Text.send(sender, Text.escape(plugin.hud().describe(target)));
             }
             case "raids" -> {
                 if (plugin.raids().raids().isEmpty()) {
-                    Text.send(sender, "<#9AA0A6>没有进行中的行动。");
+                    Text.send(sender, "<muted>没有进行中的行动。");
                 }
                 for (Raid raid : plugin.raids().raids()) {
-                    Text.send(sender, "<white>" + raid.id + " <#9AA0A6>" + raid.map.name() + " " + raid.tier.name() + " " + raid.state
+                    Text.send(sender, "<white>" + raid.id + " <muted>" + raid.map.name() + " " + raid.tier.name() + " " + raid.state
                             + " · 剩余 " + Text.duration(raid.remainingSeconds()) + " · 玩家 " + raid.activeCount() + " · AI " + plugin.ai().count(raid));
                 }
             }
             case "event" -> {
                 // /cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [raid id]: start a raid event now.
                 if (args.length < 2) {
-                    Text.send(sender, "<#9AA0A6>/cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [对局ID]");
+                    Text.send(sender, "<muted>/cv event <blackout|barrage|reinforcements|supply_drop|boss_patrol> [对局ID]");
                     return;
                 }
                 net.infnetwork.snowball.craftov.raid.RaidEvents.Kind kind;
                 try {
                     kind = net.infnetwork.snowball.craftov.raid.RaidEvents.Kind.valueOf(args[1].toUpperCase(java.util.Locale.ROOT));
                 } catch (IllegalArgumentException ex) {
-                    Text.send(sender, "<#FF8A80>未知事件：" + Text.escape(args[1]));
+                    Text.send(sender, "<danger>未知事件：" + Text.escape(args[1]));
                     return;
                 }
                 for (Raid raid : new ArrayList<>(plugin.raids().raids())) {
                     if (raid.state == Raid.State.RUNNING && (args.length < 3 || raid.id.equalsIgnoreCase(args[2]))) {
                         boolean fired = plugin.events().fire(raid, kind);
-                        Text.send(sender, fired ? "<#FFC23D>已在 " + raid.id + " 触发 " + kind : "<#FF8A80>" + raid.id + " 无法触发 " + kind);
+                        Text.send(sender, fired ? "<accent>已在 " + raid.id + " 触发 " + kind : "<danger>" + raid.id + " 无法触发 " + kind);
                     }
                 }
             }
@@ -284,7 +303,7 @@ public final class CraftovCommand implements TabExecutor {
                 // /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [raid id]: one soldier posted there.
                 boolean spawn = args.length > 1 && args[1].equalsIgnoreCase("spawn");
                 if (spawn && args.length < 6) {
-                    Text.send(sender, "<#9AA0A6>/cv ai [对局ID] · /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [对局ID]");
+                    Text.send(sender, "<muted>/cv ai [对局ID] · /cv ai spawn <patrol|guard|sniper|shield|operator> <x> <y> <z> [对局ID]");
                     return;
                 }
                 Raid raid = pickRaid(sender, spawn ? (args.length > 6 ? args[6] : null) : (args.length > 1 ? args[1] : null));
@@ -294,7 +313,7 @@ public final class CraftovCommand implements TabExecutor {
                 if (spawn) {
                     String kind = args[2].toLowerCase(Locale.ROOT);
                     if (!List.of("patrol", "guard", "sniper", "shield", "operator").contains(kind)) {
-                        Text.send(sender, "<#FF8A80>未知敌兵类型：" + Text.escape(args[2]));
+                        Text.send(sender, "<danger>未知敌兵类型：" + Text.escape(args[2]));
                         return;
                     }
                     org.bukkit.Location at;
@@ -305,17 +324,17 @@ public final class CraftovCommand implements TabExecutor {
                     }
                     // NaN and Infinity parse too.
                     if (at == null || !Double.isFinite(at.getX() + at.getY() + at.getZ())) {
-                        Text.send(sender, "<#FF8A80>坐标无效。");
+                        Text.send(sender, "<danger>坐标无效。");
                         return;
                     }
                     String name = plugin.ai().spawnSoldier(raid, at, kind);
-                    Text.send(sender, name == null ? "<#FF8A80>生成失败。" : "<#5BD16B>已在 " + raid.id + " 生成 " + Text.escape(name));
+                    Text.send(sender, name == null ? "<danger>生成失败。" : "<ok>已在 " + raid.id + " 生成 " + Text.escape(name));
                     return;
                 }
                 List<String> lines = plugin.ai().describe(raid);
-                Text.send(sender, "<#F2C94C>" + raid.id + " · 敌兵 " + lines.size());
+                Text.send(sender, "<accent>" + raid.id + " · 敌兵 " + lines.size());
                 for (String line : lines) {
-                    sender.sendMessage(Text.mm("<#9AA0A6>" + Text.escape(line)));
+                    sender.sendMessage(Text.mm("<muted>" + Text.escape(line)));
                 }
             }
             case "end" -> {
@@ -323,11 +342,11 @@ public final class CraftovCommand implements TabExecutor {
                     if (args.length < 2 || raid.id.equalsIgnoreCase(args[1])) {
                         if (raid.state != Raid.State.RUNNING) {
                             // Deploying sets startTick, which would undo this.
-                            Text.send(sender, "<#FF8A80>" + raid.id + " 还在加载，稍后再试。");
+                            Text.send(sender, "<danger>" + raid.id + " 还在加载，稍后再试。");
                             continue;
                         }
                         raid.startTick = Bukkit.getCurrentTick() - raid.map.raidSeconds() * 20L;
-                        Text.send(sender, "<#FFC23D>已结束 " + raid.id);
+                        Text.send(sender, "<accent>已结束 " + raid.id);
                     }
                 }
             }
@@ -366,11 +385,11 @@ public final class CraftovCommand implements TabExecutor {
                     case "set" -> plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT),
                             String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
                     default -> {
-                        Text.send(p, "<#F2E6C8>地图编辑器");
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|test|camera <值>"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard"));
+                        Text.send(p, "<text>地图编辑器");
+                        p.sendMessage(Text.mm("<muted>/cv editor world <世界名> <muted>创建/前往一个空的建图世界"));
+                        p.sendMessage(Text.mm("<muted>/cv editor start <地图ID> <muted>在当前世界开始标点（领取工具）"));
+                        p.sendMessage(Text.mm("<muted>/cv editor set name|description|minutes|time|test|camera <值>"));
+                        p.sendMessage(Text.mm("<muted>/cv editor info · save · exit · discard"));
                     }
                 }
             }
@@ -388,18 +407,18 @@ public final class CraftovCommand implements TabExecutor {
                 }
                 List<net.infnetwork.snowball.craftov.profile.ProfileService.Summary> top = plugin.profiles().leaderboard(
                         (a, b) -> Long.compare(b.marketSales(), a.marketSales()), limit);
-                Text.send(sender, "<#F2E6C8>交易行成交最多的账号 <#8A8F98>（收入只统计本版本之后的成交）");
+                Text.send(sender, "<text>交易行成交最多的账号 <muted>（收入只统计本版本之后的成交）");
                 int rank = 1;
                 for (net.infnetwork.snowball.craftov.profile.ProfileService.Summary s : top) {
                     if (s.marketSales() <= 0) {
                         break;
                     }
-                    sender.sendMessage(Text.mm("<#9AA0A6>" + rank++ + ". <white>" + Text.escape(s.name()) + " <#8A8F98>Lv." + s.level()
-                            + " · 成交 " + s.marketSales() + " 笔 · 收入 ◈" + Text.money(s.marketIncome()) + " · 余额 <#F2C94C>◈"
-                            + Text.money(s.money()) + " <#8A8F98>· 带出 ◈" + Text.money(s.extracted())));
+                    sender.sendMessage(Text.mm("<muted>" + rank++ + ". <white>" + Text.escape(s.name()) + " <muted>Lv." + s.level()
+                            + " · 成交 " + s.marketSales() + " 笔 · 收入 ◈" + Text.money(s.marketIncome()) + " · 余额 <accent>◈"
+                            + Text.money(s.money()) + " <muted>· 带出 ◈" + Text.money(s.extracted())));
                 }
                 if (rank == 1) {
-                    sender.sendMessage(Text.mm("<#9AA0A6>还没有人在交易行卖出过东西。"));
+                    sender.sendMessage(Text.mm("<muted>还没有人在交易行卖出过东西。"));
                 }
             }
             case "lagcomp" -> {
@@ -409,9 +428,9 @@ public final class CraftovCommand implements TabExecutor {
                         : args[1].equalsIgnoreCase("on");
                 plugin.getConfig().set("combat.lag-compensation.enabled", on);
                 Text.send(sender, on
-                        ? "<#5BD16B>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
+                        ? "<ok>命中延迟补偿已开启：玩家开枪按 ping + " + plugin.getConfig().getInt("combat.lag-compensation.extra-ms", 200)
                                 + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
-                        : "<#FF8A80>命中延迟补偿已关闭，<#9AA0A6>/cv reload 后恢复配置文件里的设置。");
+                        : "<danger>命中延迟补偿已关闭，<muted>/cv reload 后恢复配置文件里的设置。");
             }
             case "luck" -> luck(sender, args);
             case "reload" -> {
@@ -422,16 +441,16 @@ public final class CraftovCommand implements TabExecutor {
                 plugin.maps().warnCloseSpawns();
                 plugin.loadTiers();
                 if (itemError == null) {
-                    Text.send(sender, "<#5BD16B>已重新加载配置、物品、掉落与地图。");
+                    Text.send(sender, "<ok>已重新加载配置、物品、掉落与地图。");
                 } else {
                     String shown = itemError.replaceAll("\\s+", " ");
-                    Text.send(sender, "<#FF4D4D>items.yml 有错误，物品表没有更新，仍在使用原来的物品表：<#FF8A80>"
+                    Text.send(sender, "<danger>items.yml 有错误，物品表没有更新，仍在使用原来的物品表：<danger>"
                             + Text.escape(shown.length() > 300 ? shown.substring(0, 300) + "…" : shown));
-                    Text.send(sender, "<#9AA0A6>配置、掉落与地图已重新加载，完整错误见服务器日志。");
+                    Text.send(sender, "<muted>配置、掉落与地图已重新加载，完整错误见服务器日志。");
                 }
                 for (CraftovPlugin.OutdatedData old : plugin.outdatedData()) {
-                    Text.send(sender, "<#FFC23D>" + old.file() + " 比插件自带的旧（revision " + old.local() + "，插件 " + old.bundled()
-                            + "）：价格和掉落仍按旧文件。<#9AA0A6>备份后换成插件自带的版本（或把改动合并进去并改成 revision: "
+                    Text.send(sender, "<accent>" + old.file() + " 比插件自带的旧（revision " + old.local() + "，插件 " + old.bundled()
+                            + "）：价格和掉落仍按旧文件。<muted>备份后换成插件自带的版本（或把改动合并进去并改成 revision: "
                             + old.bundled() + "），再 /cv reload。");
                 }
             }
@@ -451,21 +470,21 @@ public final class CraftovCommand implements TabExecutor {
         Player online = Bukkit.getPlayerExact(args[1]);
         java.util.UUID uuid = online != null ? online.getUniqueId() : plugin.profiles().findByName(args[1]);
         if (uuid == null) {
-            Text.send(sender, "<#FF8A80>没有叫 " + Text.escape(args[1]) + " 的玩家。");
+            Text.send(sender, "<danger>没有叫 " + Text.escape(args[1]) + " 的玩家。");
             return;
         }
         if (args.length > 2) {
             String error = plugin.luck().adjust(uuid, args[2].toLowerCase(Locale.ROOT),
                     java.util.Arrays.copyOfRange(args, 3, args.length), sender.getName());
             if (error != null) {
-                Text.send(sender, "<#FF8A80>" + Text.escape(error));
+                Text.send(sender, "<danger>" + Text.escape(error));
                 return;
             }
-            Text.send(sender, "<#5BD16B>已修改。");
+            Text.send(sender, "<ok>已修改。");
         }
         Profile profile = plugin.profiles().peek(uuid);
         if (profile == null) {
-            Text.send(sender, "<#FF8A80>读不出这个玩家的档案。");
+            Text.send(sender, "<danger>读不出这个玩家的档案。");
             return;
         }
         for (String line : plugin.luck().describe(profile)) {
@@ -487,7 +506,7 @@ public final class CraftovCommand implements TabExecutor {
                     return raid;
                 }
             }
-            Text.send(sender, "<#FF8A80>没有进行中的对局 " + Text.escape(id));
+            Text.send(sender, "<danger>没有进行中的对局 " + Text.escape(id));
             return null;
         }
         Raid own = sender instanceof Player p ? plugin.raids().raidOf(p) : null;
@@ -497,7 +516,7 @@ public final class CraftovCommand implements TabExecutor {
         if (running.size() == 1) {
             return running.get(0);
         }
-        Text.send(sender, running.isEmpty() ? "<#9AA0A6>没有进行中的行动。" : "<#FF8A80>有多个对局，请指定对局ID。");
+        Text.send(sender, running.isEmpty() ? "<muted>没有进行中的行动。" : "<danger>有多个对局，请指定对局ID。");
         return null;
     }
 

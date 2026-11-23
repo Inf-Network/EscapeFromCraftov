@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -153,7 +154,7 @@ public final class LobbyService implements Listener {
                 d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, s[0]);
             });
             world.spawn(base.clone().add(0, 1.55, 0), TextDisplay.class, d -> {
-                d.text(Text.mm("<b><#F2E6C8>" + s[1] + "</b>\n<#9AA0A6>" + s[2]));
+                d.text(Text.mm("<b><text>" + s[1] + "</b>\n<muted>" + s[2]));
                 d.setBillboard(Display.Billboard.CENTER);
                 d.setPersistent(false);
                 d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
@@ -181,7 +182,7 @@ public final class LobbyService implements Listener {
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         });
         world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><#F2E6C8>靶场入口</b>\n<#9AA0A6>右键进入个人独立靶场\n<#6B7079>免费试枪 · 离开时自动归还原装备"));
+            d.text(Text.mm("<b><text>靶场入口</b>\n<muted>右键进入个人独立靶场\n<dim>免费试枪 · 离开时自动归还原装备"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
@@ -205,7 +206,7 @@ public final class LobbyService implements Listener {
                         z.setShouldBurnInDay(false);
                         z.setInvulnerable(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
-                        z.customName(Text.mm("<#9AA0A6>训练靶 " + Math.abs(t[1] + 9) + "m"));
+                        z.customName(Text.mm("<muted>训练靶 " + Math.abs(t[1] + 9) + "m"));
                         z.setCustomNameVisible(true);
                         ItemDef helmet = plugin.registry().get("helmet_3");
                         ItemDef vest = plugin.registry().get("armor_3");
@@ -224,14 +225,14 @@ public final class LobbyService implements Listener {
         if (leaderboard == null || !leaderboard.isValid()) {
             return;
         }
-        StringBuilder sb = new StringBuilder("<b><#FFC23D>排位赛 · 赛季榜</b>\n");
+        StringBuilder sb = new StringBuilder("<b><accent>排位赛 · 赛季榜</b>\n");
         int i = 1;
         for (ProfileService.Summary s : plugin.profiles().leaderboard((a, b) -> Integer.compare(b.rankPoints(), a.rankPoints()), 10)) {
-            sb.append("<#8A8F98>").append(i++).append(". <white>").append(Text.escape(s.name())).append(" <#8A8F98>")
-                    .append(plugin.ranks().tierName(s.rankPoints())).append(" <#F2C94C>").append(s.rankPoints()).append('\n');
+            sb.append("<muted>").append(i++).append(". <white>").append(Text.escape(s.name())).append(" <muted>")
+                    .append(plugin.ranks().tierName(s.rankPoints())).append(" <accent>").append(s.rankPoints()).append('\n');
         }
         if (i == 1) {
-            sb.append("<#8A8F98>暂无数据");
+            sb.append("<muted>暂无数据");
         }
         leaderboard.text(Text.mm(sb.toString().trim()));
     }
@@ -251,8 +252,8 @@ public final class LobbyService implements Listener {
         profile.loadout = plugin.carry().snapshot(player);
         enterLobby(player);
         if (stripped[0] > 0) {
-            Text.send(player, "<#FFB74D>试验场物资已收回（" + stripped[0] + " 件），它们不能带出对局。"
-                    + (stripped[1] > 0 ? "<#9AA0A6>装在里面的 " + stripped[1] + " 件自己的物品放不下，已送到仓库邮箱。" : ""));
+            Text.send(player, "<accent>试验场物资已收回（" + stripped[0] + " 件），它们不能带出对局。"
+                    + (stripped[1] > 0 ? "<muted>装在里面的 " + stripped[1] + " 件自己的物品放不下，已送到仓库邮箱。" : ""));
         }
     }
 
@@ -402,7 +403,7 @@ public final class LobbyService implements Listener {
     private void tickRange() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!inRange(player) && stripRangeItems(player) > 0) {
-                player.sendActionBar(Text.mm("<#FFB74D>已离开靶场，靶场武器已收回"));
+                Notify.info(player, "<accent>已离开靶场，靶场武器已收回");
             }
         }
     }
@@ -461,7 +462,7 @@ public final class LobbyService implements Listener {
                 }
             }
         }
-        Text.send(player, "<#F2C94C>欢迎来到锈港行动！<#9AA0A6>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
+        Text.send(player, "<accent>欢迎来到锈港行动！<muted>已为你发放新手物资与 ◈" + Text.money(profile.money) + " 块币。");
     }
 
     @EventHandler
@@ -474,7 +475,7 @@ public final class LobbyService implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        event.joinMessage(Text.mm("<#8A8F98>+ " + Text.escape(player.getName())));
+        event.joinMessage(Text.mm("<muted>+ " + Text.escape(player.getName())));
         Profile profile = plugin.profiles().get(player);
         if (!profile.receivedStarter) {
             giveStarter(player, profile);
@@ -485,8 +486,8 @@ public final class LobbyService implements Listener {
             plugin.raids().voidLost(player);
         }
         if (player.hasPermission("craftov.admin") && !plugin.maps().broken().isEmpty()) {
-            Text.send(player, "<#FF4D4D>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))
-                    + " <#9AA0A6>(详见控制台，修好后 /cv reload)");
+            Text.send(player, "<danger>地图文件有错误，未加载：" + Text.escape(String.join("、", plugin.maps().broken()))
+                    + " <muted>(详见控制台，修好后 /cv reload)");
         }
         plugin.escorts().reclaim(player, profile);
         plugin.health().setupPlayer(player, false);
@@ -523,13 +524,14 @@ public final class LobbyService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        event.quitMessage(Text.mm("<#8A8F98>- " + Text.escape(player.getName())));
+        event.quitMessage(Text.mm("<muted>- " + Text.escape(player.getName())));
         if (plugin.raids().raidOf(player) == null && isLobby(player.getWorld())
                 && player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR) {
             captureLoadout(player);
         }
         plugin.match().onQuit(player);
         plugin.hud().onQuit(player);
+        net.infnetwork.snowball.craftov.util.Notify.forget(player);
         player.getInventory().clear();
         plugin.profiles().unload(player.getUniqueId());
         lastMenuClick.remove(player.getUniqueId());

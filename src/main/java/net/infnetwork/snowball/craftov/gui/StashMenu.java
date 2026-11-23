@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.datacomponent.item.ItemLore;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -33,7 +34,7 @@ final class StashMenu extends Menu {
     private final List<Integer> visible = new ArrayList<>();
 
     StashMenu(CraftovPlugin plugin, Player viewer) {
-        super(viewer, 6, Text.mm("<#F2E6C8>仓库"));
+        super(viewer, 6, "stash", Text.mm("仓库"));
         this.plugin = plugin;
     }
 
@@ -53,6 +54,8 @@ final class StashMenu extends Menu {
         }
         int pages = Math.max(1, (visible.size() + 44) / 45);
         page = Math.min(page, pages - 1);
+        // Page and filter live in the title, changed in place as the player pages through.
+        restyle("stash", Text.mm("仓库 <muted>· " + (page + 1) + "/" + pages + (filter == null ? "" : " · " + filter.displayName())));
         for (int slot = 0; slot < 45; slot++) {
             int index = page * 45 + slot;
             if (index >= visible.size()) {
@@ -68,61 +71,61 @@ final class StashMenu extends Menu {
                     : display.getData(DataComponentTypes.LORE).lines());
             lore.add(Component.empty());
             switch (mode) {
-                case TAKE -> lore.add(Text.mm("<#5BD16B>点击取出到背包"));
-                case SELL -> lore.add(Text.mm("<#FFC23D>点击出售给商人 <#F2C94C>◈" + Text.money(plugin.traders().sellPrice(record))));
-                case LIST -> lore.add(Text.mm("<#4FA3FF>点击在交易行上架 <#8A8F98>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
+                case TAKE -> lore.add(Text.mm("<ok>点击取出到背包"));
+                case SELL -> lore.add(Text.mm("<accent>点击出售给商人 <accent>◈" + Text.money(plugin.traders().sellPrice(record))));
+                case LIST -> lore.add(Text.mm("<info>点击在交易行上架 <muted>参考价 ◈" + Text.money(plugin.market().anchorFor(record))));
             }
             display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
             button(slot, display, e -> clickStash(stashIndex, record));
         }
         fillRow(5, UiItems.filler());
-        button(45, UiItems.button("craftov:ui/arrow_left", "<white>上一页", List.of("<#8A8F98>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(45, UiItems.button("craftov:ui/arrow_left", "<white>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.max(0, page - 1);
             redraw();
         });
-        button(53, UiItems.button("craftov:ui/arrow_right", "<white>下一页", List.of("<#8A8F98>" + (page + 1) + "/" + pages)), e -> {
+        tabButton(53, UiItems.button("craftov:ui/arrow_right", "<white>下一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
             page = Math.min(pages - 1, page + 1);
             redraw();
         });
-        button(46, UiItems.button("craftov:ui/icon_sort", "<white>整理", List.of("<#9AA0A6>按类别、品质、价值排序并合并堆叠")), e -> {
+        button(46, UiItems.button("craftov:ui/icon_sort", "<white>整理", List.of("<muted>按类别、品质、价值排序并合并堆叠")), e -> {
             sort(p);
             redraw();
         });
-        button(47, UiItems.button("craftov:ui/icon_filter", "<white>筛选：" + (filter == null ? "全部" : filter.displayName()),
-                List.of("<#9AA0A6>点击切换类别")), e -> {
+        tabButton(47, UiItems.button("craftov:ui/icon_filter", "<white>筛选：" + (filter == null ? "全部" : filter.displayName()),
+                List.of("<muted>点击切换类别")), e -> {
             Category[] all = Category.values();
             filter = filter == null ? all[0] : filter.ordinal() + 1 < all.length ? all[filter.ordinal() + 1] : null;
             page = 0;
             redraw();
         });
         String modeName = switch (mode) {
-            case TAKE -> "<#5BD16B>取出";
-            case SELL -> "<#FFC23D>出售给商人";
-            case LIST -> "<#4FA3FF>交易行上架";
+            case TAKE -> "<ok>取出";
+            case SELL -> "<accent>出售给商人";
+            case LIST -> "<info>交易行上架";
         };
-        button(48, UiItems.button("craftov:ui/icon_mode", "<white>模式：" + modeName, List.of("<#9AA0A6>点击切换：取出 / 出售 / 上架",
-                "<#9AA0A6>点击下方背包中的物品可存入仓库", "<#9AA0A6>潜行点击可存入同类全部")), e -> {
+        tabButton(48, UiItems.button("craftov:ui/icon_mode", "<white>模式：" + modeName, List.of("<muted>点击切换：取出 / 出售 / 上架",
+                "<muted>点击下方背包中的物品可存入仓库", "<muted>潜行点击可存入同类全部")), e -> {
             mode = Mode.values()[(mode.ordinal() + 1) % Mode.values().length];
             redraw();
         });
-        set(49, UiItems.button("craftov:ui/icon_stash", "<#F2E6C8>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
-                List.of("<#8A8F98>块币 <#F2C94C>◈" + Text.money(p.money), "<#8A8F98>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
+        set(49, UiItems.button("craftov:ui/icon_stash", "<text>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
+                List.of("<muted>块币 <accent>◈" + Text.money(p.money), "<muted>仓库总价值 <white>◈" + Text.money(stashValue(p)))));
         int letters = MailService.unclaimed(p);
-        List<String> mailLore = new ArrayList<>(List.of("<#9AA0A6>系统邮件 <white>" + letters + "</white> 封未读",
-                "<#9AA0A6>物品邮箱 <white>" + p.mailbox.size() + "</white> 件"));
+        List<String> mailLore = new ArrayList<>(List.of("<muted>系统邮件 <white>" + letters + "</white> 封未读",
+                "<muted>物品邮箱 <white>" + p.mailbox.size() + "</white> 件"));
         long nextClaim = net.infnetwork.snowball.craftov.economy.InsuranceService.nextClaim(p);
         if (nextClaim > 0) {
             long minutes = Math.max(1, (nextClaim - System.currentTimeMillis() + 59_999) / 60_000);
-            mailLore.add("<#FFC23D>理赔途中 " + p.claims.size() + " 件，最早约 " + minutes + " 分钟后到账");
+            mailLore.add("<accent>理赔途中 " + p.claims.size() + " 件，最早约 " + minutes + " 分钟后到账");
         }
-        mailLore.add("<#9AA0A6>点击打开");
-        ItemStack mailbox = UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <#FFC23D>" + (letters + p.mailbox.size()), mailLore);
+        mailLore.add("<muted>点击打开");
+        ItemStack mailbox = UiItems.button("craftov:ui/icon_mail", "<white>邮箱 <accent>" + (letters + p.mailbox.size()), mailLore);
         if (letters > 0) {
             mailbox.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
         }
         button(50, mailbox, e -> new MailMenu(plugin, viewer).open());
-        button(51, UiItems.button("craftov:ui/icon_secure", "<#B66BFF>安全箱", List.of("<#9AA0A6>打开安全箱")), e -> plugin.menus().openSecure(viewer));
-        button(52, UiItems.button("craftov:ui/icon_upgrade", "<white>仓库扩容 +30", List.of("<#8A8F98>价格 ◈" + Text.money(plugin.traders().stashUpgradePrice(p)))),
+        button(51, UiItems.button("craftov:ui/icon_secure", "<info>安全箱", List.of("<muted>打开安全箱")), e -> plugin.menus().openSecure(viewer));
+        button(52, UiItems.button("craftov:ui/icon_upgrade", "<white>仓库扩容 +30", List.of("<muted>价格 ◈" + Text.money(plugin.traders().stashUpgradePrice(p)))),
                 e -> {
                     plugin.traders().upgradeStash(viewer);
                     redraw();
@@ -154,7 +157,7 @@ final class StashMenu extends Menu {
                     int slot = CarryService.containerSlot(def.category());
                     ItemStack equipped = viewer.getInventory().getItem(slot);
                     if (equipped != null && !equipped.isEmpty()) {
-                        viewer.sendActionBar(Text.mm("<#FF8A80>请先卸下当前的" + def.category().displayName()));
+                        Notify.error(viewer, "请先卸下当前的" + def.category().displayName());
                         return;
                     }
                     p.stash.remove(stashIndex);
@@ -163,7 +166,7 @@ final class StashMenu extends Menu {
                     ItemStack left = plugin.carry().give(viewer, stack, false);
                     int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
                     if (moved <= 0) {
-                        viewer.sendActionBar(Text.mm("<#FF8A80>背包空间不足"));
+                        Notify.error(viewer, "背包空间不足");
                         return;
                     }
                     // Only what was handed over leaves the record: a record above the stack size
@@ -178,11 +181,11 @@ final class StashMenu extends Menu {
             case SELL -> {
                 p.stash.remove(stashIndex);
                 long price = plugin.traders().sell(viewer, record);
-                viewer.sendActionBar(Text.mm("<#FFC23D>已出售，获得 ◈" + Text.money(price)));
+                Notify.info(viewer, "<accent>已出售，获得 ◈" + Text.money(price));
             }
             case LIST -> {
                 if (record.isKit()) {
-                    viewer.sendActionBar(Text.mm("<#FF8A80>免费补给的物品不能上架交易行"));
+                    Notify.error(viewer, "免费补给的物品不能上架交易行");
                     return;
                 }
                 if (!plugin.market().refuseIfClosed(viewer)) {
@@ -218,11 +221,11 @@ final class StashMenu extends Menu {
         for (int slot : slots) {
             ItemStack current = event.getClickedInventory().getItem(slot);
             if (ItemFactory.isRange(current)) {
-                viewer.sendActionBar(Text.mm("<#FF8A80>靶场武器不能存入仓库"));
+                Notify.error(viewer, "靶场武器不能存入仓库");
                 continue;
             }
             if (ItemFactory.isTest(current)) {
-                viewer.sendActionBar(Text.mm("<#FF8A80>试验场物资不能存入仓库"));
+                Notify.error(viewer, "试验场物资不能存入仓库");
                 continue;
             }
             ItemRecord record = plugin.items().toRecord(current);
@@ -230,7 +233,7 @@ final class StashMenu extends Menu {
                 continue;
             }
             if (p.stashUsed() + record.footprint() > p.stashCapacity) {
-                viewer.sendActionBar(Text.mm("<#FF8A80>仓库已满，可在仓库中扩容"));
+                Notify.error(viewer, "仓库已满，可在仓库中扩容");
                 break;
             }
             deposit(plugin, p, record);

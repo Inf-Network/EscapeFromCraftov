@@ -58,9 +58,13 @@ public final class ItemFactory {
      * 12: the gun-feel line (#8, which used 10) on top: max_damage 2 for the reload mark, and no "dry"
      * model string (the flash follows the shots the server fires, see {@link #setHandMark}), and gun
      * lore with stat bars (GunStats) in place of the damage and rate line.
-     * 13: stackables show one unit's weight and price, so stacks of different sizes merge (#43).
+     * 12 (#6 line): the tooltip is framed in the item's rarity colour (tooltip_style craftov:rarity_*;
+     * #6 used 10).
+     * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
+     * 14: stackables show one unit's weight and price, so stacks of different sizes merge (#43, which
+     * used 13).
      */
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -253,6 +257,8 @@ public final class ItemFactory {
         stack.setData(DataComponentTypes.MAX_STACK_SIZE, def.maxStack());
         stack.setData(DataComponentTypes.ITEM_MODEL, Key.key(def.model()));
         stack.setData(DataComponentTypes.ITEM_NAME, Text.mm(def.coloredName()));
+        // The tooltip's frame takes the rarity colour (tools/art/build.py, build_tooltips).
+        stack.setData(DataComponentTypes.TOOLTIP_STYLE, Key.key("craftov", "rarity_" + def.rarity().name().toLowerCase(java.util.Locale.ROOT)));
         stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay()
                 .addHiddenComponents(DataComponentTypes.ATTRIBUTE_MODIFIERS, DataComponentTypes.EQUIPPABLE, DataComponentTypes.CAN_BREAK,
                         DataComponentTypes.UNBREAKABLE)
@@ -686,9 +692,9 @@ public final class ItemFactory {
         if (def.gun() != null) {
             type += " · " + def.gun().slot().displayName();
         }
-        lore.add(Text.mm(def.rarity().tag() + "▍" + def.rarity().displayName() + " <#8A8F98>" + type));
+        lore.add(Text.mm(def.rarity().tag() + "▍" + def.rarity().displayName() + " <muted>" + type));
         for (String line : def.lore()) {
-            lore.add(Text.mm("<#9AA0A6>" + line));
+            lore.add(Text.mm("<muted>" + line));
         }
         lore.add(Component.empty());
         GunSpec gun = def.gun();
@@ -700,8 +706,8 @@ public final class ItemFactory {
                     net.infnetwork.snowball.craftov.weapon.Attachments.resolve(gun, attachments(stack), registry);
             GunSpec withParts = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts);
             int capacity = withParts.magazine();
-            lore.add(Text.mm("<#8A8F98>口径 <white>" + gun.caliber() + "  <#8A8F98>弹匣 <white>" + ammo + "/" + capacity
-                    + (ammoDef != null ? " <#8A8F98>(" + Text.escape(ammoDef.name()) + ")" : "")));
+            lore.add(Text.mm("<muted>口径 <white>" + gun.caliber() + "  <muted>弹匣 <white>" + ammo + "/" + capacity
+                    + (ammoDef != null ? " <muted>(" + Text.escape(ammoDef.name()) + ")" : "")));
             StringBuilder modes = new StringBuilder();
             for (FireMode mode : gun.modes()) {
                 if (!modes.isEmpty()) {
@@ -709,7 +715,7 @@ public final class ItemFactory {
                 }
                 modes.append(mode.displayName());
             }
-            lore.add(Text.mm("<#8A8F98>模式 <white>" + modes));
+            lore.add(Text.mm("<muted>模式 <white>" + modes));
             // Penetration is the loaded round's; an empty gun shows its caliber's first round.
             List<ItemDef> rounds = registry.ammoFor(gun.caliber());
             ItemDef shown = ammoDef != null ? ammoDef : rounds.isEmpty() ? null : rounds.get(0);
@@ -720,22 +726,22 @@ public final class ItemFactory {
             ItemDef optic = registry.get(opticId(stack));
             ItemDef builtIn = registry.get(gun.scope());
             if (optic != null) {
-                lore.add(Text.mm("<#8A8F98>瞄准镜 " + optic.coloredName() + " <#8A8F98>(" + optic.optic().magnification() + " 倍)"));
+                lore.add(Text.mm("<muted>瞄准镜 " + optic.coloredName() + " <muted>(" + optic.optic().magnification() + " 倍)"));
             } else if (builtIn != null) {
-                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>自带 " + builtIn.optic().magnification() + " 倍"));
+                lore.add(Text.mm("<muted>瞄准镜 <white>自带 " + builtIn.optic().magnification() + " 倍"));
             } else if (!"none".equals(gun.mount())) {
-                lore.add(Text.mm("<#8A8F98>瞄准镜 <white>机械瞄具 <#6B7079>(可在改枪台安装瞄准镜)"));
+                lore.add(Text.mm("<muted>瞄准镜 <white>机械瞄具 <dim>(可在改枪台安装瞄准镜)"));
             }
             for (Map.Entry<String, String> fitted : attachments(stack).entrySet()) {
                 ItemDef part = registry.get(fitted.getValue());
                 if (part != null) {
-                    lore.add(Text.mm("<#8A8F98>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(fitted.getKey())
+                    lore.add(Text.mm("<muted>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(fitted.getKey())
                             + " " + part.coloredName()));
                 }
             }
         }
         if (stack.getPersistentDataContainer().has(Keys.INSURED)) {
-            lore.add(Text.mm("<#5BD16B>✔ 本局已投保"));
+            lore.add(Text.mm("<ok>✔ 本局已投保"));
         }
         if (def.attach() != null) {
             var part = def.attach();
@@ -749,50 +755,50 @@ public final class ItemFactory {
             if (part.mounts().contains("pistol")) {
                 fits.add("手枪");
             }
-            lore.add(Text.mm("<#8A8F98>配件位 <white>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(part.slot())
-                    + "  <#8A8F98>适用 <white>" + String.join(" / ", fits)));
+            lore.add(Text.mm("<muted>配件位 <white>" + net.infnetwork.snowball.craftov.weapon.Attachments.slotName(part.slot())
+                    + "  <muted>适用 <white>" + String.join(" / ", fits)));
             String effects = net.infnetwork.snowball.craftov.weapon.Attachments.effects(part);
             if (!effects.isEmpty()) {
                 lore.add(Text.mm(effects));
             }
         }
         if (def.optic() != null) {
-            lore.add(Text.mm("<#8A8F98>放大倍率 <white>" + def.optic().magnification() + " 倍  <#8A8F98>适用 <white>"
+            lore.add(Text.mm("<muted>放大倍率 <white>" + def.optic().magnification() + " 倍  <muted>适用 <white>"
                     + (def.optic().mounts().contains("pistol") ? "步枪 / 冲锋枪 / 霰弹枪 / 手枪" : "步枪 / 冲锋枪 / 霰弹枪")));
         }
         if (def.ammo() != null) {
-            lore.add(Text.mm("<#8A8F98>口径 <white>" + def.ammo().caliber() + "  <#8A8F98>穿透等级 <white>" + def.ammo().penetration()));
+            lore.add(Text.mm("<muted>口径 <white>" + def.ammo().caliber() + "  <muted>穿透等级 <white>" + def.ammo().penetration()));
         }
         MeleeSpec melee = def.melee();
         if (melee != null) {
-            lore.add(Text.mm("<#8A8F98>伤害 <white>" + fmt(melee.damage()) + "  <#8A8F98>穿透等级 <white>" + melee.penetration()
-                    + (melee.headMultiplier() != 1.0 ? "  <#8A8F98>头部 <white>×" + fmt(melee.headMultiplier()) : "")));
-            lore.add(Text.mm("<#8A8F98>出手间隔 <white>" + fmt(melee.cooldownTicks() / 20.0) + "s  <#8A8F98>距离 <white>"
+            lore.add(Text.mm("<muted>伤害 <white>" + fmt(melee.damage()) + "  <muted>穿透等级 <white>" + melee.penetration()
+                    + (melee.headMultiplier() != 1.0 ? "  <muted>头部 <white>×" + fmt(melee.headMultiplier()) : "")));
+            lore.add(Text.mm("<muted>出手间隔 <white>" + fmt(melee.cooldownTicks() / 20.0) + "s  <muted>距离 <white>"
                     + fmt(melee.reach()) + " 格"));
         }
         if (def.isArmor()) {
             double dura = dura(stack, def.durability());
-            lore.add(Text.mm("<#8A8F98>防护等级 <white>" + def.armorClass() + "  <#8A8F98>耐久 <white>"
+            lore.add(Text.mm("<muted>防护等级 <white>" + def.armorClass() + "  <muted>耐久 <white>"
                     + fmt(dura) + "/" + fmt(def.durability())));
             double fullAbove = net.infnetwork.snowball.craftov.CraftovPlugin.get().getConfig()
                     .getDouble("combat.armor.full-protection-above", net.infnetwork.snowball.craftov.combat.DamageService.FULL_PROTECTION_ABOVE);
             if (fullAbove > 0) {
-                lore.add(Text.mm("<#8A8F98>耐久低于 " + Math.round(Math.min(1, fullAbove) * 100) + "% 时防护下降"));
+                lore.add(Text.mm("<muted>耐久低于 " + Math.round(Math.min(1, fullAbove) * 100) + "% 时防护下降"));
             }
         }
         if (def.isContainer()) {
             int stored = hasContents(stack) ? contents(stack).size() : 0;
-            lore.add(Text.mm("<#8A8F98>容量 <white>" + def.slots() + " 格" + (stored > 0 ? "  <#FFC23D>内含 " + stored + " 件物品" : "")));
+            lore.add(Text.mm("<muted>容量 <white>" + def.slots() + " 格" + (stored > 0 ? "  <accent>内含 " + stored + " 件物品" : "")));
         }
         MedSpec med = def.med();
         if (med != null) {
             if (med.pool() > 0) {
-                lore.add(Text.mm("<#8A8F98>剩余治疗量 <white>" + fmt(dura(stack, med.pool())) + "/" + fmt(med.pool())));
+                lore.add(Text.mm("<muted>剩余治疗量 <white>" + fmt(dura(stack, med.pool())) + "/" + fmt(med.pool())));
             }
-            lore.add(Text.mm("<#8A8F98>使用时间 <white>" + fmt(med.useSeconds()) + "s"));
+            lore.add(Text.mm("<muted>使用时间 <white>" + fmt(med.useSeconds()) + "s"));
         }
         if (def.category() == Category.KEY) {
-            lore.add(Text.mm("<#8A8F98>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
+            lore.add(Text.mm("<muted>剩余次数 <white>" + fmt(dura(stack, def.durability()))));
         }
         // A stackable item shows one unit's weight and price: lore that follows the amount would make
         // two stacks of different sizes different items, which neither the client's click merge nor
@@ -800,18 +806,18 @@ public final class ItemFactory {
         // changes without a rebuild (a reload, a partial merge). The trader shows the whole stack.
         boolean stackable = def.maxStack() > 1;
         String unit = def.category() == Category.AMMO ? "发" : "个";
-        lore.add(Text.mm("<#8A8F98>重量 <white>" + fmtWeight(def.weight()) + "kg" + (stackable ? "<#8A8F98>/" + unit : "")));
+        lore.add(Text.mm("<muted>重量 <white>" + fmtWeight(def.weight()) + "kg" + (stackable ? "<muted>/" + unit : "")));
         if (isKit(stack)) {
-            lore.add(Text.mm("<#FFB74D>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
+            lore.add(Text.mm("<accent>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
         }
         if (isRange(stack)) {
-            lore.add(Text.mm("<#FFB74D>靶场专用 · 不能带出靶场，离开时自动收回"));
+            lore.add(Text.mm("<accent>靶场专用 · 不能带出靶场，离开时自动收回"));
         } else if (isTest(stack)) {
-            lore.add(Text.mm("<#FFB74D>试验场物资 · 没有价值，不能带出对局，撤离时收回"));
+            lore.add(Text.mm("<accent>试验场物资 · 没有价值，不能带出对局，撤离时收回"));
         } else {
             lore.add(stackable
-                    ? Text.mm("<#8A8F98>单价 <#F2C94C>◈ " + Text.money(unitValue(stack)) + "<#8A8F98>/" + unit)
-                    : Text.mm("<#8A8F98>价值 <#F2C94C>◈ " + Text.money(value(stack))));
+                    ? Text.mm("<muted>单价 <accent>◈ " + Text.money(unitValue(stack)) + "<muted>/" + unit)
+                    : Text.mm("<muted>价值 <accent>◈ " + Text.money(value(stack))));
         }
         stack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
     }

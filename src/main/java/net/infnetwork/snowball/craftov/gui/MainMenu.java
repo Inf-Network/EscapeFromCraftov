@@ -101,11 +101,18 @@ final class MainMenu extends Menu {
                 "<muted>物品栏第 2 行是胸挂格，第 3、4 行是背包格")));
         set(49, UiItems.button("craftov:ui/icon_profile", "<text><b>" + Text.escape(viewer.getName()),
                 List.of("<muted>块币 <accent>◈ " + Text.money(p.money),
+                        "<muted>点券 <info>" + pointsLine(),
                         "<muted>等级 <white>Lv." + p.level + " <muted>(" + p.xp + "/" + plugin.ranks().xpForLevel(p.level) + ")",
                         "<muted>排位 " + plugin.ranks().tierName(p.rankPoints) + " <muted>" + p.rankPoints + " 分",
                         "<muted>当前战备值 <white>◈ " + Text.money(value),
                         "<muted>撤离 <white>" + p.stat("extracts") + " <muted>/ 出击 <white>" + p.stat("raids")
                                 + " <muted>· 击败干员 <white>" + p.stat("kills"))));
         closeButton(53);
+    }
+
+    /** The viewer's 点券 balance (the server's premium currency, #106), or a dash when it cannot be read. */
+    private String pointsLine() {
+        long points = plugin.points().balance(viewer.getUniqueId());
+        return points < 0 ? "—" : Text.money(points);
     }
 }

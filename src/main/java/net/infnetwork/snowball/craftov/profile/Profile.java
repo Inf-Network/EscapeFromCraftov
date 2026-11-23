@@ -16,6 +16,12 @@ public final class Profile {
     public UUID uuid;
     public String name = "";
     public long money;
+    /**
+     * 点券, the server's premium currency, while it is a placeholder: read and changed only through
+     * PointsBank (CraftovPlugin.points()), which the server's global currency can replace. Never
+     * bought with {@link #money}.
+     */
+    public long points;
     public int level = 1;
     public long xp;
     public int rankPoints = 1000;

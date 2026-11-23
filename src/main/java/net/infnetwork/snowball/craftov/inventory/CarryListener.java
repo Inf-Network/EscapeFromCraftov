@@ -49,10 +49,16 @@ public final class CarryListener implements Listener {
         if (event.getView().getTopInventory().getHolder() instanceof Menu) {
             return; // menus handle every click themselves
         }
-        // Crafting grid and any foreign container top inventory are off limits.
+        boolean ownScreen = event.getView().getType() == InventoryType.CRAFTING;
+        // Crafting grid and any foreign container top inventory are off limits. On the player's own
+        // screen the grid holds the info cells (CarryInfo), which exist only on the client: a click
+        // there is that cell's button, and the cells are sent again since the client already moved them.
         if (event.getClickedInventory() != null && event.getClickedInventory() != player.getInventory()) {
-            if (event.getView().getType() == InventoryType.CRAFTING || event.getView().getType() == InventoryType.WORKBENCH) {
+            if (ownScreen || event.getView().getType() == InventoryType.WORKBENCH) {
                 event.setCancelled(true);
+                if (ownScreen) {
+                    plugin.carryInfo().clicked(player, event.getRawSlot(), event.getClick());
+                }
                 return;
             }
         }
@@ -93,12 +99,29 @@ public final class CarryListener implements Listener {
                     || (ItemFactory.hasContents(hotbar) && slot < CarryService.FEET)
                     || ItemFactory.hasContents(current)) {
                 event.setCancelled(true);
+                return;
             }
+            refuseByZone(player, event, slot, current, cursor);
             return;
         }
         if (slot == CarryService.LEGS || slot == CarryService.FEET) {
             event.setCancelled(true);
             handleContainerSlot(player, slot, event);
+            return;
+        }
+        if (ownScreen && event.isShiftClick() && (slot == CarryService.HEAD || slot == CarryService.CHEST)) {
+            // Taking the helmet or vest off goes into the backpack, not the first free cell vanilla picks.
+            event.setCancelled(true);
+            ItemStack worn = player.getInventory().getItem(slot);
+            if (worn != null && !worn.isEmpty()) {
+                player.getInventory().setItem(slot, null);
+                ItemStack left = carry.give(player, worn, false);
+                if (left != null) {
+                    player.getInventory().setItem(slot, left);
+                    Notify.error(player, "背包里没有空位");
+                }
+                player.updateInventory();
+            }
             return;
         }
         if (event.isShiftClick() && slot < CarryService.FEET) {
@@ -128,6 +151,28 @@ public final class CarryListener implements Listener {
                 && (event.getAction().name().startsWith("PLACE") || event.getAction() == InventoryAction.SWAP_WITH_CURSOR)) {
             event.setCancelled(true);
             Notify.error(player, "装有物品的胸挂/背包不能放进携行格，请直接装备或放进箱子");
+            return;
+        }
+        if (ownScreen && event.isShiftClick() && slot < CarryService.FEET) {
+            // Vanilla would move it to the first free cell of the other half whatever the zone rules say.
+            event.setCancelled(true);
+            plugin.weapons().flush(player);
+            carry.moveAcross(player, slot);
+            player.updateInventory();
+            return;
+        }
+        refuseByZone(player, event, slot, current, cursor);
+    }
+
+    /**
+     * Cancels a click that would put something into a cell its zone does not take (CarryService#refusal):
+     * a placed or swapped cursor, or either side of a number-key swap. Says why on the action bar.
+     */
+    private void refuseByZone(Player player, InventoryClickEvent event, int slot, ItemStack current, ItemStack cursor) {
+        String why = carry.clickRefusal(player, event.getAction(), slot, current, cursor, event.getHotbarButton());
+        if (why != null) {
+            event.setCancelled(true);
+            Notify.error(player, why);
         }
     }
 
@@ -201,7 +246,7 @@ public final class CarryListener implements Listener {
         carry.equip(player, moving);
     }
 
-    /** Shift-click takes off an empty rig or backpack into a free carry cell. */
+    /** Shift-click takes off an empty rig into a free backpack cell; a backpack has no such cell and stays on. */
     private void shiftUnequip(Player player, int slot) {
         PlayerInventory inv = player.getInventory();
         int start = slot == CarryService.LEGS ? CarryService.RIG_START : CarryService.PACK_START;
@@ -217,7 +262,9 @@ public final class CarryListener implements Listener {
         if (removed != null) {
             ItemStack left = carry.give(player, removed, false);
             if (left != null) {
+                // A rig or backpack fits only into a backpack cell: the backpack itself never does.
                 carry.equip(player, left);
+                Notify.error(player, slot == CarryService.FEET ? "背包只能穿着，或用鼠标拿起放进仓库或箱子" : "背包里没有空位");
             }
         }
     }
@@ -262,8 +309,7 @@ public final class CarryListener implements Listener {
             return;
         }
         if (event.getView().getTopInventory().getHolder() instanceof Menu) {
-            event.setCancelled(true);
-            return;
+            return; // the menu decides (Menu#drag, MenuListener), as for clicks
         }
         if (ItemFactory.hasContents(event.getOldCursor()) || ItemFactory.isUi(event.getOldCursor())) {
             event.setCancelled(true);
@@ -273,6 +319,9 @@ public final class CarryListener implements Listener {
         for (int raw : event.getRawSlots()) {
             if (raw < topSize && (event.getView().getType() == InventoryType.CRAFTING || event.getView().getType() == InventoryType.WORKBENCH)) {
                 event.setCancelled(true);
+                if (event.getView().getType() == InventoryType.CRAFTING) {
+                    plugin.carryInfo().resend(player);
+                }
                 return;
             }
             int slot = event.getView().convertSlot(raw);
@@ -289,6 +338,12 @@ public final class CarryListener implements Listener {
                 ItemStack existing = player.getInventory().getItem(slot);
                 if (ItemFactory.isUi(existing)) {
                     event.setCancelled(true);
+                    return;
+                }
+                String why = carry.refusal(event.getOldCursor(), slot);
+                if (why != null) {
+                    event.setCancelled(true);
+                    Notify.error(player, why);
                     return;
                 }
             }
@@ -323,6 +378,11 @@ public final class CarryListener implements Listener {
         }
         // The cursor goes back on the player before vanilla does (CarryService#settleCursor says why).
         carry.settleCursor(player);
+        if (managed(player) && event.getView().getType() == InventoryType.CRAFTING) {
+            // Closing the inventory screen clears the crafting result slot on the client, and with
+            // it the protection cell (CarryInfo); the server never sees it go, so it is sent again.
+            plugin.carryInfo().resend(player);
+        }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || !managed(player)) {
                 return;

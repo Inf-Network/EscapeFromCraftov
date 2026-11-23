@@ -134,10 +134,12 @@ async function priceMenu (bot, id, { deposit = false, pred } = {}) {
     if (s < 0) throw new Error('no carried ' + id)
     await click(bot, s, 500)
   }
-  for (let i = 0; i < 3 && !title(w.slots[48]).includes('上架'); i++) await click(bot, 48)
-  const t = find(w, id, 0, 45, pred, deposit)
+  // The stash retitles itself on every deposit (mineflayer then has a new window), shows the newest
+  // record first, and lists an item on a right-click (#10).
+  const cur = bot.currentWindow || w
+  const t = find(cur, id, 9, 45, pred, false)
   if (t < 0) throw new Error('no stash ' + id)
-  const pm = await openWith(bot, () => bot.clickWindow(t, 0, 0))
+  const pm = await openWith(bot, () => bot.clickWindow(t, 1, 0))
   if (!pm) throw new Error('price menu did not open')
   return pm
 }
@@ -159,7 +161,7 @@ async function kitM4c (bot, parts) {
   const g = find(w, 'm4c', 0, 9)
   if (g >= 0) await click(bot, g)
   for (const part of parts) {
-    const p = find(w, part, 45, 54)
+    const p = find(bot.currentWindow || w, part, 45, 54) // the gunsmith retitles itself on a pick
     if (p < 0) throw new Error('part not offered: ' + part)
     await click(bot, p, 500)
   }

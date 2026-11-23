@@ -26,6 +26,7 @@ import sounds  # noqa: E402
 import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
 import gunsamples  # noqa: E402
+import guiview  # noqa: E402
 import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
@@ -1156,6 +1157,15 @@ def main():
     build_betterhud()
     count = sum(len(files) for _, _, files in os.walk(PACK))
     print(f'pack files: {count}, betterhud files: {sum(len(f) for _, _, f in os.walk(BH))}')
+    # Slot wells, glyph grid, code points, oversized GUI models, tooltip nine-slices: a failure here
+    # means a screen would not line up in the game (tools/art/guiview.py makes previews of them).
+    problems = guiview.check()
+    if problems:
+        print('guiview: %d problem(s)' % len(problems))
+        for problem in problems:
+            print('  ' + problem)
+        sys.exit(1)
+    print('guiview: all screens line up')
     # The gun reports as the client will decode them: a failure here means the pack must not ship.
     failures = audiocheck.check(os.path.join(CV, 'sounds'), verbose=False)
     if failures:

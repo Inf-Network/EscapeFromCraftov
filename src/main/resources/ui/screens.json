@@ -73,5 +73,15 @@
   "char": "",
   "advance": 177,
   "left": 0
+ },
+ "settlement_training_ok": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "settlement_training_fail": {
+  "char": "",
+  "advance": 177,
+  "left": 0
  }
 }

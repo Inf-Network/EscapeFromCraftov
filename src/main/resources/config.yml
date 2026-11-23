@@ -263,6 +263,9 @@ combat:
     # baked into the resource pack as 50 frames over the inspect (tools/art/knife_inspect.py): a
     # different length plays the same motion faster or slower.
     inspect-ticks: 50
+    # F during a cut waits for the swing to end and inspects then. A player who keeps cutting gets
+    # 出刀中无法检视 on the action bar once a press has waited this many ticks (6 at least, one swing).
+    inspect-swing-wait-ticks: 12
 
 weapons:
   # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
@@ -567,9 +570,23 @@ escort:
   failure-share: 0.3
 
 tutorial:
-  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward.
+  # Step-by-step guide for new players (terminal, range, FOV Effects check, gunsmith, deploy,
+  # extract), done in any order, and its reward, paid once all six are done.
   enabled: true
   reward: 20000
+  # The three-page briefing (goal, rules, controls) that opens for a new player after joining.
+  briefing: true
+
+# The training raid: a solo course on the training ground (crate, targets, a reload, a wound to
+# treat, a lever extract). Offered on the deploy screen while the guide runs, or /cv training.
+# Nothing in it counts and the gear brought in comes back; finishing it counts as the guide's
+# deploy and extract steps.
+training:
+  enabled: true
+  # (s) the lever's countdown on the course, much shorter than extract.switch-countdown-seconds.
+  switch-countdown-seconds: 10
+  # (s) between two courses started by one player: each start copies and loads a world.
+  cooldown-seconds: 30
 
 season:
   # Changing the id starts a new season (everyone's pass progress resets).

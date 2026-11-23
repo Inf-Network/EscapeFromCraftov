@@ -32,6 +32,7 @@ import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.rank.CollectionService;
 import net.infnetwork.snowball.craftov.rank.RankService;
 import net.infnetwork.snowball.craftov.weapon.InspectService;
+import net.infnetwork.snowball.craftov.weapon.SwapKeyService;
 import net.infnetwork.snowball.craftov.weapon.ThrowableService;
 import net.infnetwork.snowball.craftov.weapon.TriggerService;
 import net.infnetwork.snowball.craftov.weapon.WeaponService;
@@ -95,10 +96,12 @@ public final class CraftovPlugin extends JavaPlugin {
     private DownedService downed;
     private WeaponService weapons;
     private net.infnetwork.snowball.craftov.weapon.FovService fov;
+    private InspectService inspect;
     private RaidManager raids;
     private AiService ai;
     private LobbyService lobby;
     private net.infnetwork.snowball.craftov.lobby.RangeService range;
+    private net.infnetwork.snowball.craftov.raid.TrainingService training;
     private MatchService match;
     private TraderService traders;
     private MarketService market;
@@ -139,7 +142,7 @@ public final class CraftovPlugin extends JavaPlugin {
                     + " copy (or merge the changes and set revision: " + old.bundled() + "), then /cv reload.");
         }
         loadTiers();
-        registry = new ItemRegistry(getLogger());
+        registry = new ItemRegistry(getLogger(), ItemRegistry.sizes(getResource("items.yml")));
         if (registry.load(new File(getDataFolder(), "items.yml")) != null) {
             // Running without an item table would empty every loadout it captures: stay off until
             // the file is fixed instead.
@@ -171,6 +174,7 @@ public final class CraftovPlugin extends JavaPlugin {
         weapons = new WeaponService(this);
         fov = new net.infnetwork.snowball.craftov.weapon.FovService(this);
         triggers = new TriggerService(this);
+        inspect = new InspectService(this);
         stance = new net.infnetwork.snowball.craftov.weapon.StanceService(this);
         lights = new net.infnetwork.snowball.craftov.weapon.TacticalLight(this);
         replays = new net.infnetwork.snowball.craftov.replay.ReplayService(this);
@@ -185,6 +189,7 @@ public final class CraftovPlugin extends JavaPlugin {
         raids = new RaidManager(this);
         lobby = new LobbyService(this);
         range = new net.infnetwork.snowball.craftov.lobby.RangeService(this);
+        training = new net.infnetwork.snowball.craftov.raid.TrainingService(this);
         match = new MatchService(this);
         traders = new TraderService(this);
         market = new MarketService(this);
@@ -203,8 +208,8 @@ public final class CraftovPlugin extends JavaPlugin {
 
         // Registration order matters for same-priority handlers: weapons flush before menus move items.
         register(adminGuard, editor, triggers, weapons, new MenuListener(this), new CarryListener(this, carry), damage, health, stamina, downed,
-                raids, ai, lobby, range, operators, stance, lights, replays, drones, new ThrowableService(this),
-                new InspectService(this), market, profiles, killFeed, fov);
+                raids, ai, lobby, range, stance, lights, replays, drones, new ThrowableService(this),
+                inspect, new SwapKeyService(this), market, profiles, killFeed, fov);
 
         PluginCommand command = getCommand("craftov");
         CraftovCommand executor = new CraftovCommand(this);
@@ -414,19 +419,21 @@ public final class CraftovPlugin extends JavaPlugin {
 
     /**
      * Whether the player may see and queue for this map. Only published maps (not an editor draft)
-     * are open, and test maps (the proving ground, whose armory hands out one of everything) need
-     * the same access as the catalog.
+     * are open, test maps (the proving ground, whose armory hands out one of everything) need the
+     * same access as the catalog, and the training ground is never queued (TrainingService starts it).
      */
     public boolean canPlay(Player player, net.infnetwork.snowball.craftov.map.MapDef map) {
-        return map.enabled() && (!map.test() || canUseCatalog(player));
+        return map.enabled() && !map.training() && (!map.test() || canUseCatalog(player));
     }
     public DownedService downed() { return downed; }
     public WeaponService weapons() { return weapons; }
     public net.infnetwork.snowball.craftov.weapon.FovService fov() { return fov; }
+    public InspectService inspect() { return inspect; }
     public RaidManager raids() { return raids; }
     public AiService ai() { return ai; }
     public LobbyService lobby() { return lobby; }
     public net.infnetwork.snowball.craftov.lobby.RangeService range() { return range; }
+    public net.infnetwork.snowball.craftov.raid.TrainingService training() { return training; }
     public MatchService match() { return match; }
     public TraderService traders() { return traders; }
     public MarketService market() { return market; }

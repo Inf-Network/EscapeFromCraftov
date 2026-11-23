@@ -20,10 +20,6 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
 
@@ -35,7 +31,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /** Operators and their skills (sneak + F in a raid). */
-public final class OperatorService implements Listener {
+public final class OperatorService {
 
     public static final Map<String, OperatorDef> OPERATORS = new LinkedHashMap<>();
 
@@ -110,15 +106,7 @@ public final class OperatorService implements Listener {
 
     // ------------------------------------------------------------------ active skill
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onSkillKey(PlayerSwapHandItemsEvent event) {
-        Player player = event.getPlayer();
-        event.setCancelled(true);
-        if (player.isSneaking()) {
-            activate(player);
-        }
-    }
-
+    /** Sneak+F (SwapKeyService reads the key), or the skill button in the terminal. */
     public void activate(Player player) {
         RaidPlayer rp = plugin.raids().session(player);
         Raid raid = plugin.raids().raidOf(player);

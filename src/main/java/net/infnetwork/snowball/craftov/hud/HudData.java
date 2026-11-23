@@ -281,6 +281,34 @@ public final class HudData {
         return best.def.name() + " " + (bearing < 0 ? "" : BEARINGS[bearing] + " ") + (int) Math.sqrt(bestD) + "m";
     }
 
+    /**
+     * The guide's goal as the HUD's objective line (BetterHud text): what to do, then which way and how
+     * far, or "here" once the player stands next to it. In a raid the line only gives the distance:
+     * the info panel above it names the extract and its direction already. "" without a goal.
+     */
+    public String objective(Player p, net.infnetwork.snowball.craftov.lobby.TutorialService.@Nullable Objective objective) {
+        if (objective == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(Style.tag(Style.ACCENT) + "目标 " + Style.tag(Style.TEXT) + objective.text());
+        Location target = objective.target();
+        if (target != null && target.getWorld() == p.getWorld()) {
+            double dx = target.getX() - p.getX();
+            double dz = target.getZ() - p.getZ();
+            int distance = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
+            sb.append(Style.tag(Style.MUTED)).append(" · ");
+            if (distance <= 3) {
+                // The raid's panel is the squad rows' 132 px (TrainingService.Lesson#objective).
+                sb.append(inRaid(p) ? "到了" : "就在这里");
+            } else if (inRaid(p)) {
+                sb.append(distance).append('m');
+            } else {
+                sb.append(BEARINGS[bearing(p, target)]).append(' ').append(distance).append('m');
+            }
+        }
+        return sb.toString();
+    }
+
     /** An arrow pointing at the target from where the player looks, or "" in another world. */
     public String arrow(Player p, Location target) {
         int bearing = bearing(p, target);

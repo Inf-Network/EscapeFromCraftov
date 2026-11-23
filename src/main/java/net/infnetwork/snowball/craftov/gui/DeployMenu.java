@@ -9,6 +9,7 @@ import net.infnetwork.snowball.craftov.raid.Tier;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ import java.util.UUID;
  * listed only for players who may enter them, and are never picked for anyone else, not even from the
  * choice remembered from their last deploy. Unpublished editor drafts are not listed at all; a map
  * whose template is being edited in place is listed as under maintenance and cannot be queued for.
+ * While a player's new-player guide runs, the first card is the training raid (TrainingService),
+ * which starts at once, alone and with nothing at stake.
  */
 final class DeployMenu extends Menu {
 
@@ -84,6 +87,21 @@ final class DeployMenu extends Menu {
         long value = plugin.carry().gearValue(viewer);
         map = validMap(map);
         int slot = 10;
+        if (plugin.training().offered(viewer)) {
+            ItemStack card = UiItems.button("craftov:ui/icon_start", "<accent><b>训练行动</b> <muted>· 推荐新手", List.of(
+                    "<muted>单人，约 3 分钟，不用带任何装备",
+                    "<muted>搜箱子、开镜打靶、换弹、处理伤势、拉闸撤离",
+                    "<muted>你的装备先替你保管，结束后原样归还",
+                    "<muted>不计战绩；完成算作新手指引的「出发」和「撤离」",
+                    "<accent>点击直接开始"));
+            card.setData(io.papermc.paper.datacomponent.DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+            button(slot++, card, e -> {
+                String why = plugin.training().start(viewer);
+                if (why != null) {
+                    net.infnetwork.snowball.craftov.util.Notify.error(viewer, why);
+                }
+            });
+        }
         for (MapDef def : playable()) {
             boolean selected = def.id().equals(map);
             int waiting = plugin.match().queuedCount(def.id(), tier);

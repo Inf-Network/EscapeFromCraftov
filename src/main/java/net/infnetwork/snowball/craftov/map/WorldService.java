@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.map;
 import net.infnetwork.snowball.craftov.map.gen.MapGenerator;
 import net.infnetwork.snowball.craftov.map.gen.ProvingGroundGenerator;
 import net.infnetwork.snowball.craftov.map.gen.RustPortGenerator;
+import net.infnetwork.snowball.craftov.map.gen.TrainingGroundGenerator;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
 import org.bukkit.GameRule;
@@ -93,7 +94,9 @@ public final class WorldService {
 
     private static final List<Builtin> BUILTINS = List.of(
             new Builtin(RustPortGenerator.ID, "锈港", RustPortGenerator::new, 104, 66, 104, RustPortGenerator::migrate),
-            new Builtin(ProvingGroundGenerator.ID, "试验场", ProvingGroundGenerator::new, 60, 65, 92, def -> def));
+            new Builtin(ProvingGroundGenerator.ID, "试验场", ProvingGroundGenerator::new, 60, 65, 92, def -> def),
+            new Builtin(TrainingGroundGenerator.ID, "训练场", TrainingGroundGenerator::new, 3, TrainingGroundGenerator.G + 1, 10,
+                    def -> def));
 
     /** Generates every built-in map whose template or definition is missing. */
     public void ensureBuiltins() {

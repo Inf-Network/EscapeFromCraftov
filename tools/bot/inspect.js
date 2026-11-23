@@ -1,17 +1,33 @@
-// Knife inspect (issue #82). F with a knife in hand puts the craftov:inspect cooldown group on cooldown
-// for combat.melee.inspect-ticks (the client plays the inspect frames of the item model from it); a
-// swing, a slot switch or sprinting clears it at once. The bot watches the cooldown packets.
+// Knife inspect (issues #82 and #104). F with a knife in hand puts the craftov:inspect cooldown group on
+// cooldown for combat.melee.inspect-ticks (the client plays the inspect frames of the item model from
+// it); a swing, a slot switch or sprinting clears it at once. The bot watches the cooldown packets and
+// the action bar.
+//
+// A real client sends F from the middle of its tick: Shift and W (so the end of a sprint) follow at the
+// end of the same tick, a hotbar key pressed in the same tick only at the start of the next, and every
+// tick ends with a tick_end packet. The bot sends tick_end every 50 ms like a client, and the "one
+// client tick" checks write a tick's packets in exactly that order (tools/shots/scenes/inspectkeys.py
+// presses the same keys with the real client).
 //
 //   1. lobby, each of the four knives: the knife carries the inspect cooldown group, F starts the
 //      inspect (cooldown > 0) and nothing clears it before it has run out;
-//   2. F again during an inspect does not restart it;
+//   2. F again 0.5 s into an inspect starts it over (a second start), and so does F as it ends;
 //   3. a swing, a slot switch and starting to sprint each clear a running inspect (cooldown 0)
 //      within 300 ms;
-//   4. no inspect while sprinting, with sneak+F (the operator skill) or with a gun in hand (F
-//      switches the fire mode);
-//   5. in the proving ground, with the karambit against a second bot: a cut during an inspect lands
+//   4. the same client tick: F as W is let go after a sprint inspects (it was refused as sprinting);
+//      F as Shift goes up inspects (it fired the operator skill); Shift going down with F fires the
+//      skill (it inspected); 3 then F from a gun inspects the knife and leaves the gun's fire mode
+//      alone (it switched the fire mode), also with the next client tick 250 ms late (a client at a
+//      few frames a second, or jitter: it was read after 150 ms, before the slot change);
+//   5. F 50 ms after a swing inspects once the swing is over (at least 200 ms after the swing, not
+//      over it);
+//   6. no inspect while sprinting, and the action bar says 冲刺中无法检视; none with sneak+F (the
+//      operator skill); with a gun in hand F switches the fire mode and does not inspect, and F in two
+//      adjacent client ticks switches it twice (the second F was dropped);
+//   7. in the proving ground, with the karambit against a second bot: a cut during an inspect lands
 //      and ends the inspect; a cut, F right after it, and a second cut one swing interval after the
-//      first: the second cut lands too (the inspect does not hold up the knife).
+//      first: the inspect starts in between and the second cut lands too (the inspect does not hold
+//      up the knife).
 //
 //   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node inspect.js [--no-raid]
 //
@@ -46,6 +62,18 @@ function make (name) {
   // Every inspect cooldown packet: when it came and for how many ticks (0 clears it).
   bot.inspects = []
   bot._client.on('set_cooldown', p => { if (p.cooldownGroup === GROUP) bot.inspects.push({ at: Date.now(), ticks: p.cooldownTicks }) })
+  bot.bars = []
+  bot._client.on('action_bar', p => bot.bars.push({ at: Date.now(), text: JSON.stringify(p.text) }))
+  // The click of each fire mode switch (WeaponService.nextFireMode plays gun.mode): one per step, where
+  // a second action bar line may wait behind the first or give way to another.
+  bot.modeClicks = []
+  const click = p => { if (/gun\.mode\b/.test(JSON.stringify(p))) bot.modeClicks.push(Date.now()) }
+  bot._client.on('sound_effect', click)
+  bot._client.on('entity_sound_effect', click)
+  // A client ends every tick with tick_end; the server reads F by them. A check that writes its own
+  // ticks sets bot.paused.
+  bot.paused = false
+  bot.ticker = setInterval(() => { if (bot._client.state === 'play' && !bot.paused) tickEnd(bot) }, 50)
   bot.on('kicked', r => log(name, 'KICKED', r))
   bot.on('error', e => log(name, 'ERROR', e.message))
   bots.push(bot)
@@ -64,6 +92,10 @@ const cooldownGroup = item => { const c = ((item && item.components) || []).find
 
 /** F: the swap-hands action. */
 const pressF = bot => bot._client.write('block_dig', { status: 6, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+/** The last packet of a client tick. */
+function tickEnd (bot) { bot._client.write('tick_end', {}) }
+/** The keys held this tick (forward, backward, left, right, jump, shift, sprint). */
+const input = (bot, keys = {}) => bot._client.write('player_input', { inputs: keys })
 /** Sprint on or off. mineflayer's setControlState('sprint') sends the 1.21.5 action id (3, a riding
  * jump in 1.21.11), so the player command goes out by name. */
 const sprint = (bot, on) => bot._client.write('entity_action', { entityId: bot.entity.id, actionId: on ? 'start_sprinting' : 'stop_sprinting', jumpBoost: 0 })
@@ -75,6 +107,8 @@ async function inspectsDuring (bot, fn, ms) {
   await sleep(ms)
   return bot.inspects.filter(p => p.at >= from).map(p => ({ after: p.at - from, ticks: p.ticks }))
 }
+
+const barsSince = (bot, from) => bot.bars.filter(b => b.at >= from).map(b => b.text)
 
 /** Ends a running inspect (a slot switch away and back) and waits until nothing is in flight. */
 async function settle (bot) {
@@ -152,12 +186,20 @@ async function killSoldiers (bot) {
   }
   log(`inspect runs ${ticks} ticks`)
 
-  // 2. F again during an inspect.
+  // 2. F again during an inspect, and as it ends.
   await settle(a)
   {
     const got = await inspectsDuring(a, async () => { pressF(a); await sleep(500); pressF(a) }, 400)
-    check('F again during an inspect does not restart it (one start packet)', got.length === 1 && got[0].ticks > 0, got)
+    check('F again 0.5 s into an inspect starts it over (two start packets)', got.filter(p => p.ticks > 0).length === 2, got)
   }
+  await sleep(ticks * 50)
+  {
+    pressF(a)
+    await sleep(ticks * 50 - 150)
+    const got = await inspectsDuring(a, () => pressF(a), 400)
+    check('F as an inspect ends starts it over', got.some(p => p.ticks > 0), got)
+  }
+  await sleep(ticks * 50)
 
   // 3. Interruptions.
   for (const [what, act] of [
@@ -175,15 +217,108 @@ async function killSoldiers (bot) {
     await sleep(800)
   }
 
-  // 4. No inspect while sprinting, with sneak+F, or with a gun in hand.
+  // A gun next to the knife, for the fire mode.
   await settle(a)
+  await rcon(`cv give ${a.username} m4c`)
+  let gunSlot = -1
+  await waitFor(() => (gunSlot = a.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && pdc(s, 'id') === 'm4c')) >= 0, 5000)
+  if (gunSlot < 0) {
+    log('SETUP: no m4c in the hotbar')
+    return finish(2)
+  }
+  gunSlot -= 36
   if (!await holdKnife(a, 'knife_karambit')) return finish(2)
+  await sleep(500)
+
+  // 4. What one client tick sends, in its order.
   {
     sprint(a, true)
+    input(a, { forward: true, sprint: true })
     await sleep(500)
+    const got = await inspectsDuring(a, () => { pressF(a); input(a); sprint(a, false); tickEnd(a) }, 400)
+    check('F in the client tick W is let go after a sprint inspects', got.some(p => p.ticks > 0), got)
+    await sleep(ticks * 50)
+  }
+  {
+    input(a, { shift: true })
+    await sleep(400)
+    const from = Date.now()
+    const got = await inspectsDuring(a, () => { pressF(a); input(a); tickEnd(a) }, 500)
+    const skill = barsSince(a, from).filter(t => t.includes('技能'))
+    check('F in the client tick Shift goes up inspects (not the operator skill)', got.some(p => p.ticks > 0) && skill.length === 0, { got, skill })
+    await sleep(ticks * 50)
+  }
+  {
+    const from = Date.now()
+    const got = await inspectsDuring(a, () => { pressF(a); input(a, { shift: true }); tickEnd(a) }, 800)
+    input(a)
+    const skill = barsSince(a, from).filter(t => t.includes('技能'))
+    check('Shift going down with F in one client tick fires the operator skill (no inspect)', !got.some(p => p.ticks > 0) && skill.length > 0, { got, skill })
+    await sleep(1600) // the hint's hold on the action bar
+  }
+  {
+    a.setQuickBarSlot(gunSlot)
+    await sleep(600)
+    const from = Date.now()
+    const got = await inspectsDuring(a, () => {
+      pressF(a)
+      tickEnd(a)
+      a._client.write('held_item_slot', { slotId: 2 }) // the next tick starts with the slot change
+      a.quickBarSlot = 2
+      a.updateHeldItem()
+      tickEnd(a)
+    }, 800)
+    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    check('3 then F in one client tick, from the gun, inspects the knife and leaves the fire mode alone',
+      got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
+    await sleep(ticks * 50)
+  }
+  {
+    a.setQuickBarSlot(gunSlot)
+    await sleep(600)
+    const from = Date.now()
+    a.paused = true
+    const got = await inspectsDuring(a, async () => {
+      pressF(a)
+      tickEnd(a)
+      await sleep(250) // the next client tick comes late
+      a._client.write('held_item_slot', { slotId: 2 })
+      a.quickBarSlot = 2
+      a.updateHeldItem()
+      tickEnd(a)
+    }, 800)
+    a.paused = false
+    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    check('3 then F from the gun, the next client tick 250 ms late: inspects the knife, the fire mode stays',
+      got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
+    await sleep(ticks * 50)
+  }
+
+  // 5. F right after a swing.
+  {
+    const swungAt = Date.now()
+    a.swingArm('right')
+    await sleep(50)
+    const got = await inspectsDuring(a, () => pressF(a), 600)
+    const start = a.inspects.find(p => p.at >= swungAt && p.ticks > 0)
+    const after = start ? start.at - swungAt : null
+    check('F 50 ms after a swing inspects once the swing is over (>= 200 ms after the swing)', after !== null && after >= 200, { got, after })
+    await sleep(ticks * 50)
+  }
+
+  // 6. No inspect while sprinting, with sneak+F, or with a gun in hand.
+  await settle(a)
+  {
+    sprint(a, true)
+    input(a, { forward: true, sprint: true })
+    await sleep(500)
+    const from = Date.now()
     const got = await inspectsDuring(a, () => pressF(a), 400)
+    await waitFor(() => barsSince(a, from).some(t => t.includes('冲刺中无法检视')), 1600)
     sprint(a, false)
-    check('no inspect while sprinting', got.length === 0, got)
+    input(a)
+    const bar = barsSince(a, from)
+    check('no inspect while sprinting, and the action bar says 冲刺中无法检视', got.length === 0 && bar.some(t => t.includes('冲刺中无法检视')), { got, bar })
     await sleep(800)
   }
   {
@@ -192,25 +327,36 @@ async function killSoldiers (bot) {
     const got = await inspectsDuring(a, () => pressF(a), 400)
     a.setControlState('sneak', false)
     check('sneak+F (the operator skill) does not inspect', got.length === 0, got)
-    await sleep(500)
+    await sleep(1600)
   }
   {
-    await rcon(`cv give ${a.username} m4c`)
-    let gunSlot = -1
-    await waitFor(() => (gunSlot = a.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && pdc(s, 'id') === 'm4c')) >= 0, 5000)
-    if (gunSlot < 0) {
-      log('SETUP: no m4c in the hotbar')
-      return finish(2)
-    }
-    a.setQuickBarSlot(gunSlot - 36)
+    a.setQuickBarSlot(gunSlot)
     await sleep(500)
-    const got = await inspectsDuring(a, () => pressF(a), 400)
-    check('F with a gun in hand does not inspect', got.length === 0, got)
+    const from = Date.now()
+    const got = await inspectsDuring(a, () => pressF(a), 600)
+    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    check('F with a gun in hand switches the fire mode and does not inspect', got.length === 0 && mode.length === 1, { got, mode })
+  }
+  {
+    await sleep(300)
+    const from = Date.now()
+    a.paused = true
+    pressF(a)
+    tickEnd(a)
+    await sleep(50)
+    pressF(a)
+    tickEnd(a)
+    await sleep(50)
+    tickEnd(a)
+    a.paused = false
+    await sleep(600)
+    const clicks = a.modeClicks.filter(t => t >= from).length
+    check('F in two adjacent client ticks with a gun steps the fire mode twice (two clicks)', clicks === 2, { clicks, bars: barsSince(a, from) })
   }
 
   if (!RAID) return finish(checks.every(c => c.ok) ? 0 : 1)
 
-  // 5. Cuts during an inspect, in the proving ground.
+  // 7. Cuts during an inspect, in the proving ground.
   for (const bot of bots) bot.chat('/cv queue proving NORMAL SOLO')
   log('queued; waiting for the raid')
   if (!await waitFor(() => bots.every(inRaid), 150000)) {
@@ -256,10 +402,13 @@ async function killSoldiers (bot) {
     const first = await cut()
     const hitAt = Date.now()
     await sleep(100)
-    const start = await inspectsDuring(a, () => pressF(a), 100)
+    const from = Date.now()
+    pressF(a)
+    // The inspect waits for the cut's swing (6 ticks) and then starts, before the next cut is due.
     await sleep(Math.max(0, hitAt + k.cd * 50 + 150 - Date.now()))
+    const start = a.inspects.filter(p => p.at >= from).map(p => ({ after: p.at - from, ticks: p.ticks }))
     const second = await cut()
-    check('a cut, F, and a cut one swing interval later: both land (the inspect does not hold up the knife)',
+    check('a cut, F, and a cut one swing interval later: the inspect starts in between and both cuts land',
       first > 0 && start.length === 1 && start[0].ticks > 0 && second > 0, { first, start, second })
   }
   return finish(checks.every(c => c.ok) ? 0 : 1)
@@ -276,6 +425,7 @@ async function finish (code) {
     }
   }
   for (const bot of bots) {
+    clearInterval(bot.ticker)
     try { await rcon(`deop ${bot.username}`) } catch (e) { }
     try { bot.quit() } catch (e) { }
   }

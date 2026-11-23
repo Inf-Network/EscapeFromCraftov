@@ -360,8 +360,8 @@ public final class CraftovCommand implements TabExecutor {
                     case "start" -> plugin.editor().start(p, args[2]);
                     case "save" -> plugin.editor().save(p);
                     case "publish" -> plugin.editor().publish(p, args.length > 2 ? args[2] : null);
-                    case "exit" -> plugin.editor().exit(p, true);
-                    case "discard" -> plugin.editor().exit(p, false);
+                    case "exit" -> plugin.editor().exit(p);
+                    case "discard" -> plugin.editor().discard(p, args.length > 2 && args[2].equalsIgnoreCase("confirm"));
                     case "info" -> plugin.editor().info(p);
                     // "set camera" takes no value: it uses where the editor is looking from.
                     case "set" -> plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT),
@@ -369,7 +369,7 @@ public final class CraftovCommand implements TabExecutor {
                     default -> {
                         Text.send(p, "<#F2E6C8>地图编辑器");
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor world <世界名> <#8A8F98>创建/前往一个空的建图世界"));
-                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>在当前世界开始标点（领取工具）"));
+                        p.sendMessage(Text.mm("<#9AA0A6>/cv editor start <地图ID> <#8A8F98>新地图在当前世界开始标点；已发布的地图在编辑副本里改"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor set name|description|minutes|time|test|camera <值>"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor info · save · exit · discard <#8A8F98>保存只写草稿"));
                         p.sendMessage(Text.mm("<#9AA0A6>/cv editor publish [地图ID] <#8A8F98>发布草稿，之后才会出现在「开始行动」里"));
@@ -573,6 +573,8 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor")
                 && (args[1].equalsIgnoreCase("start") || args[1].equalsIgnoreCase("publish"))) {
             plugin.maps().all().forEach(m -> out.add(m.id()));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("discard")) {
+            out.add("confirm");
         } else if (args.length == 3 && args[0].equalsIgnoreCase("editor") && args[1].equalsIgnoreCase("set")) {
             out.addAll(List.of("name", "description", "minutes", "time", "test", "camera"));
         } else if (args.length == 2 && args[0].equalsIgnoreCase("lagcomp")) {

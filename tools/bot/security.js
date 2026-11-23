@@ -182,7 +182,11 @@ async function main () {
     check('... and saves its draft under its own id', !!r.hit && r.hit.includes('草稿已保存') && draft.includes('raid-minutes') &&
       draft.includes(`id: ${legacyId}`) && listMaps() === withLegacy, [r.lines, listMaps()])
     check('... leaving the live file as it was', fs.readFileSync(legacyFile, 'utf8') === legacyText)
-    await say(A, '/cv editor discard', /已退出编辑模式/)
+    // Discarding a saved draft of a published map throws away its working copy too: it asks first.
+    r = await say(A, '/cv editor discard', /确认放弃|已退出编辑模式/)
+    check('"/cv editor discard" with a saved draft asks for a confirm', !!r.hit && r.hit.includes('确认放弃'), r.lines)
+    r = await say(A, '/cv editor discard confirm', /已放弃/)
+    check('... and "discard confirm" deletes the draft', !!r.hit && !fs.existsSync(legacyDraft), r.lines)
   } finally {
     fs.rmSync(legacyFile, { force: true })
     fs.rmSync(legacyDraft, { force: true })

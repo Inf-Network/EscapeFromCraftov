@@ -14,6 +14,7 @@ import net.infnetwork.snowball.craftov.map.MapRegistry;
 import net.infnetwork.snowball.craftov.map.Pos;
 import net.infnetwork.snowball.craftov.map.WorldService;
 import net.infnetwork.snowball.craftov.util.Text;
+import net.kyori.adventure.text.event.ClickEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
@@ -45,14 +46,20 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Click-to-place map editor. An admin stands in the template world, takes the tool kit and
- * right-clicks blocks: spawns, extracts, containers, AI, bosses, doors and switches are dropped on
- * the clicked block and shown with floating labels only editors can see.
+ * Click-to-place map editor. An admin builds a new map in a world of their own, takes the tool kit
+ * and right-clicks blocks: spawns, extracts, containers, AI, bosses, doors and switches are dropped
+ * on the clicked block and shown with floating labels only editors can see.
  *
  * <p>Saving (the tool, /cv editor save or exit, leaving the server, a shutdown) only ever writes a
  * draft: a new map stays off the deploy screen, and changes to a published one go to
  * maps/drafts/ while raids keep using the live file. {@code /cv editor publish} makes the draft
  * live, and refuses a map that cannot carry a raid (see {@link MapRegistry#publishProblems}).
+ *
+ * <p>A published map is never edited in its template: the session works in a copy of it
+ * ({@link WorldService#editCopy}), kept with the draft between sessions. Publishing swaps the copy
+ * in as the template; discarding deletes it, which also brings back whatever the session built or
+ * broke (chests the scan tool turned into containers included). Raids keep copying the untouched
+ * template meanwhile.
  */
 public final class EditorService implements Listener {
 
@@ -77,15 +84,21 @@ public final class EditorService implements Listener {
         final MapDraft draft;
         /** The world the markers belong to: tools do nothing anywhere else, and labels go here. */
         final World world;
+        /** {@link #world} is the working copy of a published map, not the map's own template. */
+        final boolean copy;
+        /** Where the editor stood when the session started: they go back there when it leaves the copy. */
+        final Location origin;
         final Map<Integer, ItemRecord> inventory;
         final GameMode mode;
         final Map<Tool, Integer> option = new HashMap<>();
         final List<TextDisplay> labels = new ArrayList<>();
         @Nullable Location corner;
 
-        Session(MapDraft draft, World world, Map<Integer, ItemRecord> inventory, GameMode mode) {
+        Session(MapDraft draft, World world, boolean copy, Location origin, Map<Integer, ItemRecord> inventory, GameMode mode) {
             this.draft = draft;
             this.world = world;
+            this.copy = copy;
+            this.origin = origin;
             this.inventory = inventory;
             this.mode = mode;
         }
@@ -115,6 +128,21 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>世界名只能包含小写字母、数字和下划线，长度 3–32。");
             return;
         }
+        if (plugin.raids().raidOf(player) != null) {
+            Text.send(player, "<#FF8A80>对局中不能前往建图世界。");
+            return;
+        }
+        if (name.startsWith(WorldService.RAID_PREFIX) || name.startsWith(WorldService.EDIT_PREFIX)) {
+            Text.send(player, "<#FF8A80>这个名字留给对局世界和编辑副本，换一个吧。");
+            return;
+        }
+        MapDef owner = templateOwner(name);
+        if (owner != null && owner.enabled()) {
+            // Changed here, the live template would reach the next raid half built: edit a copy instead.
+            Text.send(player, "<#FF8A80>这是已发布地图 " + Text.escape(owner.name()) + " 的模板世界。<#9AA0A6>用 <white>/cv editor start "
+                    + Text.escape(owner.id()) + "</white> 在副本上编辑，发布后才会影响对局。");
+            return;
+        }
         World world = Bukkit.getWorld(name);
         if (world == null) {
             world = WorldService.creator(name).createWorld();
@@ -138,6 +166,11 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>你已经在编辑中，先 /cv editor exit。");
             return;
         }
+        World here = player.getWorld();
+        if (plugin.raids().raidOf(player) != null || plugin.raids().isRaidWorld(here) || plugin.range().isRangeWorld(here)) {
+            Text.send(player, "<#FF8A80>先回到大厅或建图世界再开始编辑。");
+            return;
+        }
         String id = typed.toLowerCase(Locale.ROOT);
         // Only a new id has to fit NAME. A map saved before ids were checked ("废弃工厂", "my-map")
         // still opens: its file is already in maps/, and MapRegistry.file keeps the save there.
@@ -149,48 +182,80 @@ public final class EditorService implements Listener {
             Text.send(player, "<#FF8A80>新地图的ID只能包含字母、数字和下划线，长度 3–32（保存为 maps/<地图ID>.yml）。");
             return;
         }
-        World world = player.getWorld();
-        if (plugin.lobby().isLobby(world) || plugin.raids().isRaidWorld(world)) {
-            Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
-            return;
-        }
-        Player other = existing == null ? null : editorOf(existing.id());
+        Player other = editorOf(existing != null ? existing.id() : id);
         if (other != null) {
             Text.send(player, "<#FF8A80>" + Text.escape(other.getName()) + " 正在编辑这张地图，两份草稿会互相覆盖。");
             return;
         }
         MapDraft draft;
-        if (existing != null) {
-            if (!existing.template().equals(world.getName())) {
-                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 绑定的世界是 " + existing.template() + "，请先前往该世界。");
-                return;
-            }
+        World world;
+        boolean copy = existing != null && existing.enabled();
+        if (copy) {
             MapDef saved;
             try {
                 // A published map picks up where its last saved draft left off.
-                saved = existing.enabled() ? plugin.maps().loadDraft(existing.id()) : null;
+                saved = plugin.maps().loadDraft(existing.id());
             } catch (IOException ex) {
                 Text.send(player, "<#FF8A80>草稿读取失败：" + Text.escape(ex.getMessage()) + "<#9AA0A6>（修好或删掉这个文件再开始）");
+                return;
+            }
+            world = openCopy(player, existing, saved != null);
+            if (world == null) {
                 return;
             }
             draft = MapDraft.of(saved != null ? saved : existing);
             if (saved != null) {
                 Text.send(player, "<#9AA0A6>继续编辑上次保存、还没发布的草稿。");
             }
+        } else if (existing != null) {
+            // Nobody has published it: no raid copies its world, so it is edited where it is.
+            world = WorldService.exists(existing.template()) ? plugin.worlds().load(existing.template()) : null;
+            if (world == null) {
+                Text.send(player, "<#FF8A80>地图 " + Text.escape(existing.id()) + " 的世界 " + Text.escape(existing.template()) + " 不存在。");
+                return;
+            }
+            draft = MapDraft.of(existing);
         } else {
+            world = here;
+            if (plugin.lobby().isLobby(world) || world.getName().startsWith(WorldService.EDIT_PREFIX)) {
+                Text.send(player, "<#FF8A80>请在用于建图的世界中执行（/cv editor world <名字> 创建一个空世界）。");
+                return;
+            }
+            MapDef owner = templateOwner(world.getName());
+            if (owner != null) {
+                Text.send(player, "<#FF8A80>这个世界已经是地图 " + Text.escape(owner.name()) + " 的模板，<white>/cv editor start "
+                        + Text.escape(owner.id()) + "</white> 编辑它。");
+                return;
+            }
             draft = new MapDraft();
             draft.id = id;
             draft.name = typed;
             draft.template = world.getName();
         }
+        Location origin = player.getLocation();
+        if (plugin.lobby().isLobby(here)) {
+            // Coming back to the lobby restores this loadout (see leave).
+            plugin.lobby().captureLoadout(player);
+        }
+        plugin.match().cancelQueue(player.getUniqueId(), "开始编辑地图");
         plugin.weapons().reset(player);
-        Session session = new Session(draft, world, plugin.carry().snapshot(player), player.getGameMode());
+        Session session = new Session(draft, world, copy, origin, plugin.carry().snapshot(player), player.getGameMode());
         sessions.put(player.getUniqueId(), session);
         player.getInventory().clear();
         player.setGameMode(GameMode.CREATIVE);
+        if (!here.equals(world)) {
+            // From the map's own template (where editing used to happen) to the same spot in the copy.
+            Location to = here.getName().equals(draft.template) ? origin.clone() : world.getSpawnLocation().add(0.5, 0, 0.5);
+            to.setWorld(world);
+            player.teleport(to);
+        }
         giveTools(player, session);
         refreshLabels(player, session);
         Text.send(player, "<#5BD16B>开始编辑地图 <white>" + Text.escape(draft.name) + "</white> (" + Text.escape(draft.id) + ")");
+        if (copy) {
+            Text.send(player, "<#9AA0A6>这张图已经发布：你在编辑副本 <white>" + world.getName() + "</white> 里，方块和标记的改动发布前都不影响对局，"
+                    + "<white>/cv editor discard</white> 可以全部放弃。");
+        }
         Text.send(player, "<#9AA0A6>右键方块放置标记，潜行+右键空气切换工具选项，删除工具右键靠近标记处删除。");
         Text.send(player, "<#9AA0A6>用“保存”工具或 <white>/cv editor save</white> 保存草稿，<white>/cv editor publish</white> 发布后才会出现在「开始行动」里；"
                 + "<white>/cv editor set name|minutes|time <值></white> 修改属性。");
@@ -211,6 +276,79 @@ public final class EditorService implements Listener {
         return template != null && !template.getPlayers().isEmpty();
     }
 
+    /**
+     * The working copy of a published map, loaded: the one saved with the draft when there is a
+     * draft, otherwise a fresh copy of the template (a copy without a draft is left from a session
+     * that never saved, and its terrain matches no markers). Tells the player and returns null if
+     * there is no template to copy.
+     */
+    private @Nullable World openCopy(Player player, MapDef live, boolean drafted) {
+        String name = WorldService.editCopy(live.id());
+        if (drafted && WorldService.exists(name)) {
+            World world = plugin.worlds().load(name);
+            if (world != null) {
+                return world;
+            }
+        }
+        if (!WorldService.exists(live.template())) {
+            Text.send(player, "<#FF8A80>地图 " + Text.escape(live.id()) + " 的模板世界 " + Text.escape(live.template()) + " 不存在。");
+            return null;
+        }
+        if (drafted) {
+            Text.send(player, "<#FFC23D>上次的编辑副本不见了，已从线上模板重新复制：之前的地形改动没有保留，标记照旧。");
+        }
+        World stale = Bukkit.getWorld(name);
+        if (stale != null) {
+            evacuate(stale);
+            plugin.worlds().unload(name, false);
+        }
+        World world = plugin.worlds().copyForEditing(live.template(), name);
+        if (world == null) {
+            Text.send(player, "<#FF8A80>无法创建编辑副本，详见控制台。");
+        }
+        return world;
+    }
+
+    /** The map whose template this world is, or null. */
+    private @Nullable MapDef templateOwner(String world) {
+        for (MapDef def : plugin.maps().all()) {
+            if (def.template().equals(world)) {
+                return def;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sends everyone out of a world that is about to be unloaded: editors (of another map, passing
+     * through) to the lobby spawn as they are, everyone else into the lobby proper.
+     */
+    private void evacuate(World world) {
+        for (Player p : new ArrayList<>(world.getPlayers())) {
+            if (editing(p)) {
+                p.teleport(plugin.lobby().spawn());
+            } else {
+                plugin.lobby().enterLobby(p);
+            }
+        }
+    }
+
+    /** Unloads a working copy next tick (saved) unless someone is still in it or editing it again. */
+    private void unloadWhenEmpty(String name) {
+        Runnable unload = () -> {
+            World world = Bukkit.getWorld(name);
+            if (world != null && world.getPlayers().isEmpty() && sessions.values().stream().noneMatch(s -> s.world.equals(world))) {
+                plugin.worlds().unload(name, true);
+            }
+        };
+        if (plugin.isEnabled()) {
+            // Next tick: a player leaving the server is still listed in the world during the quit event.
+            Bukkit.getScheduler().runTask(plugin, unload);
+        } else {
+            unload.run();
+        }
+    }
+
     /** The player editing this map, or null. */
     private @Nullable Player editorOf(String mapId) {
         for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
@@ -221,27 +359,77 @@ public final class EditorService implements Listener {
         return null;
     }
 
-    public void exit(Player player, boolean save) {
+    /** /cv editor exit: saves the draft and leaves. Stays in the session if the save failed. */
+    public void exit(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
             Text.send(player, "<#9AA0A6>你不在编辑模式。");
             return;
         }
-        if (save && !save(player, session)) {
+        if (!save(player, session)) {
             Text.send(player, "<#FF8A80>草稿没有保存，仍在编辑模式。<#9AA0A6>不要保存就退出用 /cv editor discard。");
             return;
         }
-        close(player, session);
+        close(player, session, false);
+        if (session.copy) {
+            unloadWhenEmpty(session.world.getName());
+            Text.send(player, "<#9AA0A6>草稿和编辑副本已保存，还没发布：<white>/cv editor start " + Text.escape(session.draft.id)
+                    + "</white> 继续，<white>/cv editor publish " + Text.escape(session.draft.id) + "</white> 发布。");
+        }
     }
 
-    /** Ends the session: back to the inventory and game mode the editor had, labels gone. */
-    private void close(Player player, Session session) {
+    /**
+     * /cv editor discard: leaves without saving. On a published map that throws away every
+     * unpublished change, the saved draft and the working copy with it, which needs a confirm when
+     * there was a saved draft to lose.
+     */
+    public void discard(Player player, boolean confirmed) {
+        Session session = sessions.get(player.getUniqueId());
+        if (session == null) {
+            Text.send(player, "<#9AA0A6>你不在编辑模式。");
+            return;
+        }
+        String id = session.draft.id;
+        if (session.copy && plugin.maps().hasDraft(id) && !confirmed) {
+            player.sendMessage(Text.mm(Text.PREFIX + "<#FFC23D>放弃会删掉这张图所有没发布的改动：上次保存的草稿，和编辑副本里的方块改动。线上版本不变。 ")
+                    .append(Text.mm("<#FF8A80><b>[确认放弃]</b>").clickEvent(ClickEvent.runCommand("/cv editor discard confirm"))));
+            return;
+        }
+        close(player, session, false);
+        if (session.copy) {
+            evacuate(session.world);
+            if (!plugin.worlds().delete(session.world.getName())) {
+                plugin.getLogger().warning("Could not unload the working copy " + session.world.getName() + " to delete it");
+            }
+            plugin.maps().deleteDraft(id);
+            Text.send(player, "<#9AA0A6>已放弃这张图所有没发布的改动，线上版本不变。");
+        }
+    }
+
+    /**
+     * Ends the session: back to the inventory and game mode the editor had, labels gone, and out of
+     * the working copy (or, when {@code leaveWorld}, out of whatever world it edited).
+     */
+    private void close(Player player, Session session, boolean leaveWorld) {
         sessions.remove(player.getUniqueId());
         clearLabels(session);
         player.getInventory().clear();
         plugin.carry().apply(player, session.inventory, UiItems.lobbyMenu());
         player.setGameMode(session.mode);
+        if ((session.copy || leaveWorld) && player.getWorld().equals(session.world)) {
+            leave(player, session);
+        }
         Text.send(player, "<#9AA0A6>已退出编辑模式。");
+    }
+
+    /** Back where the session started: the lobby proper, the spot in another world, or the lobby if that is gone. */
+    private void leave(Player player, Session session) {
+        Location origin = session.origin;
+        if (origin.isWorldLoaded() && !plugin.lobby().isLobby(origin.getWorld()) && !origin.getWorld().equals(session.world)) {
+            player.teleport(origin);
+        } else {
+            plugin.lobby().enterLobby(player);
+        }
     }
 
     public void save(Player player) {
@@ -313,7 +501,7 @@ public final class EditorService implements Listener {
             if (!save(player, session)) {
                 return;
             }
-            close(player, session);
+            close(player, session, true);
             publishSaved(player, session.draft.id);
             return;
         }
@@ -359,13 +547,31 @@ public final class EditorService implements Listener {
             refuse(player, def.name(), problems);
             return;
         }
-        if (!new java.io.File(Bukkit.getWorldContainer(), def.template()).isDirectory()) {
+        String copy = WorldService.editCopy(id);
+        boolean edited = live.enabled() && WorldService.exists(copy);
+        if (!edited && !WorldService.exists(def.template())) {
             Text.send(player, "<#FF8A80>不能发布：模板世界 " + Text.escape(def.template()) + " 不存在。");
             return;
         }
         World template = Bukkit.getWorld(def.template());
         if (template != null) {
-            template.save(true);
+            evacuate(template);
+        }
+        if (edited) {
+            // The working copy becomes the template, terrain and all, before the markers that go with it.
+            World working = Bukkit.getWorld(copy);
+            if (working != null) {
+                evacuate(working);
+            }
+            String failure = plugin.worlds().replaceTemplate(def.template(), copy);
+            if (failure != null) {
+                Text.send(player, "<#FF8A80>发布失败：" + Text.escape(failure) + "<#9AA0A6>（草稿和编辑副本都还在，可以再试）");
+                return;
+            }
+        } else if (!plugin.worlds().unload(def.template(), true)) {
+            // Unloaded once published: a loaded template with someone in it holds raids back.
+            Text.send(player, "<#FF8A80>发布失败：模板世界 " + Text.escape(def.template()) + " 卸载不了。");
+            return;
         }
         if (live.enabled()) {
             plugin.maps().keepPrevious(id);
@@ -373,7 +579,8 @@ public final class EditorService implements Listener {
         try {
             plugin.maps().save(def.withEnabled(true));
         } catch (IOException ex) {
-            Text.send(player, "<#FF8A80>发布失败：" + Text.escape(ex.getMessage()));
+            // The draft stays: publishing again writes the definition (the terrain is in place already).
+            Text.send(player, "<#FF8A80>发布失败：" + Text.escape(ex.getMessage()) + "<#9AA0A6>（草稿还在，修好后再发布一次）");
             return;
         }
         plugin.maps().deleteDraft(id);
@@ -430,9 +637,8 @@ public final class EditorService implements Listener {
                 + (d.test ? " · <#FFB74D>测试图" : ""));
         Text.send(player, "<#9AA0A6>出生点 " + d.spawns.size() + " · 撤离点 " + d.extracts.size() + " · 物资箱 " + d.containers.size()
                 + " · 敌兵 " + d.ai.size() + " · 首领 " + d.bosses.size() + " · 门禁 " + d.doors.size() + " · 电闸 " + d.switches.size());
-        MapDef live = plugin.maps().get(d.id);
-        Text.send(player, live != null && live.enabled()
-                ? "<#9AA0A6>已发布的地图：改动存为草稿，发布前对局照旧用线上版本。"
+        Text.send(player, session.copy
+                ? "<#9AA0A6>已发布的地图：在编辑副本 " + session.world.getName() + " 里改，发布前对局照旧用线上版本。"
                 : "<#9AA0A6>还没发布：不会出现在「开始行动」里。");
         List<String> missing = MapRegistry.publishProblems(d.build(), squads());
         Text.send(player, missing.isEmpty() ? "<#5BD16B>已满足发布条件。"
@@ -781,17 +987,24 @@ public final class EditorService implements Listener {
         Session session = sessions.get(event.getPlayer().getUniqueId());
         if (session != null) {
             save(event.getPlayer(), session);
-            close(event.getPlayer(), session);
+            close(event.getPlayer(), session, false);
+            if (session.copy) {
+                unloadWhenEmpty(session.world.getName());
+            }
         }
     }
 
-    /** A shutdown saves every open draft, as leaving does. */
+    /** A shutdown saves every open draft and working copy, as leaving does. */
     public void shutdown() {
         for (Map.Entry<UUID, Session> entry : new ArrayList<>(sessions.entrySet())) {
             Player player = Bukkit.getPlayer(entry.getKey());
+            Session session = entry.getValue();
             if (player != null) {
-                save(player, entry.getValue());
-                close(player, entry.getValue());
+                save(player, session);
+                close(player, session, false);
+            }
+            if (session.copy) {
+                unloadWhenEmpty(session.world.getName());
             }
         }
     }

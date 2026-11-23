@@ -130,7 +130,7 @@ public final class HudService {
         HudExtra e = s.extra();
         return "alert=" + Text.plain(Text.mm(e.alert())) + " | feed=" + String.join(" / ", java.util.Arrays.stream(e.feed())
                 .filter(line -> !line.isEmpty()).map(line -> Text.plain(Text.mm(line))).toList())
-                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | time=" + s.time() + "@" + e.timeState()
+                + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | value=" + s.value() + " | time=" + s.time() + "@" + e.timeState()
                 + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
                 + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
                 .map(m -> Text.plain(Text.mm(m))).toList())

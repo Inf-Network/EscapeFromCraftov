@@ -78,7 +78,7 @@ public final class WeaponService implements Listener {
         int mode;
         boolean triggerHeld;
         boolean needsRelease;
-        /** The trigger went down while sprinting: the first shot waits until the gun is up again. */
+        /** The trigger went down while the gun came up: the first shot waits until it is up. */
         boolean pendingPress;
         /** The trigger was pulled again since the last shot: the next shot starts a new spray. */
         boolean freshPull;
@@ -268,7 +268,7 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastHint = new HashMap<>();
     private final Map<UUID, Integer> controlTips = new HashMap<>();
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
-    /** Last tick each player was sprinting: the gun takes a moment to come back up afterwards. */
+    /** Last tick each player was sprinting: the sights take a moment to come up afterwards (see {@link #sightsUp}). */
     private final Map<UUID, Long> lastSprint = new HashMap<>();
     /** Last tick each player right-clicked an entity (really, or through a capture cell, see onInteract). */
     private final Map<UUID, Long> lastEntityUse = new HashMap<>();
@@ -521,7 +521,7 @@ public final class WeaponService implements Listener {
         state.drawPending = false;
         setMark(player, state, wantedMark(state));
         if (now - state.aimAsked <= USE_REPEAT + 1 && !state.reloading() && plugin.raids().canFire(player)
-                && !player.isSprinting()) {
+                && sightsUp(player)) {
             adsUntil.put(player.getUniqueId(), now + 6);
             setAds(player, true);
         }
@@ -588,14 +588,6 @@ public final class WeaponService implements Listener {
                 state.sampleLeft = 0;
             }
             if (!state.triggerHeld && state.burstLeft <= 0 && state.sampleLeft <= 0) {
-                continue;
-            }
-            if (sprintLocked(player)) {
-                // Still held when the sprint ends: the gun fires once it is back up. A burst does not resume.
-                sprintHint(player);
-                state.shotBudget = 0;
-                state.burstLeft = 0;
-                state.sampleLeft = 0;
                 continue;
             }
             if (state.drawing()) {
@@ -689,14 +681,9 @@ public final class WeaponService implements Listener {
         if (state.fireMode().singleAction() || state.fireMode() == FireMode.BURST) {
             state.needsRelease = true;
         }
-        if (sprintLocked(player)) {
-            // A pull while sprinting does nothing; kept held, it fires once the gun is back up (see tick).
-            state.pendingPress = true;
-            sprintHint(player);
-            return;
-        }
         if (state.drawing()) {
-            // Likewise while the gun comes up after a switch: no shot until it is up.
+            // A pull while the gun comes up after a switch does nothing; kept held, it fires once the
+            // gun is up (see tick). Sprinting holds nothing back: the gun fires from the hip on the run.
             state.pendingPress = true;
             hint(player, "<muted>拔枪中…");
             return;
@@ -720,7 +707,7 @@ public final class WeaponService implements Listener {
     // ------------------------------------------------------------------ shooting
 
     private boolean shoot(Player player, GunState state) {
-        if (!plugin.raids().canAttack(player) || sprintLocked(player)) {
+        if (!plugin.raids().canAttack(player)) {
             return false;
         }
         GunSpec gun = state.gun;
@@ -757,9 +744,9 @@ public final class WeaponService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), player.isOnGround(),
-                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player)));
+                    eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -823,7 +810,8 @@ public final class WeaponService implements Listener {
      * Cone half-angle of the next shot. Moving widens it by the gun's own amount (items.yml `move`, in
      * degrees, half of it while aiming) in proportion to how close the player is to their full walking
      * pace past a small dead zone (see {@link #moveLevel}): a pistol barely minds, a sniper rifle
-     * cannot hit a thing on the move, and stopping before the shot puts it back.
+     * cannot hit a thing on the move, and stopping before the shot puts it back. Hip fire on a sprint
+     * (run-and-gun) is that cone, at full pace, times the gun's sprint multiplier (see {@link #sprintSpread}).
      */
     private double currentSpread(Player player, GunState state) {
         GunSpec gun = state.gun;
@@ -840,6 +828,9 @@ public final class WeaponService implements Listener {
             spread += state.bloom * (aiming ? 0.25 : 0.6);
         }
         spread += gun.moveSpread() * moveLevel(player) * (aiming ? config.getDouble("weapons.spread.move-ads-share", 0.5) : 1.0);
+        if (!aiming && sprinting(player)) {
+            spread *= sprintSpread(gun);
+        }
         int arms = plugin.health().activeFractures(player, true);
         if (arms > 0) {
             spread *= 1.0 + 0.35 * arms;
@@ -864,6 +855,22 @@ public final class WeaponService implements Listener {
             dead = Math.max(dead, Math.min(0.9, (sneak == null ? 0.3 : sneak.getValue()) + 0.1));
         }
         return Math.max(0, Math.min(1, (motion.moveFactor(player) - dead) / (1 - dead)));
+    }
+
+    /**
+     * How much wider the hip cone is on a sprint than at a full walk, by the gun's action in items.yml
+     * (weapons.spread.sprint): the gun is fired from the sprint carry, so a pistol or a submachine gun
+     * still hits something close, and a machine gun or a rifle with a long barrel does not.
+     */
+    private double sprintSpread(GunSpec gun) {
+        double fallback = switch (gun.action()) {
+            case "pistol", "smg", "pdw", "pump" -> 1.4;
+            case "pistol_heavy" -> 1.5;
+            case "dmr", "lmg" -> 1.8;
+            case "bolt" -> 2.0;
+            default -> 1.6; // ak, ar
+        };
+        return Math.max(0, plugin.getConfig().getDouble("weapons.spread.sprint." + gun.action(), fallback));
     }
 
     /** Cone half-angle (degrees) the player's held gun would fire with right now, or -1 without one. */
@@ -894,8 +901,10 @@ public final class WeaponService implements Listener {
         var config = plugin.getConfig();
         long now = Bukkit.getCurrentTick();
         kickPending(player, state, now);
-        double scale = (isAiming(player) ? config.getDouble("weapons.recoil.ads", 0.6) : 1.0)
+        boolean aiming = isAiming(player);
+        double scale = (aiming ? config.getDouble("weapons.recoil.ads", 0.6) : 1.0)
                 * (player.isSneaking() ? config.getDouble("weapons.recoil.sneak", 0.8) : 1.0)
+                * (!aiming && sprinting(player) ? config.getDouble("weapons.recoil.sprint", 1.15) : 1.0)
                 * (1.0 + 0.25 * plugin.health().activeFractures(player, true));
         double up = gun.recoil() * scale * (0.85 + ThreadLocalRandom.current().nextDouble() * 0.3);
         double right = (ThreadLocalRandom.current().nextDouble() * 2 - 1) * gun.recoilH() * scale;
@@ -1424,17 +1433,16 @@ public final class WeaponService implements Listener {
     }
 
     /**
-     * Sprinting carries the gun lowered: no shot while sprinting (see {@link #sprinting}), nor for a few
-     * ticks after the sprint ends (weapons.sprint-recovery-ticks) while it comes back up. The vanilla
-     * client keeps sprinting with the attack button held, and the server cannot stop a client that
-     * holds the sprint key, so the trigger is what gives.
+     * The sights can come up: not sprinting (see {@link #sprinting}), nor in the few ticks after a sprint
+     * ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry. Hip fire is
+     * never held back by a sprint: the gun fires on the run, with a wider cone (see {@link #currentSpread}).
      */
-    private boolean sprintLocked(Player player) {
+    private boolean sightsUp(Player player) {
         if (sprinting(player)) {
-            return true;
+            return false;
         }
         Long last = lastSprint.get(player.getUniqueId());
-        return last != null && Bukkit.getCurrentTick() - last <= plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
+        return last == null || Bukkit.getCurrentTick() - last > plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
     }
 
     /**
@@ -1443,12 +1451,6 @@ public final class WeaponService implements Listener {
      */
     private boolean sprinting(Player player) {
         return player.isSprinting() || motion.running(player);
-    }
-
-    private void sprintHint(Player player) {
-        if (sprinting(player)) {
-            hint(player, "<muted>冲刺时不能开火");
-        }
     }
 
     /** Why this player cannot fire right now, or null if they can. */
@@ -1499,7 +1501,7 @@ public final class WeaponService implements Listener {
             state.aimAsked = Bukkit.getCurrentTick(); // still held once the gun is up, it aims then (see drawn)
             return;
         }
-        if (state.reloading() || !plugin.raids().canFire(player) || player.isSprinting()) {
+        if (state.reloading() || !plugin.raids().canFire(player) || !sightsUp(player)) {
             return;
         }
         adsUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + 6);

@@ -261,8 +261,9 @@ combat:
     inspect-ticks: 50
 
 weapons:
-  # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
-  # back up). A trigger held through it fires as soon as it is over.
+  # Guns fire from the hip on a sprint (run-and-gun, with the wider cone of spread.sprint), but the
+  # sights only come up this many ticks after a sprint ends (the gun coming up from the sprint
+  # carry). Right mouse held through it aims as soon as it is over.
   sprint-recovery-ticks: 5
   # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
   # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
@@ -287,13 +288,30 @@ weapons:
     # nothing either: while sneaking the dead zone is the sneaking speed (0.3 of walking pace) + 0.1.
     move-ads-share: 0.5
     move-deadzone: 0.25
-    # Multipliers of the gun's base spread while sneaking and while off the ground.
+    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
     sneak: 0.7
     airborne: 2.5
+    # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
+    # gun's action in items.yml (as draw-ticks). Sprinting is the client's sprint, or running at more
+    # than 1.2x walking pace on the ground, as the server measures it. Aiming ends a sprint, so this
+    # never applies to aimed shots.
+    sprint:
+      pistol: 1.4
+      pistol_heavy: 1.5
+      smg: 1.4
+      pdw: 1.4
+      ak: 1.6
+      ar: 1.6
+      dmr: 1.8
+      pump: 1.4
+      lmg: 1.8
+      bolt: 2.0
   recoil:
-    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming and while sneaking.
+    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming, while sneaking
+    # and when fired from the hip on a sprint.
     ads: 0.6
     sneak: 0.8
+    sprint: 1.15
     # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.
     first-tick-share: 0.6
     # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera

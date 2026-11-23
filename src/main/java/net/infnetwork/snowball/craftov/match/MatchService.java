@@ -502,7 +502,13 @@ public final class MatchService {
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return "不在大厅";
         }
-        if (!plugin.canPlay(player, map)) {
+        if (map.training()) {
+            // Never queued, so canPlay turns it down: TrainingService starts it for one player, and
+            // only an editor draft (unpublished while the copy ran) keeps them out.
+            if (!map.enabled()) {
+                return "不能进入" + map.name() + "（训练场暂时不可用）";
+            }
+        } else if (!plugin.canPlay(player, map)) {
             // Test mode switched off (or admin rights taken away) while waiting.
             return "不能进入" + map.name() + "（只在测试模式开放）";
         }

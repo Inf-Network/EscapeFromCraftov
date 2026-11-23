@@ -274,8 +274,11 @@ async function killSoldiers (bot) {
     await sleep(800)
   }
 
-  // A gun next to the knife, for the fire mode.
+  // A gun next to the knife, for the fire mode. Guns go to the two weapon slots only (hotbar 0 and 1,
+  // then a backpack, CarryService.route), and a lobby player may have both filled already.
   await settle(a)
+  await rcon(`item replace entity ${a.username} hotbar.1 with minecraft:air`)
+  await sleep(200)
   await rcon(`cv give ${a.username} m4c`)
   let gunSlot = -1
   await waitFor(() => (gunSlot = a.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && pdc(s, 'id') === 'm4c')) >= 0, 5000)

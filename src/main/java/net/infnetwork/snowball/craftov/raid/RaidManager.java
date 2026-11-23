@@ -402,8 +402,11 @@ public final class RaidManager implements Listener {
         }
         if (raid.training()) {
             plugin.training().setUp(raid);
+        } else {
+            // Nobody else on the course: the map has no soldiers, and a rival operator squad (its
+            // chance is rolled in populate) would land behind a player past the open gates.
+            plugin.ai().populate(raid);
         }
-        plugin.ai().populate(raid);
         if (raid.tier.boss()) {
             for (MapDef.BossDef boss : map.bosses()) {
                 if (rng.nextDouble() < boss.chance()) {

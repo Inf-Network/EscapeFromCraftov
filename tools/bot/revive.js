@@ -29,8 +29,10 @@
 //      rounds puts 30 in the last cell and leaves 30 in the inventory;
 //   9. B is knocked down with the container open: the server closes the window;
 //  10. downed, /cv secure opens nothing and the bleed-out bar says why; /cv opens the terminal, whose
-//      secure container button is locked and opens nothing; the terminal in hotbar slot 9 opens the
-//      terminal as well, never the container;
+//      secure container, gunsmith, skill and test armory buttons each show their own locked picture
+//      (<icon>_locked) and the container and armory open nothing (B is an op, so it has the armory);
+//      /cv items opens no armory either; the terminal in hotbar slot 9 opens the terminal as well,
+//      never the container;
 //  11. B dies of a second hit: its saved profile holds the same secure container as before the
 //      knock-down, and the gold bar it tried to put in while downed is not in it;
 //  12. (run first, in the lobby) a third bot whose saved container holds three lion statues from
@@ -760,9 +762,10 @@ async function secure () {
   w = await opened(B, () => B.chat('/cv'))
   check('downed, /cv opens the tactical terminal, not the container', !!w && titleOf(w).includes('战术终端') && !titleOf(w).includes('安全箱'), titleOf(w).slice(0, 80))
   if (w) {
-    check('the terminal\'s secure container button is locked', uiModel(w.slots[10]) === 'craftov:ui/locked', uiModel(w.slots[10]))
-    check('the terminal\'s gunsmith and skill are locked too', uiModel(w.slots[20]) === 'craftov:ui/locked' && uiModel(w.slots[16]) === 'craftov:ui/locked',
-      [uiModel(w.slots[20]), uiModel(w.slots[16])])
+    check('the terminal\'s secure container button shows its own locked picture', uiModel(w.slots[10]) === 'craftov:ui/icon_secure_locked', uiModel(w.slots[10]))
+    check('the gunsmith, the skill (vanguard) and the test armory are locked too, each with its own picture',
+      uiModel(w.slots[20]) === 'craftov:ui/icon_gunsmith_locked' && uiModel(w.slots[16]) === 'craftov:ui/op_vanguard_locked' &&
+      uiModel(w.slots[26]) === 'craftov:ui/icon_catalog_locked', [uiModel(w.slots[20]), uiModel(w.slots[16]), uiModel(w.slots[26])])
     since = Date.now()
     const inner = await opened(B, () => B.clickWindow(10, 0, 0))
     check('clicking the locked button opens no secure container', !inner || !titleOf(inner).includes('安全箱'), titleOf(inner).slice(0, 80))
@@ -770,7 +773,20 @@ async function secure () {
     await tryGold()
     if (B.currentWindow) B.closeWindow(B.currentWindow)
     await sleep(500)
+    w = await opened(B, () => B.chat('/cv'))
+    since = Date.now()
+    const armory = w ? await opened(B, () => B.clickWindow(26, 0, 0)) : null
+    await sleep(500)
+    check('clicking the locked test armory opens no armory (it hands out injectors)', !!w && !titleOf(B.currentWindow).includes('测试军械库'),
+      titleOf(armory).slice(0, 80))
+    check('and the bleed-out bar says why', barsSince(B, since).some(b => b.includes('倒地时无法使用测试军械库')), barsSince(B, since).slice(-1))
+    if (B.currentWindow) B.closeWindow(B.currentWindow)
+    await sleep(500)
   }
+  w = await opened(B, () => B.chat('/cv items'))
+  check('downed, /cv items opens no test armory', !w || !titleOf(w).includes('测试军械库'), titleOf(w).slice(0, 80))
+  if (B.currentWindow) B.closeWindow(B.currentWindow)
+  await sleep(500)
   B.setQuickBarSlot(8)
   await sleep(400)
   w = await opened(B, () => B.activateItem())

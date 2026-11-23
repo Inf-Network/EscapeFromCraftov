@@ -9,8 +9,13 @@ training-aim: at the firing line aiming down the red dot at the first target, ob
 training-hits: all three targets hit, the objective on to the next lesson.
 training-trap: the tripwire went off: the title, the leg and bleed icons on the HUD.
 training-yard: the extract yard after the wounds are treated: the lever ahead, objective and marker.
-training-extract: standing in the extract after pulling the lever: the countdown.
-training-settlement: the training settlement screen, pointer on the outcome with its lessons.
+training-extract: standing in the extract after pulling the lever: the countdown, and the
+objective line ending in 到了 inside its panel.
+training-settlement: the training settlement screen (训练完成, the six lessons shining on their
+plate, 开始行动), pointer parked.
+training-settlement-lesson: the same, pointer on the first lesson.
+training-giveup: a second course run out of time at once (`cv end`): the screen reads 训练中断,
+the lessons not reached are locked, and nothing speaks of losing anything.
 """
 import math
 import re
@@ -124,8 +129,26 @@ def run(s):
     s.shot('training-extract')
     s.wait_until(s.in_lobby, 30, 'the way back to the lobby')
     s.wait(2.5)  # the curtain lifts and the screen opens 30 ticks after arriving
-    s.mouse_to(*s.slot_center(8, 6))
+    s.park_mouse()
     s.wait(0.8)
     s.shot('training-settlement')
+    s.mouse_to(*s.slot_center(28, 6))
+    s.wait(0.8)
+    s.shot('training-settlement-lesson')
+    s.key('Escape')
+    s.wait(0.5)
+
+    # A course that does not get finished: out of time straight after the landing (the first one
+    # started well over training.cooldown-seconds ago).
+    s.clear_chat()
+    s.cmd('cv training')
+    s.wait_until(s.in_raid, 40, 'the second course')
+    s.wait(4)
+    s.rcon('cv end')
+    s.wait_until(s.in_lobby, 30, 'the way back to the lobby')
+    s.wait(2.5)
+    s.park_mouse()
+    s.wait(0.8)
+    s.shot('training-giveup')
     s.key('Escape')
     s.wait(0.5)

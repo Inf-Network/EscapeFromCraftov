@@ -799,6 +799,18 @@ luck:
     multiplier: { GOLD: 2.0, RED: 2.5 }
     notify: false
 
+# Knife skins (#106): looks for a knife that a player owns in their profile, never as an item. The
+# 外观 menu in the lobby terminal (or /cv skins) lists them by knife, equips one and previews its
+# inspect. The catalogue (names, prices) is skins.yml in the jar.
+skins:
+  # Every player owns every skin. On while 点券 (the server's premium currency) is a placeholder.
+  own-all: true
+  # Whether an unowned skin can be bought with 点券. Off: the buy button says the 点券 shop is not open
+  # yet. Turn on once the server's global 点券 balance is plugged in (PointsBank).
+  shop-open: false
+  # Price overrides in 点券, by skin id (skins.yml has the defaults), e.g. karambit_gilded: 1880
+  prices: {}
+
 test:
   # Test mode: every player can open the item catalog (/cv items, also in the terminal) to take any item
   # for free, top up money and reset health, and can see and queue for test maps (the proving ground).

@@ -216,7 +216,8 @@ public final class LootMenu extends Menu {
         if (moving == null || moving.isEmpty()) {
             return;
         }
-        container.set(target, moving.clone());
+        // The knife from the melee slot goes in without its owner's skin.
+        container.set(target, plugin.skins().undress(moving.clone()));
         event.getClickedInventory().setItem(event.getSlot(), null);
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.5f, 0.8f);
         redraw();

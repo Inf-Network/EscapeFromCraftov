@@ -299,15 +299,23 @@ public final class WorldService {
         }
         copying.merge(template, 1, Integer::sum);
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            boolean copied = copyTemplate(template, source, target);
+            boolean copied = false;
             try {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    copying.computeIfPresent(template, (key, count) -> count > 1 ? count - 1 : null);
-                    result.complete(copied ? name : null);
-                });
-            } catch (IllegalPluginAccessException ex) {
-                // Disabled meanwhile: nobody is waiting for this world any more.
-                deleteQuietly(target);
+                copied = copyTemplate(template, source, target);
+            } finally {
+                // Even when the copy died of something copyTemplate does not catch (an Error): the
+                // count must drop, or the map could not be published again until a restart, and
+                // the launch must hear of it rather than wait out its timeout.
+                @Nullable String folder = copied ? name : null;
+                try {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        copying.computeIfPresent(template, (key, count) -> count > 1 ? count - 1 : null);
+                        result.complete(folder);
+                    });
+                } catch (IllegalPluginAccessException ex) {
+                    // Disabled meanwhile: nobody is waiting for this world any more.
+                    deleteQuietly(target);
+                }
             }
         });
         return result;
@@ -326,8 +334,10 @@ public final class WorldService {
             plugin.getLogger().info("Copied template " + template + " to " + target.getFileName() + " (" + megabytes(bytes)
                     + ") in " + millis(System.nanoTime() - start));
             return true;
-        } catch (IOException ex) {
-            plugin.getLogger().severe("Could not copy template " + template + ": " + ex.getMessage());
+        } catch (IOException | RuntimeException ex) {
+            // RuntimeException too: a file system provider may throw an UncheckedIOException, or a
+            // SecurityException, while the tree is walked.
+            plugin.getLogger().severe("Could not copy template " + template + ": " + ex);
             deleteQuietly(target);
             return false;
         }

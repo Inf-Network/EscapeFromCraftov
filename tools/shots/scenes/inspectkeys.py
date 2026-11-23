@@ -133,6 +133,10 @@ def _sheet(s, presses):
     """All frames on one sheet, each labelled with the press and the server's verdict."""
     out = Path(__file__).resolve().parent.parent / 'out'
     args = ['montage', '-background', '#202020', '-fill', 'white', '-pointsize', '15']
+    # The verdicts quote the action bar's Chinese; ImageMagick's default font has no CJK glyphs.
+    font = subprocess.run(['fc-match', '-f', '%{file}', ':lang=zh-cn'], capture_output=True, text=True).stdout.strip()
+    if font:
+        args += ['-font', font]
     for p in presses:
         args += ['-label', f'{"OK" if p.ok else "XX"} #{p.number:02d} {p.label}\n-> {p.verdict}',
                  str(out / f'inspect-keys-{p.number:02d}.png')]
@@ -196,7 +200,7 @@ def _presses(s, r):
 
     _home(s)
     _sprint(s)
-    p = r.f('sprinting (Ctrl+W held)', expect='sprint')
+    p = r.f('sprinting (Ctrl+W held)', expect='冲刺')
     r.shot(p)
     r.settle(p)
 
@@ -218,7 +222,7 @@ def _presses(s, r):
     _sprint(s)
     s.xdo('keyup', 'Control_L')
     s.wait(0.3)
-    p = r.f('Ctrl let go, W still held (still sprinting)', expect='sprint')
+    p = r.f('Ctrl let go, W still held (still sprinting)', expect='冲刺')
     r.shot(p)
     r.settle(p)
 

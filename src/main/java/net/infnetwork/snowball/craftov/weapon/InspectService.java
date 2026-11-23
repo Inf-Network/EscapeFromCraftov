@@ -4,6 +4,7 @@ import io.papermc.paper.event.player.PlayerArmSwingEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.util.Notify;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -63,11 +64,14 @@ public final class InspectService implements Listener {
     /**
      * Starts an inspect of the knife in hand, or starts a running one over: the last moments of an
      * inspect look like the knife at rest, and a press there used to do nothing. A sprinting,
-     * downed, reviving or spectating player cannot inspect.
+     * downed, reviving or spectating player cannot inspect, and the action bar says so: a press
+     * that does nothing without a word looks like a key that only works some of the time.
      */
     private void start(Player player, ItemDef def, boolean sprinting) {
-        if (!free(player, sprinting)) {
-            debug(player, "F ->", sprinting ? "refused: sprinting" : "refused: downed, reviving or spectating");
+        String why = refusal(player, sprinting);
+        if (why != null) {
+            debug(player, "F ->", "refused: " + why);
+            Notify.hint(player, why);
             return;
         }
         debug(player, "F ->", inspecting(player) ? "restarted" : "started");
@@ -90,9 +94,18 @@ public final class InspectService implements Listener {
         return def != null && def.isMelee() ? def : null;
     }
 
-    private boolean free(Player player, boolean sprinting) {
-        return !sprinting && player.getGameMode() != GameMode.SPECTATOR
-                && !plugin.downed().isDowned(player) && !plugin.downed().isReviving(player);
+    /** Why the player cannot inspect now (the action bar line), or null when nothing stops it. */
+    private @Nullable String refusal(Player player, boolean sprinting) {
+        if (sprinting) {
+            return "冲刺中无法检视";
+        }
+        if (plugin.downed().isDowned(player)) {
+            return "倒地时无法检视";
+        }
+        if (plugin.downed().isReviving(player)) {
+            return "救援中无法检视";
+        }
+        return player.getGameMode() == GameMode.SPECTATOR ? "旁观时无法检视" : null;
     }
 
     /**
@@ -111,9 +124,9 @@ public final class InspectService implements Listener {
             }
             ItemDef def = knife(player);
             if (def == null || !def.id().equals(inspect.item) || player.getInventory().getHeldItemSlot() != inspect.slot
-                    || !free(player, player.isSprinting())) {
+                    || refusal(player, player.isSprinting()) != null) {
                 it.remove();
-                debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "not free");
+                debug(player, "stop", def == null || !def.id().equals(inspect.item) ? "knife gone" : "sprinting, downed or reviving");
                 player.setCooldown(ItemFactory.INSPECT_GROUP, 0);
             }
         }

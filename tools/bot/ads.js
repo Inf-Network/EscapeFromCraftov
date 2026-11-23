@@ -29,8 +29,9 @@
 //            aiming mark.
 //   time     K47 iron sights, P18, AWR (5, 3 and 9 ticks by their handling): the view the vanilla
 //            client shows (worked out from the views sent: it goes half way to the last one each
-//            tick) narrows over the gun's ads time and not at once (half way in, it is between hip
-//            and aimed), and is at the sight's zoom (95% of it) by the tick after the sights are up;
+//            tick) narrows over the gun's ads time and not at once (half way through the n - 1 ticks
+//            it shows an n-tick rise in, it is between hip and aimed), and is at the sight's zoom
+//            (95% of it) by the tick after the sights are up;
 //            the hand mark on the held stack says aiming (3) once the server takes the aim, aimed
 //            (4) when the sights are up, none once let go, and the cooldown that runs the frames
 //            comes after the aiming mark (with them together the client's old stack would read it
@@ -447,7 +448,10 @@ async function time () {
     const want = target(sight)
     const client = clientSince(from)
     const up = marks.slice(markFrom).find(m => m.slot === slot && m.damage === 4)
-    const middle = client.filter(v => v.ms >= client[0].ms + 50 * Math.floor((ticks - 1) / 2) && v.ms <= client[0].ms + 50 * Math.ceil((ticks - 1) / 2))
+    // The server takes the aim between two ticks and steers the view from the next one, so the client
+    // shows a rise of n ticks in n - 1 steps (one sent between ticks would never be shown on its own):
+    // the one half way through them must be part way.
+    const middle = client.filter(v => v.ms === client[0].ms + 50 * Math.floor((ticks - 2) / 2))
     check(`time: ${gun} narrows over its ${ticks}-tick ads time, not at once`,
       middle.length > 0 && middle.every(v => zoomed(v.m, want) > 0.1 && zoomed(v.m, want) < 0.97),
       client.slice(0, ticks + 2).map(v => v.ms + 'ms:' + (zoomed(v.m, want) * 100).toFixed(0) + '%').join(' '))

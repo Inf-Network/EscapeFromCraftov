@@ -754,6 +754,20 @@ public final class WeaponService implements Listener {
 
     private void tick() {
         long now = Bukkit.getCurrentTick();
+        try {
+            tickPlayers(now);
+        } finally {
+            ticked = now;
+        }
+    }
+
+    /**
+     * The last tick {@link #tick} has run in: equal to the current tick between two ticks (where use
+     * packets come), behind it while the next is starting.
+     */
+    private long ticked = -1;
+
+    private void tickPlayers(long now) {
         if (now % 20 == 0) {
             stowed.values().removeIf(kept -> kept.spent(now));
         }
@@ -1764,9 +1778,14 @@ public final class WeaponService implements Listener {
             setMark(player, state, ItemFactory.MARK_AIM);
             Nms.syncInventory(player);
         }
-        // The view at this point of the rise: the hip for a new aim; sights that were up go straight
-        // back to the aimed mark, the zoom and the scope's picture.
-        raise(player, state, now);
+        // Sights picked up part or all of the way go on at once (sights that were up straight back to
+        // the aimed mark, the zoom and the scope's picture). A new rise taken between two ticks (a
+        // use packet) sends the next tick's view now, as that tick's (see previewRise).
+        if (kept > 0) {
+            raise(player, state, now);
+        } else if (ticked == now) {
+            previewRise(player, state, now + 1);
+        }
         if (kept == 0) {
             player.playSound(player.getLocation(), "craftov:gun.ads", SoundCategory.PLAYERS, 0.5f, 1f);
         }
@@ -1792,7 +1811,7 @@ public final class WeaponService implements Listener {
     /**
      * One tick of aiming. While the sights come up the view narrows with their progress: a tick ahead
      * of the server's own (the client shows what it is sent a tick later), eased out a little so the
-     * press answers at once yet the zoom lands as the sights come up (with a scope, as its picture
+     * zoom answers the press on the next tick yet lands as the sights come up (with a scope, as its picture
      * does), and spread evenly over the sight's power (the multiplier goes as target^p, so an 8x does
      * not save its zoom for the end). It is steered
      * past the client's easing (see FovService.steer), so the view is at the sight's zoom on the tick
@@ -1827,8 +1846,7 @@ public final class WeaponService implements Listener {
         }
         long done = now - state.adsStart;
         if (done < state.adsTicks) {
-            double next = Math.min(1, (done + 1) / (double) Math.max(1, state.adsTicks));
-            plugin.fov().steer(player, Math.pow(target, 1 - Math.pow(1 - next, 1.5)), target);
+            plugin.fov().steer(player, riseView(state, target, done), target);
             return;
         }
         state.adsUp = true;
@@ -1853,6 +1871,32 @@ public final class WeaponService implements Listener {
                 state.scopeAt = now + 1;
             }
         }
+    }
+
+    /**
+     * Where the view should be once the client takes what is sent {@code done} ticks into the rise:
+     * the next tick's progress (the client shows it a tick later), eased out and spread evenly over the
+     * sight's power (see {@link #raise}).
+     */
+    private static double riseView(GunState state, double target, long done) {
+        double next = Math.min(1, (done + 1) / (double) Math.max(1, state.adsTicks));
+        return Math.pow(target, 1 - Math.pow(1 - next, 1.5));
+    }
+
+    /**
+     * Sends, as soon as the server takes an aim between two ticks, the view the rise's first tick
+     * ({@code tick}, the next) will send, counted as sent in that tick (see FovService.steer). The
+     * client takes at most one of the two in its next tick. On a quick connection the one sent with
+     * the tick nearly always reaches it first anyway, and counted as a step of its own, this one had
+     * the zoom come in short of the sight and creep the rest of the way, the quickest guns the most
+     * (their first step is the longest): on screen they were no quicker than an M4C (issue #117). But
+     * a client whose next tick comes before the server's (its ticks follow its frames) takes this one
+     * a tick sooner, then the same again.
+     */
+    private void previewRise(Player player, GunState state, long tick) {
+        double target = fovFor(player, state);
+        long done = tick - state.adsStart;
+        plugin.fov().steer(player, done < state.adsTicks ? riseView(state, target, done) : target, target, tick);
     }
 
     /**

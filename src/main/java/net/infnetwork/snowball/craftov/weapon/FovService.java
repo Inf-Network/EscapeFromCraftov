@@ -78,11 +78,16 @@ public final class FovService implements Listener {
      * and sends it now. Sent even when unchanged: a client that missed one gets it again.
      */
     public void show(Player player, double multiplier) {
+        show(player, multiplier, Bukkit.getCurrentTick());
+    }
+
+    /** {@link #show(Player, double)}, counted as sent in {@code tick} (see {@link #steer(Player, double, double, long)}). */
+    private void show(Player player, double multiplier, long tick) {
         Nms.SelfView view = view(player);
         view.fov = Math.max(0.1, Math.min(1.0, multiplier));
         view.effects = effects(player);
         Nms.sendView(player);
-        eased(player).sent(view.fov, Bukkit.getCurrentTick());
+        eased(player).sent(view.fov, tick);
     }
 
     /**
@@ -143,7 +148,15 @@ public final class FovService implements Listener {
      * a client overshoots by {@link #SLIP} at most, and never further than lands on it in one go.
      */
     public void steer(Player player, double at, double target) {
-        double from = eased(player).before(Bukkit.getCurrentTick());
+        steer(player, at, target, Bukkit.getCurrentTick());
+    }
+
+    /**
+     * {@link #steer(Player, double, double)} sent now but counted as sent in {@code tick}, the next: the
+     * client takes it, or the one that tick sends, which steering again in that tick works out the same.
+     */
+    public void steer(Player player, double at, double target, long tick) {
+        double from = eased(player).before(tick);
         double left = Math.abs(from - target);
         // Taken twice, asking x past the target from `left` away ends (3x - left) / 4 past it.
         double past = Math.min(left, (left + 4 * SLIP * target) / 3);
@@ -155,7 +168,7 @@ public final class FovService implements Listener {
         } else {
             ask = target;
         }
-        show(player, ask);
+        show(player, ask, tick);
     }
 
     /** The client's view has reached {@code target} and nothing else is on its way (see {@link #steer}). */

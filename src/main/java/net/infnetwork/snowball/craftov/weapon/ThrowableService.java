@@ -6,6 +6,7 @@ import net.infnetwork.snowball.craftov.combat.HitZone;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemFactory;
 import net.infnetwork.snowball.craftov.item.Keys;
+import net.infnetwork.snowball.craftov.security.VanillaGuardService;
 import net.infnetwork.snowball.craftov.util.Notify;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import org.bukkit.Bukkit;
@@ -289,10 +290,10 @@ public final class ThrowableService implements Listener {
         return type != InventoryType.CRAFTING && type != InventoryType.CREATIVE;
     }
 
-    /** A click on an entity that something took (a box or body opened, a revive begun): no pin follows it. */
+    /** A click on an entity that something took (see {@link VanillaGuardService#taken}): no pin follows it. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityClick(PlayerInteractEntityEvent event) {
-        if (event.isCancelled()) {
+        if (VanillaGuardService.taken(event)) {
             entityClicks.put(event.getPlayer().getUniqueId(), (long) Bukkit.getCurrentTick());
         }
     }

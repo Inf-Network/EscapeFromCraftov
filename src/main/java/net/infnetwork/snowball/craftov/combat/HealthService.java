@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.combat;
 
+import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.datacomponent.item.Consumable;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
@@ -26,6 +28,9 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -55,6 +60,8 @@ public final class HealthService implements Listener {
     public static final double MAX_HP = 100.0;
     private static final NamespacedKey SPEED_KEY = new NamespacedKey("craftov", "speed");
     private static final NamespacedKey JUMP_KEY = new NamespacedKey("craftov", "jump");
+    /** The off hand's slot in the player inventory. */
+    private static final int OFFHAND_SLOT = 40;
     /** Most urgent first: bleeding to death beats a broken leg. */
     private static final List<BodyPart> BLEED_ORDER = List.of(BodyPart.CHEST, BodyPart.STOMACH, BodyPart.HEAD,
             BodyPart.LEFT_LEG, BodyPart.RIGHT_LEG, BodyPart.LEFT_ARM, BodyPart.RIGHT_ARM);
@@ -633,9 +640,19 @@ public final class HealthService implements Listener {
         long now = Bukkit.getCurrentTick();
         MedUse current = medUse.get(player.getUniqueId());
         if (current == null || !current.def().id().equals(def.id())) {
-            medUse.put(player.getUniqueId(), new MedUse(def, now, now + Math.round(med.useSeconds() * 20)));
+            medUse.put(player.getUniqueId(), new MedUse(def, now, now + useTicks(event.getItem(), med)));
             player.getWorld().playSound(player.getLocation(), "craftov:" + med.sound(), SoundCategory.PLAYERS, 0.8f, 1f);
         }
+    }
+
+    /**
+     * How long using {@code stack} takes, in ticks: the time in its consumable component, which is
+     * what the client animates and vanilla counts down (a stack made before items.yml changed the
+     * time keeps the old one until it is rebuilt), else the configured time.
+     */
+    private static long useTicks(@Nullable ItemStack stack, MedSpec med) {
+        Consumable consumable = stack == null ? null : stack.getData(DataComponentTypes.CONSUMABLE);
+        return (long) ((consumable != null ? consumable.consumeSeconds() : (float) med.useSeconds()) * 20f);
     }
 
     private void tickMedUse() {
@@ -656,6 +673,54 @@ public final class HealthService implements Listener {
     @EventHandler
     public void onHeld(PlayerItemHeldEvent event) {
         medUse.remove(event.getPlayer().getUniqueId());
+    }
+
+    /**
+     * Ends a medical item's use now, if one is going on: before something else is put into the hand
+     * it is used from. Vanilla carries a use on for as long as that hand holds the same kind of item,
+     * and every Craftov item is paper, so it would go on with whatever was put there.
+     * {@link #onMedFinish} refuses such a finish anyway; this spares the player the wait for a use
+     * that cannot count. Other uses (a grenade being cooked) are left alone.
+     */
+    public void interruptMed(Player player) {
+        if (medUse.remove(player.getUniqueId()) != null && player.hasActiveItem()) {
+            player.clearActiveItem();
+        }
+    }
+
+    /** An inventory click that moves something into or out of the hand a medical item is used from. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onUseHandClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player) || !medUse.containsKey(player.getUniqueId())) {
+            return;
+        }
+        int hand = activeSlot(player);
+        boolean touched = event.getClickedInventory() == player.getInventory() && event.getSlot() == hand
+                || event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() == hand
+                || event.getClick() == ClickType.SWAP_OFFHAND && hand == OFFHAND_SLOT;
+        if (touched) {
+            interruptMed(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onUseHandDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player) || !medUse.containsKey(player.getUniqueId())) {
+            return;
+        }
+        int hand = activeSlot(player);
+        for (int raw : event.getRawSlots()) {
+            if (event.getView().getInventory(raw) == player.getInventory() && event.getView().convertSlot(raw) == hand) {
+                interruptMed(player);
+                return;
+            }
+        }
+    }
+
+    /** The player-inventory slot of the hand an item is being used from. */
+    private static int activeSlot(Player player) {
+        return player.getActiveItemHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND ? OFFHAND_SLOT
+                : player.getInventory().getHeldItemSlot();
     }
 
     private boolean useful(Player player, ItemDef def) {
@@ -684,7 +749,15 @@ public final class HealthService implements Listener {
             return;
         }
         Player player = event.getPlayer();
-        medUse.remove(player.getUniqueId());
+        MedUse use = medUse.remove(player.getUniqueId());
+        if (use == null || !use.def().id().equals(def.id()) || Bukkit.getCurrentTick() < use.endTick() - 2) {
+            // Not the item whose use began, or not for as long as it takes. Vanilla only checks that
+            // the hand still holds paper: a surgery kit swapped in by an inventory click during a
+            // 1.5 second painkiller would be what finishes.
+            player.clearActiveItem();
+            Notify.hint(player, "使用中断，请重新使用 " + Text.escape(def.name()));
+            return;
+        }
         MedSpec med = def.med();
         boolean consumed = true;
         double remaining = med.pool() > 0 ? ItemFactory.dura(stack, med.pool()) : 0;
@@ -707,12 +780,16 @@ public final class HealthService implements Listener {
             msg.append("<ok>已处理 ").append(String.join("、", treated.stream().map(Treated::label).toList()));
         }
         if (med.pool() > 0) {
-            // Whatever the wounds left of the pool heals, up to the item's per-use amount.
-            double missing = MAX_HP - player.getHealth();
-            double heal = Math.max(0, Math.min(Math.min(missing, med.healPerUse() > 0 ? med.healPerUse() : missing), remaining));
-            heal *= plugin.operators().healMultiplier(player);
+            // Whatever the wounds left of the pool heals, up to the item's per-use amount. A medic's
+            // bonus makes each point of the pool heal more (1.2 HP), so the pool pays only for what
+            // was healed: multiplying the heal and then capping it at full health took the whole
+            // multiplied amount out of the pool for health that was never restored.
+            double missing = Math.max(0, MAX_HP - player.getHealth());
+            double mult = plugin.operators().healMultiplier(player);
+            double base = Math.max(0, Math.min(med.healPerUse() > 0 ? med.healPerUse() : remaining, remaining));
+            double heal = Math.min(missing, base * mult);
             heal(player, heal);
-            remaining -= heal;
+            remaining -= heal / mult;
             if (remaining > 0.5) {
                 consumed = false;
                 ItemStack updated = stack.clone();

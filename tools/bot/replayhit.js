@@ -205,10 +205,14 @@ async function replay () {
   check('shooting the floor makes no body impact', !floor.some(s => /impact\.(flesh|armor|helmet)/.test(s)))
   check('the floor is hit', floor.some(s => s.startsWith('craftov:impact.') && !/impact\.(flesh|armor|helmet|ricochet)/.test(s)))
 
-  // C fires at A.
+  // C fires at A, from 13 blocks with the hip-fire cone (2.6 degrees, about the width of A), so a
+  // burst can miss: up to three bursts, each aimed afresh, until a round lands.
   const before = a.health
-  const atA = await fire(c, a.entity.position.offset(0, 1.2, 0), 2)
-  await sleep(300)
+  const atA = []
+  for (let burst = 0; burst < 3 && a.health >= before; burst++) {
+    atA.push(...(await fire(c, a.entity.position.offset(0, 1.2, 0), 2)))
+    await sleep(300)
+  }
   log('C heard (A)', atA.join(' '), 'A health', before, '->', a.health)
   check('shooting A hurts A', a.health < before, `${before} -> ${a.health}`)
   check('shooting A gives hit feedback', atA.some(s => s.startsWith('craftov:hit.')))

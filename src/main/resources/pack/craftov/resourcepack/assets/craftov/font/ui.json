@@ -179,8 +179,8 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_1.png",
-   "height": 35,
+   "file": "craftov:font/screen/loot_9.png",
+   "height": 125,
    "ascent": 13,
    "chars": [
     ""
@@ -188,8 +188,8 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_2.png",
-   "height": 53,
+   "file": "craftov:font/screen/loot_18.png",
+   "height": 125,
    "ascent": 13,
    "chars": [
     ""
@@ -197,8 +197,8 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_3.png",
-   "height": 71,
+   "file": "craftov:font/screen/loot_27.png",
+   "height": 125,
    "ascent": 13,
    "chars": [
     ""
@@ -206,29 +206,11 @@
   },
   {
    "type": "bitmap",
-   "file": "craftov:font/screen/loot_4.png",
-   "height": 89,
-   "ascent": 13,
-   "chars": [
-    ""
-   ]
-  },
-  {
-   "type": "bitmap",
-   "file": "craftov:font/screen/loot_5.png",
-   "height": 107,
-   "ascent": 13,
-   "chars": [
-    ""
-   ]
-  },
-  {
-   "type": "bitmap",
-   "file": "craftov:font/screen/loot_6.png",
+   "file": "craftov:font/screen/loot_36.png",
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -237,7 +219,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -246,7 +228,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -255,7 +237,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -264,7 +246,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -273,7 +255,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {
@@ -282,7 +264,7 @@
    "height": 125,
    "ascent": 13,
    "chars": [
-    ""
+    ""
    ]
   },
   {

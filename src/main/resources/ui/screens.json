@@ -24,63 +24,53 @@
   "advance": 177,
   "left": 0
  },
- "loot_1": {
+ "loot_9": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_2": {
+ "loot_18": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_3": {
+ "loot_27": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_4": {
+ "loot_36": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_5": {
+ "health": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "loot_6": {
+ "gunsmith": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "health": {
+ "settlement_ok": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "gunsmith": {
+ "settlement_fail": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_ok": {
+ "settlement_training_ok": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "settlement_fail": {
-  "char": "",
-  "advance": 177,
-  "left": 0
- },
- "settlement_training_ok": {
-  "char": "",
-  "advance": 177,
-  "left": 0
- },
  "settlement_training_fail": {
-  "char": "",
+  "char": "",
   "advance": 177,
   "left": 0
  }

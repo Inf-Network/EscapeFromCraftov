@@ -308,8 +308,7 @@ public final class CarryListener implements Listener {
             return;
         }
         if (event.getView().getTopInventory().getHolder() instanceof Menu) {
-            event.setCancelled(true);
-            return;
+            return; // the menu decides (Menu#drag, MenuListener), as for clicks
         }
         if (ItemFactory.hasContents(event.getOldCursor()) || ItemFactory.isUi(event.getOldCursor())) {
             event.setCancelled(true);

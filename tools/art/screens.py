@@ -415,12 +415,44 @@ def trader_screen():
     return s.done()
 
 
-def loot_screen(rows):
+LOOT_SIZES = (9, 18, 27, 36)
+"""Container sizes the loot screen has art for; a larger one (a body) shows 35 cells a page."""
+SECURE_CELLS = (7, 8, 16, 17, 25, 26, 34, 35, 43)
+SECURE = '#9C8CF0'
+
+
+def loot_screen(size):
+    """The search screen (#10): the container on the left in six columns (`size` cells, the rest of the
+    6x6 block blank), "我的装备" on the right: helmet, body armour, rig and backpack, take-all and tidy,
+    the secure container (up to nine cells) and the load and value cells. Raw slots as in LootMenu."""
     def make():
-        s = Screen(rows)
-        s.wells(slots(0, 0, rows - 1, 8))
-        # A hazard-striped lip along the top edge marks a container; the title keeps its band clear.
-        s.hazard(3, 2, W - 4, 3)
+        s = Screen(6)
+        # A hazard-striped lip over the container half marks it; the title keeps its band clear.
+        s.hazard(3, 2, 6 * 18 + 6, 3)
+        s.wells([(k // 6) * 9 + k % 6 for k in range(size)])
+        if size < 36:
+            last = size - 1
+            x0, y0 = slot_xy((last // 6) * 9 + last % 6)
+            label(s.img, 9, y0 + 20, '容量 %d 格' % size, P.DIM)
+        # Gear column and secure container, set off from the container by a divider.
+        x = 7 + 6 * 18
+        s.d.line([x + 1, 4, x + 1, 6 * 18 + 16], fill=rgb(P.LINE))
+        label(s.img, x + 5, 4, '我的装备', P.MUTED)
+        for i, kind in zip((6, 15, 24, 33), ('helmet', 'chestplate', 'leggings', 'boots')):
+            cx, cy = slot_xy(i)
+            if kind == 'leggings':
+                zone_well(s.img, cx, cy, 'rig')
+            elif kind == 'boots':
+                zone_well(s.img, cx, cy, 'pack')
+            else:
+                well(s.img, cx, cy)
+            s.img.alpha_composite(silhouette(kind), (cx + 1, cy + 1))
+        s.wells([42, 51])
+        x0, y0 = slot_xy(7)
+        x1, y1 = slot_xy(43)
+        s.d.rectangle([x0 - 2, y0 - 2, x0 + 2 * 18 + 1, y1 + 18 + 1], outline=mix(rgb(SECURE), rgb(P.PANEL), 0.45))
+        s.wells(SECURE_CELLS)
+        s.wells([44, 52, 53])
         return s.done()
     return make
 
@@ -522,7 +554,7 @@ SCREENS = {
     'deploy_queued': lambda: deploy_screen(True),
     'stash': stash_screen,
     'trader': trader_screen,
-    **{'loot_%d' % r: loot_screen(r) for r in range(1, 7)},
+    **{'loot_%d' % n: loot_screen(n) for n in LOOT_SIZES},
     'health': health_screen,
     'gunsmith': gunsmith_screen,
     'settlement_ok': settlement_screen(True),

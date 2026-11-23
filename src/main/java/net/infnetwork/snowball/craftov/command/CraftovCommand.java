@@ -177,7 +177,7 @@ public final class CraftovCommand implements TabExecutor {
                 List<String> names = new ArrayList<>();
                 for (var uuid : party.members) {
                     names.add((uuid.equals(party.leader) ? "★" : "") + Text.escape(party.name(uuid))
-                            + (Bukkit.getPlayer(uuid) == null ? "<muted>(离线)</muted>" : ""));
+                            + (Bukkit.getPlayer(uuid) == null ? " <muted>(离线)</muted>" : ""));
                 }
                 Text.send(player, "<muted>小队 (" + party.size() + "/3)：<white>" + String.join("  ", names));
             }

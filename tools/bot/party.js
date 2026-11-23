@@ -240,7 +240,7 @@ const scenarios = {
     if (!await waitFor(() => inLobby(A), 10000)) problems.push(`A not in the lobby: ${A.worldName}`)
     await sleep(800)
     const line = await partyLine(A)
-    if (!line.includes(`${B.username}(离线)`)) problems.push(`/party: ${line}`)
+    if (!line.includes(`${B.username} (离线)`)) problems.push(`/party: ${line}`)
     let from = A.chatLog.length
     A.chat('/cv queue proving NORMAL TRIO')
     await heard(A, /小队成员|开始匹配/, from, 3000)

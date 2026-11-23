@@ -70,8 +70,9 @@ public final class ItemFactory {
      * 17: grenades carry the throw cooldown group, and a long use so they can be held to cook (#42).
      * The grenade line used 16 to stay clear of the ads line's 15; it landed second, so it goes one
      * past both, or stacks already rebuilt at 15 or 16 would keep missing one side's changes.
+     * 18: the weight line says how many secure-container cells the item takes (#37).
      */
-    public static final int VERSION = 17;
+    public static final int VERSION = 18;
     /**
      * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
      * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
@@ -846,7 +847,11 @@ public final class ItemFactory {
         // changes without a rebuild (a reload, a partial merge). The trader shows the whole stack.
         boolean stackable = def.maxStack() > 1;
         String unit = def.category() == Category.AMMO ? "发" : "个";
-        lore.add(Text.mm("<muted>重量 <white>" + fmtWeight(def.weight()) + "kg" + (stackable ? "<muted>/" + unit : "")));
+        // The secure container counts cells by size (SecureMenu): what a find costs there is worth
+        // knowing before picking it up. Armory and range loaners never go in, so they say nothing.
+        String secure = !def.fitsSecure() || isTest(stack) || isRange(stack) ? ""
+                : "  <muted>安全箱 <white>" + def.size() + " 格" + (stackable ? "<muted>/" + def.secureStack() + " " + unit : "");
+        lore.add(Text.mm("<muted>重量 <white>" + fmtWeight(def.weight()) + "kg" + (stackable ? "<muted>/" + unit : "") + secure));
         if (isKit(stack)) {
             lore.add(Text.mm("<accent>免费补给 · 商人按 ◈0 回收，不能上架交易行"));
         }

@@ -243,6 +243,10 @@ public final class MatchService {
             Text.send(player, "<danger>地图或难度不存在。");
             return false;
         }
+        if (map.training()) {
+            Text.send(player, "<danger>训练场不能匹配，请从部署界面的「训练行动」进入。");
+            return false;
+        }
         if (!map.enabled()) {
             // A draft from the map editor: until it is published it may have no exit or spawns.
             Text.send(player, "<danger>" + Text.escape(map.name()) + " 还没有发布，不能匹配。");
@@ -498,7 +502,13 @@ public final class MatchService {
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return "不在大厅";
         }
-        if (!plugin.canPlay(player, map)) {
+        if (map.training()) {
+            // Never queued, so canPlay turns it down: TrainingService starts it for one player, and
+            // only an editor draft (unpublished while the copy ran) keeps them out.
+            if (!map.enabled()) {
+                return "不能进入" + map.name() + "（训练场暂时不可用）";
+            }
+        } else if (!plugin.canPlay(player, map)) {
             // Test mode switched off (or admin rights taken away) while waiting.
             return "不能进入" + map.name() + "（只在测试模式开放）";
         }

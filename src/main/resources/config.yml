@@ -268,8 +268,11 @@ combat:
     inspect-swing-wait-ticks: 12
 
 weapons:
-  # Guns do not fire while sprinting, nor for this many ticks after the sprint ends (the gun coming
-  # back up). A trigger held through it fires as soon as it is over.
+  # Guns fire from the hip on a sprint (run-and-gun, with the wider cone of spread.sprint), but the
+  # sights only come up this many ticks after a sprint ends (the gun coming up from the sprint
+  # carry). Right mouse ends a sprint, and no sprint starts while it is held; held through these
+  # ticks, it aims as soon as they are over. The sprint key pressed while aiming wins back: the
+  # sights drop and the sprint starts, and right mouse held on aims again once that sprint is over.
   sprint-recovery-ticks: 5
   # Ticks a gun takes to come up once it is in the hand (switched to, or after a revive), by its
   # action in items.yml. Until then it neither fires nor aims; a trigger pulled meanwhile and still
@@ -341,22 +344,52 @@ weapons:
     # one they do not use and see an iron sight at 10x, so it is off, and players are told to keep the
     # slider at 100%. Turn it on only where every player is trusted (declarations are logged).
     fov-effects-compensation: false
+  # How moving costs accuracy, by what the player is doing:
+  #   standing   the gun's base spread (items.yml hip-spread / ads-spread) plus bloom from firing
+  #   walking    + the gun's `move` x walk x how close the player is to full walking pace
+  #   stopping   that walking part x stop while slowing to a stop (letting go of the keys or pressing
+  #              the opposite one: a counter-strafe)
+  #   sprinting  the whole hip cone at a full walk x sprint (by gun), hip fire only
+  #   jumping    the base spread x airborne while off the ground; sneaking x sneak
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
-    # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.
-    # How much counts goes from 0 at move-deadzone of the player's walking pace (measured on the
-    # server, against what their movement speed allows right now) to 1 at full pace, so the last ticks
-    # of stopping cost nothing: stopping before the shot is what makes it accurate. Sneaking costs
-    # nothing either: while sneaking the dead zone is the sneaking speed (0.3 of walking pace) + 0.1.
+    # 1.5 for a pistol up to 6 for the marksman and sniper rifles) times walk, and times
+    # move-ads-share while aiming. How much counts goes from 0 at move-deadzone of the player's
+    # walking pace (measured on the server, against what their movement speed allows right now) to 1
+    # at full pace, so the last ticks of stopping cost nothing: stopping before the shot is what makes
+    # it accurate. Sneaking costs nothing either: while sneaking the dead zone is the sneaking speed
+    # (0.3 of walking pace) + 0.1.
+    walk: 1.0
     move-ads-share: 0.5
     move-deadzone: 0.25
-    # Multipliers of the gun's base spread while sneaking and while off the ground.
+    # While the measured speed is falling to a stop (well under both the speed of the last few ticks
+    # and the walking pace the player may go at now), the walking part counts this much: the measured
+    # speed takes a tick or two to catch up with a stop. 1.0 counts it in full.
+    stop: 0.5
+    # Multipliers of the gun's base spread while sneaking and while off the ground (jumping).
     sneak: 0.7
     airborne: 2.5
+    # Hip fire on a sprint: the whole hip cone at a full walk (base, bloom and move) times this, by the
+    # gun's action in items.yml (as draw-ticks). Sprinting is the client's sprint, or running at more
+    # than 1.2x walking pace on the ground, as the server measures it. Aiming ends a sprint, so this
+    # never applies to aimed shots.
+    sprint:
+      pistol: 1.4
+      pistol_heavy: 1.5
+      smg: 1.4
+      pdw: 1.4
+      ak: 1.6
+      ar: 1.6
+      dmr: 1.8
+      pump: 1.4
+      lmg: 1.8
+      bolt: 2.0
   recoil:
-    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming and while sneaking.
+    # Camera kick per shot is the gun's recoil (items.yml) times these while aiming, while sneaking
+    # and when fired from the hip on a sprint.
     ads: 0.6
     sneak: 0.8
+    sprint: 1.15
     # The camera eases into each kick: this share on the tick of the shot, the rest on the next one.
     first-tick-share: 0.6
     # Recovery: this many ticks after the gun stops firing (plus the player's round trip), the camera
@@ -570,9 +603,23 @@ escort:
   failure-share: 0.3
 
 tutorial:
-  # Step-by-step guide for new players (terminal, range, gunsmith, deploy, extract) and its reward.
+  # Step-by-step guide for new players (terminal, range, FOV Effects check, gunsmith, deploy,
+  # extract), done in any order, and its reward, paid once all six are done.
   enabled: true
   reward: 20000
+  # The three-page briefing (goal, rules, controls) that opens for a new player after joining.
+  briefing: true
+
+# The training raid: a solo course on the training ground (crate, targets, a reload, a wound to
+# treat, a lever extract). Offered on the deploy screen while the guide runs, or /cv training.
+# Nothing in it counts and the gear brought in comes back; finishing it counts as the guide's
+# deploy and extract steps.
+training:
+  enabled: true
+  # (s) the lever's countdown on the course, much shorter than extract.switch-countdown-seconds.
+  switch-countdown-seconds: 10
+  # (s) between two courses started by one player: each start copies and loads a world.
+  cooldown-seconds: 30
 
 season:
   # Changing the id starts a new season (everyone's pass progress resets).

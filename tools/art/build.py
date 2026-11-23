@@ -228,7 +228,11 @@ def build_items(item_defs):
 
                 hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
                 hip_idle = strafe(model_ref(hip), hp)
-                hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                # Left mouse held on a sprint fires from the hip (run-and-gun): the gun comes up out of
+                # the sprint carry while the trigger is down, so a spray kicks and flashes from one pose
+                # instead of dropping back to the carry between rounds.
+                sprint = key('key.attack', hip_idle, hp['sprint'])
+                hip_rest = key('key.forward', key('key.sprint', sprint, hip_idle), hip_idle)
                 hip_tree = kicked('hip', hip, hip_display, hip_rest)
                 if mask:
                     # A scope: its round mask in first person, the gun (hidden in first person) for the rest.
@@ -719,6 +723,9 @@ HUD_IMAGES = {
     'craftov/panel_skill.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
     'craftov/panel_info.png': lambda: hudart.panel(132, 44),
     'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
+    # The new-player guide's objective line: wide in the lobby, the squad rows' width in a raid, where
+    # the kill feed's rows reach in from the right on a 320 px wide GUI.
+    'craftov/panel_objective.png': lambda: hudart.panel(200, 12, accent=rgb(palette.ACCENT)),
     'craftov/alert_band.png': lambda: hudart.band(300, 14),
     # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
     'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
@@ -757,6 +764,7 @@ HUD_IMAGES = {
     'craftov/compass/point.png': lambda: hudart.pointer(),
     'craftov/compass/extract_open.png': lambda: hudart.diamond(rgb('#5BD16B')),
     'craftov/compass/extract_closed.png': lambda: hudart.diamond(rgb('#8A8F98')),
+    'craftov/compass/objective.png': lambda: hudart.diamond(rgb(palette.ACCENT)),
 }
 
 IN_RAID = {'1': {'first': 'craftov_in_raid', 'second': 'true', 'operation': '=='}}
@@ -829,7 +837,7 @@ def build_betterhud():
     for part in hudart.BODY_PARTS:
         for state in range(len(hudart.BODY_STATES)):
             save(hudart.body_part(part, state), os.path.join(BH, 'assets', 'craftov', 'body', '%s_%d.png' % (part, state)))
-    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'alert_band', 'prompt_band', 'hp_empty', 'armor_empty',
+    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'panel_objective', 'alert_band', 'prompt_band', 'hp_empty', 'armor_empty',
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
@@ -931,6 +939,19 @@ def build_betterhud():
             'texts': numbered([text('[craftov_feed_%d]' % i, 0, 0, align='right')]),
             'conditions': cond(('craftov_has_feed_%d' % i, 'true')),
         } for i in FEED_LINES},
+        # The new-player guide's goal (TutorialService): under the lobby panel, and in a raid under the
+        # squad rows that are there (one layout per row count, so it never leaves a gap or covers one).
+        'craftov_objective': {
+            'images': numbered([image('craftov_panel_objective', 0, 0)]),
+            'texts': numbered([text('[craftov_objective]', 6, 0)]),
+            'conditions': cond(('craftov_in_lobby', 'true'), ('craftov_has_objective', 'true')),
+        },
+        **{'craftov_objective_raid_%d' % mates: {
+            'images': numbered([image('craftov_panel_skill', 0, 0)]),
+            'texts': numbered([text('[craftov_objective]', 6, 0)]),
+            'conditions': cond(('craftov_in_raid', 'true'), ('craftov_has_objective', 'true'),
+                               *(('craftov_has_mate_%d' % i, 'true' if i <= mates else 'false') for i in (1, 2))),
+        } for mates in (0, 1, 2)},
         'craftov_alert': {
             'images': numbered([image('craftov_alert_band', 0, 0)]),
             'texts': numbered([text('[craftov_alert]', 150, 1, align='center')]),
@@ -999,6 +1020,7 @@ def build_betterhud():
         place('craftov_skill', 0, 0, 4, 51),
         place('craftov_mate_1', 0, 0, 4, 66),
         place('craftov_mate_2', 0, 0, 4, 79),
+        *[place('craftov_objective_raid_%d' % mates, 0, 0, 4, 66 + 13 * mates) for mates in (0, 1, 2)],
         # The kill feed starts under the corner where the client draws advancement and recipe toasts
         # (32 px; Craftov's own effects carry no icon): at the very top a kill's "Monster Hunter" toast
         # hid it. Its last row ends at 100, above the chat on a 240 px high GUI (1280x720 at scale 3).
@@ -1009,6 +1031,7 @@ def build_betterhud():
         place('craftov_downed', 50, 50, -60, 40),
         place('craftov_med', 50, 50, -60, 58),
         place('craftov_lobby', 0, 0, 4, 4),
+        place('craftov_objective', 0, 0, 4, 51),
         place('craftov_streak', 50, 50, 0, -44),
     ])},
         # The crosshair is a HUD of its own (PackService turns both on), so the main HUD's layout never
@@ -1039,11 +1062,17 @@ def build_betterhud():
         'file': {d: {'name': 'craftov/compass/' + d + '.png'} for d in ('n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'chain')},
         'scale': 1.0, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
         'gui': {'x': 50, 'y': 0}, 'pixel': {'x': 0, 'y': 6}, 'apply-opacity': True,
-        'custom-icon': {'extract_open': {'name': 'craftov/compass/extract_open.png'},
-                        'extract_closed': {'name': 'craftov/compass/extract_closed.png'}},
     }}
     compass['craftov_compass']['file']['point'] = {'name': 'craftov/compass/point.png', 'y': -6}
-    compass['craftov_compass']['conditions'] = cond(('craftov_in_raid', 'true'))
+    # Marker pictures by PointedLocation icon. BetterHud reads them from the same section as the point
+    # (under `file`): at the compass's top level they were never loaded, and every extract was drawn
+    # with the plain amber point instead of its green or grey diamond.
+    compass['craftov_compass']['file']['custom-icon'] = {
+        'extract_open': {'name': 'craftov/compass/extract_open.png'},
+        'extract_closed': {'name': 'craftov/compass/extract_closed.png'},
+        'objective': {'name': 'craftov/compass/objective.png'}}
+    # In a raid (the extracts), and in the lobby or on the range while the guide points at a station.
+    compass['craftov_compass']['conditions'] = cond(('craftov_compass', 'true'))
     write_text(os.path.join(BH, 'compasses', 'craftov.yml'), yaml.safe_dump(compass, allow_unicode=True, sort_keys=False))
 
 

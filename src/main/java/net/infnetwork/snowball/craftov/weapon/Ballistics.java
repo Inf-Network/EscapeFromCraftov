@@ -154,6 +154,9 @@ public final class Ballistics {
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);
+                if (shooter instanceof Player p && plugin.lobby().isTarget(living)) {
+                    plugin.training().onTargetHit(p, living);
+                }
                 if (plugin.drones().isDrone(living)) {
                     world.spawnParticle(Particle.ELECTRIC_SPARK, point, 8, 0.1, 0.1, 0.1, 0.3);
                 } else {
@@ -339,9 +342,26 @@ public final class Ballistics {
     }
 
     public static void muzzle(LivingEntity shooter, Vector dir) {
+        muzzle(shooter, dir, true);
+    }
+
+    /**
+     * Muzzle smoke and sparks where the muzzle is, for everyone within 32 blocks. {@code shooterSees}
+     * false leaves the shooter out: a player firing on a sprint runs into their own smoke within a few
+     * ticks, and up against the camera it covers the middle of the screen in big blocky puffs (the
+     * gun's own flash in the item model still shows). Sent unforced, as World.spawnParticle sends
+     * them: a builder forces by default, which would override each viewer's particle setting and widen
+     * the reach to 512 blocks; unforced, the server also keeps them to 32 blocks of each receiver.
+     */
+    public static void muzzle(LivingEntity shooter, Vector dir, boolean shooterSees) {
         Location tip = muzzlePoint(shooter, dir);
-        shooter.getWorld().spawnParticle(Particle.SMOKE, tip, 2, 0.02, 0.02, 0.02, 0.01);
-        shooter.getWorld().spawnParticle(Particle.DUST, tip, 2, 0.03, 0.03, 0.03, 0,
-                new Particle.DustOptions(Color.fromRGB(255, 200, 90), 0.8f));
+        List<Player> receivers = new ArrayList<>(tip.getNearbyPlayers(32));
+        if (!shooterSees) {
+            receivers.remove(shooter);
+        }
+        Particle.SMOKE.builder().location(tip).count(2).offset(0.02, 0.02, 0.02).extra(0.01).force(false)
+                .receivers(receivers).spawn();
+        Particle.DUST.builder().location(tip).count(2).offset(0.03, 0.03, 0.03).extra(0).force(false)
+                .data(new Particle.DustOptions(Color.fromRGB(255, 200, 90), 0.8f)).receivers(receivers).spawn();
     }
 }

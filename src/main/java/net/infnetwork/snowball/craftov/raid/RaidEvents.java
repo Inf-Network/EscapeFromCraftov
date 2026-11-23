@@ -67,12 +67,12 @@ public final class RaidEvents {
 
     /** Called when a raid begins: picks night or day and schedules its events. */
     public void begin(Raid raid) {
-        // Players are still in the insertion cinematic now; brief them once they are on the ground.
+        // Players are still in the insertion cinematic now; the night banner waits until they are on
+        // the ground (the landing briefing in chat names the night and the bounties too).
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (raid.state != Raid.State.RUNNING) {
                 return;
             }
-            plugin.bounties().announce(raid);
             if (raid.night) {
                 for (Player player : raid.online()) {
                     plugin.hud().alert(player, "<text>夜间行动 <muted>· 敌兵视野变短，开着手电会更早暴露", 160, null);

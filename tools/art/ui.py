@@ -31,6 +31,21 @@ def person(c, x, col):
     c.poly([(x - 6, 26), (x - 5, 16), (x + 5, 16), (x + 6, 26)], col)
 
 
+def occupied_cell():
+    """A secure-container cell taken by the big item to its left (SecureMenu): a sunken, hatched
+    plate with an arrow pointing back at the item."""
+    c = Canvas()
+    plate(c, shade(PLATE, 0.75))
+    hatch = shade(rgb(PAL.DIM), 0.7)
+    for k in range(6, 58, 5):
+        x0, x1 = max(3, k - 28), min(28, k - 3)
+        if x0 <= x1:
+            c.line([(x0, k - x0), (x1, k - x1)], hatch)
+    c.poly([(6, 16), (13, 9), (13, 23)], G)
+    c.rect(13, 14, 24, 18, G)
+    return c.img
+
+
 UI = {
     'blank': lambda: Image.new('RGBA', (16, 16), (0, 0, 0, 0)),
     'locked': lambda: icon(lambda c: (c.box(10, 14, 21, 24, G), c.ellipse(11, 7, 20, 17, (0, 0, 0, 0)),
@@ -53,6 +68,7 @@ UI = {
                                             c.poly([(9, 26), (10, 20), (22, 20), (23, 26)], shade(O, 0.8)))),
     'icon_secure': lambda: icon(lambda c: (c.box(7, 7, 24, 25, P), c.ellipse(12, 11, 19, 18, D), c.rect(15, 14, 16, 15, P),
                                           c.rect(20, 12, 22, 14, W))),
+    'secure_used': occupied_cell,
     'icon_escort': lambda: icon(lambda c: (c.poly([(16, 5), (25, 9), (24, 18), (16, 26), (8, 18), (7, 9)], C),
                                           c.poly([(16, 9), (21, 11), (20, 17), (16, 22), (12, 17), (11, 11)], shade(C, 0.6)))),
     'icon_collection': lambda: icon(lambda c: c.poly([(16, 5), (19, 13), (27, 13), (21, 18), (23, 26), (16, 21), (9, 26), (11, 18),
@@ -86,6 +102,9 @@ UI = {
                                            c.poly([(6, 23), (7, 18), (14, 18), (15, 23)], W), c.rect(17, 11, 24, 12, G), c.rect(17, 15, 22, 16, G))),
     'icon_cancel_small': lambda: icon(lambda c: c.line([(10, 10), (21, 21)], R, 3)),
     'arrow_left': lambda: icon(lambda c: c.poly([(20, 7), (10, 16), (20, 25)], W)),
+    # The new-player guide's floating arrow over a lobby station (no plate: it glows in its own shape).
+    'waypoint': lambda: icon(lambda c: (c.box(12, 2, 19, 14, Y), c.poly([(4, 13), (27, 13), (16, 28)], Y),
+                                       c.poly([(8, 15), (23, 15), (16, 24)], shade(Y, 1.2))), False),
     'arrow_right': lambda: icon(lambda c: c.poly([(12, 7), (22, 16), (12, 25)], W)),
     'collection_unknown': lambda: icon(lambda c: (c.line([(12, 11), (13, 8), (19, 8), (20, 11), (20, 13), (16, 16), (16, 20)], G, 2),
                                                  c.rect(15, 23, 17, 25, G)), True),
@@ -287,6 +306,36 @@ def attachment_tab():
 
 
 UI['tab_attachment'] = attachment_tab
+
+
+def locked(fn):
+    """A button that is there but cannot be used right now (a downed player's terminal: TerminalMenu)
+    keeps its own pictogram, faded to grey under a red padlock, so it still says which button it is.
+    The plain 'locked' picture is for slots that hold nothing yet."""
+    def make():
+        base = fn().convert('RGBA')
+        px = base.load()
+        for y in range(base.height):
+            for x in range(base.width):
+                r, g, b, a = px[x, y]
+                lum = (r * 299 + g * 587 + b * 114) / 1000
+                px[x, y] = tuple(int((lum * 0.8 + ch * 0.2) * 0.62) for ch in (r, g, b)) + (a,)
+        c = Canvas()
+        c.img.alpha_composite(base)
+        # Dark backing first so the padlock reads on any picture, then the shackle and the body.
+        c.line([(20, 23), (20, 18), (22, 15), (27, 15), (29, 18), (29, 23)], D, 4)
+        c.rect(16, 20, 31, 31, D)
+        c.line([(20, 23), (20, 18), (22, 16), (27, 16), (29, 18), (29, 23)], W, 2)
+        c.box(17, 21, 30, 30, R)
+        c.rect(23, 24, 24, 27, D)
+        return c.img
+    return make
+
+
+# Every button a downed player's terminal greys out (TerminalMenu: the secure container, the
+# gunsmith, the test armory and each operator's skill) has its locked picture: <key>_locked.
+for _key in ('icon_secure', 'icon_gunsmith', 'icon_catalog', 'op_vanguard', 'op_medic', 'op_recon', 'op_engineer'):
+    UI[_key + '_locked'] = locked(UI[_key])
 
 
 # Scope reticles are drawn for the default 70 degree field of view at each scope's power (OpticSpec):

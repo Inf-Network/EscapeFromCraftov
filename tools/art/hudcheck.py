@@ -28,7 +28,8 @@ TEXT_BOXES = {
 # Shown in raids all the time (the centre ones come and go with an action and may cover the world).
 ALWAYS = ['craftov_vitals', 'craftov_weapon', 'craftov_skill', 'craftov_info', 'craftov_mate_1',
           'craftov_mate_2', 'craftov_feed_1', 'craftov_feed_2', 'craftov_feed_3', 'craftov_feed_4', 'craftov_feed_5',
-          'craftov_alert']
+          'craftov_alert', 'craftov_objective', 'craftov_objective_raid_0', 'craftov_objective_raid_1',
+          'craftov_objective_raid_2']
 
 
 def load(name):

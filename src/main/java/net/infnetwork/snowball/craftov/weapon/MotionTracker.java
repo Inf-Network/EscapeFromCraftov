@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -46,6 +47,14 @@ final class MotionTracker {
      * stops sprinting or a speed boost wears off), so the pace to beat is the highest one lately.
      */
     private static final int PACE_WINDOW = 10;
+    /** Ticks of measured speed remembered to tell a stop from a steady walk (see {@link #stopping}). */
+    private static final int STOP_WINDOW = 6;
+    /**
+     * A player slowing down is stopping once the measured speed is under this share of both their
+     * speed of the last {@link #STOP_WINDOW} ticks and their walking pace now: a jitter in a steady
+     * walk stays above it, and so does slowing down to the pace of aiming.
+     */
+    private static final double STOP_RATIO = 0.85;
 
     private static final class Track {
         UUID world;
@@ -64,6 +73,12 @@ final class MotionTracker {
         double pace = WALK_SPEED;
         /** Consecutive ticks spent on the ground well over that pace. */
         int fastTicks;
+        /** The measured speed ({@link #average}) of each of the last {@link #STOP_WINDOW} ticks, and the newest. */
+        final double[] speeds = new double[STOP_WINDOW];
+        int nextSpeed;
+        double speed;
+        /** Slowing down to a stop this tick (see {@link #stopping}). */
+        boolean stopping;
     }
 
     private final Map<UUID, Track> tracks = new HashMap<>();
@@ -80,6 +95,8 @@ final class MotionTracker {
             step = Math.min(MAX_STEP, Math.sqrt(dx * dx + dz * dz));
         } else {
             java.util.Arrays.fill(track.steps, 0);
+            java.util.Arrays.fill(track.speeds, 0);
+            track.speed = 0;
         }
         track.fresh = false;
         track.world = world;
@@ -99,20 +116,41 @@ final class MotionTracker {
             pace = Math.max(pace, p);
         }
         track.pace = pace;
-        boolean fast = groundRun(player) && average(track) > RUN_RATIO * pace;
+        double speed = average(track);
+        boolean fast = groundRun(player) && speed > RUN_RATIO * pace;
         track.fastTicks = fast ? track.fastTicks + 1 : 0;
+        double recent = 0;
+        for (double s : track.speeds) {
+            recent = Math.max(recent, s);
+        }
+        track.stopping = speed < track.speed && speed < STOP_RATIO * Math.min(recent, walk);
+        track.speed = speed;
+        track.speeds[track.nextSpeed] = speed;
+        track.nextSpeed = (track.nextSpeed + 1) % STOP_WINDOW;
     }
 
     /**
      * Moving on foot over ground that gives normal grip: what can be compared with walking pace.
      * Ice and riding carry a player faster than their legs, and the air has its own pace.
      */
-    @SuppressWarnings("deprecation")
     private static boolean groundRun(Player player) {
-        if (!player.isOnGround() || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
+        if (!grounded(player) || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
             return false;
         }
         return !player.getLocation().subtract(0, 0.2, 0).getBlock().getType().name().contains("ICE");
+    }
+
+    /**
+     * Standing on something, by the server's own collision check under the feet. The client's on-ground
+     * flag will not do: the vanilla client answers every camera turn the server sends (each recoil
+     * kick) with a rotation packet that says it is off the ground, so a player firing full auto on
+     * flat ground read as jumping on every other round; and a modified client could claim the ground
+     * in mid-air.
+     */
+    static boolean grounded(Player player) {
+        BoundingBox body = player.getBoundingBox();
+        return player.getWorld().hasCollisionsIn(new BoundingBox(body.getMinX(), body.getMinY() - 0.06, body.getMinZ(),
+                body.getMaxX(), body.getMinY(), body.getMaxZ()));
     }
 
     /**
@@ -122,6 +160,17 @@ final class MotionTracker {
     boolean running(Player player) {
         Track track = tracks.get(player.getUniqueId());
         return track != null && track.fastTicks >= RUN_TICKS;
+    }
+
+    /**
+     * True while the player is coming to a stop: the measured speed fell this tick and is well under
+     * both what it was in the last few ticks and the walking pace the player may go at now. That is
+     * letting go of the keys or pressing the opposite one (a counter-strafe), not slowing down to aim
+     * or under a heavier load, and not speeding up again after a turn the other way.
+     */
+    boolean stopping(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        return track != null && track.stopping;
     }
 
     /**

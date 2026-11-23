@@ -74,23 +74,33 @@
   "advance": 177,
   "left": 0
  },
- "skins_knife_starter": {
+ "settlement_training_ok": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_tactical": {
+ "settlement_training_fail": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_machete": {
+ "skins_knife_starter": {
   "char": "",
   "advance": 177,
   "left": 0
  },
- "skins_knife_karambit": {
+ "skins_knife_tactical": {
   "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_machete": {
+  "char": "",
+  "advance": 177,
+  "left": 0
+ },
+ "skins_knife_karambit": {
+  "char": "",
   "advance": 177,
   "left": 0
  }

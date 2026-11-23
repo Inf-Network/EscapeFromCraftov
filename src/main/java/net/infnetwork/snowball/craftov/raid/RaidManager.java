@@ -311,7 +311,8 @@ public final class RaidManager implements Listener {
             for (Player player : squad) {
                 members.add(player.getUniqueId());
                 launching.put(player.getUniqueId(), launch);
-                player.showTitle(Title.title(Text.mm("<accent>匹配成功"), Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
+                player.showTitle(Title.title(Text.mm(map.training() ? "<accent>训练行动" : "<accent>匹配成功"),
+                        Text.mm("<muted>正在部署 " + Text.escape(map.name()) + " …"),
                         Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(4), Duration.ofMillis(300))));
                 player.playSound(player.getLocation(), "craftov:ui.match_found", SoundCategory.MASTER, 1f, 1f);
                 launch.showStatus(player);
@@ -443,8 +444,8 @@ public final class RaidManager implements Listener {
          * their way. It takes the queue's key, so it replaces that line at once.
          */
         void showStatus(Player player) {
-            Notify.status(player, "queue", "<accent>匹配成功 <white>正在部署 " + Text.escape(map.name())
-                    + " <muted>· 地图准备中 " + Text.duration((System.currentTimeMillis() - since) / 1000));
+            Notify.status(player, "queue", (map.training() ? "<accent>训练行动" : "<accent>匹配成功")
+                    + " <white>正在部署 " + Text.escape(map.name()) + " <muted>· 地图准备中 " + Text.duration((System.currentTimeMillis() - since) / 1000));
         }
 
         List<Player> online() {
@@ -626,7 +627,13 @@ public final class RaidManager implements Listener {
         for (MapDef.SwitchDef sw : map.switches()) {
             raid.switchBlocks.put(Raid.blockKey(sw.pos().at(world)), sw);
         }
-        plugin.ai().populate(raid);
+        if (raid.training()) {
+            plugin.training().setUp(raid);
+        } else {
+            // Nobody else on the course: the map has no soldiers, and a rival operator squad (its
+            // chance is rolled in populate) would land behind a player past the open gates.
+            plugin.ai().populate(raid);
+        }
         if (raid.tier.boss()) {
             for (MapDef.BossDef boss : map.bosses()) {
                 if (rng.nextDouble() < boss.chance()) {
@@ -646,7 +653,10 @@ public final class RaidManager implements Listener {
         Collections.shuffle(groups);
         raid.state = Raid.State.RUNNING;
         raid.startTick = Bukkit.getCurrentTick();
-        plugin.events().begin(raid);
+        if (!raid.training()) {
+            // No night, drones or air drops in a training raid: it teaches the basics only.
+            plugin.events().begin(raid);
+        }
         for (int i = 0; i < raid.squads.size(); i++) {
             deploySquad(raid, i + 1, groups.isEmpty() ? 1 : groups.get(i % groups.size()));
         }
@@ -706,11 +716,16 @@ public final class RaidManager implements Listener {
         plugin.lobby().stripRangeItems(player);
         plugin.lobby().captureLoadout(player);
         Profile profile = plugin.profiles().get(player);
+        // A training raid costs nothing (its tier has no fee) and insures nothing: the gear brought
+        // in waits in the deployment record and comes back whichever way it ends.
+        boolean training = raid.training();
         long entryFee = Math.max(0, raid.tier.entryFee());
         profile.money -= entryFee;
-        long premium = plugin.insurance().onDeploy(player, raid);
+        long premium = training ? 0 : plugin.insurance().onDeploy(player, raid);
         rp.fees = entryFee + premium;
-        plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
+        if (!training) {
+            plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.DEPLOY);
+        }
         plugin.luck().onDeploy(player, raid, rp);
         rp.secure = new ArrayList<>();
         for (ItemRecord record : profile.secure) {
@@ -722,7 +737,9 @@ public final class RaidManager implements Listener {
         profile.deployment = deployment(raid, player, profile, rp, entryFee, premium);
         rp.deployment = profile.deployment;
         profile.activeRaid = raid.id;
-        profile.statInRaid("raids", 1);
+        if (!training) {
+            profile.statInRaid("raids", 1);
+        }
         plugin.profiles().saveNow(player.getUniqueId());
         List<ItemRecord> takenIn = new ArrayList<>(plugin.carry().snapshot(player).values());
         takenIn.addAll(rp.secure);
@@ -732,11 +749,15 @@ public final class RaidManager implements Listener {
         // brought in cancels out and one found in the raid is profit.
         rp.startValue = plugin.carry().carriedValue(player) + recordsValue(rp.secure);
         rp.startTick = Bukkit.getCurrentTick();
-        rp.escortContract = plugin.escorts().contractFor(player.getUniqueId());
+        rp.escortContract = training ? null : plugin.escorts().contractFor(player.getUniqueId());
         rp.escorting = rp.escortContract != null && !plugin.escorts().isClient(rp.escortContract, player.getUniqueId());
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, UiItems.raidTerminal());
         player.closeInventory();
         plugin.health().setupPlayer(player, true);
+        if (training) {
+            // Last, once the real gear is on record: the course's own kit in its place.
+            plugin.training().equip(player);
+        }
         plugin.match().teamFor(raid, rp, player);
     }
 
@@ -748,6 +769,7 @@ public final class RaidManager implements Listener {
     private Profile.Deployment deployment(Raid raid, Player player, Profile profile, RaidPlayer rp, long entryFee, long premium) {
         Profile.Deployment d = new Profile.Deployment();
         d.raid = raid.key;
+        d.training = raid.training();
         d.map = raid.map.name();
         d.tier = raid.tier.name();
         d.time = System.currentTimeMillis();
@@ -794,10 +816,59 @@ public final class RaidManager implements Listener {
         rp.protectedUntil = Bukkit.getCurrentTick() + 60L;
         rp.aiGraceUntil = rp.protectedUntil + plugin.getConfig().getLong("ai.insertion-grace-ticks", 240);
         plugin.carry().refreshLocks(player);
-        player.showTitle(Title.title(Text.mm("<accent><b>行动开始"), Text.mm("<muted>搜索物资，活着撤离"),
-                Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
         player.playSound(player.getLocation(), "craftov:ui.deploy", SoundCategory.MASTER, 1f, 1f);
         plugin.hud().onRaidStart(player);
+        if (raid.training()) {
+            plugin.training().landed(player);
+            return;
+        }
+        player.showTitle(Title.title(Text.mm("<accent><b>行动开始"), Text.mm("<muted>搜索物资，活着撤离"),
+                Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1600), Duration.ofMillis(500))));
+        briefLanding(raid, player, rp);
+    }
+
+    /**
+     * A line for the landing briefing: kept until the player is on the ground while they deploy
+     * (the fly-in hides chat behind the camera, and lines arriving one by one there were never
+     * read), straight to chat otherwise.
+     */
+    public void brief(Player player, String line) {
+        RaidPlayer rp = session(player);
+        if (rp != null && rp.state == RaidPlayer.State.DEPLOYING) {
+            rp.briefing.add(line);
+        } else {
+            Text.send(player, line);
+        }
+    }
+
+    /**
+     * The one chat message on landing: map, difficulty, time, the open extracts and how the compass
+     * shows them, night, who carries a bounty, and whatever came up while deploying (insurance, a
+     * compensation raid). It used to be four or five separate lines spread over the fly-in.
+     */
+    private void briefLanding(Raid raid, Player player, RaidPlayer rp) {
+        long extracts = raid.extracts.stream().filter(point -> point.available).count();
+        StringBuilder sb = new StringBuilder("<accent><b>行动简报</b> <muted>· <white>").append(Text.escape(raid.map.name()))
+                .append(" <muted>· ").append(raid.tier.tag()).append(" <muted>· 限时 ").append(raid.map.raidSeconds() / 60)
+                .append(" 分钟 · 撤离点 ").append(extracts).append(" 个（罗盘上的绿色 ◆）")
+                .append(raid.night ? " · <text>夜间行动" : "");
+        String targets = plugin.bounties().targets(raid);
+        if (targets != null) {
+            sb.append("\n<danger>☠ 本局悬赏目标：").append(targets);
+        }
+        long own = plugin.bounties().inRaid(rp);
+        if (own > 0) {
+            sb.append("\n<danger>你身上有 <accent>◈").append(Text.money(own)).append(" <danger>的悬赏，所有人都知道你在这局。");
+        }
+        for (String line : rp.briefing) {
+            sb.append("\n").append(line);
+        }
+        rp.briefing.clear();
+        String guide = plugin.tutorial().landingLine(player);
+        if (guide != null) {
+            sb.append("\n").append(guide);
+        }
+        Text.send(player, sb.toString());
     }
 
     // ------------------------------------------------------------------ ticking
@@ -1015,11 +1086,14 @@ public final class RaidManager implements Listener {
             }
             if (remaining <= 300 && !raid.warned5) {
                 raid.warned5 = true;
-                announce(raid, "<accent>行动剩余 5 分钟，请尽快撤离", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
+                // Nothing goes missing in training (TrainingService): its warnings say so.
+                announce(raid, raid.training() ? "<accent>训练剩余 5 分钟" : "<accent>行动剩余 5 分钟，请尽快撤离",
+                        net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             if (remaining <= 60 && !raid.warned1) {
                 raid.warned1 = true;
-                announce(raid, "<danger>行动剩余 60 秒 · 超时未撤离将视为失踪", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
+                announce(raid, raid.training() ? "<accent>训练剩余 60 秒 <muted>· 时间到了训练结束，装备照样归还"
+                        : "<danger>行动剩余 60 秒 · 超时未撤离将视为失踪", net.infnetwork.snowball.craftov.gui.UiSound.WARNING);
             }
             if (remaining > 0 && remaining <= 10) {
                 // The last ten seconds tick for everyone still inside.
@@ -1043,7 +1117,7 @@ public final class RaidManager implements Listener {
                     } else if (rp.active() || rp.state == RaidPlayer.State.DISCONNECTED) {
                         Player player = Bukkit.getPlayer(rp.uuid);
                         if (player != null && rp.active()) {
-                            die(raid, player, rp, "行动超时，失踪", null);
+                            die(raid, player, rp, raid.training() ? "训练时间到" : "行动超时，失踪", null);
                         } else {
                             missing(raid, rp, "行动超时");
                         }
@@ -1133,6 +1207,11 @@ public final class RaidManager implements Listener {
     }
 
     private void extract(Raid raid, Player player, RaidPlayer rp, ExtractPoint point) {
+        if (raid.training()) {
+            player.playSound(player.getLocation(), "craftov:extract.success", SoundCategory.MASTER, 1f, 1f);
+            endTraining(raid, player, rp, true, "训练完成 · " + point.def.name());
+            return;
+        }
         Profile profile = plugin.profiles().get(player);
         if (point.def.type() == ExtractType.PAID) {
             if (profile.money < point.def.cost()) {
@@ -1190,7 +1269,8 @@ public final class RaidManager implements Listener {
         }
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 true, report.outcome, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
-                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, rp.shots, rp.stillShots);
+                total, profit, SettlementMenu.top(plugin, outStacks, 10), newCollectibles, null, List.of(), rp.shots, rp.stillShots, false,
+                List.of());
         // Black curtain over the trip home, so the world loading never shows.
         UiFont.blackout(player, 6, 16, 10);
         if (handed > 0) {
@@ -1203,6 +1283,35 @@ public final class RaidManager implements Listener {
         plugin.profiles().saveNow(player.getUniqueId());
         leftWith(raid, rp, out);
         settle(player, settlement);
+    }
+
+    /**
+     * The end of a training raid, whichever way it comes (extracted, out of time, given up, sent out
+     * of the world): what the course handed out stays behind, and the gear, secure container, money
+     * and records go back to how they were at the deploy ({@link #voidRaid}, which sends no letter
+     * for training). A finished course counts for the guide, after the profile is back, and either
+     * way the settlement screen shows how it went.
+     */
+    private void endTraining(Raid raid, Player player, RaidPlayer rp, boolean done, String outcome) {
+        UUID uuid = player.getUniqueId();
+        plugin.weapons().reset(player);
+        plugin.downed().clear(player);
+        rp.state = done ? RaidPlayer.State.EXTRACTED : RaidPlayer.State.LEFT;
+        rp.extracting = null;
+        int seconds = (int) Math.max(0, (Bukkit.getCurrentTick() - rp.startTick) / 20);
+        List<Boolean> lessons = plugin.training().finish(player, done);
+        byPlayer.remove(uuid);
+        plugin.match().leaveTeam(player);
+        player.closeInventory();
+        player.setItemOnCursor(null);
+        player.getInventory().clear();
+        voidRaid(uuid, player.getName(), rp.deployment, false);
+        UiFont.blackout(player, 6, 16, 10);
+        plugin.lobby().enterLobby(player);
+        if (done) {
+            plugin.training().completed(player);
+        }
+        settle(player, SettlementMenu.Settlement.training(done, outcome, raid.map.name(), seconds, lessons, rp.shots, rp.stillShots));
     }
 
     /** Settlement screens waiting for dead players still watching a squadmate (the chat line went at death). */
@@ -1319,6 +1428,12 @@ public final class RaidManager implements Listener {
         if (!rp.active()) {
             return;
         }
+        if (raid.training()) {
+            // Nothing is lost in training: out of time, given up or (hardly possible) bled out, the
+            // gear comes back as from an extraction, only without the credit.
+            endTraining(raid, player, rp, false, reason);
+            return;
+        }
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
@@ -1379,16 +1494,19 @@ public final class RaidManager implements Listener {
         SettlementMenu.Settlement settlement = new SettlementMenu.Settlement(
                 false, reason, raid.map.name(), report.tier, report.seconds, rp.kills, rp.aiKills, xp, rankDelta, rp.startValue,
                 recordsValue(rp.secure), -lost, SettlementMenu.top(plugin, drop, 10), List.of(),
-                hit == null || hit.attacker() == null ? null : hit.attackerName(), rp.shots, rp.stillShots);
+                hit == null || hit.attacker() == null ? null : hit.attackerName(), damageLog(hit, hits), rp.shots, rp.stillShots, false,
+                List.of());
         // The kill replay (if there is a killer to follow) plays first, then the report and spectating.
         plugin.replays().afterDeath(player, raid, hit, () -> {
             Player p = Bukkit.getPlayer(uuid);
             byPlayer.remove(uuid);
             if (p != null) {
-                // The record in chat at once, with the damage taken; only the screen waits for the
-                // lobby, should the player stay to watch a squadmate.
+                // The record in chat at once, with the damage taken: the screen, which shows both too,
+                // waits for the lobby should the player stay to watch a squadmate.
                 p.sendMessage(Text.mm(settlement.summary()));
-                sendDamageLog(p, hit, hits);
+                for (String line : settlement.wounds()) {
+                    p.sendMessage(Text.mm(line));
+                }
                 if (!spectateMate(p, raid, rp)) {
                     plugin.match().leaveTeam(p);
                     UiFont.blackout(p, 6, 16, 10);
@@ -1442,7 +1560,7 @@ public final class RaidManager implements Listener {
                 spectators.put(player.getUniqueId(), Map.entry(raid, rp));
                 player.setGameMode(GameMode.SPECTATOR);
                 player.setSpectatorTarget(target);
-                Notify.hint(player, "正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white>Shift</white> 返回大厅");
+                Notify.hint(player, "正在观战队友 <white>" + Text.escape(target.getName()) + " <muted>· 按 <white><key:key.sneak></white> 返回大厅");
                 return true;
             }
         }
@@ -2026,15 +2144,20 @@ public final class RaidManager implements Listener {
         }
     }
 
-    /** Who hurt the player, where and how badly: one line per attacker and weapon. */
-    private void sendDamageLog(Player player, DamageService.@Nullable LastHit killing, List<DamageService.HitRecord> hits) {
+    /**
+     * The death's damage record for the settlement screen's outcome button: the killing blow (who,
+     * with what, where it hit and from how far), then the hits taken in the raid by attacker and
+     * body part.
+     */
+    private static List<String> damageLog(DamageService.@Nullable LastHit killing, List<DamageService.HitRecord> hits) {
+        List<String> lines = new ArrayList<>();
         if (hits.isEmpty()) {
-            return;
+            return lines;
         }
         if (killing != null && killing.attacker() != null) {
             DamageService.HitRecord last = hits.get(hits.size() - 1);
-            player.sendMessage(Text.mm("<danger>致命一击 <white>" + Text.escape(killing.attackerName()) + " <muted>· "
-                    + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m"));
+            lines.add("<danger>致命一击 <white>" + Text.escape(killing.attackerName()) + " <muted>· "
+                    + Text.escape(killing.weapon()) + " · " + killing.part().displayName() + " · " + last.distance() + "m");
         }
         java.util.Map<String, java.util.Map<net.infnetwork.snowball.craftov.combat.BodyPart, double[]>> byAttacker = new java.util.LinkedHashMap<>();
         for (DamageService.HitRecord h : hits) {
@@ -2043,13 +2166,14 @@ public final class RaidManager implements Listener {
             acc[0] += 1;
             acc[1] += h.damage();
         }
-        player.sendMessage(Text.mm("<muted>受到的伤害"));
+        lines.add("<muted>受到的伤害");
         byAttacker.forEach((who, parts) -> {
             StringBuilder sb = new StringBuilder("<white>" + Text.escape(who) + " <muted>→ ");
             parts.forEach((part, acc) -> sb.append("<text>").append(part.displayName()).append(" ×").append((int) acc[0])
                     .append(" <danger>").append(Math.round(acc[1])).append("  "));
-            player.sendMessage(Text.mm(sb.toString().trim()));
+            lines.add(sb.toString().trim());
         });
+        return lines;
     }
 
     /** What the records are worth together (the secure container, items mailed on the way out). */
@@ -2307,6 +2431,10 @@ public final class RaidManager implements Listener {
 
     /** Voids the raid for one player who ended up outside the raid world (admin teleport, glitch). */
     private void evacuate(Raid raid, Player player, RaidPlayer rp, String message) {
+        if (raid.training()) {
+            endTraining(raid, player, rp, false, "训练中断");
+            return;
+        }
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.LEFT;
@@ -2448,7 +2576,8 @@ public final class RaidManager implements Listener {
         }
         Voided voided = voidRaid(player.getUniqueId(), player.getName(), null, true);
         if (voided != null) {
-            Text.send(player, "<accent>上一次行动因服务器中断已作废。" + voided.summary());
+            Text.send(player, (voided.training() ? "<accent>上一次训练行动因服务器中断已结束。" : "<accent>上一次行动因服务器中断已作废。")
+                    + voided.summary());
         }
     }
 
@@ -2477,7 +2606,8 @@ public final class RaidManager implements Listener {
         plugin.match().leaveTeam(player);
         // What they carried stays in the raid: the lobby puts the loadout they went in with on them.
         plugin.lobby().enterLobby(player);
-        Text.send(player, "<accent>服务器维护：本次行动已作废。" + (voided == null ? "" : voided.summary()));
+        Text.send(player, (voided != null && voided.training() ? "<accent>服务器维护：训练行动已结束。" : "<accent>服务器维护：本次行动已作废。")
+                + (voided == null ? "" : voided.summary()));
     }
 
     /**
@@ -2487,8 +2617,11 @@ public final class RaidManager implements Listener {
      * because others had taken it out, {@code record} false for a profile without a deployment
      * record (left by an older build), whose loadout simply stays and which gets no refund.
      */
-    private record Voided(long refund, long earned, boolean withheld, boolean record) {
+    private record Voided(long refund, long earned, boolean withheld, boolean record, boolean training) {
         String summary() {
+            if (training) {
+                return "<muted>训练里拿到的东西已收回，带进去的装备和安全箱已原样归还。";
+            }
             if (!record) {
                 return "<muted>配装和安全箱仍是出发前的样子，局内捡到的物品不计，详见仓库邮箱里的邮件。";
             }
@@ -2526,10 +2659,14 @@ public final class RaidManager implements Listener {
      * went to the journal of an unreadable profile).
      */
     private @Nullable Voided voidRaid(UUID uuid, String name, Profile.@Nullable Deployment known, boolean crash) {
-        long compensation = Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
+        // A training raid is undone the same way however it ends, but nothing in it was at stake:
+        // no letter and no compensation.
+        boolean training = known != null && known.training;
+        long compensation = training ? 0 : Math.max(0, plugin.getConfig().getLong("raid.void-compensation.money", 5000));
         Voided[] sent = new Voided[1];
         List<Profile.BountyClaim> claims = new ArrayList<>();
-        String cause = (crash ? "raid lost when the server went down" : "server stopped during the raid") + ", voided for " + name
+        String cause = (training ? "training raid ended" : crash ? "raid lost when the server went down" : "server stopped during the raid")
+                + ", voided for " + name
                 + (crash ? ", luck.pity and luck.jackpots as at the deploy and the quota its hand-outs spent back" : "")
                 + ", luck.deployed = null";
         plugin.profiles().edit(uuid, () -> {
@@ -2537,7 +2674,7 @@ public final class RaidManager implements Listener {
             Map<Integer, ItemRecord> loadout = known == null ? Map.of() : without(known.loadout, known.gone, lost);
             List<ItemRecord> secure = known == null ? List.of() : without(known.secure, known.gone, lost);
             Map<String, Long> lostStacks = known == null ? Map.of() : deduct(loadout, secure, known.goneStacks);
-            return describeVoid(cause, known, loadout, secure, voidLetter(known, lost[0], lostStacks, compensation, crash));
+            return describeVoid(cause, known, loadout, secure, training ? null : voidLetter(known, lost[0], lostStacks, compensation, crash));
         }, p -> {
             Profile.Deployment d = p.deployment;
             if (p.activeRaid == null && d == null || known != null && d != null && !d.raid.equals(known.raid)) {
@@ -2591,9 +2728,11 @@ public final class RaidManager implements Listener {
                 // A stop gives the hand-outs back one by one when the raid closes (voidOnStop).
                 p.luck.deployed = null;
             }
-            MailService.deliver(p, letter);
+            if (d == null || !d.training) {
+                MailService.deliver(p, letter);
+            }
             sent[0] = new Voided(d == null ? 0 : d.entryFee + d.premium, d == null ? 0 : d.earned,
-                    lost[0] > 0 || !lostStacks.isEmpty(), d != null);
+                    lost[0] > 0 || !lostStacks.isEmpty(), d != null, d != null && d.training);
         });
         if (sent[0] == null) {
             return null;
@@ -2614,7 +2753,7 @@ public final class RaidManager implements Listener {
 
     /** The voided raid's change to the profile in the journal's terms, for a profile that cannot be read. */
     private static String describeVoid(String cause, Profile.@Nullable Deployment d, Map<Integer, ItemRecord> loadout,
-                                       List<ItemRecord> secure, Profile.Mail letter) {
+                                       List<ItemRecord> secure, Profile.@Nullable Mail letter) {
         StringBuilder sb = new StringBuilder(cause).append(": ");
         if (d != null) {
             long money = d.entryFee + d.premium - d.earned;
@@ -2630,7 +2769,8 @@ public final class RaidManager implements Listener {
             }
             sb.append(", ");
         }
-        return sb.append("activeRaid = null, deployment = null, add to mail ").append(ProfileService.json(letter)).toString();
+        sb.append("activeRaid = null, deployment = null");
+        return letter == null ? sb.toString() : sb.append(", add to mail ").append(ProfileService.json(letter)).toString();
     }
 
     /**
@@ -3134,7 +3274,9 @@ public final class RaidManager implements Listener {
                 Notify.hint(player, "<muted>" + Text.escape(sw.name()) + " 已经开启");
                 return;
             }
-            int countdown = plugin.getConfig().getInt("extract.switch-countdown-seconds", 60);
+            // The training lever is quick: its lesson is how a lever extract works, not the wait.
+            int countdown = raid.training() ? plugin.getConfig().getInt("training.switch-countdown-seconds", 10)
+                    : plugin.getConfig().getInt("extract.switch-countdown-seconds", 60);
             raid.switchUntil.put(sw.id(), (long) Bukkit.getCurrentTick() + countdown * 20L);
             raid.departing.add(sw.id());
             if (block.getBlockData() instanceof Powerable powerable) {
@@ -3142,7 +3284,13 @@ public final class RaidManager implements Listener {
                 block.setBlockData(powerable, false);
             }
             raid.world.playSound(block.getLocation(), "craftov:world.switch", SoundCategory.BLOCKS, 3f, 1f);
-            announce(raid, "<accent>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
+            if (raid.training()) {
+                // Alone on the course: the puller's own action bar is enough, and the objective line
+                // already says to stand in the extract.
+                Notify.ok(player, Text.escape(sw.name()) + "已拉下 <muted>· " + countdown + " 秒后撤离，站进绿色撤离点");
+            } else {
+                announce(raid, "<accent>" + Text.escape(sw.name()) + " 已被拉下！相关撤离点将在 " + countdown + " 秒后撤离，留在区域内的人将一同离开。");
+            }
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (block.getBlockData() instanceof Powerable powerable) {
                     powerable.setPowered(false);
@@ -3275,6 +3423,18 @@ public final class RaidManager implements Listener {
             return;
         }
         plugin.weapons().reset(player);
+        if (raid.training()) {
+            // Leaving ends a training raid at once: nothing in it is worth a reconnect window. The
+            // gear goes back into the profile, and the next join puts it on in the lobby.
+            plugin.training().finish(player, false);
+            rp.state = RaidPlayer.State.LEFT;
+            byPlayer.remove(player.getUniqueId());
+            player.setItemOnCursor(null);
+            player.getInventory().clear();
+            voidRaid(player.getUniqueId(), player.getName(), rp.deployment, false);
+            plugin.match().leaveTeam(player);
+            return;
+        }
         if (rp.state == RaidPlayer.State.DOWNED) {
             // As if bleeding out: the knocker keeps the kill and the bounty past the 30 seconds.
             die(raid, player, rp, "倒地后断线", plugin.downed().killingHit(player));

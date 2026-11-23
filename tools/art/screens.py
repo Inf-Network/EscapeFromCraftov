@@ -447,6 +447,30 @@ def skin_screens(catalogue):
     return out
 
 
+def training_settlement_screen(done):
+    """After the training raid: the outcome across the top row, the time, the rounds fired and what
+    comes next, the six lessons on a plate, and back, stash and "start a raid" in the bottom bar.
+    Nothing found on the course is kept, so there are no items to show and no word of losing any."""
+    def make():
+        s = Screen(6)
+        tone = P.OK if done else P.DANGER
+        x0, y0, x1, y1 = cells(0, 0, 0, 7)
+        s.d.rectangle([x0, y0 + 1, x1, y1 - 1], fill=mix(rgb(P.RAISED), rgb(tone), 0.18))
+        s.d.line([x0, y1 - 1, x1, y1 - 1], fill=rgb(tone))
+        s.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tone))
+        label(s.img, x0 + 5, y0 + 4, '训练完成' if done else '训练中断', tone)
+        s.wells([8])
+        s.wells(slots(1, 0, 1, 2))
+        s.band(2, 0, 8, '训练课程 · 完成的会发光', tick=tone)
+        s.toolbar(5).wells([45, 49])
+        s.big(5, 6, 5, 8, ['开始行动'])
+        x0, y0, x1, y1 = cells(3, 1, 3, 6)
+        s.d.rectangle([x0 - 2, y0 - 2, x1 + 2, y1 + 2], fill=rgb('#11151A'), outline=rgb(tone))
+        s.wells(slots(3, 1, 3, 6))
+        return s.done()
+    return make
+
+
 def blackout():
     """The transition curtain: one black glyph that a title (drawn at 4x) stretches over the screen."""
     return Image.new('RGBA', (64, 16), (0, 0, 0, 255))
@@ -464,6 +488,9 @@ SCREENS = {
     'gunsmith': gunsmith_screen,
     'settlement_ok': settlement_screen(True),
     'settlement_fail': settlement_screen(False),
+    # New screens go last: each one's glyph is its place in this list (build.py, SCREEN_BASE + i).
+    'settlement_training_ok': training_settlement_screen(True),
+    'settlement_training_fail': training_settlement_screen(False),
 }
 
 

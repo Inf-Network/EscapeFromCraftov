@@ -378,9 +378,13 @@ public final class TutorialService {
             return null;
         }
         if (plugin.range().isIn(player)) {
-            // Entering the range did the range step: what is left is the gunsmith, or back to the lobby.
-            return step == Step.GUNSMITH ? new Objective("领枪和瞄准镜，改枪台装上", plugin.range().rack(player))
-                    : new Objective("右键第 9 格离开靶场", null);
+            // Entering the range did the range step. The FOV Effects check that usually comes next is
+            // done anywhere and the gunsmith is right here, so only the lobby's steps send them out.
+            return switch (step) {
+                case FOV -> new Objective(step.objective, null);
+                case GUNSMITH -> new Objective("领枪和瞄准镜，改枪台装上", plugin.range().rack(player));
+                default -> new Objective("右键第 9 格离开靶场", null);
+            };
         }
         if (!plugin.lobby().isLobby(player.getWorld())) {
             return null;

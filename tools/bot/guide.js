@@ -8,7 +8,8 @@
 //           brought one); after extracting the lobby still points out the range (2/6) and opening
 //           the terminal again does not close the guide; entering the range ticks it off on the
 //           action bar (no second chat line under the range's own) and names the FOV Effects
-//           check, which the lobby then points out in chat with its button (3/6); /cv fov ok ticks
+//           check, as does the HUD's objective line on the range (it used to say to leave), and
+//           the lobby then points it out in chat with its button (3/6); /cv fov ok ticks
 //           that off and names the gunsmith, and an attachment fitted at the gunsmith finishes it:
 //           "新手指引完成" and ◈20,000 more.
 //   legacy  profiles written before the bot joins, in the old format. The old build lost the guide
@@ -46,6 +47,8 @@ const t0 = Date.now()
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const rcon = cmd => rconRaw(cmd, RCON).then(r => r.replace(/§./g, ''))
+/** The HUD's objective line for a player, as /cv hud reports it. */
+const objectiveOf = async name => ((await rcon(`cv hud ${name}`)).match(/objective=([^|]*)/) || [, ''])[1].trim()
 const money = s => { const m = String(s).match(/◈ ?([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : NaN }
 
 const failures = []
@@ -198,6 +201,10 @@ async function order () {
     check('order: entering the range ticks it off and names the FOV Effects check next', third, bot.bars.slice(barsFrom).map(b => b.text))
     // The range has its own line in chat; the guide's goes on the action bar (#7: two lines at once before).
     check('order: and adds no guide line to the range\'s own in chat', guideLines(bot, from).length === 0, guideLines(bot, from))
+    // The objective line agrees: the FOV Effects check is done anywhere, so it does not send them out.
+    const rangeGoal = await objectiveOf(name)
+    check('order: on the range the objective line is the FOV Effects check, not the way out',
+      rangeGoal.includes('FOV') && !rangeGoal.includes('离开'), rangeGoal)
     from = bot.chatLog.length
     bot.chat('/cv lobby')
     await waitFor(() => inLobby(bot), 10000)

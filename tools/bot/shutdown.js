@@ -36,7 +36,7 @@
 // Also: no "Error occurred while disabling Craftov" or failed shutdown step in the log, a new
 // -shutdown.zip backup, and no craftov_raid_* folder left once the server is back.
 //
-//   PORT=25565 RCON_PORT=25575 SERVER_DIR=../../server/run node shutdown.js [--crash]
+//   node shutdown.js [--crash]     env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js), MATCH_WAIT
 //
 // --crash adds three steps that kill the server outright (SIGKILL; Linux only, the process is found
 // in /proc): once with an escort contract open, checking that the reward comes back when its owner
@@ -48,30 +48,35 @@
 // which the letter and the chat line say was not handed back, the premium back, one letter) and
 // that logging in again does nothing more.
 //
-// COMPENSATION (5000) must match raid.void-compensation.money. Profiles of the bots are written
-// before they first join (insurance on, the raider's contracts and level). The server must be
-// running, with test mode on (test.enabled) so the bots can queue for the proving ground. After
-// each stop the script starts it again with SERVER_DIR/start.sh (detached, output appended to
-// SERVER_DIR/console.log); with NO_START=1 it only waits for somebody else (a restart loop) to bring
-// it back. Exits 0 when every check passes, 1 otherwise. For the run
-// SERVER_DIR/plugins/Craftov/config.yml gets insurance.loss-chance and return-minutes 0 (every
-// insured item back at once); the file is put back at the end.
+// Server config: the script pins what it needs in SERVER_DIR/plugins/Craftov/config.yml for the run
+// and puts the file back at the end: test.enabled true (the bots, not op, queue for the proving
+// ground), match.wait-seconds MATCH_WAIT (3; with 15 the flyer was still queueing when it had to be
+// on its entry camera, and every queue eats into gone's reconnect window), insurance.loss-chance and
+// return-minutes 0 (every insured item back at once). raid.reconnect-seconds must be the default 120,
+// and the letter's money is read from raid.void-compensation.money (COMPENSATION overrides it).
+// Profiles of the bots are written before they first join (insurance on, the raider's contracts and
+// level). The server must be running. After each stop server.js brings it back: a restart loop gets
+// 15 s, otherwise SERVER_DIR/start.sh is run (detached, output appended to SERVER_DIR/console.log);
+// NO_START=1 only waits for somebody else to start it. Exits 0 when every check passes, 1 otherwise.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
-const pinInsurance = require('./insurance')
+const config = require('./config')
+const server = require('./server')
 const fs = require('fs')
 const net = require('net')
 const path = require('path')
 const crypto = require('crypto')
-const { spawn } = require('child_process')
 const env = require('./env')
 
 const PORT = env.PORT
 const RCON_PORT = env.RCON_PORT
 const RCON_PASSWORD = env.RCON_PASSWORD
 const SERVER_DIR = env.SERVER_DIR
-const NO_START = !!process.env.NO_START
-const COMPENSATION = Number(process.env.COMPENSATION || 5000)
+// match.wait-seconds for the run: the flyer must be on its entry camera within WAIT + 15 s, and gone's
+// 120 s reconnect window must outlast two more queues and raids before the stop.
+const WAIT = Number(process.env.MATCH_WAIT || 3)
+const CONFIG = path.join(SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
+const COMPENSATION = Number(process.env.COMPENSATION || (fs.existsSync(CONFIG) && config.read('raid.void-compensation.money', CONFIG)) || 5000)
 const SERVER_REAL = fs.realpathSync(SERVER_DIR)
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const tag = String(Math.floor(1000 + Math.random() * 9000))
@@ -423,7 +428,7 @@ async function setup () {
   // Flyer and drop: one more raid (nobody joins a running one); stop while its entry camera runs.
   await queueSolo('flyer')
   await queueSolo('drop')
-  const flying = await waitFor(async () => await inRaidWorld(NAMES.flyer) && await inMode(NAMES.flyer, 'spectator'), 15000, 200)
+  const flying = await waitFor(async () => await inRaidWorld(NAMES.flyer) && await inMode(NAMES.flyer, 'spectator'), (WAIT + 15) * 1000, 200)
   check('flyer is in the entry camera', flying, await dimension(NAMES.flyer))
   const dropFlying = await waitFor(async () => await inRaidWorld(NAMES.drop) && await inMode(NAMES.drop, 'spectator'), 3000, 200)
   check('drop is in the entry camera', dropFlying, await dimension(NAMES.drop))
@@ -686,8 +691,9 @@ async function stopAndRestart () {
   check('giver: secure container as it went in', records(giver.secure) === records(gb.secure))
   check('giver: balance as before deploying (fees back)', giver.money === before.giver.money, `${before.giver.money} -> ${giver.money}`)
   const gl = letters(giver)
-  check('giver: one letter that lists what was not handed back', gl.length === 1 && gl[0].body.includes('已被其他干员带出本局的不再退回：2 件装备')
-    && gl[0].body.includes('金条 ×2') && gl[0].body.includes('.338 FMJ ×60') && !gl[0].body.includes('绷带'), gl[0] && gl[0].body)
+  // Each piece by name and count (#127: the letter used to say "2 件装备" for the single items).
+  check('giver: one letter that lists what was not handed back', gl.length === 1 && gl[0].body.includes('已被其他干员带出本局的不再退回：')
+    && ['P18 手枪 ×1', '机密主控芯片 ×1', '金条 ×2', '.338 FMJ ×60'].every(t => gl[0].body.includes(t)) && !gl[0].body.includes('绷带'), gl[0] && gl[0].body)
   const taker = profile(NAMES.taker)
   check('taker: extracted with the pistol, the gold bars and the rounds',
     held(taker, 'p18') === 2 && held(taker, 'gold_bar') === 2 && held(taker, 'ammo_338_fmj') === 60, ['p18', 'gold_bar', 'ammo_338_fmj'].map(id => id + ' ' + held(taker, id)).join(', '))
@@ -723,20 +729,11 @@ async function stopAndRestart () {
   return true
 }
 
-// Starts the server again (unless NO_START) and waits until a log written after `since` says Done.
+// Brings the server back (server.js: a restart loop gets 15 s, otherwise start.sh is run here) and
+// waits until a log written after `since` says Done.
 async function start (since) {
-  if (!NO_START) {
-    const out = fs.openSync(path.join(SERVER_DIR, 'console.log'), 'a')
-    const child = spawn(path.join(SERVER_DIR, 'start.sh'), [], { cwd: SERVER_DIR, detached: true, stdio: ['ignore', out, out] })
-    child.unref()
-    log('started', path.join(SERVER_DIR, 'start.sh'))
-  }
-  const up = await waitFor(async () => {
-    if (!(await portOpen(RCON_PORT))) return false
-    return /Done \(/.test(latestLog()) && fs.statSync(path.join(SERVER_DIR, 'logs', 'latest.log')).mtimeMs > since
-  }, 180000, 1000)
+  const up = await server.bringBack({ since, log })
   check('the server is back', up)
-  if (up) await sleep(2000)
   return up
 }
 
@@ -944,7 +941,7 @@ async function crashVoid () {
   check('crash void: secure container as it went in', records(p.secure) === records(was.secure))
   check('crash void: balance as before deploying (premium back)', p.money === money, `${money} -> ${p.money}`)
   check('crash void: one compensation letter', letters(p).length === 1 && letters(p)[0].money === COMPENSATION, JSON.stringify(letters(p)).slice(0, 200))
-  check('crash void: the letter says one piece of gear was not handed back', (letters(p)[0] || { body: '' }).body.includes('已被其他干员带出本局的不再退回：1 件装备'),
+  check('crash void: the letter names the rifle that was not handed back', (letters(p)[0] || { body: '' }).body.includes('已被其他干员带出本局的不再退回：K47 突击步枪 ×1'),
     (letters(p)[0] || {}).body)
   check('crash void: the raid is off the stats', stats(p.stats) === stats(was.stats), `${stats(was.stats)} -> ${stats(p.stats)}`)
   const again = await make('crasher')
@@ -957,11 +954,17 @@ async function crashVoid () {
 }
 
 ;(async () => {
-  // Every insured item must come back at once for the checks above (insurance.js): pinned for the
-  // run, read again on the restart, and put back at the end.
-  let restoreInsurance = async () => {}
+  // Pinned for the run, read again on the restart, and put back at the end: every insured item
+  // comes back at once for the checks above, the bots (not op) may queue for the proving ground, and
+  // the queues launch in WAIT seconds.
+  let restoreConfig = async () => {}
   try {
-    restoreInsurance = await pinInsurance(path.join(SERVER_DIR, 'plugins', 'Craftov'), rcon, log)
+    restoreConfig = await config.pin({
+      'insurance.loss-chance': 0,
+      'insurance.return-minutes': 0,
+      'test.enabled': true,
+      'match.wait-seconds': WAIT
+    }, { file: CONFIG, rcon, log })
     if (await setup() && await stopAndRestart()) {
       await afterRestart()
       if (process.argv.includes('--crash')) {
@@ -973,7 +976,7 @@ async function crashVoid () {
   } catch (e) {
     check('scenario ran without errors', false, e.stack)
   }
-  await restoreInsurance()
+  await restoreConfig()
   for (const bot of Object.values(bots)) { try { bot.quit() } catch { } }
   log(failures.length ? `FAILED ${failures.length}: ${failures.join('; ')}` : 'ALL PASSED')
   setTimeout(() => process.exit(failures.length ? 1 : 0), 500)

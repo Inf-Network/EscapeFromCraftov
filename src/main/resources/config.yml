@@ -172,19 +172,63 @@ stamina:
   overload-penalty-per-kg: 0.025
   max-penalty: 0.5
 
+slide:
+  # Sprinting forward, tap sneak twice: the second press within double-tap-ms of the first, the
+  # first let go within first-hold-ms, and sprinting at the first press or within sprint-grace-ms
+  # before it (the client may end the sprint as sneak goes down). The player sits on an invisible
+  # seat the server moves: eyes 1.02 above the ground, 1.2 m of hitbox showing, legs stretched out
+  # ahead (leg-hitbox: rounds that hit them count as a leg). Holding sneak, sneaking along or a
+  # double tap while walking never slides. Only in a raid and on the private range. Times are when
+  # the packets reach the server, so a jittery connection moves them by a few tens of ms.
+  enabled: true
+  double-tap-ms: 300
+  first-hold-ms: 200
+  sprint-grace-ms: 150
+  # Blocks a tick the player must have been moving at lately (walking is 0.216, sprinting 0.28).
+  min-speed: 0.2
+  # Stamina needed to start, and spent on starting; while sliding it drains stamina-multiplier
+  # times stamina.sprint-drain a tick (times the load factor), about 10 for a slide under 25 kg.
+  min-stamina: 15
+  start-cost: 0
+  stamina-multiplier: 2.0
+  # Ticks after a slide before the next one, which also needs sprint-ticks of sprinting since:
+  # sliding is never faster than running.
+  cooldown-ticks: 30
+  sprint-ticks: 10
+  # Speed (blocks a tick): the recent speed, at least min-start-speed, times boost, at most
+  # max-speed; then times friction every tick on the flat (friction-downhill going down a step,
+  # friction-uphill going up one) until it is under stop-speed or max-ticks have passed: about 4
+  # blocks in 17 ticks on the flat. steer-degrees a tick while A or D is held.
+  boost: 1.4
+  min-start-speed: 0.286
+  max-speed: 0.45
+  friction: 0.93
+  friction-downhill: 0.965
+  friction-uphill: 0.85
+  stop-speed: 0.12
+  max-ticks: 20
+  steer-degrees: 1.5
+  # Steps up to step-up blocks are slid up and drops up to max-drop followed down; a deeper drop
+  # ends the slide and the player falls on with its speed. A wall or a closed door stops it at once.
+  step-up: 0.5
+  max-drop: 1.0
+  leg-hitbox: true
+
 footsteps:
   # Other players' vanilla steps (quiet, a few blocks) are replaced by the server's own, by the ground
   # underfoot: one every stride blocks covered (a jump's too, the step landing with the feet), heard
   # out to walk-range blocks walking and sprint-range sprinting (louder the nearer), and a landing
   # from land-min-fall blocks or more out to land-range. A wall in between cuts the range to
   # wall-share of it. Sneaking makes none (sneak-range), and in a raid the sneaking speed is
-  # sneak-speed of the walk (vanilla 0.3). The soldiers hear by the same ranges and walls. enabled:
-  # false gives players vanilla's steps back; the soldiers still hear by these ranges.
+  # sneak-speed of the walk (vanilla 0.3). A slide is heard out to slide-range, sneak key or not.
+  # The soldiers hear by the same ranges and walls. enabled: false gives players vanilla's steps
+  # back; the soldiers still hear by these ranges.
   enabled: true
   stride: 1.6
   walk-range: 16
   sprint-range: 32
   sneak-range: 0
+  slide-range: 24
   land-range: 24
   land-min-fall: 1.5
   wall-share: 0.5

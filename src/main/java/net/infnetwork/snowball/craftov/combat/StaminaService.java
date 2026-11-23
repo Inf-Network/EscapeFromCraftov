@@ -205,7 +205,7 @@ public final class StaminaService implements Listener {
                 }
                 continue;
             }
-            if (player.isSprinting()) {
+            if (player.isSprinting() && !plugin.slides().isSliding(player)) {
                 s.stamina = Math.max(0, s.stamina - sprintDrain() * drainFactor(player));
                 s.lastSpend = now;
             } else if (now - s.lastSpend > setting("regen-delay-ticks", 15)) {

@@ -892,7 +892,8 @@ public final class RaidManager implements Listener {
                 if (player == null) {
                     continue;
                 }
-                rp.lastLocation = player.getLocation();
+                // Mid-slide the body sits 0.6 into the ground (SlideService): a rejoin or a body goes on it.
+                rp.lastLocation = plugin.slides().feet(player);
                 ExtractPoint inside = null;
                 for (ExtractPoint point : raid.extracts) {
                     if (point.available && point.center.getWorld() == player.getWorld()
@@ -1423,6 +1424,8 @@ public final class RaidManager implements Listener {
             endTraining(raid, player, rp, false, reason);
             return;
         }
+        // On their feet first: a body left mid-slide would lie 0.6 into the ground.
+        plugin.slides().stop(player);
         plugin.weapons().reset(player);
         plugin.downed().clear(player);
         rp.state = RaidPlayer.State.DEAD;
@@ -3618,7 +3621,8 @@ public final class RaidManager implements Listener {
             rp.armorWear = plugin.operators().armorWearMultiplier(player); // read while still in the raid
             boolean landed = rp.state == RaidPlayer.State.ALIVE;
             if (landed) {
-                rp.lastLocation = player.getLocation();
+                // SlideService has put a sliding player on their feet already (its quit handler runs first).
+                rp.lastLocation = plugin.slides().feet(player);
             }
             rp.state = RaidPlayer.State.DISCONNECTED;
             rp.disconnectedAt = Bukkit.getCurrentTick();

@@ -7,6 +7,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.SoundCategory;
 import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
@@ -38,9 +39,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * footsteps.land-range. A wall between cuts the range to footsteps.wall-share of it, muffled by
  * distance like the rest. Sneaking is the silent walk: no steps at all (footsteps.sneak-range 0),
  * and in a raid it is faster than vanilla's (footsteps.sneak-speed, the sneaking-speed attribute,
- * 0.45 of the walk where vanilla's is 0.3), so it is a way to move, not only to stand still. The
- * soldiers hear by the same ranges and walls ({@link #heardAt}), whether footsteps.enabled is on or
- * not. The player's own client still plays their own vanilla steps for them.
+ * 0.45 of the walk where vanilla's is 0.3), so it is a way to move, not only to stand still. A slide
+ * (SlideService) is not: it scrapes along the ground ({@code craftov:move.slide} as it starts), heard
+ * out to footsteps.slide-range, sneak key or not. The soldiers hear by the same ranges and walls
+ * ({@link #heardAt}), whether footsteps.enabled is on or not. The player's own client still plays
+ * their own vanilla steps for them.
  */
 public final class FootstepService implements Listener {
 
@@ -181,6 +184,9 @@ public final class FootstepService implements Listener {
      */
     private double range(Player player) {
         var config = plugin.getConfig();
+        if (plugin.slides().isSliding(player)) {
+            return Math.max(0, config.getDouble("footsteps.slide-range", 24));
+        }
         if (silent(player)) {
             return 0;
         }
@@ -198,7 +204,7 @@ public final class FootstepService implements Listener {
      */
     public boolean heardAt(Player player, Location ear) {
         double range = range(player);
-        Location feet = player.getLocation().add(0, 0.1, 0);
+        Location feet = plugin.slides().feet(player).add(0, 0.1, 0);
         if (range <= 0 || ear.getWorld() != feet.getWorld()) {
             return false;
         }
@@ -216,14 +222,28 @@ public final class FootstepService implements Listener {
      * where the feet are, so it comes from the right direction.
      */
     private void emit(Player player, String kind, double range) {
+        double loudness = kind.equals("walk") ? 0.55 : kind.equals("run") ? 0.75 : 0.9;
+        float pitch = (float) ((kind.equals("walk") ? 1.0 : 0.92) + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.12);
+        play(player, player.getLocation().add(0, 0.1, 0), "craftov:step." + surface(player) + "." + kind, range, loudness, pitch);
+    }
+
+    /**
+     * The scrape of a slide setting off, from the ground under the sliding player (SlideService): to
+     * everyone in footsteps.slide-range as a footstep is heard, and to the player too.
+     */
+    public void slide(Player player) {
+        Location ground = plugin.slides().feet(player).add(0, 0.1, 0);
+        float pitch = (float) (1.0 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.1);
+        play(player, ground, "craftov:move.slide", Math.max(0, plugin.getConfig().getDouble("footsteps.slide-range", 24)), 0.85, pitch);
+        player.playSound(ground, "craftov:move.slide", SoundCategory.PLAYERS, 0.6f, pitch);
+    }
+
+    /** Plays {@code key} from {@code feet} to everyone but {@code player} in earshot (see {@link #emit}). */
+    private void play(Player player, Location feet, String key, double range, double loudness, float pitch) {
         if (range <= 0) {
             return;
         }
-        Location feet = player.getLocation().add(0, 0.1, 0);
-        String key = "craftov:step." + surface(player) + "." + kind;
         double wallShare = Math.max(0, Math.min(1, plugin.getConfig().getDouble("footsteps.wall-share", 0.5)));
-        double loudness = kind.equals("walk") ? 0.55 : kind.equals("run") ? 0.75 : 0.9;
-        float pitch = (float) ((kind.equals("walk") ? 1.0 : 0.92) + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.12);
         for (Player listener : feet.getWorld().getPlayers()) {
             if (listener == player || listener.getGameMode() == GameMode.SPECTATOR && listener.getSpectatorTarget() == player) {
                 continue;

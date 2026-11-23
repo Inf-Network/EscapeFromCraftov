@@ -22,7 +22,7 @@ public final class CraftovCommand implements TabExecutor {
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod", "guide", "training", "fov", "skins");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "feed", "marketaudit", "ai", "lagcomp", "luck", "points");
+            "feed", "marketaudit", "ai", "lagcomp", "luck", "points", "slide");
 
     private final CraftovPlugin plugin;
 
@@ -243,7 +243,7 @@ public final class CraftovCommand implements TabExecutor {
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] [瞄准镜] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
                     + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"
-                    + " · points <玩家> [数量]"));
+                    + " · points <玩家> [数量] · slide <玩家> [stamina <值>]"));
         }
     }
 
@@ -526,6 +526,7 @@ public final class CraftovCommand implements TabExecutor {
             }
             case "luck" -> luck(sender, args);
             case "points" -> points(sender, args);
+            case "slide" -> slide(sender, args);
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -550,6 +551,47 @@ public final class CraftovCommand implements TabExecutor {
             }
             default -> help(sender);
         }
+    }
+
+    /**
+     * /cv slide &lt;player&gt; [stamina &lt;value&gt;]: a player's stamina, load, pose and hitbox, whether they
+     * may slide (cooldown, sprinting since the last slide, why the last double tap did not slide) and
+     * how their last slide went (tools/bot/slide.js reads it); with stamina, sets their stamina first.
+     */
+    private void slide(CommandSender sender, String[] args) {
+        Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+        if (target == null) {
+            Text.send(sender, "<muted>用法：/cv slide <玩家> [stamina <值>]");
+            return;
+        }
+        var slides = plugin.slides();
+        var stamina = plugin.stamina();
+        if (args.length > 3 && args[2].equalsIgnoreCase("stamina")) {
+            try {
+                stamina.set(target, Double.parseDouble(args[3]));
+            } catch (NumberFormatException ex) {
+                Text.send(sender, "<danger>体力要写数字（0-100）。");
+                return;
+            }
+        }
+        var box = target.getBoundingBox();
+        sender.sendMessage(Text.mm(String.format("<muted>%s 体力 stamina=%.2f exhausted=%b 负重 weight=%.1f 滑铲中 sliding=%b 冷却 cooldown=%d 冲刺 sprinted=%d",
+                Text.escape(target.getName()), stamina.stamina(target), stamina.exhausted(target), stamina.weight(target),
+                slides.isSliding(target), slides.cooldownLeft(target), Math.min(9999, slides.sprintTicks(target)))));
+        sender.sendMessage(Text.mm(String.format("<muted>姿势 pose=%s sneaking=%b vehicle=%b y=%.3f box=%.3f..%.3f height=%.2f",
+                target.getPose(), target.isSneaking(), target.isInsideVehicle(), target.getY(), box.getMinY(), box.getMaxY(), box.getHeight())));
+        String refused = slides.refused(target);
+        sender.sendMessage(Text.mm("<muted>上次没滑成 refused=" + (refused == null ? "-" : Text.escape(refused))));
+        var last = slides.last(target);
+        if (last == null) {
+            sender.sendMessage(Text.mm("<muted>还没滑铲过 last=none"));
+            return;
+        }
+        sender.sendMessage(Text.mm(String.format("<muted>上次滑铲 last reason=%s ticks=%d distance=%.3f spent=%.3f speed=%.3f ago=%d"
+                        + " from=%.3f,%.3f,%.3f to=%.3f,%.3f,%.3f minY=%.3f..%.3f maxY=%.3f..%.3f",
+                last.reason(), last.ticks(), last.distance(), last.spent(), last.startSpeed(), Bukkit.getCurrentTick() - last.endTick(),
+                last.startX(), last.startY(), last.startZ(), last.endX(), last.endY(), last.endZ(),
+                last.minYLow(), last.minYHigh(), last.maxYLow(), last.maxYHigh())));
     }
 
     /**
@@ -709,7 +751,8 @@ public final class CraftovCommand implements TabExecutor {
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money")
-                || (args[0].equalsIgnoreCase("luck") || args[0].equalsIgnoreCase("points")) && sender.hasPermission("craftov.admin"))) {
+                || (args[0].equalsIgnoreCase("luck") || args[0].equalsIgnoreCase("points") || args[0].equalsIgnoreCase("slide"))
+                && sender.hasPermission("craftov.admin"))) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin")) {
             out.addAll(List.of("quota", "pity", "boost", "reset"));

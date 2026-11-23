@@ -175,6 +175,9 @@ public final class DownedService implements Listener {
     }
 
     public void down(Raid raid, RaidPlayer rp, Player player, DamageService.@Nullable LastHit cause) {
+        // Off the slide's seat before the crawl: the crawl's pose and its block over the head go by
+        // where the player stands.
+        plugin.slides().stop(player);
         rp.downs++;
         rp.state = RaidPlayer.State.DOWNED;
         boolean first = rp.downs == 1;
@@ -545,6 +548,9 @@ public final class DownedService implements Listener {
      * the range alone reached through a wall or up a flight of stairs.
      */
     private @Nullable String reviveBlocker(Player reviver, Player downedPlayer) {
+        if (plugin.slides().isSliding(reviver)) {
+            return "滑铲中无法救援";
+        }
         Location from = reviver.getLocation();
         Location to = downedPlayer.getLocation();
         double range = plugin.getConfig().getDouble("downed.revive-range", 2.2);

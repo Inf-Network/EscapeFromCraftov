@@ -491,7 +491,10 @@ public final class Nms {
     public static final class SelfView {
         /** Field-of-view multiplier to show (1 = the hip view, below 1 zoomed in), as the client will see it. */
         public volatile double fov = 1.0;
-        /** The client's FOV Effects slider as the player declared it (0..1): the zoom is divided by it. */
+        /**
+         * The client's FOV Effects slider (0..1) the zoom is divided by: the one the player declared
+         * where the server makes up for it, else 1 (see FovService).
+         */
         public volatile double effects = 1.0;
         /** Movement speed without sprinting in the last attribute update this player was sent. */
         volatile double move = 0.1;

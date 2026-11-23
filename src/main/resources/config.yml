@@ -329,6 +329,11 @@ weapons:
     # came late over a bad connection) picks the sights up where they were: up stays up, a rise goes
     # on from where it stopped. 0 always starts again from the hip.
     resume-ticks: 3
+    # Divide the zoom by the FOV Effects slider players declare with /cv fov, so a slider below 100%
+    # still shows each sight at its power. The server cannot read the slider: anyone could claim a low
+    # one they do not use and see an iron sight at 10x, so it is off, and players are told to keep the
+    # slider at 100%. Turn it on only where every player is trusted (declarations are logged).
+    fov-effects-compensation: false
   spread:
     # Moving widens the cone by the gun's own `move` (items.yml, degrees at full walking pace: about
     # 1.5 for a pistol up to 6 for the marksman and sniper rifles), times move-ads-share while aiming.

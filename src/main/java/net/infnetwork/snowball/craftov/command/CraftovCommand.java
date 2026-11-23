@@ -170,7 +170,7 @@ public final class CraftovCommand implements TabExecutor {
         if (args.length < 2) {
             Text.send(player, "<muted>服务器记录的设置：视野 <white>" + profile.fov + "</white>，FOV 特效 <white>"
                     + Math.round(profile.fovEffects * 100) + "%</white>。");
-            Text.send(player, net.infnetwork.snowball.craftov.weapon.FovService.tip());
+            Text.send(player, plugin.fov().tip());
             return;
         }
         int fov;
@@ -187,10 +187,13 @@ public final class CraftovCommand implements TabExecutor {
             Text.send(player, "<danger>" + why);
             return;
         }
+        String warning = plugin.fov().effectsWarning(effects / 100.0);
         Text.send(player, "<ok>已记录：视野 " + fov + "，FOV 特效 " + effects + "%。"
-                + (effects * 0.01 < net.infnetwork.snowball.craftov.weapon.FovService.MIN_EFFECTS
-                ? "<danger> FOV 特效为 0，瞄准镜无法放大，请调回 100%。"
-                : "<muted> 瞄准镜按真实倍率放大" + (effects < 100 ? "（已按 FOV 特效补偿）。" : "。")));
+                + (warning != null ? " " + warning + "请调回 100%。"
+                : "<muted> 瞄准镜按真实倍率放大" + (effects < 100 ? "（已按 FOV 特效补偿）" : "")
+                + (fov < net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV
+                ? "，视野低于 " + net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV + " 时按 "
+                + net.infnetwork.snowball.craftov.weapon.FovService.MIN_ZOOM_FOV + " 换算（倍率略低）。" : "。")));
         plugin.tutorial().done(player, net.infnetwork.snowball.craftov.lobby.TutorialService.Step.FOV);
     }
 
@@ -200,7 +203,7 @@ public final class CraftovCommand implements TabExecutor {
         sender.sendMessage(Text.mm("<muted>/cv stash | mail | trader | market | secure"));
         sender.sendMessage(Text.mm("<muted>/cv party invite <玩家> | accept | leave | kick <玩家>"));
         sender.sendMessage(Text.mm("<muted>/cv leave <muted>取消匹配"));
-        sender.sendMessage(Text.mm("<muted>/cv fov <视野> <FOV特效%> <muted>告诉服务器你的视野设置（瞄准镜倍率按它换算）"));
+        sender.sendMessage(Text.mm("<muted>/cv fov <视野> [FOV特效%] <muted>告诉服务器你的视野设置（瞄准镜倍率按它换算）"));
         if (sender instanceof Player p && plugin.canUseCatalog(p)) {
             sender.sendMessage(Text.mm("<accent>/cv items <muted>测试军械库（免费领取任意物品）"));
         }

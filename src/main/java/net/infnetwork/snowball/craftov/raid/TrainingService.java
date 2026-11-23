@@ -291,7 +291,9 @@ public final class TrainingService {
             return;
         }
         if (!plugin.weapons().isAiming(shooter)) {
-            Notify.hint(shooter, "要先按住 <white><key:key.use></white> 开镜，再打靶子");
+            // The answer to a shot, so a result: a hint would wait behind (and be replaced by) the
+            // lesson's own reminder.
+            Notify.info(shooter, "<accent>没开镜，不算 <muted>· 要先按住 <white><key:key.use></white> 开镜，再打靶子");
             return;
         }
         if (!session.hits.add(index)) {

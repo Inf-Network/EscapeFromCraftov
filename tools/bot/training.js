@@ -257,10 +257,14 @@ async function course () {
   await tp(bot, `${close.x} ${close.y} ${close.z}`, a.yaw.toFixed(2), a.pitch.toFixed(2))
   await sleep(1200)
   const barsFrom = bot.bars.length
-  const told = () => bot.bars.slice(barsFrom).some(b => b.text.includes('要先按住'))
+  const told = () => bot.bars.slice(barsFrom).some(b => b.text.includes('没开镜'))
   // Hip fire spreads: short bursts until one lands (the magazine holds 8; a reload halfway).
+  // The look is set again before every burst: mineflayer takes the recoil's relative turn for an
+  // absolute one and would send the rest of the rounds the other way.
   for (let burst = 0; burst < 6 && !told(); burst++) {
     if (burst === 3) { dig(bot, 4); await sleep(4000) }
+    await tp(bot, `${close.x} ${close.y} ${close.z}`, a.yaw.toFixed(2), a.pitch.toFixed(2))
+    await sleep(500)
     await shoot(bot, 200, false)
     await sleep(600)
   }

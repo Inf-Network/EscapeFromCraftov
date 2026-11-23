@@ -478,13 +478,24 @@ public final class WeaponService implements Listener {
         // draw time (weapons.draw-ticks 0) from ever aiming, or show it reloading: whatever mark the
         // stack carries is replaced whenever the gun is bound.
         state.drawPending = state.drawing();
-        ItemFactory.setHandMark(held, state.drawing() ? ItemFactory.MARK_DRAW : ItemFactory.MARK_NONE);
         if (state.drawing()) {
-            // The draw frames run on the gun's cooldown, as long as the draw. The gun arrived carrying
-            // the holster mark, the draw's first frame, which reads no cooldown: whichever of the two
-            // packets the client takes in first, it shows the gun low and then coming up.
-            Nms.syncInventory(player);
+            // The draw frames run on the gun's cooldown, as long as the draw, under the draw mark. The
+            // holster mark (the draw's first frame) reads no cooldown, so the cooldown goes out while
+            // the stack still carries it and the draw mark after: whether the client takes the
+            // packets in one frame or two, it shows the gun low and then coming up. The draw mark
+            // first would show the draw's rest pose for any frame before the cooldown, the gun
+            // popping up and dropping back. A gun that arrives with another mark (one that left the
+            // inventory mid-reload) would read the cooldown as a shot's kick or a reload: it is put
+            // to the holster mark first.
+            if (ItemFactory.handMark(held) != ItemFactory.MARK_HOLSTER) {
+                ItemFactory.setHolstered(held);
+                Nms.syncInventory(player);
+            }
             player.setCooldown(ItemFactory.RELOAD_GROUP, (int) (state.readyAt - now));
+            ItemFactory.setHandMark(held, ItemFactory.MARK_DRAW);
+            Nms.syncInventory(player);
+        } else {
+            ItemFactory.setHandMark(held, ItemFactory.MARK_NONE);
         }
         int tips = controlTips.getOrDefault(player.getUniqueId(), 0);
         if (tips < 3) {

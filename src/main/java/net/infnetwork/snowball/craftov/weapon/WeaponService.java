@@ -299,6 +299,11 @@ public final class WeaponService implements Listener {
     private final Map<UUID, Long> lastInventoryDrop = new HashMap<>();
     /** Last tick each player was sprinting: the sights take a moment to come up afterwards (see {@link #sightsUp}). */
     private final Map<UUID, Long> lastSprint = new HashMap<>();
+    /**
+     * Last tick each player ran at a sprint by the server's measure with no sprint from the client
+     * lately (a modified client): the sights wait out the same recovery after it (see {@link #sightsUp}).
+     */
+    private final Map<UUID, Long> lastRun = new HashMap<>();
     /** Players whose food level was last told that aiming stops their sprint (see {@link #stopsSprint}). */
     private final java.util.Set<UUID> sprintStopped = new java.util.HashSet<>();
     /** Last tick a use packet came from each player holding a gun (see {@link #rightHeld}). */
@@ -723,6 +728,10 @@ public final class WeaponService implements Listener {
             if (player.isSprinting()) {
                 // The client's sprint, not the measured run, which reads on for a few ticks of slowing down.
                 lastSprint.put(player.getUniqueId(), now);
+            } else if (motion.running(player) && now - lastSprint.getOrDefault(player.getUniqueId(), -100L) > sprintRecovery()) {
+                // A run the client never called a sprint. The measure dips under the line now and then on
+                // a steady run, and without this the sights came up for those ticks, mid-run.
+                lastRun.put(player.getUniqueId(), now);
             }
             GunState state = bind(player);
             if (isAiming(player) && motion.running(player)) {
@@ -1795,7 +1804,8 @@ public final class WeaponService implements Listener {
 
     /**
      * The sights can come up: not sprinting (see {@link #sprinting}), nor in the few ticks after the
-     * client's sprint ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry.
+     * client's sprint ends (weapons.sprint-recovery-ticks) while the gun comes up from the sprint carry,
+     * or after a run at a sprint that the client never said was one (see {@link #lastRun}).
      * Hip fire is never held back by a sprint: the gun fires on the run, with a wider cone (see
      * {@link #currentSpread}). Right mouse ends the sprint (see {@link #stopsSprint}) and aims once
      * this allows (see {@link #aimIfAsked}), but not during a sprint the sprint key won over the sights
@@ -1805,8 +1815,12 @@ public final class WeaponService implements Listener {
         if (sprinting(player) || sprintWon.containsKey(player.getUniqueId())) {
             return false;
         }
-        Long last = lastSprint.get(player.getUniqueId());
-        return last == null || Bukkit.getCurrentTick() - last > plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
+        long last = Math.max(lastSprint.getOrDefault(player.getUniqueId(), -100L), lastRun.getOrDefault(player.getUniqueId(), -100L));
+        return Bukkit.getCurrentTick() - last > sprintRecovery();
+    }
+
+    private int sprintRecovery() {
+        return plugin.getConfig().getInt("weapons.sprint-recovery-ticks", 5);
     }
 
     /**
@@ -2059,6 +2073,7 @@ public final class WeaponService implements Listener {
         lastHint.remove(event.getPlayer().getUniqueId());
         lastInventoryDrop.remove(event.getPlayer().getUniqueId());
         lastSprint.remove(event.getPlayer().getUniqueId());
+        lastRun.remove(event.getPlayer().getUniqueId());
         sprintStopped.remove(event.getPlayer().getUniqueId());
         lastUse.remove(event.getPlayer().getUniqueId());
         sprintWon.remove(event.getPlayer().getUniqueId());

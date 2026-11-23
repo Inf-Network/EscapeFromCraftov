@@ -196,6 +196,21 @@ public final class EditorService implements Listener {
                 + "<white>/cv editor set name|minutes|time <值></white> 修改属性。");
     }
 
+    /**
+     * Whether raids of this map have to wait: its template world is being changed in place, by an
+     * editor session or by anyone standing in it. A raid starts by copying the template folder, and
+     * a copy taken in the middle of an edit is half old terrain and half new.
+     */
+    public boolean underMaintenance(MapDef map) {
+        for (Session session : sessions.values()) {
+            if (session.world.getName().equals(map.template())) {
+                return true;
+            }
+        }
+        World template = Bukkit.getWorld(map.template());
+        return template != null && !template.getPlayers().isEmpty();
+    }
+
     /** The player editing this map, or null. */
     private @Nullable Player editorOf(String mapId) {
         for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
@@ -248,7 +263,8 @@ public final class EditorService implements Listener {
         MapDef def = d.build();
         MapDef live = plugin.maps().get(d.id);
         try {
-            session.world.save();
+            // Flushed: World.save() only queues the chunks, and a raid may copy the folder next.
+            session.world.save(true);
             if (live != null && live.enabled()) {
                 plugin.maps().saveDraft(def);
             } else {
@@ -349,7 +365,7 @@ public final class EditorService implements Listener {
         }
         World template = Bukkit.getWorld(def.template());
         if (template != null) {
-            template.save();
+            template.save(true);
         }
         if (live.enabled()) {
             plugin.maps().keepPrevious(id);

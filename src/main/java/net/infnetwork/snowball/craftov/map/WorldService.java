@@ -147,7 +147,9 @@ public final class WorldService {
         }
         World loadedTemplate = Bukkit.getWorld(map.template());
         if (loadedTemplate != null) {
-            loadedTemplate.save();
+            // Flushed before the folder is copied: save() alone only queues chunks for the IO
+            // thread, which may still be writing region files while they are read.
+            loadedTemplate.save(true);
         }
         String name = RAID_PREFIX + System.currentTimeMillis() % 100000 + "_" + counter.incrementAndGet();
         File target = new File(container, name);

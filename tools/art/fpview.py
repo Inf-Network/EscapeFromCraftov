@@ -119,19 +119,41 @@ def faces_of(element):
         'down': [(x0, y0, z1), (x1, y0, z1), (x1, y0, z0), (x0, y0, z0)],
     }
     rotation = element.get('rotation')
+    r = element_rotation(rotation) if rotation else None
     for name, pts in corners.items():
         if name not in element.get('faces', {}):
             continue
-        if rotation:
+        if r is not None:
             o = rotation['origin']
-            r = rot(rotation['axis'], rotation['angle'])
             pts = [tuple(c + d for c, d in zip(apply(r, (p[0] - o[0], p[1] - o[1], p[2] - o[2])), o)) for p in pts]
         yield name, [(p[0] / 16.0, p[1] / 16.0, p[2] / 16.0) for p in pts], element['faces'][name]
 
 
+NORMALS = {'north': (0, 0, -1), 'south': (0, 0, 1), 'east': (1, 0, 0), 'west': (-1, 0, 0), 'up': (0, 1, 0), 'down': (0, -1, 0)}
+
+
+def lit_face(element, name):
+    """The direction a face is shaded as: the client lights a rotated face like the axis nearest to its
+    turned normal (FaceBakery's Direction.getApproximateNearest)."""
+    rotation = element.get('rotation')
+    if not rotation:
+        return name
+    n = apply(element_rotation(rotation), NORMALS[name])
+    return max(NORMALS, key=lambda k: sum(a * b for a, b in zip(NORMALS[k], n)))
+
+
+def element_rotation(rotation):
+    """An element's rotation matrix as the 1.21.11 client builds it (BlockElementRotation): either one
+    axis and any angle, or 'x', 'y' and 'z' degrees applied as Matrix4f.rotationZYX(z, y, x), that is
+    X first, then Y, then Z. 'rescale' is not modelled (the gun models never set it)."""
+    if 'axis' in rotation:
+        return rot(rotation['axis'], rotation['angle'])
+    return mat_mul(rot('z', rotation.get('z', 0)), mat_mul(rot('y', rotation.get('y', 0)), rot('x', rotation.get('x', 0))))
+
+
 def project(p):
     x, y, z = p
-    if z > -0.05:
+    if z > -0.049:
         return None
     f = 1.0 / math.tan(math.radians(HAND_FOV) / 2)
     aspect = W / H
@@ -195,19 +217,49 @@ def face_polys(model, display, textures):
                  (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
                  (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
             centre = tuple(sum(p[i] for p in view) / 4 for i in range(3))
-            if n[0] * centre[0] + n[1] * centre[1] + n[2] * centre[2] >= 0:
-                continue
-            screen = [project(p) for p in view]
-            if any(s is None for s in screen):
+            # faces_of winds the corners so that n points into the box: a face is towards the camera (at
+            # the origin) when n and the face's position agree. The test was the other way round, so
+            # only the far side of every box was drawn, and a small part in front of a face (a sight's
+            # dot) was lost behind it.
+            if n[0] * centre[0] + n[1] * centre[1] + n[2] * centre[2] <= 0:
                 continue
             key = face.get('texture', '#p').lstrip('#')
             ref = model.get('textures', {}).get(key, 'craftov:item/gun_palette')
             if ref not in textures:
                 textures[ref] = np.array(load_texture(model, key))
             u0, v0, u1, v1 = face['uv']
-            k = 1.0 if element.get('light_emission') else SHADE[name]
-            polys.append(([p[2] for p in view], screen, k, textures[ref], [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]))
+            k = 1.0 if element.get('light_emission') else SHADE[lit_face(element, name)]
+            uvs = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+            for tri_view, tri_uv in clip_near(view, uvs):
+                screen = [project(p) for p in tri_view]
+                polys.append(([p[2] for p in tri_view], screen, k, textures[ref], tri_uv))
     return polys
+
+
+NEAR = -0.05
+
+
+def clip_near(view, uvs):
+    """A face cut at the near plane, as the client's clipping does (a face reaching behind the camera,
+    such as the receiver while aiming, still shows its part in front): quads, a triangle being a quad
+    with its last corner repeated."""
+    if all(p[2] <= NEAR for p in view):
+        return [(view, uvs)]
+    out_v, out_uv = [], []
+    for i in range(len(view)):
+        a, b = view[i], view[(i + 1) % len(view)]
+        ua, ub = uvs[i], uvs[(i + 1) % len(view)]
+        if a[2] <= NEAR:
+            out_v.append(a)
+            out_uv.append(ua)
+        if (a[2] <= NEAR) != (b[2] <= NEAR):
+            t = (NEAR - a[2]) / (b[2] - a[2])
+            out_v.append(tuple(a[j] + (b[j] - a[j]) * t for j in range(3)))
+            out_uv.append(tuple(ua[j] + (ub[j] - ua[j]) * t for j in range(2)))
+    if len(out_v) < 3:
+        return []
+    return [([out_v[0], out_v[k], out_v[k + 1], out_v[k + 1]], [out_uv[0], out_uv[k], out_uv[k + 1], out_uv[k + 1]])
+            for k in range(1, len(out_v) - 1)]
 
 
 def render_many(posed, out, label=''):
@@ -391,7 +443,7 @@ def render_side(model, display, arm_x, out, label=''):
         for name, pts, face in faces_of(element):
             world = [apply(item_m, p) for p in pts]
             polys.append((sum(p[0] for p in world) / 4, [to_screen(p) for p in world],
-                          tuple(int(c * SHADE[name]) for c in palette_color(texture, face['uv']))))
+                          tuple(int(c * SHADE[lit_face(element, name)]) for c in palette_color(texture, face['uv']))))
     for _, screen, col in sorted(polys, key=lambda p: -p[0]):
         d.polygon(screen, fill=col)
     d.text((10, 10), label + '  (facing right)', fill=(255, 255, 255))

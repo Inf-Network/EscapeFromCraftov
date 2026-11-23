@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/dm14_mag",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    98.164,
+    61.497,
+    -81.606
+   ],
+   "translation": [
+    -4.066,
+    4.314,
+    -2.274
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -81.836,
+    -61.497,
+    -98.394
+   ],
+   "translation": [
+    -4.066,
+    4.314,
+    -2.274
+   ],
+   "scale": [
+    0.51,
+    0.51,
+    0.51
+   ]
+  }
+ }
+}

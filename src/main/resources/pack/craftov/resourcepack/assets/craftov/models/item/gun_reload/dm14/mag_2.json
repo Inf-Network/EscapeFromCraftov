@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/dm14_mag",
+ "parent": "craftov:item/gun_mid/dm14_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    94.776,
-    64.896,
-    -83.644
+    111.739,
+    82.588,
+    -106.773
    ],
    "translation": [
-    -3.544,
-    3.972,
-    -2.195
+    -1.852,
+    3.176,
+    -2.487
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -85.224,
-    -64.896,
-    -96.356
+    -68.261,
+    -82.588,
+    -73.227
    ],
    "translation": [
-    -3.544,
-    3.972,
-    -2.195
+    -1.852,
+    3.176,
+    -2.487
    ],
    "scale": [
     0.51,

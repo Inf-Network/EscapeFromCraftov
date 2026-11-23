@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt_ads/d50__optic_reddot",
+ "parent": "craftov:item/gun_ads/d50__optic_reddot",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -8.96,
-    5.4,
-    10.2
+    5.45,
+    8.59
    ],
    "scale": [
     0.72,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -8.96,
-    5.4,
-    10.2
+    5.45,
+    8.59
    ],
    "scale": [
     0.72,

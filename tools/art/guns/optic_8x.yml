@@ -1,0 +1,13 @@
+# 8x riflescope: a long tube with a large objective bell. Built by tools/art/meshprim.py from
+# Quaternius' Accessories/Scope_3 (keys: see k47.yml). The tube's parts are eight-sided.
+source: Accessories/Scope_3
+length: 11.5
+paint: {Black: steel, DarkMetal: alu, Glass: glass}
+pieces:
+  - {piece: 0, round: 8}
+boxes:
+  - {at: [5.65, 7.0], piece: 0, round: 0, width: 0.5}        # front ring
+  - {at: [9.25, 7.0], piece: 0, round: 0, width: 0.5}        # rear ring
+parts:
+  - {from: [13.62, 7.15, 6.95], to: [13.69, 9.1, 9.05], mat: glass, round: 8}
+  - {from: [2.18, 7.45, 7.35], to: [2.25, 8.75, 8.65], mat: glass, round: 8}

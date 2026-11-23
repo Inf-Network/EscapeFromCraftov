@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/r12_pump",
+ "parent": "craftov:item/gun_mid/r12_pump",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    97.938,
+    97.75,
     52.06,
     -86.75
    ],
    "translation": [
     -3.6,
-    5.11,
-    -1.36
+    5.302,
+    -1.35
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -82.062,
+    -82.25,
     -52.06,
     -93.25
    ],
    "translation": [
     -3.6,
-    5.11,
-    -1.36
+    5.302,
+    -1.35
    ],
    "scale": [
     0.51,

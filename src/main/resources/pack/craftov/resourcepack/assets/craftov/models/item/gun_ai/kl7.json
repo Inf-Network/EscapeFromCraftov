@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun/kl7",
+ "parent": "craftov:item/gun_low/kl7",
  "display": {
   "thirdperson_righthand": {
    "rotation": [

@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/k47_mag",
+ "parent": "craftov:item/gun_mid/k47_mag",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    96.018,
-    59.229,
-    -82.174
+    95.849,
+    58.964,
+    -82.235
    ],
    "translation": [
-    -5.086,
-    1.666,
-    -2.409
+    -6.843,
+    -1.166,
+    -4.364
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -83.982,
-    -59.229,
-    -97.826
+    -84.151,
+    -58.964,
+    -97.765
    ],
    "translation": [
-    -5.086,
-    1.666,
-    -2.409
+    -6.843,
+    -1.166,
+    -4.364
    ],
    "scale": [
     0.51,

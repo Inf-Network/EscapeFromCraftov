@@ -1,5 +1,5 @@
 {
- "parent": "craftov:item/gun_opt_ads/r12__optic_holo",
+ "parent": "craftov:item/gun_ads/r12__optic_holo",
  "display": {
   "firstperson_righthand": {
    "rotation": [
@@ -9,8 +9,8 @@
    ],
    "translation": [
     -8.96,
-    5.97,
-    9.32
+    6.0,
+    7.97
    ],
    "scale": [
     0.6,
@@ -26,8 +26,8 @@
    ],
    "translation": [
     -8.96,
-    5.97,
-    9.32
+    6.0,
+    7.97
    ],
    "scale": [
     0.6,

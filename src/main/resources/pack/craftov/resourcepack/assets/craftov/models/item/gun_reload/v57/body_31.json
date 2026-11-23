@@ -1,0 +1,39 @@
+{
+ "parent": "craftov:item/gun_mid/v57_body",
+ "display": {
+  "firstperson_righthand": {
+   "rotation": [
+    98.103,
+    69.485,
+    -86.761
+   ],
+   "translation": [
+    -3.341,
+    3.434,
+    -0.005
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    -81.897,
+    -69.485,
+    -93.239
+   ],
+   "translation": [
+    -3.341,
+    3.434,
+    -0.005
+   ],
+   "scale": [
+    0.561,
+    0.561,
+    0.561
+   ]
+  }
+ }
+}

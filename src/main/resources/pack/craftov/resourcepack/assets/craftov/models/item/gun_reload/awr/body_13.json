@@ -1,16 +1,16 @@
 {
- "parent": "craftov:item/gun_part/awr_body",
+ "parent": "craftov:item/gun_mid/awr_body",
  "display": {
   "firstperson_righthand": {
    "rotation": [
-    96.33,
-    58.984,
-    -82.23
+    96.366,
+    58.288,
+    -82.385
    ],
    "translation": [
-    -3.899,
-    4.359,
-    -2.64
+    -3.97,
+    4.639,
+    -2.75
    ],
    "scale": [
     0.51,
@@ -20,14 +20,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    -83.67,
-    -58.984,
-    -97.77
+    -83.634,
+    -58.288,
+    -97.615
    ],
    "translation": [
-    -3.899,
-    4.359,
-    -2.64
+    -3.97,
+    4.639,
+    -2.75
    ],
    "scale": [
     0.51,

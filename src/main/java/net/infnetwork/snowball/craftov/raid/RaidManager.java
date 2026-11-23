@@ -4,6 +4,7 @@ import com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent;
 import com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
+import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.gui.SettlementMenu;
 import net.infnetwork.snowball.craftov.gui.UiFont;
 import net.infnetwork.snowball.craftov.combat.DamageService;
@@ -1419,7 +1420,9 @@ public final class RaidManager implements Listener {
     /**
      * Health a standing raid player loses without being hit: a wound bleeding (HealthService). It is
      * taken straight off their health, with no damage event, so none of a hit's effects come with
-     * it: no hurt sound for everyone around, no hurt flash of their body, no damage packet. A hit's
+     * it: no hurt sound for everyone around, no hurt flash of their body, no damage packet. Their own
+     * client is not told either (Nms.quietHealthLoss): it would take any drop of its health for a
+     * hit, and tilt the view and flash the player's own model red. A hit's
      * rules still hold ({@link #onDamage}, the only handler of a raid player's damage): nothing
      * during spawn protection, and an amount that would kill downs or kills them, as the last hit
      * recorded says (DamageService.recordBleed names the bleeding, and who made the wound).
@@ -1434,6 +1437,10 @@ public final class RaidManager implements Listener {
         if (amount >= player.getHealth()) {
             lethal(player, plugin.damage().lastHit(player.getUniqueId()));
             return;
+        }
+        Nms.SelfView view = plugin.fov().selfView(player);
+        if (view != null) {
+            Nms.quietHealthLoss(view);
         }
         player.setHealth(player.getHealth() - amount);
     }

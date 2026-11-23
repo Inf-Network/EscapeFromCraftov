@@ -279,8 +279,10 @@ const scenarios = {
     r.b = world(b); r.told = saw(b, '未能出发')
     return [r.ok && inLobby(b) && r.told, r]
   },
-  // A teammate who disconnects in a raid stays in the party (one who leaves in the lobby is removed at once).
-  // Afterwards they can be kicked by name and the party can queue again.
+  // A teammate who disconnects in a raid stays in the party while they may still come back (one who
+  // leaves in the lobby is removed at once). Once the raid is over without them they leave the party
+  // by themselves, and the rest can queue again straight away (#38; kicking them inside the reconnect
+  // window is party.js 'kick').
   async kickoffline (crew) {
     const [a] = crew
     const gone = await make()
@@ -291,19 +293,15 @@ const scenarios = {
     const name = gone.username
     gone.quit()
     await sleep(1500)
+    a.chatLog = []
     for (let i = 0; i < 20 && (await raids()).length; i++) { await rcon('cv end'); await sleep(1500) }
     await waitFor(() => inLobby(a), 20000)
     await sleep(1500)
-    a.chatLog = []
-    queue(a, 'proving', 'TRIO')
-    await sleep(1000)
-    const refused = first.ok && saw(a, '不在线')
-    a.chat(`/cv party kick ${name}`)
-    await sleep(1000)
+    const dropped = first.ok && saw(a, `${name} 离开了小队`)
     queue(a, 'proving', 'TRIO')
     const r = await landed([a])
-    r.refused = refused
-    return [refused && r.ok, r]
+    r.dropped = dropped
+    return [dropped && r.ok, r]
   },
   // The raid size is max-squads, but never more squads than the map has spawn groups:
   // proving (4 groups) splits six solos 4 + 2 with the first four queued going first, rustport (6) takes all six.

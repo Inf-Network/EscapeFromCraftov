@@ -414,33 +414,69 @@ public final class RaidManager implements Listener {
 
         /**
          * The squads as they go once the map is ready, without the empty ones. Whoever left the
-         * server meanwhile (even if they came back) drops out, as do players who got into another
-         * raid or the queue or no longer pass the queue's checks (they are told why). Nothing has
-         * been taken from anyone yet, so dropping out costs nothing.
+         * server meanwhile has dropped out already (even if they came back), and so do players
+         * who no longer pass the queue's checks (told why, and their squad too). Nothing has been
+         * taken from anyone yet, so dropping out costs nothing.
          */
         List<List<Player>> takers() {
-            List<List<Player>> going = new ArrayList<>();
             for (List<UUID> squad : squads) {
-                List<Player> team = new ArrayList<>();
-                for (UUID uuid : squad) {
+                for (UUID uuid : List.copyOf(squad)) {
                     Player player = Bukkit.getPlayer(uuid);
-                    if (player == null || launching.get(uuid) != this || raidOf(uuid) != null || isSpectating(player)
-                            || plugin.match().queued(uuid) != null) {
+                    if (!going(uuid, player)) {
                         continue;
                     }
                     String why = plugin.match().unfit(player, map, tier);
                     if (why != null) {
                         Text.send(player, "<danger>未能出发：" + Text.escape(player.getName()) + " " + why
                                 + "，已退出本局。<muted>装备和安全箱都没有动。");
-                        continue;
+                        drop(uuid, player.getName(), why);
                     }
-                    team.add(player);
+                }
+            }
+            List<List<Player>> going = new ArrayList<>();
+            for (List<UUID> squad : squads) {
+                List<Player> team = new ArrayList<>();
+                for (UUID uuid : squad) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (going(uuid, player)) {
+                        team.add(player);
+                    }
                 }
                 if (!team.isEmpty()) {
                     going.add(team);
                 }
             }
             return going;
+        }
+
+        /**
+         * Still with this launch: online and waiting for it, in no raid and not queued (neither
+         * can happen while launching, see {@link net.infnetwork.snowball.craftov.match.MatchService#enqueue};
+         * checked all the same).
+         */
+        private boolean going(UUID uuid, @Nullable Player player) {
+            return player != null && launching.get(uuid) == this && raidOf(uuid) == null && !isSpectating(player)
+                    && plugin.match().queued(uuid) == null;
+        }
+
+        /**
+         * Takes a player out of this launch as {@link #withdraw} takes one out of a raid that is
+         * still loading: the squad hears why, and an escort contract they are on is called off
+         * (their own) or left.
+         */
+        void drop(UUID uuid, String name, String reason) {
+            launching.remove(uuid, this);
+            for (List<UUID> squad : squads) {
+                if (squad.remove(uuid)) {
+                    for (UUID mate : squad) {
+                        Player p = launching.get(mate) == this ? Bukkit.getPlayer(mate) : null;
+                        if (p != null) {
+                            Text.send(p, "<muted>队友 <white>" + Text.escape(name) + "</white> " + reason + "，已退出本局。");
+                        }
+                    }
+                }
+            }
+            plugin.escorts().onWithdraw(uuid, name, reason);
         }
     }
 
@@ -3159,9 +3195,14 @@ public final class RaidManager implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        // Matched, but the map is still being copied: they just drop out of that raid (nothing
-        // has been charged or taken), even if they are back before the copy is done.
-        launching.remove(player.getUniqueId());
+        Launch launch = launching.get(player.getUniqueId());
+        if (launch != null) {
+            // Matched, but the map is still being copied: they drop out of that raid as they would
+            // while it loads (nothing has been charged or taken), even if they are back before the
+            // copy is done.
+            launch.drop(player.getUniqueId(), player.getName(), "在部署前断开连接");
+            return;
+        }
         Raid raid = raidOf(player);
         RaidPlayer rp = raid == null ? null : raid.player(player.getUniqueId());
         if (raid == null || rp == null) {

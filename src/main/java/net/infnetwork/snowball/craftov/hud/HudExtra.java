@@ -18,7 +18,13 @@ public record HudExtra(int hpState, int timeState, int injuryFlags, boolean ammo
     public static final int PAIN = 8;
     public static final int OVERLOADED = 16;
 
-    public static final HudExtra EMPTY = new HudExtra(0, 0, 0, false, new String[]{"", ""}, new String[]{"", "", "", ""}, "", "");
+    public static final HudExtra EMPTY = new HudExtra(0, 0, 0, false, new String[]{"", ""}, blank(KillFeedService.LINES), "", "");
+
+    private static String[] blank(int n) {
+        String[] out = new String[n];
+        java.util.Arrays.fill(out, "");
+        return out;
+    }
 
     public boolean flag(int bit) {
         return (injuryFlags & bit) != 0;

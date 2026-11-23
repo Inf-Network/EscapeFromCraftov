@@ -98,6 +98,12 @@ public final class EscortService {
         return c.id;
     }
 
+    /** Whether {@code uuid} is the client of contract {@code id}, rather than one of its escorts. */
+    public boolean isClient(String id, UUID uuid) {
+        Contract c = contracts.get(id);
+        return c != null && c.client.equals(uuid);
+    }
+
     /**
      * The client's raid was voided without an outcome (they ended up outside the raid world): the
      * contract stands as before the deploy, so it can be played again or cancelled.

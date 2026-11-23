@@ -22,7 +22,7 @@ public final class CraftovCommand implements TabExecutor {
     private static final List<String> PLAYER_SUBS = List.of("menu", "deploy", "stash", "mail", "trader", "market", "secure", "party",
             "leave", "help", "mod");
     private static final List<String> ADMIN_SUBS = List.of("give", "money", "hud", "close", "raids", "end", "reload", "lobby", "tp", "editor", "injure", "event",
-            "marketaudit", "ai", "lagcomp");
+            "feed", "marketaudit", "ai", "lagcomp", "luck");
 
     private final CraftovPlugin plugin;
 
@@ -32,7 +32,8 @@ public final class CraftovCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (label.equalsIgnoreCase("party")) {
+        // The label is whatever was typed (/squad, /craftov:party); the command's own name is not.
+        if (command.getName().equalsIgnoreCase("party")) {
             String[] shifted = new String[args.length + 1];
             shifted[0] = "party";
             System.arraycopy(args, 0, shifted, 1, args.length);
@@ -86,12 +87,17 @@ public final class CraftovCommand implements TabExecutor {
                 if (player != null) plugin.menus().openGunsmith(player);
             }
             case "queue" -> {
-                if (player != null && args.length >= 3) {
-                    RaidMode mode = args.length >= 4 ? RaidMode.valueOf(args[3].toUpperCase(Locale.ROOT)) : RaidMode.SOLO;
-                    // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]
-                    plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
-                            args.length < 6 || Boolean.parseBoolean(args[5]));
+                // /cv queue <map> <tier> [SOLO|TRIO] [ranked] [fill]: the deploy menu's queue, for test clients.
+                if (player == null) {
+                    return true;
                 }
+                RaidMode mode = args.length >= 4 ? mode(args[3]) : RaidMode.SOLO;
+                if (args.length < 3 || mode == null) {
+                    Text.send(player, "<#9AA0A6>用法：/cv queue <地图ID> <难度> [SOLO|TRIO] [排位 true|false] [补位 true|false]");
+                    return true;
+                }
+                plugin.match().enqueue(player, args[1], args[2].toUpperCase(Locale.ROOT), mode, args.length >= 5 && Boolean.parseBoolean(args[4]),
+                        args.length < 6 || Boolean.parseBoolean(args[5]));
             }
             default -> {
                 if (!sender.hasPermission("craftov.admin")) {
@@ -156,15 +162,17 @@ public final class CraftovCommand implements TabExecutor {
         }
         if (sender.hasPermission("craftov.admin")) {
             sender.sendMessage(Text.mm("<accent>管理：/cv give <玩家> <物品> [数量] · money <玩家> <数量> · hud <玩家> · close <玩家> · raids · end <id> · tp <id> · lobby · reload"
-                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id]"));
+                    + " · marketaudit [数量] · lagcomp [on|off] · ai [id] · ai spawn <类型> <x> <y> <z> [id] · luck <玩家> · feed <玩家>"));
         }
     }
 
     private void admin(CommandSender sender, String sub, String[] args) {
         switch (sub) {
             case "give" -> {
-                if (args.length < 3) {
-                    Text.send(sender, "/cv give <玩家> <物品> [数量]");
+                String usage = "<#9AA0A6>用法：/cv give <玩家> <物品ID> [数量]";
+                int amount = args.length > 3 ? positiveInt(args[3]) : 1;
+                if (args.length < 3 || amount <= 0) {
+                    Text.send(sender, usage);
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
@@ -173,10 +181,10 @@ public final class CraftovCommand implements TabExecutor {
                     Text.send(sender, "<danger>玩家或物品不存在。");
                     return;
                 }
-                int amount = args.length > 3 ? Integer.parseInt(args[3]) : 1;
                 ItemStack stack = def.isGun() ? plugin.items().loadedGun(def, firstAmmo(def)) : plugin.items().create(def, amount);
                 plugin.carry().give(target, stack, true);
-                Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + amount);
+                // The stack is capped at the item's stack size: say what was handed out.
+                Text.send(sender, "<ok>已给予 " + def.coloredName() + " ×" + stack.getAmount());
             }
             case "injure" -> {
                 // /cv injure <player> <head|chest|stomach|left_arm|right_arm|left_leg|right_leg> <light|heavy|fracture> [source]
@@ -202,16 +210,43 @@ public final class CraftovCommand implements TabExecutor {
                 plugin.health().addInjury(target, part, injury, source == null ? null : source.getUniqueId());
                 Text.send(sender, "<ok>" + target.getName() + " " + part.displayName() + " " + injury.displayName());
             }
+            case "feed" -> {
+                // /cv feed <player>: the kill feed lines the player's HUD holds, oldest first (tests read it).
+                Player target = args.length > 1 ? Bukkit.getPlayerExact(args[1]) : null;
+                if (target == null) {
+                    Text.send(sender, "/cv feed <玩家>");
+                    return;
+                }
+                java.util.List<String> lines = plugin.killFeed().allLines(target);
+                if (lines.isEmpty()) {
+                    sender.sendMessage(Text.mm("<#9AA0A6>（击杀栏是空的）"));
+                }
+                for (String line : lines) {
+                    sender.sendMessage(Text.mm(line));
+                }
+                sender.sendMessage(Text.mm("<#9AA0A6>连杀 " + plugin.killFeed().streak(target.getUniqueId())));
+            }
             case "money" -> {
-                if (args.length < 3) {
+                // /cv money <player> <amount>: adds the amount (negative takes money away).
+                Long delta = args.length < 3 ? null : parseLong(args[2]);
+                if (delta == null) {
+                    Text.send(sender, "<#9AA0A6>用法：/cv money <玩家> <数量>（负数为扣除）");
                     return;
                 }
                 Player target = Bukkit.getPlayerExact(args[1]);
                 if (target == null) {
+                    Text.send(sender, "<#FF8A80>玩家不在线。");
                     return;
                 }
                 Profile profile = plugin.profiles().get(target);
-                profile.money += Long.parseLong(args[2]);
+                long balance;
+                try {
+                    balance = Math.addExact(profile.money, delta);
+                } catch (ArithmeticException ex) {
+                    Text.send(sender, "<#FF8A80>数额过大。");
+                    return;
+                }
+                profile.money = balance;
                 plugin.profiles().markDirty(target.getUniqueId());
                 Text.send(sender, "<ok>" + target.getName() + " 余额 ◈" + Text.money(profile.money));
             }
@@ -285,6 +320,10 @@ public final class CraftovCommand implements TabExecutor {
                     try {
                         at = new org.bukkit.Location(raid.world, Double.parseDouble(args[3]), Double.parseDouble(args[4]), Double.parseDouble(args[5]));
                     } catch (NumberFormatException ex) {
+                        at = null;
+                    }
+                    // NaN and Infinity parse too.
+                    if (at == null || !Double.isFinite(at.getX() + at.getY() + at.getZ())) {
                         Text.send(sender, "<danger>坐标无效。");
                         return;
                     }
@@ -331,20 +370,20 @@ public final class CraftovCommand implements TabExecutor {
                     return;
                 }
                 String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "help";
+                // Missing arguments fall through to the help lines below.
+                if (args.length < 3 && List.of("world", "start", "set").contains(action)) {
+                    action = "help";
+                }
                 switch (action) {
-                    case "world" -> {
-                        if (args.length > 2) plugin.editor().createWorld(p, args[2]);
-                    }
-                    case "start" -> {
-                        if (args.length > 2) plugin.editor().start(p, args[2]);
-                    }
+                    case "world" -> plugin.editor().createWorld(p, args[2]);
+                    case "start" -> plugin.editor().start(p, args[2]);
                     case "save" -> plugin.editor().save(p);
                     case "exit" -> plugin.editor().exit(p, true);
                     case "discard" -> plugin.editor().exit(p, false);
                     case "info" -> plugin.editor().info(p);
-                    case "set" -> {
-                        if (args.length > 3) plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT), String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
-                    }
+                    // "set camera" takes no value: it uses where the editor is looking from.
+                    case "set" -> plugin.editor().set(p, args[2].toLowerCase(Locale.ROOT),
+                            String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)));
                     default -> {
                         Text.send(p, "<text>地图编辑器");
                         p.sendMessage(Text.mm("<muted>/cv editor world <世界名> <muted>创建/前往一个空的建图世界"));
@@ -393,6 +432,7 @@ public final class CraftovCommand implements TabExecutor {
                                 + "ms 回溯目标位置（最多 " + plugin.getConfig().getInt("combat.lag-compensation.max-ms", 300) + "ms）。"
                         : "<danger>命中延迟补偿已关闭，<muted>/cv reload 后恢复配置文件里的设置。");
             }
+            case "luck" -> luck(sender, args);
             case "reload" -> {
                 plugin.reloadConfig();
                 String itemError = plugin.registry().load(new java.io.File(plugin.getDataFolder(), "items.yml"));
@@ -415,6 +455,40 @@ public final class CraftovCommand implements TabExecutor {
                 }
             }
             default -> help(sender);
+        }
+    }
+
+    /**
+     * /cv luck &lt;player&gt; [quota|pity|boost|reset ...]: shows a player's personal luck (pity counts,
+     * quota pool, behaviour multiplier, loss compensation), online or not, or changes it.
+     */
+    private void luck(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            Text.send(sender, "/cv luck <玩家> [quota <数量|+数量|-数量> | pity <GOLD|RED|大奖物品> <数量> | boost <局数> | reset]");
+            return;
+        }
+        Player online = Bukkit.getPlayerExact(args[1]);
+        java.util.UUID uuid = online != null ? online.getUniqueId() : plugin.profiles().findByName(args[1]);
+        if (uuid == null) {
+            Text.send(sender, "<#FF8A80>没有叫 " + Text.escape(args[1]) + " 的玩家。");
+            return;
+        }
+        if (args.length > 2) {
+            String error = plugin.luck().adjust(uuid, args[2].toLowerCase(Locale.ROOT),
+                    java.util.Arrays.copyOfRange(args, 3, args.length), sender.getName());
+            if (error != null) {
+                Text.send(sender, "<#FF8A80>" + Text.escape(error));
+                return;
+            }
+            Text.send(sender, "<#5BD16B>已修改。");
+        }
+        Profile profile = plugin.profiles().peek(uuid);
+        if (profile == null) {
+            Text.send(sender, "<#FF8A80>读不出这个玩家的档案。");
+            return;
+        }
+        for (String line : plugin.luck().describe(profile)) {
+            sender.sendMessage(Text.mm(line));
         }
     }
 
@@ -446,6 +520,32 @@ public final class CraftovCommand implements TabExecutor {
         return null;
     }
 
+    /** SOLO or TRIO in any case, null for anything else. */
+    private static @org.jspecify.annotations.Nullable RaidMode mode(String arg) {
+        try {
+            return RaidMode.valueOf(arg.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /** The number if it is a whole number above 0, else 0. */
+    private static int positiveInt(String arg) {
+        try {
+            return Math.max(0, Integer.parseInt(arg));
+        } catch (IllegalArgumentException ex) {
+            return 0;
+        }
+    }
+
+    private static @org.jspecify.annotations.Nullable Long parseLong(String arg) {
+        try {
+            return Long.parseLong(arg);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
     private String firstAmmo(ItemDef gun) {
         List<ItemDef> ammo = plugin.registry().ammoFor(gun.gun().caliber());
         return ammo.isEmpty() ? null : ammo.get(0).id();
@@ -454,7 +554,7 @@ public final class CraftovCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         List<String> out = new ArrayList<>();
-        if (label.equalsIgnoreCase("party")) {
+        if (command.getName().equalsIgnoreCase("party")) {
             if (args.length == 1) {
                 out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
             } else if (args.length == 2) {
@@ -474,8 +574,15 @@ public final class CraftovCommand implements TabExecutor {
             out.addAll(List.of("invite", "accept", "leave", "kick", "list"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("party")) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
-        } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money"))) {
+        } else if (args.length == 2 && (args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("money")
+                || args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin"))) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("luck") && sender.hasPermission("craftov.admin")) {
+            out.addAll(List.of("quota", "pity", "boost", "reset"));
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("luck") && args[2].equalsIgnoreCase("pity")
+                && sender.hasPermission("craftov.admin")) {
+            out.addAll(List.of("GOLD", "RED"));
+            out.addAll(plugin.loot().jackpots());
         } else if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
             out.addAll(plugin.registry().ids());
         } else if (args.length == 2 && args[0].equalsIgnoreCase("editor")) {

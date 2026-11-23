@@ -204,6 +204,10 @@ public final class DownedService implements Listener {
         player.playSound(player.getLocation(), "craftov:status.revived", SoundCategory.MASTER, 1f, 1f);
         if (reviver != null) {
             Notify.ok(reviver, "救援成功");
+            RaidPlayer medic = plugin.raids().session(reviver);
+            if (medic != null) {
+                medic.revives++;
+            }
         }
     }
 

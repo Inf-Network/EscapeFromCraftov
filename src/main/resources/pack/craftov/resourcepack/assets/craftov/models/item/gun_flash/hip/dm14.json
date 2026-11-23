@@ -210,14 +210,14 @@
   },
   "firstperson_righthand": {
    "rotation": [
-    -177.8,
+    -175.92,
     86.0,
     -177.0
    ],
    "translation": [
     -1.2,
-    3.05,
-    -1.13
+    3.16,
+    -0.61
    ],
    "scale": [
     0.51,
@@ -227,14 +227,14 @@
   },
   "firstperson_lefthand": {
    "rotation": [
-    2.2,
+    4.08,
     -86.0,
     -3.0
    ],
    "translation": [
     -1.2,
-    3.05,
-    -1.13
+    3.16,
+    -0.61
    ],
    "scale": [
     0.51,

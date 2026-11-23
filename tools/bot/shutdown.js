@@ -371,7 +371,7 @@ async function setup () {
     r.attack(victim)
     await sleep(700)
   }
-  const died = await waitFor(killed, 4000)
+  const died = await waitFor(killed, 4000, 300)
   check('the raider kills dead in the raid', died)
   const claimed = await feedLog(NAMES.raider)
   check('the raider collects the bounty on dead', claimed.includes('领取了') && claimed.includes(NAMES.dead), claimed)

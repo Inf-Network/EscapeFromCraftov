@@ -118,8 +118,8 @@ public final class PackService {
         }
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(config);
         boolean changed = false;
-        if (!List.of("craftov_hud").equals(yaml.getStringList("default-hud"))) {
-            yaml.set("default-hud", List.of("craftov_hud"));
+        if (!List.of("craftov_hud", "craftov_crosshair").equals(yaml.getStringList("default-hud"))) {
+            yaml.set("default-hud", List.of("craftov_hud", "craftov_crosshair"));
             changed = true;
         }
         if (!List.of("craftov_compass").equals(yaml.getStringList("default-compass"))) {

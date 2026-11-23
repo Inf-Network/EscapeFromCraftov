@@ -55,13 +55,26 @@ public final class ItemFactory {
      * {@link #setDrawing}).
      * 10: knives carry the inspect cooldown group (#82).
      * 11: both of the above together (the #82 line used 10 while main moved to 9).
-     * 12: the tooltip is framed in the item's rarity colour (tooltip_style craftov:rarity_*; #6 used 10).
+     * 12: the gun-feel line (#8, which used 10) on top: max_damage 2 for the reload mark, and no "dry"
+     * model string (the flash follows the shots the server fires, see {@link #setHandMark}), and gun
+     * lore with stat bars (GunStats) in place of the damage and rate line.
+     * 12 (#6 line): the tooltip is framed in the item's rarity colour (tooltip_style craftov:rarity_*;
+     * #6 used 10).
+     * 13: both 12s together (the gun-feel line and the rarity tooltip frames).
      */
-    public static final int VERSION = 12;
-    /** Cooldown group of every gun; WeaponService runs it for the reload time to drive the reload animation. */
+    public static final int VERSION = 13;
+    /**
+     * Cooldown group of every gun. WeaponService runs it for a few ticks on every shot (the item model
+     * kicks the gun back and flashes the muzzle meanwhile) and for the reload time while the gun carries
+     * the reload mark (the model plays the reload frames instead).
+     */
     public static final Key RELOAD_GROUP = Key.key("craftov", "reload");
     /** Cooldown group of every knife; InspectService runs it while the player inspects the knife. */
     public static final Key INSPECT_GROUP = Key.key("craftov", "inspect");
+    /** Hand marks (see {@link #setHandMark}): none, coming up after a switch, reloading. */
+    public static final int MARK_NONE = 0;
+    public static final int MARK_DRAW = 1;
+    public static final int MARK_RELOAD = 2;
     private static final NamespacedKey GUN_BREAK = new NamespacedKey("craftov", "gun_break");
     private static final NamespacedKey GUN_ATTACK = new NamespacedKey("craftov", "gun_attack");
 
@@ -256,15 +269,16 @@ public final class ItemFactory {
             // and never show the attack-cooldown indicator.
             stack.setData(DataComponentTypes.CAN_BREAK, ItemAdventurePredicate.itemAdventurePredicate(
                     List.of(BlockPredicate.predicate().build())));
-            // Never triggered by use (guns have no use action); only the reload sets this cooldown, and the
-            // client plays the reload frames of the item model while it counts down.
+            // Never triggered by use (guns have no use action); the server sets this cooldown on every shot
+            // and for a reload, and the client plays the kick or the reload frames of the item model while
+            // it counts down.
             stack.setData(DataComponentTypes.USE_COOLDOWN, UseCooldown.useCooldown(0.05f).cooldownGroup(RELOAD_GROUP).build());
             stack.setData(DataComponentTypes.SWING_ANIMATION, SwingAnimation.swingAnimation()
                     .type(SwingAnimation.Animation.NONE).duration(1).build());
-            // Room for the draw mark (damage 1, see setDrawing). Unbreakable, so it is never worn down,
-            // shows no durability bar and no tooltip line; a damageable item may not stack.
+            // Room for the hand marks (damage 1 and 2, see setHandMark). Unbreakable, so it is never worn
+            // down, shows no durability bar and no tooltip line; a damageable item may not stack.
             stack.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
-            stack.setData(DataComponentTypes.MAX_DAMAGE, 1);
+            stack.setData(DataComponentTypes.MAX_DAMAGE, MARK_RELOAD);
             stack.setData(DataComponentTypes.UNBREAKABLE);
             stack.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.itemAttributes()
                     .addModifier(Attribute.BLOCK_BREAK_SPEED, new AttributeModifier(GUN_BREAK, -1.0,
@@ -526,8 +540,9 @@ public final class ItemFactory {
 
     /**
      * What the gun's item model reads from custom_model_data strings: 0 the sight, 1..4 the other
-     * attachments (Attachments.SLOTS order), 5 "dry" while the magazine is empty (no flash or kick
-     * on the trigger then). An empty string means nothing there.
+     * attachments (Attachments.SLOTS order). An empty string means nothing there. (Until item version
+     * 10, string 5 said "dry" so the model would not flash on an empty magazine; the flash now follows
+     * the shots the server fires.)
      */
     private static void applyModelData(ItemStack stack) {
         var cmd = io.papermc.paper.datacomponent.item.CustomModelData.customModelData();
@@ -537,21 +552,35 @@ public final class ItemFactory {
         for (String slot : net.infnetwork.snowball.craftov.weapon.Attachments.SLOTS) {
             cmd.addString(fitted.getOrDefault(slot, ""));
         }
-        cmd.addString(ammo(stack) <= 0 ? "dry" : "");
         stack.setData(DataComponentTypes.CUSTOM_MODEL_DATA, cmd.build());
     }
 
-    /**
-     * Marks a gun as still coming up after a switch, or clears the mark: its item model then ignores
-     * right and left mouse, so the client shows neither the aimed pose (on a scoped gun, no gun at all)
-     * nor the muzzle flash and kick while the server lets it do neither. The mark is damage 1 of the
-     * gun's max_damage 1 because damage is the only component the vanilla client swaps in on a held
-     * item without playing the lower-and-raise animation again; custom_model_data would dip the gun
-     * just as it comes up.
-     */
+    /** The hand mark a gun's stack carries (see {@link #setHandMark}). */
+    public static int handMark(@Nullable ItemStack stack) {
+        if (stack == null || !stack.hasData(DataComponentTypes.DAMAGE)) {
+            return MARK_NONE;
+        }
+        Integer damage = stack.getData(DataComponentTypes.DAMAGE);
+        return damage == null ? MARK_NONE : damage;
+    }
+
+    /** Marks a gun as still coming up after a switch, or clears every mark (see {@link #setHandMark}). */
     public static void setDrawing(ItemStack stack, boolean drawing) {
-        if (drawing) {
-            stack.setData(DataComponentTypes.DAMAGE, 1);
+        setHandMark(stack, drawing ? MARK_DRAW : MARK_NONE);
+    }
+
+    /**
+     * Tells the gun's item model what the gun is doing besides being held: {@link #MARK_DRAW} while it
+     * comes up after a switch (the model ignores right mouse and the shot cooldown, so the client shows
+     * neither the aimed pose, on a scoped gun no gun at all, nor a kick while the server allows
+     * neither), {@link #MARK_RELOAD} while it reloads (the gun's cooldown then runs the reload frames
+     * instead of a shot's kick). The mark is the stack's damage, against max_damage 2, because damage
+     * is the only component the vanilla 1.21.11 client swaps in on a held item without lowering and
+     * raising it again (DataComponentType.ignoreSwapAnimation); custom_model_data would dip the gun.
+     */
+    public static void setHandMark(ItemStack stack, int mark) {
+        if (mark > MARK_NONE) {
+            stack.setData(DataComponentTypes.DAMAGE, Math.min(MARK_RELOAD, mark));
         } else if (stack.hasData(DataComponentTypes.DAMAGE)) {
             stack.resetData(DataComponentTypes.DAMAGE);
         }
@@ -663,7 +692,8 @@ public final class ItemFactory {
             ItemDef ammoDef = registry.get(ammoType);
             Map<String, net.infnetwork.snowball.craftov.weapon.AttachSpec> parts =
                     net.infnetwork.snowball.craftov.weapon.Attachments.resolve(gun, attachments(stack), registry);
-            int capacity = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts).magazine();
+            GunSpec withParts = net.infnetwork.snowball.craftov.weapon.Attachments.effective(gun, parts);
+            int capacity = withParts.magazine();
             lore.add(Text.mm("<muted>口径 <white>" + gun.caliber() + "  <muted>弹匣 <white>" + ammo + "/" + capacity
                     + (ammoDef != null ? " <muted>(" + Text.escape(ammoDef.name()) + ")" : "")));
             StringBuilder modes = new StringBuilder();
@@ -673,8 +703,14 @@ public final class ItemFactory {
                 }
                 modes.append(mode.displayName());
             }
-            lore.add(Text.mm("<muted>伤害 <white>" + fmt(gun.damage()) + (gun.pellets() > 1 ? "×" + gun.pellets() : "")
-                    + "  <muted>射速 <white>" + gun.rpm() + "  <muted>模式 <white>" + modes));
+            lore.add(Text.mm("<muted>模式 <white>" + modes));
+            // Penetration is the loaded round's; an empty gun shows its caliber's first round.
+            List<ItemDef> rounds = registry.ammoFor(gun.caliber());
+            ItemDef shown = ammoDef != null ? ammoDef : rounds.isEmpty() ? null : rounds.get(0);
+            for (String line : GunStats.bars(registry, gun, withParts, shown)) {
+                lore.add(Text.mm(line));
+            }
+            lore.add(Text.mm(GunStats.HINT));
             ItemDef optic = registry.get(opticId(stack));
             ItemDef builtIn = registry.get(gun.scope());
             if (optic != null) {

@@ -1,21 +1,12 @@
-"""Layered firearm audio, all original synthesis.
+"""Bullets, impacts, casings and handling foley, all original synthesis.
 
-A shot is built the way game audio teams layer recorded guns, but from generated parts:
-  crack      supersonic snap, a few milliseconds of broadband noise
-  transient  the first ~20 ms of muzzle blast, bright and punchy
-  thump      a falling sine for the low-end hit in the chest
-  body       the main blast: filtered noise with a fast and a slow decay
-  resonance  the barrel's ring, a resonant band that tells guns apart
-  hiss       gas jetting out of the muzzle
-  mechanics  bolt or slide travelling back and slamming home (two modal clicks plus springs)
-Every gun has its own parameters (calibre, barrel, action) and four round-robin variants.
-
-From one core the build derives what each listener needs: a wide stereo first-person shot for the
-shooter, near / mid / far versions for everyone else (distance strips the highs and smears the
-report), a muffled version heard through walls, and suppressed versions. Tails (the environment's
-answer to the shot) are separate files per gun family, outdoor and indoor, made by convolving a
-core with a synthesised impulse response; the server plays the right one after the last shot of a
-burst so automatic fire stays crisp instead of turning to mush.
+The gun reports themselves are recordings (gunsamples.py); everything around them is generated here
+from a few primitives (filtered noise, envelopes, struck-metal modes):
+  bullet     the supersonic crack (an N-wave) or subsonic whiz of a round passing close by
+  impact     a round hitting concrete, metal, wood, glass, soil, flesh, a plate or a helmet
+  casing     brass or a shotgun hull landing on hard or soft ground
+  foley      magazines, charging handles, pumps and bolts for each action family, and the dry click
+  tinnitus   the ringing after a flashbang
 """
 import zlib
 
@@ -75,14 +66,6 @@ def env(n, attack, decay, sr=SR, hold=0.0):
     return a * d
 
 
-def env2(n, attack, fast, slow, mix, sr=SR):
-    """Two-stage decay: most energy dies in `fast`, a `1 - mix` share lingers for `slow`."""
-    t = tvec(n, sr)
-    a = np.clip(t / max(attack, 1e-6), 0, 1)
-    tt = np.maximum(0, t - attack)
-    return a * (mix * np.exp(-tt / fast) + (1 - mix) * np.exp(-tt / slow))
-
-
 def sweep(f0, f1, sec, tau, sr=SR, phase=0.0):
     t = tvec(n_of(sec, sr), sr)
     f = f1 + (f0 - f1) * np.exp(-t / tau)
@@ -105,10 +88,6 @@ def place(buf, x, at, gain=1.0, sr=SR):
     seg = x[:len(buf) - o]
     buf[o:o + len(seg)] += seg * gain
     return buf
-
-
-def softclip(x, drive):
-    return np.tanh(drive * x) / np.tanh(drive)
 
 
 def peak(x, level):
@@ -136,302 +115,12 @@ def tick(rng, sec=0.004, f=2200, gain=1.0):
     return hp(noise(rng, sec), f) * env(n_of(sec), 0.0002, sec / 4) * gain
 
 
-# ---------------------------------------------------------------- gun profiles
-
-# Mechanical action families: two struck-metal events (bolt back, bolt home) plus a spring or link.
-ACTIONS = {
-    'ar': dict(a=[(2150, .007, 1), (3420, .006, .7), (5230, .004, .5), (880, .012, .5)],
-               b=[(1780, .008, 1), (2890, .006, .6), (640, .02, .5)],
-               spring=[(712, .05, 1), (1466, .03, .4)], spring_gain=.12, t=.034, gap=.027, gain=1.0),
-    'dmr': dict(a=[(1980, .008, 1), (3150, .006, .7), (4800, .004, .45), (820, .014, .5)],
-                b=[(1620, .009, 1), (2650, .007, .6), (600, .022, .5)],
-                spring=[(650, .06, 1), (1300, .03, .35)], spring_gain=.1, t=.036, gap=.03, gain=.95),
-    'ak': dict(a=[(1550, .01, 1), (2480, .008, .8), (3900, .005, .5), (720, .016, .6)],
-               b=[(1300, .012, 1), (2100, .009, .7), (520, .025, .6)],
-               spring=[(430, .04, 1), (980, .025, .5)], spring_gain=.2, t=.038, gap=.03, gain=1.2),
-    'lmg': dict(a=[(980, .018, 1), (1650, .012, .7), (2700, .008, .4)],
-                b=[(820, .02, 1), (1400, .014, .6), (2300, .01, .3)],
-                spring=[(3600, .008, 1), (5100, .006, .7), (2400, .01, .5)], spring_gain=.3, t=.04, gap=.032, gain=1.25),
-    'smg': dict(a=[(1250, .012, 1), (2050, .009, .7), (3300, .006, .4)],
-                b=[(1600, .008, .8), (2600, .006, .5), (900, .015, .4)],
-                spring=[(560, .03, 1)], spring_gain=.12, t=.026, gap=.02, gain=1.1),
-    'pdw': dict(a=[(2600, .006, 1), (4100, .005, .6), (6100, .003, .4)],
-                b=[(2200, .006, .9), (3500, .005, .5), (1100, .01, .3)],
-                spring=[(820, .03, 1)], spring_gain=.08, t=.024, gap=.019, gain=.9),
-    'pistol': dict(a=[(2840, .004, 1), (4130, .004, .7), (6320, .003, .5), (1210, .008, .4)],
-                   b=[(2300, .006, 1), (3600, .005, .6), (1100, .01, .4)],
-                   spring=[(930, .018, 1), (1870, .012, .5)], spring_gain=.15, t=.014, gap=.024, gain=.9),
-    'pistol_heavy': dict(a=[(2100, .006, 1), (3300, .005, .7), (5200, .003, .4), (900, .012, .5)],
-                         b=[(1750, .008, 1), (2800, .006, .6), (800, .014, .4)],
-                         spring=[(700, .022, 1), (1500, .014, .5)], spring_gain=.18, t=.018, gap=.03, gain=1.1),
-    'pump': None,
-    'bolt': None,
-}
-
-BASE = dict(crack=.8, snap_hp=2600, thump=(150, 55, .03), thump_gain=.75, body_hp=280, body_lp=3000,
-            body=(.0012, .022, .11, .55), body_gain=1.5, res=(780, 2.2, .02), res_gain=.9, hiss=.32,
-            transient=1.1, drive=1.7, length=.55, action='ar', report=1.0)
-
-
-def profile(**kw):
-    p = dict(BASE)
-    p.update(kw)
-    return p
-
-
-# gun id -> parameters. Calibre sets crack and thump, barrel sets resonance and body colour,
-# the action sets the mechanics. 'report' scales how loud the gun is relative to the others.
-GUNS = {
-    'p18': profile(crack=.35, snap_hp=3000, thump=(190, 78, .022), thump_gain=.6, body_hp=380, body_lp=4300,
-                   body=(.001, .015, .07, .6), body_gain=1.3, res=(1150, 2.6, .014), res_gain=.85, hiss=.22,
-                   transient=1.25, drive=1.8, length=.42, action='pistol', report=.7),
-    'd50': profile(crack=.55, snap_hp=2400, thump=(135, 48, .04), thump_gain=1.0, body_hp=200, body_lp=3000,
-                   body=(.0014, .026, .14, .5), body_gain=1.7, res=(640, 2.0, .022), res_gain=1.0, hiss=.3,
-                   transient=1.3, drive=2.0, length=.6, action='pistol_heavy', report=.95),
-    'sv9': profile(crack=.3, snap_hp=3000, thump=(175, 72, .022), thump_gain=.6, body_hp=340, body_lp=3900,
-                   body=(.001, .016, .075, .62), body_gain=1.3, res=(980, 2.4, .016), res_gain=.85, hiss=.22,
-                   transient=1.15, drive=1.7, length=.42, action='smg', report=.7),
-    'v57': profile(crack=.75, snap_hp=3400, thump=(170, 70, .02), thump_gain=.55, body_hp=420, body_lp=5200,
-                   body=(.001, .014, .07, .62), body_gain=1.25, res=(1240, 2.8, .014), res_gain=.8, hiss=.35,
-                   transient=1.2, drive=1.7, length=.42, action='pdw', report=.72),
-    'm4c': profile(crack=.95, snap_hp=2800, thump=(150, 56, .028), thump_gain=.72, body_hp=300, body_lp=3300,
-                   body=(.0012, .02, .1, .56), body_gain=1.45, res=(820, 2.3, .02), res_gain=.9, hiss=.34,
-                   transient=1.15, drive=1.75, length=.52, action='ar', report=.85),
-    'k47': profile(crack=.9, snap_hp=2300, thump=(128, 46, .034), thump_gain=.9, body_hp=230, body_lp=2700,
-                   body=(.0014, .026, .13, .52), body_gain=1.6, res=(700, 2.0, .024), res_gain=1.0, hiss=.3,
-                   transient=1.1, drive=1.85, length=.58, action='ak', report=.9),
-    'scr': profile(crack=1.05, snap_hp=2300, thump=(118, 42, .038), thump_gain=.95, body_hp=210, body_lp=2500,
-                   body=(.0014, .028, .15, .5), body_gain=1.65, res=(640, 2.0, .026), res_gain=1.0, hiss=.32,
-                   transient=1.15, drive=1.9, length=.62, action='dmr', report=.95),
-    'kl7': profile(crack=.9, snap_hp=2200, thump=(124, 44, .036), thump_gain=.95, body_hp=220, body_lp=2600,
-                   body=(.0014, .028, .14, .52), body_gain=1.6, res=(620, 2.0, .028), res_gain=1.05, hiss=.3,
-                   transient=1.1, drive=1.85, length=.6, action='lmg', report=.95),
-    'r12': profile(crack=.35, snap_hp=2000, thump=(100, 36, .05), thump_gain=1.25, body_hp=140, body_lp=1900,
-                   body=(.0018, .04, .2, .45), body_gain=1.8, res=(430, 1.6, .03), res_gain=1.0, hiss=.2,
-                   transient=1.2, drive=2.1, length=.75, action='pump', report=1.0),
-    'dm14': profile(crack=1.15, snap_hp=2400, thump=(112, 40, .04), thump_gain=1.0, body_hp=200, body_lp=2500,
-                    body=(.0014, .03, .16, .5), body_gain=1.65, res=(600, 2.0, .028), res_gain=1.0, hiss=.34,
-                    transient=1.2, drive=1.9, length=.66, action='dmr', report=1.0),
-    'awr': profile(crack=1.45, snap_hp=2100, thump=(96, 32, .05), thump_gain=1.15, body_hp=160, body_lp=2300,
-                   body=(.0016, .036, .22, .45), body_gain=1.8, res=(520, 1.8, .034), res_gain=1.05, hiss=.4,
-                   transient=1.35, drive=2.0, length=.8, action='bolt', report=1.0),
-}
-
-# Which tail family answers each gun (tails are shared to keep the pack small).
-TAIL_FAMILY = {'p18': 'light', 'sv9': 'light', 'v57': 'light', 'd50': 'rifle', 'm4c': 'rifle', 'k47': 'heavy',
-               'scr': 'heavy', 'kl7': 'heavy', 'dm14': 'heavy', 'r12': 'heavy', 'awr': 'sniper'}
-TAIL_SOURCE = {'light': 'sv9', 'rifle': 'm4c', 'heavy': 'scr', 'sniper': 'awr'}
-
-# Automatic fire whose interval does not fit the 50 ms server tick plays one sample every few ticks
-# holding several rounds at the gun's real interval: gun id -> (rounds, ticks). GunAudio.java keeps
-# the same table and only uses a sample while the gun's rpm still matches it (rounds * 1200 / ticks).
-GROUPS = {'m4c': (2, 3), 'sv9': (3, 4), 'v57': (3, 4)}
-
-VARIANT_FREQ = [1.0, .955, 1.045, .985]
-VARIANT_TONE = [1.0, 1.12, .9, 1.05]
-
-
-# ---------------------------------------------------------------- the shot
-
-def mechanics(rng, p, scale):
-    a = ACTIONS.get(p['action'])
-    out = np.zeros(n_of(.2))
-    if not a:
-        return out
-    t0 = a['t'] + rng.uniform(-.002, .002)
-    place(out, modal(rng, [(f * scale, d, g) for f, d, g in a['a']], .06), t0, .26)
-    place(out, tick(rng, .006, 3000), t0, .3)
-    t1 = t0 + a['gap'] + rng.uniform(-.002, .002)
-    place(out, modal(rng, [(f * scale, d, g) for f, d, g in a['b']], .08), t1, .2)
-    place(out, tick(rng, .005, 2400), t1, .22)
-    place(out, modal(rng, [(f * scale, d, g) for f, d, g in a['spring']], .12), t1 + .003, a['spring_gain'])
-    return out * a['gain']
-
-
-def core(p, v, seed, *, mech=1.0, crack=1.0, body=1.0, thump=1.0, hiss=1.0, suppressed=False):
-    """One mono shot without its environment."""
-    rng = np.random.default_rng(seed)
-    nf, nt = VARIANT_FREQ[v % 4], VARIANT_TONE[v % 4]
-    out = np.zeros(n_of(p['length']))
-    # crack: supersonic snap
-    c = hp(noise(rng, .012), p['snap_hp'] * nt) * env(n_of(.012), .00008, .0011)
-    place(out, c, 0, 2.4 * p['crack'] * crack)
-    # transient: first punch of the blast
-    tr = lp(hp(noise(rng, .025), 1100), 8500) * env(n_of(.025), .0002, .0032)
-    place(out, tr, .0002, p['transient'] * body)
-    # thump: low-end hit
-    f0, f1, tau = p['thump']
-    th = sweep(f0 * nf, f1 * nf, .14, tau * .9) * env(n_of(.14), .0006, tau)
-    place(out, th, 0, p['thump_gain'] * thump)
-    # body: the main blast
-    atk, fast, slow, mix = p['body']
-    bl = p['body_lp'] * nf * nt * (.55 if suppressed else 1.0)
-    b = lp(hp(noise(rng, p['length']), p['body_hp'] * nf), bl, order=2) * env2(n_of(p['length']), atk, fast, slow * (.5 if suppressed else 1), mix)
-    place(out, b, 0, p['body_gain'] * body)
-    # barrel resonance
-    rf, q, rd = p['res']
-    r = reson(noise(rng, .2), rf * nf, q) * env(n_of(.2), .001, rd)
-    place(out, r, 0, p['res_gain'] * body * 1.6)
-    # gas hiss
-    h = hp(noise(rng, .18), 4800) * env(n_of(.18), .001, .04)
-    place(out, h, .001, p['hiss'] * hiss)
-    if suppressed:
-        # Gas through the baffles: a short, dark "pfft".
-        pf = bp(noise(rng, .08), 350, 2400) * env(n_of(.08), .001, .018)
-        place(out, pf, 0, .9)
-    if mech:
-        place(out, mechanics(rng, p, nf), 0, mech)
-    out = softclip(peak(out, 1.0), p['drive'])
-    return fade(out, .05)
-
-
 def stereo(left, right):
     n = max(len(left), len(right))
     out = np.zeros((n, 2))
     out[:len(left), 0] = left
     out[:len(right), 1] = right
     return out
-
-
-def first_person(gid, v, suppressed=False):
-    """What the shooter hears: wide, close, mechanics loud, extra low end."""
-    p = GUNS[gid]
-    seed = seed_of(gid, v, suppressed, 'fp')
-    kw = dict(mech=1.6 if suppressed else .55, thump=1.25, crack=.45 if suppressed else 1.0, body=.13 if suppressed else 1.0,
-              hiss=.25 if suppressed else 1.0, suppressed=suppressed)
-    left = core(p, v, seed, **kw)
-    right = core(p, v, seed + 7, **kw)
-    # Same crack/thump/mechanics in both ears comes from the shared seed; the noise beds differ a bit
-    # through the second seed, which keeps the blast wide. Ground bounce, a few ms late per side.
-    for ch, delay in ((left, .0042), (right, .0051)):
-        refl = lp(np.concatenate([np.zeros(n_of(delay)), ch])[:len(ch)], 3500) * .32
-        ch += refl
-    mix = .5 * (left + right)
-    st = stereo(.75 * left + .25 * mix, .75 * right + .25 * mix)
-    return peak(st, .7 if suppressed else .97)
-
-
-def third_person(gid, v, band, suppressed=False):
-    p = GUNS[gid]
-    seed = seed_of(gid, v, band, suppressed)
-    if suppressed:
-        x = core(p, v, seed, mech=.9, crack=.55, body=.12, thump=.4, hiss=.2, suppressed=True)
-        x = lp(x, 7000)
-        return peak(x, .6)
-    if band == 'near':
-        x = core(p, v, seed, mech=.22)
-        x = x + lp(np.concatenate([np.zeros(n_of(.006)), x])[:len(x)], 4000) * .3
-        return peak(lp(x, 12000), .95)
-    if band == 'mid':
-        x = core(p, v, seed, mech=0, crack=.5)
-        x = np.concatenate([x, np.zeros(n_of(.45))])
-        rng = np.random.default_rng(seed + 1)
-        # Distance smears the report: a short diffuse spread plus a couple of ground/building returns.
-        ir = np.zeros(n_of(.35))
-        ir[0] = 1
-        place(ir, lp(noise(rng, .3), 2500) * env(n_of(.3), .004, .07), .002, .35)
-        for at, g in ((.045, .25), (.11, .14), (.19, .08)):
-            place(ir, lp(noise(rng, .01), 2000) * env(n_of(.01), .0005, .003), at + rng.uniform(-.006, .006), g * 3)
-        y = signal.fftconvolve(x, ir)[:len(x)]
-        y = hp(lp(y, 5200, order=2), 70)
-        return fade(peak(y, .9), .12)
-    if band == 'far':
-        x = core(p, v, seed, mech=0, crack=0, thump=1.3)
-        x = np.concatenate([x, np.zeros(n_of(1.2))])
-        rng = np.random.default_rng(seed + 2)
-        ir = np.zeros(n_of(1.4))
-        ir[0] = 1
-        place(ir, lp(noise(rng, 1.3), 900) * env(n_of(1.3), .02, .32), .01, .5)
-        at = .08
-        g = .55
-        while at < 1.1:
-            place(ir, lp(noise(rng, .03), 1100) * env(n_of(.03), .002, .01), at, g * 2)
-            at += rng.uniform(.09, .22)
-            g *= .72
-        y = signal.fftconvolve(x, ir)[:len(x)]
-        y = hp(lp(y, 1300, order=4), 45)
-        return fade(peak(y, .85), .3)
-    if band == 'muff':
-        x = core(p, v, seed, mech=0, crack=0, thump=1.4)
-        x = np.concatenate([x, np.zeros(n_of(.25))])
-        y = lp(x, 620, order=4)
-        y = y + reson(y, 120, 3) * .4
-        return fade(peak(y, .85), .15)
-    raise ValueError(band)
-
-
-def rounds(make, count, v, n, ticks):
-    """n shots from make(variant) at the interval n rounds take in ticks server ticks, as one sample.
-
-    Each round is a different round-robin variant. Overlapping rounds are brought back to the level of
-    the loudest single one, so a burst is no louder than a shot."""
-    interval = ticks * .05 / n
-    shots = [make((v + i) % count) for i in range(n)]
-    level = max(np.max(np.abs(x)) for x in shots)
-    starts = [int(round(i * interval * SR)) for i in range(n)]
-    out = np.zeros((max(a + len(x) for a, x in zip(starts, shots)),) + shots[0].shape[1:])
-    for a, x in zip(starts, shots):
-        out[a:a + len(x)] += x
-    return peak(out, level) if np.max(np.abs(out)) > level else out
-
-
-# ---------------------------------------------------------------- environment tails
-
-def ir_outdoor(rng, length):
-    ir = np.zeros(n_of(length))
-    taps = [(.058, .5, 4200), (.097, .4, 3300), (.139, .3, 2600), (.176, .22, 2000), (.262, .14, 1500),
-            (.41, .09, 1100), (.63, .05, 800)]
-    for at, g, f in taps:
-        blip = lp(hp(noise(rng, .09), 300), f) * env(n_of(.09), .002, .016)
-        place(ir, blip, at + rng.uniform(-.006, .006), g * rng.uniform(.8, 1.1))
-    # Diffuse rumble from the ground and distant surfaces, darkening as it decays.
-    late = noise(rng, length)
-    pieces = [lp(late, f) for f in (2600, 1400, 700, 380)]
-    t = tvec(len(late))
-    w = np.clip(t / (length * .45), 0, 1)
-    rumble = np.where(w < 1 / 3, pieces[0] * (1 - 3 * w) + pieces[1] * 3 * w,
-                      np.where(w < 2 / 3, pieces[1] * (2 - 3 * w) + pieces[2] * (3 * w - 1),
-                               pieces[2] * (3 - 3 * w) + pieces[3] * (3 * w - 2)))
-    rumble = hp(rumble, 55) * env(len(late), .03, length * .28)
-    place(ir, rumble, .02, .5)
-    return ir
-
-
-def ir_indoor(rng, length):
-    ir = np.zeros(n_of(length))
-    # Dense early reflections off nearby walls.
-    for _ in range(40):
-        at = rng.uniform(.002, .035)
-        place(ir, lp(noise(rng, .004), 6000) * env(n_of(.004), .0002, .001), at, rng.uniform(.1, .35) * (1 - at * 15))
-    late = lp(noise(rng, length), 3200) * env(n_of(length), .008, length * .2)
-    # Room modes give the boom of a concrete room.
-    modes = sum(reson(late, f, 9) * g for f, g in ((54, 1.0), (81, .8), (117, .6), (163, .45), (228, .3)))
-    place(ir, late + modes * .9, .004, .55)
-    # Flutter echo between parallel walls.
-    for k in range(1, 9):
-        place(ir, lp(noise(rng, .05), 3800 / (1 + k * .35)) * env(n_of(.05), .001, .009), .047 * k + rng.uniform(-.003, .003), .42 * .74 ** k)
-    return ir
-
-
-def tail(family, environment, v):
-    gid = TAIL_SOURCE[family]
-    p = GUNS[gid]
-    seed = seed_of(family, environment, v, 'tail')
-    rng = np.random.default_rng(seed)
-    x = core(p, v, seed, mech=0, crack=.3)
-    length = {'light': 1.4, 'rifle': 1.9, 'heavy': 2.3, 'sniper': 3.0}[family]
-    if environment == 'in':
-        length = {'light': .9, 'rifle': 1.1, 'heavy': 1.3, 'sniper': 1.5}[family]
-        ir = ir_indoor(rng, length)
-        level = .62
-    else:
-        ir = ir_outdoor(rng, length)
-        level = .5
-    y = signal.fftconvolve(x, ir)[:n_of(length + .1)]
-    # The direct sound is played by the shot itself; the tail only carries what comes back.
-    y[:n_of(.025)] *= np.linspace(0, 1, n_of(.025)) ** 2
-    y = hp(y, 45)
-    return fade(peak(y, level), .25)
 
 
 # ---------------------------------------------------------------- bullets, impacts, casings
@@ -613,35 +302,13 @@ def tinnitus():
 # ---------------------------------------------------------------- catalogue for build.py
 
 def catalogue():
-    """[(event key, [(file path, data, sample rate)], attenuation)]: every sound this module provides."""
+    """[(event key, [(file path, data, sample rate)], attenuation)]: every sound this module provides.
+    The gun reports themselves come from gunsamples.py."""
     out = []
 
     def files(prefix, makers, sr=SR):
         return [('%s_%d' % (prefix, i), m(), sr) for i, m in enumerate(makers)]
 
-    for gid in GUNS:
-        base = 'gun/%s/' % gid
-        out.append(('gun.%s.fp' % gid, files(base + 'fp', [lambda v=v: first_person(gid, v) for v in range(4)]), 16))
-        out.append(('gun.%s.near' % gid, files(base + 'near', [lambda v=v: third_person(gid, v, 'near') for v in range(4)]), 16))
-        out.append(('gun.%s.mid' % gid, files(base + 'mid', [lambda v=v: third_person(gid, v, 'mid') for v in range(3)], 32000), 16))
-        out.append(('gun.%s.far' % gid, files(base + 'far', [lambda v=v: third_person(gid, v, 'far') for v in range(2)], 22050), 16))
-        out.append(('gun.%s.muff' % gid, files(base + 'muff', [lambda v=v: third_person(gid, v, 'muff') for v in range(2)], 22050), 16))
-        out.append(('gun.%s.fp_s' % gid, files(base + 'fp_s', [lambda v=v: first_person(gid, v, True) for v in range(3)]), 16))
-        out.append(('gun.%s.near_s' % gid, files(base + 'near_s', [lambda v=v: third_person(gid, v, 'near', True) for v in range(3)], 32000), 16))
-        if gid in GROUPS:
-            n, ticks = GROUPS[gid]
-            bands = (('fp', lambda v: first_person(gid, v), 4, SR), ('near', lambda v: third_person(gid, v, 'near'), 4, SR),
-                     ('mid', lambda v: third_person(gid, v, 'mid'), 3, 32000), ('far', lambda v: third_person(gid, v, 'far'), 2, 22050),
-                     ('muff', lambda v: third_person(gid, v, 'muff'), 2, 22050), ('fp_s', lambda v: first_person(gid, v, True), 3, SR),
-                     ('near_s', lambda v: third_person(gid, v, 'near', True), 3, 32000))
-            for band, make, count, sr in bands:
-                out.append(('gun.%s.x%d.%s' % (gid, n, band),
-                            files('%sx%d_%s' % (base, n, band), [lambda v=v, make=make, count=count: rounds(make, count, v, n, ticks)
-                                                                for v in range(2)], sr), 16))
-    for family in TAIL_SOURCE:
-        for environment in ('out', 'in'):
-            out.append(('gun.tail.%s.%s' % (family, environment),
-                        files('gun/tail/%s_%s' % (family, environment), [lambda v=v: tail(family, environment, v) for v in range(2)], 32000), 16))
     out.append(('bullet.crack', files('bullet/crack', [lambda v=v: crack(v) for v in range(3)]), 16))
     out.append(('bullet.whiz', files('bullet/whiz', [lambda v=v: whiz(v) for v in range(3)]), 16))
     for material in ('concrete', 'metal', 'wood', 'glass', 'soft', 'flesh', 'armor', 'helmet', 'ricochet'):

@@ -297,7 +297,7 @@ public final class RaidEvents {
                 raid.world.spawnParticle(Particle.DUST, at.clone().add(0, 1, 0), 6, 0.5, 0.6, 0.5, 0, WARN, true);
                 if (!landed && t >= 20L * 20) {
                     landed = true;
-                    LootContainer crate = new LootContainer(LootContainer.newId(), type, at, raid.tier.shift(1), type.name());
+                    LootContainer crate = new LootContainer(LootContainer.newId(), type, at, raid.tier.lootShift() + 1, type.name());
                     crate.spawn(rng.nextFloat() * 360);
                     raid.containers.put(crate.id, crate);
                     raid.world.playSound(at, "minecraft:block.anvil.land", SoundCategory.MASTER, 3f, 0.6f);

@@ -44,7 +44,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - 开发在远程服务器上（这台机器的 `java` 就是 25，`./gradlew` 直接能用），真人测试服在用户的 Mac 上，见下面「测试服运维」。
 - 没有单元测试目录；验证靠编译 + 部署 + `tools/bot/` 里的 mineflayer 脚本（`node test.js <名字> [场景]`，以及 fire / meds / revive / squad / doors / econ 等专项脚本）。bot 只能连这台机器上的本地测试服（Mac 的 25565 从这边连不到），用离线模式连 `127.0.0.1`，跑之前要临时加白名单，名字用随机的，否则会重连进旧对局。
 - 画面相关的改动（枪模、开镜、动作、界面、HUD、特效）用 `tools/shots/shots.py` 在这台机器上跑真客户端截图，见下面「真客户端截图」。
-- 改完 `tools/art/build.py` 后，它每次都会重新编码音效、产生无意义的 diff：提交前用 `git checkout -- src/main/resources/pack/craftov/resourcepack/assets/*/sounds/` 还原没改过的音效。
+- `tools/art/build.py` 的音效编码是可复现的（同样的采样总得到同样的 .ogg，按内容哈希缓存在 `tools/art/.cache/ogg/`），没改过的音效不会出现在 diff 里，不用再还原 sounds 目录。贴图和模型 JSON 在别的 Pillow / numpy 版本下可能字节不同：没改它们时，提交前用 `git checkout --` 还原这些无关的生成文件。枪声录音要先由 `tools/art/fetch_audio.py` 下载（build.py 会自动调用），需要 `soundfile` 和 `7z`。
 - 生成的 BetterHud yml 和资源包文件不要手改，改 `tools/art/` 里的生成器，否则下次构建会被覆盖。
 
 ## 测试服运维
@@ -58,6 +58,7 @@ python3 tools/art/build.py    # 重新生成贴图、模型、音效、BetterHud
 - **Mac 测试服的 `config.yml` 是旧版生成的**：缺的键会回落到 jar 默认值，但已有的键不会更新（例如 `match.wait-seconds` 还是 15，新默认是 30）。改动默认值时要提醒服主或在 Mac 上手动改。
 - **白名单**：`online-mode=false`，离线 UUID 由名字的**确切大小写**算出，`whitelist add` 必须用玩家真实的大小写（看日志里的 `UUID of player Xxx`）。用户的名字是 `Snowball_233`。
 - **资源包地址**：`plugins/CraftEngine/config.yml` 的 `self-host.ip`，资源包托管在 MC 同一端口 25565。改用 `tools/mac/mac packip <IP>`（服务器运行中会自动 `ce reload all`）。平时用 Mac 的局域网 IP，`start.sh` 每次开服会自动刷新私有网段的地址；用户要让外网玩家进来时会告诉你公网 IP（"换ip x.x.x.x"），公网 IP 不会被自动覆盖，外网要能连还需要用户把 25565 映射到 Mac。Mac 当前的公网 IP 可以从这台机器 `who` 里用户 ssh 进来的地址看到。
+- **开放外网前先关掉冒名（#39）**：`online-mode=false` 时报出名字就能登进任何人的账号（包括服主的 OP 账号）。插件只拦 OP：离线模式下 OP 只能从 `security.admin-addresses`（默认本机 + 局域网）登录，普通玩家的仓库照样能被冒名拿走。所以 `packip` 收到公网 IP 而 `online-mode=false`（`server.properties` 里，或正在运行的服务器开服时用的，从它的 `latest.log` 判断）时会拒绝（`status` 也会警告），**不要直接加 `--force`**：先问服主选哪条路，① `tools/mac/mac online-mode true --restart`（服务器在运行时必须带 `--restart`：先关服、再改文件、再开服并确认生效，因为运行中的服务器在 `/whitelist on|off` 时会把旧值写回 `server.properties`；正版客户端能进、离线启动器进不来；所有人的 UUID 变成正版 UUID，白名单和 OP 要重新加，`data/players/` 里的旧档案不会自动迁移，等于大家重新开号），② 装登录插件（AuthMe 一类，和 Craftov 加入流程的兼容性要先实测），③ 服主明确接受风险时才 `packip <IP> --force`。
 - **服务器上的 `plugins/Craftov/items.yml`、`loot.yml` 只在缺失时才从 jar 复制**。改了物品后先 `tools/mac/mac yml diff items.yml` 确认服务器那份没有手动改动，再 `tools/mac/mac yml copy items.yml`（自动备份旧的），然后重启。`config.yml` 缺的键会回落到 jar 里的默认值。
 - **同步被拒绝**：Mac 项目有未提交改动、或有这边没有的提交时，`sync` 会拒绝而不是覆盖。`tools/mac/mac pull-mac` 把 Mac 的本地分支取到这边的 `refs/mac/*` 查看；确认保住之后用 `tools/mac/mac sync --park <名字>` 把那个分支改名保留，再切到 `main`。
 - **扩展本身**：Mac 上的 `~/.local/libexec/remote-gate/craftov` 会在每次 `sync`（包括 `deploy`）之后自动换成同步过去的 `tools/mac/craftov`，所以改扩展只要提交再 `deploy`；没提交时用 `tools/mac/mac selfupdate` 直接推工作区里的版本。替换前新版本必须在 Mac 上跑通 `selfupdate --check`，否则保留旧的，所以**新版本必须保留 `selfupdate` 指令**，不然以后就只能请用户手动装（`ssh mac put craftov < tools/mac/craftov`，用户在 Mac 终端运行 `install -m 755 ~/RemoteShare/craftov ~/.local/libexec/remote-gate/craftov`）。门卫 `~/.local/bin/remote-gate` 不会自动更新，源码在用户的 `SnowballXueQiu/mac-bridge` 仓库，改它要用户手动装。

@@ -1292,8 +1292,8 @@ public final class AiService implements Listener {
 
     private static GunSpec scaledGun(GunSpec gun, double mult) {
         return new GunSpec(gun.caliber(), gun.slot(), gun.magazine(), gun.rpm(), gun.modes(), gun.damage() * mult, gun.range(),
-                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.zoom(),
-                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.sound(), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
+                gun.maxRange(), gun.hipSpread(), gun.adsSpread(), gun.moveSpread(), gun.recoil(), gun.recoilH(), gun.recoilReturn(), gun.reloadTicks(), gun.zoom(),
+                gun.pellets(), Math.max(1.0, gun.headMultiplier() * 0.5), gun.soundVolume(), gun.moveSpeed(), gun.mount(), gun.scope(), gun.audio(), gun.action());
     }
 
     // ------------------------------------------------------------------ events
@@ -1319,6 +1319,7 @@ public final class AiService implements Listener {
             plugin.tasks().onAiKill(killer, bot.boss, hit.headshot(), hit.melee());
             Notify.info(killer, "<accent>✖ 击败 <white>" + Text.escape(bot.name)
                     + (hit.headshot() ? " <danger>爆头" : ""));
+            plugin.killFeed().soldierKilled(raid, killer, bot.name, hit.weapon(), hit.headshot());
         }
         dropBody(bot);
     }
@@ -1361,7 +1362,7 @@ public final class AiService implements Listener {
         }
         ContainerType crate = plugin.loot().type(bot.boss ? "vault" : "parcel");
         if (crate != null) {
-            items.addAll(plugin.loot().roll(crate, bot.raid.tier.shift(bot.boss ? 1 : 0)));
+            items.addAll(plugin.loot().roll(crate, bot.raid.tier.lootShift() + (bot.boss ? 1 : 0)));
         }
         if (rng.nextDouble() < 0.35) {
             ItemDef med = plugin.loot().pick(Category.MEDICAL, Rarity.GREEN, rng);

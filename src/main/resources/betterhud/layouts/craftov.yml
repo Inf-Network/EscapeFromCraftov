@@ -798,6 +798,22 @@ craftov_feed_4:
       second: 'true'
       operation: ==
   offset: left
+craftov_feed_5:
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_feed_5]'
+      x: 0
+      y: 9
+      scale: 1.0
+      align: right
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_feed_5
+      second: 'true'
+      operation: ==
+  offset: left
 craftov_alert:
   images:
     '1':
@@ -969,6 +985,178 @@ craftov_lobby:
   conditions:
     '1':
       first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_crosshair:
+  images:
+    '1':
+      name: craftov_crosshair_0
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 0
+          operation: ==
+    '2':
+      name: craftov_crosshair_1
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 1
+          operation: ==
+    '3':
+      name: craftov_crosshair_2
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 2
+          operation: ==
+    '4':
+      name: craftov_crosshair_3
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 3
+          operation: ==
+    '5':
+      name: craftov_crosshair_4
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 4
+          operation: ==
+    '6':
+      name: craftov_crosshair_5
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 5
+          operation: ==
+    '7':
+      name: craftov_crosshair_6
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 6
+          operation: ==
+    '8':
+      name: craftov_crosshair_7
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 7
+          operation: ==
+    '9':
+      name: craftov_crosshair_8
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 8
+          operation: ==
+    '10':
+      name: craftov_crosshair_9
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 9
+          operation: ==
+    '11':
+      name: craftov_crosshair_10
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 10
+          operation: ==
+    '12':
+      name: craftov_crosshair_11
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 11
+          operation: ==
+    '13':
+      name: craftov_crosshair_12
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 12
+          operation: ==
+    '14':
+      name: craftov_crosshair_13
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 13
+          operation: ==
+    '15':
+      name: craftov_crosshair_14
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 14
+          operation: ==
+    '16':
+      name: craftov_crosshair_15
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 15
+          operation: ==
+    '17':
+      name: craftov_crosshair_16
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_crosshair
+          second: 16
+          operation: ==
+  offset: left
+craftov_streak:
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_streak]'
+      x: 0
+      y: 9
+      scale: 1.0
+      align: center
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_streak
       second: 'true'
       operation: ==
   offset: left

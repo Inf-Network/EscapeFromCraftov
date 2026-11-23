@@ -81,6 +81,14 @@ craftov_hud:
         x: -6
         y: 40
     '11':
+      name: craftov_feed_5
+      gui:
+        x: 100
+        y: 0
+      pixel:
+        x: -6
+        y: 52
+    '12':
       name: craftov_alert
       gui:
         x: 50
@@ -88,7 +96,7 @@ craftov_hud:
       pixel:
         x: -150
         y: 30
-    '12':
+    '13':
       name: craftov_prompt
       gui:
         x: 50
@@ -96,7 +104,7 @@ craftov_hud:
       pixel:
         x: -100
         y: 14
-    '13':
+    '14':
       name: craftov_extract
       gui:
         x: 50
@@ -104,7 +112,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 26
-    '14':
+    '15':
       name: craftov_downed
       gui:
         x: 50
@@ -112,7 +120,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 40
-    '15':
+    '16':
       name: craftov_med
       gui:
         x: 50
@@ -120,7 +128,7 @@ craftov_hud:
       pixel:
         x: -60
         y: 58
-    '16':
+    '17':
       name: craftov_lobby
       gui:
         x: 0
@@ -128,3 +136,21 @@ craftov_hud:
       pixel:
         x: 4
         y: 4
+    '18':
+      name: craftov_streak
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: 0
+        y: -44
+craftov_crosshair:
+  layouts:
+    '1':
+      name: craftov_crosshair
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -46
+        y: -47

@@ -25,7 +25,14 @@ import java.util.Set;
 /** Read-only view of everything the HUD shows, shared by the vanilla HUD and BetterHud. */
 public final class HudData {
 
+    /** Bearings relative to where the player looks, clockwise from ahead, for menus and the chat. */
     private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
+    /**
+     * The same bearings in words, for the HUD. BetterHud's font has only the four straight arrows, and
+     * a character it lacks is drawn as a box in the top bar, wider than BetterHud counts it: that
+     * pushed the whole HUD, the crosshair's arms included, two pixels to one side for the whole raid.
+     */
+    private static final String[] BEARINGS = {"前方", "右前", "右侧", "右后", "后方", "左后", "左侧", "左前"};
     private final CraftovPlugin plugin;
 
     public HudData(CraftovPlugin plugin) {
@@ -249,7 +256,7 @@ public final class HudData {
         return 0;
     }
 
-    /** "北门检查站 ↗ 85m" for the nearest usable extract. */
+    /** "北门检查站 右前 85m" for the nearest usable extract. */
     public String nearestExtract(Player p) {
         Raid raid = plugin.raids().raidOf(p);
         if (raid == null || p.getWorld() != raid.world) {
@@ -270,17 +277,25 @@ public final class HudData {
         if (best == null) {
             return "暂无可用撤离点";
         }
-        return best.def.name() + " " + arrow(p, best.center) + " " + (int) Math.sqrt(bestD) + "m";
+        int bearing = bearing(p, best.center);
+        return best.def.name() + " " + (bearing < 0 ? "" : BEARINGS[bearing] + " ") + (int) Math.sqrt(bestD) + "m";
     }
 
+    /** An arrow pointing at the target from where the player looks, or "" in another world. */
     public String arrow(Player p, Location target) {
+        int bearing = bearing(p, target);
+        return bearing < 0 ? "" : ARROWS[bearing];
+    }
+
+    /** Which eighth around the player the target is in, 0 ahead and clockwise, or -1 in another world. */
+    private static int bearing(Player p, Location target) {
         Location from = p.getLocation();
         if (from.getWorld() != target.getWorld()) {
-            return "";
+            return -1;
         }
         double angle = Math.toDegrees(Math.atan2(-(target.getX() - from.getX()), target.getZ() - from.getZ()));
         double rel = ((angle - from.getYaw()) % 360 + 360 + 22.5) % 360;
-        return ARROWS[(int) (rel / 45) % 8];
+        return (int) (rel / 45) % 8;
     }
 
     public int downedPercent(Player p) {
@@ -290,6 +305,57 @@ public final class HudData {
 
     public boolean downed(Player p) {
         return plugin.downed().isDowned(p);
+    }
+
+    /** Gaps (GUI pixels from the centre to each arm) of the crosshair pictures the HUD has, narrowest first. */
+    public static final int[] CROSSHAIR_GAPS = {3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40};
+    /** {@link #crosshair} when the HUD draws none (the vanilla dot is left): aiming down the sights, or spectating. */
+    public static final int CROSSHAIR_OFF = -1;
+    /** {@link #crosshair} without a gun in hand: the outlined dot alone, for doors, boxes and the knife. */
+    public static final int CROSSHAIR_DOT = CROSSHAIR_GAPS.length;
+
+    /**
+     * Which crosshair the HUD draws: a gun's arms open with the cone its next shot would have (moving,
+     * bloom, sneaking and jumping included), as an index into {@link #CROSSHAIR_GAPS}. The server
+     * knows neither the field of view nor the GUI scale, so the gap is hud.crosshair.pixels-per-degree
+     * GUI pixels per degree of half-angle. At the default 70 degree field of view the true figure is
+     * about an eightieth of the GUI's height: 3.4 at 1080p on GUI scale 4, 3.7 at 900p on 3, 4.5 at 1080p
+     * on 3. None while aiming: the sights are the crosshair then, with the vanilla dot on them.
+     */
+    public int crosshair(Player p) {
+        if (p.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            return CROSSHAIR_OFF;
+        }
+        if (gun(p) == null) {
+            return CROSSHAIR_DOT;
+        }
+        if (plugin.weapons().isAiming(p)) {
+            return CROSSHAIR_OFF;
+        }
+        double gap = plugin.weapons().spreadNow(p) * plugin.getConfig().getDouble("hud.crosshair.pixels-per-degree", 4.0);
+        int best = 0;
+        for (int i = 1; i < CROSSHAIR_GAPS.length; i++) {
+            if (Math.abs(CROSSHAIR_GAPS[i] - gap) < Math.abs(CROSSHAIR_GAPS[best] - gap)) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /** The kill feed lines the HUD shows, oldest first, padded to {@link KillFeedService#LINES} with "". */
+    public String[] feed(Player p) {
+        String[] out = new String[KillFeedService.LINES];
+        java.util.Arrays.fill(out, "");
+        java.util.List<String> lines = plugin.killFeed().lines(p);
+        for (int i = 0; i < lines.size() && i < out.length; i++) {
+            out[i] = lines.get(i);
+        }
+        return out;
+    }
+
+    /** The kill streak badge above the crosshair, or "" when there is none to show. */
+    public String streakBadge(Player p) {
+        return plugin.killFeed().badge(p);
     }
 
     /** What a downed player should do: wait for a squadmate, or use their own injector when none is up. */

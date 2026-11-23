@@ -107,7 +107,9 @@ async function waitFor (pred, ms) {
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 const pdc = (item, key) => { const m = JSON.stringify(item && item.components || '').match(new RegExp(`"craftov:${key}":\\{"type":"\\w+","value":"?([^",}]+)`)); return m ? m[1] : null }
 const barsSince = (bot, since) => bot.bars.filter(b => b.at >= since).map(b => b.text)
-const hitsSince = (bot, since) => bot.sounds.filter(s => s.at >= since && s.name.startsWith('craftov:hit.')).map(s => s.name.slice('craftov:hit.'.length))
+// A kill credited to the shooter plays its streak chime (craftov:kill.1..6) instead of craftov:hit.kill.
+const hitsSince = (bot, since) => bot.sounds.filter(s => s.at >= since && /^craftov:(hit\.|kill\.\d)/.test(s.name))
+  .map(s => s.name.startsWith('craftov:kill.') ? 'kill' : s.name.slice('craftov:hit.'.length))
 const titled = (bot, text) => bot.titles.some(t => t.includes(text))
 const chatHas = (bot, ...parts) => bot.chatLines.some(l => parts.every(p => l.includes(p)))
 // The kill feed is on the BetterHud HUD (top right) and only for the squads of the killer and the

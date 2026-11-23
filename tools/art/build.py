@@ -23,7 +23,10 @@ import models  # noqa: E402
 import skins  # noqa: E402
 import soldiers  # noqa: E402
 import sounds  # noqa: E402
+import audiocheck  # noqa: E402
 import gunaudio  # noqa: E402
+import gunsamples  # noqa: E402
+import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
 import screens  # noqa: E402
@@ -171,11 +174,21 @@ def build_items(item_defs):
         save(composite, os.path.join(CV, 'textures', 'item', 'gui', item_id + '.png'))
         write_json(os.path.join(CV, 'models', 'item', 'gui', item_id + '.json'), generated('craftov:item/gui/' + item_id))
         if item_id in models.GUNS:
-            # Pose trees, all picked on the client from held keys (no packet, no delay): right mouse aims
-            # down sights; left mouse kicks the gun back and flashes the muzzle; sprinting carries it low
-            # and canted; strafing leans it. Scoped guns hide the gun while aiming, so they keep plain ADS.
-            # A gun still coming up after a switch ignores right and left mouse.
-            def posed_aim(name, hip, ads, hip_display, ads_display):
+            gun_spec = spec.get('gun') or {}
+            kicks = models.kick_frames(gun_spec.get('rpm', 600))
+            strength = models.kick_strength(gun_spec.get('recoil', 1.0))
+
+            # Pose trees picked on the client from held keys (no packet, no delay): right mouse aims down
+            # sights, sprinting carries the gun low and canted, strafing leans it. Scoped guns hide the gun
+            # while aiming, so they keep plain ADS. Shots are not a key: the server starts the gun's
+            # cooldown on every shot it really fires (WeaponService.shoot), and the gun kicks back and
+            # flashes while the client counts it down (models.kick_frames), so a held trigger that fires
+            # nothing (between bolt-action shots, a semi-auto held down, outside the range) shows nothing.
+            # The stack's damage says what else the gun is doing (ItemFactory.setHandMark): 1 while it comes
+            # up after a switch (it neither aims nor kicks), 2 while it reloads (the same cooldown then runs
+            # the reload frames). Damage is the one component the client swaps in without lowering and
+            # raising the gun again.
+            def gun_tree(name, hip, ads, hip_display, ads_display, reload_frames):
                 def key(k, on, off):
                     return {'type': 'minecraft:condition', 'property': 'minecraft:keybind_down', 'keybind': k,
                             'on_true': on, 'on_false': off}
@@ -195,41 +208,39 @@ def build_items(item_defs):
                 def strafe(base, poses):
                     return key('key.left', poses['left'], key('key.right', poses['right'], base))
 
-                def unless_dry(fire, idle):
-                    # custom_model_data string 5 is "dry" while the magazine is empty: no flash, no kick.
-                    return {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 5,
-                            'cases': [{'when': 'dry', 'model': idle}], 'fallback': fire}
+                def kicked(kind, base, display, rest):
+                    entries = []
+                    for threshold, level, lit in kicks:
+                        kick = models.kick_pose(kind, models.KICK_LEVELS[level], strength)
+                        model = pose(kind, base, display, 'kick%d' % level, kick)
+                        if lit:
+                            model = {'type': 'minecraft:composite', 'models': [model, flash(kind, base, display, kick)]}
+                        entries.append({'threshold': threshold, 'model': model})
+                    return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                            'fallback': rest}
 
                 hp = {n: pose('hip', hip, hip_display, n, spec) for n, spec in models.HIP_POSES.items()}
                 hip_idle = strafe(model_ref(hip), hp)
-                hip_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
-                    hp['fire'], flash('hip', hip, hip_display, models.HIP_POSES['fire'])]}, hip_idle),
-                    key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle))
+                hip_rest = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                hip_tree = kicked('hip', hip, hip_display, hip_rest)
                 if ads_display['firstperson_righthand'].get('scale') == [0, 0, 0]:
                     ads_tree = model_ref(ads)
                 else:
                     ap = {n: pose('ads', ads, ads_display, n, spec) for n, spec in models.ADS_POSES.items()}
-                    ads_idle = strafe(model_ref(ads), ap)
-                    ads_tree = key('key.attack', unless_dry({'type': 'minecraft:composite', 'models': [
-                        ap['fire'], flash('ads', ads, ads_display, models.ADS_POSES['fire'])]}, ads_idle), ads_idle)
-                # While the gun comes up after a switch the server marks it with damage 1 (ItemFactory
-                # .setDrawing): it neither aims nor fires yet, so neither key changes the pose. Damage is
-                # the one component the client swaps in without playing the lower-and-raise animation
-                # again; not normalized, so a stack without max_damage reads 0.
-                draw_tree = key('key.forward', key('key.sprint', hp['sprint'], hip_idle), hip_idle)
+                    ads_tree = kicked('ads', ads, ads_display, strafe(model_ref(ads), ap))
+                normal = key('key.use', ads_tree, hip_tree)
+                # While the reload cooldown runs, the client steps through the reload frames itself.
+                entries = [{'threshold': threshold, 'model': {
+                    'type': 'minecraft:composite', 'models': [model_ref(n) for n in reload_frames[k]]}}
+                    for k, threshold in enumerate(models.reload.thresholds())]
+                reload_tree = {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                               'fallback': hip_rest}
                 return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:damage', 'normalize': False,
-                        'entries': [{'threshold': 0.5, 'model': draw_tree}], 'fallback': key('key.use', ads_tree, hip_tree)}
-            # While the gun's reload cooldown runs, the client steps through the reload frames itself.
-            def reloading(normal, optic_frames=None):
-                entries = []
-                for k, threshold in enumerate(models.reload.thresholds()):
-                    names = frames[k] + ([optic_frames[k]] if optic_frames else [])
-                    entries.append({'threshold': threshold, 'model': {
-                        'type': 'minecraft:composite', 'models': [model_ref(n) for n in names]}})
-                return {'type': 'minecraft:range_dispatch', 'property': 'minecraft:cooldown', 'entries': entries,
+                        'entries': [{'threshold': 0.5, 'model': hip_rest}, {'threshold': 1.5, 'model': reload_tree}],
                         'fallback': normal}
-            in_hand = reloading(posed_aim(item_id, held, 'craftov:item/gun_ads/' + item_id,
-                                          models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display']))
+            in_hand = gun_tree(item_id, held, 'craftov:item/gun_ads/' + item_id,
+                               models.gun_model(item_id)['display'], models.gun_ads_model(item_id, zoom)['display'],
+                               [frames[k] for k in range(len(frames))])
             # Other players receive the gun as a charged crossbow while it is raised (StanceService),
             # which gives the two-handed aiming pose; these models keep the barrel straight in it.
             write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', item_id + '.json'), models.gun_aimed_model(item_id, held))
@@ -251,10 +262,10 @@ def build_items(item_defs):
                 write_json(os.path.join(CV, 'models', 'item', 'gun_aimed', combo + '.json'),
                            models.gun_aimed_model(item_id, 'craftov:item/gun_opt/' + combo))
                 aimed_cases.append({'when': oid, 'model': model_ref('craftov:item/gun_aimed/' + combo)})
-                cases.append({'when': oid, 'model': reloading(posed_aim(
+                cases.append({'when': oid, 'model': gun_tree(
                     combo, 'craftov:item/gun_opt/' + combo, 'craftov:item/gun_opt_ads/' + combo,
-                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display']),
-                    optic_frames)})
+                    models.gun_with_optic(item_id, oid, False)['display'], models.gun_with_optic(item_id, oid, True)['display'],
+                    [frames[k] + [optic_frames[k]] for k in range(len(frames))])})
             if cases:
                 in_hand = {'type': 'minecraft:select', 'property': 'minecraft:custom_model_data', 'index': 0,
                            'cases': cases, 'fallback': in_hand}
@@ -363,11 +374,13 @@ def bullet_hole(metal, seed):
 
 
 def build_fx():
-    """Animated muzzle flash (bright, off, medium, off - one tick each) and bullet-hole decals."""
-    blank = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
+    """Muzzle flash, tactical light, drone and bullet-hole decals.
+
+    The flash is a still picture: the gun's item model shows it for the first tick of each shot the
+    server fires (models.kick_frames), so it no longer needs to flicker on its own.
+    """
     for kind in ('side', 'front'):
-        frames = [flash_frame(kind, 1.0, 1), blank, flash_frame(kind, 0.75, 2), blank]
-        save_animated(frames, os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind), frametime=1)
+        save(flash_frame(kind, 1.0, 1), os.path.join(CV, 'textures', 'item', 'fx', 'muzzle_%s.png' % kind))
     # Tactical light (TacticalLight.java): a glowing spot laid on the lit surface and a lens flare at the
     # muzzle for onlookers, both full-bright item displays, double-sided planes at z=8.
     import numpy as np
@@ -538,7 +551,7 @@ def build_skins():
 
 
 def build_vanilla_hud():
-    """Hide vanilla hearts, hunger, armor, air and XP: Craftov draws its own HUD."""
+    """Hide vanilla hearts, hunger, armor, air and XP, and cut the crosshair to a dot: Craftov draws its own HUD."""
     blank9 = Image.new('RGBA', (9, 9), (0, 0, 0, 0))
     names = ['food_empty', 'food_half', 'food_full', 'food_empty_hunger', 'food_half_hunger', 'food_full_hunger',
              'armor_empty', 'armor_half', 'armor_full', 'air', 'air_empty', 'air_bursting']
@@ -555,6 +568,9 @@ def build_vanilla_hud():
     for n in set(hearts):
         save(blank9, os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'heart', n + '.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_background.png'))
+    # The crosshair is BetterHud's (craftov_crosshair: an outlined dot whose arms open with the spread,
+    # hidden while aiming); the vanilla one is just a dot in the middle, under it.
+    save(hudart.vanilla_crosshair(), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'crosshair.png'))
     save(Image.new('RGBA', (182, 5), (0, 0, 0, 0)), os.path.join(MC, 'textures', 'gui', 'sprites', 'hud', 'experience_bar_progress.png'))
 
 
@@ -567,18 +583,31 @@ def build_sounds():
         if path in ('throw/explode',):
             entry['sounds'][0]['attenuation_distance'] = 32
         entries[key] = entry
-    # Gunfire, bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its
-    # variants; the client picks one at random per play. GunAudio.java sets the level per listener.
-    import soundfile
+    # Bullets, impacts, casings and handling (tools/art/gunaudio.py). Each event lists its variants;
+    # the client picks one at random per play.
     for key, variants, attenuation in gunaudio.catalogue():
         listed = []
         for path, data, sr in variants:
-            out = os.path.join(CV, 'sounds', path + '.ogg')
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            soundfile.write(out, np.clip(gunaudio.resample(data, sr), -1, 1).astype(np.float32), sr, format='OGG', subtype='VORBIS')
+            oggenc.write(os.path.join(CV, 'sounds', path + '.ogg'), gunaudio.resample(data, sr), sr)
             listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation})
         entries[key] = {'sounds': listed}
+    # Gun reports, cut from CC0 recordings (tools/art/gunsamples.py). GunAudio.java picks the variant
+    # (through the packet's seed) and sets the level per listener. Preloaded, so the first shot after
+    # joining is not late while its file is read.
+    reports, sources = gunsamples.catalogue()
+    for key, variants, attenuation in reports:
+        listed = []
+        for path, data, sr in variants:
+            oggenc.write(os.path.join(CV, 'sounds', path + '.ogg'), gunsamples.resample(data, gunsamples.SR, sr), sr)
+            listed.append({'name': 'craftov:' + path, 'attenuation_distance': attenuation, 'preload': True})
+        entries[key] = {'sounds': listed}
     write_json(os.path.join(CV, 'sounds.json'), entries)
+    write_json(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio_sources.json'), gunsamples.source_manifest(sources))
+    variants = gunsamples.variant_manifest(reports, sources)
+    write_text(os.path.join(RES, 'gun_variants.json'),
+               '{\n' + ',\n'.join(' %s: %s' % (json.dumps(k), json.dumps(v, separators=(',', ':'))) for k, v in variants.items()) + '\n}\n')
+    for what, target, reached in gunsamples.SHORT:
+        print('gunsamples: %s reaches %.1f dB of its %.1f dB loudness' % (what, reached, target))
 
 
 def build_pack_meta():
@@ -633,6 +662,8 @@ HUD_IMAGES = {
     'craftov/hit_kill.png': lambda: hudart.marker(rgb('#FF4D4D'), 17, 3, 3),
     'craftov/hit_knock.png': lambda: hudart.knock_marker(rgb('#FF9A3C')),
     **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
+    **{'craftov/crosshair/%d.png' % i: (lambda g=g: hudart.crosshair(g)) for i, g in enumerate(hudart.CROSSHAIR_GAPS)},
+    'craftov/crosshair/%d.png' % len(hudart.CROSSHAIR_GAPS): lambda: hudart.dot_crosshair(),
     'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
     'craftov/compass/s.png': lambda: hudart.glyph('S'),
     'craftov/compass/e.png': lambda: hudart.glyph('E'),
@@ -648,6 +679,8 @@ HUD_IMAGES = {
 }
 
 IN_RAID = {'1': {'first': 'craftov_in_raid', 'second': 'true', 'operation': '=='}}
+# Kill feed rows, KillFeedService.LINES of them.
+FEED_LINES = (1, 2, 3, 4, 5)
 
 
 def cond(*pairs):
@@ -719,6 +752,8 @@ def build_betterhud():
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
+    images.update({'craftov_crosshair_%d' % i: {'type': 'single', 'file': 'craftov/crosshair/%d.png' % i}
+                   for i in range(len(hudart.CROSSHAIR_GAPS) + 1)})
 
     def listener(file, value, max_value):
         return {'type': 'listener', 'file': file, 'split': 32, 'split-type': 'left',
@@ -809,10 +844,12 @@ def build_betterhud():
             'texts': numbered([text('[craftov_mate_%d]' % i, 6, 0)]),
             'conditions': cond(('craftov_in_raid', 'true'), ('craftov_has_mate_%d' % i, 'true')),
         } for i in (1, 2)},
+        # Kill feed (KillFeedService): the last five lines, oldest on top, each for a few seconds, one
+        # layout per line so an empty one takes no room.
         **{'craftov_feed_%d' % i: {
             'texts': numbered([text('[craftov_feed_%d]' % i, 0, 0, align='right')]),
             'conditions': cond(('craftov_has_feed_%d' % i, 'true')),
-        } for i in (1, 2, 3, 4)},
+        } for i in FEED_LINES},
         'craftov_alert': {
             'images': numbered([image('craftov_alert_band', 0, 0)]),
             'texts': numbered([text('[craftov_alert]', 150, 1, align='center')]),
@@ -848,6 +885,18 @@ def build_betterhud():
                                text(c(MUTED) + '战备值 ' + c(TEXT) + '◈ [craftov_value_short]', 6, 31)]),
             'conditions': cond(('craftov_in_lobby', 'true')),
         },
+        # The crosshair (HudData.crosshair): an outlined dot and four arms, one picture per gap, opening
+        # with the cone of the next shot; the dot alone without a gun; none while aiming down the sights,
+        # where the vanilla dot under it is left on the sights.
+        'craftov_crosshair': {
+            'images': numbered([image('craftov_crosshair_%d' % i, 0, 0, cond(('craftov_crosshair', i)))
+                                for i in range(len(hudart.CROSSHAIR_GAPS) + 1)]),
+        },
+        # Kill streak badge above the crosshair, for a moment after each kill.
+        'craftov_streak': {
+            'texts': numbered([text('[craftov_streak]', 0, 0, align='center')]),
+            'conditions': cond(('craftov_has_streak', 'true')),
+        },
         'craftov_hit_layout': {'images': numbered([image('craftov_hit', 0, 0)])},
         'craftov_hit_head_layout': {'images': numbered([image('craftov_hit_head', 0, 0)])},
         'craftov_hit_kill_layout': {'images': numbered([image('craftov_hit_kill', -1, -1)])},
@@ -869,14 +918,23 @@ def build_betterhud():
         place('craftov_skill', 0, 0, 4, 51),
         place('craftov_mate_1', 0, 0, 4, 66),
         place('craftov_mate_2', 0, 0, 4, 79),
-        *[place('craftov_feed_%d' % i, 100, 0, -6, 4 + 12 * (i - 1)) for i in (1, 2, 3, 4)],
+        *[place('craftov_feed_%d' % i, 100, 0, -6, 4 + 12 * (i - 1)) for i in FEED_LINES],
         place('craftov_alert', 50, 0, -150, 30),
         place('craftov_prompt', 50, 50, -100, 14),
         place('craftov_extract', 50, 50, -60, 26),
         place('craftov_downed', 50, 50, -60, 40),
         place('craftov_med', 50, 50, -60, 58),
         place('craftov_lobby', 0, 0, 4, 4),
-    ])}}
+        place('craftov_streak', 50, 50, 0, -44),
+    ])},
+        # The crosshair is a HUD of its own (PackService turns both on), so the main HUD's layout never
+        # moves it. Its centre pixel lands on the vanilla dot's (column W/2 - 1, row H/2 - 1 of a GUI W x H
+        # with even sides, checked with the real client at GUI 2, 3 and 4): BetterHud puts the middle
+        # of the picture there in columns but one row lower, hence the extra pixel up. A character
+        # BetterHud's font lacks anywhere in the HUD pushes all of it sideways (HudData.BEARINGS).
+        'craftov_crosshair': {'layouts': numbered([
+            place('craftov_crosshair', 50, 50, -(hudart.CROSSHAIR_SIZE // 2), -(hudart.CROSSHAIR_SIZE // 2) - 1),
+        ])}}
     write_text(os.path.join(BH, 'huds', 'craftov.yml'), yaml.safe_dump(huds, allow_unicode=True, sort_keys=False))
 
     popups = {}
@@ -983,6 +1041,14 @@ def main():
     build_betterhud()
     count = sum(len(files) for _, _, files in os.walk(PACK))
     print(f'pack files: {count}, betterhud files: {sum(len(f) for _, _, f in os.walk(BH))}')
+    # The gun reports as the client will decode them: a failure here means the pack must not ship.
+    failures = audiocheck.check(os.path.join(CV, 'sounds'), verbose=False)
+    if failures:
+        print('audiocheck: %d problem(s)' % len(failures))
+        for failure in failures:
+            print('  ' + failure)
+        sys.exit(1)
+    print('audiocheck: all gun reports pass')
 
 
 if __name__ == '__main__':

@@ -98,7 +98,7 @@ public final class BetterHudBridge implements BetterHudHook {
             string(pm, "craftov_mate_" + (i + 1), s -> s.extra().mate(index));
             bool(pm, "craftov_has_mate_" + (i + 1), s -> !s.extra().mate(index).isEmpty());
         }
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < KillFeedService.LINES; i++) {
             int index = i;
             string(pm, "craftov_feed_" + (i + 1), s -> s.extra().feed(index));
             bool(pm, "craftov_has_feed_" + (i + 1), s -> !s.extra().feed(index).isEmpty());
@@ -107,6 +107,9 @@ public final class BetterHudBridge implements BetterHudHook {
         bool(pm, "craftov_has_alert", s -> !s.extra().alert().isEmpty());
         string(pm, "craftov_prompt", s -> s.extra().prompt());
         bool(pm, "craftov_has_prompt", s -> !s.extra().prompt().isEmpty());
+        string(pm, "craftov_streak", HudSnapshot::streak);
+        bool(pm, "craftov_has_streak", s -> !s.streak().isEmpty());
+        number(pm, "craftov_crosshair", HudSnapshot::crosshair);
         hud.getPlayerManager().addLocationProvider(this::extracts);
     }
 

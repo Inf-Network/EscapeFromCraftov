@@ -413,10 +413,10 @@ async function bleed (A, B, C) {
 }
 
 /**
- * A bleed tick and a hit in one health update, then a drop that is neither (issue #146). The hit
- * has to be a round (DamageService.deal): only a damage event of the player tells the server's
- * handler that a drop is a hit, and a /damage hit comes to no client as one (neither its target
- * nor anyone around gets a damage event for it).
+ * A bleed tick and a hit in one health update, then a drop that is neither (issue #146). Only a
+ * damage event of the player tells the server's handler that a drop is a hit. The hit here is a
+ * round (DamageService.deal), which certainly sends one; whether a /damage hit also does was not
+ * settled (probes saw none, while Paper's code suggests it should), so this does not rely on it.
  */
 async function overlap (A, B, C) {
   if (!inRaid(B)) {
@@ -435,6 +435,11 @@ async function overlap (A, B, C) {
     return 2
   }
   A.setQuickBarSlot(gun - 36)
+  // The armour scenario before this one may have left the magazine nearly empty, and a dry burst
+  // would fail the first check for nothing: Q reloads it (it drops nothing with a gun in hand).
+  await sleep(600) // the draw
+  A._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+  await sleep(3500)
   // Rounds take nothing off B (Resistance V), but each is still a hit: a damage event B is sent.
   // With no drop of its own, that hit rides in on the next update B gets, the next bleed tick's.
   await rcon(`effect give ${B.username} minecraft:resistance 120 4 true`)

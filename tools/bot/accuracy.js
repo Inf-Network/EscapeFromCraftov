@@ -100,6 +100,7 @@ bot.on('error', e => log('ERROR', e.message))
 // A call later than that (the bot process held up) still sends two ticks at once: those are noted, and
 // each scenario logs them, so a disturbed run can be told from the server's doing.
 const lateMoves = []
+let hooked = false
 bot.once('login', () => {
   const plain = global.setInterval
   global.setInterval = (fn, ms, ...rest) => {
@@ -117,9 +118,15 @@ bot.once('login', () => {
     }
     setTimeout(step, 75)
     bot.once('end', () => { ended = true })
+    hooked = true
     return { ref () {}, unref () {} } // mineflayer only keeps it to clear it when the bot ends
   }
-  setImmediate(() => { global.setInterval = plain })
+  setImmediate(() => {
+    global.setInterval = plain
+    // A mineflayer that names its physics loop otherwise, or starts it another way, would run on
+    // its own timer again with nothing late logged, which reads like a clean run: say so.
+    if (!hooked) log('WARN: the steady physics clock did not take: mineflayer moves the bot on its own timer')
+  })
 })
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
@@ -515,7 +522,7 @@ async function sprint (spot) {
   const sly = await loggedShots(from, 3)
   await sleep(300)
   check('sprint: running at sprint pace without the sprint command fires, with the sprint cone',
-    sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', '))
+    sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', ') || 'no shot logged')
 
   // Right mouse on a sprint ends it: the food level drops to 6 (where the vanilla client cannot sprint),
   // the sights come up a moment after the sprint is over, and letting go lets the sprint start again.
@@ -576,7 +583,7 @@ async function sprint (spot) {
   await sleep(200)
   const won = await wonLogged
   check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
-    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
+    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' ') || 'no shot logged')
   check('sprint: right mouse held on neither aims nor stops it', held.ok, held.detail)
   check('sprint: once that sprint is over the sights come up again (right mouse still held)', back !== null && back <= 900 && bot.food <= 6,
     `${back === null ? 'never' : back + ' ms'} after the stop, food ${bot.food}`)

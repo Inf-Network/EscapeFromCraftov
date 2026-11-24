@@ -219,7 +219,7 @@ function make (role) {
     if (!bot.entity || p.entityId !== bot.entity.id) return
     const by = bot.entities[p.sourceCauseId - 1]
     const at = p.sourcePosition ? ` from ${['x', 'y', 'z'].map(k => p.sourcePosition[k].toFixed(1)).join(' ')}` : ''
-    log(role, 'HIT', `type ${p.sourceTypeId} by ${by ? (by.username || by.name) + ' ' + by.position.toString() : p.sourceCauseId ? '#' + (p.sourceCauseId - 1) : 'nobody'}${at}, health ${bot.health}`)
+    log(role, 'HIT', `type ${p.sourceTypeId} by ${by ? (by.username || by.name) + ' ' + by.position.toString() : p.sourceCauseId ? '#' + (p.sourceCauseId - 1) : 'nobody'}${at}, health before the hit ${bot.health}`)
   })
   bot.on('kicked', r => log(role, 'KICKED', JSON.stringify(r).slice(0, 200)))
   bot.on('error', e => log(role, 'ERROR', e.message))

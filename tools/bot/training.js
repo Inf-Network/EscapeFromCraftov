@@ -434,8 +434,7 @@ async function solo () {
   await tp(bot, '68.5 65 14.5')
   log(name, 'waiting for the operator squad that must not come')
   await sleep(Math.max(0, landed + (OPERATOR_DELAY + 15) * 1000 - Date.now()))
-  // The console's /cv ai lists the one running raid (and says so when there are more).
-  const listing = await rcon('cv ai')
+  const listing = await rcon(`cv ai ${bot.worldName}`)
   const count = (listing.match(/敌兵 (\d+)/) || [, '?'])[1]
   check('no soldier or rival operator ever comes to the course', count === '0', listing)
   // All three targets have been more than 32 blocks from the bot since it landed (#151).

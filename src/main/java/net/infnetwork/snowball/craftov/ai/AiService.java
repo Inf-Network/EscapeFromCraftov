@@ -1278,6 +1278,13 @@ public final class AiService implements Listener {
         GunSpec gun = bot.gun.gun();
         bot.burstLeft--;
         bot.ammoLeft--;
+        // Timed before the round is fired: if anything below throws, the soldier still waits for its
+        // next shot instead of firing again on every think.
+        long interval = Math.max(2, Math.round(1200.0 / gun.rpm()));
+        if (bot.burstLeft <= 0) {
+            interval += ThreadLocalRandom.current().nextInt(12, 30);
+        }
+        bot.nextShotTick = now + interval;
         double distance = Math.max(1, eye.toVector().distance(point));
         Vector aim = point.clone().subtract(eye.toVector()).normalize();
         if (now < bot.dazzledUntil) {
@@ -1315,11 +1322,6 @@ public final class AiService implements Listener {
         if (!"pump".equals(gun.action()) && !"bolt".equals(gun.action())) {
             plugin.weapons().audio().casing(bot.mob, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
-        long interval = Math.max(2, Math.round(1200.0 / gun.rpm()));
-        if (bot.burstLeft <= 0) {
-            interval += ThreadLocalRandom.current().nextInt(12, 30);
-        }
-        bot.nextShotTick = now + interval;
     }
 
     /**

@@ -6,8 +6,8 @@
 //   3. the client queues a trio raid: both land in the same raid world;
 //   4. the client extracts: the escort is told it was paid (护航成功) and its profile's
 //      stats.escort_income grows by the whole reward; the client's escrow is closed and it gets
-//      nothing back (its balance change, less the rewards it was told about on the way out, such as
-//      an extract contract or a level-up, is 0);
+//      nothing back (its balance change, less the daily contracts it was told it finished on the
+//      way out, such as extracting once, is 0, and it was paid no other reward);
 //   5. the escort extracts too, so nothing is left in the raid.
 //
 //   node escort.js     env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js)
@@ -21,6 +21,7 @@ const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { announcedSince } = require('./common')
 
 const REWARD = 20000 // the hall's middle button (slot 38)
 const EXTRACT = '106.5 65 8.5' // the proving ground's always-open extract
@@ -89,15 +90,6 @@ async function money (name) {
   const m = (await rcon(`cv money ${name} 0`)).match(/◈([\d,]+)/)
   return m ? Number(m[1].replace(/,/g, '')) : NaN
 }
-/** Money the bot was told it was paid since mark: contracts ("+◈…"), level-ups and bonuses ("奖励 ◈…"). */
-function announcedSince (bot, mark) {
-  let sum = 0
-  for (const m of bot.msgs.slice(mark)) {
-    const r = m.match(/\[每日任务完成\].*\+◈([\d,]+)/) || m.match(/奖励 ◈([\d,]+)/)
-    if (r) sum += Number(r[1].replace(/,/g, ''))
-  }
-  return sum
-}
 const inRaid = bot => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
 async function extract (bot) {
   await rcon(`execute as ${bot.username} at @s run tp @s ${EXTRACT}`)
@@ -157,7 +149,8 @@ async function extract (bot) {
   check('the escort\'s escort income grows by the whole reward', income === REWARD, String(income))
   const rewards = announcedSince(c, cMark)
   const after = await money(c.username)
-  check('the client gets nothing back', after - posted - rewards === 0, `${posted} -> ${after}, of which rewards ${rewards}`)
+  check('the client gets nothing back', after - posted - rewards.tasks === 0 && !rewards.others.length,
+    `${posted} -> ${after}, of which daily contracts ${rewards.tasks}${rewards.others.length ? '; other rewards: ' + rewards.others.join(' | ') : ''}`)
   check('the client\'s escrow is closed', !profile(c.username).escortEscrow, String(profile(c.username).escortEscrow))
 
   // 5. Out with the escort as well.

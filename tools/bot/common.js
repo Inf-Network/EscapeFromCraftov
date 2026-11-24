@@ -135,18 +135,26 @@ async function money (name) {
   const m = (await rcon(`cv money ${name} 0`)).match(/◈([\d,]+)/)
   return m ? Number(m[1].replace(/,/g, '')) : NaN
 }
+/** A daily contract finished ("[每日任务完成] 成功撤离 1 次 +◈7,000 +475 经验") and the bonus for all three. */
+const TASK_PAID = [/\[每日任务完成\].*\+◈([\d,]+)/, /今日任务全部完成！.*额外奖励 ◈([\d,]+)/]
+/** Any other reward paid in chat: a level-up, a collection milestone, the guide's reward. */
+const REWARD_LINE = /奖励 ◈[\d,]+/
 /**
- * Money the bot was told it was paid in the lines since mark: daily contracts ("[每日任务完成] …
- * +◈7,000"), the all-done bonus, level-ups, collection milestones and the guide ("奖励 ◈…"). An
- * extraction can pay any of them, so a balance check across one takes them off first.
+ * What `bot` was told it was paid in its lines since `mark` (bot.msgs, or bot.chatLog for a bot that
+ * keeps that). `tasks` is the money of the daily contracts it finished and of their all-done bonus:
+ * extracting can finish one (成功撤离), so a balance check across an extraction takes that off.
+ * `others` lists every other reward line (a level-up, a collection milestone, the guide's reward)
+ * that `allow` does not match: no balance check expects one, so the caller fails on them.
  */
-function announcedSince (bot, mark) {
-  let sum = 0
-  for (const m of bot.msgs.slice(mark)) {
-    const r = m.match(/\[每日任务完成\].*\+◈([\d,]+)/) || m.match(/奖励 ◈([\d,]+)/)
-    if (r) sum += Number(r[1].replace(/,/g, ''))
+function announcedSince (bot, mark, { allow = [] } = {}) {
+  let tasks = 0
+  const others = []
+  for (const m of (bot.msgs || bot.chatLog).slice(mark)) {
+    const paid = TASK_PAID.map(re => m.match(re)).find(Boolean)
+    if (paid) tasks += Number(paid[1].replace(/,/g, ''))
+    else if (REWARD_LINE.test(m) && !allow.some(re => re.test(m))) others.push(m)
   }
-  return sum
+  return { tasks, others }
 }
 
 /** Teleports the bot (as itself, so into its own world) and waits for the move to arrive. */

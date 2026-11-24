@@ -20,6 +20,9 @@ const path = require('path')
 const rcon = require('./rcon')
 const pinInsurance = require('./insurance')
 const env = require('./env')
+// A refund comes without a line, so a balance change less the daily contracts the bot was told it
+// finished (common.js) is what was refunded.
+const { announcedSince } = require('./common')
 
 const PORT = env.PORT
 const RCON_PORT = env.RCON_PORT
@@ -123,19 +126,6 @@ function stashUsed (w) {
   return m ? { used: Number(m[1]), cap: Number(m[2]) } : null
 }
 
-/**
- * Money the server announced paying bot in the lines since mark: daily contracts ("[每日任务完成] …
- * +◈7,000"), the all-done bonus, level-ups, collection milestones and the guide ("奖励 ◈…"). A
- * refund comes without a line, so a balance change minus these is what was refunded.
- */
-function announcedSince (bot, mark) {
-  let sum = 0
-  for (const m of bot.msgs.slice(mark)) {
-    const r = m.match(/\[每日任务完成\].*\+◈([\d,]+)/) || m.match(/奖励 ◈([\d,]+)/)
-    if (r) sum += Number(r[1].replace(/,/g, ''))
-  }
-  return sum
-}
 
 async function money (name) {
   const m = (await cmd(`cv money ${name} 0`)).match(/◈([\d,]+)/)
@@ -351,8 +341,9 @@ async function escort () {
   log('both', 'in raid', inRaid)
   check('escort: client extracted', await extract(c))
   await sleep(1500)
-  // Less what the client's own extraction paid it (an extract contract, a level-up): announced.
-  const cAfter = await money(c.username) - announcedSince(c, cMark)
+  // Less what the client's own extraction paid it (a daily contract to extract): announced.
+  const cPaid = announcedSince(c, cMark)
+  const cAfter = await money(c.username) - cPaid.tasks
   const eAfter = await money(e.username)
   check('escort: a kicked escort in the same raid is not paid', eAfter === eBefore, `escort ${eBefore} -> ${eAfter}`)
   await extract(e)
@@ -361,8 +352,8 @@ async function escort () {
   await openWith(e, () => e.chat('/cv'))
   list = await openWith(e, () => e.clickWindow(16, 0, 0))
   const still = json(list.slots[slotOf(list, c.username)])
-  check('escort: the contract stays open for the client, reward still in escrow', still.includes('等待护航') && cAfter === cBefore,
-    `client ${cBefore} -> ${cAfter} (rewards announced on extracting taken off)`)
+  check('escort: the contract stays open for the client, reward still in escrow', still.includes('等待护航') && cAfter === cBefore && !cPaid.others.length,
+    `client ${cBefore} -> ${cAfter} (daily contracts announced on extracting taken off)${cPaid.others.length ? '; other rewards: ' + cPaid.others.join(' | ') : ''}`)
   // A real escort is still paid.
   await e.clickWindow(slotOf(list, c.username), 0, 0); await sleep(500)
   e.closeWindow(list)
@@ -584,15 +575,16 @@ async function escortraid () {
   // B's balance also moved with his own extraction (level-up and task rewards): read the escort income.
   const e2Paid = (((profile(e2.username) || {}).stats || {}).escort_income || 0)
   // The client's balance also moves with its own extraction: a daily contract to extract once
-  // pays ◈7,000 right then, and its experience can bring a level-up. Those are announced; the
-  // escort refund is not, so it is what is left of the change.
+  // pays ◈7,000 right then. That is announced; the escort refund is not, so it is what is left of
+  // the change.
   const cAfter = await money(c.username)
-  const cRewards = announcedSince(c, cMark)
+  const cPaid = announcedSince(c, cMark)
+  const cRewards = cPaid.tasks
   const cRefund = cAfter - cBefore - cRewards
   check('escortraid: the escort kicked in the raid is still paid', e1Paid === 10000, e1Paid)
   check('escortraid: the escort who extracted and logged off is still paid', e2Paid === 10000, e2Paid)
-  check('escortraid: the client gets nothing back', cRefund === 0,
-    `${cBefore} -> ${cAfter}, of which rewards ${cRewards}: refund ${cRefund}`)
+  check('escortraid: the client gets nothing back', cRefund === 0 && !cPaid.others.length,
+    `${cBefore} -> ${cAfter}, of which daily contracts ${cRewards}: refund ${cRefund}${cPaid.others.length ? '; other rewards: ' + cPaid.others.join(' | ') : ''}`)
   const escrow = (profile(c.username) || {}).escortEscrow
   check('escortraid: the client\'s escrow is closed', !escrow, escrow)
   await extract(e1)

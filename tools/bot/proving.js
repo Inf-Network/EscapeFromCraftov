@@ -103,10 +103,11 @@ async function main () {
   await c.tp(b, '106.5 65 26.5')
   const out = await c.waitFor(() => b.worldChanges > before && c.inLobby(b), 30000)
   await c.sleep(1000)
-  // Less what the extraction paid B (an extract contract, a level-up), which it is told about.
+  // Less what the extraction paid B (a daily contract to extract), which it is told about.
   const rewards = c.announcedSince(b, paidMark)
   const after = await c.money(b.username)
-  c.check('paid: the paid extract takes B out for ◈5,000', out && money - (after - rewards) === 5000, `${money} -> ${after}, rewards ${rewards}`)
+  c.check('paid: the paid extract takes B out for ◈5,000', out && money - (after - rewards.tasks) === 5000 && !rewards.others.length,
+    `${money} -> ${after}, daily contracts ${rewards.tasks}${rewards.others.length ? '; other rewards: ' + rewards.others.join(' | ') : ''}`)
 
   for (const bot of [a, b]) await c.rcon(`deop ${bot.username}`)
   return c.finish()

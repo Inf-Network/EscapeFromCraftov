@@ -14,7 +14,7 @@
 const fs = require('fs')
 const net = require('net')
 const path = require('path')
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 const env = require('./env')
 const rconRaw = require('./rcon')
 
@@ -32,6 +32,17 @@ const portOpen = port => new Promise(resolve => {
   s.once('connect', () => { s.destroy(); resolve(true) })
   s.once('error', () => resolve(false))
 })
+
+/** When process `pid` started, in ms since the epoch (Linux /proc), or null. */
+function startedAt (pid) {
+  try {
+    const btime = Number(fs.readFileSync('/proc/stat', 'utf8').match(/^btime (\d+)/m)[1])
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const ticks = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]) // field 22, starttime
+    const hz = Number(String(spawnSync('getconf', ['CLK_TCK']).stdout || '').trim()) || 100
+    return (btime + ticks / hz) * 1000
+  } catch { return null }
+}
 
 /**
  * The process listening on TCP `port` (Linux /proc): its pid, null when nothing listens, 0 when the
@@ -112,6 +123,19 @@ function at ({ dir = env.SERVER_DIR, port = env.PORT, rconPort = env.RCON_PORT, 
     return null
   }
 
+  /**
+   * The running server loaded an older plugin than the one in its folder now: plugins/Craftov.jar
+   * was replaced after the server started (a rebuild copied in, a shard synced), so what it runs is
+   * not what a result would record. False when nothing runs or it cannot tell.
+   */
+  function jarChanged () {
+    let mtime
+    try { mtime = fs.statSync(path.join(dir, 'plugins', 'Craftov.jar')).mtimeMs } catch { return false }
+    // Boot time is in whole seconds, so a start time is only good to about a second: a jar copied
+    // in just before start.sh ran must not read as newer. Plugins load seconds after the start.
+    return (pids() || []).some(pid => { const t = startedAt(pid); return t !== null && t + 2000 < mtime })
+  }
+
   /** Something is running: a server process in the folder, or (without /proc) the RCON port open. */
   async function running () {
     const p = pids()
@@ -175,7 +199,7 @@ function at ({ dir = env.SERVER_DIR, port = env.PORT, rconPort = env.RCON_PORT, 
     return bringBack({ since, log })
   }
 
-  return { dir, port, rconPort, rcon, pids, properties, foreign, running, portOpen, up, stop, launch, bringBack, restart }
+  return { dir, port, rconPort, rcon, pids, properties, foreign, jarChanged, running, portOpen, up, stop, launch, bringBack, restart }
 }
 
 module.exports = { ...at(), at, listener }

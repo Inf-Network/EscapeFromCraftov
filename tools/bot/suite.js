@@ -13,7 +13,8 @@
 //                                       (--redo drops those first, named as for --only, so
 //                                       itemloss@* is every itemloss variant; they stay listed
 //                                       under "redone"; --redo-stale drops every result recorded
-//                                       with another version of its script than the one there now)
+//                                       with another version of its script than the one there now,
+//                                       or on another plugin jar than SERVER_DIR's now)
 //   --dry-run                           print the order the runs would be taken in, and stop there
 //
 // env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js), as every script takes them.
@@ -24,7 +25,8 @@
 // scripts stop, start and kill it (they say so), and when one leaves it down the suite starts it again
 // (server.js). Each run's output goes to OUT/<round>/<name>.log (OUT defaults to tools/bot/out/suite-
 // <date>), and summary.json there holds every result (exit code, time, checks, the server's port and
-// a hash of the script, so a table that mixes versions of a script says so). A script passes when it
+// hashes of the script and of the plugin jar, so a table that mixes versions says so). A server
+// whose plugins/Craftov.jar was replaced after it started is restarted first. A script passes when it
 // exits with 0. market, marketio and persistence write their detail log (LOG) next to it.
 //
 // Shards: --shards takes more servers as [dir=]port:rcon-port, comma-separated. One without dir is a
@@ -43,7 +45,8 @@
 // server took), and --resume runs those again. Two rounds of one script may run at
 // once on different servers. The parent prints the children's lines prefixed with the port and
 // merges their results into OUT/summary.json. At the end the copies made by this run are stopped and
-// deleted (--keep-shards keeps them); SERVER_DIR's server is left running. The scripts share nothing
+// deleted (--keep-shards keeps them, and the next run copies SERVER_DIR's plugins/Craftov.jar,
+// items.yml and loot.yml into them before they start); SERVER_DIR's server is left running. The scripts share nothing
 // else across servers (bot names are random, every file they write is under their SERVER_DIR or
 // OUT), so they need no exclusive run. Each server takes about 3.5 GB of memory.
 //
@@ -167,6 +170,15 @@ const log = (...a) => console.log(`[${clock()}]`, ...a)
 const yaml = v => typeof v === 'string' ? v : JSON.stringify(v).replace(/,/g, ', ')
 const logName = name => name.replace(/:/g, '-')
 const shaOf = entry => crypto.createHash('sha1').update(fs.readFileSync(path.join(__dirname, entry.file || entry.name + '.js'))).digest('hex').slice(0, 10)
+const hashFile = file => { try { return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex').slice(0, 10) } catch { return null } }
+/** The hash of the plugin jar in `dir` (SERVER_DIR's by default), recorded with every result. */
+const jarOf = (dir = env.SERVER_DIR) => hashFile(path.join(dir, 'plugins', 'Craftov.jar'))
+/**
+ * What a kept shard copy must share with SERVER_DIR before it starts: the plugin, and the item and
+ * loot tables (a server copies those from the jar only when they are missing, so a copy made before
+ * a rebuild would keep the old ones).
+ */
+const SYNCED = ['plugins/Craftov.jar', 'plugins/Craftov/items.yml', 'plugins/Craftov/loot.yml']
 
 if (argv.includes('--list')) {
   for (const e of SCRIPTS) {
@@ -189,6 +201,11 @@ async function ensureUp () {
   if (why) {
     log('refusing this server: ' + why)
     return false
+  }
+  if (server.jarChanged()) {
+    // A result records the folder's jar, so the server must be running that one.
+    log('plugins/Craftov.jar was replaced after the server started: restarting it')
+    if (!await server.restart({ log })) return false
   }
   if (await rcon('list').then(() => true, () => false)) return true
   const mine = server.pids()
@@ -298,7 +315,7 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
   try {
     for (let job = await next(); job && !stopping; job = stopping ? null : await next()) {
       const entry = byName[job.name]
-      const base = { round: job.round, name: job.name, run: RUN_ID, port: env.PORT, sha: shaOf(entry) }
+      const base = { round: job.round, name: job.name, run: RUN_ID, port: env.PORT, sha: shaOf(entry), jar: jarOf() }
       if (!await ensureUp()) {
         log(`no usable server (see above): handing round ${job.round} ${job.name} back and taking no more runs`)
         giveBack(job)
@@ -345,6 +362,22 @@ function setProperties (file, values) {
   fs.writeFileSync(file, text)
 }
 
+/**
+ * A copy kept from an earlier run (--keep-shards) gets SERVER_DIR's jar, items.yml and loot.yml
+ * where they differ, stopped first if it runs (its child suite starts it again).
+ */
+async function syncShard (s) {
+  const stale = SYNCED.filter(rel => fs.existsSync(path.join(env.SERVER_DIR, rel)) && hashFile(path.join(env.SERVER_DIR, rel)) !== hashFile(path.join(s.dir, rel)))
+  if (!stale.length) return
+  const at = server.at(s)
+  if (await at.running()) {
+    log(`stopping the kept shard on ${s.port}: ${stale.join(', ')} differ from ${env.SERVER_DIR}'s`)
+    if (!await at.stop({ log })) throw new Error(`the shard on ${s.port} did not stop`)
+  }
+  for (const rel of stale) fs.copyFileSync(path.join(env.SERVER_DIR, rel), path.join(s.dir, rel))
+  log(`copied ${stale.join(', ')} from ${env.SERVER_DIR} into ${s.dir}`)
+}
+
 /** Makes the shard copies that are missing; returns the ones this run made. */
 async function prepareShards (shards) {
   const main = server.at()
@@ -355,7 +388,11 @@ async function prepareShards (shards) {
     if ((at.pids() || []).length === 0 && (await server.portOpen(s.port) || await server.portOpen(s.rconPort))) {
       throw new Error(`port ${s.port} or ${s.rconPort} is taken by a server that is not ${s.dir}`)
     }
-    if (fs.existsSync(s.dir)) continue
+    if (fs.existsSync(s.dir)) {
+      if (s.copy) await syncShard(s)
+      else if (jarOf(s.dir) !== jarOf()) log(`${s.dir} has another plugins/Craftov.jar than ${env.SERVER_DIR} (its results record it)`)
+      continue
+    }
     if (!s.copy) throw new Error('no server at ' + s.dir)
     if (await main.running()) {
       log(`stopping ${env.SERVER_DIR} to copy it`)
@@ -454,6 +491,7 @@ function table (results) {
   const failed = []
   const flaky = []
   const mixed = []
+  const mixedJars = []
   console.log('\nscript                  ' + Array.from({ length: rounds }, (_, i) => `round ${i + 1}`.padEnd(16)).join('') + 'time')
   for (const name of names) {
     const rs = Array.from({ length: rounds }, (_, i) => results.find(r => r.name === name && r.round === i + 1))
@@ -462,15 +500,18 @@ function table (results) {
     if (ok.some(x => x) && ok.some(x => !x)) flaky.push(name)
     // Results from before the suite recorded hashes have none: only recorded ones are compared.
     const shas = new Set(rs.filter(r => r && r.sha).map(r => r.sha))
+    const jars = new Set(rs.filter(r => r && r.jar).map(r => r.jar))
     if (shas.size > 1) mixed.push(name)
+    if (jars.size > 1) mixedJars.push(name)
     const cells = rs.map(r => (!r ? '-' : r.code === 0 ? 'pass' : `FAIL(${r.code})`).padEnd(16)).join('')
-    console.log((name + (shas.size > 1 ? ' *' : '')).padEnd(24) + cells + rs.filter(Boolean).map(r => r.seconds + 's').join(' / '))
+    console.log((name + (shas.size > 1 ? ' *' : '') + (jars.size > 1 ? ' +' : '')).padEnd(24) + cells + rs.filter(Boolean).map(r => r.seconds + 's').join(' / '))
   }
   console.log(`\n${names.length - failed.length}/${names.length} passed every round`)
   if (flaky.length) console.log('flaky (passed and failed): ' + flaky.join(', '))
   const always = failed.filter(n => !flaky.includes(n))
   if (always.length) console.log('failed every round: ' + always.join(', '))
   if (mixed.length) console.log('* ran in more than one version of the script: ' + mixed.join(', '))
+  if (mixedJars.length) console.log('+ ran on more than one plugin jar: ' + mixedJars.join(', '))
   console.log('logs: ' + OUT)
   return failed.length
 }
@@ -512,10 +553,12 @@ function table (results) {
     kept = (old.results || []).filter(r => r.code !== 'not run' && r.code !== 'no server').map(r => ({ log: `${r.round}/${logName(r.name)}.log`, ...r }))
     redone.push(...(old.redone || []))
     if (argv.includes('--redo-stale')) {
-      // Results recorded with another version of their script (its hash) than the one there now.
-      const stale = r => r.sha && byName[r.name] && r.sha !== shaOf(byName[r.name])
-      redone.push(...kept.filter(stale).map(r => ({ ...r, redoneAt: new Date().toISOString(), why: 'stale' })))
-      kept = kept.filter(r => !stale(r))
+      // Results recorded with another version of their script (its hash) than the one there now,
+      // or on another plugin jar than SERVER_DIR's now.
+      const jar = jarOf()
+      const why = r => r.sha && byName[r.name] && r.sha !== shaOf(byName[r.name]) ? 'stale script' : r.jar && jar && r.jar !== jar ? 'stale jar' : null
+      redone.push(...kept.filter(why).map(r => ({ ...r, redoneAt: new Date().toISOString(), why: why(r) })))
+      kept = kept.filter(r => !why(r))
     }
     for (const spec of opt('--redo', '').split(',').filter(Boolean)) {
       // A name matches as it does for --only: itemloss@2 is every itemloss:* variant's round 2.

@@ -3,6 +3,9 @@
 //   locked   the bot right-clicks the command centre's server-room door (lock hq_server) without its
 //            key: the door stays shut and the action bar names the key it needs (门被锁住了，需要 …).
 //   key      given the key card (key_hq, 2 uses), the same click opens the door (已解锁 …, 剩余 1 次).
+//   shut     before the lever is pulled, the bot stands 12 s in the drain extract (西南排水渠, 8 s to
+//            extract once open): it stays in the raid and the action bar says the lever comes first
+//            (需要先开启 …), so the drain check below proves the lever opened it.
 //   lever    the bot pulls the radio tower's lever (switch radio): the raid's alert banner says it
 //            was pulled (已被拉下, read with cv hud), and a second pull says it is already on (已经开启).
 //   drain    standing in the drain extract (西南排水渠, opened by that lever), the bot is taken out
@@ -51,6 +54,16 @@ async function main () {
   const unlocked = await c.heard(bot, /已解锁/, mark, 3000)
   c.check('key: with the key card it opens, one use spent', !!unlocked && unlocked.includes('剩余 1 次') && await c.waitFor(isOpen, 2000), unlocked)
 
+  // shut: the drain before its lever is pulled. Standing in it well past its 8 s must not take the
+  // bot out (the control for the drain check below); the action bar says the lever comes first.
+  let before = bot.worldChanges
+  mark = bot.msgs.length
+  await c.tp(bot, DRAIN)
+  const shut = await c.heard(bot, /需要先开启/, mark, 5000)
+  await c.sleep(12000)
+  c.check('shut: before the lever, standing in the drain extract does not take the bot out', bot.worldChanges === before && c.inRaid(bot), bot.worldName)
+  c.check('shut: ... and the action bar says its lever comes first', !!shut, shut)
+
   // lever
   const lever = new Vec3(Math.floor(sx), Math.floor(sy), Math.floor(sz))
   await c.tp(bot, `${lever.x + 0.5} ${lever.y} ${lever.z + 1.5} 180 30`)
@@ -67,7 +80,7 @@ async function main () {
   c.check('lever: a second pull says it is already on', !!await c.heard(bot, /已经开启/, mark, 3000))
 
   // drain
-  const before = bot.worldChanges
+  before = bot.worldChanges
   await c.tp(bot, DRAIN)
   const out = await c.waitFor(() => bot.worldChanges > before && c.inLobby(bot), 90000)
   c.check('drain: standing in the drain extract takes the bot out when the countdown ends', out, bot.worldName)

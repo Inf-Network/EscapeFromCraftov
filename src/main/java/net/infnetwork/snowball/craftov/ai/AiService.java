@@ -60,6 +60,8 @@ public final class AiService implements Listener {
     private static final double SMOKE_OPAQUE = 1.5;
     /** Ticks between two thoughts of every soldier ({@link #tick}). */
     private static final long THINK_TICKS = 2;
+    /** At most one soldier error with its stack trace in this many ticks; the rest are counted ({@link #failed}). */
+    private static final long ERROR_LOG_TICKS = 20L * 60;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
@@ -68,6 +70,10 @@ public final class AiService implements Listener {
     private final List<Smoke> smokes = new ArrayList<>();
     /** Runs of {@link #tick} so far, for what a soldier only does every so often ({@link #every}). */
     private long thinks;
+    /** Soldier errors not logged yet, the last of them, and when the next may be logged ({@link #failed}). */
+    private int unreported;
+    private @Nullable String lastUnreported;
+    private long nextErrorLog;
 
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
@@ -733,11 +739,54 @@ public final class AiService implements Listener {
             if (bot.raid.state != Raid.State.RUNNING) {
                 continue;
             }
-            think(bot, now);
+            // One soldier's error used to end this tick for every soldier after it on the server,
+            // in every raid, and again on every tick while it lasted.
+            try {
+                think(bot, now);
+            } catch (RuntimeException e) {
+                failed(bot, now, e);
+            }
+        }
+        if (unreported > 0 && now >= nextErrorLog) {
+            plugin.getLogger().warning(unreported + " more soldier errors in the last minute, the last: " + lastUnreported);
+            unreported = 0;
+            lastUnreported = null;
+            nextErrorLog = now + ERROR_LOG_TICKS;
         }
         dead.forEach(bots::remove);
         doors.tick(now);
         smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
+    }
+
+    /**
+     * A soldier's thought threw: the others think on. The first error is logged with its stack
+     * trace and who failed where; any more in the next minute (the same soldier fails again every
+     * think) are only counted, and {@link #tick} logs how many there were once the minute is up.
+     */
+    private void failed(Bot bot, long now, RuntimeException e) {
+        Location at = bot.mob.getLocation();
+        Player target = bot.target == null ? null : Bukkit.getPlayer(bot.target);
+        String who = String.format(java.util.Locale.ROOT, "soldier %s (%s %s) of raid %s on %s at %s %.1f %.1f %.1f, its raid in %s, target %s",
+                bot.name, bot.kind, bot.mob.getUniqueId(), bot.raid.id, bot.raid.map.id(), at.getWorld().getName(), at.getX(), at.getY(), at.getZ(),
+                bot.raid.world.getName(), target == null ? "none" : target.getName() + " in " + target.getWorld().getName());
+        if (now < nextErrorLog) {
+            unreported++;
+            lastUnreported = who + ": " + e + where(e);
+            return;
+        }
+        nextErrorLog = now + ERROR_LOG_TICKS;
+        plugin.getLogger().log(java.util.logging.Level.WARNING,
+                "A " + who + " failed to think (further soldier errors are only counted for a minute)", e);
+    }
+
+    /** Where in the plugin {@code e} was thrown (" at Class.method(File:line)"), for a line without the stack trace. */
+    private static String where(Throwable e) {
+        for (StackTraceElement frame : e.getStackTrace()) {
+            if (frame.getClassName().startsWith("net.infnetwork.snowball.craftov.")) {
+                return " at " + frame;
+            }
+        }
+        return "";
     }
 
     /**

@@ -140,6 +140,14 @@ async function start () {
   throw new Error('server did not start')
 }
 const consoleText = () => fs.readFileSync(CONSOLE, 'utf8')
+const LATEST = path.join(SERVER_DIR, 'logs/latest.log')
+const logSize = () => { try { return fs.statSync(LATEST).size } catch { return 0 } }
+/** The lines latest.log got after byte `from` (all of it when it was rolled over since). */
+function logSince (from) {
+  let text = ''
+  try { text = fs.readFileSync(LATEST) } catch { return [] }
+  return text.subarray(from <= text.length ? from : 0).toString('utf8').split('\n')
+}
 
 // ------------------------------------------------------------------ files
 
@@ -385,14 +393,23 @@ async function lostEdit () {
     check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
     check('lost-edit: the guard got 30%', await balance(guardName) === guardBefore + 6000)
     fs.writeFileSync(file, good) // repaired, the journal not applied yet
+    const logFrom = logSize()
     let r = await join(bossName)
-    // Now and then the refusal reaches the bot as a connection closed with no packet at all (the
-    // server's log has the refusal and its message, sent on the authenticator thread as the raid's
-    // settlement runs): one more try then, which still has to be refused with the message.
+    // Now and then the refusal reaches the bot as a connection closed with no packet at all (#138:
+    // the server refused the login, with its message, on the authenticator thread as the raid's
+    // settlement ran). One more try then, which still has to be refused with the message, but only
+    // when latest.log shows that first attempt refused for the journal too: a close for any other
+    // reason is a failure of its own.
     if (r.error && r.error.startsWith('connection closed')) {
-      log('lost-edit: the login was closed with no reason; trying once more')
-      await sleep(1000)
-      r = await join(bossName)
+      await sleep(500)
+      const refused = logSince(logFrom).find(l => l.includes(`Refused the login of ${bossName}:`))
+      if (refused) {
+        log('lost-edit: the login was closed with no reason after', refused.trim(), '| trying once more')
+        await sleep(500)
+        r = await join(bossName)
+      } else {
+        check('lost-edit: a login closed with no reason was a refusal (latest.log)', false, 'no "Refused the login of ' + bossName + '" in latest.log')
+      }
     }
     if (r.bot) await leave(r.bot)
     check('lost-edit: login refused while the journal is there', !!r.kicked && r.kicked.includes('档案读取失败'), r.kicked || r.error || 'joined')

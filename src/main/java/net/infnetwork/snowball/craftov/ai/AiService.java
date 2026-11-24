@@ -60,6 +60,8 @@ public final class AiService implements Listener {
     private static final double SMOKE_OPAQUE = 1.5;
     /** Ticks between two thoughts of every soldier ({@link #tick}). */
     private static final long THINK_TICKS = 2;
+    /** At most one stack trace per kind of soldier error in this many ticks; the rest are counted ({@link #failed}). */
+    private static final long ERROR_LOG_TICKS = 20L * 60;
 
     private final CraftovPlugin plugin;
     private final Map<UUID, Bot> bots = new HashMap<>();
@@ -68,6 +70,22 @@ public final class AiService implements Listener {
     private final List<Smoke> smokes = new ArrayList<>();
     /** Runs of {@link #tick} so far, for what a soldier only does every so often ({@link #every}). */
     private long thinks;
+    /**
+     * Soldier errors by kind (exception and where in the plugin it was thrown), each with its own
+     * minute ({@link #failed}): a soldier failing on every think cannot hide another kind of error.
+     */
+    private final Map<String, ErrorWindow> errors = new HashMap<>();
+
+    /** One kind of soldier error: when its minute ends, how many more came in it, and the last of them. */
+    private static final class ErrorWindow {
+        private final long until;
+        private int more;
+        private @Nullable String last;
+
+        private ErrorWindow(long until) {
+            this.until = until;
+        }
+    }
 
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
@@ -295,7 +313,7 @@ public final class AiService implements Listener {
             return "交战";
         }
         if (bot.threatPos != null && now < bot.threatUntil) {
-            return bot.coverPos != null && bot.mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2 ? "掩护" : "受击";
+            return bot.coverPos != null && distanceSquared(bot.mob.getLocation(), bot.coverPos) < 1.2 * 1.2 ? "掩护" : "受击";
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
             return "追击";
@@ -396,14 +414,15 @@ public final class AiService implements Listener {
         Zombie mob = bot.mob;
         if (bot.leader != null) {
             Bot leader = bots.get(bot.leader);
-            if (leader != null && leader.mob.isValid()) {
+            // A leader moved to another world is as good as gone: there is no following it there.
+            if (leader != null && leader.mob.isValid() && leader.mob.getWorld() == mob.getWorld()) {
                 if (mob.getLocation().distanceSquared(leader.mob.getLocation()) > 9 && !mob.getPathfinder().hasPath()) {
                     mob.getPathfinder().moveTo(leader.mob.getLocation(), 1.0);
                 }
                 bot.home = leader.mob.getLocation();
                 return;
             }
-            bot.leader = null; // the leader fell: this one carries on alone
+            bot.leader = null; // the leader fell (or left the raid's world): this one carries on alone
         }
         if (bot.looting == null) {
             LootContainer next = null;
@@ -413,7 +432,7 @@ public final class AiService implements Listener {
                         || (container.generated() && container.isEmpty())) {
                     continue;
                 }
-                double d = container.location.distanceSquared(mob.getLocation());
+                double d = distanceSquared(container.location, mob.getLocation());
                 if (d < best) {
                     best = d;
                     next = container;
@@ -427,7 +446,7 @@ public final class AiService implements Listener {
             bot.home = next.location.clone();
         }
         LootContainer target = bot.looting;
-        if (mob.getLocation().distanceSquared(target.location) > 2.8 * 2.8) {
+        if (distanceSquared(mob.getLocation(), target.location) > 2.8 * 2.8) {
             if (!mob.getPathfinder().hasPath()) {
                 Pathfinder.PathResult path = mob.getPathfinder().findPath(target.location);
                 if (path == null || !reaches(path, target.location, 2.5)) {
@@ -723,6 +742,16 @@ public final class AiService implements Listener {
     private void tick() {
         long now = Bukkit.getCurrentTick();
         thinks++;
+        // Before this tick's thoughts, so a minute's count is out before the same error's next trace.
+        errors.values().removeIf(window -> {
+            if (now < window.until) {
+                return false;
+            }
+            if (window.more > 0) {
+                plugin.getLogger().warning(window.more + " more soldier errors of this kind in the last minute, the last: " + window.last);
+            }
+            return true;
+        });
         List<UUID> dead = new ArrayList<>();
         for (Bot bot : bots.values()) {
             Zombie mob = bot.mob;
@@ -733,11 +762,57 @@ public final class AiService implements Listener {
             if (bot.raid.state != Raid.State.RUNNING) {
                 continue;
             }
-            think(bot, now);
+            if (mob.getWorld() != bot.raid.world) {
+                // Moved out of its raid's world (a teleport command run "at" a player in the lobby,
+                // say): nobody of its raid to see and nothing of its map to walk to there, so it
+                // stands still until it is back.
+                continue;
+            }
+            // One soldier's error used to end this tick for every soldier after it on the server,
+            // in every raid, and again on every tick while it lasted.
+            try {
+                think(bot, now);
+            } catch (RuntimeException e) {
+                failed(bot, now, e);
+            }
         }
         dead.forEach(bots::remove);
         doors.tick(now);
         smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
+    }
+
+    /**
+     * A soldier's thought threw: the others think on. The first error of a kind is logged with its
+     * stack trace and who failed where; any more of that kind in the next minute (the same soldier
+     * fails again every think) are only counted, and {@link #tick} logs how many there were once
+     * the minute is up. Another kind of error gets its own trace meanwhile.
+     */
+    private void failed(Bot bot, long now, RuntimeException e) {
+        Location at = bot.mob.getLocation();
+        Player target = bot.target == null ? null : Bukkit.getPlayer(bot.target);
+        String who = String.format(java.util.Locale.ROOT, "soldier %s (%s %s) of raid %s on %s at %s %.1f %.1f %.1f, its raid in %s, target %s",
+                bot.name, bot.kind, bot.mob.getUniqueId(), bot.raid.id, bot.raid.map.id(), at.getWorld().getName(), at.getX(), at.getY(), at.getZ(),
+                bot.raid.world.getName(), target == null ? "none" : target.getName() + " in " + target.getWorld().getName());
+        String kind = e.getClass().getName() + where(e);
+        ErrorWindow window = errors.get(kind);
+        if (window != null) {
+            window.more++;
+            window.last = who + ": " + e + where(e);
+            return;
+        }
+        errors.put(kind, new ErrorWindow(now + ERROR_LOG_TICKS));
+        plugin.getLogger().log(java.util.logging.Level.WARNING,
+                "A " + who + " failed to think (more errors of this kind are only counted for a minute)", e);
+    }
+
+    /** Where in the plugin {@code e} was thrown (" at Class.method(File:line)"), for a line without the stack trace. */
+    private static String where(Throwable e) {
+        for (StackTraceElement frame : e.getStackTrace()) {
+            if (frame.getClassName().startsWith("net.infnetwork.snowball.craftov.")) {
+                return " at " + frame;
+            }
+        }
+        return "";
     }
 
     /**
@@ -830,7 +905,7 @@ public final class AiService implements Listener {
         if (bot.alertPos != null && now < bot.alertUntil) {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 Location toward = bot.alertPos.clone();
-                if (toward.distanceSquared(bot.home) > Math.pow(bot.leash * 4, 2)) {
+                if (distanceSquared(toward, bot.home) > Math.pow(bot.leash * 4, 2)) {
                     // As far that way as its leash allows, if it can stand there.
                     Vector dir = toward.toVector().subtract(bot.home.toVector()).normalize().multiply(bot.leash * 3);
                     toward = standable(bot.raid, bot.home.clone().add(dir));
@@ -943,7 +1018,8 @@ public final class AiService implements Listener {
             if (id.equals(bot.threatFrom) && now < bot.threatUntil) {
                 range *= 1.5; // it knows which way to look for whoever just shot it
             }
-            double d2 = from.distanceSquared(plugin.slides().feet(player));
+            // Someone in another world is out of sight (and out of range).
+            double d2 = distanceSquared(from, plugin.slides().feet(player));
             if (d2 > range * range) {
                 bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
@@ -1114,7 +1190,7 @@ public final class AiService implements Listener {
     private void alertSquadmates(Bot bot, Player target) {
         for (Bot other : bots.values()) {
             if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant
-                    && other.mob.getLocation().distanceSquared(bot.mob.getLocation()) < 24 * 24) {
+                    && distanceSquared(other.mob.getLocation(), bot.mob.getLocation()) < 24 * 24) {
                 other.alertPos = target.getLocation();
                 other.alertUntil = Bukkit.getCurrentTick() + 20L * 10;
             }
@@ -1202,6 +1278,13 @@ public final class AiService implements Listener {
         GunSpec gun = bot.gun.gun();
         bot.burstLeft--;
         bot.ammoLeft--;
+        // Timed before the round is fired: if anything below throws, the soldier still waits for its
+        // next shot instead of firing again on every think.
+        long interval = Math.max(2, Math.round(1200.0 / gun.rpm()));
+        if (bot.burstLeft <= 0) {
+            interval += ThreadLocalRandom.current().nextInt(12, 30);
+        }
+        bot.nextShotTick = now + interval;
         double distance = Math.max(1, eye.toVector().distance(point));
         Vector aim = point.clone().subtract(eye.toVector()).normalize();
         if (now < bot.dazzledUntil) {
@@ -1239,11 +1322,6 @@ public final class AiService implements Listener {
         if (!"pump".equals(gun.action()) && !"bolt".equals(gun.action())) {
             plugin.weapons().audio().casing(bot.mob, gun, 9 + ThreadLocalRandom.current().nextInt(5));
         }
-        long interval = Math.max(2, Math.round(1200.0 / gun.rpm()));
-        if (bot.burstLeft <= 0) {
-            interval += ThreadLocalRandom.current().nextInt(12, 30);
-        }
-        bot.nextShotTick = now + interval;
     }
 
     /**
@@ -1516,7 +1594,7 @@ public final class AiService implements Listener {
         }
         mob.lookAt(threat.clone().add(0, 1.5, 0));
         if (!"sniper".equals(bot.kind)) {
-            boolean there = bot.coverPos != null && mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2;
+            boolean there = bot.coverPos != null && distanceSquared(mob.getLocation(), bot.coverPos) < 1.2 * 1.2;
             if (there && bot.coverUntil == 0) {
                 bot.coverUntil = now + ThreadLocalRandom.current().nextInt(40, 80);
                 mob.getPathfinder().stopPathfinding();
@@ -1530,7 +1608,7 @@ public final class AiService implements Listener {
                     Vector toward = threat.toVector().subtract(mob.getLocation().toVector()).setY(0);
                     if (toward.lengthSquared() > 16) {
                         Location step = standable(bot.raid, mob.getLocation().add(toward.normalize().multiply(5)));
-                        if (step != null && step.distanceSquared(bot.home) <= Math.pow(bot.leash * 4, 2)) {
+                        if (step != null && distanceSquared(step, bot.home) <= Math.pow(bot.leash * 4, 2)) {
                             go(bot, step, 1.0, now);
                         }
                     }
@@ -1566,7 +1644,7 @@ public final class AiService implements Listener {
                     continue;
                 }
                 double toThreat = spot.distance(threat);
-                if (toThreat > current + 1 || spot.distanceSquared(bot.home) > reach * reach
+                if (toThreat > current + 1 || distanceSquared(spot, bot.home) > reach * reach
                         || Sight.through(at.getWorld(), shooter, spot.toVector().add(new Vector(0, 1.1, 0))) > 0) {
                     continue;
                 }
@@ -1620,6 +1698,16 @@ public final class AiService implements Listener {
         bot.ammoLeft = gun.magazine();
         bot.reloadUntil = now + gun.reloadTicks() + 10;
         plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
+    }
+
+    /**
+     * Squared distance between two places, infinite when they are in different worlds: nothing in
+     * another world is near, in reach or in sight. Location#distanceSquared throws there instead,
+     * and a soldier can be in another world than its raid and the players in it (moved by a
+     * command): that error used to end the tick for every soldier on the server.
+     */
+    private static double distanceSquared(Location a, Location b) {
+        return a.getWorld() == b.getWorld() ? a.distanceSquared(b) : Double.POSITIVE_INFINITY;
     }
 
     /**

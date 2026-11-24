@@ -412,8 +412,9 @@ public final class HealthService implements Listener {
      * does (the view tilts): a tripwire, the test armory's injury (a knock-down has its own,
      * {@link #setHealthKnockedDown}). A bleed in the same tick reaches the client in the same health
      * update, and bleeding is kept from the client (RaidManager.loseHealth), so the drop is marked to
-     * show (Nms.loudHealthLoss). Only a drop is marked: a mark no update carries could show the next
-     * bleed instead.
+     * show (Nms.loudHealthLoss). Only a drop is marked: a mark no update carries would be taken by a
+     * later one, which then shows the true health, so the next bleed or heal could show as a drop
+     * (a heal that leaves the health below the one the client was left with) instead.
      */
     public void setHealthShown(Player player, double health) {
         if (health < player.getHealth()) {

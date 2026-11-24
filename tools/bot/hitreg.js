@@ -366,16 +366,19 @@ function tracker (bot, id) {
 
 /**
  * Switches the held M4C to single shots (AUTO -> BURST -> SEMI): the action bar names the mode after
- * each press. It shows one result line per 1.5 s (util/Notify), so a press waits for its own line
- * before the next: pressed sooner, the next one could skip past SEMI before its line came.
+ * each press ("射击模式: 单发"). It shows one result line per 1.5 s (util/Notify), so a press waits
+ * for its own line before the next: pressed sooner, the next one could skip past SEMI before its
+ * line came. The gun's key hints (… <F> 射击模式, no colon), which a fresh draw shows and the bar may
+ * still carry, are not a switch.
  */
 async function semi (bot = shooter) {
+  const switches = n => bot.bars.slice(n).filter(b => b.includes('射击模式:'))
   for (let i = 0; i < 3; i++) {
     const n = bot.bars.length
     swapKey(bot)
     const end = Date.now() + 2500
-    while (Date.now() < end && !bot.bars.slice(n).some(b => b.includes('射击模式'))) await sleep(100)
-    if (bot.bars.slice(n).some(b => b.includes('单发'))) return
+    while (Date.now() < end && !switches(n).length) await sleep(100)
+    if (switches(n).some(b => b.includes('单发'))) return
   }
   throw new Error('the M4C did not switch to single shots')
 }

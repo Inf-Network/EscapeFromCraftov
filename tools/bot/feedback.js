@@ -28,17 +28,20 @@
 //            is shown 40 (the bleed's quiet mark, left untaken by the update the hit rode in on,
 //            used to hide such a drop for up to a second). The next bleed tick alone is still kept
 //            from B's client: its update says 40 again.
-//   sametick a bleed tick and a drop that is not a hit in one health update (issue #149). B healed,
+//   sametick a bleed tick and a drop that is not a hit in one tick (issues #149, #157). B healed,
 //            with a heavy bleed on the left leg and the test armory open; B presses "模拟受伤" (health
 //            to 40 and two fractures, the leg one taking its food to 6: no hit, not a bleed) timed off the
 //            drip, so that the click reaches the server in the gap before the next bleed tick. Which
-//            update carried the click is read off the food it brings (6 instead of 20), whatever the
-//            fix does: in the same one as the bleed tick (the drip's) is what is wanted, an update
-//            before or after the drip's says the click came a tick early or late, and the next try
-//            moves the click 20 ms (up to 10 tries, healed and bleeding again for each). When one
-//            lands: that update shows B's client the drop (40 or less: the click's, and the bleed on
-//            top), where the bleed's quiet mark alone used to keep it (the update said 100). The
-//            next bleed tick alone is still kept from B's client: its update says the same again.
+//            tick took the click is read off the food its health update brings (6 instead of 20; the
+//            drop itself goes out at once, in an update of its own): the bleed tick's (the drip's) is
+//            what is wanted, an update before or after the drip's says the click came a tick early or
+//            late, and the next try moves the click 20 ms (up to 10 tries, healed and bleeding again
+//            for each). When one lands: B's client is shown the drop (40 or less), where the bleed's
+//            quiet mark alone used to keep it (the update said 100), and nothing brings it there before
+//            the health update that shows it: B's own entity data (index 9) carries the health too and
+//            sets it without a tilt, so had it come first (as it did while the drop went out with the
+//            tick's update) the update would show no drop. The next bleed tick alone is still kept from
+//            B's client: its update says the same again.
 //   knockdown a light bleed that runs down to a knock-down (issue #152). B healed and carrying a
 //            self-revive injector (solo, it is then knocked down rather than killed); a hit (/damage)
 //            takes it to 4.5, which its client is shown. A light bleed on the left leg takes 1 every
@@ -586,13 +589,14 @@ async function overlap (A, B, C) {
 }
 
 /**
- * A bleed tick and a drop that is not a hit in one health update (issue #149): the test armory's
+ * A bleed tick and a drop that is not a hit in one tick (issues #149, #157): the test armory's
  * "模拟受伤" pressed in the gap before a bleed tick. A bleed (in the scheduler, at the start of a tick)
- * and a click (handled between ticks) come together in the update sent at the end of that tick; the
- * drip goes out in the same tick, just before it. A click handled after the tick before and before
- * this one lands with it, so the click is timed off the last drip and moved until one lands; which
- * update carried it is read off its food (the leg fracture takes it to 6), not off the health B is
- * shown.
+ * and a click (handled between ticks) both go out with the update sent at the end of that tick, the
+ * click's fractures (its food) at least: its drop goes out at once, in an update of its own; the
+ * drip goes out in the same tick, just before the tick's update. A click handled after the tick
+ * before and before this one lands with it, so the click is timed off the last drip and moved until
+ * one lands; which tick took it is read off its food (the leg fracture takes it to 6), not off the
+ * health B is shown.
  */
 async function sametick (A, B, C) {
   if (!inRaid(B)) {
@@ -638,7 +642,7 @@ async function sametick (A, B, C) {
       const drip = drips[from]
       const sent = await new Promise(resolve => setTimeout(() => {
         // In one go, so nothing comes between reading the count and the click going out.
-        const at = { at: Date.now(), index: B.healths.length }
+        const at = { at: Date.now(), index: B.healths.length, own: B.own.length }
         B.clickWindow(47, 0, 0).catch(() => { })
         resolve(at)
       }, Math.max(0, drip.at + lead - Date.now())))
@@ -652,7 +656,7 @@ async function sametick (A, B, C) {
         attempt.verdict = 'lost'
       } else if (clicked === bled) {
         attempt.verdict = 'same update'
-        landed = { bled, next: from + 2 }
+        landed = { bled, next: from + 2, own: sent.own }
       } else {
         // Early or late: step towards the bleed tick, halving the step each time the direction
         // turns, so a window narrowed by slow ticks is still closed in on instead of jumped over.
@@ -665,13 +669,21 @@ async function sametick (A, B, C) {
       tries.push(attempt)
       log(`try ${k + 1}:`, attempt)
     }
-    check('sametick: a "模拟受伤" click reached the server in the gap before a bleed tick (one health update carries both)',
+    check('sametick: a "模拟受伤" click reached the server in the gap before a bleed tick (that tick\'s health update brings its food)',
       !!landed, tries.map(t => `${t.lead}: ${t.verdict}`))
     if (!landed) return 0
     const shown = +B.healths[landed.bled].hp.toFixed(2)
     const server = await health(B.username)
     check('sametick: that update shows B\'s client the drop (40 or less), not the health it had (100)',
       shown <= 40.05, { shown, serverNow: server })
+    // The view tilts only if the update that shows the drop is a drop from the health the client
+    // holds then: B's own entity data carries the health too and sets it without a tilt.
+    const own = i => `${B.own[i].via === 'meta' ? 'm' : 'u'}${+B.own[i].hp.toFixed(2)}`
+    const shows = B.own.findIndex((e, i) => i >= landed.own && e.via === 'update' && e.hp <= 40.05)
+    const held = shows > 0 ? B.own[shows - 1] : null
+    log(`  B's own health from the click on (u: health update, m: entity data): ${B.own.slice(landed.own, shows + 4).map((e, i) => own(landed.own + i)).join(' ')}`)
+    check('sametick: nothing brought B\'s client to 40 or less before the health update that shows it (its entity data did not get there first)',
+      held !== null && held.hp > 40.05, held && { held: own(shows - 1), then: own(shows) })
     // The next bleed tick, alone: still kept from B.
     const next = await waitFor(() => drips.length > landed.next && B.healths.length > drips[landed.next].index, 4000)
     const after = await health(B.username)

@@ -345,7 +345,9 @@ async function squad () {
   const beforeRevive = logSize()
   await waitFor(async () => { await holdOn(M, pEntity(), 300); return titled(P, '已被救起') }, 9000)
   check('M holding on next to P revives it', titled(P, '已被救起') && inRaid(P), P.titles.slice(-2))
-  const upSneak = await sneakSpeed(P)
+  // FootstepService puts the silent walk back on its next tick, which can come after the title.
+  let upSneak = null
+  await waitFor(async () => close(upSneak = await sneakSpeed(P), 0.45), 1000)
   check('revived, P has the silent walk\'s sneaking speed again (0.45)', close(upSneak, 0.45), upSneak)
   // Revived, the pistol comes up again: one new draw of 6 ticks, and it is up on its ready tick.
   await sleep(800)

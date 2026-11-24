@@ -23,8 +23,9 @@ import java.util.logging.Logger;
  * <ul>
  *   <li>Trigger capture cells: vanilla answers every right-click on a block with real block
  *   updates, which would erase the client-only capture cells in front of a gun. A small outbound
- *   handler rewrites those updates back to the capture block. The same handler reports, in the
- *   order they arrive, the client's dig starts and arm swings (see {@link DigInputs}).</li>
+ *   handler rewrites those updates back to the capture block, and sends the cells again behind a
+ *   chunk that holds them. The same handler reports, in the order they arrive, the client's dig
+ *   starts and arm swings (see {@link DigInputs}).</li>
  *   <li>Own view: the client's FOV multiplier is {@code (moveSpeed / abilities.walkingSpeed + 1) / 2},
  *   so the walking speed in the player's own abilities packets sets the field of view without
  *   touching how fast they move: the movement speed itself at the hip, so nothing that slows them
@@ -65,6 +66,11 @@ public final class Nms {
     private static @Nullable Method actionPacketPos;
     private static @Nullable Class<?> swingPacketClass;
     private static boolean inputsReady;
+    private static @Nullable Class<?> chunkPacketClass;
+    private static @Nullable Method chunkPacketX;
+    private static @Nullable Method chunkPacketZ;
+    private static @Nullable Method blockPosOf;
+    private static boolean chunksReady;
     private static @Nullable Method getAbilities;
     private static @Nullable Class<?> abilitiesClass;
     private static @Nullable Constructor<?> abilitiesPacketCtor;
@@ -211,6 +217,16 @@ public final class Nms {
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.warning("Dig packets unreadable (" + ex + "); stray arm swings are only filtered for a moment after Q, "
                     + "doors and menus.");
+        }
+        try {
+            chunkPacketClass = Class.forName("net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket");
+            chunkPacketX = chunkPacketClass.getMethod("getX");
+            chunkPacketZ = chunkPacketClass.getMethod("getZ");
+            blockPosOf = Class.forName("net.minecraft.core.BlockPos").getMethod("of", long.class);
+            chunksReady = ready;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Chunk packets unreadable (" + ex + "); right after a world change the trigger may not fire "
+                    + "until the crosshair moves.");
         }
         try {
             equipmentClass = Class.forName("net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket");
@@ -392,7 +408,9 @@ public final class Nms {
 
     /**
      * Keeps the given cells (BlockPos.asLong keys) showing the capture block for this player, and
-     * reports the player's dig starts and arm swings to {@code inputs}.
+     * reports the player's dig starts and arm swings to {@code inputs}. The set is read on the network
+     * thread: a cell must be in it before its capture block is sent, out of it before its real block
+     * is, and never taken out and put back while it stays (see {@link CaptureHandler}).
      */
     public static void protectCells(Player player, Set<Long> cells, DigInputs inputs) {
         if (!ready) {
@@ -408,7 +426,20 @@ public final class Nms {
         }
     }
 
-    /** Rewrites real block updates at the capture cells back to the capture block. */
+    /**
+     * Rewrites real block updates at the capture cells back to the capture block, and follows every
+     * chunk packet holding a capture cell with that cell's capture block.
+     *
+     * <p>The chunk is the one that matters right after a world change, a join or a long teleport: the
+     * capture blocks go out the next tick, while the chunks they are in reach the client a few hundred
+     * milliseconds later. The client drops a block update for a chunk it does not have, and the chunk
+     * itself holds the real air, so until the crosshair moved to other cells the trigger was dead
+     * (#141). Putting the cells back right behind the chunk, in the same outbound stream, lands them
+     * after it whatever sent the chunk and however long it took. Since the set is read here at the
+     * moment the chunk goes out, a cell the server is about to remove may still be put back; its real
+     * block goes out after the chunk too (it was removed from the set before it was sent), so the client
+     * ends up with the real block either way.
+     */
     private static final class CaptureHandler extends ChannelDuplexHandler {
         private final Set<Long> cells;
         private final DigInputs inputs;
@@ -444,6 +475,25 @@ public final class Nms {
                 }
             }
             super.write(ctx, msg, promise);
+            if (chunksReady && !cells.isEmpty() && chunkPacketClass.isInstance(msg)) {
+                restoreCells(ctx, msg);
+            }
+        }
+
+        /** The capture cells in the chunk just written, sent again behind it (the chunk holds air there). */
+        private void restoreCells(ChannelHandlerContext ctx, Object chunk) {
+            try {
+                int x = (int) chunkPacketX.invoke(chunk);
+                int z = (int) chunkPacketZ.invoke(chunk);
+                for (long cell : cells) {
+                    // BlockPos.asLong: x in the top 26 bits, z in the next 26, y in the low 12.
+                    if ((int) (cell >> 38) >> 4 == x && (int) (cell << 26 >> 38) >> 4 == z) {
+                        ctx.write(blockUpdateCtor.newInstance(blockPosOf.invoke(null, cell), captureState));
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // the cells come back when the crosshair next moves to other ones
+            }
         }
     }
 

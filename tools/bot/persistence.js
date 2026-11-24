@@ -198,7 +198,15 @@ function join (name) {
     bot.on('error', e => log(name, 'ERROR', e.message))
     const timer = setTimeout(() => resolve({ error: 'timeout' }), 60000)
     bot.once('kicked', r => { clearTimeout(timer); log(name, 'KICKED', r); resolve({ kicked: typeof r === 'string' ? r : JSON.stringify(r) }) })
-    bot.once('spawn', async () => { clearTimeout(timer); await sleep(3000); resolve({ bot }) })
+    let spawned = false
+    bot.once('spawn', async () => { spawned = true; clearTimeout(timer); await sleep(3000); resolve({ bot }) })
+    // Closed before spawning with no word (a kick resolves first): say so now, not after the minute.
+    bot.once('end', reason => {
+      if (spawned) return
+      clearTimeout(timer)
+      log(name, 'END', reason)
+      setTimeout(() => resolve({ error: 'connection closed: ' + reason }), 200)
+    })
   })
 }
 async function online (name) {
@@ -377,7 +385,15 @@ async function lostEdit () {
     check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
     check('lost-edit: the guard got 30%', await balance(guardName) === guardBefore + 6000)
     fs.writeFileSync(file, good) // repaired, the journal not applied yet
-    const r = await join(bossName)
+    let r = await join(bossName)
+    // Now and then the refusal reaches the bot as a connection closed with no packet at all (the
+    // server's log has the refusal and its message, sent on the authenticator thread as the raid's
+    // settlement runs): one more try then, which still has to be refused with the message.
+    if (r.error && r.error.startsWith('connection closed')) {
+      log('lost-edit: the login was closed with no reason; trying once more')
+      await sleep(1000)
+      r = await join(bossName)
+    }
     if (r.bot) await leave(r.bot)
     check('lost-edit: login refused while the journal is there', !!r.kicked && r.kicked.includes('档案读取失败'), r.kicked || r.error || 'joined')
     guard.quit()

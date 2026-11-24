@@ -155,6 +155,8 @@ const byName = Object.fromEntries(SCRIPTS.map(e => [e.name, e]))
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16)
 const OUT = path.resolve(opt('--out', path.join(__dirname, 'out', 'suite-' + stamp)))
 const WORKER = argv.includes('--worker')
+/** This invocation, on every result it records: a shard's summary.json from an earlier run is not merged. */
+const RUN_ID = opt('--run', `${stamp}-${process.pid}`)
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 /** The exit code when the suite itself could not run (a refused server, a shard it could not make). */
@@ -280,7 +282,7 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
     return results
   }
   found = fs.readFileSync(config.FILE, 'utf8')
-  const save = () => fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ port: env.PORT, server: env.SERVER_DIR, results }, null, 2))
+  const save = () => fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ run: RUN_ID, port: env.PORT, server: env.SERVER_DIR, results }, null, 2))
   let stopping = false
   // Ctrl-C at the terminal reaches the script as well (one process group): that one dies with it
   // and is recorded as not run (runOne), so --resume runs it again. A second Ctrl-C quits at once,
@@ -296,7 +298,7 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
   try {
     for (let job = await next(); job && !stopping; job = stopping ? null : await next()) {
       const entry = byName[job.name]
-      const base = { round: job.round, name: job.name, port: env.PORT, sha: shaOf(entry) }
+      const base = { round: job.round, name: job.name, run: RUN_ID, port: env.PORT, sha: shaOf(entry) }
       if (!await ensureUp()) {
         log(`no usable server (see above): handing round ${job.round} ${job.name} back and taking no more runs`)
         giveBack(job)
@@ -402,7 +404,10 @@ function simulate (queue, servers) {
 function runShard (target, take, putBack, folder) {
   return new Promise(resolve => {
     fs.mkdirSync(folder, { recursive: true })
-    const child = spawn(process.execPath, [__filename, '--worker', '--out', folder, '--rel', OUT], {
+    // An earlier run's summary.json here would otherwise be read back below as this run's.
+    const summary = path.join(folder, 'summary.json')
+    fs.rmSync(summary, { force: true })
+    const child = spawn(process.execPath, [__filename, '--worker', '--out', folder, '--rel', OUT, '--run', RUN_ID], {
       cwd: __dirname,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       env: { ...process.env, PORT: String(target.port), RCON_PORT: String(target.rconPort), SERVER_DIR: target.dir, CRAFTOV_RUN: '', CRAFTOV_DATA: '', SERVER_LOG: '' }
@@ -426,10 +431,11 @@ function runShard (target, take, putBack, folder) {
       }
     })
     child.on('exit', () => {
-      // A result the child saved but could not send (it was ending) is in its summary.json.
+      // A result the child saved but could not send (it was ending) is in its summary.json; only
+      // this invocation's count.
       let saved = []
-      try { saved = JSON.parse(fs.readFileSync(path.join(folder, 'summary.json'), 'utf8')).results } catch { }
-      for (const r of saved) if (!results.some(x => x.round === r.round && x.name === r.name)) results.push(r)
+      try { saved = JSON.parse(fs.readFileSync(summary, 'utf8')).results || [] } catch { }
+      for (const r of saved) if (r.run === RUN_ID && !results.some(x => x.round === r.round && x.name === r.name)) results.push(r)
       for (const job of given) {
         if (!results.some(r => r.round === job.round && r.name === job.name)) {
           results.push({ round: job.round, name: job.name, port: target.port, code: 'not run', seconds: 0, passes: 0, fails: ['the shard stopped before it'] })

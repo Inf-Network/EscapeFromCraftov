@@ -52,7 +52,9 @@
 // and puts the file back at the end: test.enabled true (the bots, not op, queue for the proving
 // ground), match.wait-seconds MATCH_WAIT (3; with 15 the flyer was still queueing when it had to be
 // on its entry camera, and every queue eats into gone's reconnect window), insurance.loss-chance and
-// return-minutes 0 (every insured item back at once). raid.reconnect-seconds must be the default 120,
+// return-minutes 0 (every insured item back at once), events.per-raid 0 and ai.operator-chance
+// [0, 0, 0] (no soldiers brought in after the map's own are killed, which shot the waiting raider
+// dead once). raid.reconnect-seconds must be the default 120,
 // and the letter's money is read from raid.void-compensation.money (COMPENSATION overrides it).
 // Profiles of the bots are written before they first join (insurance on, the raider's contracts and
 // level). The server must be running. After each stop server.js brings it back: a restart loop gets
@@ -955,15 +957,19 @@ async function crashVoid () {
 
 ;(async () => {
   // Pinned for the run, read again on the restart, and put back at the end: every insured item
-  // comes back at once for the checks above, the bots (not op) may queue for the proving ground, and
-  // the queues launch in WAIT seconds.
+  // comes back at once for the checks above, the bots (not op) may queue for the proving ground, the
+  // queues launch in WAIT seconds, and no raid event or rival operator squad brings soldiers in after
+  // the map's own are killed: the raider stands in its raid for a minute before the stop, and one
+  // that is shot dead there has no raid left to void.
   let restoreConfig = async () => {}
   try {
     restoreConfig = await config.pin({
       'insurance.loss-chance': 0,
       'insurance.return-minutes': 0,
       'test.enabled': true,
-      'match.wait-seconds': WAIT
+      'match.wait-seconds': WAIT,
+      'events.per-raid': 0,
+      'ai.operator-chance': [0, 0, 0]
     }, { file: CONFIG, rcon, log })
     if (await setup() && await stopAndRestart()) {
       await afterRestart()

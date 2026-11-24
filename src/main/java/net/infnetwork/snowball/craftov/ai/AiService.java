@@ -60,7 +60,7 @@ public final class AiService implements Listener {
     private static final double SMOKE_OPAQUE = 1.5;
     /** Ticks between two thoughts of every soldier ({@link #tick}). */
     private static final long THINK_TICKS = 2;
-    /** At most one soldier error with its stack trace in this many ticks; the rest are counted ({@link #failed}). */
+    /** At most one stack trace per kind of soldier error in this many ticks; the rest are counted ({@link #failed}). */
     private static final long ERROR_LOG_TICKS = 20L * 60;
 
     private final CraftovPlugin plugin;
@@ -70,10 +70,22 @@ public final class AiService implements Listener {
     private final List<Smoke> smokes = new ArrayList<>();
     /** Runs of {@link #tick} so far, for what a soldier only does every so often ({@link #every}). */
     private long thinks;
-    /** Soldier errors not logged yet, the last of them, and when the next may be logged ({@link #failed}). */
-    private int unreported;
-    private @Nullable String lastUnreported;
-    private long nextErrorLog;
+    /**
+     * Soldier errors by kind (exception and where in the plugin it was thrown), each with its own
+     * minute ({@link #failed}): a soldier failing on every think cannot hide another kind of error.
+     */
+    private final Map<String, ErrorWindow> errors = new HashMap<>();
+
+    /** One kind of soldier error: when its minute ends, how many more came in it, and the last of them. */
+    private static final class ErrorWindow {
+        private final long until;
+        private int more;
+        private @Nullable String last;
+
+        private ErrorWindow(long until) {
+            this.until = until;
+        }
+    }
 
     private record Smoke(World world, Vector centre, double radius, double height, long from, long until) {
     }
@@ -730,6 +742,16 @@ public final class AiService implements Listener {
     private void tick() {
         long now = Bukkit.getCurrentTick();
         thinks++;
+        // Before this tick's thoughts, so a minute's count is out before the same error's next trace.
+        errors.values().removeIf(window -> {
+            if (now < window.until) {
+                return false;
+            }
+            if (window.more > 0) {
+                plugin.getLogger().warning(window.more + " more soldier errors of this kind in the last minute, the last: " + window.last);
+            }
+            return true;
+        });
         List<UUID> dead = new ArrayList<>();
         for (Bot bot : bots.values()) {
             Zombie mob = bot.mob;
@@ -754,21 +776,16 @@ public final class AiService implements Listener {
                 failed(bot, now, e);
             }
         }
-        if (unreported > 0 && now >= nextErrorLog) {
-            plugin.getLogger().warning(unreported + " more soldier errors in the last minute, the last: " + lastUnreported);
-            unreported = 0;
-            lastUnreported = null;
-            nextErrorLog = now + ERROR_LOG_TICKS;
-        }
         dead.forEach(bots::remove);
         doors.tick(now);
         smokes.removeIf(smoke -> now >= smoke.until() || !plugin.raids().isRaidWorld(smoke.world()));
     }
 
     /**
-     * A soldier's thought threw: the others think on. The first error is logged with its stack
-     * trace and who failed where; any more in the next minute (the same soldier fails again every
-     * think) are only counted, and {@link #tick} logs how many there were once the minute is up.
+     * A soldier's thought threw: the others think on. The first error of a kind is logged with its
+     * stack trace and who failed where; any more of that kind in the next minute (the same soldier
+     * fails again every think) are only counted, and {@link #tick} logs how many there were once
+     * the minute is up. Another kind of error gets its own trace meanwhile.
      */
     private void failed(Bot bot, long now, RuntimeException e) {
         Location at = bot.mob.getLocation();
@@ -776,14 +793,16 @@ public final class AiService implements Listener {
         String who = String.format(java.util.Locale.ROOT, "soldier %s (%s %s) of raid %s on %s at %s %.1f %.1f %.1f, its raid in %s, target %s",
                 bot.name, bot.kind, bot.mob.getUniqueId(), bot.raid.id, bot.raid.map.id(), at.getWorld().getName(), at.getX(), at.getY(), at.getZ(),
                 bot.raid.world.getName(), target == null ? "none" : target.getName() + " in " + target.getWorld().getName());
-        if (now < nextErrorLog) {
-            unreported++;
-            lastUnreported = who + ": " + e + where(e);
+        String kind = e.getClass().getName() + where(e);
+        ErrorWindow window = errors.get(kind);
+        if (window != null) {
+            window.more++;
+            window.last = who + ": " + e + where(e);
             return;
         }
-        nextErrorLog = now + ERROR_LOG_TICKS;
+        errors.put(kind, new ErrorWindow(now + ERROR_LOG_TICKS));
         plugin.getLogger().log(java.util.logging.Level.WARNING,
-                "A " + who + " failed to think (further soldier errors are only counted for a minute)", e);
+                "A " + who + " failed to think (more errors of this kind are only counted for a minute)", e);
     }
 
     /** Where in the plugin {@code e} was thrown (" at Class.method(File:line)"), for a line without the stack trace. */

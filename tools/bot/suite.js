@@ -38,7 +38,9 @@
 // The queue is longest first (by the times OUT/summary.json already holds, two minutes for a script
 // it has none for; ties in round order), which keeps the last runs short. A child whose server does
 // not come up takes nothing, and a child that ends early leaves the rest of the queue to the others;
-// a run it was given but did not finish is reported as not run. Two rounds of one script may run at
+// one whose server cannot be brought back between two runs hands the run it just took back to the
+// queue and stops. A run a child was given but did not finish is reported as not run (as is one no
+// server took), and --resume runs those again. Two rounds of one script may run at
 // once on different servers. The parent prints the children's lines prefixed with the port and
 // merges their results into OUT/summary.json. At the end the copies made by this run are stopped and
 // deleted (--keep-shards keeps them); SERVER_DIR's server is left running. The scripts share nothing
@@ -262,8 +264,11 @@ function runOne (entry, file) {
  * from `next` (an async function, null when there are no more) once the one before is done; results
  * carry their log path relative to `rel` (the folder the merged summary.json lives in), and `done`
  * hears each one as it comes. Takes nothing when the server does not come up, and returns [] then.
+ * When the server cannot be brought back between two runs, the job just taken goes to `giveBack`
+ * (another server may run it; otherwise it ends up as "not run") and no more are taken: a dead
+ * server would only turn the rest of the queue into failures that --resume never runs again.
  */
-async function runQueue (next, out, rel, done = () => {}) {
+async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} } = {}) {
   fs.mkdirSync(out, { recursive: true })
   const results = []
   if (!await ensureUp()) {
@@ -279,10 +284,9 @@ async function runQueue (next, out, rel, done = () => {}) {
       const entry = byName[job.name]
       const base = { round: job.round, name: job.name, port: env.PORT, sha: shaOf(entry) }
       if (!await ensureUp()) {
-        const r = { ...base, code: 'no server', seconds: 0, passes: 0, fails: ['the server did not come up'] }
-        results.push(r)
-        done(r)
-        continue
+        log(`no usable server (see above): handing round ${job.round} ${job.name} back and taking no more runs`)
+        giveBack(job)
+        break
       }
       await configure(entry)
       const file = path.join(out, String(job.round), logName(job.name) + '.log')
@@ -377,10 +381,11 @@ function simulate (queue, servers) {
 
 /**
  * Runs a child suite on one target that takes its runs from `take` (the shared queue: the next run,
- * or null) over IPC, one whenever it is free; resolves the results, with "not run" for a run it was
- * given and did not finish.
+ * or null) over IPC, one whenever it is free; a run it hands back (its server is gone) goes to
+ * `putBack`, for the others. Resolves the results, with "not run" for a run it was given and did not
+ * finish.
  */
-function runShard (target, take, folder) {
+function runShard (target, take, putBack, folder) {
   return new Promise(resolve => {
     fs.mkdirSync(folder, { recursive: true })
     const child = spawn(process.execPath, [__filename, '--worker', '--out', folder, '--rel', OUT], {
@@ -400,6 +405,10 @@ function runShard (target, take, folder) {
         child.send({ type: 'job', job: job || null })
       } else if (m && m.type === 'result') {
         results.push(m.result)
+      } else if (m && m.type === 'return' && m.job) {
+        const i = given.findIndex(j => j.round === m.job.round && j.name === m.job.name)
+        if (i >= 0) given.splice(i, 1)
+        putBack(m.job)
       }
     })
     child.on('exit', () => {
@@ -458,7 +467,10 @@ function table (results) {
       waiting = resolve
       process.send({ type: 'next' })
     })
-    const results = await runQueue(next, OUT, path.resolve(opt('--rel', OUT)), r => { if (process.connected) process.send({ type: 'result', result: r }) })
+    const results = await runQueue(next, OUT, path.resolve(opt('--rel', OUT)), {
+      done: r => { if (process.connected) process.send({ type: 'result', result: r }) },
+      giveBack: job => { if (process.connected) process.send({ type: 'return', job }) }
+    })
     log(`the queue is empty: ${results.length} runs here`)
     if (process.connected) process.disconnect()
     process.exit(results.filter(r => r.code !== 0).length)
@@ -476,7 +488,8 @@ function table (results) {
   if (argv.includes('--resume') && fs.existsSync(summaryFile)) {
     const old = JSON.parse(fs.readFileSync(summaryFile, 'utf8'))
     // Placeholders for runs a stopped shard never started are not results: those runs are pending.
-    kept = (old.results || []).filter(r => r.code !== 'not run').map(r => ({ log: `${r.round}/${logName(r.name)}.log`, ...r }))
+    // So are the "no server" ones older suites recorded for every run after their server died.
+    kept = (old.results || []).filter(r => r.code !== 'not run' && r.code !== 'no server').map(r => ({ log: `${r.round}/${logName(r.name)}.log`, ...r }))
     redone.push(...(old.redone || []))
     if (argv.includes('--redo-stale')) {
       // Results recorded with another version of their script (its hash) than the one there now.
@@ -511,7 +524,7 @@ function table (results) {
   if (!shards.length) {
     // One server: in this process, round by round, as listed.
     const queue = pending.slice()
-    const fresh = await runQueue(async () => queue.shift() || null, OUT, OUT)
+    const fresh = await runQueue(async () => queue.shift() || null, OUT, OUT, { giveBack: job => queue.unshift(job) })
     for (const job of queue) fresh.push({ round: job.round, name: job.name, port: env.PORT, code: 'not run', seconds: 0, passes: 0, fails: ['not run'] })
     results = kept.concat(fresh)
     save(results)
@@ -530,7 +543,8 @@ function table (results) {
       // started are merged as "not run", which --resume runs again.
       process.on('SIGINT', () => { if (!stopping) { stopping = true; log('every shard stops after its current script') } })
       const take = () => (stopping ? null : queue.shift() || null)
-      const fresh = await Promise.all(targets.map(t => runShard(t, take, path.join(OUT, `shard-${t.port}`))))
+      const putBack = job => { log(`round ${job.round} ${job.name} is back in the queue`); queue.unshift(job) }
+      const fresh = await Promise.all(targets.map(t => runShard(t, take, putBack, path.join(OUT, `shard-${t.port}`))))
       // Runs no server took (every one of them ended or never came up).
       const untaken = queue.splice(0).map(job => ({ round: job.round, name: job.name, port: null, code: 'not run', seconds: 0, passes: 0, fails: ['no server took it'] }))
       results = kept.concat(...fresh, untaken)

@@ -205,6 +205,22 @@ function make (role) {
   bot.chatLog = []
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) { bot.chatLog.push(m); log(role, 'CHAT', m) } })
   bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { bot.chatLog.push(s); log(role, 'BAR', s) } })
+  // Titles with their subtitle (sent just before): the death screen's names the killer and the weapon,
+  // the kill replay's whose eyes it shows.
+  let subtitle = ''
+  bot._client.on('set_title_subtitle', p => { subtitle = flatText(p.text) })
+  bot._client.on('set_title_text', p => {
+    const s = flatText(p.text)
+    if (s.trim()) log(role, 'TITLE', s + (subtitle.trim() ? ' · ' + subtitle : ''))
+    subtitle = ''
+  })
+  // Every hit the bot takes, with what dealt it: a soldier's names no entity, only where it came from.
+  bot._client.on('damage_event', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    const by = bot.entities[p.sourceCauseId - 1]
+    const at = p.sourcePosition ? ` from ${['x', 'y', 'z'].map(k => p.sourcePosition[k].toFixed(1)).join(' ')}` : ''
+    log(role, 'HIT', `type ${p.sourceTypeId} by ${by ? (by.username || by.name) + ' ' + by.position.toString() : p.sourceCauseId ? '#' + (p.sourceCauseId - 1) : 'nobody'}${at}, health before the hit ${bot.health}`)
+  })
   bot.on('kicked', r => log(role, 'KICKED', JSON.stringify(r).slice(0, 200)))
   bot.on('error', e => log(role, 'ERROR', e.message))
   bots[role] = bot
@@ -535,11 +551,15 @@ async function raiderActs (world) {
     await sleep(500)
   } else check('raider opens the secure container mid-raid', false)
 
-  // A soldier posted a few metres off, knifed from behind (it only sees what is ahead of it, and a
-  // patrol backs off to fight at range): both contracts done, a level-up from their experience.
+  // A soldier posted a few metres off, knifed from behind (it only sees what is ahead of it): both
+  // contracts done, a level-up from their experience. It is left one point of health, so the first cut
+  // kills it: at full health it took several, and from the first one on it turned and fired back at a
+  // metre. It hit the raider in every run, and in two of four under load killed it, on the spot (the
+  // raider then sat in the kill replay instead of knifing) or with a bleed a few seconds on (#144).
   const soldierNear = () => r.nearestEntity(en => ['zombie', 'husk', 'drowned'].includes(en.name) && en.position.distanceTo(r.entity.position) < 4)
   let at = await position(name)
   log('soldier', await rcon(`cv ai spawn patrol ${(at[0] + 3).toFixed(1)} ${at[1].toFixed(1)} ${at[2].toFixed(1)} ${world}`))
+  log('soldier', await rcon(`execute as ${name} at @s run data merge entity @e[type=minecraft:zombie,sort=nearest,limit=1,distance=..8] {Health:1f}`))
   await sleep(800)
   r.setQuickBarSlot(2) // the melee slot
   await sleep(300)

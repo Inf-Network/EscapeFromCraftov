@@ -89,6 +89,45 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name
 bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 bot.on('kicked', r => log('KICKED', r))
 bot.on('error', e => log('ERROR', e.message))
+// mineflayer moves the bot from setInterval(doPhysics, 50), started on login. Each call comes a little
+// late on a busy machine (51 to 56 ms apart), and once the delay adds up to a tick it runs two at once.
+// The server then gets a tick with no movement that the ticks around it do not make up for (steps x,
+// x, 0, x), which its speed tracker reads as the player stopping: the run drops out for a few ticks and
+// a shot in them gets neither the run nor its cone (issue #144: 6 of 30 three-shot runs with the server
+// and the bot on two busy cores, none of 30 with this). A vanilla client's ticks keep to the clock, and
+// so does this loop: each call is due 50 ms after the last one was due, half a tick into it, so a late
+// call still moves the bot once. This listener runs before mineflayer's (its plugins load later).
+// A call later than that (the bot process held up) still sends two ticks at once: those are noted, and
+// each scenario logs them, so a disturbed run can be told from the server's doing.
+const lateMoves = []
+let hooked = false
+bot.once('login', () => {
+  const plain = global.setInterval
+  global.setInterval = (fn, ms, ...rest) => {
+    if (fn.name !== 'doPhysics') return plain(fn, ms, ...rest)
+    global.setInterval = plain
+    let due = performance.now() + 75
+    let ended = false
+    const step = () => {
+      if (ended) return
+      const late = performance.now() - due
+      if (late > 25) lateMoves.push(Math.round(late))
+      fn()
+      due += 50
+      setTimeout(step, Math.max(0, due - performance.now()))
+    }
+    setTimeout(step, 75)
+    bot.once('end', () => { ended = true })
+    hooked = true
+    return { ref () {}, unref () {} } // mineflayer only keeps it to clear it when the bot ends
+  }
+  setImmediate(() => {
+    global.setInterval = plain
+    // A mineflayer that names its physics loop otherwise, or starts it another way, would run on
+    // its own timer again with nothing late logged, which reads like a clean run: say so.
+    if (!hooked) log('WARN: the steady physics clock did not take: mineflayer moves the bot on its own timer')
+  })
+})
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
 // the range too), walks faster than it may, and the server takes the strafe for running.
@@ -126,7 +165,17 @@ bot.once('login', () => {
     bot.entity.yaw = conv.fromNotchianYaw(yaw)
     bot.entity.pitch = conv.fromNotchianPitch(pitch)
   })
+  // The server marks the gun in hand while it reloads (ItemFactory.setHandMark: damage 2, for the
+  // reload frames) and takes the mark off once the magazine is in: when each reload ended, by its word.
+  bot.inventory.on('updateSlot', (slot, before, after) => {
+    if (slot === bot.quickBarSlot + 36 && handMark(before) === RELOAD_MARK && after && itemId(after) === itemId(before) && handMark(after) !== RELOAD_MARK) {
+      reloadsDone.push(Date.now())
+    }
+  })
 })
+const RELOAD_MARK = 2
+const handMark = item => { const d = item && item.componentMap && item.componentMap.get('damage'); return d ? d.data : 0 }
+const reloadsDone = []
 const pitchDeg = () => conv.toNotchianPitch(bot.entity.pitch)
 
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
@@ -155,6 +204,19 @@ function shotLines (from) {
       sprint: flag('sprint'), run: flag('run'), stop: flag('stop'), ground: flag('ground') })
   }
   return out
+}
+/**
+ * Our shots logged since `from`, once there are `count` of them or `ms` have passed: the server logs a
+ * shot when it fires it, which on a busy server can be a while after the bot pulled the trigger.
+ */
+async function loggedShots (from, count, ms = 5000) {
+  const end = Date.now() + ms
+  let lines = shotLines(from)
+  while (lines.length < count && Date.now() < end) {
+    await sleep(50)
+    lines = shotLines(from)
+  }
+  return lines
 }
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 
@@ -417,8 +479,9 @@ async function sprint (spot) {
   shots = 0
   const barsFrom = bars.length
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const p18 = shotLines(from)
   stopSprint()
+  const p18 = await loggedShots(from, 3)
+  await within(5000, () => shots >= 3)
   await sleep(300)
   check('sprint: three clicks while sprinting fire three rounds', shots === 3 && p18.length === 3, `${shots} shot sounds, ${p18.length} logged`)
   check('sprint: the server still has the player sprinting at every shot', p18.length > 0 && p18.every(l => l.sprint),
@@ -455,11 +518,11 @@ async function sprint (spot) {
   from = logSize()
   shots = 0
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const sly = shotLines(from)
   stopSprint(false)
+  const sly = await loggedShots(from, 3)
   await sleep(300)
   check('sprint: running at sprint pace without the sprint command fires, with the sprint cone',
-    sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', '))
+    sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', ') || 'no shot logged')
 
   // Right mouse on a sprint ends it: the food level drops to 6 (where the vanilla client cannot sprint),
   // the sights come up a moment after the sprint is over, and letting go lets the sprint start again.
@@ -510,15 +573,18 @@ async function sprint (spot) {
   from = logSize()
   const heardBefore = adsHeard.length
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const won = shotLines(from)
-  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
-    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
-  check('sprint: right mouse held on neither aims nor stops it', adsHeard.length === heardBefore && bot.food === 20, `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}`)
+  // Read once the timed part below is over: waiting for the log here would stretch the sprint.
+  const wonLogged = loggedShots(from, 3)
+  const held = { ok: adsHeard.length === heardBefore && bot.food === 20, detail: `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}` }
   stopSprint()
   keys({})
   const stopped = Date.now()
   const back = await within(1500, () => adsHeard.length > heardBefore)
   await sleep(200)
+  const won = await wonLogged
+  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
+    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' ') || 'no shot logged')
+  check('sprint: right mouse held on neither aims nor stops it', held.ok, held.detail)
   check('sprint: once that sprint is over the sights come up again (right mouse still held)', back !== null && back <= 900 && bot.food <= 6,
     `${back === null ? 'never' : back + ' ms'} after the stop, food ${bot.food}`)
   stopHold()
@@ -732,13 +798,19 @@ async function recoil (spot) {
   deaf = false
   check('recoil: ignoring the camera kick does not keep the rounds level', Math.abs(cheat.atRelease - cheat.start) < 0.5 && cheat.shotPitch <= cheat.start - 1.0,
     `camera ${cheat.start.toFixed(2)} -> ${cheat.atRelease.toFixed(2)}, last round at pitch ${cheat.shotPitch.toFixed(2)}`)
-  // And it all comes back: a single shot after the reload goes where the crosshair is.
-  await sleep(2500)
+  // And it all comes back: a single shot after the reload goes where the crosshair is. The spray ran
+  // the magazine dry, and it reloads by itself only if the trigger is still held when it does: the bot
+  // lets go once it has heard 30 rounds, which can come before the server has fired the last of them,
+  // and then the shot below only started the reload and was never fired (issue #144). So Q (during a
+  // reload already under way it changes nothing), and the shot waits for the server to end the reload.
+  const sprayed = Date.now()
+  dropKey()
+  const reloaded = await within(15000, () => reloadsDone.some(at => at >= sprayed))
   const from = logSize()
   bot.swingArm()
-  await sleep(300)
-  const single = shotLines(from)
-  check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0, single.map(l => l.climb).join(','))
+  const single = await loggedShots(from, 1)
+  check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0,
+    (single.map(l => l.climb).join(',') || 'no shot logged') + (reloaded === null ? ' (no reload ended after the spray)' : ''))
 }
 
 /**
@@ -1015,6 +1087,8 @@ async function ai () {
     else if (scenario === 'impact') await impact(spot)
     else if (scenario === 'ai') await ai()
     else log('unknown scenario', scenario)
+    const late = lateMoves.splice(0)
+    if (late.length) log(`${scenario}: the bot's movement went out late ${late.length} time(s), up to ${Math.max(...late)} ms (two ticks at once)`)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')
   bot.quit()

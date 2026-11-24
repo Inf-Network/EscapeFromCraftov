@@ -74,6 +74,10 @@ function join (name) {
   bot.on('error', e => log(name, 'ERROR', e.message))
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(name + ' neither spawned nor was refused')), 60000)
+    // A refusal at login can arrive before mineflayer has loaded its plugins (it does on a timer
+    // after createBot), the one that turns this packet into 'kicked' among them, and the bot would
+    // see only the connection close (#138): the login's own disconnect packet always gets parsed.
+    bot._client.once('disconnect', p => { clearTimeout(t); log(name, 'REFUSED', strings(p.reason)); resolve({ kicked: strings(p.reason) }) })
     bot.once('kicked', reason => { clearTimeout(t); log(name, 'KICKED', strings(reason)); resolve({ kicked: strings(reason) }) })
     bot.once('spawn', async () => { clearTimeout(t); await sleep(2500); resolve(bot) })
   })

@@ -21,7 +21,11 @@
 //
 // Before each script the server's plugins/Craftov/config.yml is put back as the suite found it, with
 // BASE and the script's own `config` (its header's "Server config") set on top, and `cv reload` run;
-// at the end the file is put back as it was found. The server must be a throwaway local one: several
+// at the end the file is put back as it was found. A script killed before its own cleanup (its
+// timeout, a signal) skips its finally blocks: the suite then stops the server, puts back the files
+// it guards (items.yml, loot.yml, market.json and the map files as they were before the script, the
+// files it added to the proving ground's template removed), starts the server again with start.sh
+// and logs what it put back (recover). The server must be a throwaway local one: several
 // scripts stop, start and kill it (they say so), and when one leaves it down the suite starts it again
 // (server.js). Each run's output goes to OUT/<round>/<name>.log (OUT defaults to tools/bot/out/suite-
 // <date>), and summary.json there holds every result (exit code, time, checks, the server's port and
@@ -234,6 +238,101 @@ async function configure (entry) {
   await Promise.race([rcon('cv reload'), sleep(10000)]).catch(() => {})
 }
 
+// ------------------------------------------------------------------ after a killed script
+
+/**
+ * What a script may leave behind when it is killed before its own cleanup (its timeout's SIGTERM, a
+ * signal: neither runs its finally blocks). Files it edits while it runs, under SERVER_DIR: itemloss
+ * breaks and renames items.yml, persistence garbles market.json and rustport.yml, marketio replaces
+ * market.json, editor and security write map files. Folders where it adds files that must go again:
+ * launch pads the proving ground's template with 20,000+ files (every raid would copy them).
+ * config.yml is not here: every run starts by writing it afresh (configure).
+ */
+const GUARDED_FILES = ['plugins/Craftov/items.yml', 'plugins/Craftov/loot.yml', 'plugins/Craftov/data/market.json']
+const GUARDED_DIRS = ['plugins/Craftov/maps', 'plugins/Craftov/maps/drafts'] // every file's content, and its new files
+const PADDED_DIRS = ['craftov_tpl_proving/pad'] // only its new files
+const under = rel => path.join(env.SERVER_DIR, rel)
+const readOrNull = file => { try { return fs.readFileSync(file) } catch { return null } }
+const namesOrNull = dir => { try { return new Set(fs.readdirSync(dir)) } catch { return null } }
+
+/** The guarded files and folders as they are before a run. */
+function snapshot () {
+  const files = new Map(GUARDED_FILES.map(rel => [rel, readOrNull(under(rel))]))
+  const dirs = new Map()
+  for (const rel of GUARDED_DIRS.concat(PADDED_DIRS)) {
+    const names = namesOrNull(under(rel))
+    dirs.set(rel, names)
+    if (names && GUARDED_DIRS.includes(rel)) {
+      for (const name of names) {
+        let file = false
+        try { file = fs.statSync(path.join(under(rel), name)).isFile() } catch { } // gone since the listing
+        if (file) files.set(path.join(rel, name), readOrNull(path.join(under(rel), name)))
+      }
+    }
+  }
+  return { files, dirs }
+}
+
+/** Puts the files and folders back as `snap` had them (synchronously); returns what it did. */
+function restoreSnapshot (snap) {
+  const done = []
+  for (const [rel, before] of snap.files) {
+    const now = readOrNull(under(rel))
+    if (before === null && now !== null) { fs.rmSync(under(rel), { force: true }); done.push('removed ' + rel) }
+    if (before !== null && (now === null || !before.equals(now))) { fs.writeFileSync(under(rel), before); done.push('put back ' + rel) }
+  }
+  for (const [rel, before] of snap.dirs) {
+    const now = namesOrNull(under(rel))
+    if (!now) continue
+    if (before === null) {
+      fs.rmSync(under(rel), { recursive: true, force: true })
+      done.push(`removed ${rel} (${now.size} files)`)
+      continue
+    }
+    const added = [...now].filter(name => !before.has(name) && !snap.files.has(path.join(rel, name)))
+    for (const name of added) fs.rmSync(path.join(under(rel), name), { recursive: true, force: true })
+    if (added.length) done.push(`removed ${added.length} new file(s) from ${rel}${added.length <= 3 ? ' (' + added.join(', ') + ')' : ''}`)
+  }
+  return done
+}
+
+/** JVM settings of the running server that start.sh would not give it (a script's own start). */
+function serverFlags () {
+  // start.sh runs java -Xmx${MEMORY:-4G}: what the suite's own start would give.
+  let memory = null
+  try { memory = (fs.readFileSync(under('start.sh'), 'utf8').match(/-Xmx\$\{MEMORY:-(\w+)\}/) || [])[1] || null } catch { }
+  const want = '-Xmx' + (process.env.MEMORY || memory)
+  const flags = []
+  for (const pid of server.pids() || []) {
+    try {
+      const environ = fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').find(v => v.startsWith('JAVA_TOOL_OPTIONS='))
+      if (environ && environ !== 'JAVA_TOOL_OPTIONS=' + (process.env.JAVA_TOOL_OPTIONS || '')) flags.push(environ)
+      const xmx = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').find(a => a.startsWith('-Xmx'))
+      if (xmx && memory && xmx !== want) flags.push(xmx)
+    } catch { }
+  }
+  return flags
+}
+
+/**
+ * After a script was killed: the server is stopped (so its final save cannot write over what is put
+ * back), the guarded files and folders and config.yml are put back, and the server is started the
+ * way the suite starts it (start.sh, no JVM flags of a script's own start: marketio's slow-disk
+ * write delay, persistence's memory). Logs what it did.
+ */
+async function recover (snap, why) {
+  const flags = serverFlags()
+  log(`${why}: stopping the server to put back what the script left${flags.length ? ' (it ran with ' + flags.join(' ') + ')' : ''}`)
+  if (!await server.stop({ log }) && !await server.stop({ kill: true, log })) log('the server did not stop')
+  const done = restoreSnapshot(snap)
+  fs.writeFileSync(config.FILE, found)
+  log(done.length ? 'put back: ' + done.join('; ') : 'nothing of the guarded files had changed')
+  const since = Date.now()
+  log(await server.bringBack({ since, log }) ? 'the server is back' : 'the server did not come back')
+}
+
+// ------------------------------------------------------------------ one script
+
 /** Runs one script to its end (or its timeout); resolves { code, seconds, passes, fails }. */
 function runOne (entry, file) {
   return new Promise(resolve => {
@@ -301,12 +400,15 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
   found = fs.readFileSync(config.FILE, 'utf8')
   const save = () => fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ run: RUN_ID, port: env.PORT, server: env.SERVER_DIR, results }, null, 2))
   let stopping = false
+  let current = null // the snapshot of the run going on
   // Ctrl-C at the terminal reaches the script as well (one process group): that one dies with it
   // and is recorded as not run (runOne), so --resume runs it again. A second Ctrl-C quits at once,
-  // with config.yml put back first: synchronously, as nothing after process.exit runs.
+  // with config.yml and what the killed script left put back first: synchronously, as nothing after
+  // process.exit runs (the server is not restarted then).
   process.on('SIGINT', () => {
     if (stopping) {
       try { fs.writeFileSync(config.FILE, found); log('config.yml put back; quitting') } catch (e) { log('config.yml could not be put back:', e.message) }
+      if (current) { try { const done = restoreSnapshot(current); if (done.length) log('put back: ' + done.join('; ') + ' (restart the server)') } catch (e) { log('could not put back:', e.message) } }
       process.exit(130)
     }
     stopping = true
@@ -325,11 +427,14 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
       const file = path.join(out, String(job.round), logName(job.name) + '.log')
       fs.mkdirSync(path.dirname(file), { recursive: true })
       log(`round ${job.round}: ${job.name} ...`)
+      current = snapshot()
       const r = await runOne(entry, file)
       results.push({ ...base, ...r, log: path.relative(rel, file) })
       done(results[results.length - 1])
       save()
       log(`round ${job.round}: ${job.name} ${r.code === 0 ? 'PASS' : r.code === 'not run' ? 'NOT RUN (' + r.signal + ')' : 'FAIL (' + r.code + ')'} in ${r.seconds}s, ${r.passes} checks passed${r.fails.length ? ', failed: ' + r.fails.slice(0, 3).join(' | ') : ''}`)
+      if (r.code === 'timeout' || r.signal) await recover(current, r.code === 'timeout' ? `${job.name} timed out` : `${job.name} was killed by ${r.signal}`)
+      current = null
       await sleep(3000)
     }
   } finally {

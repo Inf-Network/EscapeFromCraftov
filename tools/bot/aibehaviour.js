@@ -2,17 +2,17 @@
 //
 //   node aibehaviour.js                every scenario
 //   node aibehaviour.js doors sight    only these (doors sight range operator smoke boss fence nade
-//                                      wake doorbody edge hear)
+//                                      wake doorbody edge hear world)
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
-// match.wait-seconds: 2 keeps the run short. Ports come from PORT (25565), RCON_PORT (25575)
-// and RCON_PASSWORD (craftov-local). Each scenario prints PASS or FAIL with what was seen; the
-// exit code is the number of failures. DEBUG=1 prints the soldier lines it polls.
+// match.wait-seconds: 2 keeps the run short. Ports and the server's folder come from env.js (see
+// below). Each scenario prints PASS or FAIL with what was seen; the exit code is the number of
+// failures. DEBUG=1 prints the soldier lines it polls.
 //
-// Every scenario lands one fresh bot (A) on the proving ground, clears the map's own soldiers
-// and posts the ones it needs with /cv ai spawn, so nothing else interferes. Soldier state is
-// read from /cv ai (position, facing, 交战 when it fights someone, 察觉 values).
+// Every scenario lands one fresh bot (A; world also B) on the proving ground, clears the map's own
+// soldiers and posts the ones it needs with /cv ai spawn, so nothing else interferes. Soldier state
+// is read from /cv ai (position, facing, 交战 when it fights someone, 察觉 values).
 //
 //   doors     A shows itself to a guard outside the drill building's south door, then goes inside
 //             and upstairs (the door stays shut behind it). The guard opens the door and comes in
@@ -52,10 +52,21 @@
 //   edge      On the field, A (resistance, so the shots do not down it) stands 5 blocks from a
 //             guard posted next to the field's west edge, A on the inside: the guard backs off and
 //             sidesteps but never off the field for 8 s.
+//   world     Two solo players, A and B (resistance), land in one raid and wait on the ground
+//             below the field while four guards are posted on it. The guard every soldier tick
+//             visits first (the first /cv ai lists) is moved to the lobby, as a command run "at" a
+//             player who has just died there does. A stands in front of the other three: all of
+//             them fight A within 8 s (one soldier in another world used to throw "Cannot measure
+//             distance between worlds" every tick, which stopped every soldier after it). Then A is
+//             moved to the lobby while they fight it and B stands there instead: they all fight B
+//             within 8 s. The server log has no cross-world error and no soldier error report
+//             (failed to think) from the scenario.
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
 // the proving ground, a test map), match.wait-seconds 2.
-// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (world reads its
+// logs/latest.log, or SERVER_LOG).
+const fs = require('fs')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')
@@ -64,6 +75,7 @@ const config = require('./config')
 const PORT = env.PORT
 const RCON = env.RCON
 const MAP = 'proving'
+const SERVER_LOG = env.LOG
 // A flat stone field high above the proving ground (inside its bounds), lit by the sky.
 const FIELD = { x1: 20, x2: 100, z1: 16, z2: 88, y: 120 }
 
@@ -163,7 +175,9 @@ async function soldiers () {
 async function post (bot, kind, x, y, z) {
   const before = new Set((await soldiers()).map(s => s.uuid))
   const reply = await rcon(`cv ai spawn ${kind} ${x} ${y} ${z} ${raidWorld}`)
-  const fresh = (await soldiers()).find(s => !before.has(s.uuid))
+  // Polled for a moment: once, posted right after the bot had been moved, it was not listed at once.
+  let fresh = null
+  await waitFor(async () => { fresh = (await soldiers()).find(s => !before.has(s.uuid)); return !!fresh }, 2000, 200)
   if (!fresh) throw new Error(`no soldier posted: ${reply}`)
   return fresh
 }
@@ -647,6 +661,94 @@ const scenarios = {
     if (west < 20) problems.push(`the guard went past the edge to x ${west.toFixed(1)}`)
     const spread = zs.length ? Math.max(...zs) - Math.min(...zs) : 0
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'stayed on the field while backing off and sidestepping'} | lowest y ${low.toFixed(1)}, westmost x ${west.toFixed(1)}, z range ${spread.toFixed(1)}`]
+  },
+
+  async world () {
+    if (!fs.existsSync(SERVER_LOG)) return ['FAIL', `no server log at ${SERVER_LOG} (set SERVER_DIR to the server's folder)`]
+    // Two solo players queued together land in the same raid (rivals; neither shoots here).
+    const [A, B] = await Promise.all([make(), make()])
+    await sleep(2500)
+    const lobby = A.worldName
+    for (const p of [A, B]) p.chat(`/cv queue ${MAP} NORMAL SOLO`)
+    if (!await waitFor(() => landed(A) && landed(B), 40000)) throw new Error(`not landed: ${A.worldName} ${B.worldName}`)
+    if (A.worldName !== B.worldName) return ['FAIL', `A and B landed in different raids, ${A.worldName} and ${B.worldName} (inconclusive)`]
+    raidWorld = A.worldName
+    await sleep(3500)
+    // As land(): a shot from each ends the soldiers' insertion grace for them.
+    for (const p of [A, B]) p.setQuickBarSlot(1)
+    await sleep(300)
+    for (const p of [A, B]) p.swingArm()
+    await sleep(500)
+    const logFrom = fs.statSync(SERVER_LOG).size
+    await clearSoldiers(A)
+    await field(A)
+    const top = FIELD.y + 1
+    // Out of every soldier's sight while they are posted: on the ground far below the field.
+    for (const [p, x] of [[A, 75.5], [B, 71.5]]) {
+      await rcon(`effect give ${p.username} minecraft:resistance 120 4 true`)
+      await inWorld(A, `tp ${p.username} ${x} 65 58.5`)
+    }
+    await sleep(2000)
+    for (const x of [45.5, 55.5, 65.5, 75.5]) await post(A, 'guard', x, top, 52.5)
+    // /cv ai walks the same map as the soldiers' tick: the first it lists is the first to think.
+    const order = await soldiers()
+    if (order.length !== 4) return ['FAIL', `expected the 4 posted guards, /cv ai lists ${order.length}`]
+    const [stray, ...watch] = order
+    const problems = []
+    const notes = []
+    const inLobby = async () => /passed/i.test(await rcon(`execute in minecraft:${lobby} if entity @e[tag=craftov_stray,distance=0..]`))
+    // P stands 12 blocks south of the guards' line in daylight, each guard turned to face it.
+    const engage = async (P, label) => {
+      await rcon(`execute in minecraft:${raidWorld} run tp ${P.username} 60.5 ${top} 64.5 180 0`)
+      await sleep(300)
+      for (const w of watch) await rcon(`execute in minecraft:${raidWorld} as ${w.uuid} at @s run tp @s ~ ~ ~ facing entity ${P.username}`)
+      const t0 = Date.now()
+      const fighting = new Map()
+      let last = []
+      await waitFor(async () => {
+        last = await soldiers()
+        for (const w of watch) {
+          const s = last.find(x => x.uuid === w.uuid)
+          if (s && s.state === '交战' && s.target === P.username && !fighting.has(w.uuid)) fighting.set(w.uuid, (Date.now() - t0) / 1000)
+        }
+        return fighting.size === watch.length
+      }, 8000, 250)
+      const times = [...fighting.values()].map(t => t.toFixed(1))
+      notes.push(`${label}: ${fighting.size}/${watch.length} fought ${P === A ? 'A' : 'B'}${times.length ? ' after ' + times.join(', ') + ' s' : ''}`)
+      if (fighting.size === watch.length) return true
+      const idle = watch.filter(w => !fighting.has(w.uuid)).map(w => {
+        const s = last.find(x => x.uuid === w.uuid)
+        return s ? `${s.state} ${JSON.stringify(s.aware)}` : 'gone'
+      })
+      problems.push(`${label}: ${watch.length - fighting.size} of ${watch.length} guards never fought ${P === A ? 'A' : 'B'} in 8 s (${idle.join('; ')})`)
+      return false
+    }
+    try {
+      await rcon(`tag ${stray.uuid} add craftov_stray`)
+      await rcon(`execute in minecraft:${lobby} run tp ${stray.uuid} 0.5 65 20.5`)
+      await sleep(500)
+      if (!await inLobby()) return ['FAIL', `the guard did not get to ${lobby} (inconclusive)`]
+      if (await engage(A, 'a guard in the lobby')) {
+        // While they fight A, A is moved to the lobby (which takes A out of the raid); B shows up.
+        await rcon(`execute in minecraft:${lobby} run tp ${A.username} 0.5 65 12.5`)
+        if (!await waitFor(() => A.worldName === lobby, 5000)) problems.push(`A did not get to ${lobby}: ${A.worldName}`)
+        await sleep(1000)
+        await engage(B, 'A moved to the lobby mid-fight')
+      }
+      if (!await inLobby() || !(await soldiers()).some(s => s.uuid === stray.uuid)) problems.push('the guard in the lobby is gone (inconclusive)')
+    } finally {
+      // Back into the raid so nothing of it is left in the lobby once the raid is cleared.
+      await rcon(`execute in minecraft:${raidWorld} run tp ${stray.uuid} 45.5 ${top} 52.5`)
+      await rcon(`tag ${stray.uuid} remove craftov_stray`)
+    }
+    await sleep(500)
+    const fresh = fs.readFileSync(SERVER_LOG).subarray(logFrom).toString('utf8').split('\n')
+    const crossWorld = fresh.filter(l => /Cannot measure distance between/.test(l))
+    const failed = fresh.filter(l => /failed to think|more soldier errors/.test(l))
+    if (crossWorld.length) problems.push(`${crossWorld.length} cross-world errors in the log: ${crossWorld[0].trim()}`)
+    if (failed.length) problems.push(`${failed.length} soldier error reports in the log: ${failed[0].trim()}`)
+    notes.push(`log: ${crossWorld.length} cross-world, ${failed.length} soldier error lines`)
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'a guard in another world stopped no one, nor did A leaving mid-fight'} | ${notes.join('; ')}`]
   },
 
   async smoke () {

@@ -301,7 +301,7 @@ public final class AiService implements Listener {
             return "交战";
         }
         if (bot.threatPos != null && now < bot.threatUntil) {
-            return bot.coverPos != null && bot.mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2 ? "掩护" : "受击";
+            return bot.coverPos != null && distanceSquared(bot.mob.getLocation(), bot.coverPos) < 1.2 * 1.2 ? "掩护" : "受击";
         }
         if (bot.lastSeen != null && now - bot.lastSeenTick < 20L * 10) {
             return "追击";
@@ -402,14 +402,15 @@ public final class AiService implements Listener {
         Zombie mob = bot.mob;
         if (bot.leader != null) {
             Bot leader = bots.get(bot.leader);
-            if (leader != null && leader.mob.isValid()) {
+            // A leader moved to another world is as good as gone: there is no following it there.
+            if (leader != null && leader.mob.isValid() && leader.mob.getWorld() == mob.getWorld()) {
                 if (mob.getLocation().distanceSquared(leader.mob.getLocation()) > 9 && !mob.getPathfinder().hasPath()) {
                     mob.getPathfinder().moveTo(leader.mob.getLocation(), 1.0);
                 }
                 bot.home = leader.mob.getLocation();
                 return;
             }
-            bot.leader = null; // the leader fell: this one carries on alone
+            bot.leader = null; // the leader fell (or left the raid's world): this one carries on alone
         }
         if (bot.looting == null) {
             LootContainer next = null;
@@ -419,7 +420,7 @@ public final class AiService implements Listener {
                         || (container.generated() && container.isEmpty())) {
                     continue;
                 }
-                double d = container.location.distanceSquared(mob.getLocation());
+                double d = distanceSquared(container.location, mob.getLocation());
                 if (d < best) {
                     best = d;
                     next = container;
@@ -433,7 +434,7 @@ public final class AiService implements Listener {
             bot.home = next.location.clone();
         }
         LootContainer target = bot.looting;
-        if (mob.getLocation().distanceSquared(target.location) > 2.8 * 2.8) {
+        if (distanceSquared(mob.getLocation(), target.location) > 2.8 * 2.8) {
             if (!mob.getPathfinder().hasPath()) {
                 Pathfinder.PathResult path = mob.getPathfinder().findPath(target.location);
                 if (path == null || !reaches(path, target.location, 2.5)) {
@@ -739,6 +740,12 @@ public final class AiService implements Listener {
             if (bot.raid.state != Raid.State.RUNNING) {
                 continue;
             }
+            if (mob.getWorld() != bot.raid.world) {
+                // Moved out of its raid's world (a teleport command run "at" a player in the lobby,
+                // say): nobody of its raid to see and nothing of its map to walk to there, so it
+                // stands still until it is back.
+                continue;
+            }
             // One soldier's error used to end this tick for every soldier after it on the server,
             // in every raid, and again on every tick while it lasted.
             try {
@@ -879,7 +886,7 @@ public final class AiService implements Listener {
         if (bot.alertPos != null && now < bot.alertUntil) {
             if (!"sniper".equals(bot.kind) && !mob.getPathfinder().hasPath()) {
                 Location toward = bot.alertPos.clone();
-                if (toward.distanceSquared(bot.home) > Math.pow(bot.leash * 4, 2)) {
+                if (distanceSquared(toward, bot.home) > Math.pow(bot.leash * 4, 2)) {
                     // As far that way as its leash allows, if it can stand there.
                     Vector dir = toward.toVector().subtract(bot.home.toVector()).normalize().multiply(bot.leash * 3);
                     toward = standable(bot.raid, bot.home.clone().add(dir));
@@ -992,7 +999,8 @@ public final class AiService implements Listener {
             if (id.equals(bot.threatFrom) && now < bot.threatUntil) {
                 range *= 1.5; // it knows which way to look for whoever just shot it
             }
-            double d2 = from.distanceSquared(plugin.slides().feet(player));
+            // Someone in another world is out of sight (and out of range).
+            double d2 = distanceSquared(from, plugin.slides().feet(player));
             if (d2 > range * range) {
                 bot.awareness.put(id, Math.max(0, aware - fade));
                 continue;
@@ -1163,7 +1171,7 @@ public final class AiService implements Listener {
     private void alertSquadmates(Bot bot, Player target) {
         for (Bot other : bots.values()) {
             if (other != bot && other.raid == bot.raid && other.target == null && !other.dormant
-                    && other.mob.getLocation().distanceSquared(bot.mob.getLocation()) < 24 * 24) {
+                    && distanceSquared(other.mob.getLocation(), bot.mob.getLocation()) < 24 * 24) {
                 other.alertPos = target.getLocation();
                 other.alertUntil = Bukkit.getCurrentTick() + 20L * 10;
             }
@@ -1565,7 +1573,7 @@ public final class AiService implements Listener {
         }
         mob.lookAt(threat.clone().add(0, 1.5, 0));
         if (!"sniper".equals(bot.kind)) {
-            boolean there = bot.coverPos != null && mob.getLocation().distanceSquared(bot.coverPos) < 1.2 * 1.2;
+            boolean there = bot.coverPos != null && distanceSquared(mob.getLocation(), bot.coverPos) < 1.2 * 1.2;
             if (there && bot.coverUntil == 0) {
                 bot.coverUntil = now + ThreadLocalRandom.current().nextInt(40, 80);
                 mob.getPathfinder().stopPathfinding();
@@ -1579,7 +1587,7 @@ public final class AiService implements Listener {
                     Vector toward = threat.toVector().subtract(mob.getLocation().toVector()).setY(0);
                     if (toward.lengthSquared() > 16) {
                         Location step = standable(bot.raid, mob.getLocation().add(toward.normalize().multiply(5)));
-                        if (step != null && step.distanceSquared(bot.home) <= Math.pow(bot.leash * 4, 2)) {
+                        if (step != null && distanceSquared(step, bot.home) <= Math.pow(bot.leash * 4, 2)) {
                             go(bot, step, 1.0, now);
                         }
                     }
@@ -1615,7 +1623,7 @@ public final class AiService implements Listener {
                     continue;
                 }
                 double toThreat = spot.distance(threat);
-                if (toThreat > current + 1 || spot.distanceSquared(bot.home) > reach * reach
+                if (toThreat > current + 1 || distanceSquared(spot, bot.home) > reach * reach
                         || Sight.through(at.getWorld(), shooter, spot.toVector().add(new Vector(0, 1.1, 0))) > 0) {
                     continue;
                 }
@@ -1669,6 +1677,16 @@ public final class AiService implements Listener {
         bot.ammoLeft = gun.magazine();
         bot.reloadUntil = now + gun.reloadTicks() + 10;
         plugin.weapons().audio().foley(bot.mob, gun, "magout", 0.9f);
+    }
+
+    /**
+     * Squared distance between two places, infinite when they are in different worlds: nothing in
+     * another world is near, in reach or in sight. Location#distanceSquared throws there instead,
+     * and a soldier can be in another world than its raid and the players in it (moved by a
+     * command): that error used to end the tick for every soldier on the server.
+     */
+    private static double distanceSquared(Location a, Location b) {
+        return a.getWorld() == b.getWorld() ? a.distanceSquared(b) : Double.POSITIVE_INFINITY;
     }
 
     /**

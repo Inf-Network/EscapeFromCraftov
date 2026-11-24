@@ -89,6 +89,38 @@ const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name
 bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
 bot.on('kicked', r => log('KICKED', r))
 bot.on('error', e => log('ERROR', e.message))
+// mineflayer moves the bot from setInterval(doPhysics, 50), started on login. Each call comes a little
+// late on a busy machine (51 to 56 ms apart), and once the delay adds up to a tick it runs two at once.
+// The server then gets a tick with no movement that the ticks around it do not make up for (steps x,
+// x, 0, x), which its speed tracker reads as the player stopping: the run drops out for a few ticks and
+// a shot in them gets neither the run nor its cone (issue #144: 6 of 30 three-shot runs with the server
+// and the bot on two busy cores, none of 30 with this). A vanilla client's ticks keep to the clock, and
+// so does this loop: each call is due 50 ms after the last one was due, half a tick into it, so a late
+// call still moves the bot once. This listener runs before mineflayer's (its plugins load later).
+// A call later than that (the bot process held up) still sends two ticks at once: those are noted, and
+// each scenario logs them, so a disturbed run can be told from the server's doing.
+const lateMoves = []
+bot.once('login', () => {
+  const plain = global.setInterval
+  global.setInterval = (fn, ms, ...rest) => {
+    if (fn.name !== 'doPhysics') return plain(fn, ms, ...rest)
+    global.setInterval = plain
+    let due = performance.now() + 75
+    let ended = false
+    const step = () => {
+      if (ended) return
+      const late = performance.now() - due
+      if (late > 25) lateMoves.push(Math.round(late))
+      fn()
+      due += 50
+      setTimeout(step, Math.max(0, due - performance.now()))
+    }
+    setTimeout(step, 75)
+    bot.once('end', () => { ended = true })
+    return { ref () {}, unref () {} } // mineflayer only keeps it to clear it when the bot ends
+  }
+  setImmediate(() => { global.setInterval = plain })
+})
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
 // the range too), walks faster than it may, and the server takes the strafe for running.
@@ -1015,6 +1047,8 @@ async function ai () {
     else if (scenario === 'impact') await impact(spot)
     else if (scenario === 'ai') await ai()
     else log('unknown scenario', scenario)
+    const late = lateMoves.splice(0)
+    if (late.length) log(`${scenario}: the bot's movement went out late ${late.length} time(s), up to ${Math.max(...late)} ms (two ticks at once)`)
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')
   bot.quit()

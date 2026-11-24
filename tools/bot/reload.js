@@ -54,8 +54,10 @@ async function armOnArrival (bot, name) {
       const z = Math.floor(eye.z + Math.cos(yaw) * Math.cos(pitch) * 3.2) >> 4
       const k = x + ',' + z
       const at = map => map[k] == null ? 'none' : '+' + map[k] + ' ms'
+      const raced = blocks[k] != null && chunks[k] != null && blocks[k] < chunks[k]
       c.log(`chunk ${k} in front: first block update ${at(blocks)}, chunk ${at(chunks)}, next block update ${at(later)} ` +
-        'after the respawn' + (blocks[k] != null && chunks[k] != null && blocks[k] < chunks[k] ? ' (blocks before their chunk)' : ''))
+        'after the respawn' + (raced ? ' (blocks before their chunk)' : ''))
+      return raced
     }
   }
 }
@@ -85,7 +87,8 @@ async function main () {
     }
   } else bot.setQuickBarSlot(gun)
   await c.sleep(1500) // the draw
-  if (arrival) arrival.report()
+  // Without the race (the capture blocks before their chunk) this run says nothing about #141.
+  if (arrival) c.check('arrive: the capture blocks came before their chunk, the race this scenario is for', arrival.report(), 'not reproduced')
 
   // reload: a full magazine has nothing to reload, so a few rounds go first.
   let shots = bot.reports.length

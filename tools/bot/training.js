@@ -139,6 +139,18 @@ function join (prefix, name) {
   const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
   bot._client.on('login', track)
   bot._client.on('respawn', track)
+  // mineflayer applies player_rotation as absolute angles; recoil sends it relative, as vanilla
+  // expects, which turned the bot to face about south after the first round of a burst. Its plugins
+  // load after createBot returns, so its handler is replaced once logged in (as accuracy.js does).
+  bot.once('login', () => {
+    bot._client.removeAllListeners('player_rotation')
+    bot._client.on('player_rotation', p => {
+      const yaw = (p.relativeYaw ? conv.toNotchianYaw(bot.entity.yaw) : 0) + p.yaw
+      const pitch = Math.max(-90, Math.min(90, (p.relativePitch ? conv.toNotchianPitch(bot.entity.pitch) : 0) + p.pitch))
+      bot.entity.yaw = conv.fromNotchianYaw(yaw)
+      bot.entity.pitch = conv.fromNotchianPitch(pitch)
+    })
+  })
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLines.push(m); log(name, 'CHAT', m) } })
   bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) { bot.bars.push({ at: Date.now(), text: s }); log(name, 'BAR', s) } })
@@ -295,8 +307,7 @@ async function course () {
   const barsFrom = bot.bars.length
   const told = () => bot.bars.slice(barsFrom).some(b => b.text.includes('没开镜'))
   // Hip fire spreads: short bursts until one lands (the magazine holds 8; a reload halfway).
-  // The look is set again before every burst: mineflayer takes the recoil's relative turn for an
-  // absolute one and would send the rest of the rounds the other way.
+  // The look is set again before every burst, which the recoil has climbed.
   for (let burst = 0; burst < 6 && !told(); burst++) {
     if (burst === 3) { dig(bot, 4); await sleep(4000) }
     await tp(bot, `${close.x} ${close.y} ${close.z}`, a.yaw.toFixed(2), a.pitch.toFixed(2))

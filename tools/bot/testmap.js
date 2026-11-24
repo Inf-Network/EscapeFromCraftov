@@ -40,7 +40,8 @@
 //   offline test mode on, two bots in a raid, each wearing an armory backpack whose cells hold own
 //           items given in the raid. A disconnects and rejoins (the armory backpack comes back as it
 //           was), disconnects again, and the server is stopped with B still online. The raid is void
-//           for both (#67): after the restart each loadout is slot for slot the one it went in with
+//           for both (#67): after the restart each loadout is slot for slot the one it went in with,
+//           both as the deploy recorded it and as the profile had it in the lobby before queueing
 //           (no test item, none of the items packed in the raid), nothing reached the mailbox, and
 //           nothing is dropped when A logs in. The
 //           server is brought back by server.js: a restart loop around start.sh gets 15 s
@@ -671,6 +672,9 @@ const scenarios = {
     const b = await make()
     await waitFor(() => fs.existsSync(profileFile(a)) && fs.existsSync(profileFile(b)), 15000)
     const mailBefore = { a: profile(a).mailbox.length, b: profile(b).mailbox.length }
+    // The lobby loadout as the profile has it before queueing: the void must hand this back, so it
+    // is compared with as well, not only with the deploy's own record of it below.
+    const lobby = { a: profile(a).loadout, b: profile(b).loadout }
     if (!await deploy([a, b])) return [false, { error: 'never reached the raid', worlds: [a.worldName, b.worldName] }]
     // What each went in with, as the deploy recorded it: a raid the server stops in is void (#67).
     await waitFor(() => profile(a).deployment && profile(b).deployment, 15000)
@@ -703,13 +707,14 @@ const scenarios = {
     // A record as the void hands it back: instance ids are given out at deploy and insurance marks never come home.
     const clean = r => { const c = JSON.parse(JSON.stringify(r)); delete c.uid; delete c.insured; delete c.insuredAs; if (c.contents) c.contents = c.contents.map(clean); return c }
     const layout = loadout => JSON.stringify(Object.keys(loadout || {}).sort((x, y) => x - y).map(k => [k, clean(loadout[k])]))
-    const side = (p, mailed, before) => ({
+    const side = (p, mailed, before, inLobby) => ({
       activeRaid: p.activeRaid || null,
       test: Object.values(p.loadout).some(hasTest),
       asWent: !!before && layout(p.loadout) === layout(before),
+      asInLobby: !!inLobby && Object.keys(inLobby).length > 0 && layout(p.loadout) === layout(inLobby),
       mailed: p.mailbox.slice(mailed).map(r => r.id)
     })
-    const result = { cellsA, cellsB, rejoin, a: side(pa, mailBefore.a, went.a), b: side(pb, mailBefore.b, went.b) }
+    const result = { cellsA, cellsB, rejoin, a: side(pa, mailBefore.a, went.a, lobby.a), b: side(pb, mailBefore.b, went.b, lobby.b) }
     // A logs in: its loadout fits, nothing is dropped on the lobby floor.
     a2 = await make(nameA)
     await sleep(3000)
@@ -718,7 +723,7 @@ const scenarios = {
     // Void for both: the loadout slot for slot as it went in, so neither the armory backpack nor the
     // own items packed in it in the raid, and nothing found in the raid reaches the mailbox.
     const ok = rejoin.inRaid && rejoin.packAfter.test && /pack_/.test(rejoin.packAfter.id || '') && rejoin.cells &&
-      ['a', 'b'].every(k => !result[k].activeRaid && !result[k].test && result[k].asWent && result[k].mailed.length === 0) &&
+      ['a', 'b'].every(k => !result[k].activeRaid && !result[k].test && result[k].asWent && result[k].asInLobby && result[k].mailed.length === 0) &&
       result.a.lobby && result.a.dropped === 0
     return [ok, result]
   }

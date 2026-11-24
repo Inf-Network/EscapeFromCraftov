@@ -334,13 +334,15 @@ public final class TutorialService {
      * Every 45 seconds, the step on the action bar, in the lobby and on the range only. In a raid it
      * would cover the short messages that matter there (a kill, an injury, a med used), and the
      * objective line already points at the nearest extract; someone dead and watching a squadmate
-     * is still in the raid's world. The matchmaking queue keeps the action bar for its countdown.
+     * is still in the raid's world. The matchmaking queue keeps the action bar for its countdown, and
+     * so does a match found whose map is still being prepared (its "正在部署" line, RaidManager#start):
+     * the player stands in the lobby then, but is already on the way out.
      */
     private void remind() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Profile profile = plugin.profiles().get(player);
             if (!guided(profile) || plugin.raids().raidOf(player) != null || plugin.raids().raidIn(player.getWorld()) != null
-                    || plugin.match().queued(player.getUniqueId()) != null
+                    || plugin.match().queued(player.getUniqueId()) != null || plugin.raids().launching(player.getUniqueId())
                     || !plugin.lobby().isLobby(player.getWorld()) && !plugin.range().isIn(player)) {
                 continue;
             }

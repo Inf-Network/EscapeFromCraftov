@@ -51,7 +51,7 @@
 //            client is shown the drop to 1 all the same. Both times nothing brings B's client to 1
 //            before the health update that shows it: B's own entity data (index 9) carries the
 //            health too and sets it without a tilt, so had it come first the update would be no drop.
-//   meds    every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
+//   meds     every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
 //            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
 //            pose (animation none; an items.yml from before cues said bundle). C, given a light
@@ -769,13 +769,13 @@ async function knockdown (A, B, C) {
       log(`  B's own health in the order its client got it (u: health update, m: entity data): ${B.own.slice(ownFrom).map((e, i) => own(ownFrom + i)).join(' ')}`)
       check(`knockdown (from ${from}): nothing brought B's client to 1 before the health update that shows 1 (its entity data did not get there first)`,
         held !== null && held.hp > 1.05, held && { held: own(shows - 1), then: own(shows) })
-      // Up again with the injector (its use takes 4 s).
+      // Up again with the injector: held until B is up (its use takes 4 s).
       B.setQuickBarSlot(key)
       await sleep(400)
       B.activateItem()
-      await sleep(4600)
+      const up = await waitFor(() => B.titles.some(t => t.includes('已被救起')), 8000)
       B.deactivateItem()
-      if (!await waitFor(() => B.titles.some(t => t.includes('已被救起')), 3000) || !inRaid(B)) {
+      if (!up || !inRaid(B)) {
         log('SETUP: B did not stand up with the injector', { titles: B.titles, mode: B.game.gameMode })
         return 2
       }

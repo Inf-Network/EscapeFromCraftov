@@ -902,7 +902,10 @@ public final class Nms {
      * client was left with, so a loss the server does not see (knocked down to 1 from a health a
      * bleed already took below it) still shows. Needed in a tick that may also bleed, too: the bleed
      * and this loss then reach the client in one health update, which a bleed's quiet mark alone
-     * would keep from it.
+     * would keep from it. The update only tilts the view if it reaches the client before the
+     * player's own entity data, which carries the health too and sets it without a tilt; for a
+     * change made before the world tick the tick's update comes after it, so a caller that needs the
+     * tilt sends the update itself at once (see HealthService.setHealthKnockedDown).
      */
     public static void loudHealthLoss(SelfView view) {
         mark(view, view.loudLoss);
@@ -1124,8 +1127,10 @@ public final class Nms {
          * one it was left with. A loss marked loud is the exception: its update shows the true health
          * whatever the client believes, so a knock-down that the server sees as no loss at all (a
          * bleed had already taken the health below the 1 it sets, or onto it) is a drop from the
-         * higher health the client was left with before the bleed. Food and saturation always pass
-         * as they are: they decide whether the client lets the player sprint.
+         * higher health the client was left with before the bleed, provided it reaches the client
+         * before the player's own entity data brings it to that health (which is why a knock-down
+         * sends its update at once: HealthService.setHealthKnockedDown). Food and saturation always
+         * pass as they are: they decide whether the client lets the player sprint.
          * <p>
          * The first update after a quiet or loud loss carries it, whatever else came in the same tick
          * (a hit, a heal, death), so that update takes the mark even when it changes nothing. A quiet

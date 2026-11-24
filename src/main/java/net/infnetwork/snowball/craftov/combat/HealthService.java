@@ -431,8 +431,19 @@ public final class HealthService implements Listener {
      * usually still believes the health from before the bleed, while a bleed that ran down to the
      * knock-down left the server's at or below the one set here (a light bleed always does): no
      * drop for the server, and so none for the client without the loud mark, which shows the true
-     * health. The update that carries the mark is sent at once, even when the health did not
-     * change and the tick would send none, so the mark never waits for a later update to take it.
+     * health.
+     * <p>
+     * The health update that carries the mark is sent at once, and that is what makes every
+     * knock-down tilt the view, not only one that leaves the health as it was. The player's own
+     * entity data carries the (scaled) health too: CraftPlayer.updateScaledHealth sets it, and the
+     * entity tracker sends it to the player as well as to those tracking them. On the client it sets
+     * the health without a tilt. The tracker runs in the world tick, before the connection tick sends
+     * the health update, so a change made earlier in the tick (a bleed from the scheduler, a hit
+     * from a packet) reaches the client as entity data first, and the tick's update then finds the
+     * client already at the new health: no drop, no tilt. Sent here, the update goes out ahead of
+     * the entity data. It also covers a health that did not change (a bleed that landed on 1), for
+     * which the tick sends no update at all, and it takes the mark at once, so the mark never waits
+     * for a later update.
      */
     public void setHealthKnockedDown(Player player, double health) {
         Nms.SelfView view = plugin.fov().selfView(player);
@@ -440,6 +451,8 @@ public final class HealthService implements Listener {
             Nms.loudHealthLoss(view);
         }
         player.setHealth(health);
+        // Now, not left to the tick: the tick's update would come after the entity data that already
+        // took the client to this health, changed or not (see above).
         player.sendHealthUpdate();
     }
 

@@ -36,14 +36,17 @@
 // carry and sway (read from the log), the defaults (weapons.handling, weapons.ads.timeout-ticks 5).
 // Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 //
-// Without a handling key in items.yml (a server that kept an older copy) the bot only reports what it
-// measured. The real client's timing, from the press to a settled zoom, is tools/shots/shots.py run
-// adstime. Exit code: number of failed checks (2+ also when a scenario could not be set up).
+// A gun without a handling key in items.yml (a server that kept an older copy) is checked against the
+// jar's own (plugins/Craftov.jar's items.yml), which is what the server falls back to; a gun with a
+// handling in neither fails. The real client's timing, from the press to a settled zoom, is
+// tools/shots/shots.py run adstime. Exit code: number of failed checks (2+ also when a scenario could
+// not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
 const fs = require('fs')
 const path = require('path')
+const { spawnSync } = require('child_process')
 const env = require('./env')
 
 const PORT = env.PORT
@@ -73,9 +76,8 @@ bot._client.on('login', trackWorld)
 bot._client.on('respawn', trackWorld)
 
 // ---------------------------------------------------------------- what handling gives (items.yml, config.yml)
-/** The handling of every gun in the server's items.yml, the stats of each part, and weapons.handling. */
-function readHandling () {
-  const items = fs.readFileSync(path.join(SERVER_DIR, 'plugins/Craftov/items.yml'), 'utf8')
+/** The handling of every gun in an items.yml text (null for a gun without one) and of each part that has one. */
+function handlingIn (items) {
   const guns = {}
   for (const m of items.matchAll(/^ {2}([a-z0-9_]+):\n((?: {4}.*\n)+)/gm)) {
     const h = m[2].match(/\bhandling:\s*(-?[\d.]+)/)
@@ -83,6 +85,30 @@ function readHandling () {
   }
   const parts = {}
   for (const m of items.matchAll(/^ {2}((?:optic|att)_[a-z0-9]+):.*\bhandling:\s*(-?[\d.]+)/gm)) parts[m[1]] = Number(m[2])
+  return { guns, parts }
+}
+
+/**
+ * The handling of every gun and part, and weapons.handling. A gun or part the server's items.yml
+ * gives no handling (a copy kept from before #117) has the jar's own, as ItemRegistry falls back to
+ * the bundled items.yml: those are read from SERVER_DIR/plugins/Craftov.jar, so a stale items.yml is
+ * checked against what the server really uses instead of passing unchecked. Throws when a gun has a
+ * handling in neither.
+ */
+function readHandling () {
+  const { guns, parts } = handlingIn(fs.readFileSync(path.join(SERVER_DIR, 'plugins/Craftov/items.yml'), 'utf8'))
+  const missing = Object.keys(guns).filter(g => guns[g] == null)
+  if (missing.length) {
+    const jar = path.join(SERVER_DIR, 'plugins/Craftov.jar')
+    const unzip = spawnSync('unzip', ['-p', jar, 'items.yml'], { encoding: 'utf8', maxBuffer: 1 << 26 })
+    if (unzip.status !== 0 || !unzip.stdout) throw new Error(`items.yml gives no handling for ${missing.join(', ')}, and ${jar}'s items.yml could not be read (${(unzip.stderr || unzip.error || '').toString().trim()})`)
+    const bundled = handlingIn(unzip.stdout)
+    for (const g of missing) guns[g] = bundled.guns[g] == null ? null : bundled.guns[g]
+    for (const [part, h] of Object.entries(bundled.parts)) if (!(part in parts)) parts[part] = h
+    log(`the server's items.yml gives no handling for ${missing.join(', ')}: checked against the jar's (${missing.map(g => `${g} ${guns[g]}`).join(', ')})`)
+    const none = missing.filter(g => guns[g] == null)
+    if (none.length) throw new Error(`no handling for ${none.join(', ')} in items.yml or in the jar`)
+  }
   // weapons.handling.<stat>.slow / quick in the server's config.yml, else the jar's defaults.
   const config = fs.readFileSync(path.join(SERVER_DIR, 'plugins/Craftov/config.yml'), 'utf8')
   const section = config.match(/^ {2}handling:\n((?: {4,}.*\n|\s*#.*\n)+)/m)
@@ -283,7 +309,7 @@ async function ads () {
   }
   table(rows, ['label', 'handling', 'confirm', 'upTicks', 'want', 'totalMs'])
   if (rows.some(r => r.handling == null)) {
-    log('no handling in items.yml: measured only')
+    check('every gun measured has a handling (items.yml or the jar)', false, rows.filter(r => r.handling == null).map(r => r.label).join(', '))
     return
   }
   for (const r of rows) {
@@ -338,7 +364,7 @@ async function draw () {
   }
   table(rows, ['label', 'handling', 'drawTicks', 'want'])
   if (rows.some(r => r.handling == null)) {
-    log('no handling in items.yml: measured only')
+    check('every gun measured has a handling (items.yml or the jar)', false, rows.filter(r => r.handling == null).map(r => r.label).join(', '))
     return
   }
   for (const r of rows) check(`draw: ${r.label} (handling ${r.handling}) comes up in ${r.want} ticks`, Math.abs(r.drawTicks - r.want) <= 1, `${r.drawTicks} ticks`)
@@ -396,7 +422,7 @@ async function sprint () {
   }
   table(rows, ['label', 'handling', 'stopMs', 'outTicks', 'want', 'totalMs'])
   if (rows.some(r => r.handling == null)) {
-    log('no handling in items.yml: measured only')
+    check('every gun measured has a handling (items.yml or the jar)', false, rows.filter(r => r.handling == null).map(r => r.label).join(', '))
     return
   }
   // Measured from the stop the bot sent to the aiming mark: the server hears the stop between ticks,
@@ -523,7 +549,12 @@ const RUN = { ads, draw, sprint, carry, sway }
 bot.once('spawn', async () => {
   await sleep(3000)
   try {
-    H = readHandling()
+    try {
+      H = readHandling()
+    } catch (e) {
+      check('the guns\' handling is known (items.yml, or the jar for what it leaves out)', false, e.message)
+      return
+    }
     for (const scenario of scenarios) {
       log('=== ' + scenario)
       try {

@@ -719,12 +719,15 @@ public final class Nms {
         volatile Object @Nullable [] crafting;
         /**
          * When the server last took health off this player without a hit (see {@link #quietHealthLoss}),
-         * in {@link System#nanoTime}, or {@link #NO_QUIET_LOSS}. Taken by the first health update that
-         * hides a loss.
+         * in {@link System#nanoTime}, or {@link #NO_QUIET_LOSS}. Set on the connection's event loop, so
+         * it falls between the packets sent before the loss and those sent after, and taken by the
+         * first health update after it, which is the one that carries the loss.
          */
         final java.util.concurrent.atomic.AtomicLong quietLoss = new java.util.concurrent.atomic.AtomicLong(NO_QUIET_LOSS);
+        /** The event loop of the connection {@link SelfHandler} rewrites, once it is installed. */
+        volatile java.util.concurrent.@Nullable Executor loop;
 
-        /** Whether a loss marked quiet is still waiting for its health update, and takes the mark if so. */
+        /** Whether a loss marked quiet is waiting for this health update; takes the mark either way. */
         boolean takeQuietLoss() {
             long at = quietLoss.getAndSet(NO_QUIET_LOSS);
             return at != NO_QUIET_LOSS && System.nanoTime() - at < QUIET_LOSS_NANOS;
@@ -787,7 +790,8 @@ public final class Nms {
     private static final long NO_QUIET_LOSS = Long.MIN_VALUE;
     /**
      * How long a quiet loss waits for the health update that carries it. That update goes out within
-     * the tick; the margin covers a slow one, and the mark never hides an unrelated loss much later.
+     * the tick and takes the mark whatever it shows; the bound is for a loss no update carries (a heal
+     * in the same tick that makes up for it exactly), whose mark must not hide a later, unrelated loss.
      */
     private static final long QUIET_LOSS_NANOS = 1_000_000_000L;
     private static boolean healthReady;
@@ -868,8 +872,17 @@ public final class Nms {
      * reads the server's), and the next hit or death sets it right again (see {@link SelfHandler}).
      */
     public static void quietHealthLoss(SelfView view) {
-        if (selfReady && healthReady) {
-            view.quietLoss.set(System.nanoTime());
+        java.util.concurrent.Executor loop = view.loop;
+        if (!selfReady || !healthReady || loop == null) {
+            return;
+        }
+        long at = System.nanoTime();
+        try {
+            // Marked in line with the packets: an update sent before the loss (a hit's, the tick
+            // before) can still be on its way, and must not take the mark the loss's own update needs.
+            loop.execute(() -> view.quietLoss.set(at));
+        } catch (RuntimeException ignored) {
+            // the connection is closing: there is no client left to keep the loss from
         }
     }
 
@@ -887,6 +900,7 @@ public final class Nms {
             Channel channel = channel(player);
             if (channel != null) {
                 install(channel, SELF_HANDLER, SelfHandler.class, new SelfHandler(player, view));
+                view.loop = channel.eventLoop();
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // no zoom for this player
@@ -1069,12 +1083,17 @@ public final class Nms {
          * show it a drop either, even when a heal leaves the health below the one it was left with.
          * Food and saturation always pass as they are: they decide whether the client lets the player
          * sprint.
+         * <p>
+         * The first update after a quiet loss carries it, whatever else came in the same tick (a hit,
+         * a heal, death), so that update takes the mark even when it hides nothing. A mark left for a
+         * later update would hide the next drop that is not quiet, being knocked down, say.
          */
         private Object withHealth(Object packet) throws ReflectiveOperationException {
             float health = (float) healthValue.invoke(packet);
             float sent = sentHealth;
             float shown = shownHealth;
             boolean hit = hurt;
+            boolean quiet = view.takeQuietLoss();
             sentHealth = health;
             hurt = false;
             if (Float.isNaN(sent) || health <= 0) {
@@ -1083,7 +1102,7 @@ public final class Nms {
             }
             float show;
             if (health < sent) {
-                show = !hit && view.takeQuietLoss() ? shown : health;
+                show = quiet && !hit ? shown : health;
             } else {
                 show = Math.max(health, shown);
             }

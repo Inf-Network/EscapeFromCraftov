@@ -721,7 +721,10 @@ public final class Nms {
          * When the server last took health off this player without a hit (see {@link #quietHealthLoss}),
          * in {@link System#nanoTime}, or {@link #NO_QUIET_LOSS}. Set on the connection's event loop, so
          * it falls between the packets sent before the loss and those sent after, and taken by the
-         * first health update after it, which is the one that carries the loss.
+         * first health update after it, which is the one that carries the loss. One exception: with
+         * Paper's anti-xray on, a chunk it has not finished holds every later packet in Paper's own
+         * queue, so an update from before the loss can come after the mark and take it (the bleed
+         * then tilts the view once). Anti-xray is off on Craftov's servers and by default.
          */
         final java.util.concurrent.atomic.AtomicLong quietLoss = new java.util.concurrent.atomic.AtomicLong(NO_QUIET_LOSS);
         /** The event loop of the connection {@link SelfHandler} rewrites, once it is installed. */

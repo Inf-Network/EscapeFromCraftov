@@ -719,21 +719,36 @@ public final class Nms {
         volatile Object @Nullable [] crafting;
         /**
          * When the server last took health off this player without a hit (see {@link #quietHealthLoss}),
-         * in {@link System#nanoTime}, or {@link #NO_QUIET_LOSS}. Set on the connection's event loop, so
+         * in {@link System#nanoTime}, or {@link #NO_MARK}. Set on the connection's event loop, so
          * it falls between the packets sent before the loss and those sent after, and taken by the
          * first health update after it, which is the one that carries the loss. One exception: with
          * Paper's anti-xray on, a chunk it has not finished holds every later packet in Paper's own
          * queue, so an update from before the loss can come after the mark and take it (the bleed
          * then tilts the view once). Anti-xray is off on Craftov's servers and by default.
          */
-        final java.util.concurrent.atomic.AtomicLong quietLoss = new java.util.concurrent.atomic.AtomicLong(NO_QUIET_LOSS);
+        final java.util.concurrent.atomic.AtomicLong quietLoss = new java.util.concurrent.atomic.AtomicLong(NO_MARK);
+        /**
+         * When the server last took health off this player without a hit, for a reason their client
+         * is to show all the same (see {@link #loudHealthLoss}), or {@link #NO_MARK}: set and taken as
+         * {@link #quietLoss} is.
+         */
+        final java.util.concurrent.atomic.AtomicLong loudLoss = new java.util.concurrent.atomic.AtomicLong(NO_MARK);
         /** The event loop of the connection {@link SelfHandler} rewrites, once it is installed. */
         volatile java.util.concurrent.@Nullable Executor loop;
 
         /** Whether a loss marked quiet is waiting for this health update; takes the mark either way. */
         boolean takeQuietLoss() {
-            long at = quietLoss.getAndSet(NO_QUIET_LOSS);
-            return at != NO_QUIET_LOSS && System.nanoTime() - at < QUIET_LOSS_NANOS;
+            return take(quietLoss);
+        }
+
+        /** Whether a loss marked loud is waiting for this health update; takes the mark either way. */
+        boolean takeLoudLoss() {
+            return take(loudLoss);
+        }
+
+        private static boolean take(java.util.concurrent.atomic.AtomicLong mark) {
+            long at = mark.getAndSet(NO_MARK);
+            return at != NO_MARK && System.nanoTime() - at < MARK_NANOS;
         }
 
         /**
@@ -790,13 +805,14 @@ public final class Nms {
     private static @Nullable Constructor<?> setContentCtor;
     /** The helmet slot of the player's own inventory menu (container 0). */
     private static final int HEAD_SLOT = 5;
-    private static final long NO_QUIET_LOSS = Long.MIN_VALUE;
+    private static final long NO_MARK = Long.MIN_VALUE;
     /**
-     * How long a quiet loss waits for the health update that carries it. That update goes out within
-     * the tick and takes the mark whatever it shows; the bound is for a loss no update carries (a heal
-     * in the same tick that makes up for it exactly), whose mark must not hide a later, unrelated loss.
+     * How long a quiet or loud loss waits for the health update that carries it. That update goes out
+     * within the tick and takes the mark whatever it shows; the bound is for a loss no update carries
+     * (a heal in the same tick that makes up for it exactly), whose mark must not decide about a
+     * later, unrelated loss: hide a drop that is not bleeding, or show one that is.
      */
-    private static final long QUIET_LOSS_NANOS = 1_000_000_000L;
+    private static final long MARK_NANOS = 1_000_000_000L;
     private static boolean healthReady;
     private static @Nullable Class<?> healthPacketClass;
     private static @Nullable Method healthValue;
@@ -872,9 +888,24 @@ public final class Nms {
      * tilts the camera (and, in third person, flashes the player's own model red) just as a hit does.
      * Call it right before taking the health off. The client is then left believing the health it
      * had: nothing shows the client's own health (the resource pack hides vanilla's hearts; the HUD
-     * reads the server's), and the next hit or death sets it right again (see {@link SelfHandler}).
+     * reads the server's), and the next hit, loud loss ({@link #loudHealthLoss}) or death sets it right
+     * again (see {@link SelfHandler}).
      */
     public static void quietHealthLoss(SelfView view) {
+        mark(view, view.quietLoss);
+    }
+
+    /**
+     * The health this player is about to lose comes without a hit, but their own client is to show
+     * it as one (the view tilts): knocked down, a tripwire. Call it right before taking the health
+     * off. Only needed in a tick that may also bleed: the bleed and this loss then reach the client
+     * in one health update, which a bleed's quiet mark alone would keep from it.
+     */
+    public static void loudHealthLoss(SelfView view) {
+        mark(view, view.loudLoss);
+    }
+
+    private static void mark(SelfView view, java.util.concurrent.atomic.AtomicLong mark) {
         java.util.concurrent.Executor loop = view.loop;
         if (!selfReady || !healthReady || loop == null) {
             return;
@@ -883,9 +914,9 @@ public final class Nms {
         try {
             // Marked in line with the packets: an update sent before the loss (a hit's, the tick
             // before) can still be on its way, and must not take the mark the loss's own update needs.
-            loop.execute(() -> view.quietLoss.set(at));
+            loop.execute(() -> mark.set(at));
         } catch (RuntimeException ignored) {
-            // the connection is closing: there is no client left to keep the loss from
+            // the connection is closing: there is no client left to show the loss or keep it from
         }
     }
 
@@ -1018,7 +1049,8 @@ public final class Nms {
      * change the speed, and a gamemode change or respawn resends abilities), and while a screen
      * overlay is up every update of their head slot carries it (a headshot that damages the helmet, a
      * helmet swap or an inventory resync would otherwise take a scope picture away until the next aim).
-     * A loss of health marked quiet ({@link #quietHealthLoss}) is kept from their health updates.
+     * A loss of health marked quiet ({@link #quietHealthLoss}) is kept from their health updates,
+     * unless one marked loud ({@link #loudHealthLoss}) came with it.
      */
     private static final class SelfHandler extends ChannelDuplexHandler {
         private final Player player;
@@ -1081,15 +1113,18 @@ public final class Nms {
         /**
          * The health update as the player's own client is to get it. A loss marked quiet is left out,
          * unless a hit reached the client since the last update (the hit tilts the view anyway, and the
-         * client then learns the true health). The client keeps the health it believes until the
-         * server's is higher again, or a loss that is not quiet, a hit or death comes: so gains never
-         * show it a drop either, even when a heal leaves the health below the one it was left with.
-         * Food and saturation always pass as they are: they decide whether the client lets the player
-         * sprint.
+         * client then learns the true health) or a loss marked loud came in the same update (being
+         * knocked down in the tick the player bleeds: the drop is to show, and a hit's damage event
+         * does not say so, since the lethal hit was cancelled). The client keeps the health it
+         * believes until the server's is higher again, or a loss that is not quiet, a hit or death
+         * comes: so gains never show it a drop either, even when a heal leaves the health below the
+         * one it was left with. Food and saturation always pass as they are: they decide whether the
+         * client lets the player sprint.
          * <p>
-         * The first update after a quiet loss carries it, whatever else came in the same tick (a hit,
-         * a heal, death), so that update takes the mark even when it hides nothing. A mark left for a
-         * later update would hide the next drop that is not quiet, being knocked down, say.
+         * The first update after a quiet or loud loss carries it, whatever else came in the same tick
+         * (a hit, a heal, death), so that update takes the mark even when it changes nothing. A quiet
+         * mark left for a later update would hide the next drop that is not quiet, being knocked down,
+         * say; a loud one would show the next bleed.
          */
         private Object withHealth(Object packet) throws ReflectiveOperationException {
             float health = (float) healthValue.invoke(packet);
@@ -1097,6 +1132,7 @@ public final class Nms {
             float shown = shownHealth;
             boolean hit = hurt;
             boolean quiet = view.takeQuietLoss();
+            boolean loud = view.takeLoudLoss();
             sentHealth = health;
             hurt = false;
             if (Float.isNaN(sent) || health <= 0) {
@@ -1105,7 +1141,7 @@ public final class Nms {
             }
             float show;
             if (health < sent) {
-                show = quiet && !hit ? shown : health;
+                show = quiet && !hit && !loud ? shown : health;
             } else {
                 show = Math.max(health, shown);
             }

@@ -3,6 +3,7 @@ package net.infnetwork.snowball.craftov.combat;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Consumable;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
+import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.ItemDef;
@@ -404,6 +405,23 @@ public final class HealthService implements Listener {
             return;
         }
         player.setHealth(Math.min(MAX_HP, player.getHealth() + amount));
+    }
+
+    /**
+     * Sets the player's health without a hit, where a drop is to show on their own client as one
+     * does (the view tilts): knocked down, a tripwire, the test armory's injury. A bleed in the same
+     * tick reaches the client in the same health update, and bleeding is kept from the client
+     * (RaidManager.loseHealth), so the drop is marked to show (Nms.loudHealthLoss). Only a drop is
+     * marked: a mark no update carries could show the next bleed instead.
+     */
+    public void setHealthShown(Player player, double health) {
+        if (health < player.getHealth()) {
+            Nms.SelfView view = plugin.fov().selfView(player);
+            if (view != null) {
+                Nms.loudHealthLoss(view);
+            }
+        }
+        player.setHealth(health);
     }
 
     /** In a raid, an untreated broken leg, no stamina or an overloaded pack leave no sprint in the player. */

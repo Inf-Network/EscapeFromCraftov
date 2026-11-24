@@ -551,11 +551,15 @@ async function raiderActs (world) {
     await sleep(500)
   } else check('raider opens the secure container mid-raid', false)
 
-  // A soldier posted a few metres off, knifed from behind (it only sees what is ahead of it, and a
-  // patrol backs off to fight at range): both contracts done, a level-up from their experience.
+  // A soldier posted a few metres off, knifed from behind (it only sees what is ahead of it): both
+  // contracts done, a level-up from their experience. It is left one point of health, so the first cut
+  // kills it: at full health it took several, and from the first one on it turned and fired back at a
+  // metre. It hit the raider in every run, and in two of four under load killed it, on the spot (the
+  // raider then sat in the kill replay instead of knifing) or with a bleed a few seconds on (#144).
   const soldierNear = () => r.nearestEntity(en => ['zombie', 'husk', 'drowned'].includes(en.name) && en.position.distanceTo(r.entity.position) < 4)
   let at = await position(name)
   log('soldier', await rcon(`cv ai spawn patrol ${(at[0] + 3).toFixed(1)} ${at[1].toFixed(1)} ${at[2].toFixed(1)} ${world}`))
+  log('soldier', await rcon(`execute as ${name} at @s run data merge entity @e[type=minecraft:zombie,sort=nearest,limit=1,distance=..8] {Health:1f}`))
   await sleep(800)
   r.setQuickBarSlot(2) // the melee slot
   await sleep(300)

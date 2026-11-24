@@ -7,7 +7,8 @@
 //           count, aimed hits do (1/3 .. 3/3); a reload; the tripwire breaks a leg and opens a
 //           bleed, and bandage and splint open the next gate; a lever countdown that runs out
 //           with the bot outside the extract sends it back to the lever ("再拉一次电闸"), and the
-//           lever again and 10 s in the extract end it. Back in the lobby: the black curtain, then the training settlement screen;
+//           lever again and 10 s in the extract end it; all three targets still stand by then
+//           (#151). Back in the lobby: the black curtain, then the training settlement screen;
 //           the inventory is exactly what it was, chat has the one summary line, and the saved
 //           profile has the same loadout, no raid in its stats, the guide's deploy and extract
 //           steps, no reward yet (the range and the gunsmith are still open) and no letter.
@@ -16,7 +17,9 @@
 //           refused until the cooldown (training.cooldown-seconds) is over.
 //   solo    (Ts####) a bot waits in the yard, more than 50 blocks from the course's spawn, until
 //           a rival operator squad would have landed there (ai.operator-delay-seconds, 60 by
-//           default, plus 15 s): /cv ai lists no soldier in its raid.
+//           default, plus 15 s): /cv ai lists no soldier in its raid, and the three targets, all
+//           more than 32 blocks away the whole time, still stand (#151: the server used to
+//           despawn them).
 //
 //   PORT=25565 RCON_PORT=25575 node training.js [course] [quit] [solo]     env: RCON_PASSWORD, SERVER_DIR
 //
@@ -104,6 +107,12 @@ async function savedAfter (name, since) {
   return out
 }
 
+/**
+ * How many targets stand on the bot's course: the zombies in its raid world (the course has no
+ * soldiers). The distance keeps @e to that world: without one it counts every world's zombies.
+ */
+const targetsUp = async bot => Number(((await rcon(`execute in ${bot.worldName} positioned 30 ${G} 0 if entity @e[type=minecraft:zombie,distance=..200]`))
+  .match(/Count: (\d+)/) || [, 0])[1])
 const hud = async name => rcon(`cv hud ${name}`)
 const objectiveOf = async name => ((await hud(name)).match(/objective=([^|]*)/) || [, ''])[1].trim()
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : (item ? item.name : null) }
@@ -117,7 +126,10 @@ function carried (bot) {
 function join (prefix, name) {
   name = name || prefix + tag
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
-  Object.assign(bot, { chatLines: [], bars: [], titles: [], screens: [], worldChanges: 0, seq: 1 })
+  Object.assign(bot, { chatLines: [], bars: [], titles: [], screens: [], worldChanges: 0, seq: 1, worldName: '' })
+  const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
+  bot._client.on('login', track)
+  bot._client.on('respawn', track)
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLines.push(m); log(name, 'CHAT', m) } })
   bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) { bot.bars.push({ at: Date.now(), text: s }); log(name, 'BAR', s) } })
@@ -347,6 +359,10 @@ async function course () {
   await sleep(800)
   o = await objectiveOf(name)
   check('pulled again, the objective is the extract again', o.includes('撤离'), o)
+  // The bot has been more than 32 blocks from every target since it left the range, about 25 s:
+  // before #151 the server had despawned at least one of them in about half the runs by now.
+  const standing = await targetsUp(bot)
+  check('all three targets still stand at the end of the course', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const worlds = bot.worldChanges
   const titlesFrom = bot.titles.length
   const screensFrom = bot.screens.length
@@ -422,6 +438,9 @@ async function solo () {
   const listing = await rcon('cv ai')
   const count = (listing.match(/敌兵 (\d+)/) || [, '?'])[1]
   check('no soldier or rival operator ever comes to the course', count === '0', listing)
+  // All three targets have been more than 32 blocks from the bot since it landed (#151).
+  const standing = await targetsUp(bot)
+  check('the targets still stand after the wait', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const raids = await rcon('cv raids')
   check('the bot is still on the course', /训练场 训练 RUNNING.*玩家 1/.test(raids), raids)
   bot.quit()

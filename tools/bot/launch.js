@@ -412,9 +412,11 @@ const scenarios = {
       const bot = await make()
       await sleep(2500)
       // Whether the guide's reminder could cover the status line at all depends on when it falls,
-      // so the bot takes the beat from one reminder and has the next one fall into the wait.
+      // so the bot takes the beat from one reminder and has the next one fall into the wait. Only
+      // reminders after the join's own hints count: a hint holding the bar delays the first one.
+      const settled = Date.now()
       const reminder = (from, to = Infinity) => bot.bars.filter(b => b.at >= from && b.at <= to && GUIDE.test(b.text))
-      const seen = await waitFor(() => reminder(0).length, REMIND_MS + 5000) ? reminder(0)[0].at : 0
+      const seen = await waitFor(() => reminder(settled).length, REMIND_MS + 5000) ? reminder(settled)[0].at : 0
       if (seen) await sleep(Math.max(0, seen + REMIND_MS - QUEUE_MS - 1500 - Date.now()))
       const mark = logMark()
       const at = await queueAndMatch(bot)

@@ -28,11 +28,15 @@
 // called off with a message, no raid is made when the copy finishes, and the bot can queue again.
 // status: with STATUS_PAD (20) times the padding (a copy of several seconds), the bot's action bar says
 // "正在部署 试验场 · 地图准备中" and counts up while it waits; /cv raids counts that copy (1), still
-// after the bot has left, and 0 once it is done.
+// after the bot has left, and 0 once it is done. The bot is a new player, so the guide reminds it of
+// its next step every 45 s in the lobby (TutorialService#remind): it waits for one reminder and
+// queues so that the next is due about 1.5 s after "match found", and no guide line ("新手指引 n/6")
+// may take the action bar from the status line while it waits for the map (#142).
 // Each scenario prints PASS or FAIL; the exit code is the number of failures.
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
-// the proving ground, a test map), match.wait-seconds 3.
+// the proving ground, a test map), match.wait-seconds 3, tutorial.enabled true (the default; status
+// needs the guide's reminder).
 // Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
@@ -50,6 +54,11 @@ const PAD_DIR = path.join(SERVER_DIR, 'craftov_tpl_proving', 'pad')
 const PAD_FILES = Number(process.env.PAD_FILES || 20000)
 const LAUNCHES = Number(process.env.LAUNCHES || 4)
 const STATUS_PAD = Number(process.env.STATUS_PAD || 20)
+/** The guide's reminder period (TutorialService: every 45 s) and how long a solo queue takes to match (match.wait-seconds 3, checked every second). */
+const REMIND_MS = 45000
+const QUEUE_MS = 3500
+/** The guide's reminder on the action bar (TutorialService#line). */
+const GUIDE = /新手指引 \d+\/\d+/
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const strip = s => s.replace(/§x(§[0-9a-f]){6}/gi, '').replace(/§./g, '')
@@ -402,12 +411,24 @@ const scenarios = {
       padMore(STATUS_PAD)
       const bot = await make()
       await sleep(2500)
+      // Whether the guide's reminder could cover the status line at all depends on when it falls,
+      // so the bot takes the beat from one reminder and has the next one fall into the wait.
+      const reminder = (from, to = Infinity) => bot.bars.filter(b => b.at >= from && b.at <= to && GUIDE.test(b.text))
+      const seen = await waitFor(() => reminder(0).length, REMIND_MS + 5000) ? reminder(0)[0].at : 0
+      if (seen) await sleep(Math.max(0, seen + REMIND_MS - QUEUE_MS - 1500 - Date.now()))
       const mark = logMark()
       const at = await queueAndMatch(bot)
       if (!at) return ['FAIL', 'no match-found title']
       await sleep(3600)
+      const watched = Date.now()
       const copyDone = () => timings(logSince(mark)).some(l => /Copied template/.test(l))
       const problems = []
+      // When the reminder after `seen` was due, in ms after "match found".
+      const due = seen ? seen + Math.ceil((at - seen) / REMIND_MS) * REMIND_MS - at : NaN
+      const covered = reminder(at, watched)
+      if (!seen) problems.push(`no guide reminder in ${(REMIND_MS + 5000) / 1000} s in the lobby (is tutorial.enabled off?)`)
+      else if (!(due >= 0 && due <= watched - at - 500)) problems.push(`the guide's reminder was due ${due} ms after "match found", outside the wait watched: the check proves nothing`)
+      if (covered.length) problems.push(`the guide covered the status line: ${covered.map(b => `+${((b.at - at) / 1000).toFixed(1)} s ${b.text}`).join(' | ')}`)
       const bars = bot.bars.filter(b => b.at >= at - 500 && b.text.includes('地图准备中'))
       const waits = bars.map(b => (b.text.match(/(\d+):(\d+)\s*$/) || []).slice(1).reduce((m, s) => m * 60 + Number(s), 0))
       const waiting = await copies()
@@ -429,7 +450,7 @@ const scenarios = {
       if (done !== 0) problems.push(`/cv raids: ${done} copies once it was done`)
       if ((await raids()).length) problems.push(`raids left: ${JSON.stringify(await raids())}`)
       const copy = timings(logSince(mark)).find(l => /Copied template/.test(l))
-      return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || `status line counted ${waits.join(', ')} s; copies 1 waiting, ${left} after leaving, 0 done`}`
+      return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || `status line counted ${waits.join(', ')} s, no guide line though a reminder was due ${(due / 1000).toFixed(1)} s in; copies 1 waiting, ${left} after leaving, 0 done`}`
         + ` | ${copy ? copy.replace(/^.*\[Craftov\] /, '') : ''}`]
     })
   }

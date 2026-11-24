@@ -205,6 +205,22 @@ function make (role) {
   bot.chatLog = []
   bot.on('messagestr', m => { if (m.trim() && !m.includes('━')) { bot.chatLog.push(m); log(role, 'CHAT', m) } })
   bot._client.on('action_bar', p => { const s = flatText(p.text); if (s.trim()) { bot.chatLog.push(s); log(role, 'BAR', s) } })
+  // Titles with their subtitle (sent just before): the death screen's names the killer and the weapon,
+  // the kill replay's whose eyes it shows.
+  let subtitle = ''
+  bot._client.on('set_title_subtitle', p => { subtitle = flatText(p.text) })
+  bot._client.on('set_title_text', p => {
+    const s = flatText(p.text)
+    if (s.trim()) log(role, 'TITLE', s + (subtitle.trim() ? ' · ' + subtitle : ''))
+    subtitle = ''
+  })
+  // Every hit the bot takes, with what dealt it: a soldier's names no entity, only where it came from.
+  bot._client.on('damage_event', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    const by = bot.entities[p.sourceCauseId - 1]
+    const at = p.sourcePosition ? ` from ${['x', 'y', 'z'].map(k => p.sourcePosition[k].toFixed(1)).join(' ')}` : ''
+    log(role, 'HIT', `type ${p.sourceTypeId} by ${by ? (by.username || by.name) + ' ' + by.position.toString() : p.sourceCauseId ? '#' + (p.sourceCauseId - 1) : 'nobody'}${at}, health ${bot.health}`)
+  })
   bot.on('kicked', r => log(role, 'KICKED', JSON.stringify(r).slice(0, 200)))
   bot.on('error', e => log(role, 'ERROR', e.message))
   bots[role] = bot

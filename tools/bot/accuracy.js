@@ -188,6 +188,19 @@ function shotLines (from) {
   }
   return out
 }
+/**
+ * Our shots logged since `from`, once there are `count` of them or `ms` have passed: the server logs a
+ * shot when it fires it, which on a busy server can be a while after the bot pulled the trigger.
+ */
+async function loggedShots (from, count, ms = 5000) {
+  const end = Date.now() + ms
+  let lines = shotLines(from)
+  while (lines.length < count && Date.now() < end) {
+    await sleep(50)
+    lines = shotLines(from)
+  }
+  return lines
+}
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0
 
 /** Holds right mouse: vanilla repeats the use packet every 4 ticks while it is down. */
@@ -449,8 +462,9 @@ async function sprint (spot) {
   shots = 0
   const barsFrom = bars.length
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const p18 = shotLines(from)
   stopSprint()
+  const p18 = await loggedShots(from, 3)
+  await within(5000, () => shots >= 3)
   await sleep(300)
   check('sprint: three clicks while sprinting fire three rounds', shots === 3 && p18.length === 3, `${shots} shot sounds, ${p18.length} logged`)
   check('sprint: the server still has the player sprinting at every shot', p18.length > 0 && p18.every(l => l.sprint),
@@ -487,8 +501,8 @@ async function sprint (spot) {
   from = logSize()
   shots = 0
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const sly = shotLines(from)
   stopSprint(false)
+  const sly = await loggedShots(from, 3)
   await sleep(300)
   check('sprint: running at sprint pace without the sprint command fires, with the sprint cone',
     sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', '))
@@ -542,15 +556,18 @@ async function sprint (spot) {
   from = logSize()
   const heardBefore = adsHeard.length
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(200) }
-  const won = shotLines(from)
-  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
-    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
-  check('sprint: right mouse held on neither aims nor stops it', adsHeard.length === heardBefore && bot.food === 20, `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}`)
+  // Read once the timed part below is over: waiting for the log here would stretch the sprint.
+  const wonLogged = loggedShots(from, 3)
+  const held = { ok: adsHeard.length === heardBefore && bot.food === 20, detail: `ads sounds ${adsHeard.length - heardBefore}, food ${bot.food}` }
   stopSprint()
   keys({})
   const stopped = Date.now()
   const back = await within(1500, () => adsHeard.length > heardBefore)
   await sleep(200)
+  const won = await wonLogged
+  check('sprint: that sprint fires from the hip with the sprint cone', won.length >= 3 && won.every(l => !l.aim && l.sprint && l.spread > 5),
+    won.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.sprint ? 'S' : ''}`).join(' '))
+  check('sprint: right mouse held on neither aims nor stops it', held.ok, held.detail)
   check('sprint: once that sprint is over the sights come up again (right mouse still held)', back !== null && back <= 900 && bot.food <= 6,
     `${back === null ? 'never' : back + ' ms'} after the stop, food ${bot.food}`)
   stopHold()

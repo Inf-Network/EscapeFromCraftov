@@ -6,9 +6,10 @@
 //              police vest at 81% of the system buyers' price sells to them with 5% tax taken, after
 //              which (market.virtual-daily-cap set to 1) a second one is held back by the daily quota;
 //              the pricing screen shows the system buyers' price and says when they will not buy.
-//   insurance  DEATHS deaths in solo proving-ground raids with insurance on (the starter kit, then
-//              two P18s each time, one per gun key: without a backpack nothing else takes a gun, #10,
-//              and a third would go straight to the mailbox): what comes back matches
+//   insurance  DEATHS deaths in solo proving-ground raids with insurance on (the starter kit and five
+//              P18s, then a pack_1 and five P18s each time: two on the gun keys and three in the
+//              pack, since nothing else takes a gun, #10; about 120 insured items in all): what
+//              comes back matches
 //              insurance.loss-chance within three standard deviations, every claim waits
 //              insurance.return-minutes in the profile, and
 //              once due it reaches the mailbox when the owner is online.
@@ -20,7 +21,7 @@
 //
 //   node economy.js [all|market|insurance|meds]    (meds includes load)
 //   env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=../../server/run
-//        DEATHS=20 MARKET_MIN=10
+//        DEATHS=20 PISTOLS=5 MARKET_MIN=10
 //
 // SERVER_DIR is read for player profiles and its plugins/Craftov/config.yml is edited for the run
 // (restored at the end, then /cv reload): match.wait-seconds 2 and cinematic.enabled false to make
@@ -43,6 +44,7 @@ const PORT = env.PORT
 const RCON = env.RCON
 const SERVER_DIR = env.SERVER_DIR
 const DEATHS = Number(process.env.DEATHS || 20)
+const PISTOLS = Number(process.env.PISTOLS || 5) // P18s given before each death (with a pack_1 to hold three)
 const MARKET_MIN = Number(process.env.MARKET_MIN || 10)
 const CONFIG = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
@@ -329,7 +331,11 @@ async function insurance () {
   let lost = 0
   let deaths = 0
   for (let i = 0; i < DEATHS; i++) {
-    for (let k = 0; k < 2; k++) await rcon(`cv give ${name} p18`)
+    // Six insured items a death: a worn pack_1 (the starter kit's on the first, a new one after
+    // that: cv give puts it on) and five P18s, two on the gun keys and three in the pack's cells (a
+    // gun goes nowhere else, #10). Two P18s a death left too few items for the 3-sigma window.
+    if (i > 0) await rcon(`cv give ${name} pack_1`)
+    for (let k = 0; k < PISTOLS; k++) await rcon(`cv give ${name} p18`)
     await rcon(`cv money ${name} 5000`)
     await sleep(500)
     const from = bot.chatLog.length

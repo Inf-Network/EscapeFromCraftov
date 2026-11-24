@@ -28,6 +28,17 @@
 //            is shown 40 (the bleed's quiet mark, left untaken by the update the hit rode in on,
 //            used to hide such a drop for up to a second). The next bleed tick alone is still kept
 //            from B's client: its update says 40 again.
+//   sametick a bleed tick and a drop that is not a hit in one health update (issue #149). B healed,
+//            with a heavy bleed on the left leg and the test armory open; B presses "模拟受伤" (health
+//            to 40 and two fractures, which take its food to 6: no hit, not a bleed) timed off the
+//            drip, so that the click reaches the server in the gap before the next bleed tick. Which
+//            update carried the click is read off the food it brings (6 instead of 20), whatever the
+//            fix does: in the same one as the bleed tick (the drip's) is what is wanted, an update
+//            before or after the drip's says the click came a tick early or late, and the next try
+//            moves the click 20 ms (up to 10 tries, healed and bleeding again for each). When one
+//            lands: that update shows B's client the drop (40 or less: the click's, and the bleed on
+//            top), where the bleed's quiet mark alone used to keep it (the update said 100). The
+//            next bleed tick alone is still kept from B's client: its update says the same again.
 //   meds     every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
 //            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
@@ -65,7 +76,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const run = Math.random().toString(36).slice(2, 6)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope', 'overlap']
+const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope', 'overlap', 'sametick']
 const failures = []
 const check = (name, ok, got) => { if (!ok) failures.push(name); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${got === undefined ? '' : ': ' + JSON.stringify(got)}`) }
 const bots = []
@@ -100,7 +111,7 @@ function make (name) {
   })
   bot._client.on('damage_event', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'damage_event' }))
   bot._client.on('hurt_animation', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'hurt_animation' }))
-  bot._client.on('update_health', p => bot.healths.push({ at: Date.now(), hp: p.health * 5 }))
+  bot._client.on('update_health', p => bot.healths.push({ at: Date.now(), hp: p.health * 5, food: p.food }))
   bot._client.on('set_title_text', p => bot.titles.push(plain(p.text)))
   bot.heads = []
   const head = (via, item) => ({ at: Date.now(), via, overlay: overlayOf(item), json: JSON.stringify(item || '') })
@@ -539,6 +550,103 @@ async function overlap (A, B, C) {
   return 0
 }
 
+/**
+ * A bleed tick and a drop that is not a hit in one health update (issue #149): the test armory's
+ * "模拟受伤" pressed in the gap before a bleed tick. A bleed (in the scheduler, at the start of a tick)
+ * and a click (handled between ticks) come together in the update sent at the end of that tick; the
+ * drip goes out in the same tick, just before it. The gap is the 50 ms before the tick, less the
+ * tick itself, so the click is timed off the last drip and moved until one lands; which update
+ * carried it is read off its food (the fractures take it to 6), not off the health B is shown.
+ */
+async function sametick (A, B, C) {
+  if (!inRaid(B)) {
+    log('SETUP: B is no longer in the raid', B.game.gameMode)
+    return 2
+  }
+  await clearSoldiers()
+  await positions(A, B, C)
+  const window = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 4000)
+    B.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    B.chat('/cv items')
+  })
+  if (!window) {
+    log('SETUP: B could not open the test armory')
+    return 2
+  }
+  // For every drip, how many health updates B had by then: the next one is that bleed tick's.
+  const drips = []
+  const onSound = s => { if (/status\.bleed/.test(String(s))) drips.push({ at: Date.now(), index: B.healths.length }) }
+  B.on('soundEffectHeard', onSound)
+  const fmt = i => i >= 0 && i < B.healths.length ? { hp: +B.healths[i].hp.toFixed(2), food: B.healths[i].food } : null
+  try {
+    let lead = 1470 // ms from a drip to the click, aimed at the gap before the bleed tick 1.5 s on
+    let landed = null
+    const tries = []
+    for (let k = 0; k < 10 && !landed; k++) {
+      // "满血并清除伤病" (slot 46): health 100, no wounds, food 20; then a heavy bleed again.
+      await B.clickWindow(46, 0, 0)
+      await sleep(400)
+      if ((await health(B.username)) !== 100) {
+        log('SETUP: could not heal B')
+        return 2
+      }
+      await rcon(`cv injure ${B.username} left_leg heavy`)
+      const from = drips.length
+      if (!await waitFor(() => drips.length > from, 3000)) {
+        log('SETUP: B does not bleed')
+        return 2
+      }
+      const drip = drips[from]
+      const sent = await new Promise(resolve => setTimeout(() => {
+        // In one go, so nothing comes between reading the count and the click going out.
+        const at = { at: Date.now(), index: B.healths.length }
+        B.clickWindow(47, 0, 0).catch(() => { })
+        resolve(at)
+      }, Math.max(0, drip.at + lead - Date.now())))
+      // The next drip and its update, and the update with the click's food.
+      await waitFor(() => drips.length > from + 1 && B.healths.length > drips[from + 1].index &&
+        B.healths.slice(sent.index).some(h => h.food === 6), 4000)
+      const bled = drips.length > from + 1 ? drips[from + 1].index : -1
+      const clicked = B.healths.findIndex((h, i) => i >= sent.index && h.food === 6)
+      const attempt = { lead, msAfterDrip: sent.at - drip.at, clicked: fmt(clicked), bled: fmt(bled) }
+      if (bled < 0 || clicked < 0) {
+        attempt.verdict = 'lost'
+      } else if (clicked === bled) {
+        attempt.verdict = 'same update'
+        landed = { bled, next: from + 2 }
+      } else if (clicked < bled) {
+        attempt.verdict = 'early'
+        lead += 20
+      } else {
+        attempt.verdict = 'late'
+        lead -= 20
+      }
+      tries.push(attempt)
+      log(`try ${k + 1}:`, attempt)
+    }
+    check('sametick: a "模拟受伤" click reached the server in the gap before a bleed tick (one health update carries both)',
+      !!landed, tries.map(t => `${t.lead}: ${t.verdict}`))
+    if (!landed) return 0
+    const shown = +B.healths[landed.bled].hp.toFixed(2)
+    const server = await health(B.username)
+    check('sametick: that update shows B\'s client the drop (40 or less), not the health it had (100)',
+      shown <= 40.05, { shown, serverNow: server })
+    // The next bleed tick, alone: still kept from B.
+    const next = await waitFor(() => drips.length > landed.next && B.healths.length > drips[landed.next].index, 4000)
+    const after = await health(B.username)
+    const update = next ? +B.healths[drips[landed.next].index].hp.toFixed(2) : null
+    check('sametick: the next bleed tick alone is still kept from B\'s client (its update says the same again)',
+      next && Math.abs(update - shown) < 0.05 && after !== null && after < shown - 1, { update, before: shown, server: after })
+  } finally {
+    B.removeListener('soundEffectHeard', onSound)
+    if (B.currentWindow) B.closeWindow(B.currentWindow)
+    await sleep(250)
+    await restore(B)
+  }
+  return 0
+}
+
 async function meds (A, B, C) {
   const missing = []
   for (const id of MEDS) {
@@ -662,8 +770,8 @@ async function scope (A, B, C) {
     return finish(2)
   }
   await sleep(7000) // insertion camera and spawn protection
-  const order = ['meds', 'scope', 'armor', 'overlap', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
-  const RUN = { armor, bleed, meds, scope, overlap }
+  const order = ['meds', 'scope', 'armor', 'overlap', 'sametick', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
+  const RUN = { armor, bleed, meds, scope, overlap, sametick }
   for (const name of order) {
     log('---', name)
     const code = await RUN[name](A, B, C)

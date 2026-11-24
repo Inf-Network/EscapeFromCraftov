@@ -33,14 +33,14 @@
 //  backup-keep    a config with only the old "keep: 30" keeps ten older shutdown copies over a
 //                 shutdown backup, and the start log says the key was split
 //
-// node persistence.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
-//                            RCON_PASS=craftov-local STEPS=(comma list, default all) RESTARTS=10
-//                            MEMORY=3G LOG=/tmp/persistence.log
+// node persistence.js   env: SERVER_DIR (required, the run folder; CRAFTOV_RUN is read too), PORT,
+//                            RCON_PORT, RCON_PASSWORD (env.js), STEPS=(comma list, default all)
+//                            RESTARTS=10 MEMORY=3G LOG=/tmp/persistence.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
 //
 // Server config (tools/bot/suite.js sets it for its run): the script edits what it needs itself
 // while the server is down and puts it back (see above).
-// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (which must be set).
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
@@ -50,7 +50,9 @@ const rconRaw = require('./rcon')
 const env = require('./env')
 const { pullTrigger } = require('./common')
 
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+// Named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN), never the default: the script stops,
+// kills and edits the server it is pointed at.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
   console.error('SERVER_DIR must point at the server run folder (with start.sh)')
   process.exit(2)

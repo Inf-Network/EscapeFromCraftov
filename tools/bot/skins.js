@@ -30,7 +30,8 @@
 //      500 points buying 黑曜 (880) is refused (点券不足), with 1,000 it is bought and worn and 120
 //      points are left.
 //
-//   node skins.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(optional, the run folder)
+//   node skins.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js), SERVER_DIR (optional, the run folder;
+//                     CRAFTOV_RUN is read too)
 //
 // Needs test mode on (the proving ground is a test map) and, to keep it short, match.wait-seconds of a
 // few seconds. The bot has a fresh random name, is made op for the proving ground and deopped when done.
@@ -49,7 +50,9 @@ const env = require('./env')
 
 const PORT = env.PORT
 const RCON = env.RCON
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+// Only a folder named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN) has its profile read and its
+// config.yml switched; without one those checks are left out.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 const t0 = Date.now()
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))

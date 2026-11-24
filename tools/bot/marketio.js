@@ -38,15 +38,15 @@
 // KEEP=1), so only point it at a throwaway test server. It may be running or not at the start; it
 // is left the way it was found.
 //
-// node marketio.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
-//                         RCON_PASS=craftov-local ROUNDS=3 BOTS=6 OFFLINE=20 LISTINGS=600 STASH=40
+// node marketio.js   env: SERVER_DIR (required, the run folder; CRAFTOV_RUN is read too), PORT,
+//                         RCON_PORT, RCON_PASSWORD (env.js), ROUNDS=3 BOTS=6 OFFLINE=20 LISTINGS=600 STASH=40
 //                         STOP_MIN=20 STOP_MAX=40 MIN_TRADES=40 SLOW_ROUNDS=1 SLOW_MS=150
 //                         MEMORY=3G KEEP=0 LOG=/tmp/marketio.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
 //
 // Server config (tools/bot/suite.js sets it for its run): the script rewrites config.yml itself
 // while the server is down and puts it back (see above).
-// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (which must be set).
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
@@ -55,7 +55,9 @@ const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
 const env = require('./env')
 
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+// Named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN), never the default: the script stops and
+// starts the server it is pointed at and rewrites its files.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
   console.error('SERVER_DIR must point at the server run folder (with start.sh)')
   process.exit(2)

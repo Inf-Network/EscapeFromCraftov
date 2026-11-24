@@ -409,10 +409,12 @@ public final class HealthService implements Listener {
 
     /**
      * Sets the player's health without a hit, where a drop is to show on their own client as one
-     * does (the view tilts): knocked down, a tripwire, the test armory's injury. A bleed in the same
-     * tick reaches the client in the same health update, and bleeding is kept from the client
-     * (RaidManager.loseHealth), so the drop is marked to show (Nms.loudHealthLoss). Only a drop is
-     * marked: a mark no update carries could show the next bleed instead.
+     * does (the view tilts): a tripwire, the test armory's injury (a knock-down has its own,
+     * {@link #setHealthKnockedDown}). A bleed in the same tick reaches the client in the same health
+     * update, and bleeding is kept from the client (RaidManager.loseHealth), so the drop is marked to
+     * show (Nms.loudHealthLoss). Only a drop is marked: a mark no update carries would be taken by a
+     * later one, which then shows the true health, so the next bleed or heal could show as a drop
+     * (a heal that leaves the health below the one the client was left with) instead.
      */
     public void setHealthShown(Player player, double health) {
         if (health < player.getHealth()) {
@@ -422,6 +424,37 @@ public final class HealthService implements Listener {
             }
         }
         player.setHealth(health);
+    }
+
+    /**
+     * Knocked down to {@code health}: the player's own client is shown a drop to it as from a hit
+     * (the view tilts), whatever health the server had. Bleeding is kept from the client, so it
+     * usually still believes the health from before the bleed, while a bleed that ran down to the
+     * knock-down left the server's at or below the one set here (a light bleed always does): no
+     * drop for the server, and so none for the client without the loud mark, which shows the true
+     * health.
+     * <p>
+     * The health update that carries the mark is sent at once, and that is what makes every
+     * knock-down tilt the view, not only one that leaves the health as it was. The player's own
+     * entity data carries the (scaled) health too: CraftPlayer.updateScaledHealth sets it, and the
+     * entity tracker sends it to the player as well as to those tracking them. On the client it sets
+     * the health without a tilt. The tracker runs in the world tick, before the connection tick sends
+     * the health update, so a change made earlier in the tick (a bleed from the scheduler, a hit
+     * from a packet) reaches the client as entity data first, and the tick's update then finds the
+     * client already at the new health: no drop, no tilt. Sent here, the update goes out ahead of
+     * the entity data. It also covers a health that did not change (a bleed that landed on 1), for
+     * which the tick sends no update at all, and it takes the mark at once, so the mark never waits
+     * for a later update.
+     */
+    public void setHealthKnockedDown(Player player, double health) {
+        Nms.SelfView view = plugin.fov().selfView(player);
+        if (view != null) {
+            Nms.loudHealthLoss(view);
+        }
+        player.setHealth(health);
+        // Now, not left to the tick: the tick's update would come after the entity data that already
+        // took the client to this health, changed or not (see above).
+        player.sendHealthUpdate();
     }
 
     /** In a raid, an untreated broken leg, no stamina or an overloaded pack leave no sprint in the player. */

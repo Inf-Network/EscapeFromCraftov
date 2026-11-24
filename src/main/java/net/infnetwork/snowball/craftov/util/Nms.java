@@ -897,9 +897,15 @@ public final class Nms {
 
     /**
      * The health this player is about to lose comes without a hit, but their own client is to show
-     * it as one (the view tilts): knocked down, a tripwire. Call it right before taking the health
-     * off. Only needed in a tick that may also bleed: the bleed and this loss then reach the client
-     * in one health update, which a bleed's quiet mark alone would keep from it.
+     * it as one (the view tilts): knocked down, a tripwire. Call it right before setting the health.
+     * The health update that carries it shows the true health even when that is below the one the
+     * client was left with, so a loss the server does not see (knocked down to 1 from a health a
+     * bleed already took below it) still shows. Needed in a tick that may also bleed, too: the bleed
+     * and this loss then reach the client in one health update, which a bleed's quiet mark alone
+     * would keep from it. The update only tilts the view if it reaches the client before the
+     * player's own entity data, which carries the health too and sets it without a tilt; for a
+     * change made before the world tick the tick's update comes after it, so a caller that needs the
+     * tilt sends the update itself at once (see HealthService.setHealthKnockedDown).
      */
     public static void loudHealthLoss(SelfView view) {
         mark(view, view.loudLoss);
@@ -1118,8 +1124,13 @@ public final class Nms {
          * does not say so, since the lethal hit was cancelled). The client keeps the health it
          * believes until the server's is higher again, or a loss that is not quiet, a hit or death
          * comes: so gains never show it a drop either, even when a heal leaves the health below the
-         * one it was left with. Food and saturation always pass as they are: they decide whether the
-         * client lets the player sprint.
+         * one it was left with. A loss marked loud is the exception: its update shows the true health
+         * whatever the client believes, so a knock-down that the server sees as no loss at all (a
+         * bleed had already taken the health below the 1 it sets, or onto it) is a drop from the
+         * higher health the client was left with before the bleed, provided it reaches the client
+         * before the player's own entity data brings it to that health (which is why a knock-down
+         * sends its update at once: HealthService.setHealthKnockedDown). Food and saturation always
+         * pass as they are: they decide whether the client lets the player sprint.
          * <p>
          * The first update after a quiet or loud loss carries it, whatever else came in the same tick
          * (a hit, a heal, death), so that update takes the mark even when it changes nothing. A quiet
@@ -1140,8 +1151,10 @@ public final class Nms {
                 return packet;
             }
             float show;
-            if (health < sent) {
-                show = quiet && !hit && !loud ? shown : health;
+            if (loud) {
+                show = health;
+            } else if (health < sent) {
+                show = quiet && !hit ? shown : health;
             } else {
                 show = Math.max(health, shown);
             }

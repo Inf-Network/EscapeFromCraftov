@@ -70,7 +70,9 @@ public final class Nms {
     private static @Nullable Method chunkPacketX;
     private static @Nullable Method chunkPacketZ;
     private static @Nullable Method blockPosOf;
-    private static boolean chunksReady;
+    private static volatile boolean chunksReady;
+    /** For a warning should re-sending cells behind chunks fail once running ({@link CaptureHandler}). */
+    private static @Nullable Logger chunkLogger;
     private static @Nullable Method getAbilities;
     private static @Nullable Class<?> abilitiesClass;
     private static @Nullable Constructor<?> abilitiesPacketCtor;
@@ -179,6 +181,7 @@ public final class Nms {
     }
 
     public static void init(Logger logger) {
+        chunkLogger = logger;
         try {
             Class<?> craftPlayer = Class.forName("org.bukkit.craftbukkit.entity.CraftPlayer");
             getHandle = craftPlayer.getMethod("getHandle");
@@ -491,8 +494,18 @@ public final class Nms {
                         ctx.write(blockUpdateCtor.newInstance(blockPosOf.invoke(null, cell), captureState));
                     }
                 }
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // the cells come back when the crosshair next moves to other ones
+            } catch (ReflectiveOperationException | RuntimeException ex) {
+                // The packet classes do not change while running, so one failure means every chunk
+                // would throw: say so once and stop, which brings back the cells only when the
+                // crosshair next moves to other ones (the behaviour before this was added).
+                if (chunksReady) {
+                    chunksReady = false;
+                    Logger logger = chunkLogger;
+                    if (logger != null) {
+                        logger.warning("Re-sending capture cells behind chunks failed (" + ex
+                                + "); right after a world change the trigger may not fire until the crosshair moves.");
+                    }
+                }
             }
         }
     }

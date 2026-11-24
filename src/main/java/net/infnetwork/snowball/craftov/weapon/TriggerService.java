@@ -44,6 +44,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -83,6 +84,11 @@ import java.util.UUID;
  * <p>Cells may overlap the body. Only those at the feet are left out: the client plays the step
  * sound of a sculk vein it stands in instead of the floor's (the pack silences it), and lands with
  * its fall sound.
+ *
+ * <p>Right after a world change, a join or a long teleport, the cells go out before the chunk they
+ * are in, and the client drops them; the chunk then brings the real air. The network layer sends the
+ * cells again behind every chunk that holds one (see {@link Nms#protectCells}), so a gun held on
+ * arrival fires without the crosshair having to move first.
  */
 public final class TriggerService implements Listener {
 
@@ -121,7 +127,10 @@ public final class TriggerService implements Listener {
 
     private static final class Capture implements Nms.DigInputs {
         @Nullable World world;
-        /** Read by the network thread (see Nms#protectCells), so it must be concurrent. */
+        /**
+         * Read by the network thread, which puts these cells back behind every chunk packet holding
+         * them (see Nms#protectCells), so it must be concurrent and change in step with what is sent.
+         */
         final Set<Long> cells = java.util.concurrent.ConcurrentHashMap.newKeySet();
         /**
          * Dig starts (block keys) and swings ({@link #SWING}) in the order the client sent them, added on
@@ -356,44 +365,29 @@ public final class TriggerService implements Listener {
                 }
             }
         }
-        if (c.dirty) {
-            c.dirty = false;
-            List<BlockState> changes = new ArrayList<>();
-            for (long cell : c.cells) {
-                if (!wanted.contains(cell)) {
-                    changes.add(world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState());
-                }
-            }
-            for (long cell : wanted) {
-                BlockState state = world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState();
-                state.setBlockData(captureBlock);
-                changes.add(state);
-            }
-            c.cells.clear();
-            c.cells.addAll(wanted);
-            if (!changes.isEmpty()) {
-                player.sendBlockChanges(changes);
-            }
+        // Dirty: the server resent real blocks, so every cell goes out again, not just the new ones.
+        boolean all = c.dirty;
+        c.dirty = false;
+        if (!all && wanted.equals(c.cells)) {
             return;
         }
-        if (wanted.equals(c.cells)) {
-            return;
-        }
+        // The set changes before anything is sent, and a cell that stays is never taken out of it: the
+        // network thread reads it to put the cells back behind a chunk (Nms#protectCells).
         List<BlockState> changes = new ArrayList<>();
-        for (long cell : c.cells) {
+        for (Iterator<Long> it = c.cells.iterator(); it.hasNext(); ) {
+            long cell = it.next();
             if (!wanted.contains(cell)) {
+                it.remove();
                 changes.add(world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState());
             }
         }
         for (long cell : wanted) {
-            if (!c.cells.contains(cell)) {
+            if (c.cells.add(cell) || all) {
                 BlockState state = world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState();
                 state.setBlockData(captureBlock);
                 changes.add(state);
             }
         }
-        c.cells.clear();
-        c.cells.addAll(wanted);
         if (!changes.isEmpty()) {
             player.sendBlockChanges(changes);
         }
@@ -501,16 +495,18 @@ public final class TriggerService implements Listener {
     }
 
     private void clearCells(Player player, Capture c) {
+        // Out of the set before their real blocks are sent (see Nms#protectCells).
+        List<Long> cells = new ArrayList<>(c.cells);
+        c.cells.clear();
         if (c.world != null && c.world == player.getWorld()) {
             List<BlockState> changes = new ArrayList<>();
-            for (long cell : c.cells) {
+            for (long cell : cells) {
                 changes.add(c.world.getBlockAt(kx(cell), ky(cell), kz(cell)).getState());
             }
             if (!changes.isEmpty()) {
                 player.sendBlockChanges(changes);
             }
         }
-        c.cells.clear();
     }
 
     /** Drops capture cells immediately (inventory screens, raid transitions). */

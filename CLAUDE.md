@@ -118,7 +118,7 @@ tools/shots/shots.py send m4c-ads raid-hud       # 发到服主 Mac 的 ~/Remote
 
 ## 关键实现与坑
 
-- **左键开火**：原版客户端只有在"挖方块"时才持续发包，所以在准星前约 3 格只对该玩家放置透明、静音、无碰撞的蛛网（TriggerService "capture cells"，Netty 出站改写在 `util/Nms`），每 tick 挥手 = 扳机按下，`BlockDamageAbortEvent` = 松开。Paper 会把挥手报成 `LEFT_CLICK_AIR`，换弹 / 点门 / 背包操作需要静默窗口防误射。
+- **左键开火**：原版客户端只有在"挖方块"时才持续发包，所以在准星前约 3 格只对该玩家放置透明、静音、无碰撞的捕获方块（六面幽匿脉络，TriggerService "capture cells"，Netty 出站改写在 `util/Nms`；每个发出的区块包后面都会补发其中的捕获方块，否则切换世界后方块比区块先到、被客户端丢掉，左键和 Q 都没反应，#141），每 tick 挥手 = 扳机按下，`BlockDamageAbortEvent` = 松开。Paper 会把挥手报成 `LEFT_CLICK_AIR`，换弹 / 点门 / 背包操作需要静默窗口防误射。
 - **右键开镜**：物品模型 `keybind_down` 条件在客户端切姿势；倍率靠移动速度属性算 FOV，必须立即应用速度，否则开镜卡顿。
 - **后坐力**：反射调用 `Entity.forceSetRotation` 做相对旋转，不要用 teleport（会触发大厅虚空检测导致全自动只打一发）。
 - **持枪姿势**：`util/Nms` 把装备包里的枪改写成已上弦的弩，其他玩家看到双手端枪。

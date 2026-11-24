@@ -10,7 +10,7 @@
 //   always     A walks into the always-open extract: back in the lobby.
 //   paid       B walks into the paid extract (◈5,000): back in the lobby, ◈5,000 poorer.
 //
-//   node proving.js [host]     env: PORT, RCON_PORT, RCON_PASSWORD (env.js); host defaults to 127.0.0.1
+//   node proving.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js); the server is the local one (127.0.0.1)
 //
 // Server config: the defaults (the bots are op, which opens the test map to them); a short
 // match.wait-seconds keeps it quick. Soldiers are killed so they leave the bots alone. Prints PASS /

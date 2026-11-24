@@ -492,7 +492,7 @@ public final class TrainingService {
         Location at = player.getLocation();
         player.getWorld().spawnParticle(Particle.EXPLOSION, at, 1);
         player.getWorld().playSound(at, "minecraft:entity.generic.explode", SoundCategory.MASTER, 1f, 1.3f);
-        player.setHealth(Math.max(1, player.getHealth() - 18));
+        plugin.health().setHealthShown(player, Math.max(1, player.getHealth() - 18));
         plugin.health().addInjury(player, BodyPart.LEFT_LEG, Injury.FRACTURE);
         plugin.health().addInjury(player, BodyPart.LEFT_LEG, Injury.LIGHT_BLEED);
         UiSound.WARNING.play(player);

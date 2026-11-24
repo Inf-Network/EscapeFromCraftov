@@ -48,7 +48,9 @@
 //            to 1 (the view tilts, as for a hit), where it used to stay at 4.5. B stands up with the
 //            injector, and the same again from 4: the bleed lands on 1 exactly, so the knock-down
 //            leaves the server's health as it was and the server sends no update of its own; B's
-//            client is shown the drop to 1 all the same.
+//            client is shown the drop to 1 all the same. Both times nothing brings B's client to 1
+//            before the health update that shows it: B's own entity data (index 9) carries the
+//            health too and sets it without a tilt, so had it come first the update would be no drop.
 //   meds    every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
 //            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
@@ -121,7 +123,20 @@ function make (name) {
   })
   bot._client.on('damage_event', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'damage_event' }))
   bot._client.on('hurt_animation', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'hurt_animation' }))
-  bot._client.on('update_health', p => bot.healths.push({ at: Date.now(), hp: p.health * 5, food: p.food }))
+  // Its own health reaches the client two ways, kept here in the order they came: the health update
+  // (via 'update': the client tilts the view when it says less than the client holds) and the
+  // player's own entity data (via 'meta', index 9, scaled as the update is: it sets the health
+  // without a tilt, so a lower one arriving first leaves the update no drop to show).
+  bot.own = []
+  bot._client.on('update_health', p => {
+    const at = Date.now()
+    bot.healths.push({ at, hp: p.health * 5, food: p.food })
+    bot.own.push({ at, via: 'update', hp: p.health * 5 })
+  })
+  bot._client.on('entity_metadata', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    for (const m of p.metadata) if (m.key === 9) bot.own.push({ at: Date.now(), via: 'meta', hp: m.value * 5 })
+  })
   bot._client.on('set_title_text', p => bot.titles.push(plain(p.text)))
   bot.heads = []
   const head = (via, item) => ({ at: Date.now(), via, overlay: overlayOf(item), json: JSON.stringify(item || '') })
@@ -715,6 +730,7 @@ async function knockdown (A, B, C) {
       const since = Date.now()
       const dripsFrom = drips.length
       const updatesFrom = B.healths.length
+      const ownFrom = B.own.length
       await rcon(`cv injure ${B.username} left_leg light`)
       const server = []
       const down = await waitFor(async () => {
@@ -744,6 +760,15 @@ async function knockdown (A, B, C) {
         before.every(h => Math.abs(h.hp - from) < 0.05), hp(before))
       check(`knockdown (from ${from}): at the knock-down B's client is shown the drop from ${from} to 1`,
         after.length > 0 && Math.abs(after[0].hp - 1) < 0.05 && after.every(h => Math.abs(h.hp - 1) < 0.05), hp(after))
+      // The view tilts only if the update that shows 1 is a drop from the health the client holds
+      // then. B's own entity data carries the health too and sets it without a tilt: had it brought
+      // the client to 1 first, that update would show it nothing.
+      const own = i => `${B.own[i].via === 'meta' ? 'm' : 'u'}${+B.own[i].hp.toFixed(2)}`
+      const shows = B.own.findIndex((e, i) => i >= ownFrom && e.via === 'update' && e.at > cut && Math.abs(e.hp - 1) < 0.05)
+      const held = shows > 0 ? B.own[shows - 1] : null
+      log(`  B's own health in the order its client got it (u: health update, m: entity data): ${B.own.slice(ownFrom).map((e, i) => own(ownFrom + i)).join(' ')}`)
+      check(`knockdown (from ${from}): nothing brought B's client to 1 before the health update that shows 1 (its entity data did not get there first)`,
+        held !== null && held.hp > 1.05, held && { held: own(shows - 1), then: own(shows) })
       // Up again with the injector (its use takes 4 s).
       B.setQuickBarSlot(key)
       await sleep(400)

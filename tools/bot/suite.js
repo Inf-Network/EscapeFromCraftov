@@ -59,7 +59,9 @@
 // SERVER_DIR's own (server.js foreign()): forgetting PORT in a worktree would otherwise run every
 // script on the main checkout's server and edit that one's config.yml. Such a server is refused.
 //
-// Exit code: the number of scripts that failed in any round; 125 when the suite could not run.
+// Exit code: the number of scripts that failed, or did not run, in any round; 125 when the suite
+// could not run. A run that did not run (no server took it, Ctrl-C cut it off) shows as "not run"
+// and counts as neither a pass nor a failure.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -649,30 +651,35 @@ function table (results) {
   const rounds = Math.max(1, ...results.map(r => r.round))
   const failed = []
   const flaky = []
+  const unrun = []
   const mixed = []
   const mixedJars = []
   console.log('\nscript                  ' + Array.from({ length: rounds }, (_, i) => `round ${i + 1}`.padEnd(16)).join('') + 'time')
   for (const name of names) {
     const rs = Array.from({ length: rounds }, (_, i) => results.find(r => r.name === name && r.round === i + 1))
-    const ok = rs.filter(Boolean).map(r => r.code === 0)
+    // A run that never ran (or was cut off by Ctrl-C) neither passed nor failed: --resume runs it.
+    const ran = rs.filter(r => r && r.code !== 'not run')
+    const ok = ran.map(r => r.code === 0)
     if (ok.some(x => !x)) failed.push(name)
     if (ok.some(x => x) && ok.some(x => !x)) flaky.push(name)
+    if (ran.length < rs.filter(Boolean).length) unrun.push(name)
     // Results from before the suite recorded hashes have none: only recorded ones are compared.
     const shas = new Set(rs.filter(r => r && r.sha).map(r => r.sha))
     const jars = new Set(rs.filter(r => r && r.jar).map(r => r.jar))
     if (shas.size > 1) mixed.push(name)
     if (jars.size > 1) mixedJars.push(name)
-    const cells = rs.map(r => (!r ? '-' : r.code === 0 ? 'pass' : `FAIL(${r.code})`).padEnd(16)).join('')
+    const cells = rs.map(r => (!r ? '-' : r.code === 0 ? 'pass' : r.code === 'not run' ? 'not run' : `FAIL(${r.code})`).padEnd(16)).join('')
     console.log((name + (shas.size > 1 ? ' *' : '') + (jars.size > 1 ? ' +' : '')).padEnd(24) + cells + rs.filter(Boolean).map(r => r.seconds + 's').join(' / '))
   }
-  console.log(`\n${names.length - failed.length}/${names.length} passed every round`)
+  console.log(`\n${names.filter(n => !failed.includes(n) && !unrun.includes(n)).length}/${names.length} passed every round`)
   if (flaky.length) console.log('flaky (passed and failed): ' + flaky.join(', '))
   const always = failed.filter(n => !flaky.includes(n))
-  if (always.length) console.log('failed every round: ' + always.join(', '))
+  if (always.length) console.log('failed every round it ran: ' + always.join(', '))
+  if (unrun.length) console.log('not run in some round (--resume runs them): ' + unrun.join(', '))
   if (mixed.length) console.log('* ran in more than one version of the script: ' + mixed.join(', '))
   if (mixedJars.length) console.log('+ ran on more than one plugin jar: ' + mixedJars.join(', '))
   console.log('logs: ' + OUT)
-  return failed.length
+  return new Set(failed.concat(unrun)).size
 }
 
 ;(async () => {

@@ -19,6 +19,15 @@
 //            Then a hit takes B to 8 (/damage): its client is shown the true health again. B bleeds
 //            on to 0: it dies as before (solo, no injector: "行动失败", spectator), and C hears it
 //            cry out (entity.player.death).
+//   overlap  a bleed tick and a hit in one health update (issue #146). B healed, with Resistance V
+//            (rounds take no health but are still hits: B is sent a damage event), a heavy bleed on
+//            the left leg and the test armory open. Right after a drip A puts a few aimed K47 rounds
+//            into B's chest; with no drop of their own, the hit rides in on the next bleed tick's
+//            update, which then shows B's client the bleed (a bleed alone is kept from it). With
+//            nothing more fired, B presses "模拟受伤" (health to 40: no hit, not a bleed): B's client
+//            is shown 40 (the bleed's quiet mark, left untaken by the update the hit rode in on,
+//            used to hide such a drop for up to a second). The next bleed tick alone is still kept
+//            from B's client: its update says 40 again.
 //   meds     every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
 //            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
@@ -56,7 +65,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const run = Math.random().toString(36).slice(2, 6)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope']
+const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope', 'overlap']
 const failures = []
 const check = (name, ok, got) => { if (!ok) failures.push(name); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${got === undefined ? '' : ': ' + JSON.stringify(got)}`) }
 const bots = []
@@ -403,6 +412,128 @@ async function bleed (A, B, C) {
   return 0
 }
 
+/**
+ * A bleed tick and a hit in one health update, then a drop that is neither (issue #146). The hit
+ * has to be a round (DamageService.deal): only a damage event of the player tells the server's
+ * handler that a drop is a hit, and a /damage hit comes to no client as one (neither its target
+ * nor anyone around gets a damage event for it).
+ */
+async function overlap (A, B, C) {
+  if (!inRaid(B)) {
+    log('SETUP: B is no longer in the raid', B.game.gameMode)
+    return 2
+  }
+  await clearSoldiers()
+  if (!await restore(B)) {
+    log('SETUP: could not heal B')
+    return 2
+  }
+  await positions(A, B, C)
+  const gun = hotbar(A, 'k47')
+  if (gun < 0) {
+    log('SETUP: A has no K47 in its hotbar')
+    return 2
+  }
+  A.setQuickBarSlot(gun - 36)
+  // Rounds take nothing off B (Resistance V), but each is still a hit: a damage event B is sent.
+  // With no drop of its own, that hit rides in on the next update B gets, the next bleed tick's.
+  await rcon(`effect give ${B.username} minecraft:resistance 120 4 true`)
+  // The test armory stays open: its "模拟受伤" button (slot 47) is pressed right after that tick.
+  const window = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 4000)
+    B.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    B.chat('/cv items')
+  })
+  if (!window) {
+    log('SETUP: B could not open the test armory')
+    return 2
+  }
+  // For every drip, how many health updates B had by then: the next one is that bleed tick's.
+  const drips = []
+  const onSound = s => { if (/status\.bleed/.test(String(s))) drips.push({ at: Date.now(), index: B.healths.length }) }
+  B.on('soundEffectHeard', onSound)
+  // A aims down the sights the whole time (a use packet every 200 ms): aimed, the rounds go into
+  // the chest, which does not break, so no fracture changes B's food (an update with no hit).
+  let aiming = true
+  let seq = 1
+  const pump = (async () => {
+    while (aiming) {
+      const target = A.players[B.username] && A.players[B.username].entity
+      if (target) await A.lookAt(target.position.offset(0, 1.3, 0), true)
+      A._client.write('use_item', { hand: 0, sequence: seq++, rotation: { x: conv.toNotchianYaw(A.entity.yaw), y: conv.toNotchianPitch(A.entity.pitch) } })
+      await sleep(200)
+    }
+  })()
+  /** Three or four rounds at B's chest. */
+  const tap = async () => {
+    const end = Date.now() + 250
+    while (Date.now() < end) {
+      A.swingArm()
+      await sleep(50)
+    }
+    A._client.write('block_dig', { status: 1, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+  }
+  try {
+    await sleep(1000)
+    const since = Date.now()
+    await rcon(`cv injure ${B.username} left_leg heavy`)
+    const id = B.entity.id
+    const ticks = []
+    let ridden = null
+    let seen = 0
+    const end = Date.now() + 15000
+    while (!ridden && Date.now() < end) {
+      await sleep(10)
+      for (; seen < drips.length && B.healths.length > drips[seen].index; seen++) {
+        const i = drips[seen].index
+        const drop = i > 0 ? +(B.healths[i - 1].hp - B.healths[i].hp).toFixed(2) : null
+        const hits = B.damage.filter(d => d.entityId === id && d.at <= drips[seen].at && d.at > (seen === 0 ? since : drips[seen - 1].at)).length
+        ticks.push({ drop, hits })
+        // A bleed alone is kept from B; one shown came with a hit.
+        if (seen > 0 && hits > 0 && drop !== null && drop >= 2.5) {
+          ridden = drips[seen]
+          break
+        }
+      }
+      if (!ridden && seen === drips.length && drips.length > 0 && !drips[drips.length - 1].tapped) {
+        // Right after a bleed tick: rounds now ride in on the next one, 1.5 s off.
+        drips[drips.length - 1].tapped = true
+        await tap()
+      }
+    }
+    log('B\'s own update after each drip (and B\'s damage events before it):', ticks)
+    check('overlap: a bleed tick\'s update came with a hit, and showed B the bleed', !!ridden, ticks)
+    if (!ridden) return 0
+    // Nothing more is fired; the bleed's quiet mark is well under a second old.
+    await sleep(150)
+    const pressed = B.healths.length
+    const sinceBleed = Date.now() - ridden.at
+    await B.clickWindow(47, 0, 0)
+    await sleep(600)
+    const server = await health(B.username)
+    const shown = B.healths.slice(pressed).map(h => +h.hp.toFixed(2))
+    check('overlap: "模拟受伤" (no hit, not a bleed) right after shows B\'s client its health of 40',
+      server !== null && server <= 40 && shown.some(hp => Math.abs(hp - 40) < 0.05), { server, shown, msSinceBleed: sinceBleed })
+    // The next bleed tick, with no hit: still kept from B.
+    const from = drips.length
+    const next = await waitFor(() => drips.length > from && B.healths.length > drips[from].index, 4000)
+    const after = await health(B.username)
+    const update = next ? +B.healths[drips[from].index].hp.toFixed(2) : null
+    check('overlap: the next bleed tick alone is still kept from B\'s client (its update says 40 again)',
+      next && Math.abs(update - 40) < 0.05 && after !== null && after < 39, { update, server: after })
+  } finally {
+    aiming = false
+    await pump
+    A._client.write('block_dig', { status: 1, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+    B.removeListener('soundEffectHeard', onSound)
+    if (B.currentWindow) B.closeWindow(B.currentWindow)
+    await rcon(`effect clear ${B.username} minecraft:resistance`)
+    await sleep(250)
+    await restore(B)
+  }
+  return 0
+}
+
 async function meds (A, B, C) {
   const missing = []
   for (const id of MEDS) {
@@ -526,8 +657,8 @@ async function scope (A, B, C) {
     return finish(2)
   }
   await sleep(7000) // insertion camera and spawn protection
-  const order = ['meds', 'scope', 'armor', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
-  const RUN = { armor, bleed, meds, scope }
+  const order = ['meds', 'scope', 'armor', 'overlap', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
+  const RUN = { armor, bleed, meds, scope, overlap }
   for (const name of order) {
     log('---', name)
     const code = await RUN[name](A, B, C)

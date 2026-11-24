@@ -9,7 +9,8 @@
 //      F5 cannot clear it) and must be lifted before the first translucent fade step. The bot wears a
 //      helmet that is swapped while it is white: while the screen is flashed, every update of the
 //      head slot either carries the overlay (the server dresses its own syncs of the slot) or is
-//      followed by one within half a second;
+//      followed by one within half a second; and the white-out still fades its whole length after
+//      the swap: flash_3, flash_2, flash_1 and then no overlay, over three quarters of the 1.5 s fade;
 //   3. switches to strobe (two pick-block packets, outside the arena once the test armory's full heal
 //      has cleared its wounds, whose critical action-bar lines would hide the light's), steps into the
 //      arena, waits for a soldier within strobe range to shoot it, steps in to about 4.5 blocks and
@@ -34,6 +35,10 @@ const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const SOLDIERS = ['zombie', 'husk', 'drowned']
+// How long a flashbang's white-out takes to fade from fully white to clear (HudService.flash:
+// half the flash, at least 10 and at most 30 ticks). The grenade goes off at the bot's feet, so its
+// flash runs near combat.flashbang.facing-ticks (80) and the fade is the full 30 ticks.
+const FADE_MS = 30 * 50
 const checks = {}
 
 // Places outside the arena walls (ProvingGroundGenerator.arena) to throw from, clear of the entrance
@@ -275,9 +280,21 @@ function openSpotNear (bot, soldier) {
   const lastSync = syncs[syncs.length - 1]
   const back = lastSync && all.find(o => o.at >= lastSync.at && (o.overlay || '').startsWith('flash'))
   checks.overlayBackAfterHelmetSync = syncs.length > 0 && !!lastFlash && uncovered.length === 0
+  // The fade runs its whole length after the swap: from the first fade step (flash_3, when a quarter
+  // of the fade is gone) through flash_2 and flash_1 to the end of the overlay takes the other three
+  // quarters (HudService.flash: a flash of 60 ticks or more fades over 30, FADE_MS). A swap that cut
+  // the white-out short, or left the real helmet showing, ends it sooner or never steps down.
+  const stepAt = step => { const o = mine.find(u => u.overlay === 'flash_' + step); return o ? o.at : null }
+  const [at3, at2, at1] = [3, 2, 1].map(stepAt)
+  const ended = at1 !== null && mine.find(o => o.at >= at1 && !(o.overlay || '').startsWith('flash'))
+  const fadeMs = ended ? ended.at - at3 : null
+  checks.fadeRunsItsLength = at3 !== null && at2 !== null && at1 !== null && at3 <= at2 && at2 <= at1 && !!ended &&
+    fadeMs >= FADE_MS * 0.75 - 250
   log('our overlays', [...new Set(mine.map(o => o.overlay))], 'sent', mine.length, 'effects', added.map(e => e.id),
     'blindness on/off ms after the blast', blindOn.map(e => e.at - swapAt), blindOff.map(e => e.at - swapAt),
     'first fade step', firstFade ? firstFade.at - swapAt : null,
+    'fade steps 3/2/1 and the end', [at3, at2, at1, ended ? ended.at : null].map(t => t === null ? null : t - swapAt),
+    `(the last three quarters of the fade: ${fadeMs} ms, want ${FADE_MS * 0.75})`,
     'head syncs', syncs.map(h => `${h.at - swapAt}:${h.overlay}`), 'overlay back', back ? back.at - swapAt : null,
     'bare for over 0.5 s', uncovered.map(u => u.at - swapAt))
   await rcon(`item replace entity ${name} armor.head with minecraft:air`)

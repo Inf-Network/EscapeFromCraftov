@@ -10,9 +10,10 @@
 //                                       the same on four servers at once (this one and three copies)
 //   node suite.js --repeat 3 --out DIR --resume [--redo hitreg@2,economy@*]
 //                                       keep the results DIR/summary.json has and run only the rest
-//                                       (--redo drops those first; they stay listed under "redone";
-//                                       --redo-stale drops every result recorded with another version
-//                                       of its script than the one there now)
+//                                       (--redo drops those first, named as for --only, so
+//                                       itemloss@* is every itemloss variant; they stay listed
+//                                       under "redone"; --redo-stale drops every result recorded
+//                                       with another version of its script than the one there now)
 //   --dry-run                           print the order the runs would be taken in, and stop there
 //
 // env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js), as every script takes them.
@@ -464,8 +465,9 @@ function table (results) {
       kept = kept.filter(r => !stale(r))
     }
     for (const spec of opt('--redo', '').split(',').filter(Boolean)) {
+      // A name matches as it does for --only: itemloss@2 is every itemloss:* variant's round 2.
       const [name, round] = spec.split('@')
-      const drop = r => r.name === name && (round === '*' || r.round === Number(round))
+      const drop = r => matches(r, [name]) && (round === '*' || r.round === Number(round))
       redone.push(...kept.filter(drop).map(r => ({ ...r, redoneAt: new Date().toISOString() })))
       kept = kept.filter(r => !drop(r))
     }

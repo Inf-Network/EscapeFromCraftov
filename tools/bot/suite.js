@@ -249,11 +249,15 @@ function runOne (entry, file) {
       const lines = text.split('\n')
       // The failed checks, without the summary lines some scripts end with ("FAILED 2: …", "3 FAILED").
       const fails = lines.filter(l => /\bFAIL\b/.test(l) && !/FAIL(ED)? \d+:|\d+ FAILED/.test(l)).map(l => l.replace(/^\[[^\]]*\]\s*/, '').slice(0, 300))
+      // Killed by a signal that was not the suite's own timeout (Ctrl-C, the OOM killer, a kill from
+      // outside): the script did not get to say anything, so the run is not a result.
+      const killed = code === null && !timedOut
       resolve({
-        code: timedOut ? 'timeout' : code === null ? signal : code,
+        code: timedOut ? 'timeout' : killed ? 'not run' : code,
+        ...(signal ? { signal } : {}),
         seconds: Math.round((Date.now() - started) / 1000),
         passes: lines.filter(l => /\bPASS\b/.test(l)).length,
-        fails
+        fails: killed ? [`killed by ${signal}, not by the suite`].concat(fails) : fails
       })
     })
   })
@@ -278,7 +282,17 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
   found = fs.readFileSync(config.FILE, 'utf8')
   const save = () => fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ port: env.PORT, server: env.SERVER_DIR, results }, null, 2))
   let stopping = false
-  process.on('SIGINT', () => { stopping = true; log('stopping after this script (Ctrl-C again to quit at once)'); process.once('SIGINT', () => process.exit(130)) })
+  // Ctrl-C at the terminal reaches the script as well (one process group): that one dies with it
+  // and is recorded as not run (runOne), so --resume runs it again. A second Ctrl-C quits at once,
+  // with config.yml put back first: synchronously, as nothing after process.exit runs.
+  process.on('SIGINT', () => {
+    if (stopping) {
+      try { fs.writeFileSync(config.FILE, found); log('config.yml put back; quitting') } catch (e) { log('config.yml could not be put back:', e.message) }
+      process.exit(130)
+    }
+    stopping = true
+    log('Ctrl-C: no more runs after this one (a script the Ctrl-C reached is recorded as not run); Ctrl-C again quits at once')
+  })
   try {
     for (let job = await next(); job && !stopping; job = stopping ? null : await next()) {
       const entry = byName[job.name]
@@ -296,7 +310,7 @@ async function runQueue (next, out, rel, { done = () => {}, giveBack = () => {} 
       results.push({ ...base, ...r, log: path.relative(rel, file) })
       done(results[results.length - 1])
       save()
-      log(`round ${job.round}: ${job.name} ${r.code === 0 ? 'PASS' : 'FAIL (' + r.code + ')'} in ${r.seconds}s, ${r.passes} checks passed${r.fails.length ? ', failed: ' + r.fails.slice(0, 3).join(' | ') : ''}`)
+      log(`round ${job.round}: ${job.name} ${r.code === 0 ? 'PASS' : r.code === 'not run' ? 'NOT RUN (' + r.signal + ')' : 'FAIL (' + r.code + ')'} in ${r.seconds}s, ${r.passes} checks passed${r.fails.length ? ', failed: ' + r.fails.slice(0, 3).join(' | ') : ''}`)
       await sleep(3000)
     }
   } finally {
@@ -537,10 +551,11 @@ function table (results) {
       const total = queue.reduce((a, j) => a + j.estimate, 0)
       log(`one queue of ${queue.length} runs, longest first, for ${targets.length} servers: about ${Math.round(total / 60 / targets.length)} min each`)
       let stopping = false
-      // Ctrl-C reaches the whole process group, the shards and their scripts with it; to stop the
-      // shards cleanly from outside, send SIGINT to their child suites (suite.js --worker) alone: each
-      // finishes its current script, puts config.yml back and saves what it ran. The runs it never
-      // started are merged as "not run", which --resume runs again.
+      // Ctrl-C reaches the whole process group, the shards and their scripts with it: the scripts
+      // die and are recorded as not run. To stop the shards cleanly from outside, send SIGINT to
+      // their child suites (suite.js --worker) alone: each finishes its current script, puts
+      // config.yml back and saves what it ran. The runs it never started are merged as "not run",
+      // which --resume runs again.
       process.on('SIGINT', () => { if (!stopping) { stopping = true; log('every shard stops after its current script') } })
       const take = () => (stopping ? null : queue.shift() || null)
       const putBack = job => { log(`round ${job.round} ${job.name} is back in the queue`); queue.unshift(job) }

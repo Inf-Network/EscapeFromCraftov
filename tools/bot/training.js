@@ -41,6 +41,7 @@ const conv = require('mineflayer/lib/conversions')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { offlineUuid } = require('./common')
 
 const PORT = env.PORT
 const RCON = env.RCON
@@ -88,22 +89,30 @@ async function waitFor (pred, ms, every = 200) {
   return false
 }
 
-function profile (name) {
-  if (!fs.existsSync(PLAYERS)) return null
-  for (const file of fs.readdirSync(PLAYERS)) {
-    if (!file.endsWith('.json')) continue
-    try {
-      const p = JSON.parse(fs.readFileSync(path.join(PLAYERS, file), 'utf8'))
-      if (p.name === name) return { p, at: fs.statSync(path.join(PLAYERS, file)).mtimeMs }
-    } catch (e) { /* being written */ }
-  }
-  return null
+const profileFile = name => path.join(PLAYERS, offlineUuid(name) + '.json')
+
+/**
+ * Which copy of the bot's profile is on disk now, or null before the first save. Every save
+ * replaces the file (AtomicFiles), so a newer copy has another inode or a later mtime.
+ */
+function stamp (name) {
+  try { const s = fs.statSync(profileFile(name)); return { ino: s.ino, mtimeMs: s.mtimeMs } } catch (e) { return null }
 }
 
-/** The profile as saved after `since` (ms epoch): the save that follows the bot leaving. */
-async function savedAfter (name, since) {
+/**
+ * The profile as saved after `before` (the stamp taken just before the bot left): the save that
+ * follows the bot leaving. Told by the file, not by the clock: files are stamped with the kernel's
+ * coarse clock, up to a tick (4 ms at HZ 250) behind Date.now(), and the server saves at its next
+ * tick, 0 to 50 ms after the bot quits, so about one save in 60 looked older than the moment the
+ * bot left and was never found (#151).
+ */
+async function savedAfter (name, before) {
   let out = null
-  await waitFor(() => { const r = profile(name); if (r && r.at > since) { out = r.p; return true } return false }, 15000)
+  await waitFor(() => {
+    const now = stamp(name)
+    if (!now || (before && now.ino === before.ino && now.mtimeMs <= before.mtimeMs)) return false
+    try { out = JSON.parse(fs.readFileSync(profileFile(name), 'utf8')); return true } catch (e) { return false } // being replaced
+  }, 15000)
   return out
 }
 
@@ -383,7 +392,7 @@ async function course () {
   await sleep(1000)
   const after = carried(bot)
   check('the gear is back exactly as it was', JSON.stringify(after) === JSON.stringify(before), { before, after })
-  const left = Date.now()
+  const left = stamp(name)
   bot.quit()
   const p = await savedAfter(name, left)
   check('the profile was saved after leaving', !!p)
@@ -417,7 +426,7 @@ async function quit () {
   bot.chat('/cv training')
   const refused = await waitFor(() => bot.chatLines.slice(chatAt).some(l => l.includes('秒后再开始')), 4000)
   check('a second course right away waits for the cooldown', refused && bot.worldChanges === worlds, bot.chatLines.slice(chatAt))
-  const left = Date.now()
+  const left = stamp(name)
   bot.quit()
   const p = await savedAfter(name, left)
   check('the profile names no raid', p && !p.activeRaid && !p.deployment, p && { activeRaid: p.activeRaid })

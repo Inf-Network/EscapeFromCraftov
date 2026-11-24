@@ -81,7 +81,7 @@ final class CatalogMenu extends Menu {
         });
         button(47, UiItems.button("craftov:ui/icon_cancel", "<danger><b>模拟受伤", List.of("<muted>生命降到 40：胸部出血、左腿和右臂骨折",
                 "<muted>用来测试绷带、夹板和急救包")), e -> {
-            viewer.setHealth(Math.min(viewer.getHealth(), 40));
+            plugin.health().setHealthShown(viewer, Math.min(viewer.getHealth(), 40));
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.CHEST, Injury.LIGHT_BLEED);
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.LEFT_LEG, Injury.FRACTURE);
             plugin.health().addInjury(viewer, net.infnetwork.snowball.craftov.combat.BodyPart.RIGHT_ARM, Injury.FRACTURE);

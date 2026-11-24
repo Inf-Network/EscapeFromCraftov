@@ -145,10 +145,14 @@ async function soldiers (world) {
 }
 
 /**
- * The client shows health scaled to 20 hearts' worth (HealthService): the factor back to real
- * health points, from the server's reading against the bot's.
+ * The client shows health scaled to 20 hearts' worth (HealthService: setHealthScale(20)): the factor
+ * back to real health points is max_health / 20. The server's health against the bot's last update
+ * is not used for it: that update can be a regeneration tick behind the server, which put every
+ * bullet a few percent off (66 reported, 67 or 68.6 measured).
  */
 async function healthScale (bot) {
+  const m = (await rcon(`attribute ${bot.username} minecraft:max_health get`)).match(/(-?[\d.]+)\s*$/)
+  if (m && Number(m[1]) > 0) return Number(m[1]) / 20
   const real = await health(bot.username)
   return real && bot.health ? real / bot.health : 1
 }

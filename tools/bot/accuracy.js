@@ -158,7 +158,17 @@ bot.once('login', () => {
     bot.entity.yaw = conv.fromNotchianYaw(yaw)
     bot.entity.pitch = conv.fromNotchianPitch(pitch)
   })
+  // The server marks the gun in hand while it reloads (ItemFactory.setHandMark: damage 2, for the
+  // reload frames) and takes the mark off once the magazine is in: when each reload ended, by its word.
+  bot.inventory.on('updateSlot', (slot, before, after) => {
+    if (slot === bot.quickBarSlot + 36 && handMark(before) === RELOAD_MARK && after && itemId(after) === itemId(before) && handMark(after) !== RELOAD_MARK) {
+      reloadsDone.push(Date.now())
+    }
+  })
 })
+const RELOAD_MARK = 2
+const handMark = item => { const d = item && item.componentMap && item.componentMap.get('damage'); return d ? d.data : 0 }
+const reloadsDone = []
 const pitchDeg = () => conv.toNotchianPitch(bot.entity.pitch)
 
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : null }
@@ -781,13 +791,19 @@ async function recoil (spot) {
   deaf = false
   check('recoil: ignoring the camera kick does not keep the rounds level', Math.abs(cheat.atRelease - cheat.start) < 0.5 && cheat.shotPitch <= cheat.start - 1.0,
     `camera ${cheat.start.toFixed(2)} -> ${cheat.atRelease.toFixed(2)}, last round at pitch ${cheat.shotPitch.toFixed(2)}`)
-  // And it all comes back: a single shot after the reload goes where the crosshair is.
-  await sleep(2500)
+  // And it all comes back: a single shot after the reload goes where the crosshair is. The spray ran
+  // the magazine dry, and it reloads by itself only if the trigger is still held when it does: the bot
+  // lets go once it has heard 30 rounds, which can come before the server has fired the last of them,
+  // and then the shot below only started the reload and was never fired (issue #144). So Q (during a
+  // reload already under way it changes nothing), and the shot waits for the server to end the reload.
+  const sprayed = Date.now()
+  dropKey()
+  const reloaded = await within(15000, () => reloadsDone.some(at => at >= sprayed))
   const from = logSize()
   bot.swingArm()
-  await sleep(300)
-  const single = shotLines(from)
-  check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0, single.map(l => l.climb).join(','))
+  const single = await loggedShots(from, 1)
+  check('recoil: a second after the spray the rounds are back on the crosshair', single.length >= 1 && single[0].climb === 0,
+    (single.map(l => l.climb).join(',') || 'no shot logged') + (reloaded === null ? ' (no reload ended after the spray)' : ''))
 }
 
 /**

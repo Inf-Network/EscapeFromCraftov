@@ -16,9 +16,9 @@
 //            itself gets a damage event or a hurt animation of B, or hears a player hurt sound; B alone
 //            hears craftov:status.bleed. B's own client is never shown its health drop (the vanilla
 //            client tilts the view at any drop, as for a hit): every health update it gets says 100.
-//            Then a hit takes B to 8 (/damage): its client is shown the true health again. B bleeds
-//            on to 0: it dies as before (solo, no injector: "行动失败", spectator), and C hears it
-//            cry out (entity.player.death).
+//            Then a hit takes B to 8 (/damage, half way between two bleed ticks, timed off the drip):
+//            its client is shown the true health again. B bleeds on to 0: it dies as before (solo, no
+//            injector: "行动失败", spectator), and C hears it cry out (entity.player.death).
 //   overlap  a bleed tick and a hit in one health update (issue #146). B healed, with Resistance V
 //            (rounds take no health but are still hits: B is sent a damage event), a heavy bleed on
 //            the left leg and the test armory open. Right after a drip A puts a few aimed K47 rounds
@@ -426,7 +426,17 @@ async function bleed (A, B, C) {
   const dripC = C.heard.filter(h => h.at >= since && /status\.bleed/.test(h.name)).length
   check('bleed: B heard the drip with every drop, C never', drip >= drops.length - 1 && dripC === 0, { B: drip, C: dripC })
 
-  // On to the end: B at 8 health bleeds out.
+  // On to the end: B at 8 health bleeds out. The hit goes in half way between two bleed ticks,
+  // timed off B's drip: in the same tick as a bleed it would come in the bleed's health update,
+  // which the bleed's quiet mark keeps from B's client (a /damage hit sends B no damage event to
+  // say it is a hit).
+  const dripAt = () => { const d = B.heard.filter(h => /status\.bleed/.test(h.name)); return d.length ? d[d.length - 1].at : 0 }
+  const lastDrip = dripAt()
+  if (!await waitFor(() => dripAt() > lastDrip, 3000)) {
+    log('SETUP: B no longer bleeds')
+    return 2
+  }
+  await sleep(Math.max(0, dripAt() + 700 - Date.now()))
   const now = await health(B.username)
   if (now === null || now <= 8) {
     log('SETUP: B is at', now)

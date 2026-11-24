@@ -57,7 +57,9 @@
 // Exit code: number of failed checks (2+ also when a scenario could not be set up).
 //
 // Server config (tools/bot/suite.js sets it for its run): debug true (the spread is read from the
-// log); test.enabled true (the bots queue for the proving ground, a test map) for ai.
+// log); test.enabled true (the bots queue for the proving ground, a test map) for ai, and there no
+// rival operators (ai.operator-chance [0, 0, 0]) or raid events (events.per-raid 0), whose shots and
+// barrages would count as the soldiers' hits. The suite runs impact and ai as entries of their own.
 // Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')

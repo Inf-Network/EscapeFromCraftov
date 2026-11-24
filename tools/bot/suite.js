@@ -83,6 +83,10 @@ const QUIET = { 'cinematic.enabled': false, 'ai.count-multiplier': 0, 'ai.operat
  */
 const SCRIPTS = [
   { name: 'accuracy', config: { debug: true } },
+  // Not in accuracy's default run: where rounds land on a wall, and soldiers' hits on a standing
+  // versus a strafing bot (only soldiers may shoot it there: no operators, no events).
+  { name: 'accuracy:impact', file: 'accuracy.js', args: ['impact'], config: { debug: true } },
+  { name: 'accuracy:ai', file: 'accuracy.js', args: ['ai'], config: { debug: true, 'ai.operator-chance': [0, 0, 0], 'events.per-raid': 0 } },
   { name: 'ads' },
   { name: 'aibehaviour', config: { 'match.wait-seconds': 2 }, minutes: 40 },
   { name: 'aidamage', config: { 'match.wait-seconds': 2 } },
@@ -145,6 +149,9 @@ const SCRIPTS = [
   { name: 'test' },
   { name: 'testmap', minutes: 40 },
   { name: 'training' },
+  // Not in training's default run: no rival operators on the training course, which proves something
+  // only when every other raid would get them.
+  { name: 'training:solo', file: 'training.js', args: ['solo'], config: { 'ai.operator-chance': [1, 1, 1] } },
   { name: 'trigger', config: { debug: true } },
   { name: 'ui' },
   { name: 'vanilla' }

@@ -13,10 +13,13 @@
 //
 // The bot reads its own health updates (shown scaled to 20, so they are scaled back by the
 // server's own reading) and the damage events that come with them, so it knows what each
-// bullet took off (bleeding ticks have their own damage type and are left out; a tick
-// with both makes the attempt inconclusive and it is run again). RCON kills the bot before a
-// shot could, which adds nothing to the report, so the health lost to bullets should equal the
-// total under 受到的伤害.
+// bullet took off. Bleeding comes with no damage event, and the server keeps what it takes from
+// the bleeder's own client (Nms.quietHealthLoss: the vanilla client would tilt the view as for a
+// hit) until the next hit's health update shows the true health, bleeding and all. Every bleed
+// tick plays craftov:status.bleed to the bleeder, so a drop that comes after one is not a bullet's
+// alone: with a bullet in it, the attempt is inconclusive and it is run again. RCON kills the bot
+// before a shot could, which adds nothing to the report, so the health lost to bullets should
+// equal the total under 受到的伤害.
 //
 //   soldiers  A, out of helmet and vest, stands at the proving ground's soldier post once the
 //             insertion grace is over and is shot until under 60 HP: the raid world is on normal
@@ -27,7 +30,10 @@
 //             health afterwards (they do not shoot each other).
 //   players   B, from another squad, puts three pistol rounds into A (no helmet or vest): about
 //             1.0 as well, as it always was, and each hit is the pistol's 22 times the body
-//             part's multiplier.
+//             part's multiplier. A chest round makes A bleed about one time in four, and a bleed
+//             tick between two rounds would ride in on the next one (issue #143: 68.6 or 67.0
+//             lost to 66 reported), so after each hit A's wounds are cleared and its health topped
+//             up (/cv injure A clear).
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
 // the proving ground, a test map), match.wait-seconds 2.
@@ -80,9 +86,18 @@ function make () {
       pending.push({ type: bot.damageTypes[p.sourceTypeId] || String(p.sourceTypeId), cause: p.sourceCauseId, direct: p.sourceDirectId, pos: p.sourcePosition || null })
     }
   })
+  // A bleed tick: its loss is kept from this client until a drop shows the true health again, so
+  // the mark waits for that drop. A rise shows the true health too (only drops are held back).
+  bot.on('soundEffectHeard', s => { if (String(s) === 'craftov:status.bleed') pending.push({ type: 'bleed' }) })
   bot._client.on('update_health', p => {
-    if (last !== null && p.health < last - 1e-4) bot.hits.push({ drop: last - p.health, events: pending })
-    pending = []
+    if (last !== null && p.health < last - 1e-4) {
+      bot.hits.push({ drop: last - p.health, events: pending })
+      pending = []
+    } else if (last === null || p.health > last + 1e-4) {
+      pending = []
+    } else {
+      pending = pending.filter(e => e.type === 'bleed')
+    }
     last = p.health
   })
   bot.on('messagestr', m => { if (m.trim()) bot.chatLog.push(m) })
@@ -147,8 +162,8 @@ async function soldiers (world) {
 /**
  * The client shows health scaled to 20 hearts' worth (HealthService: setHealthScale(20)): the factor
  * back to real health points is max_health / 20. The server's health against the bot's last update
- * is not used for it: that update can be a regeneration tick behind the server, which put every
- * bullet a few percent off (66 reported, 67 or 68.6 measured).
+ * is not used for it: that update can be behind the server (bleeding is kept from the client, see
+ * make), and the gap would scale every bullet.
  */
 async function healthScale (bot) {
   const m = (await rcon(`attribute ${bot.username} minecraft:max_health get`)).match(/(-?[\d.]+)\s*$/)
@@ -157,7 +172,10 @@ async function healthScale (bot) {
   return real && bot.health ? real / bot.health : 1
 }
 
-/** The health the bot lost to bullets from hit {@code since} on, and the bullet events. */
+/**
+ * The health the bot lost to bullets from hit {@code since} on, and the bullet events. A drop with
+ * bullets and a bleed tick (or other damage) in it is counted in {@code mixed}, not in either.
+ */
 function bullets (bot, since, scale) {
   const out = { lost: 0, events: [], mixed: 0, bleed: 0 }
   for (const h of bot.hits.slice(since)) {
@@ -220,7 +238,7 @@ const scenarios = {
     const hit = bullets(A, since, scale)
     if (!shotAt) return ['FAIL', `the soldiers did not bring A under 60 HP in 15 s (${await health(A.username)} HP)`]
     if (!rows) return ['FAIL', 'no 受到的伤害 report after the kill']
-    if (hit.mixed) return ['RETRY', `a bleed tick and a bullet arrived together (${hit.mixed}x)`]
+    if (hit.mixed) return ['RETRY', `bleeding and a bullet came in one health update (${hit.mixed}x)`]
     const c = compare(hit, rows)
     if (c.count !== hit.events.length) return ['RETRY', `the report counts ${c.count} hits, A saw ${hit.events.length} (a shot was stopped)`]
     const after = await soldiers(world)
@@ -255,16 +273,20 @@ const scenarios = {
       await sleep(200)
       const target = B.players[A.username] && B.players[A.username].entity
       if (!target) break
+      const seen = A.hits.length
       B.attack(target) // a left click on an entity with a gun in hand pulls the trigger
       fired++
-      await sleep(600)
+      // Once A has seen the hit: no wound it opened bleeds into the next round's health update.
+      await waitFor(() => A.hits.length > seen, 600)
+      await rcon(`cv injure ${A.username} clear`)
+      await sleep(300)
     }
     if (!fired) return ['FAIL', 'B cannot see A']
     await sleep(300)
     const rows = await killAndRead(A)
     const hit = bullets(A, since, scale)
     if (!rows) return ['FAIL', `no 受到的伤害 report after the kill (${fired} shots)`]
-    if (hit.mixed) return ['RETRY', `a bleed tick and a bullet arrived together (${hit.mixed}x)`]
+    if (hit.mixed) return ['RETRY', `bleeding and a bullet came in one health update (${hit.mixed}x)`]
     const c = compare(hit, rows)
     if (c.count !== hit.events.length) return ['RETRY', `the report counts ${c.count} hits, A saw ${hit.events.length}`]
     const problems = []

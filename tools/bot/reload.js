@@ -88,7 +88,10 @@ async function main () {
   } else bot.setQuickBarSlot(gun)
   await c.sleep(1500) // the draw
   // Without the race (the capture blocks before their chunk) this run says nothing about #141.
-  if (arrival) c.check('arrive: the capture blocks came before their chunk, the race this scenario is for', arrival.report(), 'not reproduced')
+  if (arrival) {
+    const raced = arrival.report()
+    c.check('arrive: the capture blocks came before their chunk, the race this scenario is for', raced, raced ? '' : 'not reproduced')
+  }
 
   // reload: a full magazine has nothing to reload, so a few rounds go first.
   let shots = bot.reports.length

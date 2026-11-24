@@ -6,9 +6,9 @@
 // Needs a local test server (server/setup.sh --local) with RCON on. Ports come from
 // MC_PORT (25565), RCON_PORT (25575) and RCON_PASSWORD (craftov-local). To keep the
 // run short and the scenarios apart, in plugins/Craftov/config.yml:
-//   match: { wait-seconds: 2, join-window-seconds: -1 }   (no backfill into older raids)
-//   raid: { reconnect-seconds: 30 }                        and RECONNECT=30 here
-//   tiers.NORMAL.entry-fee: 1000                           (so a charged fee shows)
+//   match: { wait-seconds: 2 }
+//   raid: { reconnect-seconds: 30 }          and RECONNECT=30 here
+//   tiers.NORMAL.entry-fee: 1000             (so a charged fee shows)
 // The 'timeout' scenario also sets insurance.loss-chance and insurance.return-minutes to 0 for its
 // run (insurance.js, put back afterwards), since it checks that every insured piece comes back.
 // Profiles are read from PLAYERS (default ../../server/run/plugins/Craftov/data/players).
@@ -16,8 +16,8 @@
 // number of failures.
 //
 // Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
-// the proving ground, a test map), match.wait-seconds 2, match.join-window-seconds -1,
-// raid.reconnect-seconds 30 (with RECONNECT=30), tiers.NORMAL.entry-fee 1000.
+// the proving ground, a test map), match.wait-seconds 2, raid.reconnect-seconds 30 (with
+// RECONNECT=30), tiers.NORMAL.entry-fee 1000.
 // Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')

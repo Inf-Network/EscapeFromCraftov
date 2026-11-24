@@ -78,7 +78,7 @@ const SCRIPTS = [
   { name: 'carryui', minutes: 40 },
   { name: 'credit', minutes: 40 },
   { name: 'cursor' },
-  { name: 'deploy', config: { 'match.wait-seconds': 2, 'match.join-window-seconds': -1, 'raid.reconnect-seconds': 30, 'tiers.NORMAL.entry-fee': 1000 }, env: { RECONNECT: 30 }, minutes: 40 },
+  { name: 'deploy', config: { 'match.wait-seconds': 2, 'raid.reconnect-seconds': 30, 'tiers.NORMAL.entry-fee': 1000 }, env: { RECONNECT: 30 }, minutes: 40 },
   { name: 'disconnect', config: { 'match.wait-seconds': 2, 'raid.reconnect-seconds': 30 }, env: { RECONNECT: 30 }, minutes: 40 },
   { name: 'doors' },
   { name: 'econ' },

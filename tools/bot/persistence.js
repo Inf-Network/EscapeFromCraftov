@@ -190,6 +190,16 @@ function join (name) {
     bot._client.on('action_bar', p => bot.bars.push(JSON.stringify(p))) // raw: the event misses NBT text
     bot.on('error', e => log(name, 'ERROR', e.message))
     const timer = setTimeout(() => resolve({ error: 'timeout' }), 60000)
+    // A refused login is answered within a few milliseconds, sometimes before mineflayer has loaded
+    // its plugins (it does on a timer after createBot), the one that turns this packet into 'kicked'
+    // among them: the bot then sees only the connection close (#138). The client parses the login's
+    // disconnect packet either way, so the reason is taken from there.
+    bot._client.once('disconnect', p => {
+      const reason = typeof p.reason === 'string' ? p.reason : JSON.stringify(p.reason)
+      clearTimeout(timer)
+      log(name, 'REFUSED', reason)
+      resolve({ kicked: reason })
+    })
     bot.once('kicked', r => { clearTimeout(timer); log(name, 'KICKED', r); resolve({ kicked: typeof r === 'string' ? r : JSON.stringify(r) }) })
     bot.once('spawn', async () => { clearTimeout(timer); await sleep(3000); resolve({ bot }) })
   })

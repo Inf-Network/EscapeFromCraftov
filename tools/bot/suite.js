@@ -136,6 +136,7 @@ const SCRIPTS = [
   { name: 'proving' },
   { name: 'range' },
   { name: 'reload' },
+  { name: 'reload:arrive', file: 'reload.js', args: ['arrive'] },
   { name: 'replayhit', config: { ...QUIET, 'match.wait-seconds': 6 } },
   { name: 'revive', config: { debug: true }, minutes: 40 },
   { name: 'security' },

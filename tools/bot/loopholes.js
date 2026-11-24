@@ -10,16 +10,24 @@
 // and return-minutes to 0 in its config.yml while they run (insurance.js). Bots use random names, so
 // they start as new accounts (starter loadout, ◈150,000). Prints PASS/FAIL lines and exits 1 on any
 // failure.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rcon = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
+// A refund comes without a line, so a balance change less the daily contracts the bot was told it
+// finished (common.js) is what was refunded.
+const { announcedSince } = require('./common')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON_PORT = Number(process.env.RCON_PORT || 25575)
-const RCON_PASSWORD = process.env.RCON_PASSWORD || 'craftov-local'
-const RUN = process.env.CRAFTOV_RUN || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON_PORT = env.RCON_PORT
+const RCON_PASSWORD = env.RCON_PASSWORD
+const RUN = env.SERVER_DIR
 const PLAYERS = path.join(RUN, 'plugins/Craftov/data/players')
 const t0 = Date.now()
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
@@ -117,6 +125,7 @@ function stashUsed (w) {
   const m = json(w.slots[49]).match(/仓库 (\d+)\/(\d+)/)
   return m ? { used: Number(m[1]), cap: Number(m[2]) } : null
 }
+
 
 async function money (name) {
   const m = (await cmd(`cv money ${name} 0`)).match(/◈([\d,]+)/)
@@ -326,12 +335,15 @@ async function escort () {
   e.closeWindow(list)
   // Kicked escort in the same raid: the client extracts, the escort gets nothing, the client gets it all back.
   const cBefore = await money(c.username)
+  const cMark = c.msgs.length
   const eBefore = await money(e.username)
   const inRaid = await enterRaid([c, e], () => { c.chat('/cv queue proving NORMAL SOLO'); e.chat('/cv queue proving NORMAL SOLO') })
   log('both', 'in raid', inRaid)
   check('escort: client extracted', await extract(c))
   await sleep(1500)
-  const cAfter = await money(c.username)
+  // Less what the client's own extraction paid it (a daily contract to extract): announced.
+  const cPaid = announcedSince(c, cMark)
+  const cAfter = await money(c.username) - cPaid.tasks
   const eAfter = await money(e.username)
   check('escort: a kicked escort in the same raid is not paid', eAfter === eBefore, `escort ${eBefore} -> ${eAfter}`)
   await extract(e)
@@ -340,8 +352,8 @@ async function escort () {
   await openWith(e, () => e.chat('/cv'))
   list = await openWith(e, () => e.clickWindow(16, 0, 0))
   const still = json(list.slots[slotOf(list, c.username)])
-  check('escort: the contract stays open for the client, reward still in escrow', still.includes('等待护航') && cAfter === cBefore,
-    `client ${cBefore} -> ${cAfter}`)
+  check('escort: the contract stays open for the client, reward still in escrow', still.includes('等待护航') && cAfter === cBefore && !cPaid.others.length,
+    `client ${cBefore} -> ${cAfter} (daily contracts announced on extracting taken off)${cPaid.others.length ? '; other rewards: ' + cPaid.others.join(' | ') : ''}`)
   // A real escort is still paid.
   await e.clickWindow(slotOf(list, c.username), 0, 0); await sleep(500)
   e.closeWindow(list)
@@ -548,6 +560,7 @@ async function escortraid () {
     e.closeWindow(list)
   }
   const cBefore = await money(c.username)
+  const cMark = c.msgs.length
   const e1Before = await money(e1.username)
   check('escortraid: squad deployed', await enterRaid([c, e1, e2], () => c.chat('/cv queue proving NORMAL TRIO')))
   c.chat(`/cv party kick ${e1.username}`)
@@ -561,10 +574,19 @@ async function escortraid () {
   const e1Paid = (await money(e1.username)) - e1Before
   // B's balance also moved with his own extraction (level-up and task rewards): read the escort income.
   const e2Paid = (((profile(e2.username) || {}).stats || {}).escort_income || 0)
+  // The client's balance also moves with its own extraction: a daily contract to extract once
+  // pays ◈7,000 right then. That is announced; the escort refund is not, so it is what is left of
+  // the change.
   const cAfter = await money(c.username)
+  const cPaid = announcedSince(c, cMark)
+  const cRewards = cPaid.tasks
+  const cRefund = cAfter - cBefore - cRewards
   check('escortraid: the escort kicked in the raid is still paid', e1Paid === 10000, e1Paid)
   check('escortraid: the escort who extracted and logged off is still paid', e2Paid === 10000, e2Paid)
-  check('escortraid: the client gets nothing back', cAfter === cBefore, `${cBefore} -> ${cAfter}`)
+  check('escortraid: the client gets nothing back', cRefund === 0 && !cPaid.others.length,
+    `${cBefore} -> ${cAfter}, of which daily contracts ${cRewards}: refund ${cRefund}${cPaid.others.length ? '; other rewards: ' + cPaid.others.join(' | ') : ''}`)
+  const escrow = (profile(c.username) || {}).escortEscrow
+  check('escortraid: the client\'s escrow is closed', !escrow, escrow)
   await extract(e1)
   c.quit(); e1.quit()
 }

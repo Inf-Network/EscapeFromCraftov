@@ -55,18 +55,23 @@
 // Before each slide B shoots at (zones, cross) and before body, A is put back to full health with no
 // wounds (/cv injure A clear): a round in the legs can break one, and then A cannot sprint or slide.
 //
-// Needs `debug: true` (impacts and slides are read from the log), test mode (`test.enabled: true`, so
-// the bots may queue for the proving ground) and `match.wait-seconds` short (3) in the server's
-// plugins/Craftov/config.yml. Exit code: number of failed checks (2+ also when the setup failed).
+// Server config (tools/bot/suite.js sets it for its run): debug true (impacts and slides are read from
+// the log), test.enabled true (the bots queue for the proving ground, a test map), match.wait-seconds
+// 3, the default slide, stamina and footsteps.slide-range (24); lag compensation is switched with
+// /cv lagcomp and left on.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// Exit code: number of failed checks (2+ also when the setup failed).
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const PORT = env.PORT
+const RCON = env.RCON
+const LOG = env.LOG
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()

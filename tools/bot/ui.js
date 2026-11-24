@@ -22,11 +22,16 @@
 //   PORT=25565 RCON_PORT=25575 node ui.js [menu tooltips channels squad]   (settle runs with channels)
 //
 // The server needs test.enabled (bots queue for the proving ground). Exit code: failed checks.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const t0 = Date.now()
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))

@@ -38,25 +38,32 @@
 // KEEP=1), so only point it at a throwaway test server. It may be running or not at the start; it
 // is left the way it was found.
 //
-// node marketio.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
-//                         RCON_PASS=craftov-local ROUNDS=3 BOTS=6 OFFLINE=20 LISTINGS=600 STASH=40
+// node marketio.js   env: SERVER_DIR (required, the run folder; CRAFTOV_RUN is read too), PORT,
+//                         RCON_PORT, RCON_PASSWORD (env.js), ROUNDS=3 BOTS=6 OFFLINE=20 LISTINGS=600 STASH=40
 //                         STOP_MIN=20 STOP_MAX=40 MIN_TRADES=40 SLOW_ROUNDS=1 SLOW_MS=150
 //                         MEMORY=3G KEEP=0 LOG=/tmp/marketio.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
+//
+// Server config (tools/bot/suite.js sets it for its run): the script rewrites config.yml itself
+// while the server is down and puts it back (see above).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (which must be set).
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+// Named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN), never the default: the script stops and
+// starts the server it is pointed at and rewrites its files.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
   console.error('SERVER_DIR must point at the server run folder (with start.sh)')
   process.exit(2)
 }
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const ROUNDS = Number(process.env.ROUNDS || 3)
 const BOTS = Number(process.env.BOTS || 6)
 const OFFLINE = Number(process.env.OFFLINE || 20)
@@ -281,16 +288,19 @@ function openWith (bot, fn, ms = 3000) {
 const click = async (bot, slot, wait = 250) => { await bot.clickWindow(slot, 0, 0); await sleep(wait) }
 const shut = bot => { try { if (bot.currentWindow) bot.closeWindow(bot.currentWindow) } catch { /* gone */ } }
 
-/** Lists up to `count` tracked guns from the stash at the price the pricing screen starts at. */
+/**
+ * Lists up to `count` tracked guns from the stash at the price the pricing screen starts at. The
+ * stash has no modes since #10: its records start at slot 9 (0-8 are the tabs) and a right click
+ * on one opens the pricing screen.
+ */
 async function listSome (bot, count) {
   let w = await openWith(bot, () => bot.chat('/cv stash'))
   if (!w) return
-  for (let i = 0; i < 3 && !title(w.slots[48]).includes('上架'); i++) await click(bot, 48)
   for (let k = 0; k < count && !bot.gone; k++) {
     const slots = []
-    for (let s = 0; s < 45; s++) if (w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
+    for (let s = 9; s < 45; s++) if (w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
     if (!slots.length) break
-    const pm = await openWith(bot, () => bot.clickWindow(slots[Math.floor(Math.random() * slots.length)], 0, 0))
+    const pm = await openWith(bot, () => bot.clickWindow(slots[Math.floor(Math.random() * slots.length)], 1, 0))
     if (!pm) break
     // Confirm: the stash opens again on success, the menu just closes on a refusal.
     const back = await openWith(bot, () => bot.clickWindow(26, 0, 0), 1500)

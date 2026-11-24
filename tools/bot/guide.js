@@ -29,16 +29,22 @@
 // writes profile files into PLAYERS (default ../../server/run/plugins/Craftov/data/players), so it
 // must run on the same machine as the server. Bots are made op for the test map and deopped when
 // done. Prints PASS / FAIL per check; exit code 0 when every check passed, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3, cinematic.enabled
+// false, ai.count-multiplier 0, ai.operator-chance [0, 0, 0], events.per-raid 0, tutorial.enabled
+// true (the default), no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const EXTRACT = process.env.EXTRACT || '106.5 65 8.5' // the proving ground's permanent extraction
-const PLAYERS = process.env.PLAYERS || path.join(__dirname, '../../server/run/plugins/Craftov/data/players')
+const PLAYERS = process.env.PLAYERS || path.join(env.DATA, 'data', 'players')
 const RAID_SECONDS = Number(process.env.RAID_SECONDS || 60)
 const args = process.argv.slice(2)
 const want = s => args.length === 0 || args.includes(s)
@@ -218,9 +224,12 @@ async function order () {
     const fourth = await waitFor(() => bot.bars.slice(barsFrom).some(b => /✔ 检查 FOV 特效.*下一步：装一个配件/.test(b.text)), 5000)
     check('order: confirming FOV Effects ticks it off and names the gunsmith next', fourth, bot.bars.slice(barsFrom).map(b => b.text))
 
-    // The gunsmith: a red dot on an M4C.
+    // The gunsmith: a red dot on an M4C. An attachment is carried in a backpack only (#10), so
+    // the bot wears one (cv give puts it on); the bench lists the carried guns along the top and
+    // the parts for the picked one along the bottom, and retitles itself on a pick.
     await rcon(`clear ${name}`)
     await sleep(800)
+    await rcon(`cv give ${name} pack_1`)
     await rcon(`cv give ${name} m4c`)
     await rcon(`cv give ${name} optic_reddot`)
     await sleep(800)
@@ -228,7 +237,11 @@ async function order () {
     from = bot.chatLog.length
     const bench = await openWith(bot, () => bot.chat('/cv mod'))
     if (!bench) throw new Error('the gunsmith did not open')
-    await bot.clickWindow(45, 0, 0)
+    const idIn = (w, wanted, a, b) => { for (let i = a; i < b; i++) if (JSON.stringify((w.slots[i] || {}).components || '').includes(`"value":"${wanted}"`)) return i; return -1 }
+    const gun = idIn(bench, 'm4c', 0, 9)
+    if (gun >= 0) { await bot.clickWindow(gun, 0, 0); await sleep(500) }
+    const part = idIn(bot.currentWindow || bench, 'optic_reddot', 45, 54)
+    await bot.clickWindow(part >= 0 ? part : 45, 0, 0)
     const finished = await waitChat(bot, /新手指引完成/, 5000, from)
     if (bot.currentWindow) bot.closeWindow(bot.currentWindow)
     await sleep(500)

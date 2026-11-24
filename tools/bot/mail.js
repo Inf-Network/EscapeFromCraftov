@@ -11,16 +11,20 @@
 //   PORT=25565 RCON_PORT=25575 SERVER_DIR=../../server/run node mail.js
 //
 // The server must be running. Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): the defaults.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON_PORT = Number(process.env.RCON_PORT || 25575)
-const RCON_PASSWORD = process.env.RCON_PASSWORD || 'craftov-local'
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const PORT = env.PORT
+const RCON_PORT = env.RCON_PORT
+const RCON_PASSWORD = env.RCON_PASSWORD
+const SERVER_DIR = env.SERVER_DIR
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const tag = String(Math.floor(1000 + Math.random() * 9000))
 const NAMES = { reader: 'MlRead' + tag, full: 'MlFull' + tag }

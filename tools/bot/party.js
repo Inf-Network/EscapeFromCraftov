@@ -35,15 +35,21 @@
 //             before it lands. Void for D as for E, offline: the loadout it went in with, fees
 //             back, the raid taken off stats.raids, and a 行动作废 letter with no compensation (it
 //             used to keep the raid in the stats).
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 5 (WAIT=5), raid.reconnect-seconds 10 (with
+// RECONNECT=10).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const LOG = path.join(SERVER_DIR, 'logs/latest.log')
 const RECONNECT = Number(process.env.RECONNECT || 120)
 const WAIT = Number(process.env.WAIT || 5)

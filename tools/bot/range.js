@@ -2,20 +2,28 @@
 // ammo, meds) and enters the range from the lobby rack. On the range: the lobby menus that move items
 // between the inventory and the profile (stash, trader, market, secure container, deploy) must refuse
 // to open, /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out
-// of reach), Q never fires and a left click does. Leaving must give back the lobby inventory slot
-// for slot, with nothing taken on the range, and so must being teleported off the range by an admin,
-// at once, so that a rifle stashed straight after /cv lobby is not handed back a moment later.
+// of reach), Q never fires and a left click does (the capture block in front of the crosshair dug, as
+// the vanilla client sends a click; a bare swing fires nothing, #33). Leaving must give back the
+// lobby inventory slot for slot, with nothing taken on the range, and so must being teleported off
+// the range by an admin, at once, so that a rifle stashed straight after /cv lobby is not handed
+// back a moment later.
 // Then a solo raid on the test map checks that /cv secure still opens mid-raid and that extracting
 // keeps what the bot carried.
 //
 //   PORT=25565 RCON_PORT=25575 node range.js [--no-raid]
 // Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map) (the raid part is on the proving ground), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
+const { pullTrigger } = require('./common')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON_PORT = Number(process.env.RCON_PORT || 25575)
-const RCON_PASSWORD = process.env.RCON_PASSWORD || 'craftov-local'
+const PORT = env.PORT
+const RCON_PORT = env.RCON_PORT
+const RCON_PASSWORD = env.RCON_PASSWORD
 const RAID = !process.argv.includes('--no-raid')
 const rcon = cmd => rconRaw(cmd, { port: RCON_PORT, password: RCON_PASSWORD }).then(s => s.replace(/§./g, ''))
 const name = 'Rng' + Math.floor(10000 + Math.random() * 90000)
@@ -59,12 +67,21 @@ const id = (item) => { const m = JSON.stringify(item && item.components || '').m
 const isUi = (s) => s.startsWith('ui/')
 const title = (w) => JSON.stringify(w.title)
 // Armour 5-8, cells 9-35, hotbar 36-44, offhand 45.
+/**
+ * A gun's damage component is its hand mark (#34: holstered while another key is held, none in the
+ * hand), which follows what the player holds, not what the stack is: left out of the comparison.
+ * Guns are the stacks with max_damage 5; any other damage still counts.
+ */
+const handMarkless = comps => {
+  const gun = (comps || []).some(c => c.type === 'max_damage' && c.data === 5)
+  return gun ? comps.filter(c => c.type !== 'damage') : comps
+}
 function layout ({ items = true, components = false } = {}) {
   const out = {}
   for (let i = 5; i <= 45; i++) {
     const it = bot.inventory.slots[i]
     if (!it || (items && isUi(id(it)))) continue
-    out[i] = components ? JSON.stringify(it.components) : id(it) + 'x' + it.count
+    out[i] = components ? JSON.stringify(handMarkless(it.components)) : id(it) + 'x' + it.count
   }
   return out
 }
@@ -144,10 +161,15 @@ async function rangePhase () {
     for (let i = 0; i < 3; i++) { bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }); await sleep(400) }
     await sleep(3500)
     check('Q reloads without firing', shots === 0, shots + ' shots')
+    // Down the range at a dummy: the capture block the click digs sits in the air in front of the
+    // crosshair, which a wall or the rack right in front would leave no room for.
+    const dummy = bot.nearestEntity(e => e.name === 'zombie')
+    if (dummy) await bot.lookAt(dummy.position.offset(0, 1.3, 0), true)
+    await sleep(500)
     shots = 0
-    bot.swingArm()
+    const cell = await pullTrigger(bot)
     await sleep(600)
-    check('a left click fires', shots >= 1, shots + ' shots')
+    check('a left click fires', shots >= 1, `${shots} shots${cell ? '' : ', no capture block in front of the crosshair'}`)
   } else check('m4c reached the hotbar on the range', false)
 
   // Outlast the lobby's 2 s loadout snapshot before leaving.
@@ -162,7 +184,7 @@ async function rangePhase () {
   const d = diff(before, after)
   check('every slot is back as it was before the range', d.length === 0, d.join(', '))
   const dFull = diff(beforeFull, layout({ items: false, components: true }))
-  check('every stack is identical, components included', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).map(s => s.slice(0, 120)).join(' | '))
+  check('every stack is identical, components included (a gun\'s hand mark aside)', dFull.length === 0, `${dFull.length} slots differ: ` + dFull.slice(0, 3).join(' | '))
   check('no range loaner came back', !bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))
 
   // Being teleported off the range by other means ends the session the same way, and at once: the

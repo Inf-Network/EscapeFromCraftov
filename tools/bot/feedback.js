@@ -31,18 +31,23 @@
 //
 //   PORT=25565 RCON_PORT=25575 [RCON_PASSWORD=craftov-local] [SERVER_DIR=../../server/run] node feedback.js [scenario ...]
 //
-// Server config: test.enabled true (the proving ground is a test map; the bots are also made op),
-// match.wait-seconds short (5) so the three solo queues land in one match. The bots leave the raid
-// by disconnecting. Exit code: number of failed checks (2+ also when a scenario could not be set up).
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the proving ground is a
+// test map; the bots are also made op), match.wait-seconds short (3) so the three solo queues, sent
+// together, land in one match.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// The bots leave the raid by disconnecting. Exit code: number of failed checks (2+ also when a
+// scenario could not be set up).
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 const fs = require('fs')
 const path = require('path')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const PACK = path.join(__dirname, '../../src/main/resources/pack/craftov/resourcepack/assets/craftov')
 const MEDS = ['bandage', 'hemostat', 'splint', 'medkit_s', 'medkit_l', 'surgery', 'painkiller', 'adrenaline', 'revive_kit']
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))

@@ -14,11 +14,16 @@
 //   CHECKS=lobby-q,raid-dupe node carry.js          # a subset
 //
 // Prints one PASS / FAIL line per check and exits with the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const MAP = process.env.MAP || 'proving'
 const ONLY = process.env.CHECKS ? process.env.CHECKS.split(',') : null
 

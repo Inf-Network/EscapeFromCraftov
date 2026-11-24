@@ -56,15 +56,21 @@
 // luck.compensation.threshold.NORMAL 20000 and raids BOOST, plus per scenario the luck numbers named above.
 // The server needs that config.yml to be the full one the plugin writes. Bots use fresh random names and
 // are made op (the proving ground is test-only). Exits 0 when every check passed.
+//
+// Server config (tools/bot/suite.js sets it for its run): the full config.yml the plugin writes;
+// the script sets everything else it needs itself (see above) and puts it back. python3 with its
+// yaml module.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const { execFileSync } = require('child_process')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '../../server/run'))
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const DATA = path.join(SERVER_DIR, 'plugins/Craftov')
 const CONFIG = path.join(DATA, 'config.yml')
 const LOG = path.join(SERVER_DIR, 'logs/latest.log')

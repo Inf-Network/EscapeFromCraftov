@@ -1,33 +1,69 @@
-// Reload animation check: Q with a gun in hand must put the craftov:reload cooldown group on cooldown
-// for the reload time (the client animates the reload from it), and switching away must clear it.
-const mineflayer = require('mineflayer')
-const rcon = require('./rcon')
-const sleep = ms => new Promise(r => setTimeout(r, ms))
-const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: 'Loader', version: '1.21.11', auth: 'offline' })
-bot._client.on('add_resource_pack', (p) => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
-const t0 = Date.now()
-bot._client.on('set_cooldown', (p) => console.log((Date.now() - t0) + 'ms cooldown', JSON.stringify(p)))
-bot._client.on('system_chat', (p) => { if (p.isActionBar) console.log((Date.now() - t0) + 'ms bar', JSON.stringify(p.content).slice(0, 120)) })
-bot.on('actionBar', m => console.log('bar', m.toString()))
-const dropKey = () => bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
-bot.once('spawn', async () => {
-  await sleep(2500)
-  await rcon('cv give Loader m4c')
-  await rcon('cv give Loader ammo_556_m855 60')
-  await rcon('execute as Loader at @s run tp @s 11.5 65 -7.5 180 0')
-  await sleep(1000)
-  const slot = bot.inventory.slots.findIndex((s, i) => i >= 36 && i <= 44 && s && JSON.stringify(s.components || '').includes('m4c'))
-  const gun = bot.inventory.slots[slot]
-  console.log('use_cooldown component', JSON.stringify((gun.components || []).filter(c => String(c.type).includes('cooldown'))))
-  bot.setQuickBarSlot(slot - 36)
-  await sleep(500)
-  bot.swingArm(); await sleep(300)
-  console.log((Date.now() - t0) + 'ms reload 1'); dropKey()
-  await sleep(4000)
-  console.log((Date.now() - t0) + 'ms reload 2 (sneak+Q), then switch slot'); bot.setControlState('sneak', true); await sleep(200); dropKey(); await sleep(100); bot.setControlState('sneak', false)
-  await sleep(600)
-  bot.setQuickBarSlot((slot - 36 + 1) % 9)
-  await sleep(1000)
-  bot.quit()
-})
-bot.on('end', () => process.exit(0))
+// The reload animation runs on a cooldown (the item model plays its frames from the craftov:reload
+// cooldown group), so the server must start that cooldown for the length of a reload and clear it
+// when the reload is cut short. One bot (a fresh account) on the private range with an M4C:
+//
+//   reload   a few rounds down, Q with the M4C in hand starts a craftov:reload cooldown of at least
+//            20 ticks; once it has run out the gun fires (its report is heard).
+//   cut      a few rounds down again, Q starts the cooldown; switching to another hotbar slot 0.4 s
+//            later clears it (a craftov:reload cooldown of 0) and the action bar says the reload was
+//            cut short (换弹已中断).
+//
+//   node reload.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js)
+//
+// Server config: the defaults (the range is open to everyone). Prints PASS / FAIL per check; the exit
+// code is the number of failures (2+ when it broke). swap.js checks the cooldown's exact length.
+const c = require('./common')
+
+async function main () {
+  const name = 'Rld' + c.tag
+  const bot = await c.make(name)
+  const cooldowns = []
+  bot._client.on('set_cooldown', p => {
+    const group = Object.values(p).find(v => typeof v === 'string') || ''
+    const ticks = Object.values(p).find(v => typeof v === 'number')
+    cooldowns.push({ at: Date.now(), group, ticks })
+  })
+  const reloads = from => cooldowns.slice(from).filter(x => x.group.includes('craftov:reload'))
+
+  c.check('the bot is on the private range', await c.enterRange(bot))
+  await c.rcon(`cv give ${name} m4c`)
+  await c.waitFor(() => c.hotbar(bot, 'm4c') >= 0, 3000)
+  const gun = c.hotbar(bot, 'm4c')
+  if (gun < 0) return c.finish(2)
+  bot.setQuickBarSlot(gun)
+  await c.sleep(1500) // the draw
+
+  // reload: a full magazine has nothing to reload, so a few rounds go first.
+  await c.pullTrigger(bot, 300)
+  await c.sleep(800)
+  let from = cooldowns.length
+  c.dropKey(bot)
+  await c.waitFor(() => reloads(from).length > 0, 2000)
+  const started = reloads(from).find(x => x.ticks > 0)
+  c.check('reload: Q starts the craftov:reload cooldown for the reload', !!started && started.ticks >= 20, reloads(from))
+  await c.sleep(started ? started.ticks * 50 + 800 : 5000)
+  let shots = bot.reports.length
+  await c.pullTrigger(bot)
+  await c.waitFor(() => bot.reports.length > shots, 2000)
+  c.check('reload: once it has run out the gun fires', bot.reports.length > shots)
+
+  // cut
+  await c.sleep(800)
+  shots = bot.reports.length
+  await c.pullTrigger(bot, 300)
+  await c.sleep(800)
+  from = cooldowns.length
+  const mark = bot.msgs.length
+  c.dropKey(bot)
+  await c.sleep(400)
+  bot.setQuickBarSlot((gun + 1) % 8 === 2 ? 3 : (gun + 1) % 8)
+  // The hint waits its turn on the action bar behind a line shown a moment ago (util/Notify).
+  const said = await c.heard(bot, /换弹已中断/, mark, 3000)
+  const cut = reloads(from)
+  c.check('cut: Q after a few rounds starts the cooldown again', cut.some(x => x.ticks > 0), cut)
+  c.check('cut: switching away clears it', cut.length >= 2 && cut[cut.length - 1].ticks === 0, cut)
+  c.check('cut: the action bar says the reload was cut short', !!said, bot.msgs.slice(mark))
+  return c.finish()
+}
+
+main().catch(c.crashed)

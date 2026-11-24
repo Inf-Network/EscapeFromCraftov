@@ -10,14 +10,20 @@
 // map, so test mode must be on too:  test: { enabled: true }
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the
 // number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 6 (with MATCH_WAIT=6), match.max-squads 4,
+// rank.min-level 1.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const rcon = require('./rcon')
+const env = require('./env')
 
 const WAIT = Number(process.env.MATCH_WAIT || 6)        // match.wait-seconds on the server
 // The server's config, edited by the 'cap' scenario (then restored) to try another max-squads.
-const CONFIG = process.env.MATCH_CONFIG || path.join(__dirname, '../../server/run/plugins/Craftov/config.yml')
+const CONFIG = process.env.MATCH_CONFIG || path.join(env.DATA, 'config.yml')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const strip = s => s.replace(/§x(§[0-9a-f]){6}/gi, '').replace(/§./g, '')
 const run = Math.random().toString(36).slice(2, 5)
@@ -26,7 +32,7 @@ const bots = []
 
 function make () {
   const name = `m${run}${(serial++).toString().padStart(2, '0')}`
-  const bot = mineflayer.createBot({ host: '127.0.0.1', port: 25565, username: name, version: '1.21.11', auth: 'offline' })
+  const bot = mineflayer.createBot({ host: env.HOST, port: env.PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.titles = []
   bot.worldName = ''

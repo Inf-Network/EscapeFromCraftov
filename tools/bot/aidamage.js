@@ -28,12 +28,17 @@
 //   players   B, from another squad, puts three pistol rounds into A (no helmet or vest): about
 //             1.0 as well, as it always was, and each hit is the pistol's 22 times the body
 //             part's multiplier.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const MAP = process.env.MAP || 'proving'
 // The proving ground's soldier post (a guard group of two) and a spot in front of it.
 const POST = process.env.POST || '47.5 65 30.5'
@@ -140,10 +145,14 @@ async function soldiers (world) {
 }
 
 /**
- * The client shows health scaled to 20 hearts' worth (HealthService): the factor back to real
- * health points, from the server's reading against the bot's.
+ * The client shows health scaled to 20 hearts' worth (HealthService: setHealthScale(20)): the factor
+ * back to real health points is max_health / 20. The server's health against the bot's last update
+ * is not used for it: that update can be a regeneration tick behind the server, which put every
+ * bullet a few percent off (66 reported, 67 or 68.6 measured).
  */
 async function healthScale (bot) {
+  const m = (await rcon(`attribute ${bot.username} minecraft:max_health get`)).match(/(-?[\d.]+)\s*$/)
+  if (m && Number(m[1]) > 0) return Number(m[1]) / 20
   const real = await health(bot.username)
   return real && bot.health ? real / bot.health : 1
 }

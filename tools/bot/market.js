@@ -15,13 +15,18 @@
 //     kitted M4C bought by a player keeps the bare M4C's trade price where it was, and that a sale at
 //     3x the reference price is ignored.
 //
-// node market.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(unset)
-//                         SALES=8 WAIT_MIN=25 LOG=/tmp/market.log
+// node market.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js), SERVER_DIR (unset by default;
+//                         CRAFTOV_RUN is read too) SALES=8 WAIT_MIN=25 LOG=/tmp/market.log
 // Exit code 0 when every check passed. Bots use fresh random names, so they start with the starter kit.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3; with SERVER_DIR
+// the script switches the market keys itself (see above) and puts them back.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 function flatText (n) {
   if (n == null) return ''
   if (typeof n === 'string') return n
@@ -32,9 +37,11 @@ function flatText (n) {
   return flatText(n.text) + flatText(n.extra)
 }
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || ''
+const PORT = env.PORT
+const RCON = env.RCON
+// Only a folder named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN) has its profiles and config.yml
+// edited; without one those checks are left out.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 const SALES = Number(process.env.SALES || 8)
 const WAIT_MIN = Number(process.env.WAIT_MIN || 25)
 const out = process.env.LOG || '/tmp/market.log'

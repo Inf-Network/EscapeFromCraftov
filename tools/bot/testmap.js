@@ -20,8 +20,9 @@
 //           rounds; on an armory gun it loads armory rounds and gives its old rounds back as armory
 //           rounds, never as the bot's own.
 //   armory  test mode on: armory items carry the test mark, and after extracting with collectibles,
-//           valuables, a gun and an armory backpack: money, stash and collected unchanged, profit ~0,
-//           no test item left, the bot's own item packed in the armory backpack handed back.
+//           valuables, a gun and an armory backpack: money (less the daily contracts it was told it
+//           finished, such as extracting once; no other reward), stash and collected unchanged,
+//           profit ~0, no test item left, the bot's own item packed in the armory backpack handed back.
 //   parts   test mode on: the armory weapons case holds every attachment, marked; an armory sight
 //           is refused on the bot's own gun, fits the armory gun, and comes off as an armory part.
 //   keys    test mode on: with its own key and an armory copy for the same door, opening the door
@@ -36,24 +37,35 @@
 //   insured test mode on, insurance on: the bot packs its own insured K47 into an armory backpack,
 //           throws the backpack with Q and dies. When the raid closes the K47 must reach the mailbox
 //           as it was insured (with its rounds), although the backpack around it is an armory item.
-//   offline test mode on, two bots in a raid, each with an armory backpack whose cells hold its own
-//           items while its pockets and rig are full. A disconnects and rejoins (armory items come
-//           back), disconnects again, and the server is stopped with B still online. After the
-//           restart: no test item and no backpack cell in either loadout, A's own items in a pocket
-//           or the mailbox, B's own items in the mailbox, and nothing dropped when A logs in. Needs a
-//           server that comes back after `stop` (a restart loop around start.sh); it waits up to 4 min.
+//   offline test mode on, two bots in a raid, each wearing an armory backpack whose cells hold own
+//           items given in the raid. A disconnects and rejoins (the armory backpack comes back as it
+//           was), disconnects again, and the server is stopped with B still online. The raid is void
+//           for both (#67): after the restart each loadout is slot for slot the one it went in with,
+//           both as the deploy recorded it and as the profile had it in the lobby before queueing
+//           (no test item, none of the items packed in the raid), nothing reached the mailbox, and
+//           nothing is dropped when A logs in. The
+//           server is brought back by server.js: a restart loop around start.sh gets 15 s
+//           (LOOP_WAIT) to start it, otherwise SERVER_DIR/start.sh is run detached (NO_START=1 only
+//           waits, up to 4 min).
 //
 // Each scenario prints PASS or FAIL with what the bots saw; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3; the script
+// switches test.enabled per scenario itself (and puts it back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
+const server = require('./server')
+const { announcedSince } = require('./common')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const RUN = process.env.CRAFTOV_RUN || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const RUN = env.SERVER_DIR
 const CONFIG = path.join(RUN, 'plugins/Craftov/config.yml')
 const PLAYERS = path.join(RUN, 'plugins/Craftov/data/players')
 const rcon = cmd => rconRaw(cmd, RCON)
@@ -189,8 +201,8 @@ async function deploy (list) {
 }
 
 /**
- * Equips the biggest armory backpack, then has own items given until the pockets and the own rig are
- * full and at least `cells` own items sit in the backpack's cells. Returns the own item ids in the cells.
+ * Equips the biggest armory backpack, then has own items (valuables, which go to the backpack first,
+ * #10) given until at least `cells` of them sit in its cells. Returns the own item ids in the cells.
  */
 async function packOwnItems (bot, cells) {
   const w = await openContainerAt(bot, 47.5, 65, 77.5)
@@ -213,22 +225,12 @@ async function packOwnItems (bot, cells) {
   return ownIn(bot, PACK_CELLS)
 }
 
-/** An RCON call that gives up after a few seconds (a stopping server may close without answering). */
-const rconQuick = cmd => Promise.race([rcon(cmd), sleep(4000).then(() => { throw new Error('rcon timeout') })])
-
-/** Stops the server, then waits for RCON to go away and to answer again (a restart loop brings it back). */
-async function restart () {
-  rconQuick('stop').catch(() => {})
-  const end = Date.now() + 240000
-  let down = false
-  while (Date.now() < end) {
-    try {
-      await rconQuick('list')
-      if (down) { await sleep(5000); return true }
-    } catch (e) { down = true }
-    await sleep(2000)
-  }
-  return false
+/**
+ * Stops the server with A offline and B online, and waits for it to come back: a restart loop gets a
+ * few seconds to start it, otherwise SERVER_DIR/start.sh is run here (server.js).
+ */
+function restart () {
+  return server.restart({ log: (...a) => console.log('offline:', ...a) })
 }
 
 const scenarios = {
@@ -435,10 +437,16 @@ const scenarios = {
     notes.carriedTest = a.inventory.slots.filter(isTest).length
 
     // Extract at the always-open point.
+    const chatFrom = a.chatLog.length
     await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 8.5`)
     if (!await waitFor(() => inLobby(a), 30000)) return [false, { error: 'did not extract', notes, chat: a.chatLog.slice(-3) }]
     await sleep(4000)
     const after = profile(a)
+    // Extracting can finish a daily contract (成功撤离, +◈7,000): money the bot is told about, which
+    // has nothing to do with the armory. Without it the balance must be unchanged, and no other
+    // reward may come.
+    const paid = announcedSince(a, chatFrom)
+    const rewards = paid.tasks
     const report = after.reports && after.reports[0]
     const left = a.inventory.slots.filter(isTest).length
     const stashSame = JSON.stringify(after.stash) === JSON.stringify(before.stash)
@@ -446,6 +454,8 @@ const scenarios = {
     const result = {
       ...notes,
       money: [before.money, after.money],
+      rewards,
+      otherRewards: paid.others,
       stashSame,
       collected: [before.collected.length, after.collected.length],
       extractedValue: report && report.extractedValue,
@@ -454,7 +464,7 @@ const scenarios = {
       handedBack
     }
     const ok = notes.armoryPackMarked && notes.armoryPackWorn && notes.collectiblesMarked && notes.valuablesMarked && notes.weaponsMarked &&
-      notes.bandageInArmoryPack && notes.carriedTest > 0 && after.money === before.money && stashSame &&
+      notes.bandageInArmoryPack && notes.carriedTest > 0 && after.money - rewards === before.money && !paid.others.length && stashSame &&
       after.collected.length === before.collected.length && report && report.extractedValue < 1000 &&
       left === 0 && result.notice && handedBack
     return [ok, result]
@@ -662,17 +672,16 @@ const scenarios = {
     const b = await make()
     await waitFor(() => fs.existsSync(profileFile(a)) && fs.existsSync(profileFile(b)), 15000)
     const mailBefore = { a: profile(a).mailbox.length, b: profile(b).mailbox.length }
+    // The lobby loadout as the profile has it before queueing: the void must hand this back, so it
+    // is compared with as well, not only with the deploy's own record of it below.
+    const lobby = { a: profile(a).loadout, b: profile(b).loadout }
     if (!await deploy([a, b])) return [false, { error: 'never reached the raid', worlds: [a.worldName, b.worldName] }]
+    // What each went in with, as the deploy recorded it: a raid the server stops in is void (#67).
+    await waitFor(() => profile(a).deployment && profile(b).deployment, 15000)
+    const went = { a: (profile(a).deployment || {}).loadout, b: (profile(b).deployment || {}).loadout }
     const cellsB = await packOwnItems(b, 3)
-    let cellsA = await packOwnItems(a, 3)
+    const cellsA = await packOwnItems(a, 3)
     if (!cellsA || !cellsB || cellsA.length < 3 || cellsB.length < 3) return [false, { error: 'could not fill the armory backpacks', cellsA, cellsB }]
-    // A frees one pocket by moving its item into a backpack cell: one own item will fit there later.
-    const pocket = POCKETS.find(i => a.inventory.slots[i] && !isTest(a.inventory.slots[i]) && GIFTS.includes(itemId(a.inventory.slots[i])))
-    const cell = PACK_CELLS.find(i => !a.inventory.slots[i])
-    await a.clickWindow(pocket, 0, 0); await sleep(300)
-    await a.clickWindow(cell, 0, 0); await sleep(500)
-    cellsA = ownIn(a, PACK_CELLS)
-    const freePocketsA = POCKETS.filter(i => !a.inventory.slots[i]).length
     const nameA = a.username
     const feet = bot => ({ id: itemId(bot.inventory.slots[8]), test: isTest(bot.inventory.slots[8]) })
     const packBefore = feet(a)
@@ -687,33 +696,34 @@ const scenarios = {
     a2.quit()
     bots.splice(bots.indexOf(a2), 1)
     await sleep(3000)
-    // Server stop with A offline and B online in the raid.
+    // Server stop with A offline (inside its reconnect window) and B online in the raid.
     const back = await restart()
     bots.splice(0).forEach(bot => { try { bot.quit() } catch (e) {} })
     if (!back) return [false, { error: 'server did not come back after stop', rejoin }]
     await sleep(3000)
     const pa = profile(a)
     const pb = profile(b)
-    const hasTest = r => !!r && (r.test || (r.contents || []).some(c => c.test))
-    const cellKeys = loadout => Object.keys(loadout).map(Number).filter(k => k >= 18 && k <= 35)
-    const mailA = pa.mailbox.slice(mailBefore.a).map(r => r.id)
-    const mailB = pb.mailbox.slice(mailBefore.b).map(r => r.id)
-    const pocketIds = Object.entries(pa.loadout).filter(([k]) => Number(k) < 8).map(([, r]) => r.id)
-    const result = {
-      cellsA, cellsB, freePocketsA, rejoin,
-      a: { activeRaid: pa.activeRaid || null, cellKeys: cellKeys(pa.loadout), test: Object.values(pa.loadout).some(hasTest), mailed: mailA },
-      b: { activeRaid: pb.activeRaid || null, cellKeys: cellKeys(pb.loadout), test: Object.values(pb.loadout).some(hasTest), mailed: mailB }
-    }
+    const hasTest = r => !!r && (r.test || (r.contents || []).some(hasTest))
+    // A record as the void hands it back: instance ids are given out at deploy and insurance marks never come home.
+    const clean = r => { const c = JSON.parse(JSON.stringify(r)); delete c.uid; delete c.insured; delete c.insuredAs; if (c.contents) c.contents = c.contents.map(clean); return c }
+    const layout = loadout => JSON.stringify(Object.keys(loadout || {}).sort((x, y) => x - y).map(k => [k, clean(loadout[k])]))
+    const side = (p, mailed, before, inLobby) => ({
+      activeRaid: p.activeRaid || null,
+      test: Object.values(p.loadout).some(hasTest),
+      asWent: !!before && layout(p.loadout) === layout(before),
+      asInLobby: !!inLobby && Object.keys(inLobby).length > 0 && layout(p.loadout) === layout(inLobby),
+      mailed: p.mailbox.slice(mailed).map(r => r.id)
+    })
+    const result = { cellsA, cellsB, rejoin, a: side(pa, mailBefore.a, went.a, lobby.a), b: side(pb, mailBefore.b, went.b, lobby.b) }
     // A logs in: its loadout fits, nothing is dropped on the lobby floor.
     a2 = await make(nameA)
     await sleep(3000)
     result.a.lobby = inLobby(a2)
     result.a.dropped = Object.values(a2.entities).filter(e => e.name === 'item' && e.position.distanceTo(a2.entity.position) < 6).length
-    const accounted = cellsA.every(id => pocketIds.includes(id) || mailA.includes(id))
+    // Void for both: the loadout slot for slot as it went in, so neither the armory backpack nor the
+    // own items packed in it in the raid, and nothing found in the raid reaches the mailbox.
     const ok = rejoin.inRaid && rejoin.packAfter.test && /pack_/.test(rejoin.packAfter.id || '') && rejoin.cells &&
-      !result.a.activeRaid && result.a.cellKeys.length === 0 && !result.a.test && accounted && freePocketsA === 1 &&
-      mailA.length === cellsA.length - 1 &&
-      !result.b.activeRaid && result.b.cellKeys.length === 0 && !result.b.test && cellsB.every(id => mailB.includes(id)) &&
+      ['a', 'b'].every(k => !result[k].activeRaid && !result[k].test && result[k].asWent && result[k].asInLobby && result[k].mailed.length === 0) &&
       result.a.lobby && result.a.dropped === 0
     return [ok, result]
   }

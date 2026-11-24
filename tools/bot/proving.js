@@ -1,104 +1,116 @@
-// Proving-ground smoke test: LAN pack URL, item catalog, solo raid on the test map, armory, locked door, extracts.
-const mineflayer = require('mineflayer')
-const rcon = require('./rcon')
+// Proving-ground smoke test (the test map), with two bots A and B (fresh accounts, made op):
+//
+//   pack       joining, each is offered the resource pack from this server's own port (CraftEngine
+//              hosts it on the Minecraft port).
+//   catalog    /cv items opens the test armory catalog; a click on its first item hands A one.
+//   raid       both queue solo for the proving ground and land in the same raid.
+//   armory     the armory weapons box (8.5 65 77.5) opens for A and reveals items.
+//   door       B clicks the dorm door (lock dorm_201) without its key: it stays shut and says which key.
+//   timed      A stands 10 s in the timed extract (opens 120 s into the raid): still in the raid.
+//   always     A walks into the always-open extract: back in the lobby.
+//   paid       B walks into the paid extract (◈5,000): back in the lobby, ◈5,000 poorer.
+//
+//   node proving.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js); the server is the local one (127.0.0.1)
+//
+// Server config: the defaults (the bots are op, which opens the test map to them); a short
+// match.wait-seconds keeps it quick. Soldiers are killed so they leave the bots alone. Prints PASS /
+// FAIL per check; the exit code is the number of failures (2+ when it broke).
+const c = require('./common')
 
-const host = process.argv[2] || '127.0.0.1'
-const t0 = Date.now()
-const sleep = ms => new Promise(r => setTimeout(r, ms))
-const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 
-function make (name) {
-  const bot = mineflayer.createBot({ host, port: 25565, username: name, version: '1.21.11', auth: 'offline' })
-  bot.worldChanges = 0
-  bot._client.on('add_resource_pack', (p) => {
-    log(name, 'pack url', String(p.url).slice(0, 60))
-    for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r })
-  })
-  bot.on('messagestr', m => { if (m.trim()) log(name, 'CHAT', m) })
-  bot.on('actionBar', m => { const s = m.toString(); if (s.trim()) log(name, 'BAR', s) })
-  bot.on('respawn', () => bot.worldChanges++)
-  bot.on('kicked', r => log(name, 'KICKED', JSON.stringify(r)))
-  bot.on('error', e => log(name, 'ERROR', e.message))
-  return new Promise(resolve => bot.once('spawn', () => resolve(bot)))
+async function makeWithPack (name) {
+  const offers = []
+  const promise = c.make(name)
+  const bot = c.bots[c.bots.length - 1]
+  bot._client.on('add_resource_pack', p => offers.push(String(p.url)))
+  await promise
+  bot.offers = offers
+  return bot
 }
 
-async function waitFor (pred, ms) {
-  const end = Date.now() + ms
-  while (Date.now() < end) { if (pred()) return true; await sleep(250) }
-  return false
-}
-
-function openWindow (bot, fn, timeout = 4000) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), timeout)
-    bot.once('windowOpen', (w) => { clearTimeout(timer); resolve(w) })
-    fn()
-  })
-}
-
-const filled = (w) => w.slots.slice(0, w.inventoryStart).filter(s => s && !JSON.stringify(s.components || '').includes('search_')).length
-
-async function openContainerAt (bot, name, x, y, z) {
-  await rcon(`execute as ${name} at @s run tp @s ${x} ${y} ${z + 1.4} 180 20`)
-  await sleep(1200)
+/** Opens the proving ground's container whose interaction sits at x y z (the bot stands just south of it). */
+async function openContainerAt (bot, x, y, z) {
+  await c.tp(bot, `${x} ${y} ${z + 1.4} 180 20`)
+  await c.sleep(400)
   const target = bot.nearestEntity(e => e.name === 'interaction')
   if (!target) return null
   await bot.lookAt(target.position.offset(0, 0.3, 0), true)
-  return openWindow(bot, () => bot.activateEntity(target))
+  return c.openWith(bot, () => bot.activateEntity(target))
 }
 
-(async () => {
-  const id = Math.floor(Math.random() * 9000)
-  const a = await make('Pa' + id)
-  await sleep(5000)
-  const b = await make('Pb' + id)
-  await sleep(2500)
-  // Catalog.
-  const cat = await openWindow(a, () => a.chat('/cv items'))
-  log('A', 'catalog', cat && JSON.stringify(cat.title).slice(0, 60), cat && filled(cat))
-  if (cat) {
-    await a.clickWindow(9, 0, 0)
-    await sleep(400)
-    a.closeWindow(cat)
+async function main () {
+  const a = await makeWithPack('Pa' + c.tag)
+  const b = await makeWithPack('Pb' + c.tag)
+  for (const bot of [a, b]) await c.rcon(`op ${bot.username}`)
+
+  // pack
+  for (const bot of [a, b]) {
+    c.check(`pack: ${bot.username} is offered the resource pack from the server's port`,
+      bot.offers.some(u => /^https?:\/\//.test(u) && u.includes(':' + c.env.PORT)), bot.offers.map(u => u.slice(0, 60)))
   }
-  await sleep(500)
-  log('A', 'has gun', a.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:')))
-  // Solo raid on the test map.
+
+  // catalog
+  const cat = await c.openWith(a, () => a.chat('/cv items'))
+  const filled = cat ? cat.slots.slice(0, cat.inventoryStart).filter(s => s && c.itemId(s)).length : 0
+  c.check('catalog: /cv items opens the test armory with items in it', !!cat && filled > 0, { filled })
+  if (cat) {
+    const first = cat.slots.findIndex((s, i) => i < cat.inventoryStart && s && c.itemId(s))
+    const id = first >= 0 ? c.itemId(cat.slots[first]) : null
+    const before = id ? c.carried(a, id) : 0
+    if (first >= 0) { await a.clickWindow(first, 0, 0); await c.sleep(600) }
+    c.check('catalog: a click on an item hands it over', !!id && c.carried(a, id) > before, id)
+    a.closeWindow(a.currentWindow || cat)
+    await c.sleep(500)
+  }
+
+  // raid
   a.chat('/cv queue proving NORMAL SOLO')
   b.chat('/cv queue proving NORMAL SOLO')
-  const ca = a.worldChanges
-  const ok = await waitFor(() => a.game.gameMode === 'adventure' && a.worldChanges > ca && b.game.gameMode === 'adventure', 60000)
-  log('both', 'inserted', ok, a.entity.position.toString(), b.entity.position.toString())
-  await rcon('cv raids')
-  await sleep(1000)
-  // Armory container: weapons.
-  const w = await openContainerAt(a, a.username, 8.5, 65, 77.5)
-  if (w) {
-    log('A', 'armory window', JSON.stringify(w.title).slice(0, 80))
-    await sleep(3500)
-    log('A', 'armory revealed items', filled(w))
-    a.closeWindow(w)
-  } else log('A', 'armory did not open')
-  // Locked door without key.
-  await rcon(`execute as ${b.username} at @s run tp @s 8.5 65 49.6 180 0`)
-  await sleep(800)
+  const landed = await c.waitFor(() => c.inRaid(a) && c.inRaid(b), 120000)
+  c.check('raid: both land in the same proving-ground raid', landed && a.worldName === b.worldName, `${a.worldName} / ${b.worldName}`)
+  if (!landed) return c.finish(2)
+  await c.sleep(4000)
+  await c.clearSoldiers()
+
+  // armory
+  const w = await openContainerAt(a, 8.5, 65, 77.5)
+  const revealed = () => w.slots.slice(0, w.inventoryStart).filter((s, i) => s && i % 9 < 6 && c.itemId(s) && !JSON.stringify(s.components || '').includes('search_')).length
+  c.check('armory: the weapons box opens and reveals items', !!w && await c.waitFor(revealed, 15000), w ? revealed() : 'did not open')
+  if (w) a.closeWindow(w)
+
+  // door
+  await c.tp(b, '8.5 65 49.6 180 0')
+  await c.sleep(500)
   const door = b.blockAt(b.entity.position.offset(0, 0, -1).floored())
-  log('B', 'door block', door && door.name)
+  const mark = b.msgs.length
   if (door) await b.activateBlock(door)
-  await sleep(800)
-  // Timed extract is closed for the first 2 minutes.
-  await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 17.5`)
-  await sleep(3000)
-  // Always extract.
-  const before = a.worldChanges
-  await rcon(`execute as ${a.username} at @s run tp @s 106.5 65 8.5`)
-  log('A', 'extracted', await waitFor(() => a.worldChanges > before, 15000))
-  // Paid extract.
-  const beforeB = b.worldChanges
-  await rcon(`execute as ${b.username} at @s run tp @s 106.5 65 26.5`)
-  log('B', 'paid extract', await waitFor(() => b.worldChanges > beforeB, 15000))
-  await sleep(2000)
-  a.quit(); b.quit()
-  await sleep(500)
-  process.exit(0)
-})()
+  const refused = await c.heard(b, /门被锁住了，需要/, mark, 3000)
+  c.check('door: without its key the dorm door stays shut and says which key', !!refused && b.blockAt(door.position).getProperties().open !== true,
+    refused || (door && door.name))
+
+  // timed, always
+  await c.clearSoldiers()
+  let before = a.worldChanges
+  await c.tp(a, '106.5 65 17.5')
+  await c.sleep(10000)
+  c.check('timed: the timed extract is still shut early in the raid', a.worldChanges === before && c.inRaid(a))
+  c.check('always: the always-open extract takes A out', await c.extract(a))
+
+  // paid
+  const money = await c.money(b.username)
+  const paidMark = b.msgs.length
+  before = b.worldChanges
+  await c.tp(b, '106.5 65 26.5')
+  const out = await c.waitFor(() => b.worldChanges > before && c.inLobby(b), 30000)
+  await c.sleep(1000)
+  // Less what the extraction paid B (a daily contract to extract), which it is told about.
+  const rewards = c.announcedSince(b, paidMark)
+  const after = await c.money(b.username)
+  c.check('paid: the paid extract takes B out for ◈5,000', out && money - (after - rewards.tasks) === 5000 && !rewards.others.length,
+    `${money} -> ${after}, daily contracts ${rewards.tasks}${rewards.others.length ? '; other rewards: ' + rewards.others.join(' | ') : ''}`)
+
+  for (const bot of [a, b]) await c.rcon(`deop ${bot.username}`)
+  return c.finish()
+}
+
+main().catch(c.crashed)

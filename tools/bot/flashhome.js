@@ -23,17 +23,19 @@
 // Camera overlays reach the client as a client-only helmet on the bot's own head slot: an equipment
 // packet about itself, or the real head slot (inventory slot 5) dressed with the overlay.
 //
-// Needs a local test server (server/setup.sh --local) with RCON on and test mode on
-// (test: { enabled: true }) so the bot can queue for the proving ground; match.wait-seconds: 2
-// keeps the run short. The bot is opped for /cv lobby and deopped at the end. Ports come from PORT
-// (25565), RCON_PORT (25575) and RCON_PASSWORD (craftov-local). Each scenario prints PASS or FAIL
-// with what was seen; the exit code is the number of failures (2 more when a scenario could not be
-// set up).
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bot queues for the
+// proving ground, a test map), match.wait-seconds short (3) to keep the run short; a local test
+// server (server/setup.sh --local) with RCON on.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// The bot is opped for /cv lobby and deopped at the end. Each scenario prints PASS or FAIL with what
+// was seen; the exit code is the number of failures (2 more when a scenario could not be set up).
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()

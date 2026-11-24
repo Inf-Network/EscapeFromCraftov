@@ -14,15 +14,20 @@
 // One bot lands, knifes KILLS (3) soldiers (frozen, at 1 health, put in front of it) and cuts one
 // more without killing it, waits 65 seconds under resistance, then leaves through the extract.
 // Prints PASS or FAIL per check; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const MC_PORT = Number(process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const MC_PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const KILLS = Number(process.env.KILLS || 3)
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -145,7 +150,14 @@ async function cut (bot, tag, done) {
   await rcon(`effect give ${name} minecraft:resistance 180 4 true`)
   bot.setQuickBarSlot(2)
   await sleep(500)
-  const start = await tracked()
+  // A record from before the fight (an earlier raid on this server, or a stray hit on landing) is
+  // pruned once its 30 s of credit are over, maybe half way through the fight, which would hide one
+  // of the fight's victims from "at least N more than before": give such records up to 40 s to go.
+  let start = await tracked()
+  for (let i = 0; i < 40 && start && start.hits > 0; i++) {
+    await sleep(1000)
+    start = await tracked()
+  }
   let killed = 0
   for (let i = 0; i < KILLS; i++) {
     const tag = await soldier(`h_kill${i}`, 1)

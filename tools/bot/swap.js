@@ -32,15 +32,20 @@
 // Needs `debug: true` in the server's plugins/Craftov/config.yml (shots and draws are read from the
 // log), items.yml's handling and the default weapons.handling. Exit code: number of failed checks (2+ also when a
 // scenario could not be set up).
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (shots and draws are read
+// from the log), the default weapons.handling and items.yml's handling.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const PORT = env.PORT
+const RCON = env.RCON
+const LOG = env.LOG
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))

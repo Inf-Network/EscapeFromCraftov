@@ -20,14 +20,18 @@
 //
 //   PORT=25565 RCON_PORT=25575 node stances.js
 //
-// Needs test.enabled (the proving ground) and a short match.wait-seconds. The bots are made op and
-// deopped at the end, and their raid is ended. Exit code: number of failed checks (2+ also when the
-// setup failed).
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for the
+// proving ground, a test map), match.wait-seconds short (3).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
+//
+// The bots are made op and deopped at the end, and their raid is ended. Exit code: number of failed
+// checks (2+ also when the setup failed).
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...args) => console.log(new Date().toISOString().slice(11, 19), ...args)

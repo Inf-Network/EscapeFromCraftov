@@ -10,7 +10,8 @@
 //                 back with an empty loadout, a missing-in-action report, no "server interrupted"
 //                 restore and the right refund (raid.reconnect-seconds is set to 10 for this)
 //  stop-mid-raid  the server stops while a bot is in a raid: no shutdown step fails, and the
-//                 profile has no raid left and holds what the bot carried
+//                 profile has no raid left; the raid is void (#67), so the loadout is the one it
+//                 went in with and what it found in the raid is not in it
 //  hot-reload     /bukkit:reload confirm with a bot online holding a gun: a middle click keeps the
 //                 connection and is answered by the reloaded plugin, the gun fires in the range
 //                 without reconnecting, and the log has no plugin errors
@@ -32,24 +33,32 @@
 //  backup-keep    a config with only the old "keep: 30" keeps ten older shutdown copies over a
 //                 shutdown backup, and the start log says the key was split
 //
-// node persistence.js   env: SERVER_DIR=(required, the run folder) PORT=25565 RCON_PORT=25575
-//                            RCON_PASS=craftov-local STEPS=(comma list, default all) RESTARTS=10
-//                            MEMORY=3G LOG=/tmp/persistence.log
+// node persistence.js   env: SERVER_DIR (required, the run folder; CRAFTOV_RUN is read too), PORT,
+//                            RCON_PORT, RCON_PASSWORD (env.js), STEPS=(comma list, default all)
+//                            RESTARTS=10 MEMORY=3G LOG=/tmp/persistence.log
 // Exit code 0 when every check passed. Linux only (finds the server process through /proc).
+//
+// Server config (tools/bot/suite.js sets it for its run): the script edits what it needs itself
+// while the server is down and puts it back (see above).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (which must be set).
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
+const env = require('./env')
+const { pullTrigger } = require('./common')
 
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+// Named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN), never the default: the script stops,
+// kills and edits the server it is pointed at.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 if (!SERVER_DIR || !fs.existsSync(path.join(SERVER_DIR, 'start.sh'))) {
   console.error('SERVER_DIR must point at the server run folder (with start.sh)')
   process.exit(2)
 }
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const RESTARTS = Number(process.env.RESTARTS || 10)
 const ALL = ['corrupt', 'escort-mia', 'lost-edit', 'stop-mid-raid', 'hot-reload', 'market-expire', 'market-corrupt', 'map', 'escort-crash',
   'backup', 'backup-keep']
@@ -190,8 +199,26 @@ function join (name) {
     bot._client.on('action_bar', p => bot.bars.push(JSON.stringify(p))) // raw: the event misses NBT text
     bot.on('error', e => log(name, 'ERROR', e.message))
     const timer = setTimeout(() => resolve({ error: 'timeout' }), 60000)
+    // A refused login is answered within a few milliseconds, sometimes before mineflayer has loaded
+    // its plugins (it does on a timer after createBot), the one that turns this packet into 'kicked'
+    // among them: the bot then sees only the connection close (#138). The client parses the login's
+    // disconnect packet either way, so the reason is taken from there.
+    bot._client.once('disconnect', p => {
+      const reason = typeof p.reason === 'string' ? p.reason : JSON.stringify(p.reason)
+      clearTimeout(timer)
+      log(name, 'REFUSED', reason)
+      resolve({ kicked: reason })
+    })
     bot.once('kicked', r => { clearTimeout(timer); log(name, 'KICKED', r); resolve({ kicked: typeof r === 'string' ? r : JSON.stringify(r) }) })
-    bot.once('spawn', async () => { clearTimeout(timer); await sleep(3000); resolve({ bot }) })
+    let spawned = false
+    bot.once('spawn', async () => { spawned = true; clearTimeout(timer); await sleep(3000); resolve({ bot }) })
+    // Closed before spawning with no word (a kick resolves first): say so now, not after the minute.
+    bot.once('end', reason => {
+      if (spawned) return
+      clearTimeout(timer)
+      log(name, 'END', reason)
+      setTimeout(() => resolve({ error: 'connection closed: ' + reason }), 200)
+    })
   })
 }
 async function online (name) {
@@ -364,12 +391,14 @@ async function lostEdit () {
     log('journal', text)
     const left = text.match(/missing in raid \S+: loadout = (\{.*?\}) \(the rest of that gear stayed in the raid\)/)
     check('lost-edit: the timeout is journaled with its resets', !!left && Object.keys(JSON.parse(left[1])).every(slot => slot === '2')
-      && /missing in raid .*activeRaid = null, stats\.deaths \+1/.test(text), left && left[1])
+      && /missing in raid .*activeRaid = null, (deployment = null, )?stats\.deaths \+1/.test(text), left && left[1])
     check('lost-edit: the escrow release is journaled after it', text.indexOf('escortEscrow -20000') > text.indexOf('missing in raid')
       && text.includes('money +14000'))
     check('lost-edit: the broken file is left as it was', Buffer.compare(fs.readFileSync(file), broken) === 0)
     check('lost-edit: the guard got 30%', await balance(guardName) === guardBefore + 6000)
     fs.writeFileSync(file, good) // repaired, the journal not applied yet
+    // join() hears the refusal from the login's disconnect packet (#138), so a close with no reason
+    // is a failure here, at once.
     const r = await join(bossName)
     if (r.bot) await leave(r.bot)
     check('lost-edit: login refused while the journal is there', !!r.kicked && r.kicked.includes('档案读取失败'), r.kicked || r.error || 'joined')
@@ -384,6 +413,9 @@ async function lostEdit () {
     p.loadout = left ? JSON.parse(left[1]) : {}
     p.secure = secure ? JSON.parse(secure[1]) : p.secure
     p.activeRaid = null
+    // The deployment record goes too (the journal says so): one left behind is a raid the server
+    // stopped in, which the next login would void.
+    if (/deployment = null/.test(text)) p.deployment = null
     p.stats = p.stats || {}
     p.stats.deaths = (p.stats.deaths || 0) + 1
     p.escortEscrow = Math.max(0, (p.escortEscrow || 0) - 20000)
@@ -587,7 +619,8 @@ async function stopMidRaid () {
   const carried = Object.values(p.loadout || {}).map(r => r.id)
   check('stop-mid-raid: no failed shutdown step', !text.includes('Shutdown step') && !text.includes('Could not send'), text.match(/.*(Shutdown step|Could not send).*/g))
   check('stop-mid-raid: raid cleared from the profile', p.activeRaid == null, p.activeRaid)
-  check('stop-mid-raid: went home with what was carried', carried.includes('surgery'), carried)
+  // A raid the server stops in is void (#67): the kit it went in with, not the surgery kit it found.
+  check('stop-mid-raid: void, the loadout it went in with and nothing found in the raid', !carried.includes('surgery') && carried.includes('k47'), carried)
   await start()
 }
 
@@ -601,6 +634,8 @@ async function hotReload () {
   bot._client.on('entity_sound_effect', heard)
   let ended = false
   bot.on('end', () => { ended = true })
+  // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
+  await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
   await rcon(`cv give ${name} m4c`)
   await rcon(`cv give ${name} ammo_556_m855 60`)
   await sleep(800)
@@ -634,12 +669,12 @@ async function hotReload () {
     await sleep(800)
     if (gunSlot() >= 0) bot.setQuickBarSlot(gunSlot() - 36)
     await sleep(800)
-    // Q loads the magazine first (the gun from /cv give is empty), then one tap of the trigger.
+    // Q loads the magazine first, then one tap of the trigger as the vanilla client sends it (the
+    // capture block in front of the crosshair dug, a swing, the abort).
     bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
-    bot.swingArm()
     await sleep(4500)
     shots = 0
-    bot.swingArm()
+    await pullTrigger(bot)
     await sleep(800)
     check('hot-reload: the gun fires after /reload without reconnecting', shots > 0, shots)
     await leave(bot)

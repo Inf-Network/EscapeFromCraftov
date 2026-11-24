@@ -36,16 +36,22 @@
 //             fire as it ends; the post's soldiers are turned to face A, since soldiers only see
 //             what is ahead of them, and a hit is not required: a soldier that has only just taken
 //             aim misses by up to 1.5 m)
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2, raid.reconnect-seconds 30 (with
+// RECONNECT=30), raid.combat-logout-seconds 15 (the default).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const LOG = path.join(SERVER_DIR, 'logs/latest.log')
 const MAP = process.env.MAP || 'proving'
 // The proving ground's soldier post (a guard group of two) and a spot in front of it.
@@ -451,18 +457,21 @@ const scenarios = {
     await sleep(250)
     cooldowns = 0
     A2._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 }) // Q
-    await sleep(400)
     const checkedAt = (Date.now() - back) / 1000
+    // A full magazine's hint is a hint like the protection's, so it waits for that one's time on
+    // the action bar (Notify.HOLD, 1.5 s) before it shows: wait for it past the protection.
+    const full = () => A2.chatLog.slice(mark).some(l => l.includes('弹匣已满'))
+    await waitFor(() => cooldowns > 0 || full(), 2500)
     const said = A2.chatLog.slice(mark)
     const problems = []
-    if (checkedAt > 1.9) problems.push(`checks took until ${checkedAt.toFixed(1)} s, past the protection`)
+    if (checkedAt > 1.9) problems.push(`Q went in at ${checkedAt.toFixed(1)} s, past the protection`)
     if (!said.some(l => l.includes('保护时间内不能开火'))) problems.push('the trigger gave no protection hint')
-    const reloaded = cooldowns > 0 || said.some(l => l.includes('弹匣已满'))
+    const reloaded = cooldowns > 0 || full()
     if (!reloaded) problems.push('Q did not reach the reload')
     if (process.env.DEBUG) console.log(said)
     const errors = logProblems(log())
     if (errors.length) problems.push(errors.join(' / '))
-    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no shot inside the protection, but reload works'} | checked ${checkedAt.toFixed(1)} s after rejoining, reload ${cooldowns > 0 ? 'started' : 'refused: magazine full'}`]
+    return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'no shot inside the protection, but reload works'} | Q ${checkedAt.toFixed(1)} s after rejoining, reload ${cooldowns > 0 ? 'started' : full() ? 'refused: magazine full' : 'not heard of'}`]
   },
 
   async timeout () {

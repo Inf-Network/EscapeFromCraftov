@@ -32,16 +32,21 @@
 // profiles, and its plugins/Craftov/config.yml is edited for the run (match.wait-seconds 2,
 // cinematic.enabled false; put back at the end, then /cv reload). Bots use fresh random names and
 // are made op (the proving ground is test-only). Exits 0 when every check passed.
+//
+// Server config (tools/bot/suite.js sets it for its run): no whitelist; the script sets
+// match.wait-seconds 2 and cinematic.enabled false itself (and puts them back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '../../server/run'))
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const CONFIG = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
 const t0 = Date.now()
@@ -236,7 +241,9 @@ async function vanillaChecks (bot, where, modes, hits, poster) {
   log(name, where, 'at', at.toString(), 'world', bot.worldName)
   // Something of ours in the hand: the shelf, frame and stand would take it, the villager buys paper.
   // Not a med: outside a raid those refuse every right-click themselves, which would hide the guard.
-  const ITEM = 'gold_bar'
+  // A key: the quick keys 4-8 take ammo, meds, grenades and keys only (#10), so a gold bar cannot be
+  // held there any more.
+  const ITEM = 'key_dorm'
   await hold(bot, ITEM)
   const held = () => cid(bot.heldItem)
   await run(`fill ${spot.x} ${spot.y} ${spot.z} ${spot.x} ${spot.y + 2} ${spot.z} minecraft:air`)

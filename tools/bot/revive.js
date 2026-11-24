@@ -50,18 +50,23 @@
 // soldiers are killed now and then so they do not join in. A match launches after
 // match.wait-seconds (30 by default). Exit code 0 when every check passes, 1 when one fails, 2 when
 // the scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (the draw check reads the
+// log), match.wait-seconds 3; the bots are made op.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const nbt = require('prismarine-nbt')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = cmd => rconRaw(cmd, RCON)
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
-const DATA = process.env.CRAFTOV_DATA || path.join(__dirname, '../../server/run/plugins/Craftov')
+const LOG = env.LOG
+const DATA = env.DATA
 const logSize = () => fs.statSync(LOG).size
 /** Server log lines written since byte offset `from`. */
 function logSince (from) {
@@ -340,7 +345,9 @@ async function squad () {
   const beforeRevive = logSize()
   await waitFor(async () => { await holdOn(M, pEntity(), 300); return titled(P, '已被救起') }, 9000)
   check('M holding on next to P revives it', titled(P, '已被救起') && inRaid(P), P.titles.slice(-2))
-  const upSneak = await sneakSpeed(P)
+  // FootstepService puts the silent walk back on its next tick, which can come after the title.
+  let upSneak = null
+  await waitFor(async () => close(upSneak = await sneakSpeed(P), 0.45), 1000)
   check('revived, P has the silent walk\'s sneaking speed again (0.45)', close(upSneak, 0.45), upSneak)
   // Revived, the pistol comes up again: one new draw of 6 ticks, and it is up on its ready tick.
   await sleep(800)

@@ -7,9 +7,9 @@
 //      asset check still counts the knife: with the starting money the claim is refused on total
 //      assets, and the figure is over ◈200,000 only because of the karambit; with the money taken
 //      away the kit is handed out;
-//   3. a karambit and a gold bar (◈68,000): the deploy screen says 战备值 ◈68,000, 机密 lets the bot
-//      in, and dying there reports 损失 -◈68,000 (the kept knife is not lost); the karambit is back
-//      in the melee slot in the lobby;
+//   3. a karambit and a gold bar (◈68,000) in a pack_1 (◈3,000; a valuable goes in a backpack only,
+//      #10): the deploy screen says 战备值 ◈71,000, 机密 lets the bot in, and dying there reports
+//      损失 -◈71,000 (the kept knife is not lost); the karambit is back in the melee slot in the lobby;
 //   4. extracting from a 常规 raid carrying only the karambit: 净收益 +0 (the knife counts at deploy
 //      and at extraction alike) and no flat extraction experience (经验 +0, rank.extract-xp needs
 //      gear value);
@@ -21,11 +21,16 @@
 // The bot has a fresh random name and is made op (the proving ground is a test map); it is deopped
 // when done. Raids launch after match.wait-seconds (30 by default), so a run takes one to three
 // minutes. Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): match.wait-seconds 3 (the default 30
+// works, slowly); the bot is made op for the proving ground.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const EXTRACT = process.env.EXTRACT || '106.5 65 8.5' // the proving ground's permanent extraction
 const t0 = Date.now()
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -211,17 +216,18 @@ async function scenario (bot) {
   const granted = await claimFreeKit(bot)
   check('free kit: handed out once the money is gone (the karambit is no gear value)', granted.includes('已领取免费补给'), granted)
 
-  // 3. A karambit and a gold bar: gear value 68,000, 机密 lets the bot in, the death loses 68,000.
-  await carryOnly(bot, 'knife_karambit', 'gold_bar')
+  // 3. A karambit and a gold bar, the bar in a pack_1 (valuables go in a backpack only, #10; cv give
+  // puts the pack on): gear value 68,000 + 3,000, 机密 lets the bot in, the death loses the same.
+  await carryOnly(bot, 'knife_karambit', 'pack_1', 'gold_bar')
   await rcon(`cv money ${name} 100000`)
   const dv2 = await deployValue(bot)
-  check('deploy screen: 战备值 ◈68,000 with a karambit and a gold bar', dv2.value === 68000, dv2.text)
+  check('deploy screen: 战备值 ◈71,000 with a karambit, a pack_1 and a gold bar', dv2.value === 71000, dv2.text)
   if (!await deploy(bot, 'CONFIDENTIAL')) throw new Error('the bot never reached the 机密 raid')
   check('a karambit and a gold bar get into 机密', true)
   from = bot.chatLog.length
   await rcon(`damage ${name} 1000 minecraft:generic`)
   const lost = await waitChat(bot, /损失|击败干员 \d+ · 击败敌兵/, 60000, from)
-  check('dying reports 损失 -◈68,000: the gold bar, not the kept karambit', !!lost && lost.includes('损失') && money(lost) === 68000, lost)
+  check('dying reports 损失 -◈71,000: the gold bar and the pack, not the kept karambit', !!lost && lost.includes('损失') && money(lost) === 71000, lost)
   if (!await waitFor(() => inLobby(bot), 60000)) throw new Error('the bot did not get back to the lobby')
   await waitFor(() => melee(bot) === 'knife_karambit', 5000)
   check('the karambit is back in the melee slot after the death', melee(bot) === 'knife_karambit', melee(bot))

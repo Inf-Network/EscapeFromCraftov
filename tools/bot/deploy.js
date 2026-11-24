@@ -6,26 +6,32 @@
 // Needs a local test server (server/setup.sh --local) with RCON on. Ports come from
 // MC_PORT (25565), RCON_PORT (25575) and RCON_PASSWORD (craftov-local). To keep the
 // run short and the scenarios apart, in plugins/Craftov/config.yml:
-//   match: { wait-seconds: 2, join-window-seconds: -1 }   (no backfill into older raids)
-//   raid: { reconnect-seconds: 30 }                        and RECONNECT=30 here
-//   tiers.NORMAL.entry-fee: 1000                           (so a charged fee shows)
+//   match: { wait-seconds: 2 }
+//   raid: { reconnect-seconds: 30 }          and RECONNECT=30 here
+//   tiers.NORMAL.entry-fee: 1000             (so a charged fee shows)
 // The 'timeout' scenario also sets insurance.loss-chance and insurance.return-minutes to 0 for its
 // run (insurance.js, put back afterwards), since it checks that every insured piece comes back.
 // Profiles are read from PLAYERS (default ../../server/run/plugins/Craftov/data/players).
 // Each scenario prints PASS, FAIL or SKIP with what was seen; the exit code is the
 // number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2, raid.reconnect-seconds 30 (with
+// RECONNECT=30), tiers.NORMAL.entry-fee 1000.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
 
-const MC_PORT = Number(process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const MC_PORT = env.PORT
+const RCON = env.RCON
 const RECONNECT = Number(process.env.RECONNECT || 120)  // raid.reconnect-seconds on the server
 const MAP = process.env.MAP || 'proving'
-const PLAYERS = process.env.PLAYERS || path.join(__dirname, '../../server/run/plugins/Craftov/data/players')
+const PLAYERS = process.env.PLAYERS || path.join(env.DATA, 'data', 'players')
 const SECURE_ITEM = { id: 'bandage', amount: 1 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))

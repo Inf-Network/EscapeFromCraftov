@@ -6,10 +6,9 @@
 //
 // Needs a local test server (server/setup.sh --local) with RCON on and test mode on
 // (test: { enabled: true }) so the bots, who are not op, can queue for the proving ground.
-// match.wait-seconds: 2 keeps the run short. Ports come from PORT (25565), RCON_PORT (25575)
-// and RCON_PASSWORD (craftov-local); SERVER_DIR is the server's folder (default the repository's
-// server/run), where world reads logs/latest.log. Each scenario prints PASS or FAIL with what was
-// seen; the exit code is the number of failures. DEBUG=1 prints the soldier lines it polls.
+// match.wait-seconds: 2 keeps the run short. Ports and the server's folder come from env.js (see
+// below). Each scenario prints PASS or FAIL with what was seen; the exit code is the number of
+// failures. DEBUG=1 prints the soldier lines it polls.
 //
 // Every scenario lands one fresh bot (A; world also B) on the proving ground, clears the map's own
 // soldiers and posts the ones it needs with /cv ai spawn, so nothing else interferes. Soldier state
@@ -62,15 +61,21 @@
 //             moved to the lobby while they fight it and B stands there instead: they all fight B
 //             within 8 s. The server log has no cross-world error and no soldier error report
 //             (failed to think) from the scenario.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 2.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (world reads its
+// logs/latest.log, or SERVER_LOG).
 const fs = require('fs')
-const path = require('path')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
+const config = require('./config')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const MAP = 'proving'
-const SERVER_LOG = path.join(process.env.SERVER_DIR || path.join(__dirname, '../../server/run'), 'logs', 'latest.log')
+const SERVER_LOG = env.LOG
 // A flat stone field high above the proving ground (inside its bounds), lit by the sky.
 const FIELD = { x1: 20, x2: 100, z1: 16, z2: 88, y: 120 }
 
@@ -140,6 +145,8 @@ async function land (tier = 'NORMAL') {
 }
 
 const inWorld = (bot, cmd) => rcon(`execute in minecraft:${bot.worldName} run ${cmd}`)
+/** Whether the bot was told `text`: in chat, or on the HUD's alert banner (raid news), which `cv hud` prints. */
+const told = async (bot, text) => bot.chatLog.some(l => l.includes(text)) || (await rcon(`cv hud ${bot.username}`)).includes(text)
 
 /** Removes the map's own soldiers so only the ones a scenario posts are about. */
 async function clearSoldiers (bot) {
@@ -295,29 +302,20 @@ const scenarios = {
     if (!near.has('警戒') && !near.has('交战')) problems.push(`walking 6 blocks off a guard behind a wall: not heard (${[...near].join(',')})`)
     notes.push(`wall at 12: ${[...far].join(',')}; at 6: ${[...near].join(',')}`)
     await inWorld(A, `fill 50 ${top} 44 70 ${top + 2} 44 minecraft:air`)
-    if (process.env.SERVER_DIR) {
-      // Players back on vanilla steps: the soldiers still hear by the footstep ranges.
-      const fs = require('fs')
-      const file = require('path').join(process.env.SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
-      const before = fs.readFileSync(file, 'utf8')
-      const off = before.replace(/^(footsteps:\n(?:[ \t]+#.*\n)*[ \t]+enabled: )true$/m, '$1false')
-      if (off === before) {
-        problems.push('footsteps.enabled: true not found in the server config')
-      } else {
-        try {
-          fs.writeFileSync(file, off)
-          await rcon('cv reload')
-          await clearSoldiers(A)
-          await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
-          await sleep(1500)
-          patrol = await post(A, 'patrol', 60.5, top, 52.5)
-          const vanilla = await walkBehind(A, patrol.uuid, 12, 8000)
-          if (vanilla === null) problems.push('footsteps.enabled false: the patrol no longer hears A walking 12 blocks behind it')
-          notes.push(`footsteps off: ${vanilla === null ? '-' : 'noticed after ' + vanilla.toFixed(1) + ' s'}`)
-        } finally {
-          fs.writeFileSync(file, before)
-          await rcon('cv reload')
-        }
+    if (env.SERVER_DIR_SET) {
+      // Players back on vanilla steps: the soldiers still hear by the footstep ranges. A config.yml
+      // from before footsteps has no such section (the jar's defaults fill in): config.js adds it.
+      const restore = await config.pin({ 'footsteps.enabled': false }, { rcon, log: () => {} })
+      try {
+        await clearSoldiers(A)
+        await inWorld(A, `tp ${A.username} 30.5 ${top} 20.5`)
+        await sleep(1500)
+        patrol = await post(A, 'patrol', 60.5, top, 52.5)
+        const vanilla = await walkBehind(A, patrol.uuid, 12, 8000)
+        if (vanilla === null) problems.push('footsteps.enabled false: the patrol no longer hears A walking 12 blocks behind it')
+        notes.push(`footsteps off: ${vanilla === null ? '-' : 'noticed after ' + vanilla.toFixed(1) + ' s'}`)
+      } finally {
+        await restore()
       }
     }
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'heard walking behind in the open, through a wall only up close'} | ${notes.join('; ')}`]
@@ -388,6 +386,8 @@ const scenarios = {
     for (const [x1, x2, z] of [[57, 59, 32], [62, 64, 36], [56, 58, 40], [61, 63, 45], [59, 61, 83]]) {
       await inWorld(A, `fill ${x1} ${top} ${z} ${x2} ${top + 1} ${z} minecraft:stone_bricks`)
     }
+    // Keys 1-2 are the only cells a gun goes to (#10) and the kit's rifle and pistol hold them.
+    await rcon(`item replace entity ${A.username} hotbar.0 with minecraft:air`)
     await rcon(`cv give ${A.username} dm14`) // loaded: ten rounds
     await inWorld(A, `tp ${A.username} 62.5 ${top} 84.5 180 0`)
     await sleep(800)
@@ -494,12 +494,16 @@ const scenarios = {
     const problems = []
     if (sleeping.length !== 3) problems.push(`expected the boss and two guards asleep at the start, saw ${sleeping.length} (${(await soldiers()).map(s => s.state).join(',')})`)
     else if (sleeping.some(s => Math.hypot(s.x - 47.5, s.z - 16.5) > 3)) problems.push(`a sleeper is away from the boss post (${sleeping.map(s => `${s.x},${s.z}`).join(' ')})`)
-    const early = A.chatLog.some(l => l.includes('出现在地图中'))
+    const early = await told(A, '出现在地图中')
     await sleep(Math.max(0, 50000 - (Date.now() - t0)))
     const still = (await soldiers()).filter(s => s.state === '休眠').length
     if (early) problems.push('the boss was announced at the start')
     if (still !== sleeping.length) problems.push(`only ${still} of ${sleeping.length} still asleep 50 s in`)
-    const woke = await waitFor(async () => (await soldiers()).every(s => s.state !== '休眠') && A.chatLog.some(l => l.includes('出现在地图中')), 20000, 500)
+    let announced = false
+    const woke = await waitFor(async () => {
+      announced = announced || await told(A, '出现在地图中') // the banner shows for 6 s
+      return announced && (await soldiers()).every(s => s.state !== '休眠')
+    }, 20000, 500)
     if (!woke) problems.push(`not woken and announced by 70 s (${(await soldiers()).filter(s => s.state === '休眠').length} asleep)`)
     return [problems.length ? 'FAIL' : 'PASS', `${problems.join('; ') || 'the boss and its guards were in place and asleep from the start, woke and were announced at 60 s'} | asleep at start ${sleeping.length}, at 50 s ${still}`]
   },

@@ -30,15 +30,20 @@
 // "正在部署 试验场 · 地图准备中" and counts up while it waits; /cv raids counts that copy (1), still
 // after the bot has left, and 0 once it is done.
 // Each scenario prints PASS or FAIL; the exit code is the number of failures.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const MC_PORT = Number(process.env.MC_PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const MC_PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const LOG = path.join(SERVER_DIR, 'logs', 'latest.log')
 const CONFIG = path.join(SERVER_DIR, 'plugins', 'Craftov', 'config.yml')
 const PAD_DIR = path.join(SERVER_DIR, 'craftov_tpl_proving', 'pad')

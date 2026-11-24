@@ -9,7 +9,8 @@
 //   parapet    the sniper moved to the ground 41 blocks south of the drill building, the target on the
 //              roof right behind the 1-high stone brick parapet: the sniper must fire at it, and aim at the
 //              head that shows over the wall (aim >= 1.3), not at the hidden middle.
-//   soldierlag a patrol soldier walks 24 blocks across the shooter's view 12 blocks away (soldiers send
+//   soldierlag a patrol soldier (a fresh one, posted with /cv ai spawn: the map's has been fighting the
+//              shooter) walks 24 blocks across the shooter's view 12 blocks away (soldiers send
 //              their position every 3 ticks). The shooter aims at where a vanilla client would draw it
 //              (vanillaView: each update eased into over 3 client ticks, frames drawn between ticks) and
 //              fires single M4C rounds while it walks, aiming down the sights, with lag compensation on
@@ -46,15 +47,22 @@
 // scenarios that need none kill those too), cover on the lines of fire is cleared, glass broken and walls
 // built: the bots' raid is ended at the end. Leaves lag compensation switched on (/cv lagcomp on). Exit
 // code: number of failed checks (2+ also when the bots could not be set up).
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (hits are read from the log),
+// test.enabled true (the bots queue for the proving ground, a test map), ai.count-multiplier 1.25
+// (the tower sniper every raid), ai.operator-chance [0, 0, 0] and events.per-raid 0 (no rival squad
+// or event walks into the lines of fire), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
 const mineflayer = require('mineflayer')
 const conv = require('mineflayer/lib/conversions')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const PORT = env.PORT
+const RCON = env.RCON
+const LOG = env.LOG
 const CONFIG = process.env.CRAFTOV_CONFIG || path.join(path.dirname(LOG), '../plugins/Craftov/config.yml')
 const rcon = cmd => rconRaw(cmd, RCON).then(s => s.replace(/§./g, ''))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -356,19 +364,27 @@ function tracker (bot, id) {
   }
 }
 
-/** Switches the held M4C to single shots: the action bar names the mode after each press. */
+/**
+ * Switches the held M4C to single shots (AUTO -> BURST -> SEMI): the action bar names the mode after
+ * each press ("射击模式: 单发"). It shows one result line per 1.5 s (util/Notify), so a press waits
+ * for its own line before the next: pressed sooner, the next one could skip past SEMI before its
+ * line came. The gun's key hints (… <F> 射击模式, no colon), which a fresh draw shows and the bar may
+ * still carry, are not a switch.
+ */
 async function semi (bot = shooter) {
+  const switches = n => bot.bars.slice(n).filter(b => b.includes('射击模式:'))
   for (let i = 0; i < 3; i++) {
     const n = bot.bars.length
     swapKey(bot)
-    await sleep(500)
-    if (bot.bars.slice(n).some(b => b.includes('单发'))) return
+    const end = Date.now() + 2500
+    while (Date.now() < end && !switches(n).length) await sleep(100)
+    if (switches(n).some(b => b.includes('单发'))) return
   }
   throw new Error('the M4C did not switch to single shots')
 }
 
-// "[Craftov] <id> 试验场 NORMAL RUNNING · ...", one line per raid.
-const raidIds = async () => (await rcon('cv raids')).split('\n').map(l => (l.trim().match(/^\[Craftov\]\s+(\S+)\s/) || [])[1]).filter(Boolean)
+// `cv raids` lists one raid a line, "R6 试验场 常规 RUNNING · ..." (once with a [Craftov] prefix).
+const raidIds = async () => (await rcon('cv raids')).split('\n').map(l => (l.trim().match(/^(?:\[Craftov\]\s+)?(R\d+)\s/) || [])[1]).filter(Boolean)
 let ourRaids = []
 
 async function intoRaid () {
@@ -502,12 +518,19 @@ async function soldierlag () {
   // at 30 28 stay).
   await rcon(`execute at ${SHOOTER} run fill 22 65 12 54 68 19 minecraft:air`)
   await rcon(`execute at ${SHOOTER} run fill 31 65 19 46 68 27 minecraft:air`)
-  const there = await rcon(`execute at ${SHOOTER} if entity ${PATROL}`)
-  if (!/Test passed/.test(there)) throw new Error('no patrol soldier was kept')
   await setAi({ 'awareness.rate': -50, 'threat.seconds': 0 })
   await tp(SHOOTER, spot.x, 65, spot.z, 180, 0)
-  await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
   await tp(TARGET, W.x, 65, W.z, -90, 0)
+  // A fresh patrol at the east end. The map's own has been fighting the shooter since sniper and
+  // parapet, and a soldier keeps a target it still sees whatever ai.awareness.rate is (that only
+  // drains what it has not noticed yet): it stood and fired at the shooter, stepping aside now and
+  // then, and never took the walk.
+  await rcon(`kill ${PATROL}`)
+  const posted = await rcon(`cv ai spawn patrol ${E.x} 65 ${E.z} ${ourRaids[0]}`)
+  await rcon(`execute at ${SHOOTER} run tag @e[type=minecraft:zombie,x=${E.x},y=65,z=${E.z},distance=..2,sort=nearest,limit=1] add hrpatrol`)
+  const there = await rcon(`execute at ${SHOOTER} if entity ${PATROL}`)
+  if (!/Test passed/.test(there)) throw new Error('no patrol soldier could be posted: ' + posted.trim())
+  await rcon(`execute at ${SHOOTER} as ${PATROL} run tp @s ${E.x} 65 ${E.z} 90 0`)
   await sleep(2500)
   // It may have walked on a little from where it was put (a path it already had): look for it where the
   // server has it.
@@ -965,6 +988,9 @@ async function lag () {
 ;(async () => {
   await intoRaid()
   const keep = keepAlive()
+  // The shooter too: a stray soldier, operator or event of the raid could otherwise end the run
+  // half way (its empty inventory then fails every scenario after).
+  const keepShooter = keepAlive(SHOOTER)
   for (const scenario of scenarios) {
     log('---', scenario)
     try {
@@ -983,6 +1009,7 @@ async function lag () {
     }
   }
   keep()
+  keepShooter()
   await setAi(null).catch(e => log('could not put config.yml back:', e.message))
   for (const id of ourRaids) await rcon('cv end ' + id).catch(() => {})
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')

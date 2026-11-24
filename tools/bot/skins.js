@@ -30,20 +30,29 @@
 //      500 points buying 黑曜 (880) is refused (点券不足), with 1,000 it is bought and worn and 120
 //      points are left.
 //
-//   node skins.js     env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=(optional, the run folder)
+//   node skins.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js), SERVER_DIR (optional, the run folder;
+//                     CRAFTOV_RUN is read too)
 //
 // Needs test mode on (the proving ground is a test map) and, to keep it short, match.wait-seconds of a
 // few seconds. The bot has a fresh random name, is made op for the proving ground and deopped when done.
 // Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3; with SERVER_DIR the script switches
+// skins.own-all and skins.shop-open itself.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR ? path.resolve(process.env.SERVER_DIR) : ''
+const PORT = env.PORT
+const RCON = env.RCON
+// Only a folder named on purpose (env.js's SERVER_DIR or CRAFTOV_RUN) has its profile read and its
+// config.yml switched; without one those checks are left out.
+const SERVER_DIR = env.SERVER_DIR_SET ? env.SERVER_DIR : ''
 const t0 = Date.now()
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))

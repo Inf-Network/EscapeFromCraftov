@@ -6,34 +6,45 @@
 //              police vest at 81% of the system buyers' price sells to them with 5% tax taken, after
 //              which (market.virtual-daily-cap set to 1) a second one is held back by the daily quota;
 //              the pricing screen shows the system buyers' price and says when they will not buy.
-//   insurance  DEATHS deaths in solo proving-ground raids with insurance on (the starter kit, then
-//              five P18s each time): what comes back matches insurance.loss-chance within three
-//              standard deviations, every claim waits insurance.return-minutes in the profile, and
+//   insurance  DEATHS deaths in solo proving-ground raids with insurance on (the starter kit and five
+//              P18s, then a pack_1 and five P18s each time: two on the gun keys and three in the
+//              pack, since nothing else takes a gun, #10; about 120 insured items in all): what
+//              comes back matches
+//              insurance.loss-chance within three standard deviations, every claim waits
+//              insurance.return-minutes in the profile, and
 //              once due it reaches the mailbox when the owner is online.
 //   meds       at full health with both legs broken a surgery kit treats one leg per use and loses
 //              40 of its 160 points each time; a med case treats one of two heavy bleeds and loses 40.
-//   load       five gold lions (50 kg) stop sprinting (food level 6) and say so; emptying the
-//              inventory brings sprinting back.
+//   load       four gold lions in a worn pack_3 and rig_3 (42 kg with them; a lion takes six cells
+//              and goes nowhere but a backpack or rig, #10) stop sprinting (food level 6) and say so;
+//              emptying the inventory brings sprinting back.
 //
 //   node economy.js [all|market|insurance|meds]    (meds includes load)
 //   env: PORT=25565 RCON_PORT=25575 RCON_PASS=craftov-local SERVER_DIR=../../server/run
-//        DEATHS=20 MARKET_MIN=10
+//        DEATHS=20 PISTOLS=5 MARKET_MIN=10
 //
 // SERVER_DIR is read for player profiles and its plugins/Craftov/config.yml is edited for the run
 // (restored at the end, then /cv reload): match.wait-seconds 2 and cinematic.enabled false to make
 // raids quick, market.virtual-daily-cap 1. In `all` the market listings wait while the other
 // scenarios run. Bots use fresh random names and are made op (the proving ground is test-only).
 // Exits 0 when every check passed.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map); the script sets match.wait-seconds 2, cinematic.enabled false
+// and market.virtual-daily-cap 1 itself (and puts them back).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '../../server/run'))
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const DEATHS = Number(process.env.DEATHS || 20)
+const PISTOLS = Number(process.env.PISTOLS || 5) // P18s given before each death (with a pack_1 to hold three)
 const MARKET_MIN = Number(process.env.MARKET_MIN || 10)
 const CONFIG = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
 const tag = String(Math.floor(Math.random() * 9000) + 1000)
@@ -227,8 +238,11 @@ async function marketList () {
   let pm = await priceMenu(m, 'gold_bar', true)
   check('gold bar: the pricing screen says system buyers will not buy it', hint(pm).includes('系统买家不会收购'), hint(pm))
   let from = m.chatLog.length
+  const barFrom = m.bars.length
   await click(m, 26, 800)
-  check('gold bar: a level-1 seller cannot list it', !!await waitChat(m, /只有系统买家会收购你的商品/, 3000, from), m.chatLog.slice(from).join(' | '))
+  // A click's result goes to the action bar and the menu (util/Notify), not to chat.
+  const refused = await waitFor(() => m.bars.slice(barFrom).concat(m.chatLog.slice(from)).some(x => /只有系统买家会收购你的商品/.test(x)), 3000)
+  check('gold bar: a level-1 seller cannot list it', refused, m.bars.slice(barFrom).concat(m.chatLog.slice(from)).join(' | '))
   try { m.closeWindow(m.currentWindow) } catch {}
   await sleep(300)
   pm = await priceMenu(m, 'star_crystal', true)
@@ -317,7 +331,11 @@ async function insurance () {
   let lost = 0
   let deaths = 0
   for (let i = 0; i < DEATHS; i++) {
-    for (let k = 0; k < 5; k++) await rcon(`cv give ${name} p18`)
+    // Six insured items a death: a worn pack_1 (the starter kit's on the first, a new one after
+    // that: cv give puts it on) and five P18s, two on the gun keys and three in the pack's cells (a
+    // gun goes nowhere else, #10). Two P18s a death left too few items for the 3-sigma window.
+    if (i > 0) await rcon(`cv give ${name} pack_1`)
+    for (let k = 0; k < PISTOLS; k++) await rcon(`cv give ${name} p18`)
     await rcon(`cv money ${name} 5000`)
     await sleep(500)
     const from = bot.chatLog.length
@@ -409,16 +427,22 @@ async function meds () {
   check('a med case treats one of two heavy bleeds for 40 points, then heals', (treated.match(/出血/g) || []).length === 1
     && Math.abs(400 - 40 - healed - left) <= 1, `${treated} / ${pool(r.item)}`)
 
-  // Load: five gold lions are 50 kg, past the 40 kg overload limit.
+  // Load: four gold lions (10 kg each), a pack_3 (1.2) and a rig_3 (0.8) are 42 kg, past the 40 kg
+  // overload limit. A lion takes six cells and goes only into a backpack or rig (#10): three fill
+  // the pack_3's 18 cells, one the rig_3's 9; cv give puts the pack and rig on.
   await rcon(`clear ${name}`)
   await sleep(500)
+  await rcon(`cv give ${name} pack_3`)
+  await rcon(`cv give ${name} rig_3`)
+  await sleep(500)
   const from = bot.bars.length
-  for (let i = 0; i < 5; i++) await rcon(`cv give ${name} lion_statue`)
+  for (let i = 0; i < 4; i++) await rcon(`cv give ${name} lion_statue`)
   await waitFor(() => bot.food <= 6, 5000)
-  check('five gold lions (50 kg) stop sprinting', bot.food <= 6 && bot.bars.slice(from).some(b => b.includes('无法冲刺')),
+  check('four gold lions (42 kg with the pack and rig) stop sprinting', bot.food <= 6 && bot.bars.slice(from).some(b => b.includes('无法冲刺')),
     `food ${bot.food}; ${bot.bars.slice(from).join(' | ')}`)
   await rcon(`clear ${name}`)
-  await waitFor(() => bot.food >= 20, 5000)
+  // The food level and the action bar come in separate packets, in either order.
+  await waitFor(() => bot.food >= 20 && bot.bars.slice(from).some(b => b.includes('可以冲刺了')), 5000)
   check('emptying the pack brings sprinting back', bot.food >= 20 && bot.bars.slice(from).some(b => b.includes('可以冲刺了')), `food ${bot.food}`)
   await rcon(`damage ${name} 1000 minecraft:generic`)
   await waitFor(() => inLobby(bot), 60000)

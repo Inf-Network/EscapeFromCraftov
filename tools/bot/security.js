@@ -28,14 +28,19 @@
 // Needs an offline-mode server (setup.sh --local) without a whitelist, or with these random bot
 // names allowed, and security.admin-guard left at "auto". The operator bot is deopped when done.
 // Exit code 0 when every check passed, 1 when one failed, 2 when the scenario broke.
+//
+// Server config (tools/bot/suite.js sets it for its run): security.admin-guard auto (the default),
+// no whitelist; the script switches security.admin-addresses itself and puts it back.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = process.env.SERVER_DIR || path.join(__dirname, '../../server/run')
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const CONFIG = path.join(SERVER_DIR, 'plugins/Craftov/config.yml')
 const CE_CONFIG = path.join(SERVER_DIR, 'plugins/CraftEngine/config.yml')
 const MAPS = path.join(SERVER_DIR, 'plugins/Craftov/maps')
@@ -74,6 +79,10 @@ function join (name) {
   bot.on('error', e => log(name, 'ERROR', e.message))
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(name + ' neither spawned nor was refused')), 60000)
+    // A refusal at login can arrive before mineflayer has loaded its plugins (it does on a timer
+    // after createBot), the one that turns this packet into 'kicked' among them, and the bot would
+    // see only the connection close (#138): the login's own disconnect packet always gets parsed.
+    bot._client.once('disconnect', p => { clearTimeout(t); log(name, 'REFUSED', strings(p.reason)); resolve({ kicked: strings(p.reason) }) })
     bot.once('kicked', reason => { clearTimeout(t); log(name, 'KICKED', strings(reason)); resolve({ kicked: strings(reason) }) })
     bot.once('spawn', async () => { clearTimeout(t); await sleep(2500); resolve(bot) })
   })

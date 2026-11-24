@@ -1,43 +1,60 @@
 // Strobe light and flashbang check (issue #15): neither may freeze a soldier, and a flashed player gets
 // a white screen instead of a black one with nausea. One bot fits a tactical light to an M4, enters the
 // proving ground solo and then:
-//   1. throws a flashbang against the outside of the AI arena wall while the soldiers inside are still
-//      at their posts: the soldiers behind the wall within the blast radius must not all stand frozen
+//   1. drops a flashbang at its feet against the outside of the AI arena wall while the soldiers
+//      inside are still at their posts: the soldiers behind the wall within the blast radius must not all stand frozen
 //      for the next 3.5 s (the blast draws them, so one walks off, or one shoots);
-//   2. facing that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
+//   2. at that flashbang itself, the bot must get a camera overlay craftov:misc/flash_* on its head
 //      slot and the ringing sound, and no nausea. Blindness only comes with the fully white screen (so
 //      F5 cannot clear it) and must be lifted before the first translucent fade step. The bot wears a
-//      helmet that is swapped while it is white: the overlay must be back within half a second of the
-//      head slot sync that replaces it on the client;
-//   3. switches to strobe (two pick-block packets), waits for a soldier within strobe range to shoot
-//      it, steps in to about 4.5 blocks and holds the beam on that soldier for 8 s: the soldier must
-//      still hit the bot at least once and move over a block (from that close it backs off unless
-//      frozen).
+//      helmet that is swapped while it is white: while the screen is flashed, every update of the
+//      head slot either carries the overlay (the server dresses its own syncs of the slot) or is
+//      followed by one within half a second; and the white-out still fades its whole length after
+//      the swap: flash_3, flash_2, flash_1 and then no overlay, over three quarters of the 1.5 s fade;
+//   3. switches to strobe (two pick-block packets, outside the arena once the test armory's full heal
+//      has cleared its wounds, whose critical action-bar lines would hide the light's), steps into the
+//      arena, waits for a soldier within strobe range to shoot it, steps in to about 4.5 blocks and
+//      holds the beam on that soldier for 8 s: the soldier must still hit the bot at least once and
+//      move over a block (from that close it backs off unless frozen).
 //
-//   PORT=25565 RCON_PORT=25575 RCON_PASSWORD=craftov-local node strobe.js
+//   node strobe.js     env: PORT, RCON_PORT, RCON_PASSWORD (env.js)
 // Exit code 0 when every check passes, 1 when one fails, 2 when the scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const rcon = (cmd) => rconRaw(cmd, RCON)
 const t0 = Date.now()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const SOLDIERS = ['zombie', 'husk', 'drowned']
+// How long a flashbang's white-out takes to fade from fully white to clear (HudService.flash:
+// half the flash, at least 10 and at most 30 ticks). The grenade goes off at the bot's feet, so its
+// flash runs near combat.flashbang.facing-ticks (80) and the fade is the full 30 ticks.
+const FADE_MS = 30 * 50
 const checks = {}
 
 // Places outside the arena walls (ProvingGroundGenerator.arena) to throw from, clear of the entrance
-// baffles: the bot stands 1.5 blocks off the wall facing it, and the grenade drops against it.
+// baffles: the bot stands against the wall (its outer faces are z 34 and x 92) and drops the grenade
+// at its feet, so it goes off right there. Thrown at the wall it would bounce back off it (#42) and
+// go off a few blocks behind the bot, out of the soldiers' reach.
 const THROW_SPOTS = []
 for (let x = 2; x <= 87; x++) {
-  if (x <= 16 || (x >= 25 && x <= 54) || x >= 64) THROW_SPOTS.push({ stand: [x + 0.5, 35.5], yaw: 180, blast: [x + 0.5, 34] })
+  if (x <= 16 || (x >= 25 && x <= 54) || x >= 64) THROW_SPOTS.push({ stand: [x + 0.5, 34.35], yaw: 180, blast: [x + 0.5, 34.35] })
 }
 for (let z = 2; z <= 32; z++) {
-  if (z <= 15 || z >= 25) THROW_SPOTS.push({ stand: [92.5, z + 0.5], yaw: 90, blast: [92, z + 0.5] })
+  if (z <= 15 || z >= 25) THROW_SPOTS.push({ stand: [92.35, z + 0.5], yaw: 90, blast: [92.35, z + 0.5] })
 }
+// A soldier this close to the drop point (across the floor) when the spot is picked is still inside
+// the flashbang's radius (10) a few seconds later, when it goes off, though it shifts about its post.
+const REACH = 8
 const insideArena = (p) => p.x < 91 && p.z < 33 && p.y < 69 // not the sniper on its tower
 
 async function waitFor (pred, ms) {
@@ -57,6 +74,8 @@ function soldiers (bot) {
   return Object.values(bot.entities).filter(e => e !== bot.entity && SOLDIERS.includes(e.name))
 }
 
+/** Plain text of an action-bar packet (as JSON) for a log line. */
+const plainBar = s => [...s.matchAll(/"value":"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]).filter(t => !/^#|^craftov:|^white$|^key\./.test(t)).join('')
 const pick = (bot) => bot._client.write('pick_item_from_block', { position: { x: 0, y: 0, z: 0 }, includeData: false })
 
 /**
@@ -132,15 +151,22 @@ function openSpotNear (bot, soldier) {
   bot._client.on('entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) effects.push({ id: p.effectId, at: Date.now() }) })
   const removedEffects = []
   bot._client.on('remove_entity_effect', p => { if (bot.entity && p.entityId === bot.entity.id) removedEffects.push({ id: p.effectId, at: Date.now() }) })
-  // The server syncing our real head slot (player inventory, slot 5) replaces any overlay helmet.
+  // Every update of our own head slot, by whatever packet, with the overlay it carries (null for the
+  // real helmet). The server dresses its own syncs of the slot with the overlay (Nms.SelfView), and
+  // one that went out bare (the real helmet back on the client) is covered again by a resend.
   const headSyncs = []
-  bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) headSyncs.push({ at: Date.now() }) })
+  const overlayOf = item => { const m = JSON.stringify(item || {}).match(/misc\/([a-z0-9_]+)/); return m ? m[1] : null }
+  bot._client.on('set_slot', p => { if (p.windowId === 0 && p.slot === 5) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.item) }) })
+  bot._client.on('set_player_inventory', p => { if (p.slotId === 39) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.contents) }) })
+  bot._client.on('window_items', p => { if (p.windowId === 0 && p.items.length > 5) headSyncs.push({ at: Date.now(), overlay: overlayOf(p.items[5]) }) })
   const sounds = []
   bot.on('soundEffectHeard', (sound, pos) => sounds.push({ sound: String(sound), pos, at: Date.now() }))
   await new Promise(resolve => bot.once('spawn', resolve))
   await sleep(2500)
 
-  // Loadout: an M4 with a tactical light, two flashbangs (in the hotbar) and ammo.
+  // Loadout: an M4 with a tactical light, two flashbangs (in the hotbar) and ammo. Keys 1-2 are the
+  // only cells a gun goes to (#10) and the kit's rifle and pistol hold them: key 1 makes room.
+  await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
   for (const cmd of [`cv give ${name} m4c`, `cv give ${name} att_taclight`, `cv give ${name} flash 2`, `cv give ${name} ammo_556_m855 120`]) {
     log('rcon', cmd, (await rcon(cmd)).replace(/§./g, '').trim())
   }
@@ -171,14 +197,14 @@ function openSpotNear (bot, soldier) {
   const heal = setInterval(() => rcon(`effect give ${name} instant_health 1 3 true`).catch(() => {}), 1500)
 
   // ---------------------------------------------------------------- 1. flashbang through the wall
-  // Wait outside the arena (out of sight) until a soldier at its post is within 8.5 blocks of a spot
+  // Wait outside the arena (out of sight) until a soldier at its post is within REACH of a spot
   // where a grenade would land against the wall.
   await rcon(`execute as ${name} at @s run tp @s 47.5 65 35.5 180 10`)
   let spot = null
   await waitFor(() => {
     let best = 0
     for (const s of THROW_SPOTS) {
-      const n = soldiers(bot).filter(e => insideArena(e.position) && Math.hypot(e.position.x - s.blast[0], e.position.z - s.blast[1]) < 8.5).length
+      const n = soldiers(bot).filter(e => insideArena(e.position) && Math.hypot(e.position.x - s.blast[0], e.position.z - s.blast[1]) < REACH).length
       if (n > best) { best = n; spot = s }
     }
     return best > 0
@@ -194,15 +220,25 @@ function openSpotNear (bot, soldier) {
   const effectsBefore = effects.length
   const removedBefore = removedEffects.length
   const soundsBefore = sounds.length
-  bot.activateItem() // the teleport left us facing the wall, slightly down
+  // Crouching and looking straight down, the grenade lands right under the bot's eyes.
+  bot.setControlState('sneak', true)
+  await bot.look(bot.entity.yaw, -Math.PI / 2, true)
+  await sleep(300)
+  bot.activateItem()
   await sleep(200)
   bot.deactivateItem()
+  await sleep(150)
+  bot.setControlState('sneak', false)
   if (!await waitFor(() => sounds.slice(soundsBefore).some(s => s.sound.includes('throw.flash')), 6000)) throw new Error('no flashbang went off')
   const blast = sounds.slice(soundsBefore).find(s => s.sound.includes('throw.flash')).pos
   // A new helmet while the screen is white, like one losing durability to a headshot.
   const swapAt = Date.now()
   await rcon(`item replace entity ${name} armor.head with minecraft:iron_helmet`)
   const behind = soldiers(bot).filter(e => insideArena(e.position) && e.position.distanceTo(blast) <= 10)
+  if (!behind.length) {
+    log('no soldier in range: nearest soldiers', soldiers(bot).map(e => ({ at: e.position.floored().toString(), d: e.position.distanceTo(blast).toFixed(1), inside: insideArena(e.position) }))
+      .sort((a, b) => a.d - b.d).slice(0, 6))
+  }
   log('flashbang at', blast.toString(), 'soldiers behind the wall in range', behind.map(e => ({ id: e.id, d: e.position.distanceTo(blast).toFixed(1) })))
   // Watch them for the 3.5 s the old stun lasted, counting movement from 0.5 s in (a stunned soldier
   // still slides a little when its path is cut) and any shot fired next to one of them.
@@ -233,26 +269,64 @@ function openSpotNear (bot, soldier) {
     blindOff[blindOff.length - 1].at >= blindOn[blindOn.length - 1].at && blindOff[blindOff.length - 1].at <= firstFade.at
   checks.flashOverlay = mine.some(o => o.overlay && o.overlay.startsWith('flash'))
   checks.ringing = sounds.slice(soundsBefore).some(s => s.sound.includes('status.tinnitus'))
+  // While the screen is flashed (up to the last flash overlay sent), no head-slot update may leave
+  // the real helmet showing for half a second: each bare one is followed by an overlay within 0.5 s.
   const syncs = headSyncs.filter(h => h.at >= swapAt)
+  const all = syncs.concat(mine.filter(o => o.at >= swapAt)).sort((a, b) => a.at - b.at)
+  const flashed = all.filter(u => (u.overlay || '').startsWith('flash'))
+  const lastFlash = flashed[flashed.length - 1]
+  const bare = all.filter(u => !(u.overlay || '').startsWith('flash') && lastFlash && u.at < lastFlash.at)
+  const uncovered = bare.filter(b => !flashed.some(u => u.at >= b.at && u.at - b.at < 500))
   const lastSync = syncs[syncs.length - 1]
-  const back = lastSync && mine.find(o => o.at >= lastSync.at && o.overlay && o.overlay.startsWith('flash'))
-  checks.overlayBackAfterHelmetSync = !!back && back.at - lastSync.at < 500
+  const back = lastSync && all.find(o => o.at >= lastSync.at && (o.overlay || '').startsWith('flash'))
+  checks.overlayBackAfterHelmetSync = syncs.length > 0 && !!lastFlash && uncovered.length === 0
+  // The fade runs its whole length after the swap: from the first fade step (flash_3, when a quarter
+  // of the fade is gone) through flash_2 and flash_1 to the end of the overlay takes the other three
+  // quarters (HudService.flash: a flash of 60 ticks or more fades over 30, FADE_MS). A swap that cut
+  // the white-out short, or left the real helmet showing, ends it sooner or never steps down.
+  const stepAt = step => { const o = mine.find(u => u.overlay === 'flash_' + step); return o ? o.at : null }
+  const [at3, at2, at1] = [3, 2, 1].map(stepAt)
+  const ended = at1 !== null && mine.find(o => o.at >= at1 && !(o.overlay || '').startsWith('flash'))
+  const fadeMs = ended ? ended.at - at3 : null
+  checks.fadeRunsItsLength = at3 !== null && at2 !== null && at1 !== null && at3 <= at2 && at2 <= at1 && !!ended &&
+    fadeMs >= FADE_MS * 0.75 - 250
   log('our overlays', [...new Set(mine.map(o => o.overlay))], 'sent', mine.length, 'effects', added.map(e => e.id),
     'blindness on/off ms after the blast', blindOn.map(e => e.at - swapAt), blindOff.map(e => e.at - swapAt),
     'first fade step', firstFade ? firstFade.at - swapAt : null,
-    'head syncs', syncs.map(h => h.at - swapAt), 'overlay back', back ? back.at - swapAt : null)
+    'fade steps 3/2/1 and the end', [at3, at2, at1, ended ? ended.at : null].map(t => t === null ? null : t - swapAt),
+    `(the last three quarters of the fade: ${fadeMs} ms, want ${FADE_MS * 0.75})`,
+    'head syncs', syncs.map(h => `${h.at - swapAt}:${h.overlay}`), 'overlay back', back ? back.at - swapAt : null,
+    'bare for over 0.5 s', uncovered.map(u => u.at - swapAt))
   await rcon(`item replace entity ${name} armor.head with minecraft:air`)
 
   // ---------------------------------------------------------------- 3. strobe on a soldier
+  // The light goes to strobe still outside the arena, with no wound: a bleeding line on the action bar
+  // is a critical one, and util/Notify drops the light's line while it shows (a third click to make
+  // up for the missing line would turn the light off again). The test armory's full heal clears them.
+  const armory = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), 4000)
+    bot.once('windowOpen', w => { clearTimeout(timer); resolve(w) })
+    bot.chat('/cv items')
+  })
+  if (armory) {
+    await bot.clickWindow(46, 0, 0) // 满血并清除伤病
+    await sleep(300)
+    bot.closeWindow(bot.currentWindow || armory)
+  }
+  bot.setQuickBarSlot(heldSlot(bot, 'm4c') - 36)
+  await sleep(1500)
+  // Two middle clicks step the light off -> always on -> strobe; each says so on the action bar, which
+  // shows one result line per 1.5 s, so each click waits for its own line before the next.
+  const barsFrom = bars.length
+  for (let i = 0; i < 2; i++) {
+    const n = bars.length
+    pick(bot)
+    await waitFor(() => bars.slice(n).some(b => b.includes('战术手电')), 3500)
+  }
+  checks.strobeOn = bars.slice(barsFrom).some(b => b.includes('爆闪'))
+  if (!checks.strobeOn) log('no strobe: armory', !!armory, 'held slot', bot.quickBarSlot, 'm4c at', heldSlot(bot, 'm4c'), 'action bars', bars.slice(barsFrom).map(plainBar))
   await rcon(`execute as ${name} at @s run tp @s 36.5 65 30.5 180 0`)
   await sleep(1500)
-  bot.setQuickBarSlot(heldSlot(bot, 'm4c') - 36)
-  await sleep(1200)
-  pick(bot)
-  await sleep(400)
-  pick(bot)
-  await sleep(400)
-  checks.strobeOn = bars.some(b => b.includes('爆闪'))
   // Light the first soldier within strobe range that shoots us: it is engaged and has a clear line.
   let target = null
   const waitFrom = hits.length

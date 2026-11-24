@@ -9,8 +9,9 @@
 //   insured - auto insurance on, a loaded m4c and armour; holds the m4c. The deploy must insure
 //             both ("已为 2 件装备投保"), the deployment record on disk must hold the m4c, and once
 //             it dies the insurance claim must send both back to the mailbox.
-//   carrier - holds a gold bar and extracts at once: the start value counts the bar, so the
-//             report's net profit is 0 rather than the bar's ◈68,000, and the bar comes home once.
+//   carrier - holds a gold bar (from its pack_1) and extracts at once: the start value counts the
+//             bar, so the report's net profit is 0 rather than the bar's ◈68,000, and the bar comes
+//             home once.
 // stop: the server is stopped over RCON while
 //   lobby   - in the lobby holds its gold bar: afterwards it is in the loadout, once.
 //   full    - in the lobby holds its server drive, and the backpack cell it came from has been
@@ -39,6 +40,11 @@
 // holder covers what the fix changed at a stop, a raider's cursor going back on them, or down at
 // their feet, before the raid is voided and its insured gear paid out.
 // Exits 0 when every check passes, 1 otherwise.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3, no whitelist. stop stops the server and
+// starts it again with start.sh.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const crypto = require('crypto')
 const fs = require('fs')
@@ -47,10 +53,11 @@ const path = require('path')
 const { spawn } = require('child_process')
 const rconRaw = require('./rcon')
 const pinInsurance = require('./insurance')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASS || 'craftov-local' }
-const SERVER_DIR = path.resolve(process.env.SERVER_DIR || path.join(__dirname, '..', '..', 'server', 'run'))
+const PORT = env.PORT
+const RCON = env.RCON
+const SERVER_DIR = env.SERVER_DIR
 const SERVER_REAL = fs.realpathSync(SERVER_DIR)
 const DATA = path.join(SERVER_DIR, 'plugins', 'Craftov')
 const scenario = process.argv[2] || 'all'
@@ -226,10 +233,12 @@ async function deployOne () {
     p.claims = []
     p.loadout = { 0: loaded('m4c', 'ammo_556_m855'), 38: rec('armor_3', { dura: 80 }) }
   })
+  // The gold bar in pack_1: valuables go in the backpack only (#10), so without one the bar
+  // would come home in the mailbox.
   await prepare(names.carrier, p => {
     p.autoInsure = false
     p.mailbox = []
-    p.loadout = { 0: rec('gold_bar') }
+    p.loadout = { [PACK]: rec('pack_1'), 18: rec('gold_bar') }
   })
   const insured = await make(names.insured)
   const carrier = await make(names.carrier)

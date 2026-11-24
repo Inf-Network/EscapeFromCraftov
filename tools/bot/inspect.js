@@ -47,11 +47,16 @@
 // match.wait-seconds of a few seconds. The bots are made op for the test armory (full health between
 // cuts) and deopped when done. Exit code 0 when every check passes, 1 when one fails, 2 when the
 // scenario could not be set up.
+//
+// Server config (tools/bot/suite.js sets it for its run): test.enabled true (the bots queue for
+// the proving ground, a test map), match.wait-seconds 3.
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
+const PORT = env.PORT
+const RCON = env.RCON
 const RAID = !process.argv.includes('--no-raid')
 const rcon = cmd => rconRaw(cmd, RCON)
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -133,6 +138,11 @@ async function inspectsDuring (bot, fn, ms) {
 }
 
 const barsSince = (bot, from) => bot.bars.filter(b => b.at >= from).map(b => b.text)
+/**
+ * The fire-mode switches (射击模式: 单发) on the action bar since `from`. Not the gun's key hints
+ * (… <F> 射击模式), which the first draws of a gun show and the bar may still carry.
+ */
+const modeSwitches = (bot, from) => barsSince(bot, from).filter(t => t.includes('射击模式:'))
 
 /** Ends a running inspect (a slot switch away and back) and waits until nothing is in flight. */
 async function settle (bot) {
@@ -321,7 +331,7 @@ async function killSoldiers (bot) {
       a.updateHeldItem()
       tickEnd(a)
     }, 800)
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('3 then F in one client tick, from the gun, inspects the knife and leaves the fire mode alone',
       got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
     await sleep(ticks * 50)
@@ -341,7 +351,7 @@ async function killSoldiers (bot) {
       tickEnd(a)
     }, 800)
     a.paused = false
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('3 then F from the gun, the next client tick 250 ms late: inspects the knife, the fire mode stays',
       got.some(p => p.ticks > 0) && mode.length === 0, { got, mode })
     await sleep(ticks * 50)
@@ -407,7 +417,7 @@ async function killSoldiers (bot) {
     await sleep(500)
     const from = Date.now()
     const got = await inspectsDuring(a, () => pressF(a), 600)
-    const mode = barsSince(a, from).filter(t => t.includes('射击模式'))
+    const mode = modeSwitches(a, from)
     check('F with a gun in hand switches the fire mode and does not inspect', got.length === 0 && mode.length === 1, { got, mode })
   }
   {

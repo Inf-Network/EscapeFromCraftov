@@ -38,12 +38,17 @@
 //
 // Needs `debug: true` in the server's plugins/Craftov/config.yml (shots are counted from the log).
 // Exit code: number of failed checks (2+ also when a scenario could not be set up).
+//
+// Server config (tools/bot/suite.js sets it for its run): debug true (shots are counted from the
+// log).
+// Ports and folders come from env.js: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR.
 const fs = require('fs')
 const path = require('path')
+const env = require('./env')
 
-const PORT = Number(process.env.PORT || 25565)
-const RCON = { port: Number(process.env.RCON_PORT || 25575), password: process.env.RCON_PASSWORD || 'craftov-local' }
-const LOG = process.env.SERVER_LOG || path.join(__dirname, '../../server/run/logs/latest.log')
+const PORT = env.PORT
+const RCON = env.RCON
+const LOG = env.LOG
 const ROOT = path.join(__dirname, '../..')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const t0 = Date.now()
@@ -306,7 +311,14 @@ async function enterRange () {
 
 /** Gives the gun, holds it and fills its magazine. */
 async function arm (id) {
-  if (hotbar(id) < 0) await rcon(`cv give ${name} ${id}`)
+  if (hotbar(id) < 0) {
+    // Keys 1-2 are the only cells a gun goes to (#10): with both taken, key 1 makes room.
+    if (bot.inventory.slots[36] && bot.inventory.slots[37]) {
+      await rcon(`item replace entity ${name} hotbar.0 with minecraft:air`)
+      await sleep(300)
+    }
+    await rcon(`cv give ${name} ${id}`)
+  }
   await sleep(800)
   const slot = hotbar(id)
   if (slot < 0) throw new Error(id + ' did not reach the hotbar')

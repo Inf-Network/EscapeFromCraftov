@@ -278,7 +278,9 @@ const scenarios = {
       fired++
       // Once A has seen the hit: no wound it opened bleeds into the next round's health update.
       await waitFor(() => A.hits.length > seen, 600)
-      await rcon(`cv injure ${A.username} clear`)
+      // Checked: wounds left in place would bleed into the next round and the failure would read as bleeding.
+      const healed = String(await rcon(`cv injure ${A.username} clear`))
+      if (!healed.includes('生命回满')) return ['FAIL', `cv injure clear did not heal A: ${healed.trim()}`]
       await sleep(300)
     }
     if (!fired) return ['FAIL', 'B cannot see A']

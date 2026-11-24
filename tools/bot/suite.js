@@ -15,7 +15,8 @@
 //                                       under "redone"; --redo-stale drops every result recorded
 //                                       with another version of its script than the one there now,
 //                                       or on another plugin jar than SERVER_DIR's now)
-//   --dry-run                           print the order the runs would be taken in, and stop there
+//   --dry-run                           check the shards, print the order the runs would be taken
+//                                       in, and stop there
 //
 // env: PORT, RCON_PORT, RCON_PASSWORD, SERVER_DIR (env.js), as every script takes them.
 //
@@ -483,31 +484,77 @@ async function syncShard (s) {
   log(`copied ${stale.join(', ')} from ${env.SERVER_DIR} into ${s.dir}`)
 }
 
-/** Makes the shard copies that are missing; returns the ones this run made. */
+/**
+ * Every shard checked before anything is stopped or copied: no port given to two servers (SERVER_DIR's
+ * included), no folder given twice; a folder that exists must have server.properties naming its ports
+ * and nothing but its own server listening on them (server.js foreign); a copy still to be made needs
+ * both of its ports free. Throws the first problem.
+ */
+async function checkShards (shards) {
+  const owner = new Map()
+  const claim = (port, who) => {
+    if (owner.has(port)) throw new Error(`port ${port} is given twice: to ${owner.get(port)} and to ${who}`)
+    owner.set(port, who)
+  }
+  claim(env.PORT, env.SERVER_DIR)
+  claim(env.RCON_PORT, `${env.SERVER_DIR} (RCON)`)
+  const dirs = new Set([path.resolve(env.SERVER_DIR)])
+  for (const s of shards) {
+    claim(s.port, `the shard ${s.dir}`)
+    claim(s.rconPort, `the shard ${s.dir} (RCON)`)
+    if (dirs.has(s.dir)) throw new Error(`${s.dir} is given for two servers`)
+    dirs.add(s.dir)
+    if (fs.existsSync(s.dir)) {
+      const why = server.at(s).foreign()
+      if (why) throw new Error(why)
+    } else if (!s.copy) {
+      throw new Error('no server at ' + s.dir)
+    } else {
+      for (const port of [s.port, s.rconPort]) {
+        const held = server.listener(port)
+        if (held != null || await server.portOpen(port)) throw new Error(`port ${port} for the new shard ${s.dir} is taken${held ? ' (pid ' + held + ')' : ''}`)
+      }
+    }
+  }
+}
+
+/**
+ * Makes the shard copies that are missing (after checkShards passed for all of them) and syncs the
+ * kept ones; returns the copies this run made. If anything fails on the way, the copies it made are
+ * deleted again and SERVER_DIR's server, if it was stopped for them, is started again.
+ */
 async function prepareShards (shards) {
+  await checkShards(shards)
   const main = server.at()
   const made = []
-  for (const s of shards) {
-    const at = server.at(s)
-    if (s.dir === path.resolve(env.SERVER_DIR) || s.port === env.PORT || s.rconPort === env.RCON_PORT) throw new Error(`shard ${s.port} is SERVER_DIR's own server`)
-    if ((at.pids() || []).length === 0 && (await server.portOpen(s.port) || await server.portOpen(s.rconPort))) {
-      throw new Error(`port ${s.port} or ${s.rconPort} is taken by a server that is not ${s.dir}`)
+  let stopped = false
+  try {
+    for (const s of shards) {
+      if (fs.existsSync(s.dir)) {
+        if (s.copy) await syncShard(s)
+        else if (jarOf(s.dir) !== jarOf()) log(`${s.dir} has another plugins/Craftov.jar than ${env.SERVER_DIR} (its results record it)`)
+        continue
+      }
+      if (!stopped && await main.running()) {
+        log(`stopping ${env.SERVER_DIR} to copy it`)
+        stopped = true
+        if (!await main.stop({ log })) throw new Error(`${env.SERVER_DIR}'s server did not stop`)
+      }
+      log(`copying ${env.SERVER_DIR} to ${s.dir}`)
+      made.push(s)
+      const cp = spawnSync('cp', ['-a', env.SERVER_DIR, s.dir], { stdio: 'inherit' })
+      if (cp.status !== 0) throw new Error(`cp to ${s.dir} failed`)
+      setProperties(path.join(s.dir, 'server.properties'), { 'server-port': s.port, 'rcon.port': s.rconPort, 'query.port': s.port, 'server-ip': '127.0.0.1' })
     }
-    if (fs.existsSync(s.dir)) {
-      if (s.copy) await syncShard(s)
-      else if (jarOf(s.dir) !== jarOf()) log(`${s.dir} has another plugins/Craftov.jar than ${env.SERVER_DIR} (its results record it)`)
-      continue
+  } catch (e) {
+    log('could not prepare the shards: ' + e.message)
+    for (const s of made) { fs.rmSync(s.dir, { recursive: true, force: true }); log('deleted ' + s.dir) }
+    if (stopped && !await main.running()) {
+      const since = Date.now()
+      main.launch(log)
+      log(await main.up(since, 240000) ? `${env.SERVER_DIR}'s server is back` : `${env.SERVER_DIR}'s server did not come back`)
     }
-    if (!s.copy) throw new Error('no server at ' + s.dir)
-    if (await main.running()) {
-      log(`stopping ${env.SERVER_DIR} to copy it`)
-      if (!await main.stop({ log })) throw new Error('the server did not stop')
-    }
-    log(`copying ${env.SERVER_DIR} to ${s.dir}`)
-    const cp = spawnSync('cp', ['-a', env.SERVER_DIR, s.dir], { stdio: 'inherit' })
-    if (cp.status !== 0) throw new Error('cp failed')
-    setProperties(path.join(s.dir, 'server.properties'), { 'server-port': s.port, 'rcon.port': s.rconPort, 'query.port': s.port, 'server-ip': '127.0.0.1' })
-    made.push(s)
+    throw e
   }
   return made
 }
@@ -681,7 +728,9 @@ function table (results) {
   const shards = parseShards()
   log(`${pending.length} runs (${chosen.length} scripts x ${ROUNDS} round(s), ${kept.length} kept) on ${1 + shards.length} server(s); output in ${OUT}`)
   if (argv.includes('--dry-run')) {
-    // The order the runs would be taken in and, with the times known so far, how it might share out.
+    // The shards checked (nothing is stopped or copied), the order the runs would be taken in and,
+    // with the times known so far, how it might share out.
+    await checkShards(shards)
     const queue = shards.length ? order(pending, kept.concat(redone)) : pending
     log('queue: ' + queue.map(j => `${j.name}@${j.round}${j.estimate ? ` (${j.estimate}s)` : ''}`).join(' '))
     if (shards.length) simulate(queue, 1 + shards.length).forEach((l, i) => log(`a server's share, about ${l.minutes} min: ${l.jobs.map(j => `${j.name}@${j.round}`).join(' ')}`))
@@ -730,4 +779,7 @@ function table (results) {
   }
   log(`done in ${((Date.now() - t0) / 60000).toFixed(0)} min`)
   process.exit(table(results))
-})()
+})().catch(e => {
+  log('the suite could not run: ' + (e && (e.stack || e.message)))
+  process.exit(EXIT_BROKEN)
+})

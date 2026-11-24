@@ -30,7 +30,7 @@
 //            from B's client: its update says 40 again.
 //   sametick a bleed tick and a drop that is not a hit in one health update (issue #149). B healed,
 //            with a heavy bleed on the left leg and the test armory open; B presses "模拟受伤" (health
-//            to 40 and two fractures, which take its food to 6: no hit, not a bleed) timed off the
+//            to 40 and two fractures, the leg one taking its food to 6: no hit, not a bleed) timed off the
 //            drip, so that the click reaches the server in the gap before the next bleed tick. Which
 //            update carried the click is read off the food it brings (6 instead of 20), whatever the
 //            fix does: in the same one as the bleed tick (the drip's) is what is wanted, an update
@@ -554,9 +554,10 @@ async function overlap (A, B, C) {
  * A bleed tick and a drop that is not a hit in one health update (issue #149): the test armory's
  * "模拟受伤" pressed in the gap before a bleed tick. A bleed (in the scheduler, at the start of a tick)
  * and a click (handled between ticks) come together in the update sent at the end of that tick; the
- * drip goes out in the same tick, just before it. The gap is the 50 ms before the tick, less the
- * tick itself, so the click is timed off the last drip and moved until one lands; which update
- * carried it is read off its food (the fractures take it to 6), not off the health B is shown.
+ * drip goes out in the same tick, just before it. A click handled after the tick before and before
+ * this one lands with it, so the click is timed off the last drip and moved until one lands; which
+ * update carried it is read off its food (the leg fracture takes it to 6), not off the health B is
+ * shown.
  */
 async function sametick (A, B, C) {
   if (!inRaid(B)) {
@@ -581,6 +582,8 @@ async function sametick (A, B, C) {
   const fmt = i => i >= 0 && i < B.healths.length ? { hp: +B.healths[i].hp.toFixed(2), food: B.healths[i].food } : null
   try {
     let lead = 1470 // ms from a drip to the click, aimed at the gap before the bleed tick 1.5 s on
+    let step = 20
+    let lastDir = 0
     let landed = null
     const tries = []
     for (let k = 0; k < 10 && !landed; k++) {
@@ -615,12 +618,14 @@ async function sametick (A, B, C) {
       } else if (clicked === bled) {
         attempt.verdict = 'same update'
         landed = { bled, next: from + 2 }
-      } else if (clicked < bled) {
-        attempt.verdict = 'early'
-        lead += 20
       } else {
-        attempt.verdict = 'late'
-        lead -= 20
+        // Early or late: step towards the bleed tick, halving the step each time the direction
+        // turns, so a window narrowed by slow ticks is still closed in on instead of jumped over.
+        attempt.verdict = clicked < bled ? 'early' : 'late'
+        const dir = clicked < bled ? 1 : -1
+        if (lastDir && dir !== lastDir) step = Math.max(5, step / 2)
+        lastDir = dir
+        lead += dir * step
       }
       tries.push(attempt)
       log(`try ${k + 1}:`, attempt)

@@ -10,6 +10,7 @@
 //   const back = await server.restart({ log })     // RCON stop, then bringBack
 //   await server.restart({ kill: true, log })      // SIGKILL instead (Linux, finds it in /proc)
 //   server.at({ dir, port, rconPort }).stop()      // another server than env.js names (suite.js shards)
+//   server.foreign()                               // why the server on PORT is not SERVER_DIR's, or null
 const fs = require('fs')
 const net = require('net')
 const path = require('path')
@@ -32,6 +33,34 @@ const portOpen = port => new Promise(resolve => {
   s.once('error', () => resolve(false))
 })
 
+/**
+ * The process listening on TCP `port` (Linux /proc): its pid, null when nothing listens, 0 when the
+ * socket belongs to a process this user cannot see, undefined where there is no /proc. The pids in
+ * `first` are looked at before the rest.
+ */
+function listener (port, first = []) {
+  if (!fs.existsSync('/proc/net/tcp')) return undefined
+  const sockets = new Set()
+  for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let rows = []
+    try { rows = fs.readFileSync(table, 'utf8').split('\n').slice(1) } catch { }
+    for (const row of rows) {
+      const f = row.trim().split(/\s+/)
+      if (f.length > 9 && f[3] === '0A' && parseInt(f[1].split(':').pop(), 16) === port) sockets.add(`socket:[${f[9]}]`)
+    }
+  }
+  if (!sockets.size) return null
+  const rest = fs.readdirSync('/proc').filter(p => /^\d+$/.test(p)).map(Number).filter(p => !first.includes(p))
+  for (const pid of first.concat(rest)) {
+    let fds = []
+    try { fds = fs.readdirSync(`/proc/${pid}/fd`) } catch { continue }
+    for (const fd of fds) {
+      try { if (sockets.has(fs.readlinkSync(`/proc/${pid}/fd/${fd}`))) return pid } catch { }
+    }
+  }
+  return 0
+}
+
 /** The functions below for the server in `dir` on `port` / `rconPort` (env.js's by default). */
 function at ({ dir = env.SERVER_DIR, port = env.PORT, rconPort = env.RCON_PORT, password = env.RCON_PASSWORD } = {}) {
   const LOG = path.join(dir, 'logs', 'latest.log')
@@ -49,6 +78,38 @@ function at ({ dir = env.SERVER_DIR, port = env.PORT, rconPort = env.RCON_PORT, 
       } catch { }
     }
     return out
+  }
+
+  /** The folder's server.properties as { key: value }, {} when it has none. */
+  function properties () {
+    let text = ''
+    try { text = fs.readFileSync(path.join(dir, 'server.properties'), 'utf8') } catch { return {} }
+    return Object.fromEntries(text.split('\n').filter(l => /^[^#=\s][^=]*=/.test(l)).map(l => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]))
+  }
+
+  /**
+   * Why the server on port / rconPort is not this folder's, or null when it is (or nothing listens
+   * there yet): the folder's server.properties must name those ports, and whatever listens on them
+   * must be the folder's own paper.jar (Linux /proc; elsewhere only server.properties is compared).
+   * Callers edit the folder's files (config.yml, profiles, logs), so a server of another folder on
+   * those ports, the main checkout's on 25565 when PORT was forgotten in a worktree, is refused
+   * rather than driven: it would run the checks on one server and change the files of another.
+   */
+  function foreign () {
+    const props = properties()
+    for (const [key, want] of [['server-port', port], ['rcon.port', rconPort]]) {
+      if (props[key] && Number(props[key]) !== want) return `${path.join(dir, 'server.properties')} has ${key}=${props[key]}, not ${want} (set PORT / RCON_PORT, or SERVER_DIR)`
+    }
+    const mine = pids()
+    if (mine === null) return null
+    for (const p of [port, rconPort]) {
+      const pid = listener(p, mine)
+      if (pid == null || mine.includes(pid)) continue
+      let who = 'a process this user cannot see'
+      if (pid) { try { who = `pid ${pid}, running in ${fs.readlinkSync(`/proc/${pid}/cwd`)}` } catch { who = `pid ${pid}` } }
+      return `port ${p} is held by ${who}, not by a server in ${dir}`
+    }
+    return null
   }
 
   /** Something is running: a server process in the folder, or (without /proc) the RCON port open. */
@@ -114,7 +175,7 @@ function at ({ dir = env.SERVER_DIR, port = env.PORT, rconPort = env.RCON_PORT, 
     return bringBack({ since, log })
   }
 
-  return { dir, port, rconPort, rcon, pids, running, portOpen, up, stop, launch, bringBack, restart }
+  return { dir, port, rconPort, rcon, pids, properties, foreign, running, portOpen, up, stop, launch, bringBack, restart }
 }
 
-module.exports = { ...at(), at }
+module.exports = { ...at(), at, listener }

@@ -45,7 +45,11 @@
 // else across servers (bot names are random, every file they write is under their SERVER_DIR or
 // OUT), so they need no exclusive run. Each server takes about 3.5 GB of memory.
 //
-// Exit code: the number of scripts that failed in any round.
+// SERVER_DIR's server.properties must name PORT and RCON_PORT, and a server listening there must be
+// SERVER_DIR's own (server.js foreign()): forgetting PORT in a worktree would otherwise run every
+// script on the main checkout's server and edit that one's config.yml. Such a server is refused.
+//
+// Exit code: the number of scripts that failed in any round; 125 when the suite could not run.
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -151,6 +155,8 @@ const OUT = path.resolve(opt('--out', path.join(__dirname, 'out', 'suite-' + sta
 const WORKER = argv.includes('--worker')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+/** The exit code when the suite itself could not run (a refused server, a shard it could not make). */
+const EXIT_BROKEN = 125
 const t0 = Date.now()
 const clock = () => new Date().toTimeString().slice(0, 8)
 const log = (...a) => console.log(`[${clock()}]`, ...a)
@@ -169,8 +175,17 @@ if (argv.includes('--list')) {
 
 // ------------------------------------------------------------------ one server (env.js's)
 
-/** Makes sure the server answers RCON: waits for one that is starting, starts one that is not there. */
+/**
+ * Makes sure SERVER_DIR's server answers RCON: waits for one that is starting, starts one that is
+ * not there. A server on PORT / RCON_PORT that is not SERVER_DIR's (server.foreign) is refused, even
+ * one that answers: the suite would run every script on it and edit another server's config.yml.
+ */
 async function ensureUp () {
+  const why = server.foreign()
+  if (why) {
+    log('refusing this server: ' + why)
+    return false
+  }
   if (await rcon('list').then(() => true, () => false)) return true
   const mine = server.pids()
   if (mine !== null && mine.length === 0 && (await server.portOpen(env.PORT) || await server.portOpen(env.RCON_PORT))) {
@@ -449,6 +464,11 @@ function table (results) {
     process.exit(results.filter(r => r.code !== 0).length)
   }
 
+  const refused = server.foreign()
+  if (refused) {
+    log('refusing to run on this server: ' + refused)
+    process.exit(EXIT_BROKEN)
+  }
   fs.mkdirSync(OUT, { recursive: true })
   const summaryFile = path.join(OUT, 'summary.json')
   let kept = []

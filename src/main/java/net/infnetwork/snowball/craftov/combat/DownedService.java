@@ -196,7 +196,7 @@ public final class DownedService implements Listener {
         // stay usable while the player crawls.
         player.closeInventory();
         plugin.weapons().reset(player);
-        plugin.health().setHealthShown(player, 1.0);
+        plugin.health().setHealthKnockedDown(player, 1.0);
         player.setSprinting(false);
         plugin.health().forceSpeedUpdate(player);
         String wait = hasStandingMate(raid, rp) ? "等待队友救援" : "<accent>使用自救注射器<muted>";

@@ -1,5 +1,7 @@
 package net.infnetwork.snowball.craftov.weapon;
 
+import io.papermc.paper.event.packet.ClientTickEndEvent;
+import io.papermc.paper.event.player.PlayerFailMoveEvent;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
@@ -32,10 +34,12 @@ import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
+import org.bukkit.event.player.PlayerVelocityEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -791,7 +795,11 @@ public final class WeaponService implements Listener {
             }
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
-            motion.sample(player);
+            double caught = motion.sample(player);
+            if (caught > 0 && plugin.getConfig().getBoolean("debug", false)) {
+                plugin.getLogger().info(String.format("[debug] %s held back movement: one tick covered %.2f blocks more than it can (%s)",
+                        player.getName(), caught, motion.lastCaught(player)));
+            }
             if (player.isSprinting()) {
                 // The client's sprint, not the measured run, which reads on for a few ticks of slowing down.
                 lastSprint.put(player.getUniqueId(), now);
@@ -1016,10 +1024,10 @@ public final class WeaponService implements Listener {
             }
         }
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b sway=%.4f carry=%.2f",
+            plugin.getLogger().info(String.format("[debug] %s shot spread=%.3f speed=%.3f move=%.2f aim=%b ground=%b pitch=%.2f climb=%.2f bloom=%.2f tick=%d level=%.2f sprint=%b run=%b stop=%b sway=%.4f carry=%.2f held=%b",
                     player.getName(), spread, motion.speed(player), motion.moveFactor(player), isAiming(player), MotionTracker.grounded(player),
                     eye.getPitch(), state.climbUp, state.bloom, Bukkit.getCurrentTick(), moveLevel(player), player.isSprinting(), motion.running(player), motion.stopping(player),
-                    swaySize(state, Bukkit.getCurrentTick()), sprintCarry(player, state)));
+                    swaySize(state, Bukkit.getCurrentTick()), sprintCarry(player, state), motion.heldBack(player)));
         }
         for (int i = 0; i < gun.pellets(); i++) {
             Vector pellet = Ballistics.spread(bore, gun.pellets() > 1 ? Math.max(spread, gun.hipSpread() * 0.75) : spread);
@@ -1153,7 +1161,8 @@ public final class WeaponService implements Listener {
      * How much of the gun's move spread the player's movement costs right now: {@link #moveLevel} times
      * weapons.spread.walk, and times weapons.spread.stop while they are coming to a stop (letting go
      * of the keys or pressing the opposite one, see {@link MotionTracker#stopping}): the measured speed
-     * takes a tick or two to catch up with a stop, and stopping before the shot is the skill.
+     * takes a tick or two to catch up with a stop, and stopping before the shot is the skill. Not for a
+     * while after the player held back movement (see {@link MotionTracker}).
      */
     private double moveCost(Player player) {
         double level = moveLevel(player);
@@ -2307,6 +2316,32 @@ public final class WeaponService implements Listener {
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         motion.reset(event.getPlayer());
+    }
+
+    /** The client's clock, which movement is measured by (see {@link MotionTracker}). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onTickEnd(ClientTickEndEvent event) {
+        motion.tickEnded(event.getPlayer());
+    }
+
+    /** Where the client's movement packet says it went, applied or not (see {@link MotionTracker#claimed}). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMove(PlayerMoveEvent event) {
+        motion.claimed(event.getPlayer(), event.getTo());
+    }
+
+    /** A move the server refused, putting the player back (see {@link MotionTracker#setBack}). */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onFailMove(PlayerFailMoveEvent event) {
+        if (!event.isAllowed()) {
+            Bukkit.getScheduler().runTask(plugin, () -> motion.setBack(event.getPlayer()));
+        }
+    }
+
+    /** A push from the server (a blast, a punch): the client may move by it (see {@link MotionTracker#pushed}). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPushed(PlayerVelocityEvent event) {
+        motion.pushed(event.getPlayer(), event.getVelocity());
     }
 
     @EventHandler

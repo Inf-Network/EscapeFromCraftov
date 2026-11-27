@@ -25,7 +25,6 @@ import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
-import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jspecify.annotations.Nullable;
@@ -227,7 +226,9 @@ public final class TrainingService {
             int index = i;
             int meters = (index + 1) * 10;
             Location at = new Location(raid.world, targets[i][0] + 0.5, TrainingGroundGenerator.G + 1, targets[i][1] + 0.5, 0, 0);
-            raid.world.spawn(at, Zombie.class, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+            // No random spawn data: a zombie spawned with it can come with random gear, a pumpkin
+            // head or (1 in 400) riding a chicken that walks the target around.
+            raid.world.spawn(at, Zombie.class, false, z -> {
                 z.setAI(false);
                 z.setAdult();
                 z.setSilent(true);

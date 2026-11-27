@@ -24,7 +24,6 @@ import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
@@ -245,7 +244,7 @@ public final class RangeService implements Listener {
         }));
         for (int[] t : new int[][]{{11, -13}, {15, -16}, {19, -20}}) {
             spawned.add(world.spawn(new Location(world, dx + t[0] + 0.5, LobbyBuilder.Y + 1, t[1] + 0.5, 0, 0), Zombie.class,
-                    CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+                    false, z -> {
                         z.setAI(false);
                         z.setAdult();
                         z.setSilent(true);

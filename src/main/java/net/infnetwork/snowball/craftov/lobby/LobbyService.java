@@ -31,7 +31,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockExplodeEvent;
-import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -202,7 +201,7 @@ public final class LobbyService implements Listener {
         int[][] targets = {{11, -13}, {15, -16}, {19, -20}};
         for (int[] t : targets) {
             world.spawn(new Location(world, t[0] + 0.5, LobbyBuilder.Y + 1, t[1] + 0.5, 0, 0), Zombie.class,
-                    CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+                    false, z -> {
                         z.setAI(false);
                         z.setAdult();
                         z.setSilent(true);

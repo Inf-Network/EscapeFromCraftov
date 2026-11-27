@@ -433,11 +433,23 @@ public final class LobbyService implements Listener {
         }
     }
 
-    /** Removes every shooting-range loaner from the player's inventory and cursor. Returns how many. */
+    /** Removes every shooting-range item from the player's inventory and cursor. Returns how many. */
     public int stripRangeItems(Player player) {
+        return stripRangeItems(player, false);
+    }
+
+    /**
+     * Removes the shooting-range items from the player's inventory and cursor; with {@code keepGear}
+     * the loaner rig and backpack the range put on stay where they are worn (the rack's hand-back
+     * button: the player is still on the range). Returns how many were removed.
+     */
+    public int stripRangeItems(Player player, boolean keepGear) {
         org.bukkit.inventory.PlayerInventory inv = player.getInventory();
         int removed = 0;
         for (int i = 0; i < inv.getSize(); i++) {
+            if (keepGear && (i == CarryService.LEGS || i == CarryService.FEET)) {
+                continue;
+            }
             if (ItemFactory.isRange(inv.getItem(i))) {
                 if (i == inv.getHeldItemSlot()) {
                     plugin.weapons().reset(player);

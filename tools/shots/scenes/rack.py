@@ -1,10 +1,12 @@
-"""The private range's weapon rack after a run of refused clicks (#161).
+"""The private range's weapon rack and the loaner rig and backpack (#161, #162).
 
-On the range, /cv opens the rack. Every gun and attachment on it is taken once, which leaves no room
-for another gun; then the button in the arg's slot (default 0, the first gun) is clicked six times
-within the two seconds its tooltip shows the reason. Shots: rack-refused (the pointer on that
-button: one line saying why, however many clicks), rack-refused-later (three seconds on: the line
-is gone). The player's inventory under the rack shows what was taken and where it went.
+On the range, /cv opens the rack and every gun and attachment on it is taken once. Shots:
+rack-taken (the rack with the player's inventory under it: the loaner rig and backpack hold it
+all, with room to spare), then the button in the arg's slot (default 0, the first gun) is taken
+until the backpack is full and clicked six times more within the two seconds its tooltip shows the
+reason: rack-refused (the pointer on that button: one line saying why, however many clicks) and
+rack-refused-later (three seconds on: the line is gone). Last range-inventory: the inventory
+screen (E) on the range.
 """
 
 import pathlib
@@ -30,9 +32,15 @@ def run(s):
             time.sleep(0.12)
             s.xdo('click', '1')
             time.sleep(0.15)
+        s.park_mouse()
         s.wait(2.5)  # the last take's own line leaves its button
+        s.shot('rack-taken')
         s.mouse_to(*s.slot_center(slot, ROWS))
         time.sleep(0.2)
+        for _ in range(20):  # more of it until the backpack is full (it has room for 8 more guns)
+            s.xdo('click', '1')
+            time.sleep(0.15)
+        s.wait(2.5)
         for _ in range(6):
             s.xdo('click', '1')
             time.sleep(0.2)
@@ -42,5 +50,13 @@ def run(s):
         s.shot('rack-refused-later')
     finally:
         s.park_mouse()
+        s.key('Escape')
+    s.wait(0.5)
+    s.key('e')
+    s.wait(1)
+    try:
+        s.park_mouse()
+        s.shot('range-inventory')
+    finally:
         s.key('Escape')
     s.lobby()

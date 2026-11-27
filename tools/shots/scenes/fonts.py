@@ -1,12 +1,14 @@
 """The game's text in the client's fonts (#163): a gun's and an attachment's tooltip over the stash,
-the stash itself, the chat with game and player lines, and the lobby HUD.
+the stash itself, a main-menu button (its name is bold), the chat with game and player lines, and
+the lobby view: the HUD and the world's name labels at a distance.
 
 Arg: a label that starts every shot name (default: font). Shots are <label>-<height>p-gui<scale>-
-gun / -attachment / -stash / -chat / -hud, so runs at other window sizes and GUI scales (`--size
-2560x1440 --gui-scale 3`) and before / after a change sit side by side in tools/shots/out/.
+gun / -attachment / -stash / -bold / -chat / -hud, so runs at other window sizes and GUI scales
+(`--size 2560x1440 --gui-scale 2`) and before / after a change sit side by side in tools/shots/out/.
 """
 
 GUN, ATTACHMENT = 'm4c', 'att_taclight'
+BOLD_BUTTON = 11  # the terminal's stash button, "<b>仓库"
 CHAT = [
     '{"text":"系统：你的仓库价值 ◈1,234,567，本局收益 +◈56,780（12.5%）","color":"#F2C94C"}',
     '{"text":"M4C 突击步枪 · 5.56x45mm · 射速 800 RPM · 后坐 0.92","color":"#9AA0A6"}',
@@ -48,6 +50,17 @@ def run(s):
                 s.mouse_to(*s.slot_center(menu_index(found[item]), 6))
                 s.wait(0.8)
                 s.shot(prefix + name)
+    finally:
+        s.park_mouse()
+        s.key('Escape')
+        s.wait(0.5)
+
+    s.cmd('cv menu')
+    s.wait(1.5)
+    try:
+        s.mouse_to(*s.slot_center(BOLD_BUTTON, 6))
+        s.wait(0.8)
+        s.shot(prefix + 'bold')
     finally:
         s.park_mouse()
         s.key('Escape')

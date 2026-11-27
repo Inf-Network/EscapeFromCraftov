@@ -1,5 +1,6 @@
 // Private range check. In the lobby the bot is handed a full kit (helmet, armour, rig, backpack, rifle,
-// ammo, meds) and enters the range from the lobby rack. On the range: the bot wears a loaner rig and
+// ammo, meds) and enters the range from the lobby rack: the hangar itself has no dummies or firing
+// lane any more (#164), the range plot has both. On the range: the bot wears a loaner rig and
 // backpack and holds nothing else but the starter knife; the lobby menus that move items between the
 // inventory and the profile (stash, trader, market, secure container, deploy) must refuse to open,
 // /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out of
@@ -155,8 +156,19 @@ async function rangePhase () {
   log('lobby inventory', show(before))
   check('lobby kit is in place', ['helmet_3', 'armor_3', 'rig_2', 'pack_2', 'm4c', 'medkit_s'].every(k => Object.values(before).some(v => v.startsWith(k + 'x'))), show(before))
 
+  // The hangar has no firing lane or dummies any more: shooting is the private range's job (#164).
+  // (A selector without a distance looks in every world: a raid's soldier or a range plot's dummy.)
+  const lobbyDummies = await rcon('execute in minecraft:craftov_lobby positioned 0 65 0 if entity @e[type=minecraft:zombie,distance=..40]')
+  const lobbyHay = await rcon('execute in minecraft:craftov_lobby if block 10 65 -21 minecraft:hay_block')
+  const lobbyStripe = await rcon('execute in minecraft:craftov_lobby if block 12 64 -15 minecraft:yellow_concrete')
+  check('the hangar has no training dummies and no firing lane (#164)', [lobbyDummies, lobbyHay, lobbyStripe].every(r => /failed/.test(r)),
+    `dummies: ${lobbyDummies} | hay: ${lobbyHay} | lane floor: ${lobbyStripe}`)
+
   await enterRange()
   check('the lobby rack enters the private range', (await dimension()).includes('craftov_range'), await dimension())
+  const laneHay = await rcon(`execute as ${name} at @s positioned ~-4 65 -21 if block ~ ~ ~ minecraft:hay_block`)
+  const dummies = Object.values(bot.entities).filter(e => e.name === 'zombie').length
+  check('the range plot has its firing lane and three dummies', /passed/.test(laneHay) && dummies === 3, `hay: ${laneHay} | ${dummies} dummies`)
   const inside = layout()
   const rig = bot.inventory.slots[7]
   const pack = bot.inventory.slots[8]

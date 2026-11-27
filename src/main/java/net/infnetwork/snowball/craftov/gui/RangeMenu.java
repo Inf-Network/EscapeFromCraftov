@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * Shooting-range weapon rack: free loaner guns (loaded, unlimited reserve on the range) and optics
  * to try on them, carried in the loaner rig and backpack the range puts on (RangeService). Loaners
- * are marked and taken back when the player leaves the firing line.
+ * are marked and taken back when the player leaves the range.
  */
 final class RangeMenu extends Menu {
 

@@ -39,6 +39,18 @@
 //            lands: that update shows B's client the drop (40 or less: the click's, and the bleed on
 //            top), where the bleed's quiet mark alone used to keep it (the update said 100). The
 //            next bleed tick alone is still kept from B's client: its update says the same again.
+//   knockdown a light bleed that runs down to a knock-down (issue #152). B healed and carrying a
+//            self-revive injector (solo, it is then knocked down rather than killed); a hit (/damage)
+//            takes it to 4.5, which its client is shown. A light bleed on the left leg takes 1 every
+//            1.5 s, kept from B's client (its updates still say 4.5): 3.5, 2.5, 1.5, 0.5 on the
+//            server, and the next drip, more than B has left, knocks it down instead, which sets its
+//            health to 1: up from 0.5 for the server, but B's client, left at 4.5, is shown the drop
+//            to 1 (the view tilts, as for a hit), where it used to stay at 4.5. B stands up with the
+//            injector, and the same again from 4: the bleed lands on 1 exactly, so the knock-down
+//            leaves the server's health as it was and the server sends no update of its own; B's
+//            client is shown the drop to 1 all the same. Both times nothing brings B's client to 1
+//            before the health update that shows it: B's own entity data (index 9) carries the
+//            health too and sets it without a tilt, so had it come first the update would be no drop.
 //   meds     every medical item's item definition in the pack (assets/craftov/items/<id>.json) turns
 //            on minecraft:using_item with a minecraft:use_duration dispatch; a medkit given to C uses
 //            craftov:misc.silence as its consumable sound, not craftov:med.loop, and no vanilla use
@@ -76,7 +88,7 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const run = Math.random().toString(36).slice(2, 6)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope', 'overlap', 'sametick']
+const scenarios = wanted.length ? wanted : ['armor', 'bleed', 'meds', 'scope', 'overlap', 'sametick', 'knockdown']
 const failures = []
 const check = (name, ok, got) => { if (!ok) failures.push(name); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${got === undefined ? '' : ': ' + JSON.stringify(got)}`) }
 const bots = []
@@ -111,7 +123,20 @@ function make (name) {
   })
   bot._client.on('damage_event', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'damage_event' }))
   bot._client.on('hurt_animation', p => bot.damage.push({ at: Date.now(), entityId: p.entityId, kind: 'hurt_animation' }))
-  bot._client.on('update_health', p => bot.healths.push({ at: Date.now(), hp: p.health * 5, food: p.food }))
+  // Its own health reaches the client two ways, kept here in the order they came: the health update
+  // (via 'update': the client tilts the view when it says less than the client holds) and the
+  // player's own entity data (via 'meta', index 9, scaled as the update is: it sets the health
+  // without a tilt, so a lower one arriving first leaves the update no drop to show).
+  bot.own = []
+  bot._client.on('update_health', p => {
+    const at = Date.now()
+    bot.healths.push({ at, hp: p.health * 5, food: p.food })
+    bot.own.push({ at, via: 'update', hp: p.health * 5 })
+  })
+  bot._client.on('entity_metadata', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    for (const m of p.metadata) if (m.key === 9) bot.own.push({ at: Date.now(), via: 'meta', hp: m.value * 5 })
+  })
   bot._client.on('set_title_text', p => bot.titles.push(plain(p.text)))
   bot.heads = []
   const head = (via, item) => ({ at: Date.now(), via, overlay: overlayOf(item), json: JSON.stringify(item || '') })
@@ -652,6 +677,118 @@ async function sametick (A, B, C) {
   return 0
 }
 
+/** Gives `id` and puts it in hotbar slot `key` (0-8); the key, or -1. */
+async function giveToHotbar (bot, id, key) {
+  await rcon(`cv give ${bot.username} ${id}`)
+  let i = -1
+  await waitFor(() => (i = anySlot(bot, id)) >= 0, 5000)
+  if (i < 0) return -1
+  if (i !== 36 + key) {
+    await rcon(`item replace entity ${bot.username} hotbar.${key} from entity ${bot.username} ${commandSlot(i)}`)
+    await rcon(`item replace entity ${bot.username} ${commandSlot(i)} with minecraft:air`)
+  }
+  return await waitFor(() => pdc(bot.inventory.slots[36 + key], 'id') === id, 5000) ? key : -1
+}
+
+/**
+ * A light bleed that runs down to a knock-down (issue #152). Being knocked down sets the health to
+ * 1, so a bleed that already took it below 1 (or onto it) leaves the server no drop to show, while
+ * B's client, kept from the bleed, still believes the health it had before it.
+ */
+async function knockdown (A, B, C) {
+  if (!inRaid(B)) {
+    log('SETUP: B is no longer in the raid', B.game.gameMode)
+    return 2
+  }
+  await clearSoldiers()
+  await positions(A, B, C)
+  const drips = []
+  const onSound = s => { if (/status\.bleed/.test(String(s))) drips.push({ at: Date.now() }) }
+  B.on('soundEffectHeard', onSound)
+  const hp = list => list.map(h => +h.hp.toFixed(2))
+  try {
+    // From 4.5 the last drip leaves 0.5 (below the 1 a knock-down sets); from 4 it leaves 1 exactly.
+    for (const from of [4.5, 4]) {
+      if (!await restore(B)) {
+        log('SETUP: could not heal B')
+        return 2
+      }
+      const key = await giveToHotbar(B, 'revive_kit', 7)
+      if (key < 0) {
+        log('SETUP: could not give B an injector')
+        return 2
+      }
+      await rcon(`damage ${B.username} ${100 - from} minecraft:generic`)
+      await sleep(600)
+      const atHit = await health(B.username)
+      const shownHit = B.healths.length ? +B.healths[B.healths.length - 1].hp.toFixed(2) : null
+      if (atHit === null || Math.abs(atHit - from) > 0.01 || shownHit === null || Math.abs(shownHit - from) > 0.05) {
+        log('SETUP: the hit did not leave B at', from, { server: atHit, shown: shownHit })
+        return 2
+      }
+      B.titles.length = 0
+      const since = Date.now()
+      const dripsFrom = drips.length
+      const updatesFrom = B.healths.length
+      const ownFrom = B.own.length
+      await rcon(`cv injure ${B.username} left_leg light`)
+      const server = []
+      const down = await waitFor(async () => {
+        const now = await health(B.username)
+        if (now !== null) server.push({ at: Date.now(), hp: now })
+        return B.titles.some(t => t.includes('倒地'))
+      }, 15000)
+      await sleep(1000) // the knock-down's update, and anything after it
+      const bled = drips.slice(dripsFrom)
+      if (!down || bled.length === 0) {
+        log('SETUP: B was not knocked down by the bleed', { titles: B.titles, drips: bled.length, server: server.map(s => s.hp) })
+        return 2
+      }
+      // The knock-down comes a bleed tick (1.5 s) after the last drip, whose own update comes with it.
+      const cut = bled[bled.length - 1].at + 400
+      const updates = B.healths.slice(updatesFrom)
+      const before = updates.filter(h => h.at <= cut)
+      const after = updates.filter(h => h.at > cut)
+      const left = server.filter(s => s.at <= cut + 600).map(s => s.hp)
+      const low = from - Math.ceil(from) + 1
+      log(`from ${from}: server ${JSON.stringify(left)}, ${bled.length} drips, B shown ${JSON.stringify(hp(before))} then ${JSON.stringify(hp(after))}`)
+      check(`knockdown (from ${from}): the light bleed left B at ${low} on the server, ${bled.length} drips of 1, then knocked it down`,
+        bled.length === Math.ceil(from) - 1 && left.length > 0 && Math.abs(left[left.length - 1] - low) < 0.01 &&
+        B.titles.some(t => t.includes('倒地')) && Math.abs(await health(B.username) - 1) < 0.01,
+        { drips: bled.length, server: left, titles: B.titles })
+      check(`knockdown (from ${from}): until then the bleed was kept from B's client (its updates still said ${from})`,
+        before.every(h => Math.abs(h.hp - from) < 0.05), hp(before))
+      check(`knockdown (from ${from}): at the knock-down B's client is shown the drop from ${from} to 1`,
+        after.length > 0 && Math.abs(after[0].hp - 1) < 0.05 && after.every(h => Math.abs(h.hp - 1) < 0.05), hp(after))
+      // The view tilts only if the update that shows 1 is a drop from the health the client holds
+      // then. B's own entity data carries the health too and sets it without a tilt: had it brought
+      // the client to 1 first, that update would show it nothing.
+      const own = i => `${B.own[i].via === 'meta' ? 'm' : 'u'}${+B.own[i].hp.toFixed(2)}`
+      const shows = B.own.findIndex((e, i) => i >= ownFrom && e.via === 'update' && e.at > cut && Math.abs(e.hp - 1) < 0.05)
+      const held = shows > 0 ? B.own[shows - 1] : null
+      log(`  B's own health in the order its client got it (u: health update, m: entity data): ${B.own.slice(ownFrom).map((e, i) => own(ownFrom + i)).join(' ')}`)
+      check(`knockdown (from ${from}): nothing brought B's client to 1 before the health update that shows 1 (its entity data did not get there first)`,
+        held !== null && held.hp > 1.05, held && { held: own(shows - 1), then: own(shows) })
+      // Up again with the injector: held until B is up (its use takes 4 s).
+      B.setQuickBarSlot(key)
+      await sleep(400)
+      B.activateItem()
+      const up = await waitFor(() => B.titles.some(t => t.includes('已被救起')), 8000)
+      B.deactivateItem()
+      if (!up || !inRaid(B)) {
+        log('SETUP: B did not stand up with the injector', { titles: B.titles, mode: B.game.gameMode })
+        return 2
+      }
+      log(`  B stood up ${((Date.now() - since) / 1000).toFixed(1)} s after the bleed began`)
+    }
+  } finally {
+    B.removeListener('soundEffectHeard', onSound)
+    await sleep(250)
+    await restore(B)
+  }
+  return 0
+}
+
 async function meds (A, B, C) {
   const missing = []
   for (const id of MEDS) {
@@ -775,8 +912,8 @@ async function scope (A, B, C) {
     return finish(2)
   }
   await sleep(7000) // insertion camera and spawn protection
-  const order = ['meds', 'scope', 'armor', 'overlap', 'sametick', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
-  const RUN = { armor, bleed, meds, scope, overlap, sametick }
+  const order = ['meds', 'scope', 'armor', 'overlap', 'sametick', 'knockdown', 'bleed'].filter(s => scenarios.includes(s)) // bleed kills B: last
+  const RUN = { armor, bleed, meds, scope, overlap, sametick, knockdown }
   for (const name of order) {
     log('---', name)
     const code = await RUN[name](A, B, C)

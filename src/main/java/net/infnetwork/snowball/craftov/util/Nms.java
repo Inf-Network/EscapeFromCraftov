@@ -905,7 +905,7 @@ public final class Nms {
      * would keep from it. The update only tilts the view if it reaches the client before the
      * player's own entity data, which carries the health too and sets it without a tilt; for a
      * change made before the world tick the tick's update comes after it, so a caller that needs the
-     * tilt sends the update itself at once (see HealthService.setHealthKnockedDown).
+     * tilt sends the update itself at once (see HealthService.showDrop).
      */
     public static void loudHealthLoss(SelfView view) {
         mark(view, view.loudLoss);
@@ -1128,8 +1128,8 @@ public final class Nms {
          * whatever the client believes, so a knock-down that the server sees as no loss at all (a
          * bleed had already taken the health below the 1 it sets, or onto it) is a drop from the
          * higher health the client was left with before the bleed, provided it reaches the client
-         * before the player's own entity data brings it to that health (which is why a knock-down
-         * sends its update at once: HealthService.setHealthKnockedDown). Food and saturation always
+         * before the player's own entity data brings it to that health (which is why a loss marked
+         * loud sends its update at once: HealthService.showDrop). Food and saturation always
          * pass as they are: they decide whether the client lets the player sprint.
          * <p>
          * The first update after a quiet or loud loss carries it, whatever else came in the same tick

@@ -5,10 +5,12 @@
 //           click lands the bot on the course with the kit (K47 with 8 rounds, no gear of its own).
 //           The east gate stays shut until the crate is emptied; hip fire at a target does not
 //           count, aimed hits do (1/3 .. 3/3); a reload; the tripwire breaks a leg and opens a
-//           bleed, and bandage and splint open the next gate; a lever countdown that runs out
-//           with the bot outside the extract sends it back to the lever ("再拉一次电闸"), and the
-//           lever again and 10 s in the extract end it; all three targets still stand by then
-//           (#151). Back in the lobby: the black curtain, then the training settlement screen;
+//           bleed (its drop of health reaches the bot as a health update before its own entity data
+//           does: only then does a client tilt the view), and bandage and splint open the next
+//           gate; a lever countdown that runs out with the bot outside the extract sends it back to
+//           the lever ("再拉一次电闸"), and the lever again and 10 s in the extract end it; all three
+//           targets still stand by then (#151). Back in the lobby: the black curtain, then the
+//           training settlement screen;
 //           the inventory is exactly what it was, chat has the one summary line, and the saved
 //           profile has the same loadout, no raid in its stats, the guide's deploy and extract
 //           steps, no reward yet (the range and the gunsmith are still open) and no letter.
@@ -158,6 +160,15 @@ function join (prefix, name) {
   bot._client.on('respawn', () => { bot.worldChanges++; bot.titles.push({ at: Date.now(), text: '<respawn>' }) })
   bot._client.on('open_window', p => { const s = flat(p.windowTitle || p.title); bot.screens.push({ at: Date.now(), title: s }); log(name, 'WINDOW', s) })
   bot._client.on('show_dialog', () => { /* the briefing: left unanswered */ })
+  // Its own health, both ways it comes, in order: the health update (the client tilts the view when
+  // it says less than the client holds) and its own entity data (index 9: sets it without a tilt).
+  // Both are scaled from 100 to 20.
+  bot.own = []
+  bot._client.on('update_health', p => bot.own.push({ via: 'update', hp: p.health * 5 }))
+  bot._client.on('entity_metadata', p => {
+    if (!bot.entity || p.entityId !== bot.entity.id) return
+    for (const m of p.metadata) if (m.key === 9) bot.own.push({ via: 'meta', hp: m.value * 5 })
+  })
   bot.on('kicked', r => log(name, 'KICKED', JSON.stringify(r)))
   bot.on('error', e => log(name, 'ERROR', e.message))
   return new Promise(resolve => bot.once('spawn', async () => { await sleep(3000); resolve(bot) }))
@@ -347,11 +358,19 @@ async function course () {
   // Lesson 3: the tripwire, then bandage and splint.
   await tp(bot, '48.5 65 10.5', -90, 0)
   await sleep(600)
+  const ownFrom = bot.own.length
   await tp(bot, '53.5 65 10.5', -90, 0)
   const wounds = async () => Number(((await hud(name)).match(/wounds=(\d+)/) || [, 0])[1])
   const tripped = await waitFor(async () => ((await wounds()) & 5) === 5, 4000) // bleeding and a fracture
   const status = await hud(name)
   check('the tripwire breaks a leg and opens a bleed', tripped, status.slice(0, 300))
+  // The blast's drop of 18 tilts the view only if a health update brings it, before the bot's own
+  // entity data takes the client there without a tilt (issue #157).
+  const held = ownFrom > 0 ? bot.own[ownFrom - 1].hp : 100
+  const fell = bot.own.findIndex((e, i) => i >= ownFrom && e.hp < held - 0.05)
+  const own = bot.own.slice(ownFrom, fell + 3).map(e => (e.via === 'meta' ? 'm' : 'u') + +e.hp.toFixed(2)).join(' ')
+  check('the tripwire\'s drop reaches the client as a health update, ahead of its entity data',
+    fell >= 0 && bot.own[fell].via === 'update', `from ${+held.toFixed(2)}: ${own}`)
   check('the heal gate is shut', gateShut(bot, GATES.heal))
   await useMed(bot, 'bandage', 3300, meds.bandage)
   await useMed(bot, 'splint', 4800, meds.splint)

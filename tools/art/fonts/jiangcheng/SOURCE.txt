@@ -1,0 +1,15 @@
+JiangChengYuanTi 300W (江城圆体 300W), Version 3.6 2021/10/22, designer LiuPeng, vendor ZIHI
+License: SIL Open Font License 1.1 (OFL.txt). The font's name table carries the OFL notice (name IDs
+13 and 14); it records no copyright holder and no Reserved Font Name.
+
+Source: jiangcheng_yuanti_300w_v3_6.ttf, sha256 3d1f578d270b9e9ec90d7541806df5bd53d97f720f0d31031cda38c70204bc21
+  from Inf-Network/backrooms-ng@39be66bedbbb86b96ae872eba6b1e97f6fc692c8, content-pack/src/hud/presentation/font/
+  (backrooms-ng took it in as a local file; the same folder holds the OFL text, jiangcheng_yuanti_OFL_1_1.txt,
+  sha256 58a449e34b1aa50202fdca51cd73651fe0c5f78e5731e089c5e2c670b76eb299, copied here as OFL.txt)
+
+text.ttf is a Modified Version under the OFL, baked by tools/art/textfont.py: 6993 characters
+(printable ASCII, GB2312 and what the game prints, less block elements and box drawing), CJK
+punctuation mapped to its full-width (fwid) forms, no OpenType layout tables, tabular digits at
+667 units, the space at 444 units and a one-instruction prep program.
+sha256 082cbaa9f2485ebddb16ea01b58c5bcfaef72921285a9966cf3c11765605670b
+Not in the face (drawn by the game's own fonts): ⏱▮▯☠☢♛⚑⚡⛑✈✔✕✖✗✘✦❤

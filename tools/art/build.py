@@ -35,6 +35,7 @@ import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
 import screens  # noqa: E402
+import textfont  # noqa: E402
 import ui  # noqa: E402
 import px  # noqa: E402
 from px import rgb  # noqa: E402
@@ -793,6 +794,25 @@ def build_screens():
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
 
 
+def build_fonts():
+    """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
+    lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
+    16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
+    Its glyphs take vanilla's room (hanzi 9 px, digits 6, space 4), so nothing laid out for the
+    vanilla font moves; whatever the face lacks falls through to vanilla's own providers, which the
+    client keeps after these. CraftEngine merges this file with the glyphs it adds itself. Force
+    Unicode Font switches to minecraft:uniform, which this leaves alone. The licence and provenance
+    ship next to the font file."""
+    os.makedirs(os.path.join(CV, 'font'), exist_ok=True)
+    shutil.copyfile(textfont.OUT, os.path.join(CV, 'font', 'text.ttf'))
+    with open(os.path.join(textfont.FONTS, 'SOURCE.txt'), encoding='utf-8') as f:
+        source = f.read()
+    with open(os.path.join(textfont.FONTS, 'OFL.txt'), encoding='utf-8') as f:
+        licence = f.read()
+    write_text(os.path.join(CV, 'font', 'text.LICENSE.txt'), source + '\n' + licence)
+    write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
+
+
 def build_tooltips():
     """Tooltip styles (ItemFactory, UiItems): craftov:rarity_<rarity> frames an item's tooltip in its
     rarity colour, craftov:ui is the plain one for interface buttons. Same nine-slice sizes as vanilla."""
@@ -1356,6 +1376,7 @@ def main():
     build_fx()
     build_ui()
     build_screens()
+    build_fonts()
     build_tooltips()
     build_skins()
     build_vanilla_hud()

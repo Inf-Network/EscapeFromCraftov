@@ -14,7 +14,8 @@ import java.util.List;
 /**
  * Shooting-range weapon rack: free loaner guns (loaded, unlimited reserve on the range) and optics
  * to try on them, carried in the loaner rig and backpack the range puts on (RangeService). Loaners
- * are marked and taken back when the player leaves the firing line.
+ * are marked and taken back when the player leaves the firing line. Its bottom row also clears the
+ * bullseyes (RangeTargets).
  */
 final class RangeMenu extends Menu {
 
@@ -50,6 +51,11 @@ final class RangeMenu extends Menu {
         button(42, UiItems.button("craftov:ui/icon_cancel", "<danger><b>归还全部靶场武器", List.of("<muted>胸挂和背包留在身上")), e -> {
             int n = plugin.lobby().stripRangeItems(viewer, true);
             Notify.ok(viewer, "已归还 " + n + " 件靶场武器");
+        });
+        button(44, UiItems.button("craftov:ui/icon_target", "<accent><b>清空标靶记录", List.of(
+                "<muted>两块标靶的命中数、命中率、环数和弹孔")), e -> {
+            plugin.range().targets().resetTally(viewer);
+            Notify.ok(viewer, "标靶记录已清空");
         });
     }
 

@@ -155,6 +155,10 @@ public final class Ballistics {
                 // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
                 BodyPart part = hit.part() != null ? hit.part() : BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point(), dir);
+                if (plugin.range().targets().isBoard(living)) {
+                    // A bullseye has no head or limbs: every hit on it is a plain body hit.
+                    part = BodyPart.CHEST;
+                }
                 bodyPart = part;
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
@@ -236,7 +240,8 @@ public final class Ballistics {
                             layers, keep, hitEntity == null ? "-" : hitEntity.getName(), partHit, dealt, rewound));
         }
         if (shooter instanceof Player p && plugin.range().isIn(p)) {
-            plugin.range().targets().shot(p, hitEntity, bodyPart, dealt);
+            // The range's bullseyes count every round fired at them, the misses too.
+            plugin.range().targets().shot(p, eye.toVector(), dir, hitEntity, bodyPart, dealt);
         }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), stop);

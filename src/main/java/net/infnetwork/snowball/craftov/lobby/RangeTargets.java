@@ -22,11 +22,13 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Slime;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Transformation;
+import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
@@ -40,7 +42,8 @@ import java.util.UUID;
 
 /**
  * The private range's targets (#165): steel silhouettes that fall when shot down and stand up again,
- * and the same silhouettes moving on rails at three speeds.
+ * the same silhouettes moving on rails at three speeds, and paper bullseyes that score rings and
+ * keep the hit rate.
  *
  * <p>A silhouette is an invisible zombie without AI (the hitbox, a player's size, so rounds, knives,
  * grenades, hit zones and lag compensation treat it as they treat a soldier) carrying the picture as
@@ -51,6 +54,12 @@ import java.util.UUID;
  * falls back flat, rounds and knives pass over it, and after {@code range.targets.down-seconds} it
  * stands up again with its health back. A moving one rides its rail all the while. Its hitbox is
  * recorded for lag compensation (HitboxHistory), so a moving target is hit where the shooter sees it.
+ *
+ * <p>A bullseye is an invisible slime (a 1.04 cube) behind a paper face of ten rings, 5 cm each.
+ * Every round fired on the range whose line passes within {@link #AIMED} of a board's centre counts as
+ * a shot at that board; a hit scores the ring where the line crosses the face, leaves a hole there
+ * (the latest one outlined) and updates the board's tally: hits, hit rate, average and last ring.
+ * Leaving the range, or the rack's reset button, clears it.
  */
 public final class RangeTargets {
 
@@ -60,6 +69,13 @@ public final class RangeTargets {
     private static final float HINGE = 0.12f;
     /** The plate model is drawn at half size (an item model has to fit in 3 blocks) and shown doubled. */
     private static final float PLATE_SCALE = 2f;
+    /** A board's slime size: a 1.04 cube, the face as wide as the paper. */
+    private static final int BOARD_SIZE = 2;
+    /** Ring width: ten rings across a 0.5 radius. */
+    private static final double RING = 0.05;
+    /** A round whose line passes this close to a board's centre was fired at it, hit or miss. */
+    private static final double AIMED = 1.5;
+    private static final int MAX_HOLES = 30;
     /** Ticks a rail target waits at each end before it turns back. */
     private static final int PAUSE = 10;
     private static final String[] SPEED_NAMES = {"慢速", "中速", "快速"};
@@ -111,13 +127,42 @@ public final class RangeTargets {
         }
     }
 
+    /** A bullseye and its tally. */
+    private static final class Board {
+        final int plot;
+        final Slime body;
+        final TextDisplay tally;
+        final String name;
+        final double cx;
+        final double cy;
+        final double faceZ;
+        int shots;
+        int hits;
+        int rings;
+        /** The ring of the last shot at it, 0 on the paper outside the rings, -1 a miss, -2 none yet. */
+        int last = -2;
+        final ArrayDeque<ItemDisplay> holes = new ArrayDeque<>();
+
+        Board(int plot, Slime body, TextDisplay tally, String name, double cx, double cy, double faceZ) {
+            this.plot = plot;
+            this.body = body;
+            this.tally = tally;
+            this.name = name;
+            this.cx = cx;
+            this.cy = cy;
+            this.faceZ = faceZ;
+        }
+    }
+
     private static final class Plot {
         final List<Silhouette> silhouettes = new ArrayList<>();
+        final List<Board> boards = new ArrayList<>();
     }
 
     private final CraftovPlugin plugin;
     private final Map<Integer, Plot> plots = new HashMap<>();
     private final Map<UUID, Silhouette> silhouettes = new HashMap<>();
+    private final Map<UUID, Board> boards = new HashMap<>();
 
     RangeTargets(CraftovPlugin plugin) {
         this.plugin = plugin;
@@ -162,8 +207,12 @@ public final class RangeTargets {
                     Math.max(0.01, speed) / 20.0, i * 17, RangeBuilder.RAIL_Z - z, spawned);
             p.silhouettes.add(s);
         }
+        for (int[] at : RangeBuilder.BULLSEYES) {
+            p.boards.add(board(world, plot, dx + at[0] + 0.5, floor, at[1] + 0.5, RangeBuilder.RAIL_Z - at[1], spawned));
+        }
         String[] signs = {
                 "<b><text>人物靶</b>\n<muted>4 / 7 / 11 m · 打倒后 " + trim(downTicks() / 20.0) + " 秒升起",
+                "<b><text>标靶</b>\n<muted>10 / 25 m · 环数与命中率",
                 "<b><text>移动靶</b>\n<muted>10 m 慢速 · 20 m 中速 · 30 m 快速"};
         for (int i = 0; i < signs.length; i++) {
             String text = signs[i];
@@ -256,6 +305,50 @@ public final class RangeTargets {
                 new Vector3f(PLATE_SCALE, PLATE_SCALE, PLATE_SCALE), new Quaternionf());
     }
 
+    private Board board(World world, int plot, double x, double floor, double z, int meters, List<Entity> spawned) {
+        // The board's centre at about chest height; it rests on the fence post under it.
+        double feet = floor + 0.93;
+        Slime body = world.spawn(new Location(world, x, feet, z, 0, 0), Slime.class, false, s -> {
+            s.setSize(BOARD_SIZE);
+            s.setAI(false);
+            s.setSilent(true);
+            s.setInvisible(true);
+            s.setGravity(false);
+            s.setCollidable(false);
+            s.setPersistent(false);
+            s.setRemoveWhenFarAway(false);
+            s.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
+        });
+        double half = body.getBoundingBox().getWidthX() / 2;
+        double cy = feet + body.getBoundingBox().getHeight() / 2;
+        double faceZ = body.getBoundingBox().getMaxZ();
+        float size = (float) (half * 2);
+        ItemStack paper = ItemStack.of(Material.PAPER);
+        paper.setData(DataComponentTypes.ITEM_MODEL, Key.key("craftov", "fx/target_bullseye"));
+        spawned.add(world.spawn(facingShooter(new Location(world, x, cy, faceZ + 0.004)), ItemDisplay.class, d -> {
+            d.setItemStack(paper);
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            d.setTransformation(new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(size, size, size), new Quaternionf()));
+            d.setBillboard(Display.Billboard.FIXED);
+            d.setPersistent(false);
+        }));
+        // Big enough to read from the firing line: twice the size for the far board.
+        float scale = meters > 15 ? 2.0f : 1.2f;
+        TextDisplay tally = world.spawn(new Location(world, x, cy + half + 0.25, z), TextDisplay.class, d -> {
+            d.setBillboard(Display.Billboard.VERTICAL);
+            d.setTransformation(new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(scale, scale, scale), new Quaternionf()));
+            d.setPersistent(false);
+            d.setBackgroundColor(Color.fromARGB(140, 10, 12, 16));
+            d.addScoreboardTag("craftov_range_tally");
+        });
+        spawned.add(body);
+        spawned.add(tally);
+        Board b = new Board(plot, body, tally, meters + " m 标靶", x, cy, faceZ);
+        boards.put(body.getUniqueId(), b);
+        retally(b);
+        return b;
+    }
+
     /** Forgets plot {@code plot}'s targets; RangeService removes their entities with the plot. */
     void clear(int plot) {
         Plot p = plots.remove(plot);
@@ -264,6 +357,11 @@ public final class RangeTargets {
         }
         for (Silhouette s : p.silhouettes) {
             silhouettes.remove(s.body.getUniqueId());
+        }
+        for (Board b : p.boards) {
+            boards.remove(b.body.getUniqueId());
+            b.holes.forEach(Entity::remove);
+            b.holes.clear();
         }
     }
 
@@ -281,16 +379,26 @@ public final class RangeTargets {
         return s != null && s.state == State.DOWN && s.downAt == Bukkit.getCurrentTick();
     }
 
-    /** The sound of a round striking a range target (steel), or null for anything else. */
-    public @Nullable String impactSound(Entity entity) {
-        return silhouettes.containsKey(entity.getUniqueId()) ? "craftov:impact.metal" : null;
+    /** A bullseye's hitbox, which has no head or limbs. */
+    public boolean isBoard(Entity entity) {
+        return boards.containsKey(entity.getUniqueId());
     }
 
-    /** Sparks off steel instead of blood. False for anything else. */
+    /** The sound of a round striking a range target (steel or the paper on its board), or null for anything else. */
+    public @Nullable String impactSound(Entity entity) {
+        return silhouettes.containsKey(entity.getUniqueId()) ? "craftov:impact.metal"
+                : boards.containsKey(entity.getUniqueId()) ? "craftov:impact.wood" : null;
+    }
+
+    /** Sparks off steel, paper bits off a board, instead of blood. False for anything else. */
     public boolean impact(LivingEntity entity, Location at) {
         World world = at.getWorld();
         if (silhouettes.containsKey(entity.getUniqueId())) {
             world.spawnParticle(Particle.ELECTRIC_SPARK, at, 6, 0.05, 0.05, 0.05, 0.25);
+            return true;
+        }
+        if (boards.containsKey(entity.getUniqueId())) {
+            world.spawnParticle(Particle.BLOCK, at, 5, 0.04, 0.04, 0.02, Material.WHITE_WOOL.createBlockData());
             return true;
         }
         return false;
@@ -324,19 +432,112 @@ public final class RangeTargets {
     }
 
     /**
-     * A round fired by {@code shooter} on the range hit {@code hit} ({@code part}, {@code dealt}
-     * damage): a silhouette's label says where and how much.
+     * A round fired by {@code shooter} on the range along {@code dir} from {@code eye}, which hit
+     * {@code hit} ({@code part}, {@code dealt} damage) or nothing. Called for every round (each pellet).
      */
-    public void shot(Player shooter, @Nullable LivingEntity hit, BodyPart part, double dealt) {
+    public void shot(Player shooter, Vector eye, Vector dir, @Nullable LivingEntity hit, BodyPart part, double dealt) {
         Integer plot = plugin.range().plotOf(shooter);
-        Silhouette s = hit == null ? null : silhouettes.get(hit.getUniqueId());
-        if (plot == null || s == null || s.plot != plot) {
+        Plot p = plot == null ? null : plots.get(plot);
+        if (p == null) {
             return;
         }
-        s.last = part.displayName() + " <white>-" + Math.round(dealt);
-        relabel(s);
-        Notify.status(shooter, "range_target", "<muted>" + s.name + " · " + s.last
-                + (s.state == State.STANDING ? " <muted>· 剩余 <white>" + (int) Math.ceil(s.hp) : " <ok>· 击倒"));
+        Silhouette s = hit == null ? null : silhouettes.get(hit.getUniqueId());
+        if (s != null && s.plot == plot) {
+            s.last = part.displayName() + " <white>-" + Math.round(dealt);
+            relabel(s);
+            Notify.status(shooter, "range_target", "<muted>" + s.name + " · " + s.last
+                    + (s.state == State.STANDING ? " <muted>· 剩余 <white>" + (int) Math.ceil(s.hp) : " <ok>· 击倒"));
+        }
+        Board aimed = null;
+        double best = AIMED;
+        double ax = 0;
+        double ay = 0;
+        for (Board b : p.boards) {
+            // Only rounds going down the range, towards the board's face.
+            if (dir.getZ() > -1e-6) {
+                continue;
+            }
+            double t = (b.faceZ - eye.getZ()) / dir.getZ();
+            if (t <= 0) {
+                continue;
+            }
+            double x = eye.getX() + dir.getX() * t;
+            double y = eye.getY() + dir.getY() * t;
+            double off = Math.hypot(x - b.cx, y - b.cy);
+            if (off < best) {
+                best = off;
+                aimed = b;
+                ax = x;
+                ay = y;
+            }
+        }
+        if (aimed == null) {
+            return;
+        }
+        aimed.shots++;
+        if (hit != null && hit.getUniqueId().equals(aimed.body.getUniqueId())) {
+            int ring = ring(best);
+            aimed.hits++;
+            aimed.rings += ring;
+            aimed.last = ring;
+            hole(aimed, ax, ay);
+        } else {
+            aimed.last = -1;
+        }
+        retally(aimed);
+        Notify.status(shooter, "range_target", "<muted>" + aimed.name + " · " + lastShot(aimed) + " <muted>· 命中 <white>"
+                + aimed.hits + "/" + aimed.shots + " <muted>(" + percent(aimed) + ")");
+    }
+
+    /** The ring a hit {@code off} blocks from the centre scores: 10 in the middle, 1 at the edge, 0 outside. */
+    static int ring(double off) {
+        if (off >= RING * 10) {
+            return 0;
+        }
+        return Math.max(1, Math.min(10, 10 - (int) Math.floor(off / RING)));
+    }
+
+    private void hole(Board b, double x, double y) {
+        World world = b.body.getWorld();
+        ItemStack mark = ItemStack.of(Material.PAPER);
+        mark.setData(DataComponentTypes.ITEM_MODEL, Key.key("craftov", "fx/hole"));
+        ItemDisplay previous = b.holes.peekLast();
+        if (previous != null) {
+            previous.setGlowing(false);
+        }
+        ItemDisplay hole = world.spawn(facingShooter(new Location(world, x, y, b.faceZ + 0.008)), ItemDisplay.class, d -> {
+            d.setItemStack(mark);
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            d.setTransformation(new Transformation(new Vector3f(), new Quaternionf(), new Vector3f(0.075f, 0.075f, 0.075f),
+                    new Quaternionf()));
+            d.setBillboard(Display.Billboard.FIXED);
+            d.setBrightness(new Display.Brightness(15, 15));
+            d.setPersistent(false);
+            d.setGlowColorOverride(Color.fromRGB(255, 77, 77));
+            d.setGlowing(true);
+        });
+        b.holes.addLast(hole);
+        while (b.holes.size() > MAX_HOLES) {
+            b.holes.pollFirst().remove();
+        }
+    }
+
+    /** Clears the tallies and holes of {@code player}'s boards. */
+    public void resetTally(Player player) {
+        Integer plot = plugin.range().plotOf(player);
+        Plot p = plot == null ? null : plots.get(plot);
+        if (p == null) {
+            return;
+        }
+        for (Board b : p.boards) {
+            b.shots = 0;
+            b.hits = 0;
+            b.rings = 0;
+            b.last = -2;
+            b.holes.forEach(Entity::remove);
+            b.holes.clear();
+            retally(b);
+        }
     }
 
     // ------------------------------------------------------------------ falling and rising
@@ -456,6 +657,25 @@ public final class RangeTargets {
             }
         }
         s.label.text(Text.mm(sb.toString()));
+    }
+
+    private void retally(Board b) {
+        String avg = b.hits == 0 ? "-" : String.format("%.1f", b.rings / (double) b.hits);
+        b.tally.text(Text.mm("<b><text>" + b.name + "</b>\n<muted>命中 <white>" + b.hits + "/" + b.shots + " <muted>("
+                + percent(b) + ") · 平均 <white>" + avg + " <muted>环\n<muted>上一发 " + lastShot(b)));
+    }
+
+    private static String lastShot(Board b) {
+        return switch (b.last) {
+            case -2 -> "<dim>-";
+            case -1 -> "<danger>脱靶";
+            case 0 -> "<accent>未上环";
+            default -> "<accent>" + b.last + " 环";
+        };
+    }
+
+    private static String percent(Board b) {
+        return b.shots == 0 ? "-" : Math.round(100.0 * b.hits / b.shots) + "%";
     }
 
     private static String trim(double value) {

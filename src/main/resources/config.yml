@@ -718,7 +718,7 @@ training:
   # (s) between two courses started by one player: each start copies and loads a world.
   cooldown-seconds: 30
 
-# The private range (the lobby's range entrance): its steel silhouettes, standing and moving.
+# The private range (the lobby's range entrance): steel silhouettes, bullseyes and moving targets.
 range:
   targets:
     # Damage a silhouette takes before it falls, counted like a player's health without armour

@@ -44,9 +44,8 @@ import java.util.UUID;
  * Private shooting ranges, the one place outside a raid to shoot. Entering saves the player's lobby
  * inventory and moves them to a firing line built on a copy of the hangar's north-east corner in a
  * separate world, one plot per player, far from all others and with other players hidden, wearing a
- * loaner rig and backpack. Two more lanes are built beside the corner's ({@link RangeBuilder}); the
- * corner's has steel silhouettes that fall when shot down, and the westernmost the same silhouettes
- * moving on rails ({@link RangeTargets}).
+ * loaner rig and backpack. The corner's lane has steel silhouettes; two lanes built beside it
+ * ({@link RangeBuilder}) have bullseyes and silhouettes moving on rails ({@link RangeTargets}).
  * Leaving wipes everything they hold and restores the saved inventory, so
  * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that

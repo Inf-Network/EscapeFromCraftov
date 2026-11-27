@@ -671,6 +671,13 @@ def build_fx():
         'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False,
                       'faces': {'south': {'uv': [0, 0, 16, 16], 'texture': '#t'}, 'north': {'uv': [16, 0, 0, 16], 'texture': '#t'}}}]})
     write_json(os.path.join(CV, 'items', 'fx', 'calibration.json'), {'model': model_ref('craftov:item/fx/calibration')})
+    # The range's bullseye (RangeTargets): one face at z=8, seen from +Z, scaled to its hitbox by the display.
+    save(ui.target_bullseye(), os.path.join(CV, 'textures', 'item', 'fx', 'target_bullseye.png'))
+    write_json(os.path.join(CV, 'models', 'item', 'fx', 'target_bullseye.json'), {
+        'textures': {'t': 'craftov:item/fx/target_bullseye', 'particle': 'craftov:item/fx/target_bullseye'},
+        'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False,
+                      'faces': {'south': {'uv': [0, 0, 16, 16], 'texture': '#t'}, 'north': {'uv': [16, 0, 0, 16], 'texture': '#t'}}}]})
+    write_json(os.path.join(CV, 'items', 'fx', 'target_bullseye.json'), {'model': model_ref('craftov:item/fx/target_bullseye')})
     # The range's steel silhouette (RangeTargets): boxes 3 cm thick standing on the model's origin, the
     # hinge it turns on, drawn at half size (an item model fits in 3 blocks) and doubled by the display.
     # The face is painted across the boxes; the back and the edges are plain steel.

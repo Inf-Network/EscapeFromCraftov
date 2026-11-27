@@ -275,6 +275,9 @@ UI.update({
     'icon_points_shop': lambda: icon(lambda c: (c.box(7, 11, 25, 27, shade(B, 0.8)), c.d.arc([11, 5, 21, 17], 180, 360, fill=G, width=2),
                                                c.poly([(16, 14), (17, 18), (21, 19), (17, 20), (16, 24), (15, 20), (11, 19), (15, 18)], W))),
     # Preview the inspect: an eye.
+    'icon_target': lambda: icon(lambda c: (c.ellipse(5, 5, 26, 26, W), c.ellipse(8, 8, 23, 23, rgb('#2A2E35')),
+                                          c.ellipse(11, 11, 20, 20, W), c.ellipse(14, 14, 17, 17, R),
+                                          c.line([(21, 6), (26, 11)], Y, 2), c.line([(19, 13), (24, 8)], Y, 2))),
     'icon_inspect': lambda: icon(lambda c: (c.d.ellipse([4, 10, 27, 22], fill=W), c.ellipse(11, 11, 20, 21, rgb('#3A6EA5')),
                                            c.ellipse(13, 13, 18, 19, D), c.rect(14, 13, 15, 14, rgb('#FFFFFF')))),
     # A skin's state: worn (a filled amber dot in a ring) or owned and ready to wear (an empty ring).
@@ -445,6 +448,42 @@ def calibration_target(px=512):
             d.line([(c + sx * off, c - half), (c + sx * off, c + half)], fill=ink, width=2)
             d.line([(c - half, c + sx * off), (c + half, c + sx * off)], fill=ink, width=2)
     d.ellipse([c - 5, c - 5, c + 5, c + 5], fill=(220, 40, 30, 255))
+    return img
+
+
+# The range's bullseye (RangeTargets): a paper face as wide as its hitbox, a slime of size 2 (1.04
+# blocks), with ten rings 5 cm wide each, 10 in the middle. Rings 7 to 10 are the black aiming mark;
+# the numbers 1 to 8 are printed on their rings left, right, above and below.
+BULLSEYE_SIZE = 1.04
+BULLSEYE_RING = 0.05
+
+
+def target_bullseye(px=256):
+    import pixelfont
+    img = Image.new('RGBA', (px, px), (236, 230, 214, 255))
+    d = ImageDraw.Draw(img)
+    per_block = px / BULLSEYE_SIZE
+    c = px / 2
+    ink = (24, 22, 20, 255)
+    paper = (236, 230, 214, 255)
+
+    def radius(ring):
+        return (11 - ring) * BULLSEYE_RING * per_block
+
+    d.ellipse([c - radius(7), c - radius(7), c + radius(7), c + radius(7)], fill=ink)
+    for ring in range(1, 11):
+        r = radius(ring)
+        d.ellipse([c - r, c - r, c + r, c + r], outline=paper if ring >= 7 else ink, width=2 if ring == 1 else 1)
+    r10 = radius(10) / 2
+    d.ellipse([c - r10, c - r10, c + r10, c + r10], outline=paper, width=1)
+    for ring in range(1, 9):
+        mid = (radius(ring) + radius(ring + 1)) / 2
+        color = paper if ring >= 7 else ink
+        label = str(ring)
+        w = pixelfont.width(label)
+        for dx, dy in ((-mid, 0), (mid, 0), (0, -mid), (0, mid)):
+            pixelfont.draw(img, int(round(c + dx - w / 2)), int(round(c + dy - 6)), label, color)
+    d.rectangle([0, 0, px - 1, px - 1], outline=(70, 58, 44, 255), width=4)
     return img
 
 

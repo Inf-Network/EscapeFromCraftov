@@ -45,6 +45,8 @@ public abstract class Menu implements InventoryHolder {
     private long flashUntil;
     /** True while a click in this menu is being handled: only what that click caused shows in the menu. */
     private boolean clicking;
+    /** The whole window went to the client, or was asked to, while a click was being handled ({@link #resend}). */
+    private boolean resendAfterClick;
     /** A redraw moved the result from a button that is gone to the title. */
     private boolean flashMoved;
     private boolean quietOpen;
@@ -143,6 +145,34 @@ public abstract class Menu implements InventoryHolder {
         if (!net.infnetwork.snowball.craftov.util.Nms.retitle(viewer, shownTitle())) {
             quietOpen = true;
             open();
+        } else if (clicking) {
+            resendAfterClick = true; // the retitle sent the window as it is now, before the click is done
+        }
+    }
+
+    /**
+     * Sends the whole window, the player's own cells and the cursor to the client as they are now.
+     * During a click it waits until the click has been handled, which is still inside the click
+     * event and so before Paper's own post-click sync: that is intended, the send carries the
+     * menu's final state and Paper then corrects any slot the client guessed otherwise. Once the
+     * listeners are done, Paper
+     * takes the slots the client says it changed itself (its own prediction of the click: the
+     * clicked cell emptied, say) as what the client shows, and corrects only those the server holds
+     * differently. A send from the middle of the click, before the item left the window, would show
+     * the item again, and nothing would correct it: the server holds the cell empty, as the client
+     * said it was (#160).
+     */
+    protected void resend() {
+        if (clicking) {
+            resendAfterClick = true;
+        } else {
+            resendNow();
+        }
+    }
+
+    private void resendNow() {
+        if (inventory != null && viewer.getOpenInventory().getTopInventory() == inventory) {
+            viewer.updateInventory();
         }
     }
 
@@ -282,10 +312,21 @@ public abstract class Menu implements InventoryHolder {
 
     public void handleClick(InventoryClickEvent event) {
         clicking = true;
+        resendAfterClick = false;
         try {
             dispatch(event);
         } finally {
             clicking = false;
+            if (resendAfterClick) {
+                resendAfterClick = false;
+                if (event.isCancelled()) {
+                    resendNow();
+                } else {
+                    // Vanilla carries out a click let through only after the listeners: sending the
+                    // window now would show it as it was before that move.
+                    Bukkit.getScheduler().runTask(net.infnetwork.snowball.craftov.CraftovPlugin.get(), this::resendNow);
+                }
+            }
         }
     }
 

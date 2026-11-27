@@ -1,15 +1,19 @@
 // Private range check. In the lobby the bot is handed a full kit (helmet, armour, rig, backpack, rifle,
-// ammo, meds) and enters the range from the lobby rack. On the range: the lobby menus that move items
-// between the inventory and the profile (stash, trader, market, secure container, deploy) must refuse
-// to open, /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out
-// of reach), a rack button refused five times in a row says why once in its tooltip, and not at all
-// two seconds later (#161), Q never fires and a left click does (the capture block in front of the crosshair dug, as
+// ammo, meds) and enters the range from the lobby rack. On the range: the bot wears a loaner rig and
+// backpack and holds nothing else but the starter knife; the lobby menus that move items between the
+// inventory and the profile (stash, trader, market, secure container, deploy) must refuse to open,
+// /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out of
+// reach), every gun and attachment on the rack fits on the bot at once and the loaner backpack cannot
+// be taken off (#162), a rack button refused five times in a row says why once in its tooltip, and
+// not at all two seconds later (#161), the hand-back button empties the rig and backpack but leaves
+// them on, Q never fires and a left click does (the capture block in front of the crosshair dug, as
 // the vanilla client sends a click; a bare swing fires nothing, #33). Leaving must give back the
 // lobby inventory slot for slot, with nothing taken on the range, and so must being teleported off
 // the range by an admin, at once, so that a rifle stashed straight after /cv lobby is not handed
 // back a moment later.
 // Then a solo raid on the test map checks that /cv secure still opens mid-raid and that extracting
-// keeps what the bot carried.
+// keeps what the bot carried. Last, after logging off, the saved profile (loadout, stash, mailbox)
+// holds none of the loaner rig, backpack or attachments.
 //
 //   PORT=25565 RCON_PORT=25575 node range.js [--no-raid]
 // Exits 0 when every check passes, 1 otherwise.
@@ -20,7 +24,7 @@
 const mineflayer = require('mineflayer')
 const rconRaw = require('./rcon')
 const env = require('./env')
-const { pullTrigger } = require('./common')
+const { pullTrigger, profile: profileOf } = require('./common')
 
 const PORT = env.PORT
 const RCON_PORT = env.RCON_PORT
@@ -64,6 +68,9 @@ const shotSound = (p) => { if (/gun\.[a-z0-9_]+\.fp|casing\./.test(JSON.stringif
 bot._client.on('entity_sound_effect', shotSound)
 bot._client.on('sound_effect', shotSound)
 
+const isRange = (item) => !!item && JSON.stringify(item.components || '').includes('craftov:range')
+/** Ids of the range's loaner rig and backpack and of the rack's attachments: none may reach the profile. */
+const rangeIds = new Set()
 const id = (item) => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : (item ? item.name : null) }
 const isUi = (s) => s.startsWith('ui/')
 const title = (w) => JSON.stringify(w.title)
@@ -151,19 +158,68 @@ async function rangePhase () {
   await enterRange()
   check('the lobby rack enters the private range', (await dimension()).includes('craftov_range'), await dimension())
   const inside = layout()
-  check('only the starter knife is held on the range', Object.values(inside).every(v => v.startsWith('knife_starter')), show(inside))
+  const rig = bot.inventory.slots[7]
+  const pack = bot.inventory.slots[8]
+  check('the range puts on a loaner rig and backpack (#162)', isRange(rig) && /^rig_/.test(id(rig)) && isRange(pack) && /^pack_/.test(id(pack)),
+    `legs ${id(rig)} ${isRange(rig) ? 'loaner' : 'own'}, feet ${id(pack)} ${isRange(pack) ? 'loaner' : 'own'}`)
+  if (rig) rangeIds.add(id(rig))
+  if (pack) rangeIds.add(id(pack))
+  check('otherwise only the starter knife is held on the range', Object.entries(inside).every(([k, v]) => v.startsWith('knife_starter') || k === '7' || k === '8'), show(inside))
 
   for (const cmd of ['/cv stash', '/cv trader', '/cv secure', '/cv market', '/cv deploy']) await refusedOnRange(cmd)
 
-  const menu = await openWindow(() => bot.chat('/cv'))
+  let menu = await openWindow(() => bot.chat('/cv'))
   check('/cv opens the weapon rack on the range', !!menu && title(menu).includes('靶场武器架'), menu ? title(menu) : 'no window')
   if (menu) {
-    await bot.clickWindow(0, 0, 0) // take the first loaner
-    await sleep(500)
-    await refusedOnce(menu, 18) // the first attachment: no rig or backpack, so no room for it
+    // Every gun and attachment on the rack, once each: the loaner rig and backpack hold them all.
+    const offered = []
+    for (let slot = 0; slot < 36; slot++) {
+      if (menu.slots[slot]) {
+        offered.push(slot)
+        if (slot >= 18) rangeIds.add(id(menu.slots[slot]))
+      }
+    }
+    const from = chat.length
+    for (const slot of offered) { await bot.clickWindow(slot, 0, 0); await sleep(150) }
+    await sleep(800)
     bot.closeWindow(menu)
+    await sleep(800)
+    const loaners = bot.inventory.items().filter(isRange)
+    check('everything on the rack fits on the player at once (#162)', loaners.length === offered.length && !chat.slice(from).some(m => m.includes('放不下')),
+      `${loaners.length} of ${offered.length} taken` + (chat.slice(from).some(m => m.includes('放不下')) ? ', refused for want of room' : ''))
+
+    // The loaner backpack stays on: taken off it would pack the loaners, which cannot be packed.
+    // (After the last take's line has had its time on the action bar, or the reason would queue
+    // behind it and be replaced by the next one.)
+    await sleep(1600)
+    const said = chat.length
+    await bot.clickWindow(8, 0, 0)
+    await waitFor(() => chat.slice(said).some(m => m.includes('不能卸下')), 2500)
+    const feet = await rcon(`execute if items entity ${name} armor.feet *[minecraft:custom_data~{PublicBukkitValues:{"craftov:range":1b}}]`)
+    const cursor = await rcon(`execute if items entity ${name} player.cursor *`)
+    check('the loaner backpack cannot be taken off on the range', /passed/.test(feet) && /failed/.test(cursor) && chat.slice(said).some(m => m.includes('不能卸下')),
+      `feet: ${feet} | cursor: ${cursor}`)
+    check('the loaners in it stay where they were', bot.inventory.items().filter(isRange).length === loaners.length, `${bot.inventory.items().filter(isRange).length} loaners`)
+
+    // No room for one more gun now: a button refused five times says why once (#161).
+    menu = await openWindow(() => bot.chat('/cv'))
+    if (menu) {
+      const before = chat.length
+      for (let i = 0; i < 30 && !chat.slice(before).some(m => m.includes('放不下')); i++) { await bot.clickWindow(0, 0, 0); await sleep(150) }
+      await sleep(2500)
+      await refusedOnce(menu, 0)
+      // The hand-back button empties the rig and backpack but leaves them on.
+      await bot.clickWindow(42, 0, 0)
+      await sleep(500)
+      await bot.clickWindow(0, 0, 0) // take one loaner again
+      await sleep(500)
+      bot.closeWindow(menu)
+      await sleep(800)
+      check('handing everything back keeps the loaner rig and backpack on', isRange(bot.inventory.slots[7]) && isRange(bot.inventory.slots[8])
+        && bot.inventory.items().filter(isRange).length === 1, `${bot.inventory.items().filter(isRange).length} loaners left in the cells`)
+    }
   }
-  check('the rack hands out a loaner', bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))
+  check('the rack hands out a loaner', bot.inventory.items().some(isRange))
 
   // Trigger: Q (reload) never fires, a swing does.
   await rcon(`cv give ${name} m4c`)
@@ -271,8 +327,14 @@ bot.once('spawn', async () => {
     check('scenario ran without errors', false, e.stack)
   }
   await rcon('deop ' + name).catch(() => {})
-  log(failures.length ? `FAILED ${failures.length}: ${failures.join('; ')}` : 'ALL PASSED')
   bot.quit()
+  // Logging off saves the profile: no range item may be in the loadout, the stash or the mailbox.
+  await sleep(2500)
+  const saved = JSON.stringify(profileOf(name))
+  const leaked = [...rangeIds].filter(item => saved.includes(`"id":"${item}"`))
+  check('no loaner rig, backpack or attachment reached the profile', rangeIds.size > 0 && saved.length > 2 && leaked.length === 0,
+    leaked.length ? leaked.join(', ') : `${rangeIds.size} ids looked for`)
+  log(failures.length ? `FAILED ${failures.length}: ${failures.join('; ')}` : 'ALL PASSED')
   setTimeout(() => process.exit(failures.length ? 1 : 0), 500)
 })
 setTimeout(() => { log('timeout'); process.exit(1) }, 240000)

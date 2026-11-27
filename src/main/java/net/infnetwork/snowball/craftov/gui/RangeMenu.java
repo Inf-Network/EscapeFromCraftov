@@ -13,7 +13,8 @@ import java.util.List;
 
 /**
  * Shooting-range weapon rack: free loaner guns (loaded, unlimited reserve on the range) and optics
- * to try on them. Loaners are marked and taken back when the player leaves the firing line.
+ * to try on them, carried in the loaner rig and backpack the range puts on (RangeService). Loaners
+ * are marked and taken back when the player leaves the firing line.
  */
 final class RangeMenu extends Menu {
 
@@ -42,11 +43,12 @@ final class RangeMenu extends Menu {
                 e -> plugin.menus().openGunsmith(viewer));
         button(40, UiItems.button("craftov:ui/icon_help", "<text><b>说明", List.of(
                 "<muted>点击领取，子弹无限（弹匣/999）",
-                "<muted>靶场武器不能存进仓库、不能出售",
+                "<muted>身上的靶场胸挂和背包装得下这里的全部配件",
+                "<muted>靶场物品不能存进仓库、不能出售",
                 "<muted>离开靶场时全部清空，原装备原样归还")), e -> {
         });
-        button(42, UiItems.button("craftov:ui/icon_cancel", "<danger><b>归还全部靶场武器", List.of()), e -> {
-            int n = plugin.lobby().stripRangeItems(viewer);
+        button(42, UiItems.button("craftov:ui/icon_cancel", "<danger><b>归还全部靶场武器", List.of("<muted>胸挂和背包留在身上")), e -> {
+            int n = plugin.lobby().stripRangeItems(viewer, true);
             Notify.ok(viewer, "已归还 " + n + " 件靶场武器");
         });
     }

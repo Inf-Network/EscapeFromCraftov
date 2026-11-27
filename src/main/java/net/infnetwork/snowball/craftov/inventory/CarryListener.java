@@ -203,6 +203,14 @@ public final class CarryListener implements Listener {
         ItemStack equipped = player.getInventory().getItem(slot);
         boolean holding = !cursor.isEmpty();
         boolean worn = equipped != null && !equipped.isEmpty();
+        if (ItemFactory.isRange(equipped)) {
+            // The range's loaner rig and backpack stay on until the session ends: taken off, they
+            // would pack the loaners inside, which have no stored form, and lose them.
+            Notify.error(player, "靶场" + (slot == CarryService.LEGS ? Category.RIG : Category.BACKPACK).displayName()
+                    + "离开靶场时自动收回，不能卸下");
+            player.updateInventory();
+            return;
+        }
         switch (event.getClick()) {
             // Two quick clicks reach the server as a click and a double click; both pick up or put on.
             case LEFT, RIGHT, DOUBLE_CLICK -> {

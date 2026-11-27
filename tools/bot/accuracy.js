@@ -123,12 +123,16 @@ bot.on('error', e => log('ERROR', e.message))
 // each scenario logs them, so a disturbed run can be told from the server's doing.
 const lateMoves = []
 let hooked = false
-// A vanilla 1.21.2+ client ends every tick with a tick_end packet, after that tick's movement; the
-// server measures movement by them (MotionTracker). The bot sends one after each physics tick its
-// clock runs. `tickEnds` false plays a client that sends none (the server falls back to its own ticks).
+// A vanilla 1.21.2+ client ends every tick with a tick_end packet, right after that tick's movement,
+// even when it runs several ticks in one frame; the server measures movement by them (MotionTracker).
+// mineflayer announces a physics tick (physicsTick) just before it sends that tick's movement, so the
+// end owed for the tick before goes out there, and the last one once the clock's call is over: when a
+// late call runs two ticks, their packets still go move, end, move, end. `tickEnds` false plays a
+// client that sends none (the server falls back to its own ticks).
 let tickEnds = true
-let physicsTicks = 0
-bot.on('physicsTick', () => physicsTicks++)
+let endOwed = false
+const endTick = () => { if (endOwed && tickEnds && bot._client.state === 'play') bot._client.write('tick_end', {}); endOwed = false }
+bot.on('physicsTick', () => { endTick(); endOwed = true })
 bot.once('login', () => {
   const plain = global.setInterval
   global.setInterval = (fn, ms, ...rest) => {
@@ -140,9 +144,8 @@ bot.once('login', () => {
       if (ended) return
       const late = performance.now() - due
       if (late > 25) lateMoves.push(Math.round(late))
-      physicsTicks = 0
       fn()
-      if (tickEnds && bot._client.state === 'play') for (let i = 0; i < physicsTicks; i++) bot._client.write('tick_end', {})
+      endTick()
       due += 50
       setTimeout(step, Math.max(0, due - performance.now()))
     }

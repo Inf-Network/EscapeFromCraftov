@@ -233,10 +233,11 @@ public final class TrainingService {
                 z.setAdult();
                 z.setSilent(true);
                 z.setPersistent(false);
-                // A zombie is a monster the server despawns at random (1 in 800 a tick) once it has
-                // been more than 32 blocks from every player for about 15 to 30 seconds. The 30 m
-                // target is 33 blocks from the firing line and 47 from the crate, so it often
-                // vanished before the player got to it, and the lesson could never be finished.
+                // A zombie is a monster the server despawns at random (1 in 800 a tick, about 40 s on
+                // average) once it has been more than 32 blocks from every player for 30 seconds,
+                // counted from its spawn. The 30 m target is about 33 blocks from the middle of the
+                // firing line and 47 from the crate, so it often vanished before the player got to
+                // it, and the lesson could never be finished.
                 z.setRemoveWhenFarAway(false);
                 z.setShouldBurnInDay(false);
                 z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);

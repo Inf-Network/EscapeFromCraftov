@@ -17,8 +17,8 @@
 //           refused until the cooldown (training.cooldown-seconds) is over.
 //   solo    (Ts####) a bot waits in the yard, more than 50 blocks from the course's spawn, until
 //           a rival operator squad would have landed there (ai.operator-delay-seconds, 60 by
-//           default, plus 15 s): /cv ai lists no soldier in its raid, and the three targets, all
-//           more than 32 blocks away the whole time, still stand (#151: the server used to
+//           default, plus 15 s): /cv ai lists no soldier in its raid, and the three targets, the
+//           30 m one never within 32 blocks of the bot, still stand (#151: the server used to
 //           despawn them).
 //
 //   PORT=25565 RCON_PORT=25575 node training.js [course] [quit] [solo]     env: RCON_PASSWORD, SERVER_DIR
@@ -379,8 +379,8 @@ async function course () {
   await sleep(800)
   o = await objectiveOf(name)
   check('pulled again, the objective is the extract again', o.includes('撤离'), o)
-  // The bot has been more than 32 blocks from every target since it left the range, about 25 s:
-  // before #151 the server had despawned at least one of them in about half the runs by now.
+  // The 30 m target has never been within 32 blocks of the bot (33 from the firing spot): before
+  // #151 the server had despawned it in more than half the runs by now.
   const standing = await targetsUp(bot)
   check('all three targets still stand at the end of the course', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const worlds = bot.worldChanges
@@ -454,10 +454,11 @@ async function solo () {
   await tp(bot, '68.5 65 14.5')
   log(name, 'waiting for the operator squad that must not come')
   await sleep(Math.max(0, landed + (OPERATOR_DELAY + 15) * 1000 - Date.now()))
+  // Named by its world: with no name /cv ai only answers when exactly one raid is running.
   const listing = await rcon(`cv ai ${bot.worldName}`)
   const count = (listing.match(/敌兵 (\d+)/) || [, '?'])[1]
   check('no soldier or rival operator ever comes to the course', count === '0', listing)
-  // All three targets have been more than 32 blocks from the bot since it landed (#151).
+  // The bot has stood in the yard since it was moved there, far from all three targets (#151).
   const standing = await targetsUp(bot)
   check('the targets still stand after the wait', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const raids = await rcon('cv raids')

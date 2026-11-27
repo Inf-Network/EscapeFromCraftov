@@ -8,7 +8,9 @@
 //           bleed (its drop of health reaches the bot as a health update before its own entity data
 //           does: only then does a client tilt the view), and bandage and splint open the next
 //           gate; a lever countdown that runs out with the bot outside the extract sends it back to
-//           the lever ("再拉一次电闸"), and the lever again and 10 s in the extract end it. Back in the lobby: the black curtain, then the training settlement screen;
+//           the lever ("再拉一次电闸"), and the lever again and 10 s in the extract end it; all three
+//           targets still stand by then (#151). Back in the lobby: the black curtain, then the
+//           training settlement screen;
 //           the inventory is exactly what it was, chat has the one summary line, and the saved
 //           profile has the same loadout, no raid in its stats, the guide's deploy and extract
 //           steps, no reward yet (the range and the gunsmith are still open) and no letter.
@@ -17,7 +19,9 @@
 //           refused until the cooldown (training.cooldown-seconds) is over.
 //   solo    (Ts####) a bot waits in the yard, more than 50 blocks from the course's spawn, until
 //           a rival operator squad would have landed there (ai.operator-delay-seconds, 60 by
-//           default, plus 15 s): /cv ai lists no soldier in its raid.
+//           default, plus 15 s): /cv ai lists no soldier in its raid, and the three targets, the
+//           30 m one never within 32 blocks of the bot, still stand (#151: the server used to
+//           despawn them).
 //
 //   PORT=25565 RCON_PORT=25575 node training.js [course] [quit] [solo]     env: RCON_PASSWORD, SERVER_DIR
 //
@@ -39,6 +43,7 @@ const conv = require('mineflayer/lib/conversions')
 const { Vec3 } = require('vec3')
 const rconRaw = require('./rcon')
 const env = require('./env')
+const { offlineUuid } = require('./common')
 
 const PORT = env.PORT
 const RCON = env.RCON
@@ -86,25 +91,39 @@ async function waitFor (pred, ms, every = 200) {
   return false
 }
 
-function profile (name) {
-  if (!fs.existsSync(PLAYERS)) return null
-  for (const file of fs.readdirSync(PLAYERS)) {
-    if (!file.endsWith('.json')) continue
-    try {
-      const p = JSON.parse(fs.readFileSync(path.join(PLAYERS, file), 'utf8'))
-      if (p.name === name) return { p, at: fs.statSync(path.join(PLAYERS, file)).mtimeMs }
-    } catch (e) { /* being written */ }
-  }
-  return null
+const profileFile = name => path.join(PLAYERS, offlineUuid(name) + '.json')
+
+/**
+ * Which copy of the bot's profile is on disk now, or null before the first save. Every save
+ * replaces the file (AtomicFiles), so a newer copy has another inode or a later mtime.
+ */
+function stamp (name) {
+  try { const s = fs.statSync(profileFile(name)); return { ino: s.ino, mtimeMs: s.mtimeMs } } catch (e) { return null }
 }
 
-/** The profile as saved after `since` (ms epoch): the save that follows the bot leaving. */
-async function savedAfter (name, since) {
+/**
+ * The profile as saved after `before` (the stamp taken just before the bot left): the save that
+ * follows the bot leaving. Told by the file, not by the clock: files are stamped with the kernel's
+ * coarse clock, up to a tick (4 ms at HZ 250) behind Date.now(), and the server saves at its next
+ * tick, 0 to 50 ms after the bot quits, so about one save in 60 looked older than the moment the
+ * bot left and was never found (#151).
+ */
+async function savedAfter (name, before) {
   let out = null
-  await waitFor(() => { const r = profile(name); if (r && r.at > since) { out = r.p; return true } return false }, 15000)
+  await waitFor(() => {
+    const now = stamp(name)
+    if (!now || (before && now.ino === before.ino && now.mtimeMs <= before.mtimeMs)) return false
+    try { out = JSON.parse(fs.readFileSync(profileFile(name), 'utf8')); return true } catch (e) { return false } // being replaced
+  }, 15000)
   return out
 }
 
+/**
+ * How many targets stand on the bot's course: the zombies in its raid world (the course has no
+ * soldiers). The distance keeps @e to that world: without one it counts every world's zombies.
+ */
+const targetsUp = async bot => Number(((await rcon(`execute in ${bot.worldName} positioned 30 ${G} 0 if entity @e[type=minecraft:zombie,distance=..200]`))
+  .match(/Count: (\d+)/) || [, 0])[1])
 const hud = async name => rcon(`cv hud ${name}`)
 const objectiveOf = async name => ((await hud(name)).match(/objective=([^|]*)/) || [, ''])[1].trim()
 const itemId = item => { const m = JSON.stringify(item && item.components || '').match(/craftov:([a-z0-9_/]+)/); return m ? m[1] : (item ? item.name : null) }
@@ -118,7 +137,22 @@ function carried (bot) {
 function join (prefix, name) {
   name = name || prefix + tag
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: PORT, username: name, version: '1.21.11', auth: 'offline' })
-  Object.assign(bot, { chatLines: [], bars: [], titles: [], screens: [], worldChanges: 0, seq: 1 })
+  Object.assign(bot, { chatLines: [], bars: [], titles: [], screens: [], worldChanges: 0, seq: 1, worldName: '' })
+  const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
+  bot._client.on('login', track)
+  bot._client.on('respawn', track)
+  // mineflayer applies player_rotation as absolute angles; recoil sends it relative, as vanilla
+  // expects, which turned the bot to face about south after the first round of a burst. Its plugins
+  // load after createBot returns, so its handler is replaced once logged in (as accuracy.js does).
+  bot.once('login', () => {
+    bot._client.removeAllListeners('player_rotation')
+    bot._client.on('player_rotation', p => {
+      const yaw = (p.relativeYaw ? conv.toNotchianYaw(bot.entity.yaw) : 0) + p.yaw
+      const pitch = Math.max(-90, Math.min(90, (p.relativePitch ? conv.toNotchianPitch(bot.entity.pitch) : 0) + p.pitch))
+      bot.entity.yaw = conv.fromNotchianYaw(yaw)
+      bot.entity.pitch = conv.fromNotchianPitch(pitch)
+    })
+  })
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) { bot.chatLines.push(m); log(name, 'CHAT', m) } })
   bot._client.on('action_bar', p => { const s = flat(p.text); if (s.trim()) { bot.bars.push({ at: Date.now(), text: s }); log(name, 'BAR', s) } })
@@ -284,8 +318,7 @@ async function course () {
   const barsFrom = bot.bars.length
   const told = () => bot.bars.slice(barsFrom).some(b => b.text.includes('没开镜'))
   // Hip fire spreads: short bursts until one lands (the magazine holds 8; a reload halfway).
-  // The look is set again before every burst: mineflayer takes the recoil's relative turn for an
-  // absolute one and would send the rest of the rounds the other way.
+  // The look is set again before every burst, which the recoil has climbed.
   for (let burst = 0; burst < 6 && !told(); burst++) {
     if (burst === 3) { dig(bot, 4); await sleep(4000) }
     await tp(bot, `${close.x} ${close.y} ${close.z}`, a.yaw.toFixed(2), a.pitch.toFixed(2))
@@ -365,6 +398,10 @@ async function course () {
   await sleep(800)
   o = await objectiveOf(name)
   check('pulled again, the objective is the extract again', o.includes('撤离'), o)
+  // The 30 m target has never been within 32 blocks of the bot (33 from the firing spot): before
+  // #151 the server had despawned it in more than half the runs by now.
+  const standing = await targetsUp(bot)
+  check('all three targets still stand at the end of the course', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const worlds = bot.worldChanges
   const titlesFrom = bot.titles.length
   const screensFrom = bot.screens.length
@@ -385,7 +422,7 @@ async function course () {
   await sleep(1000)
   const after = carried(bot)
   check('the gear is back exactly as it was', JSON.stringify(after) === JSON.stringify(before), { before, after })
-  const left = Date.now()
+  const left = stamp(name)
   bot.quit()
   const p = await savedAfter(name, left)
   check('the profile was saved after leaving', !!p)
@@ -419,7 +456,7 @@ async function quit () {
   bot.chat('/cv training')
   const refused = await waitFor(() => bot.chatLines.slice(chatAt).some(l => l.includes('秒后再开始')), 4000)
   check('a second course right away waits for the cooldown', refused && bot.worldChanges === worlds, bot.chatLines.slice(chatAt))
-  const left = Date.now()
+  const left = stamp(name)
   bot.quit()
   const p = await savedAfter(name, left)
   check('the profile names no raid', p && !p.activeRaid && !p.deployment, p && { activeRaid: p.activeRaid })
@@ -436,10 +473,13 @@ async function solo () {
   await tp(bot, '68.5 65 14.5')
   log(name, 'waiting for the operator squad that must not come')
   await sleep(Math.max(0, landed + (OPERATOR_DELAY + 15) * 1000 - Date.now()))
-  // The console's /cv ai lists the one running raid (and says so when there are more).
-  const listing = await rcon('cv ai')
+  // Named by its world: with no name /cv ai only answers when exactly one raid is running.
+  const listing = await rcon(`cv ai ${bot.worldName}`)
   const count = (listing.match(/敌兵 (\d+)/) || [, '?'])[1]
   check('no soldier or rival operator ever comes to the course', count === '0', listing)
+  // The bot has stood in the yard since it was moved there, far from all three targets (#151).
+  const standing = await targetsUp(bot)
+  check('the targets still stand after the wait', standing === TARGETS.length, `${standing} in ${bot.worldName}`)
   const raids = await rcon('cv raids')
   check('the bot is still on the course', /训练场 训练 RUNNING.*玩家 1/.test(raids), raids)
   bot.quit()

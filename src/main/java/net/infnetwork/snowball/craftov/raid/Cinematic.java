@@ -20,32 +20,34 @@ import org.jspecify.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
 /**
  * Entry camera: the squad's view sweeps from high above the map down to their insertion point and
- * ends in their own eyes. The players spectate a mannequin that only they are sent (nobody else sees
- * it, and as the entity they look through it is not drawn for them), moved by the server every
- * update and glided between those positions by the client, so the view moves on every frame. Its
- * moves are sent with exact positions and pitch (Nms#precisePosition). A mannequin rather than an
- * invisible display: the client eases its camera's eye height towards that of the entity it looks
- * through, and a display's is 0, so on landing the view dropped to the player's feet (through the
- * floor for a frame) and rose to their eyes; a mannequin's eyes are at a standing player's height.
+ * ends in each player's own eyes, where they land. Every squad member spectates a mannequin of their
+ * own that only they are sent (as the entity they look through, it is not drawn for them either).
+ * The flights share their start and part ways only towards the end, each into its player's own
+ * insertion point: with one camera for the squad, everyone but the first landed a few blocks to the
+ * side of where the flight had ended. The server moves the cameras every tick and sends where they
+ * are every other tick (a mannequin's update interval), with exact positions and pitch
+ * (Nms#precisePosition); the client glides a camera over three ticks to each position it is sent,
+ * so the view moves on every frame. A mannequin rather than an invisible display: the client eases
+ * its camera's eye height towards that of the entity it looks through, and a display's is 0, so on
+ * landing the view dropped to the player's feet (through the floor for a frame) and rose to their
+ * eyes; a mannequin's eyes are at a standing player's height.
  * A client only takes the camera once it has been sent the mannequin, which comes with the chunk it
  * is in, a few ticks after the jump into the raid world: told earlier, it ignores the camera and
  * stays in its own body, which the server then drags along in jumps (#166, what the entry camera
- * looked like before). So a player is put on the camera once it is tracked for them, kept up with it
- * until then, and put on it again if their client ever loses it.
+ * looked like before). So a player is put on their camera once it is tracked for them, kept up with
+ * it until then, and put on it again if their client ever loses it.
  * Players are looked up by UUID on every step, never kept as Player objects: someone who drops out
  * and reconnects during the flight is a new Player object, and RaidManager.tryRejoin puts them back
- * in spectator in the raid world so the camera picks them up again. Whoever ends up outside the raid
- * world while flying in (a command, a plugin) is brought straight back to the camera, and the flight
- * always ends and lands everyone, whatever happens to one of them.
+ * in spectator in the raid world so their camera picks them up again. Whoever ends up outside the
+ * raid world while flying in (a command, a plugin) is brought straight back to their camera, and the
+ * flight always ends and lands everyone, whatever happens to one of them.
  */
 public final class Cinematic {
 
@@ -56,7 +58,10 @@ public final class Cinematic {
      * each position it is sent, so the view is then at rest in the squad's eyes.
      */
     private static final int SETTLE = 4;
-    /** The {@link Keys#ENTITY_ROLE} of the camera: bullets, grenades and the HUD pass over it. */
+    /**
+     * The {@link Keys#ENTITY_ROLE} of a camera, whose {@link Keys#ENTITY_REF} is its player's UUID:
+     * bullets, grenades and the HUD pass over it.
+     */
     private static final String ROLE = "entry_camera";
     /**
      * The share of the flight by which the camera faces the squad's bearing, level: the rest glides
@@ -82,8 +87,9 @@ public final class Cinematic {
     }
 
     /**
-     * Flies the camera for these players, then calls onDone with every one of their UUIDs, online
-     * or not, once it lands (at once when the camera is off).
+     * Flies each of these players in on their own camera, into their insertion point (their
+     * RaidPlayer.lastLocation, or {@code spawn} without one), then calls onDone with every one of
+     * their UUIDs, online or not, once they land (at once when the camera is off).
      */
     public static void play(CraftovPlugin plugin, Raid raid, int squadNumber, List<Player> players, Location spawn,
                             Consumer<UUID> onDone) {
@@ -103,45 +109,32 @@ public final class Cinematic {
         Location center = raid.map.camera().at(raid.world);
         Vector p0 = center.toVector().add(new Vector(-30, 30, -30));
         Vector p1 = center.toVector().add(new Vector(0, 10, 0));
-        Vector p2 = spawn.toVector().add(new Vector(0, 22, 0)).add(spawn.getDirection().multiply(-14));
-        Vector p3 = spawn.toVector().add(new Vector(0, EYE, 0));
-        Location start = frame(raid.world, p0, p1, p2, p3, spawn, 0);
-        Mannequin camera = raid.world.spawn(feet(start), Mannequin.class, m -> {
-            m.getPersistentDataContainer().set(Keys.ENTITY_ROLE, PersistentDataType.STRING, ROLE);
-            // Sent to the squad alone (attach): to anyone else, a spectator flying in on another
-            // camera for one, it would show as a ghost.
-            m.setVisibleByDefault(false);
-            m.setInvisible(true);
-            m.setPersistent(false);
-            m.setInvulnerable(true);
-            m.setSilent(true);
-            m.setGravity(false);
-            m.setCollidable(false);
-            m.setImmovable(true);
-            m.setDescription(null);
-        });
-        Nms.precisePosition(camera);
+        List<Flight> flights = new ArrayList<>();
         for (Player player : players) {
+            RaidPlayer rp = raid.player(player.getUniqueId());
+            // Where RaidManager.deploySquad has them land (and reconnect, should they drop out).
+            Location landing = rp != null && rp.lastLocation != null && rp.lastLocation.getWorld() == raid.world
+                    ? rp.lastLocation.clone() : spawn.clone();
+            Flight flight = new Flight(player.getUniqueId(), landing, p0, p1, cameraFor(raid, player, landing, p0, p1));
+            flights.add(flight);
             // A black curtain over the jump into the raid world, so its loading never shows.
             net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, CURTAIN_IN, CURTAIN_STAY, CURTAIN_OUT);
             player.setGameMode(GameMode.SPECTATOR);
             // Already looking where the camera does: until the client has the camera, this is the view.
-            player.teleport(feet(start));
+            player.teleport(flight.at(raid.world, 0));
         }
         String tierLine = raid.tier.tag() + " <muted>· " + (players.size() <= 1 ? "单人行动" : players.size() + " 人小队");
         new BukkitRunnable() {
             int tick;
-            /** Squad members whose client was put on the camera while it had the mannequin. */
-            final Set<UUID> shown = new HashSet<>();
 
             @Override
             public void run() {
-                if (raid.state == Raid.State.CLOSED || !camera.isValid()) {
+                if (raid.state == Raid.State.CLOSED || flights.stream().anyMatch(f -> !f.camera.isValid())) {
                     cancel();
-                    camera.remove();
+                    flights.forEach(f -> f.camera.remove());
                     release();
                     if (raid.state == Raid.State.RUNNING) {
-                        land(); // the camera vanished mid-flight: land everyone rather than leave them hanging
+                        land(); // a camera vanished mid-flight: land everyone rather than leave them hanging
                     }
                     return;
                 }
@@ -150,16 +143,20 @@ public final class Cinematic {
                 // and the squad lands. Counted at the bottom, an exception on every step kept the
                 // camera on the same frame for ever and nobody was ever put down.
                 tick++;
-                Location loc = feet(frame(raid.world, p0, p1, p2, p3, spawn, now));
-                camera.teleport(loc);
-                // The head too: it is what the camera looks along.
-                camera.setRotation(loc.getYaw(), loc.getPitch());
-                for (Player player : aboard()) {
+                for (Flight flight : flights) {
+                    RaidPlayer rp = raid.player(flight.id);
+                    Player player = Bukkit.getPlayer(flight.id);
                     try {
-                        follow(player, loc, now);
+                        Location loc = flight.at(raid.world, now);
+                        flight.camera.teleport(loc);
+                        // Still flying in: online and neither landed nor settled, wherever they are.
+                        if (player != null && rp != null && rp.state == RaidPlayer.State.DEPLOYING) {
+                            follow(player, flight, loc, now);
+                        }
                     } catch (RuntimeException ex) {
                         // One player's trouble must not hold up the rest of the squad.
-                        plugin.getLogger().log(Level.WARNING, "Entry camera could not take " + player.getName() + " along", ex);
+                        plugin.getLogger().log(Level.WARNING, "Entry camera could not take "
+                                + (player != null ? player.getName() : flight.id) + " along", ex);
                     }
                 }
                 if (now >= DURATION) {
@@ -168,16 +165,16 @@ public final class Cinematic {
                     Bukkit.getScheduler().runTaskLater(plugin, () -> {
                         release();
                         land();
-                        camera.remove();
+                        flights.forEach(f -> f.camera.remove());
                     }, SETTLE);
                 }
             }
 
-            private void follow(Player player, Location loc, int now) {
+            private void follow(Player player, Flight flight, Location loc, int now) {
                 if (player.getGameMode() != GameMode.SPECTATOR) {
                     player.setGameMode(GameMode.SPECTATOR);
                 }
-                attach(player, loc);
+                attach(player, flight, loc);
                 if (now == NAME_AT) {
                     player.showTitle(Title.title(Text.mm("<b><text>" + Text.escape(raid.map.name())),
                             Text.mm(tierLine + (isRanked(raid, player) ? " · <accent>排位" : "")), Title.Times.times(Duration.ofMillis(400), Duration.ofMillis(2000), Duration.ofMillis(600))));
@@ -189,12 +186,12 @@ public final class Cinematic {
             }
 
             /**
-             * Puts the player on the camera, or keeps them with it until their client can be. The
+             * Puts the player on their camera, or keeps them with it until their client can be. The
              * client gets the camera with the chunk it is in; a camera packet before that is
              * dropped, and the player would stay in their own body for the whole flight.
              */
-            private void attach(Player player, Location loc) {
-                UUID id = player.getUniqueId();
+            private void attach(Player player, Flight flight, Location loc) {
+                Mannequin camera = flight.camera;
                 if (!player.canSee(camera)) {
                     // Shown per Player object: again for whoever reconnected.
                     player.showEntity(plugin, camera);
@@ -207,55 +204,39 @@ public final class Cinematic {
                         player.setSpectatorTarget(null);
                     }
                     player.teleport(loc);
-                    shown.remove(id);
+                    flight.shown = false;
                     return;
                 }
                 boolean onCamera = player.getSpectatorTarget() == camera;
                 if (!camera.isTrackedBy(player)) {
                     // Not sent the camera yet (or lost it): along with it until it is, looking the
                     // same way, so the view the client does have is the camera's.
-                    shown.remove(id);
+                    flight.shown = false;
                     if (!onCamera) {
                         player.teleport(loc);
                     }
                 } else if (!onCamera) {
                     player.setSpectatorTarget(camera);
-                    shown.add(id);
-                } else if (!shown.contains(id) && Nms.sendCamera(player, camera)) {
+                    flight.shown = true;
+                } else if (!flight.shown && Nms.sendCamera(player, camera)) {
                     // On it on the server, but the client did not have the camera when told so.
-                    shown.add(id);
+                    flight.shown = true;
                 }
             }
 
-            /**
-             * Squad members still flying in: online and neither landed nor settled, wherever they
-             * are. follow() brings back whoever is not on the camera.
-             */
-            private List<Player> aboard() {
-                List<Player> out = new ArrayList<>();
-                for (UUID id : ids) {
-                    RaidPlayer rp = raid.player(id);
-                    Player player = Bukkit.getPlayer(id);
-                    if (player != null && rp != null && rp.state == RaidPlayer.State.DEPLOYING) {
-                        out.add(player);
-                    }
-                }
-                return out;
-            }
-
-            /** Takes the squad off the camera: the flight is over for all of them, landed or not. */
+            /** Takes the squad off their cameras: the flight is over for all of them, landed or not. */
             private void release() {
-                for (UUID id : ids) {
-                    RaidPlayer rp = raid.player(id);
+                for (Flight flight : flights) {
+                    RaidPlayer rp = raid.player(flight.id);
                     if (rp != null) {
                         rp.inFlight = false;
                     }
-                    Player player = Bukkit.getPlayer(id);
+                    Player player = Bukkit.getPlayer(flight.id);
                     if (player == null) {
                         continue;
                     }
                     try {
-                        if (player.getSpectatorTarget() == camera) {
+                        if (player.getSpectatorTarget() == flight.camera) {
                             player.setSpectatorTarget(null);
                         }
                     } catch (RuntimeException ex) {
@@ -278,15 +259,75 @@ public final class Cinematic {
     }
 
     /**
+     * One squad member's flight: the shared start (p0, p1), then above and behind their own
+     * insertion point and into their own eyes there. Insertion points of a squad stand a couple of
+     * blocks apart, so the flights only part in the last stretch.
+     */
+    private static final class Flight {
+        final UUID id;
+        final Location landing;
+        final Vector p0;
+        final Vector p1;
+        final Vector p2;
+        final Vector p3;
+        final Mannequin camera;
+        /** Whether their client was put on the camera while it had the mannequin. */
+        boolean shown;
+
+        Flight(UUID id, Location landing, Vector p0, Vector p1, Mannequin camera) {
+            this.id = id;
+            this.landing = landing;
+            this.p0 = p0;
+            this.p1 = p1;
+            this.p2 = above(landing);
+            this.p3 = eyes(landing);
+            this.camera = camera;
+        }
+
+        /** Where the camera stands (its feet) and looks at this tick. */
+        Location at(World world, int tick) {
+            return feet(frame(world, p0, p1, p2, p3, landing, tick));
+        }
+    }
+
+    /** Above and behind an insertion point, where the last stretch of the flight comes down from. */
+    private static Vector above(Location landing) {
+        return landing.toVector().add(new Vector(0, 22, 0)).add(landing.getDirection().multiply(-14));
+    }
+
+    private static Vector eyes(Location landing) {
+        return landing.toVector().add(new Vector(0, EYE, 0));
+    }
+
+    /** The camera for one player, where their flight starts, sent to them alone (Flight). */
+    private static Mannequin cameraFor(Raid raid, Player player, Location landing, Vector p0, Vector p1) {
+        Location start = feet(frame(raid.world, p0, p1, above(landing), eyes(landing), landing, 0));
+        return raid.world.spawn(start, Mannequin.class, m -> {
+            m.getPersistentDataContainer().set(Keys.ENTITY_ROLE, PersistentDataType.STRING, ROLE);
+            m.getPersistentDataContainer().set(Keys.ENTITY_REF, PersistentDataType.STRING, player.getUniqueId().toString());
+            // Sent to its player alone (attach): to anyone else, a spectator flying in on another
+            // camera for one, it would show as a ghost.
+            m.setVisibleByDefault(false);
+            m.setInvisible(true);
+            m.setPersistent(false);
+            m.setInvulnerable(true);
+            m.setSilent(true);
+            m.setGravity(false);
+            m.setCollidable(false);
+            m.setImmovable(true);
+            m.setDescription(null);
+            Nms.precisePosition(m);
+        });
+    }
+
+    /**
      * Where the camera's eyes are and where they look at this tick of the flight: along a curve
      * through p0..p3 (high above the map, over its middle, above and behind the insertion point, the
-     * squad's eyes), eased in and out. It starts looking down at the insertion point, turns (eased,
+     * player's eyes there), eased in and out. It starts looking down at the insertion point, turns (eased,
      * at most about two degrees a tick) to the bearing the squad will face once landed and levels
-     * out on the way down, and glides the last tenth of the flight into the squad's eyes without
+     * out on the way down, and glides the last tenth of the flight into the player's eyes without
      * turning. It used to look at the insertion point all the way down: passing right over it, the
-     * view spun half a turn in three ticks. Nor does it look back along the way it came, where the
-     * squad's spectator heads trail the camera by a tick (the server sends a spectator's position as
-     * it was before their camera moved).
+     * view spun half a turn in three ticks.
      */
     private static Location frame(World world, Vector p0, Vector p1, Vector p2, Vector p3, Location spawn, int tick) {
         double t = Math.min(1.0, tick / (double) DURATION);
@@ -316,10 +357,16 @@ public final class Cinematic {
         return eyes.clone().subtract(0, EYE, 0);
     }
 
-    /** Whether this is an entry camera, which the squad flying in on it may not leave. */
+    /** Whether this is an entry camera, which the player flying in on it may not leave. */
     public static boolean isCamera(@Nullable Entity entity) {
         return entity instanceof Mannequin
                 && ROLE.equals(entity.getPersistentDataContainer().get(Keys.ENTITY_ROLE, PersistentDataType.STRING));
+    }
+
+    /** Whether this is the entry camera of the player with this UUID. */
+    public static boolean isCameraOf(@Nullable Entity entity, UUID player) {
+        return isCamera(entity)
+                && player.toString().equals(entity.getPersistentDataContainer().get(Keys.ENTITY_REF, PersistentDataType.STRING));
     }
 
     private static boolean isRanked(Raid raid, Player player) {

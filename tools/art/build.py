@@ -800,9 +800,11 @@ def build_fonts():
     16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
     Its glyphs take vanilla's room (hanzi 9 px, digits 6, space 4), so nothing laid out for the
     vanilla font moves; whatever the face lacks falls through to vanilla's own providers, which the
-    client keeps after these. CraftEngine merges this file with the glyphs it adds itself. Force
-    Unicode Font switches to minecraft:uniform, which this leaves alone. The licence and provenance
-    ship next to the font file."""
+    client keeps after these. CraftEngine merges this file with the glyphs it adds itself (and, with
+    override-uniform-font, copies it into minecraft:uniform). Force Unicode Font does not switch fonts:
+    it turns off the providers filtered on `uniform` (vanilla's ASCII bitmaps), and the text font
+    carries the same filter, so a player who forces Unifont gets it. The licence and provenance ship
+    next to the font file, in lower case: the client rejects a resource path with capitals."""
     os.makedirs(os.path.join(CV, 'font'), exist_ok=True)
     shutil.copyfile(textfont.OUT, os.path.join(CV, 'font', 'text.ttf'))
     with open(os.path.join(textfont.FONTS, 'SOURCE.txt'), encoding='utf-8') as f:

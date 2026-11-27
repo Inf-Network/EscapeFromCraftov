@@ -9,7 +9,10 @@
     0,
     0.3333
    ],
-   "skip": ""
+   "skip": "",
+   "filter": {
+    "uniform": false
+   }
   }
  ]
 }

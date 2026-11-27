@@ -203,9 +203,10 @@ Not in the face (drawn by the game's own fonts): %(lacking)s
 
 
 def provider():
-    """The client's TrueType provider for the baked font (installed as craftov:font/text.ttf)."""
+    """The client's TrueType provider for the baked font (installed as craftov:font/text.ttf). Like
+    vanilla's ASCII bitmaps it is off while the player has Force Unicode Font on."""
     return {'type': 'ttf', 'file': 'craftov:text.ttf', 'size': SIZE, 'oversample': OVERSAMPLE,
-            'shift': [0, round(SHIFT, 4)], 'skip': ''}
+            'shift': [0, round(SHIFT, 4)], 'skip': '', 'filter': {'uniform': False}}
 
 
 if __name__ == '__main__':

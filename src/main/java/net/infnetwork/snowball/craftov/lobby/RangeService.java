@@ -43,9 +43,10 @@ import java.util.UUID;
 
 /**
  * Private shooting ranges, the one place outside a raid to shoot. Entering saves the player's lobby
- * inventory and moves them to a firing lane built on a copy of the hangar's north-east corner in a
+ * inventory and moves them to a firing line built on a copy of the hangar's north-east corner in a
  * separate world, one plot per player, far from all others and with other players hidden, wearing a
- * loaner rig and backpack. Leaving wipes everything they hold and restores the saved inventory, so
+ * loaner rig and backpack. Two more lanes are built beside the corner's ({@link RangeBuilder}).
+ * Leaving wipes everything they hold and restores the saved inventory, so
  * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that
  * overwrites the profile's loadout during the session can cost the player their gear.
@@ -235,6 +236,7 @@ public final class RangeService implements Listener {
             return;
         }
         int dx = offset(plot);
+        hold(plot, true);
         for (int x = X0; x <= X1; x++) {
             for (int z = Z0; z <= Z1; z++) {
                 for (int y = Y0; y <= Y1; y++) {
@@ -244,6 +246,7 @@ public final class RangeService implements Listener {
         }
         // The lobby itself has no lane any more (#164): the range is where shooting is done.
         LobbyBuilder.lane(world, dx);
+        RangeBuilder.build(world, dx);
         List<Entity> spawned = new ArrayList<>();
         Location rack = new Location(world, dx + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
         spawned.add(world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
@@ -337,6 +340,29 @@ public final class RangeService implements Listener {
         }));
     }
 
+    /**
+     * Keeps the plot's chunks loaded while it is in use, the 50 m calibration target's included. The
+     * targets are spawned before the player arrives, and a chunk with no ticket unloads at the end of
+     * the tick, discarding them (they are never saved): only those near where the player lands
+     * survived. Released with the plot, after its entities are removed.
+     */
+    private void hold(int plot, boolean held) {
+        if (world == null) {
+            return;
+        }
+        int dx = offset(plot);
+        int z0 = Math.min(RangeBuilder.FAR, (int) Math.floor(-5.5 - CALIBRATION_DISTANCE)) - 1;
+        for (int cx = Math.floorDiv(dx + RangeBuilder.WEST - 1, 16); cx <= Math.floorDiv(dx + X1 + 1, 16); cx++) {
+            for (int cz = Math.floorDiv(z0, 16); cz <= Math.floorDiv(RangeBuilder.BACK + 1, 16); cz++) {
+                if (held) {
+                    world.addPluginChunkTicket(cx, cz, plugin);
+                } else {
+                    world.removePluginChunkTicket(cx, cz, plugin);
+                }
+            }
+        }
+    }
+
     private void release(int plot) {
         List<Entity> spawned = plotEntities.remove(plot);
         if (spawned != null) {
@@ -351,6 +377,7 @@ public final class RangeService implements Listener {
                 }
             }
         }
+        hold(plot, false);
         used.clear(plot);
     }
 
@@ -372,7 +399,8 @@ public final class RangeService implements Listener {
             }
             Location l = player.getLocation();
             int dx = offset(plot);
-            if (l.getX() < dx + X0 - 1 || l.getX() > dx + X1 + 1 || l.getZ() < Z0 - 1 || l.getZ() > Z1 + 1 || l.getY() < Y0 - 4) {
+            if (l.getX() < dx + RangeBuilder.WEST - 1 || l.getX() > dx + X1 + 1 || l.getZ() < RangeBuilder.FAR - 1
+                    || l.getZ() > RangeBuilder.BACK + 1 || l.getY() < Y0 - 4) {
                 player.teleport(new Location(world, dx + 14.5, LobbyBuilder.Y + 1, -5.5, 180f, 0f));
             }
         }

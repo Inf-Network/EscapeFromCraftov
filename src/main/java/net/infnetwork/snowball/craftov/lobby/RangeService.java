@@ -250,6 +250,9 @@ public final class RangeService implements Listener {
                         z.setAdult();
                         z.setSilent(true);
                         z.setPersistent(false);
+                        // Never despawned for being far from players, as the lobby's and the training
+                        // course's targets; release() removes them with the range.
+                        z.setRemoveWhenFarAway(false);
                         z.setShouldBurnInDay(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
                         z.customName(Text.mm("<muted>训练靶 " + Math.abs(t[1] + 9) + "m"));

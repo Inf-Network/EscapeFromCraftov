@@ -207,6 +207,9 @@ public final class LobbyService implements Listener {
                         z.setAdult();
                         z.setSilent(true);
                         z.setPersistent(false);
+                        // The 11 m dummy is 37 blocks from the spawn and the trader: a zombie that far
+                        // from every player is despawned at random, and these are only spawned at start.
+                        z.setRemoveWhenFarAway(false);
                         z.setShouldBurnInDay(false);
                         z.setInvulnerable(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);

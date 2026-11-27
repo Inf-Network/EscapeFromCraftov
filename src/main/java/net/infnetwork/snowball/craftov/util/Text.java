@@ -166,7 +166,11 @@ public final class Text {
         return w;
     }
 
-    /** Text progress bar such as ▮▮▮▮▯▯▯; colours are token tag names ({@code ok}, {@code dim}) or {@code #RRGGBB}. */
+    /**
+     * Text progress bar of {@code |} marks, the filled ones in one colour and the rest in the other;
+     * colours are token tag names ({@code ok}, {@code dim}) or {@code #RRGGBB}. The pack's text font
+     * leaves {@code |} to vanilla's 1 px bitmap (tools/art/textfont.py), so a mark advances 2 px.
+     */
     public static String bar(double fraction, int width, String filledColor, String emptyColor) {
         fraction = Math.max(0, Math.min(1, fraction));
         int filled = (int) Math.round(fraction * width);

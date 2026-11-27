@@ -1,15 +1,28 @@
-JiangChengYuanTi 300W (江城圆体 300W), Version 3.6 2021/10/22, designer LiuPeng, vendor ZIHI
-License: SIL Open Font License 1.1 (OFL.txt). The font's name table carries the OFL notice (name IDs
-13 and 14); it records no copyright holder and no Reserved Font Name.
+JiangChengYuanTi 500W (江城圆体 500W), Version 3.6 2021/10/22, designer LiuPeng (刘鹏)
+License: SIL Open Font License 1.1 (OFL.txt). The name table carries the OFL notice (name IDs 13
+and 14) and records no copyright notice and no Reserved Font Name of its own.
 
-Source: jiangcheng_yuanti_300w_v3_6.ttf, sha256 3d1f578d270b9e9ec90d7541806df5bd53d97f720f0d31031cda38c70204bc21
-  from Inf-Network/backrooms-ng@39be66bedbbb86b96ae872eba6b1e97f6fc692c8, content-pack/src/hud/presentation/font/
-  (backrooms-ng took it in as a local file; the same folder holds the OFL text, jiangcheng_yuanti_OFL_1_1.txt,
-  sha256 58a449e34b1aa50202fdca51cd73651fe0c5f78e5731e089c5e2c670b76eb299, copied here as OFL.txt)
+Lineage (OFL at every step; Adobe's notice heads OFL.txt):
+  Source Han Sans (思源黑体), Copyright 2014-2019 Adobe, Reserved Font Name 'Source'
+  -> GenSen Rounded (源泉圓體) v1.501 by ButTaiwan, https://github.com/ButTaiwan/gensen-font:
+     the strokes rounded, Taiwanese glyph forms
+  -> JiangChengYuanTi 3.6 by LiuPeng: GenSen Rounded with mainland Chinese glyph forms. The 500W
+     weight is GenSenRounded TW M: glyphs both share have identical outlines.
 
-text.ttf is a Modified Version under the OFL, baked by tools/art/textfont.py: 6993 characters
-(printable ASCII, GB2312 and what the game prints, less block elements and box drawing), CJK
-punctuation mapped to its full-width (fwid) forms, no OpenType layout tables, tabular digits at
+Source: package/江城圆体 500W.ttf, sha256 8e7cc1282823e4d94b416f7ca16a35712d3e2f13c3e240243967ae665b77ec4e
+  in the npm package https://registry.npmjs.org/@fontpkg/jiang-cheng-yuan-ti/-/jiang-cheng-yuan-ti-3.6.0.tgz
+  registry integrity sha512-TTzSoKRg3V/ReEJV8NGQrcOLHlp5dts05Tj6nHE88d0KgkBuEAkBSMZckQP7tzKc0W0QWZBDLh3r17xdpzFu6w==
+  The package ships the five weights unmodified: its 300W is byte-identical to the copy in
+  Inf-Network/backrooms-ng, its 500W to the one in Marigold1122/Necobridge. The author's own
+  release is a cloud-drive download from https://www.maoken.com/freefonts/4916.html (OFL 1.1).
+Licence text: GenSen Rounded's, with the lineage added below Adobe's notice
+  https://raw.githubusercontent.com/ButTaiwan/gensen-font/1a2d61e1ea08d7948b86dd77262ae2e5585fa1d5/SIL_Open_Font_License_1.1.txt
+  sha256 d84b652ca46586043946969a33c1dbf5a43028440825ae744a325965bec4c8fb
+
+text.ttf is a Modified Version under the OFL, baked by tools/art/textfont.py: 7384 characters
+(printable ASCII, Latin-1, Greek, Cyrillic, kana, GB2312 and what the game prints, less block
+elements, box drawing and `|`), Chinese punctuation and kana mapped to their full-width (fwid)
+forms, every ideograph advancing exactly one em, no OpenType layout tables, tabular digits at
 667 units, the space at 444 units and a one-instruction prep program.
-sha256 082cbaa9f2485ebddb16ea01b58c5bcfaef72921285a9966cf3c11765605670b
+sha256 0dfc665a179e1846de3501e73b5d3c77f3ed2e3a6d9194984b39bfaec9713e4e
 Not in the face (drawn by the game's own fonts): ⏱▮▯☠☢♛⚑⚡⛑✈✔✕✖✗✘✦❤

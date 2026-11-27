@@ -798,9 +798,10 @@ def build_fonts():
     """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
     lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
     16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
-    Its glyphs take vanilla's room (hanzi 9 px, digits 6, space 4), so nothing laid out for the
-    vanilla font moves; whatever the face lacks falls through to vanilla's own providers, which the
-    client keeps after these. CraftEngine merges this file with the glyphs it adds itself (and, with
+    Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
+    measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
+    Whatever the face lacks falls through to vanilla's own providers, which the client keeps after
+    these. CraftEngine merges this file with the glyphs it adds itself (and, with
     override-uniform-font, copies it into minecraft:uniform). Force Unicode Font does not switch fonts:
     it turns off the providers filtered on `uniform` (vanilla's ASCII bitmaps), and the text font
     carries the same filter, so a player who forces Unifont gets it. The licence and provenance ship
@@ -811,7 +812,7 @@ def build_fonts():
         source = f.read()
     with open(os.path.join(textfont.FONTS, 'OFL.txt'), encoding='utf-8') as f:
         licence = f.read()
-    write_text(os.path.join(CV, 'font', 'text.license.txt'), source + '\n' + licence)
+    write_text(os.path.join(CV, 'font', 'text.license.txt'), licence + '\n' + source)
     write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
 
 

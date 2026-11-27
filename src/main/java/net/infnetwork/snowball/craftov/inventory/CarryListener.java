@@ -140,6 +140,9 @@ public final class CarryListener implements Listener {
                     player.getInventory().setItem(slot, null);
                     carry.equip(player, moving);
                     player.updateInventory();
+                } else if (ItemFactory.isRange(equipped)) {
+                    // The loaner one cannot be taken off (handleContainerSlot), so there is nothing to do first.
+                    Notify.error(player, "靶场里只能用靶场" + def.category().displayName() + "，离开靶场时自动收回");
                 } else {
                     Notify.error(player, "请先卸下当前的" + def.category().displayName());
                 }

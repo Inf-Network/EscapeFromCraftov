@@ -356,7 +356,37 @@ public final class CarryService {
                 inv.setItem(MELEE_SLOT, null);
             }
         }
-        List<Integer> slots = route(player, remaining, looting);
+        return place(player, remaining, route(player, remaining, looting), dropOverflow);
+    }
+
+    /**
+     * {@link #give(Player, ItemStack, boolean)} with the rig's cells tried before the backpack's.
+     * The range rack hands out attachments this way: guns fit nowhere but the gun keys and the
+     * backpack, so attachments that filled the backpack first left guns without a cell while the
+     * rig stood empty, and whether everything on the rack fitted depended on the order it was taken.
+     */
+    public @Nullable ItemStack giveRigFirst(Player player, ItemStack stack) {
+        List<Integer> route = route(player, stack, false);
+        List<Integer> rig = route.stream().filter(CarryService::isRigSlot).toList();
+        List<Integer> order = new ArrayList<>();
+        for (int slot : route) {
+            if (isRigSlot(slot)) {
+                continue;
+            }
+            if (isPackSlot(slot) && !order.containsAll(rig)) {
+                order.addAll(rig);
+            }
+            order.add(slot);
+        }
+        if (!order.containsAll(rig)) {
+            order.addAll(rig);
+        }
+        return place(player, stack.clone(), order, false);
+    }
+
+    /** Stacks {@code remaining} onto these cells, then puts it into the first empty one; see {@link #give}. */
+    private @Nullable ItemStack place(Player player, ItemStack remaining, List<Integer> slots, boolean dropOverflow) {
+        PlayerInventory inv = player.getInventory();
         boolean containerWithContents = ItemFactory.hasContents(remaining);
         if (!containerWithContents) {
             for (int slot : slots) {

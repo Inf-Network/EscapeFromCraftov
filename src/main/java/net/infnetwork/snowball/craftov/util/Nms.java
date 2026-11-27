@@ -287,6 +287,7 @@ public final class Nms {
             logger.warning("Sound packets unreadable (" + ex + "); other players' vanilla footsteps are heard as well.");
         }
         initSelf(logger);
+        initCamera(logger);
     }
 
     public static boolean ready() {
@@ -1335,36 +1336,43 @@ public final class Nms {
 
     // ------------------------------------------------------------------ entry camera
 
-    private static boolean cameraTried;
     private static @Nullable Method entityHandle;
     private static @Nullable Method requirePrecise;
     private static @Nullable Constructor<?> cameraPacketCtor;
 
-    private static void cameraHooks() {
-        if (cameraTried) {
-            return;
-        }
-        cameraTried = true;
+    /** Looks the entry camera's hooks up, saying once in the log which of them it cannot have. */
+    private static void initCamera(Logger logger) {
+        Class<?> entity;
         try {
             entityHandle = Class.forName("org.bukkit.craftbukkit.entity.CraftEntity").getMethod("getHandle");
-            Class<?> entity = Class.forName("net.minecraft.world.entity.Entity");
+            entity = Class.forName("net.minecraft.world.entity.Entity");
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Entity handles unavailable (" + ex + "); the raid entry camera's pitch goes in steps of "
+                    + "1.4 degrees, and a client that loses the camera stays off it until the squad lands.");
+            return;
+        }
+        try {
             requirePrecise = entity.getMethod("setRequiresPrecisePosition", boolean.class);
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            logger.warning("Exact entity positions unavailable (" + ex + "); the raid entry camera's pitch goes in "
+                    + "steps of 1.4 degrees.");
+        }
+        try {
             cameraPacketCtor = Class.forName("net.minecraft.network.protocol.game.ClientboundSetCameraPacket").getConstructor(entity);
         } catch (ReflectiveOperationException | RuntimeException ex) {
-            requirePrecise = null;
-            cameraPacketCtor = null;
+            logger.warning("Camera packets unavailable (" + ex + "); a client that loses the raid entry camera stays "
+                    + "off it until the squad lands.");
         }
     }
 
     /**
      * Has the server send every move of this entity as its exact position and rotation (a position
-     * sync each tick) instead of the usual deltas, whose rotation is rounded to 1.4 degrees: a slow
-     * turn of a camera riding on it would go in visible clicks. False if that cannot be had; the
-     * moves are then sent as usual.
+     * sync with each update) instead of the usual deltas, whose rotation is rounded to 1.4 degrees: a
+     * slow turn of a camera riding on it would go in visible clicks. False if that cannot be had;
+     * the moves are then sent as usual.
      */
     public static boolean precisePosition(org.bukkit.entity.Entity entity) {
-        cameraHooks();
-        if (requirePrecise == null) {
+        if (entityHandle == null || requirePrecise == null) {
             return false;
         }
         try {
@@ -1381,8 +1389,7 @@ public final class Nms {
      * since lost it) ignored that and stayed in its own body. False if the packet could not be sent.
      */
     public static boolean sendCamera(Player player, org.bukkit.entity.Entity camera) {
-        cameraHooks();
-        if (!ready || cameraPacketCtor == null) {
+        if (!ready || entityHandle == null || cameraPacketCtor == null) {
             return false;
         }
         try {

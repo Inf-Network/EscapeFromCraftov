@@ -42,6 +42,9 @@ public abstract class Menu implements InventoryHolder {
     private int flashSlot = -1;
     /** What {@link #flashSlot} showed when the result came: a redraw that puts something else there drops it. */
     private @Nullable ItemStack flashFor;
+    /** {@link #flashSlot}'s button without the result line, and as shown with it. */
+    private @Nullable ItemStack flashBase;
+    private @Nullable ItemStack flashShown;
     private long flashUntil;
     /** True while a click in this menu is being handled: only what that click caused shows in the menu. */
     private boolean clicking;
@@ -159,16 +162,19 @@ public abstract class Menu implements InventoryHolder {
         }
         String text = (good == null ? "" : good ? Style.MARK_OK : Style.MARK_FAIL) + miniMessage;
         Component line = net.infnetwork.snowball.craftov.util.Text.mm(text);
+        // A button still showing an earlier result gets its own lore back first: the new line takes
+        // the old one's place instead of going under it, so clicking a refused button again and
+        // again shows the reason once, not once per click down to the bottom of the screen (#161).
+        unflash();
         flashLine = line;
         flashLore = net.infnetwork.snowball.craftov.util.Text.mm(net.infnetwork.snowball.craftov.util.Text.wrap(text, FLASH_WIDTH));
         flashSlot = lastSlot >= 0 && inventory.getItem(lastSlot) != null ? lastSlot : -1;
         flashFor = flashSlot >= 0 ? inventory.getItem(flashSlot) : null;
         flashUntil = Bukkit.getCurrentTick() + 40;
-        if (flashSlot >= 0) {
-            ItemStack shown = inventory.getItem(flashSlot);
-            if (shown != null) {
-                inventory.setItem(flashSlot, withFlash(shown));
-            }
+        if (flashSlot >= 0 && flashFor != null) {
+            flashBase = flashFor;
+            flashShown = withFlash(flashFor);
+            inventory.setItem(flashSlot, flashShown);
         } else {
             pushTitle();
         }
@@ -180,6 +186,8 @@ public abstract class Menu implements InventoryHolder {
             flashLine = null;
             flashSlot = -1;
             flashFor = null;
+            flashBase = null;
+            flashShown = null;
             if (inventory != null && viewer.getOpenInventory().getTopInventory() == inventory) {
                 if (slot >= 0) {
                     redraw();
@@ -189,6 +197,19 @@ public abstract class Menu implements InventoryHolder {
             }
         }, 41L);
         return true;
+    }
+
+    /**
+     * Puts the button that shows the current result back the way it was drawn, if it still shows
+     * that result: a redraw since then drew it afresh, and the slot may hold something else by now.
+     */
+    private void unflash() {
+        if (inventory != null && flashSlot >= 0 && flashBase != null && flashShown != null
+                && flashShown.equals(inventory.getItem(flashSlot))) {
+            inventory.setItem(flashSlot, flashBase);
+        }
+        flashBase = null;
+        flashShown = null;
     }
 
     private ItemStack withFlash(ItemStack stack) {
@@ -212,10 +233,16 @@ public abstract class Menu implements InventoryHolder {
             if (flashing && !sameThing(flashFor, stack)) {
                 flashSlot = -1;
                 flashFor = null;
+                flashBase = null;
+                flashShown = null;
                 flashMoved = true;
                 flashing = false;
             }
-            inventory.setItem(slot, flashing ? withFlash(stack) : stack);
+            if (flashing) {
+                flashBase = stack;
+                flashShown = withFlash(stack);
+            }
+            inventory.setItem(slot, flashing ? flashShown : stack);
         }
     }
 

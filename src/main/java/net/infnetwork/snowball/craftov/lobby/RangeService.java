@@ -233,6 +233,7 @@ public final class RangeService implements Listener {
         spawned.add(world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
             d.text(Text.mm("<b><text>靶场武器架</b>\n<muted>免费试用 · 子弹无限 · 可装瞄准镜"));
             d.setBillboard(Display.Billboard.CENTER);
+            d.setBrightness(LobbyService.LABEL_LIGHT);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
         }));
@@ -310,6 +311,7 @@ public final class RangeService implements Listener {
             d.setBillboard(Display.Billboard.CENTER);
             d.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
                     new org.joml.Vector3f(3f, 3f, 3f), new org.joml.Quaternionf()));
+            d.setBrightness(LobbyService.LABEL_LIGHT);
             d.setViewRange(2f);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(150, 10, 12, 16));

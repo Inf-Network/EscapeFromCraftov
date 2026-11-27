@@ -75,6 +75,12 @@ public final class LobbyService implements Listener {
     private final CraftovPlugin plugin;
     private @Nullable World world;
     private @Nullable TextDisplay leaderboard;
+    /**
+     * Full light for the lobby's labels. The pack's text font is a TrueType font, and the client lights
+     * TrueType glyphs on a text display by the light where it stands (bitmap glyphs it draws at full
+     * brightness), so under the hall's lamps the labels came out a dim brown (#163).
+     */
+    static final Display.Brightness LABEL_LIGHT = new Display.Brightness(15, 15);
     private final Map<UUID, Long> lastMenuClick = new HashMap<>();
 
     public LobbyService(CraftovPlugin plugin) {
@@ -159,6 +165,7 @@ public final class LobbyService implements Listener {
             world.spawn(base.clone().add(0, 1.55, 0), TextDisplay.class, d -> {
                 d.text(Text.mm("<b><text>" + s[1] + "</b>\n<muted>" + s[2]));
                 d.setBillboard(Display.Billboard.CENTER);
+                d.setBrightness(LABEL_LIGHT);
                 d.setPersistent(false);
                 d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
                 d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, s[0]);
@@ -172,6 +179,7 @@ public final class LobbyService implements Listener {
         }
         leaderboard = world.spawn(new Location(world, 14.5, LobbyBuilder.Y + 3.2, 8.5), TextDisplay.class, d -> {
             d.setBillboard(Display.Billboard.CENTER);
+            d.setBrightness(LABEL_LIGHT);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(140, 10, 12, 16));
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "rank_board");
@@ -187,6 +195,7 @@ public final class LobbyService implements Listener {
         world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
             d.text(Text.mm("<b><text>靶场入口</b>\n<muted>右键进入个人独立靶场\n<dim>免费试枪 · 离开时自动归还原装备"));
             d.setBillboard(Display.Billboard.CENTER);
+            d.setBrightness(LABEL_LIGHT);
             d.setPersistent(false);
             d.setBackgroundColor(org.bukkit.Color.fromARGB(110, 10, 12, 16));
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");

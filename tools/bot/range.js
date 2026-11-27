@@ -2,7 +2,8 @@
 // ammo, meds) and enters the range from the lobby rack. On the range: the lobby menus that move items
 // between the inventory and the profile (stash, trader, market, secure container, deploy) must refuse
 // to open, /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out
-// of reach), Q never fires and a left click does (the capture block in front of the crosshair dug, as
+// of reach), a rack button refused five times in a row says why once in its tooltip, and not at all
+// two seconds later (#161), Q never fires and a left click does (the capture block in front of the crosshair dug, as
 // the vanilla client sends a click; a bare swing fires nothing, #33). Leaving must give back the
 // lobby inventory slot for slot, with nothing taken on the range, and so must being teleported off
 // the range by an admin, at once, so that a rifle stashed straight after /cv lobby is not handed
@@ -119,6 +120,20 @@ async function refusedOnRange (cmd) {
   check(`${cmd} is refused on the range`, !w && refused, w ? 'a window opened: ' + title(w) : (refused ? '' : 'no refusal message'))
 }
 
+/**
+ * The rack button in `slot` is refused for want of room, clicked five times within the two seconds
+ * its tooltip shows the reason (#161): the reason must be there once, not once per click, and gone
+ * once the two seconds are up.
+ */
+async function refusedOnce (w, slot) {
+  const lines = () => { const it = w.slots[slot]; return it ? (JSON.stringify(it.components || '').match(/放不下/g) || []).length : -1 }
+  for (let i = 0; i < 5; i++) { await bot.clickWindow(slot, 0, 0); await sleep(150) }
+  await sleep(300)
+  check('a rack button refused five times in a row says why once', lines() === 1, `${lines()} lines of the reason`)
+  await sleep(2500)
+  check('the reason leaves the rack button after two seconds', lines() === 0, `${lines()} lines of the reason`)
+}
+
 async function rangePhase () {
   // Kit up in the lobby; /cv lobby rebuilds the inventory from the saved loadout so the baseline is
   // built exactly like the inventory handed back after the range.
@@ -145,6 +160,7 @@ async function rangePhase () {
   if (menu) {
     await bot.clickWindow(0, 0, 0) // take the first loaner
     await sleep(500)
+    await refusedOnce(menu, 18) // the first attachment: no rig or backpack, so no room for it
     bot.closeWindow(menu)
   }
   check('the rack hands out a loaner', bot.inventory.items().some(i => JSON.stringify(i.components || '').includes('craftov:range')))

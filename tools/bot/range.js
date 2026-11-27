@@ -3,8 +3,8 @@
 // backpack and holds nothing else but the starter knife; the lobby menus that move items between the
 // inventory and the profile (stash, trader, market, secure container, deploy) must refuse to open,
 // /cv must open the weapon rack (presets and the free kit live in the lobby menu, which is out of
-// reach), every gun and attachment on the rack fits on the bot at once and the loaner backpack cannot
-// be taken off (#162), a rack button refused five times in a row says why once in its tooltip, and
+// reach), every gun and attachment on the rack fits on the bot at once, guns or attachments taken
+// first, and the loaner backpack cannot be taken off (#162), a rack button refused five times in a row says why once in its tooltip, and
 // not at all two seconds later (#161), the hand-back button empties the rig and backpack but leaves
 // them on, Q never fires and a left click does (the capture block in front of the crosshair dug, as
 // the vanilla client sends a click; a bare swing fires nothing, #33). Leaving must give back the
@@ -209,6 +209,17 @@ async function rangePhase () {
       await sleep(2500)
       await refusedOnce(menu, 0)
       // The hand-back button empties the rig and backpack but leaves them on.
+      await bot.clickWindow(42, 0, 0)
+      await sleep(500)
+      // Attachments first, then the guns: the attachments go to the rig first, so the backpack
+      // keeps room for the guns, and all of it fits in this order too.
+      const reversed = [...offered.filter(slot => slot >= 18), ...offered.filter(slot => slot < 18)]
+      const refusedFrom = chat.length
+      for (const slot of reversed) { await bot.clickWindow(slot, 0, 0); await sleep(150) }
+      await sleep(800)
+      const taken = menu.slots.slice(menu.inventoryStart, menu.inventoryEnd).filter(isRange).length
+      check('attachments first, then guns: everything still fits (#162)', taken === offered.length && !chat.slice(refusedFrom).some(m => m.includes('放不下')),
+        `${taken} of ${offered.length} taken` + (chat.slice(refusedFrom).some(m => m.includes('放不下')) ? ', refused for want of room' : ''))
       await bot.clickWindow(42, 0, 0)
       await sleep(500)
       await bot.clickWindow(0, 0, 0) // take one loaner again

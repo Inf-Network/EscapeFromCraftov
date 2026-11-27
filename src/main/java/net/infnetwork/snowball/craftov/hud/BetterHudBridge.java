@@ -72,6 +72,7 @@ public final class BetterHudBridge implements BetterHudHook {
         string(pm, "craftov_extract_left", HudSnapshot::extractLeft);
         bool(pm, "craftov_in_raid", HudSnapshot::inRaid);
         bool(pm, "craftov_in_lobby", HudSnapshot::inLobby);
+        bool(pm, "craftov_in_range", HudSnapshot::inRange);
         bool(pm, "craftov_has_gun", HudSnapshot::hasGun);
         bool(pm, "craftov_is_downed", HudSnapshot::downed);
         bool(pm, "craftov_reloading", HudSnapshot::reloading);

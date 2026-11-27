@@ -201,6 +201,8 @@ public final class RangeService implements Listener {
         player.getInventory().clear();
         player.setItemOnCursor(null);
         release(plot);
+        // A trial operator, the range's own skill cooldown and a sprint still running stay behind.
+        plugin.operators().leftRange(player);
         for (Player other : Bukkit.getOnlinePlayers()) {
             player.showPlayer(plugin, other);
             other.showPlayer(plugin, player);

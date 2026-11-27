@@ -1082,7 +1082,25 @@ craftov_lobby:
       scale: 1.0
       align: left
       outline: true
+      conditions:
+        '1':
+          first: craftov_in_range
+          second: 'false'
+          operation: ==
     '2':
+      name: craftov_pixel
+      pattern: <#A4AAB3>靶场 · 干员 <#E9E5DA>[craftov_operator]
+      x: 6
+      y: 10
+      scale: 1.0
+      align: left
+      outline: true
+      conditions:
+        '1':
+          first: craftov_in_range
+          second: 'true'
+          operation: ==
+    '3':
       name: craftov_pixel
       pattern: <#F2B544>◈
       x: 6
@@ -1090,7 +1108,7 @@ craftov_lobby:
       scale: 1.0
       align: left
       outline: true
-    '3':
+    '4':
       name: craftov_font
       pattern: <#F2B544>[craftov_money_text]
       x: 18
@@ -1098,7 +1116,7 @@ craftov_lobby:
       scale: 1.0
       align: left
       outline: true
-    '4':
+    '5':
       name: craftov_pixel
       pattern: <#A4AAB3>战备值 <#E9E5DA>◈ [craftov_value_short]
       x: 6
@@ -1106,6 +1124,24 @@ craftov_lobby:
       scale: 1.0
       align: left
       outline: true
+      conditions:
+        '1':
+          first: craftov_in_range
+          second: 'false'
+          operation: ==
+    '6':
+      name: craftov_pixel
+      pattern: <#A4AAB3>技能 <#E9E5DA>[craftov_skill]
+      x: 6
+      y: 40
+      scale: 1.0
+      align: left
+      outline: true
+      conditions:
+        '1':
+          first: craftov_in_range
+          second: 'true'
+          operation: ==
   conditions:
     '1':
       first: craftov_in_lobby

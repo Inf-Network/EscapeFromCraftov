@@ -404,6 +404,21 @@ public final class RangeTargets {
         return false;
     }
 
+    /** The standing silhouettes on {@code player}'s plot (what the recon's sonar marks there). */
+    public List<LivingEntity> standing(Player player) {
+        Integer plot = plugin.range().plotOf(player);
+        Plot p = plot == null ? null : plots.get(plot);
+        List<LivingEntity> out = new ArrayList<>();
+        if (p != null) {
+            for (Silhouette s : p.silhouettes) {
+                if (s.state == State.STANDING && s.body.isValid()) {
+                    out.add(s.body);
+                }
+            }
+        }
+        return out;
+    }
+
     // ------------------------------------------------------------------ hits
 
     /**

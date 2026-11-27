@@ -1196,12 +1196,20 @@ def build_betterhud():
             'texts': numbered([text(c('#7FC8D1') + '[craftov_med_name] <white>[craftov_med_left]s', 60, 0, align='center')]),
             'conditions': cond(('craftov_using_med', 'true')),
         },
+        # The lobby panel, on the private range too: there the operator being tried and its skill
+        # (usable on the range) take the place of the gear value, which loaners do not have.
         'craftov_lobby': {
             'images': numbered([image('craftov_panel_info', 0, 0)]),
-            'texts': numbered([text(c(MUTED) + '大厅 · 干员 ' + c(TEXT) + '[craftov_operator]', 6, 1),
+            'texts': numbered([text(c(MUTED) + '大厅 · 干员 ' + c(TEXT) + '[craftov_operator]', 6, 1,
+                                    conditions=cond(('craftov_in_range', 'false'))),
+                               text(c(MUTED) + '靶场 · 干员 ' + c(TEXT) + '[craftov_operator]', 6, 1,
+                                    conditions=cond(('craftov_in_range', 'true'))),
                                text(c(ACCENT_HEX) + '◈', 6, 17),
                                big(c(ACCENT_HEX) + '[craftov_money_text]', 18, 13),
-                               text(c(MUTED) + '战备值 ' + c(TEXT) + '◈ [craftov_value_short]', 6, 31)]),
+                               text(c(MUTED) + '战备值 ' + c(TEXT) + '◈ [craftov_value_short]', 6, 31,
+                                    conditions=cond(('craftov_in_range', 'false'))),
+                               text(c(MUTED) + '技能 ' + c(TEXT) + '[craftov_skill]', 6, 31,
+                                    conditions=cond(('craftov_in_range', 'true')))]),
             'conditions': cond(('craftov_in_lobby', 'true')),
         },
         # The crosshair (HudData.crosshair): an outlined dot and four arms, one picture per gap, opening

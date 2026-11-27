@@ -809,7 +809,7 @@ def build_fonts():
         source = f.read()
     with open(os.path.join(textfont.FONTS, 'OFL.txt'), encoding='utf-8') as f:
         licence = f.read()
-    write_text(os.path.join(CV, 'font', 'text.LICENSE.txt'), source + '\n' + licence)
+    write_text(os.path.join(CV, 'font', 'text.license.txt'), source + '\n' + licence)
     write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
 
 

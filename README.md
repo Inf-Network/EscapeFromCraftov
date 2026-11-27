@@ -257,7 +257,7 @@ Copyright (C) 2026 Inf Network 及贡献者。
 | 内容 | 来源 | 许可 |
 |---|---|---|
 | 枪械网格（原样放在 `tools/art/src/quaternius/`，由 `meshprim.py` 拟合或转换为 `tools/art/voxguns/`） | [Quaternius · Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)） | CC0（公有领域） |
-| 正文字体（子集为 `tools/art/fonts/jiangcheng/text.ttf`，随资源包分发为 `assets/craftov/font/text.ttf`，旁边附许可证 `text.LICENSE.txt`） | 江城圆体 300W（JiangChengYuanTi 300W，Version 3.6，LiuPeng 设计），取自 Inf-Network/backrooms-ng 的 `content-pack/src/hud/presentation/font/`（来源、SHA-256 和改动见 `tools/art/fonts/jiangcheng/SOURCE.txt`） | SIL Open Font License 1.1（`tools/art/fonts/jiangcheng/OFL.txt`） |
+| 正文字体（子集为 `tools/art/fonts/jiangcheng/text.ttf`，随资源包分发为 `assets/craftov/font/text.ttf`，旁边附许可证 `text.license.txt`） | 江城圆体 300W（JiangChengYuanTi 300W，Version 3.6，LiuPeng 设计），取自 Inf-Network/backrooms-ng 的 `content-pack/src/hud/presentation/font/`（来源、SHA-256 和改动见 `tools/art/fonts/jiangcheng/SOURCE.txt`） | SIL Open Font License 1.1（`tools/art/fonts/jiangcheng/OFL.txt`） |
 | 点阵字体（烘焙为 `tools/art/fonts/pixel10.png`，随资源包分发） | [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font) 10px（含 Ark Pixel、Galmuri、Boutique Bitmap 9x9 的字形） | SIL Open Font License 1.1（`tools/art/fonts/OFL.txt`、`LICENSES/`） |
 | 枪声录音（`sounds/gun/` 下的枪声，切自哪段录音见 `tools/art/audio_sources.json`） | [The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library)（Prepared SFX Library），Ben Jaszczak、Brian Nelson、Kevin Heras、Matthew Nanney 录制 | CC0（公有领域） |
 | 消音手枪、冲锋枪的枪声 | [FN FNX .45 Tactical (SilencerCo Osprey)](https://freesound.org/people/areniporgen/sounds/693855/)，areniporgen（Freesound 公开试听版） | CC0（公有领域） |

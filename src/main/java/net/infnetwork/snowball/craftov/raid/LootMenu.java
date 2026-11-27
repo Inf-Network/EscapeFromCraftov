@@ -168,7 +168,7 @@ public final class LootMenu extends Menu {
                 List.of("<muted>把已搜出的物品依次放进合适的位置", "<dim>放不下的留在箱子里")), e -> takeAll());
         button(TIDY, plugin.carryInfo().tidy(), e -> {
             plugin.carry().tidy(viewer);
-            viewer.updateInventory();
+            resend();
             Notify.ok(viewer, "已整理胸挂与背包");
         });
         set(LOAD, plugin.carryInfo().load(viewer));
@@ -398,7 +398,7 @@ public final class LootMenu extends Menu {
         }
         container.set(slot, old);
         plugin.raids().onLooted(viewer, stack);
-        viewer.updateInventory();
+        resend();
         redraw();
     }
 
@@ -554,7 +554,7 @@ public final class LootMenu extends Menu {
         } else {
             return;
         }
-        viewer.updateInventory();
+        resend();
         redraw();
     }
 
@@ -578,7 +578,7 @@ public final class LootMenu extends Menu {
             viewer.getInventory().setItem(armorSlot, moving);
         }
         viewer.playSound(viewer.getLocation(), "craftov:gear.equip", 1f, 1f);
-        viewer.updateInventory();
+        resend();
         redraw();
     }
 
@@ -682,7 +682,7 @@ public final class LootMenu extends Menu {
     private void looted(ItemStack stack, float volume, float pitch) {
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, volume, pitch);
         plugin.raids().onLooted(viewer, stack);
-        viewer.updateInventory();
+        resend();
         redraw();
     }
 
@@ -760,7 +760,7 @@ public final class LootMenu extends Menu {
         container.set(target, plugin.skins().undress(current.clone()));
         viewer.getInventory().setItem(slot, null);
         viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", SoundCategory.PLAYERS, 0.5f, 0.8f);
-        viewer.updateInventory();
+        resend();
         redraw();
     }
 

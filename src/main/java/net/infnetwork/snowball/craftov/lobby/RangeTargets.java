@@ -486,11 +486,28 @@ public final class RangeTargets {
                 ay = y;
             }
         }
+        // A round that struck a board's body belongs to that board, whichever centre its line passes
+        // nearer: from the side of the range the two boards can line up.
+        if (hit != null && dir.getZ() < -1e-6) {
+            for (Board b : p.boards) {
+                if (b != aimed && hit.getUniqueId().equals(b.body.getUniqueId())) {
+                    double t = (b.faceZ - eye.getZ()) / dir.getZ();
+                    aimed = b;
+                    ax = eye.getX() + dir.getX() * t;
+                    ay = eye.getY() + dir.getY() * t;
+                    best = Math.hypot(ax - b.cx, ay - b.cy);
+                }
+            }
+        }
         if (aimed == null) {
             return;
         }
         aimed.shots++;
-        if (hit != null && hit.getUniqueId().equals(aimed.body.getUniqueId())) {
+        // The body behind the paper is a box: a round at an angle can enter its side and strike it
+        // off the paper. Only a round whose line crosses the paper itself is a hit (and leaves a hole).
+        double half = aimed.body.getBoundingBox().getWidthX() / 2;
+        boolean onPaper = Math.abs(ax - aimed.cx) <= half && Math.abs(ay - aimed.cy) <= half;
+        if (onPaper && hit != null && hit.getUniqueId().equals(aimed.body.getUniqueId())) {
             int ring = ring(best);
             aimed.hits++;
             aimed.rings += ring;

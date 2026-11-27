@@ -814,6 +814,16 @@ def build_fonts():
         licence = f.read()
     write_text(os.path.join(CV, 'font', 'text.license.txt'), licence + '\n' + source)
     write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
+    # A character the plugin prints that the subset lacks is drawn by vanilla's fonts. The face lacks
+    # a few (textfont.lacking()); anything else is new text since the last bake.
+    from fontTools.ttLib import TTFont
+    have = set(TTFont(textfont.OUT, lazy=True).getBestCmap())
+    stale = sorted(ch for ch in pixelfont.source_chars() if ord(ch) < 0xFFF0 and ord(ch) not in have
+                   and ord(ch) not in textfont.VANILLA and ch not in textfont.lacking())
+    if stale:
+        print('text font: %d character(s) the plugin prints are not in %s and fall back to vanilla\'s font: %s'
+              ' (python3 tools/art/textfont.py bake adds them)' % (len(stale), os.path.relpath(textfont.OUT, ROOT),
+                                                                   ''.join(stale)))
 
 
 def build_tooltips():

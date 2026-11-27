@@ -605,7 +605,8 @@ public final class DamageService implements Listener {
                 || !eye.getWorld().equals(victim.getWorld())
                 || eye.distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
                 || !plugin.raids().canAttack(player)
-                || !(victim instanceof Player || plugin.ai().isAi(victim) || plugin.raids().standInOwner(victim) != null)
+                || !(victim instanceof Player || plugin.ai().isAi(victim) || plugin.raids().standInOwner(victim) != null
+                        || plugin.lobby().isTarget(victim) && !plugin.range().targets().isDown(victim))
                 || (victim instanceof Player target && !plugin.raids().canBeShot(target))
                 || !plugin.raids().canDamage(player, victim)) {
             return;

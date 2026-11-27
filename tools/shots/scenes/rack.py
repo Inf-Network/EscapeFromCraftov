@@ -2,10 +2,11 @@
 
 On the range, /cv opens the rack and every gun and attachment on it is taken once. Shots:
 rack-taken (the rack with the player's inventory under it: the loaner rig and backpack hold it
-all), then, with no room left for another gun, the button in the arg's slot (default 0, the first
-gun) clicked six times within the two seconds its tooltip shows the reason: rack-refused (the
-pointer on that button: one line saying why, however many clicks) and rack-refused-later (three
-seconds on: the line is gone). Last range-inventory: the inventory screen (E) on the range.
+all, with room to spare), then the button in the arg's slot (default 0, the first gun) is taken
+until the backpack is full and clicked six times more within the two seconds its tooltip shows the
+reason: rack-refused (the pointer on that button: one line saying why, however many clicks) and
+rack-refused-later (three seconds on: the line is gone). Last range-inventory: the inventory
+screen (E) on the range.
 """
 
 import pathlib
@@ -36,6 +37,10 @@ def run(s):
         s.shot('rack-taken')
         s.mouse_to(*s.slot_center(slot, ROWS))
         time.sleep(0.2)
+        for _ in range(20):  # more of it until the backpack is full (it has room for 8 more guns)
+            s.xdo('click', '1')
+            time.sleep(0.15)
+        s.wait(2.5)
         for _ in range(6):
             s.xdo('click', '1')
             time.sleep(0.2)

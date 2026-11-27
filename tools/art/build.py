@@ -671,6 +671,23 @@ def build_fx():
         'elements': [{'from': [0, 0, 8], 'to': [16, 16, 8], 'shade': False,
                       'faces': {'south': {'uv': [0, 0, 16, 16], 'texture': '#t'}, 'north': {'uv': [16, 0, 0, 16], 'texture': '#t'}}}]})
     write_json(os.path.join(CV, 'items', 'fx', 'calibration.json'), {'model': model_ref('craftov:item/fx/calibration')})
+    # The range's steel silhouette (RangeTargets): boxes 3 cm thick standing on the model's origin, the
+    # hinge it turns on, drawn at half size (an item model fits in 3 blocks) and doubled by the display.
+    # The face is painted across the boxes; the back and the edges are plain steel.
+    save(ui.target_silhouette(), os.path.join(CV, 'textures', 'item', 'fx', 'target_silhouette.png'))
+    half, thick = 8, 0.015
+    plates = []
+    for x0, x1, y0, y1 in ui.SILHOUETTE:
+        u0, v1 = ui.silhouette_uv(x0, y0)
+        u1, v0 = ui.silhouette_uv(x1, y1)
+        steel = {'uv': [0, 0, 0.4, 0.4], 'texture': '#t'}
+        plates.append({'from': [8 + x0 * half, 8 + y0 * half, 8 - thick * half], 'to': [8 + x1 * half, 8 + y1 * half, 8 + thick * half],
+                       'faces': {'south': {'uv': [round(u0, 4), round(v0, 4), round(u1, 4), round(v1, 4)], 'texture': '#t'},
+                                 'north': steel, 'east': steel, 'west': steel, 'up': steel, 'down': steel}})
+    write_json(os.path.join(CV, 'models', 'item', 'fx', 'target_silhouette.json'), {
+        'textures': {'t': 'craftov:item/fx/target_silhouette', 'particle': 'craftov:item/fx/target_silhouette'},
+        'elements': plates})
+    write_json(os.path.join(CV, 'items', 'fx', 'target_silhouette.json'), {'model': model_ref('craftov:item/fx/target_silhouette')})
     # Decals are item displays lying flat on the wall (ImpactFx.java): one face at z=8, seen from +Z.
     for name, metal in (('hole', False), ('hole_metal', True)):
         save(bullet_hole(metal, 3 if metal else 5), os.path.join(CV, 'textures', 'item', 'fx', name + '.png'))

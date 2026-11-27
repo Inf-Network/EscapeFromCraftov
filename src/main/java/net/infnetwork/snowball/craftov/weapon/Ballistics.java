@@ -125,6 +125,7 @@ public final class Ballistics {
         boolean hitAnything = false;
         double dealt = 0;
         String partHit = "-";
+        BodyPart bodyPart = BodyPart.CHEST;
         LivingEntity hitEntity = null;
         for (int trace = 1; end == null; trace++) {
             double left = gun.maxRange() - travelled;
@@ -154,6 +155,7 @@ public final class Ballistics {
                 // and the blood go on the body where it stands now.
                 Location point = hit.body().toLocation(world);
                 BodyPart part = hit.part() != null ? hit.part() : BodyPart.of(living, hit.box(), hit.eyeHeight(), hit.point(), dir);
+                bodyPart = part;
                 partHit = part.key();
                 dealt = plugin.damage().bullet(shooter, living, part, keep < 1.0 ? gun.withDamage(gun.damage() * keep) : gun, ammo,
                         travelled + hit.distance(), weaponName);
@@ -162,7 +164,7 @@ public final class Ballistics {
                 }
                 if (plugin.drones().isDrone(living)) {
                     world.spawnParticle(Particle.ELECTRIC_SPARK, point, 8, 0.1, 0.1, 0.1, 0.3);
-                } else {
+                } else if (!plugin.range().targets().impact(living, point)) {
                     plugin.weapons().fx().body(living, point, dir);
                 }
                 break;
@@ -232,6 +234,9 @@ public final class Ballistics {
                     : String.format("[debug] %s impact eye=%.3f,%.3f,%.3f hit=%.3f,%.3f,%.3f through=%d keep=%.2f target=%s part=%s damage=%.1f rewind=%dms",
                             shooter.getName(), eye.getX(), eye.getY(), eye.getZ(), end.getX(), end.getY(), end.getZ(),
                             layers, keep, hitEntity == null ? "-" : hitEntity.getName(), partHit, dealt, rewound));
+        }
+        if (shooter instanceof Player p && plugin.range().isIn(p)) {
+            plugin.range().targets().shot(p, hitEntity, bodyPart, dealt);
         }
         if (tracer) {
             plugin.weapons().fx().tracer(shooter, muzzlePoint(shooter, dir), stop);

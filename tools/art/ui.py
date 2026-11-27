@@ -448,6 +448,68 @@ def calibration_target(px=512):
     return img
 
 
+# The range's steel silhouettes (RangeTargets), in blocks above the hinge they turn on (0.12 above
+# the floor), so the top is at 1.95, a zombie's (and a player's) height: (x0, x1, y0, y1) boxes, the
+# model built from them in build.py. The painted lines on the face are the game's hit zones on a
+# 1.95-high box (combat/HitZone, BodyPart): head from 1.42 up, legs below 0.78, chest above 1.07,
+# the outer 38% of each half the arms.
+SILHOUETTE_HINGE = 0.12
+SILHOUETTE = [(-0.22, 0.22, 0.0, 0.40), (-0.26, 0.26, 0.40, 0.70), (-0.30, 0.30, 0.70, 1.24), (-0.25, 0.25, 1.24, 1.29),
+              (-0.08, 0.08, 1.29, 1.36), (-0.12, 0.12, 1.36, 1.40), (-0.16, 0.16, 1.40, 1.76), (-0.12, 0.12, 1.76, 1.83)]
+SILHOUETTE_SPAN = 1.83   # the texture's side, in blocks: x -0.915..0.915, y 0..1.83
+
+
+def silhouette_uv(x, y):
+    """Texture coordinates (0-16) of a point on the silhouette's face."""
+    return (x + SILHOUETTE_SPAN / 2) / SILHOUETTE_SPAN * 16, (SILHOUETTE_SPAN - y) / SILHOUETTE_SPAN * 16
+
+
+def target_silhouette(px=256):
+    """The face of the steel silhouette, olive with the hit zones lined in white; the top-left
+    corner is plain steel for its back and edges."""
+    img = Image.new('RGBA', (px, px), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    per = px / SILHOUETTE_SPAN
+
+    def at(x, y):
+        u, v = silhouette_uv(x, y)
+        return u / 16 * px, v / 16 * px
+
+    def box(x0, x1, y0, y1, color):
+        a, b = at(x0, y1)
+        c, e = at(x1, y0)
+        d.rectangle([round(a), round(b), round(c) - 1, round(e) - 1], fill=color)
+
+    body = (104, 116, 82, 255)
+    zone = (126, 138, 100, 255)
+    line = (232, 230, 214, 255)
+    for x0, x1, y0, y1 in SILHOUETTE:
+        box(x0, x1, y0, y1, body)
+    # The game's zone heights are from the floor, the hinge's height under the plate.
+    head, legs, chest, arm = 1.42 - SILHOUETTE_HINGE, 0.78 - SILHOUETTE_HINGE, 1.0725 - SILHOUETTE_HINGE, 0.186
+    # Lighter head and chest: where a hit counts most.
+    box(-0.12, 0.12, 1.36, 1.40, zone)
+    box(-0.16, 0.16, 1.40, 1.76, zone)
+    box(-0.12, 0.12, 1.76, 1.83, zone)
+    box(-arm, arm, chest, 1.24, zone)
+
+    def half_width(y):
+        return max(x1 for x0, x1, y0, y1 in SILHOUETTE if y0 <= y < y1)
+
+    w = max(1, round(per * 0.012))
+    for y in (head, chest, legs):
+        a, b = at(-half_width(y), y)
+        c, _ = at(half_width(y), y)
+        d.rectangle([round(a), round(b) - w // 2, round(c) - 1, round(b) + (w - 1) // 2], fill=line)
+    for sx in (-1, 1):
+        a, b = at(sx * arm, 1.24)
+        _, e = at(sx * arm, legs)
+        d.rectangle([round(a) - w // 2, round(b), round(a) + (w - 1) // 2, round(e)], fill=line)
+    # Edges and back: plain steel, in a corner the face never reaches.
+    d.rectangle([0, 0, 7, 7], fill=(70, 76, 60, 255))
+    return img
+
+
 def search_spinner(frames=12):
     """Animated search indicator: a dot chasing round a ring, with a fading trail and a lens in the middle."""
     out = []

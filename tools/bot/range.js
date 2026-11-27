@@ -157,7 +157,8 @@ async function rangePhase () {
   check('lobby kit is in place', ['helmet_3', 'armor_3', 'rig_2', 'pack_2', 'm4c', 'medkit_s'].every(k => Object.values(before).some(v => v.startsWith(k + 'x'))), show(before))
 
   // The hangar has no firing lane or dummies any more: shooting is the private range's job (#164).
-  const lobbyDummies = await rcon('execute in minecraft:craftov_lobby if entity @e[type=minecraft:zombie]')
+  // (A selector without a distance looks in every world: a raid's soldier or a range plot's dummy.)
+  const lobbyDummies = await rcon('execute in minecraft:craftov_lobby positioned 0 65 0 if entity @e[type=minecraft:zombie,distance=..40]')
   const lobbyHay = await rcon('execute in minecraft:craftov_lobby if block 10 65 -21 minecraft:hay_block')
   const lobbyStripe = await rcon('execute in minecraft:craftov_lobby if block 12 64 -15 minecraft:yellow_concrete')
   check('the hangar has no training dummies and no firing lane (#164)', [lobbyDummies, lobbyHay, lobbyStripe].every(r => /failed/.test(r)),

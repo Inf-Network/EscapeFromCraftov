@@ -20,11 +20,26 @@
 //            again; the sprint key without forward changes nothing. A client that runs at sprint pace
 //            with the sights up (ignoring the food level and the aiming slowdown, and never saying it
 //            sprints) loses them: its shots go from the hip with the sprint cone.
-//   held     P18 clicks on a sprint, each after two ticks of movement held back and then sent with the
-//            next tick's (a modified client, issue #155; the plain clicks first, for their cone): the
-//            server logs the catch-up, and every held-back shot after the first has the plain sprint
-//            shots' cone (0.9x at least) without reading as stopping; 3 s later a real stop (a strafe
-//            let go, the shot 100 ms later) reads as stopping again.
+//   held     Modified clients (issue #155), P18 clicks on a sprint (plain clicks first, for their cone),
+//   defer    the bot sending tick_end after every tick as a vanilla client does. held: two ticks
+//   micro    without movement before each click (their tick ends sent), then the catch-up at once;
+//   mimic    defer: then four ticks at a sprint still two ticks behind, then the rest; micro: steps of
+//   piecewise 0.011 instead of none, clicks among them, then the dump; mimic: a stop acted out
+//            (steps 0.55 and 0.3 of a sprint's), then the catch-up; piecewise: half of it repaid
+//            with a click between. In each the server logs the catch-up as held back, and every
+//            shot judged after it (logged careful) has the plain sprint cone (0.9x at least) and
+//            does not read as stopping; shots before it are only logged (the server fires a shot
+//            when it hears it).
+//   stall    two ticks of nothing at all (movement and tick ends kept), a click in the second, then
+//            the burst: no shot reads as stopping, all have the sprint cone, nothing is logged as held
+//            back, and a real stop afterwards (a strafe let go, the shot 100 ms later) reads as
+//            stopping.
+//   fallback the same bot sending no tick ends (measured per server tick, as before): a real stop
+//            reads as stopping, two ticks without any movement before each click are not logged
+//            (they still buy the stop cone there: the fallback's gap), micro-steps then a dump are
+//            logged and the shots after it careful.
+//            spread, sprint, stance, recoil and aimed also check that the server never logs the
+//            bot's movement as held back (but in sprint's two modified-client parts).
 //   stance   a spectator next to the runway sees the M4C carried low while standing (#3), low on a
 //            sprint, up while firing on the sprint, low half a second after the last shot, still low
 //            once the sprint is over; a short burst standing puts it up, and it is low again 2 s after
@@ -82,7 +97,9 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const name = 'Acc' + Math.floor(10000 + Math.random() * 90000)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'held', 'stance', 'recoil', 'aimed']
+const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'held', 'defer', 'micro', 'mimic', 'piecewise', 'stall', 'fallback', 'stance', 'recoil', 'aimed']
+/** Scenarios that play an honest client throughout, but for the spans they mark in cheatSpans: the server must never log their movement as held back. */
+const HONEST = ['spread', 'sprint', 'stance', 'recoil', 'aimed']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -106,6 +123,12 @@ bot.on('error', e => log('ERROR', e.message))
 // each scenario logs them, so a disturbed run can be told from the server's doing.
 const lateMoves = []
 let hooked = false
+// A vanilla 1.21.2+ client ends every tick with a tick_end packet, after that tick's movement; the
+// server measures movement by them (MotionTracker). The bot sends one after each physics tick its
+// clock runs. `tickEnds` false plays a client that sends none (the server falls back to its own ticks).
+let tickEnds = true
+let physicsTicks = 0
+bot.on('physicsTick', () => physicsTicks++)
 bot.once('login', () => {
   const plain = global.setInterval
   global.setInterval = (fn, ms, ...rest) => {
@@ -117,7 +140,9 @@ bot.once('login', () => {
       if (ended) return
       const late = performance.now() - due
       if (late > 25) lateMoves.push(Math.round(late))
+      physicsTicks = 0
       fn()
+      if (tickEnds && bot._client.state === 'play') for (let i = 0; i < physicsTicks; i++) bot._client.write('tick_end', {})
       due += 50
       setTimeout(step, Math.max(0, due - performance.now()))
     }
@@ -135,11 +160,16 @@ bot.once('login', () => {
 })
 // mineflayer files attribute updates under the packet's key (generic.movement_speed), but its physics
 // reads minecraft:movement_speed: without this the bot ignores the server slowing it (aiming does, on
-// the range too), walks faster than it may, and the server takes the strafe for running.
+// the range too), walks faster than it may, and the server takes the strafe for running. The server's
+// own sprint modifier (minecraft:sprinting) is left out: mineflayer adds its own under another id, and
+// with both the bot sprinted at 0.36 blocks a tick, faster than a vanilla client (0.28) can.
 // `ignoreSlow` plays a modified client that keeps its full pace whatever the server says.
 let ignoreSlow = false
 bot.on('entityAttributes', e => {
-  if (e === bot.entity && e.attributes['generic.movement_speed'] && !ignoreSlow) e.attributes['minecraft:movement_speed'] = e.attributes['generic.movement_speed']
+  const speed = e === bot.entity && e.attributes['generic.movement_speed']
+  if (speed && !ignoreSlow) {
+    e.attributes['minecraft:movement_speed'] = { ...speed, modifiers: (speed.modifiers || []).filter(m => !String(m.uuid).includes('sprinting')) }
+  }
 })
 let worldChanges = 0
 bot.on('respawn', () => worldChanges++)
@@ -519,6 +549,7 @@ async function sprint (spot) {
   // with the sprint cone, since the server goes by the measured speed.
   await arm('p18')
   await runway(spot)
+  const slyFrom = logSize()
   await startSprint(false)
   from = logSize()
   shots = 0
@@ -526,6 +557,7 @@ async function sprint (spot) {
   stopSprint(false)
   const sly = await loggedShots(from, 3)
   await sleep(300)
+  cheatSpans.push([slyFrom, logSize()])
   check('sprint: running at sprint pace without the sprint command fires, with the sprint cone',
     sly.length === 3 && sly.every(l => !l.sprint && l.run && l.spread > 4.5), sly.map(l => `${l.spread.toFixed(2)} run=${l.run}`).join(', ') || 'no shot logged')
 
@@ -606,6 +638,7 @@ async function sprint (spot) {
   stopHold = aimWhile()
   const aimedUp = await within(1500, () => adsHeard.length > 0)
   await sleep(400)
+  const cheatFrom = logSize()
   ignoreSlow = true
   bot.entity.attributes['minecraft:movement_speed'] = { value: 0.1, modifiers: [] }
   from = logSize()
@@ -617,8 +650,10 @@ async function sprint (spot) {
   stopSprint(false)
   stopHold()
   ignoreSlow = false
-  if (bot.entity.attributes['generic.movement_speed']) bot.entity.attributes['minecraft:movement_speed'] = bot.entity.attributes['generic.movement_speed']
+  const speed = bot.entity.attributes['generic.movement_speed']
+  if (speed) bot.entity.attributes['minecraft:movement_speed'] = { ...speed, modifiers: (speed.modifiers || []).filter(m => !String(m.uuid).includes('sprinting')) }
   await sleep(600)
+  cheatSpans.push([cheatFrom, logSize()])
   const cheat = shotLines(from)
   const running = cheat.filter(l => l.run)
   log('sights up on a run: ' + cheat.map(l => `${l.spread.toFixed(1)}${l.aim ? 'A' : ''}${l.run ? 'R' : ''}`).join(' '))
@@ -629,91 +664,142 @@ async function sprint (spot) {
 }
 
 // ---------------------------------------------------------------- held
-// `holdMoves` plays a modified client that holds back its movement for a few ticks and then sends it
-// all at once: the next `ticks` movement packets are kept, and go out together with the one after
-// them, so the server sees that many ticks without a step and then a step as long as all of them.
-// `then` runs the moment the last of them is kept back (inside the physics tick that would have sent
-// it), so what it sends reaches the server in the tick that sees no step.
-let heldBack = 0
-let onHeld = null
-const heldMoves = []
+// Modified clients (issue #155). Each physics tick the bot sends its movement (position or
+// position_look, none while it stands still) and then tick_end, as a vanilla client does. Two tools:
+//
+//   lie(fn)    a client that lies about where it is: fn(real, declared, k) runs for the k-th movement
+//              packet from now with the real position and the last one sent, and returns where to say
+//              the bot is, null to send nothing that tick (its tick_end still goes), or 'real' to send
+//              the real position and stop lying (the catch-up). What fn sends itself (a click) goes out
+//              before that tick's movement, so the server fires on that tick's step.
+//   stall(n)   a connection that stalls: the next n ticks' movement and tick_end packets are kept and
+//              go out together with the tick after them. A click still goes out at once, so the server
+//              fires inside the stall (as full auto does through one, the trigger held without swings).
+let lying = null
+let lastDeclared = null
+let stalling = 0
+const stalled = []
 const writeRaw = bot._client.write.bind(bot._client)
 bot._client.write = (packet, params) => {
-  if (packet === 'position' || packet === 'position_look') {
-    if (heldBack > 0) {
-      heldMoves.push([packet, { ...params, flags: { ...params.flags } }]) // mineflayer reuses the object
-      if (--heldBack === 0 && onHeld) {
-        const then = onHeld
-        onHeld = null
-        then()
-      }
-      return
-    }
-    while (heldMoves.length) writeRaw(...heldMoves.shift())
+  const move = packet === 'position' || packet === 'position_look'
+  if (stalling > 0 && (move || packet === 'tick_end')) {
+    stalled.push([packet, move ? { ...params, flags: { ...params.flags } } : params]) // mineflayer reuses the object
+    if (packet === 'tick_end' && --stalling === 0) stalling = -1 // flushed with the next tick's movement
+    return
   }
+  if (move && stalling < 0) {
+    stalling = 0
+    for (const [p, q] of stalled.splice(0)) writeRaw(p, q)
+  }
+  if (move && lying) {
+    const real = { x: params.x, y: params.y, z: params.z }
+    const to = lying.fn(real, lastDeclared || real, lying.k++)
+    if (to === null) return
+    if (to === 'real') {
+      const done = lying.done
+      lying = null
+      done()
+    } else {
+      params = { ...params, flags: { ...params.flags }, x: to.x, y: to.y, z: to.z }
+    }
+  }
+  if (move) lastDeclared = { x: params.x, y: params.y, z: params.z }
   writeRaw(packet, params)
 }
-const holdMoves = (ticks, then) => new Promise(resolve => {
-  heldBack = ticks
-  onHeld = () => { then(); resolve() }
-})
+const lie = fn => new Promise(resolve => { lying = { fn, k: 0, done: resolve } })
+const stall = ticks => { stalling = ticks }
+/** `from` moved `d` blocks horizontally toward `to`. */
+const toward = (from, to, d) => {
+  const dx = to.x - from.x
+  const dz = to.z - from.z
+  const len = Math.hypot(dx, dz) || 1
+  return { x: from.x + dx / len * d, y: to.y, z: from.z + dz / len * d }
+}
+const SPRINT_STEP = 0.2806
 
-/**
- * Issue #155: a client that holds back two ticks of movement right before each shot reads as stopping
- * to the server (steps 0.28, 0.28, 0, 0 measure 0.14), which used to buy the stop cone on a sprint;
- * it then caught up with one long step. P18 clicks on a sprint, first plain (the sprint cone), then
- * each one after two ticks of movement held back and sent with the next. The first such shot cannot
- * be told from a counter-strafe when it is fired (the server fires at once), so it is only logged;
- * the long step after it gives the client away, and every held-back shot after that must have the
- * plain sprint shots' cone, none of them read as stopping. Once that is 3 s behind, a real stop (a
- * strafe let go, the shot 100 ms later) reads as stopping again.
- */
-async function held (spot) {
+/** Server log lines saying it caught our movement held back, between two log offsets. */
+function heldBackLines (from, to = logSize()) {
+  const fd = fs.openSync(LOG, 'r')
+  try {
+    const buf = Buffer.alloc(Math.max(0, to - from))
+    fs.readSync(fd, buf, 0, buf.length, from)
+    return buf.toString('utf8').split('\n').filter(l => l.includes(`[debug] ${name} held back`))
+  } finally { fs.closeSync(fd) }
+}
+/** Log spans where a scenario plays a modified client on purpose: left out of the honest check. */
+const cheatSpans = []
+
+/** The cone of plain P18 clicks on a sprint, for the cases below to compare with. */
+let plainCone = 0
+async function plainSprintCone (spot) {
   await arm('p18')
   await runway(spot)
   await startSprint()
-  let from = logSize()
+  const from = logSize()
   for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(300) }
   stopSprint()
   const plain = await loggedShots(from, 3)
+  plainCone = avg(plain.map(l => l.spread))
+  check('held: plain sprint shots fire with the sprint cone, never stopping', plain.length === 3 && plain.every(l => l.sprint && !l.stop && l.spread > 4.5),
+    plain.map(l => `${l.spread.toFixed(2)} v${l.speed.toFixed(3)}`).join(', ') || 'no shot logged')
   await sleep(300)
-  const cone = avg(plain.map(l => l.spread))
-  log('plain sprint shots: ' + plain.map(l => `${l.spread.toFixed(2)}${l.sprint ? 'S' : ''}${l.stop ? 'T' : ''} v${l.speed.toFixed(2)}`).join(', '))
-  check('held: plain sprint shots fire with the sprint cone', plain.length === 3 && plain.every(l => l.sprint && !l.stop && l.spread > 4.5),
-    plain.map(l => l.spread.toFixed(2)).join(' ') || 'no shot logged')
+}
 
-  from = logSize()
-  for (let leg = 0; leg < 2; leg++) {
+const shotList = lines => lines.map(l => `${l.spread.toFixed(2)}${l.stop ? ' stop' : ''}${l.held ? ' careful' : ''} v${l.speed.toFixed(2)}`).join(', ')
+
+/**
+ * One case: `legs` sprints down the runway, each running `play` (which fires and lies), then the
+ * checks. A client that ends its ticks but holds its movement back reads as stopping, as it says it
+ * is, until the movement arrives (the server fires a shot the moment it hears it, and cannot judge it
+ * again); the catch-up then covers more ground in one client tick than vanilla physics allows, which
+ * the server must log, and every shot judged after that (logged careful) must have the plain sprint
+ * cone and not read as stopping. Shots fired before the catch-up are logged only. It reloads and
+ * waits 3.5 s first, so the careful spell of the case before has run out.
+ */
+async function cheatCase (spot, label, legs, play, expect = { caught: true }) {
+  await home(spot)
+  dropKey() // a full magazine for each case
+  await sleep(3500)
+  const from = logSize()
+  for (let leg = 0; leg < legs; leg++) {
     await runway(spot)
     await startSprint()
-    for (let i = 0; i < 3; i++) {
-      await holdMoves(2, () => bot.swingArm())
-      await sleep(300)
-    }
+    await play(leg)
     stopSprint()
+    await sleep(200)
   }
-  const lines = await loggedShots(from, 6)
-  const caught = logSince(from).filter(l => l.includes(`[debug] ${name} held back`))
   await sleep(300)
-  log('held-back shots: ' + lines.map(l => `${l.spread.toFixed(2)}${l.stop ? 'T' : ''}${l.held ? 'H' : ''} v${l.speed.toFixed(2)} m${l.move.toFixed(2)}`).join(', '))
-  for (const line of caught) log('server: ' + line.slice(line.indexOf('[debug]')))
-  check('held: six held-back shots logged, on the ground, sprinting', lines.length === 6 && lines.every(l => l.ground && l.sprint),
-    `${lines.length} logged`)
-  if (lines.length) {
-    const first = lines[0]
-    log(`held: the first held-back shot (fired before anything gave the client away): spread ${first.spread.toFixed(2)} vs ${cone.toFixed(2)}, ` +
-      `${first.stop ? 'read as stopping' : 'not stopping'}, measured ${first.speed.toFixed(3)}`)
+  const to = logSize()
+  cheatSpans.push([from, to])
+  const lines = shotLines(from)
+  const caught = heldBackLines(from, to)
+  log(`${label}: ${shotList(lines)}`)
+  for (const line of caught) log('  server: ' + line.slice(line.indexOf('[debug]')))
+  if (expect.caught) {
+    const careful = lines.filter(l => l.held)
+    check(`${label}: the catch-up is logged as movement held back`, caught.length >= 1, `${caught.length} logged`)
+    check(`${label}: every shot after it has the plain sprint cone and none reads as stopping`,
+      careful.length >= expect.after && careful.every(l => !l.stop && l.spread >= 0.9 * plainCone),
+      `${careful.length} after the catch-up: ${shotList(careful)} vs ${plainCone.toFixed(2)}`)
+  } else {
+    check(`${label}: nothing is logged as held back`, caught.length === 0, `${caught.length} logged`)
+    if (expect.stopsAllowed) {
+      check(`${label}: every shot fired`, lines.length >= expect.shots, `${lines.length} shots`)
+    } else {
+      check(`${label}: no shot reads as stopping, every one has the plain sprint cone`,
+        lines.length >= expect.shots && lines.every(l => !l.stop && l.spread >= 0.9 * plainCone),
+        `${lines.length} shots: ${shotList(lines)} vs ${plainCone.toFixed(2)}`)
+    }
   }
-  const later = lines.slice(1)
-  check('held: the catch-up gives the client away (the server logs the movement it held back)', caught.length >= 1, `${caught.length} logged`)
-  check('held: every held-back shot after it has the sprint cone, none read as stopping (#155)',
-    later.length >= 5 && later.every(l => !l.stop && l.spread >= 0.9 * cone),
-    later.map(l => `${l.spread.toFixed(2)}${l.stop ? ' stop' : ''}`).join(', ') + ` vs ${cone.toFixed(2)}`)
+  return lines
+}
 
-  // A real stop once the client has behaved for longer than the careful spell: strafe, let go, fire.
+/** A real stop (a strafe let go, the shot 100 ms later), four times: most must read as stopping, none careful. */
+async function realStop (spot, label) {
   await home(spot)
+  dropKey()
   await sleep(3500)
-  from = logSize()
+  const from = logSize()
   for (let leg = 0; leg < 4; leg++) {
     const dir = leg % 2 ? 'right' : 'left'
     bot.setControlState(dir, true)
@@ -724,8 +810,141 @@ async function held (spot) {
     await sleep(600)
   }
   const stops = await loggedShots(from, 4)
-  check('held: 3 s later a real stop reads as stopping again', stops.length === 4 && stops.filter(l => l.stop && !l.held).length >= 2,
-    stops.map(l => `${l.stop ? 'stop' : 'moving'}${l.held ? ' held' : ''} m${l.move.toFixed(2)}`).join(', ') || 'no shot logged')
+  check(`${label}: a real stop reads as stopping`, stops.length === 4 && stops.filter(l => l.stop && !l.held).length >= 2 && !stops.some(l => l.held),
+    stops.map(l => `${l.stop ? 'stop' : 'moving'}${l.held ? ' careful' : ''} m${l.move.toFixed(2)}`).join(', ') || 'no shot logged')
+}
+
+// The cases, on a sprint at 0.28 blocks a tick, three P18 clicks a leg.
+/** The issue: two ticks with no movement (their ends sent), the click on the second, then the catch-up. */
+const holdTwo = async () => {
+  for (let i = 0; i < 3; i++) {
+    await lie((real, said, k) => { if (k === 1) bot.swingArm(); return k < 2 ? null : 'real' })
+    await sleep(300)
+  }
+}
+
+/**
+ * Issue #155 as filed: on a sprint, two ticks of movement held back before each click and sent with
+ * the next (steps 0.28, 0.28, 0, 0 read 0.14: the stop cone). Every case below starts the same way,
+ * then catches up differently, as the review of the first fix found it could (B1 to B4).
+ */
+async function held (spot) {
+  await plainSprintCone(spot)
+  await cheatCase(spot, 'held', 2, holdTwo, { caught: true, after: 4 })
+}
+
+/** B1: held two ticks, the click, then four ticks at a sprint still two ticks behind, then the rest. */
+async function defer (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  const reals = []
+  await cheatCase(spot, 'defer', 2, async () => {
+    reals.length = 0
+    await lie((real, said, k) => {
+      reals.push(real)
+      if (k === 1 || k === 4) bot.swingArm()
+      if (k < 2) return null
+      return k < 6 ? reals[k - 2] : 'real'
+    })
+    await sleep(300)
+    bot.swingArm()
+    await sleep(150)
+  }, { caught: true, after: 3 })
+}
+
+/** B2: steps of 0.011 a tick instead of none (standing, as far as the server can tell), clicks among them, then the dump. */
+async function micro (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await cheatCase(spot, 'micro', 2, async () => {
+    await lie((real, said, k) => {
+      if (k === 1 || k === 5 || k === 9) bot.swingArm()
+      return k < 11 ? toward(said, real, 0.011) : 'real'
+    })
+    await sleep(300)
+    bot.swingArm()
+    await sleep(150)
+  }, { caught: true, after: 1 })
+}
+
+/** B3: a stop acted out (steps 0.55 and 0.3 of a sprint's, as letting go of the keys), the click, then the catch-up at once. */
+async function mimic (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await cheatCase(spot, 'mimic', 2, async () => {
+    for (let i = 0; i < 3; i++) {
+      await lie((real, said, k) => {
+        if (k === 1) bot.swingArm()
+        if (k === 0) return toward(said, real, 0.546 * SPRINT_STEP)
+        if (k === 1) return toward(said, real, 0.298 * SPRINT_STEP)
+        return 'real'
+      })
+      await sleep(300)
+    }
+  }, { caught: true, after: 4 })
+}
+
+/** B4: held two ticks, the click, half of it repaid with another click, then the rest. */
+async function piecewise (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await cheatCase(spot, 'piecewise', 2, async () => {
+    for (let i = 0; i < 2; i++) {
+      await lie((real, said, k) => {
+        if (k === 1 || k === 3) bot.swingArm()
+        if (k < 2) return null
+        if (k === 2) return toward(said, real, Math.hypot(real.x - said.x, real.z - said.z) / 2)
+        if (k === 3) return toward(said, real, Math.hypot(real.x - said.x, real.z - said.z) / 2)
+        return 'real'
+      })
+      await sleep(300)
+    }
+  }, { caught: true, after: 2 })
+}
+
+/**
+ * A stall: two ticks of nothing at all from the client (movement and tick ends kept), a click in the
+ * second, then all of it at once. Nothing is known about the stalled ticks, so the shot reads the
+ * sprint the bot was on; the burst brings three ticks' ends with three ticks' movement, which the
+ * physics allows: no shot reads as stopping, nothing is logged as held back, and a real stop
+ * afterwards still reads as stopping.
+ */
+async function stalls (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await cheatCase(spot, 'stall', 2, async () => {
+    for (let i = 0; i < 3; i++) {
+      stall(2)
+      await sleep(60)
+      bot.swingArm()
+      await sleep(240)
+    }
+  }, { caught: false, shots: 6 })
+  await realStop(spot, 'stall: afterwards')
+}
+
+/**
+ * A client that sends no tick ends (a bot, or a modified client that drops them) is measured per
+ * server tick, as before the client's clock was used. A real stop still reads as stopping. Two ticks
+ * without any movement before each click read as stopping, as they always did without the clock (the
+ * fallback's known gap): nothing may be logged for them, since the burst after is what a stall looks
+ * like too. Steps of 0.011 instead, then the dump, are more than the physics allows even with a tick
+ * to spare for packets bunched up: logged, and the shots after them careful.
+ */
+async function fallback (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  tickEnds = false
+  try {
+    await sleep(2500) // the server stops counting on tick ends after 40 ticks without one
+    await realStop(spot, 'fallback (no tick ends)')
+    await cheatCase(spot, 'fallback: held two ticks', 2, holdTwo, { caught: false, shots: 6, stopsAllowed: true })
+    await cheatCase(spot, 'fallback: micro-steps', 2, async () => {
+      await lie((real, said, k) => {
+        if (k === 2) bot.swingArm()
+        return k < 6 ? toward(said, real, 0.011) : 'real'
+      })
+      await sleep(300)
+      bot.swingArm()
+      await sleep(150)
+    }, { caught: true, after: 1 })
+  } finally {
+    tickEnds = true
+  }
 }
 
 // ---------------------------------------------------------------- stance
@@ -1184,9 +1403,17 @@ async function ai () {
   }
   for (const scenario of scenarios) {
     log('---', scenario)
+    const scenarioFrom = logSize()
+    const spansBefore = cheatSpans.length
     if (scenario === 'spread') await spread(spot)
     else if (scenario === 'sprint') await sprint(spot)
     else if (scenario === 'held') await held(spot)
+    else if (scenario === 'defer') await defer(spot)
+    else if (scenario === 'micro') await micro(spot)
+    else if (scenario === 'mimic') await mimic(spot)
+    else if (scenario === 'piecewise') await piecewise(spot)
+    else if (scenario === 'stall') await stalls(spot)
+    else if (scenario === 'fallback') await fallback(spot)
     else if (scenario === 'stance') await stance(spot)
     else if (scenario === 'recoil') await recoil(spot)
     else if (scenario === 'aimed') await aimed(spot)
@@ -1195,6 +1422,15 @@ async function ai () {
     else log('unknown scenario', scenario)
     const late = lateMoves.splice(0)
     if (late.length) log(`${scenario}: the bot's movement went out late ${late.length} time(s), up to ${Math.max(...late)} ms (two ticks at once)`)
+    if (HONEST.includes(scenario)) {
+      await sleep(300)
+      const spans = cheatSpans.slice(spansBefore)
+      const all = heldBackLines(scenarioFrom)
+      const inCheats = spans.reduce((n, [a, b]) => n + heldBackLines(a, b).length, 0)
+      const honest = all.length - inCheats
+      check(`${scenario}: an honest client's movement is never logged as held back`, honest === 0,
+        `${honest} logged${inCheats ? `, ${inCheats} more where it plays a modified client` : ''}`)
+    }
   }
   log(failures.length ? 'FAIL ' + failures.join('; ') : 'PASS all checks')
   bot.quit()

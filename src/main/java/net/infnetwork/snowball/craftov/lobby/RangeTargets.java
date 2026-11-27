@@ -1,6 +1,7 @@
 package net.infnetwork.snowball.craftov.lobby;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.entity.TeleportFlag;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.BodyPart;
 import net.infnetwork.snowball.craftov.combat.HealthService;
@@ -38,7 +39,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * The private range's targets (#165): steel silhouettes that fall when shot down and stand up again.
+ * The private range's targets (#165): steel silhouettes that fall when shot down and stand up again,
+ * and the same silhouettes moving on rails at three speeds.
  *
  * <p>A silhouette is an invisible zombie without AI (the hitbox, a player's size, so rounds, knives,
  * grenades, hit zones and lag compensation treat it as they treat a soldier) carrying the picture as
@@ -47,7 +49,8 @@ import java.util.UUID;
  * draws the fall and the rise smoothly, and riding the hitbox it moves exactly where the hitbox is
  * drawn. It takes damage like a player without armour ({@code range.targets.hp}); at none left it
  * falls back flat, rounds and knives pass over it, and after {@code range.targets.down-seconds} it
- * stands up again with its health back.
+ * stands up again with its health back. A moving one rides its rail all the while. Its hitbox is
+ * recorded for lag compensation (HitboxHistory), so a moving target is hit where the shooter sees it.
  */
 public final class RangeTargets {
 
@@ -57,19 +60,29 @@ public final class RangeTargets {
     private static final float HINGE = 0.12f;
     /** The plate model is drawn at half size (an item model has to fit in 3 blocks) and shown doubled. */
     private static final float PLATE_SCALE = 2f;
+    /** Ticks a rail target waits at each end before it turns back. */
+    private static final int PAUSE = 10;
+    private static final String[] SPEED_NAMES = {"慢速", "中速", "快速"};
+    private static final double[] DEFAULT_SPEEDS = {2.0, 3.5, 5.5};
 
     private enum State { STANDING, DOWN, RISING }
 
     private record Frame(long at, float angle, int ticks, @Nullable String sound, float pitch) {
     }
 
-    /** A silhouette and where it is in its fall. */
+    /** A silhouette, standing or on a rail. */
     private static final class Silhouette {
         final int plot;
         final Zombie body;
         final ItemDisplay plate;
         final TextDisplay label;
         final String name;
+        /** Rail ends (x) for a moving target, NaN for a standing one; blocks per tick; where in its run it starts. */
+        final double x0;
+        final double x1;
+        final double step;
+        final int phase;
+        int runs;
         State state = State.STANDING;
         double hp;
         long downAt = -1;
@@ -81,12 +94,20 @@ public final class RangeTargets {
         long flashUntil;
         final ArrayDeque<Frame> frames = new ArrayDeque<>();
 
-        Silhouette(int plot, Zombie body, ItemDisplay plate, TextDisplay label, String name) {
+        Silhouette(int plot, Zombie body, ItemDisplay plate, TextDisplay label, String name, double x0, double x1, double step, int phase) {
             this.plot = plot;
             this.body = body;
             this.plate = plate;
             this.label = label;
             this.name = name;
+            this.x0 = x0;
+            this.x1 = x1;
+            this.step = step;
+            this.phase = phase;
+        }
+
+        boolean moving() {
+            return !Double.isNaN(x0);
         }
     }
 
@@ -103,7 +124,7 @@ public final class RangeTargets {
     }
 
     void start() {
-        // Every tick: the fall's keyframes are a few ticks apart.
+        // Every tick: the rails move a step a tick, and the fall's keyframes are a few ticks apart.
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
     }
 
@@ -125,11 +146,25 @@ public final class RangeTargets {
         for (int[] at : RangeBuilder.SILHOUETTES) {
             int meters = RangeBuilder.RAIL_Z - at[1];
             Silhouette s = silhouette(world, plot, new Location(world, dx + at[0] + 0.5, floor, at[1] + 0.5, 0, 0),
-                    "人物靶 " + meters + " m", meters, spawned);
+                    "人物靶 " + meters + " m", Double.NaN, Double.NaN, 0, 0, meters, spawned);
+            p.silhouettes.add(s);
+        }
+        List<Double> speeds = plugin.getConfig().getDoubleList("range.moving-speeds");
+        for (int i = 0; i < RangeBuilder.RAILS_Z.length; i++) {
+            int z = RangeBuilder.RAILS_Z[i];
+            double speed = i < speeds.size() ? speeds.get(i) : DEFAULT_SPEEDS[Math.min(i, DEFAULT_SPEEDS.length - 1)];
+            double x0 = dx + RangeBuilder.RAIL_X0 + 0.5;
+            double x1 = dx + RangeBuilder.RAIL_X1 + 0.5;
+            String name = "移动靶 " + (RangeBuilder.RAIL_Z - z) + " m · " + SPEED_NAMES[Math.min(i, SPEED_NAMES.length - 1)]
+                    + " " + trim(speed) + " m/s";
+            // Started at different points of their runs, so the three do not cross the lane in step.
+            Silhouette s = silhouette(world, plot, new Location(world, x0, floor, z + 0.5, 0, 0), name, x0, x1,
+                    Math.max(0.01, speed) / 20.0, i * 17, RangeBuilder.RAIL_Z - z, spawned);
             p.silhouettes.add(s);
         }
         String[] signs = {
-                "<b><text>人物靶</b>\n<muted>4 / 7 / 11 m · 打倒后 " + trim(downTicks() / 20.0) + " 秒升起"};
+                "<b><text>人物靶</b>\n<muted>4 / 7 / 11 m · 打倒后 " + trim(downTicks() / 20.0) + " 秒升起",
+                "<b><text>移动靶</b>\n<muted>10 m 慢速 · 20 m 中速 · 30 m 快速"};
         for (int i = 0; i < signs.length; i++) {
             String text = signs[i];
             // Over the lane, above the line of sight down it.
@@ -145,7 +180,8 @@ public final class RangeTargets {
         }
     }
 
-    private Silhouette silhouette(World world, int plot, Location feet, String name, int meters, List<Entity> spawned) {
+    private Silhouette silhouette(World world, int plot, Location feet, String name, double x0, double x1, double step, int phase,
+                                  int meters, List<Entity> spawned) {
         // Readable from the firing line: larger the farther the target stands.
         float scale = (float) Math.max(0.7, Math.min(1.8, 0.07 * meters));
         Zombie body = world.spawn(feet, Zombie.class, false, z -> {
@@ -192,7 +228,7 @@ public final class RangeTargets {
         spawned.add(plate);
         spawned.add(base);
         spawned.add(label);
-        Silhouette s = new Silhouette(plot, body, plate, label, name);
+        Silhouette s = new Silhouette(plot, body, plate, label, name, x0, x1, step, phase);
         s.hp = maxHp();
         silhouettes.put(body.getUniqueId(), s);
         relabel(s);
@@ -343,6 +379,9 @@ public final class RangeTargets {
                 if (!s.body.isValid()) {
                     continue;
                 }
+                if (s.moving()) {
+                    move(s);
+                }
                 if (s.state == State.DOWN && now >= s.riseAt) {
                     rise(s, now);
                 }
@@ -364,6 +403,34 @@ public final class RangeTargets {
                 }
             }
         }
+    }
+
+    /**
+     * One step along the rail: out, a pause, back, a pause. The hitbox is moved and its passengers
+     * with it (RETAIN_PASSENGERS, as SlideService moves its seat); the client eases a zombie between
+     * position updates as it does a soldier.
+     */
+    @SuppressWarnings("removal")
+    private void move(Silhouette s) {
+        double length = s.x1 - s.x0;
+        int travel = (int) Math.ceil(length / s.step);
+        int cycle = 2 * (travel + PAUSE);
+        int k = Math.floorMod(s.runs++ + s.phase, cycle);
+        double along;
+        if (k < PAUSE) {
+            along = 0;
+        } else if (k < PAUSE + travel) {
+            along = (k - PAUSE) * s.step;
+        } else if (k < 2 * PAUSE + travel) {
+            along = length;
+        } else {
+            along = length - (k - 2 * PAUSE - travel) * s.step;
+        }
+        Location at = s.body.getLocation();
+        at.setX(s.x0 + Math.max(0, Math.min(length, along)));
+        at.setYaw(0);
+        at.setPitch(0);
+        s.body.teleport(at, TeleportFlag.EntityState.RETAIN_PASSENGERS);
     }
 
     // ------------------------------------------------------------------ labels

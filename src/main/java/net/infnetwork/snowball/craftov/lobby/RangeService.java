@@ -45,7 +45,8 @@ import java.util.UUID;
  * inventory and moves them to a firing line built on a copy of the hangar's north-east corner in a
  * separate world, one plot per player, far from all others and with other players hidden, wearing a
  * loaner rig and backpack. Two more lanes are built beside the corner's ({@link RangeBuilder}); the
- * corner's has steel silhouettes that fall when shot down ({@link RangeTargets}).
+ * corner's has steel silhouettes that fall when shot down, and the westernmost the same silhouettes
+ * moving on rails ({@link RangeTargets}).
  * Leaving wipes everything they hold and restores the saved inventory, so
  * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that
@@ -80,6 +81,11 @@ public final class RangeService implements Listener {
 
     public RangeTargets targets() {
         return targets;
+    }
+
+    /** The range world, or null before it is created. */
+    public @Nullable World world() {
+        return world;
     }
 
     public void start() {

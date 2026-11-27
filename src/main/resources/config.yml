@@ -718,7 +718,7 @@ training:
   # (s) between two courses started by one player: each start copies and loads a world.
   cooldown-seconds: 30
 
-# The private range (the lobby's range entrance): its steel silhouettes.
+# The private range (the lobby's range entrance): its steel silhouettes, standing and moving.
 range:
   targets:
     # Damage a silhouette takes before it falls, counted like a player's health without armour
@@ -726,6 +726,8 @@ range:
     hp: 100
     # (s) a fallen silhouette stays down this long, then stands up again with its health back.
     down-seconds: 3
+  # Speeds (m/s) of the moving targets on the 10, 20 and 30 m rails; walking is 4.3, sprinting 5.6.
+  moving-speeds: [2.0, 3.5, 5.5]
 
 season:
   # Changing the id starts a new season (everyone's pass progress resets).

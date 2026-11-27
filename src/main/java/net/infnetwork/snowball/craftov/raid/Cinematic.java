@@ -58,6 +58,12 @@ public final class Cinematic {
     private static final int SETTLE = 4;
     /** The {@link Keys#ENTITY_ROLE} of the camera: bullets, grenades and the HUD pass over it. */
     private static final String ROLE = "entry_camera";
+    /**
+     * The share of the flight by which the camera faces the squad's bearing, level: the rest glides
+     * straight in. A mannequin's head yaw goes out in steps of 1.4 degrees, which a slow turn would
+     * show; the turn ends while the camera still moves fast.
+     */
+    private static final double TURNED = 0.9;
     /** A standing player's eye height, and the mannequin's: the camera is that far above its feet. */
     private static final double EYE = 1.62;
     /** The black curtain over the jump into the raid world: fade in, hold and fade out, in ticks. */
@@ -274,26 +280,35 @@ public final class Cinematic {
     /**
      * Where the camera's eyes are and where they look at this tick of the flight: along a curve
      * through p0..p3 (high above the map, over its middle, above and behind the insertion point, the
-     * squad's eyes), eased in and out, looking at the insertion point and then ahead along the
-     * bearing the squad will face, ending exactly in their eyes on that bearing.
+     * squad's eyes), eased in and out. It starts looking down at the insertion point, turns (eased,
+     * at most about two degrees a tick) to the bearing the squad will face once landed and levels
+     * out on the way down, and glides the last tenth of the flight into the squad's eyes without
+     * turning. It used to look at the insertion point all the way down: passing right over it, the
+     * view spun half a turn in three ticks. Nor does it look back along the way it came, where the
+     * squad's spectator heads trail the camera by a tick (the server sends a spectator's position as
+     * it was before their camera moved).
      */
     private static Location frame(World world, Vector p0, Vector p1, Vector p2, Vector p3, Location spawn, int tick) {
         double t = Math.min(1.0, tick / (double) DURATION);
         double e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         Vector pos = bezier(p0, p1, p2, p3, e);
-        Vector look = e > 0.85 ? spawn.getDirection().multiply(10).add(p3) : spawn.toVector().add(new Vector(0, 1, 0));
-        if (e > 0.6 && e <= 0.85) {
-            double k = (e - 0.6) / 0.25;
-            look = spawn.toVector().add(new Vector(0, 1, 0)).multiply(1 - k)
-                    .add(spawn.getDirection().multiply(10).add(p3).multiply(k));
-        }
+        Location first = p0.toLocation(world);
+        first.setDirection(spawn.toVector().add(new Vector(0, 1, 0)).subtract(p0));
+        double turn = ((spawn.getYaw() - first.getYaw()) % 360 + 540) % 360 - 180;
         Location loc = pos.toLocation(world);
-        loc.setDirection(look.clone().subtract(pos));
+        loc.setYaw((float) (first.getYaw() + turn * smooth(t / TURNED)));
+        loc.setPitch((float) (first.getPitch() * (1 - smooth((t - 0.45) / (TURNED - 0.45)))));
         if (t >= 1.0) {
             loc.setYaw(spawn.getYaw());
             loc.setPitch(0);
         }
         return loc;
+    }
+
+    /** Smoothstep: 0 up to 0, 1 from 1 on, eased in and out between. */
+    private static double smooth(double x) {
+        double k = Math.max(0, Math.min(1, x));
+        return k * k * (3 - 2 * k);
     }
 
     /** The feet of a standing player whose eyes are at {@code eyes}. */
